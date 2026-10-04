@@ -1,0 +1,21 @@
+{
+  "name": "zpi-coding-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./input": "./src/core/input.ts"
+  },
+  "dependencies": {
+    "@silvia-odwyer/photon-node": "0.3.4",
+    "bmp-js": "0.1.0",
+    "diff": "9.0.0",
+    "ignore": "7.0.12",
+    "sharp": "0.35.5",
+    "typebox": "1.3.27",
+    "yaml": "2.9.1",
+    "zpi-agent": "0.1.0",
+    "zpi-ai": "0.1.0"
+  }
+}

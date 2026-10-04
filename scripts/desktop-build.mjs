@@ -1,0 +1,35 @@
+export const mainBuild = {
+  entry: ["packages/desktop/src/main/index.ts"],
+  outDir: "packages/desktop/dist/main",
+  format: ["esm"],
+  bundle: true,
+  splitting: false,
+  sourcemap: true,
+  noExternal: [
+    "zpi-ai",
+    "zpi-agent",
+    "zpi-coding-agent",
+    "typebox",
+    "openai",
+    "yaml",
+    "diff",
+    "ignore",
+    "bmp-js",
+  ],
+  external: ["electron", "node-pty", "sharp", "@silvia-odwyer/photon-node"],
+  target: "node24",
+  banner: {
+    js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+  },
+};
+export const preloadBuild = {
+  entry: ["packages/desktop/src/preload/index.ts"],
+  outDir: "packages/desktop/dist/preload",
+  format: ["cjs"],
+  bundle: true,
+  splitting: false,
+  sourcemap: true,
+  external: ["electron"],
+  outExtension: () => ({ js: ".cjs" }),
+  target: "node24",
+};

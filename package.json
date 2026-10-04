@@ -1,0 +1,90 @@
+{
+  "name": "zpi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && biome check .",
+    "format": "biome check --write .",
+    "test:unit": "vitest run",
+    "test:desktop": "npm run build && playwright test",
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "package:mac": "npm run build && electron-builder --mac dmg",
+    "package:mac:preview": "npm run build && electron-builder --mac dmg -c.productName=\"zpi Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"zpi Preview\"",
+    "example:coding": "tsx examples/coding-session.ts",
+    "install:electron": "node node_modules/electron/install.js",
+    "install:terminal": "electron-rebuild -f -w node-pty"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@electron/rebuild": "4.2.0",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/bmp-js": "0.1.2",
+    "@types/node": "24.19.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "41.10.7",
+    "electron-builder": "26.15.3",
+    "tailwindcss": "4.3.3",
+    "tsup": "8.5.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  },
+  "build": {
+    "appId": "local.zpi.desktop",
+    "productName": "zpi",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "packages/desktop/dist/**/*",
+      "package.json",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "extraMetadata": {
+      "main": "packages/desktop/dist/main/index.js"
+    },
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "npmRebuild": false,
+    "mac": {
+      "identity": null,
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "icon.png"
+    },
+    "extraResources": [
+      {
+        "from": "icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@img/**/*",
+      "**/node_modules/@silvia-odwyer/photon-node/**/*",
+      "**/node_modules/node-pty/**/*"
+    ]
+  },
+  "overrides": {
+    "http-cache-semantics": "4.3.0",
+    "esbuild": "0.28.1"
+  },
+  "dependencies": {
+    "@silvia-odwyer/photon-node": "0.3.4",
+    "node-pty": "1.1.0",
+    "sharp": "0.35.5"
+  }
+}
