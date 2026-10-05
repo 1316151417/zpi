@@ -30,7 +30,7 @@ test("Markdown links and streamed file citations share icons, preview locations 
     send(
       response,
       chunk({
-        content: `网页：[开发网页](${localUrl})，https://example.com/page.html\n\n代码：\`https://example.com/inline\`\n\n\`\`\`text\nhttps://example.com/code\n::zcode-file-citation{path="README.md"}\n\`\`\`\n\n普通文字 README.md /tmp/plain.txt\n\n[自定义标签](<./${encodeURIComponent(filename)}:80:3>) [文件 URI](<${pathToFileURL(path).href}#L2-L4>) [不存在](./missing.json) [越界符号链接](./escape.txt) [不支持](javascript:alert) [越界路径](../outside.txt)\n\n[Windows](C:\\Users\\test\\.config\\a.json) [Windows 空格](<C:\\My Files\\.config\\a.json>) [Windows 定义][win]\n\n[win]: <C:\\My Files\\.config\\a&amp;b.json>\n\nWindows 引用：::zcode-file-citation{path="C:\\Users\\test\\.config\\a.json"}\n\n引用：::zcode-file-citation{path="./README`,
+        content: `网页：[开发网页](${localUrl})，https://example.com/page.html\n\n本地裸链接：${localUrl}\n\n代码：\`https://example.com/inline\`，\`README.md\`\n\n\`\`\`text\nhttps://example.com/code\n::zcode-file-citation{path="README.md"}\n\`\`\`\n\n普通文字 README.md /tmp/plain.txt\n\n[自定义标签](<./${encodeURIComponent(filename)}:80:3>) [绝对文件](<${path.replaceAll("%", "%25")}:3>) [裸文件名](README.md) [文件 URI](<${pathToFileURL(path).href}#L2-L4>) [不存在](./missing.json) [越界符号链接](./escape.txt) [不支持](javascript:alert) [越界路径](../outside.txt)\n\n[Windows](C:\\Users\\test\\.config\\a.json) [Windows 空格](<C:\\My Files\\.config\\a.json>) [Windows 定义][win]\n\n[win]: <C:\\My Files\\.config\\a&amp;b.json>\n\nWindows 引用：::zcode-file-citation{path="C:\\Users\\test\\.config\\a.json"}\n\n引用：::zcode-file-citation{path="./README`,
       }),
     );
     await partial.promise;
@@ -60,7 +60,7 @@ test("Markdown links and streamed file citations share icons, preview locations 
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("链接测试");
     await editor.press("Enter");
-    const answer = page.locator(".answer").last();
+    const answer = page.getByTestId("run").last().locator(".answer");
     await expect(answer.getByRole("button", { name: "自定义标签", exact: true })).toBeVisible();
     await expect(answer).not.toContainText('path="./README');
     await expect(answer.getByRole("button", { name: "README.md", exact: true })).toHaveCount(0);
@@ -72,13 +72,14 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await expect(answer.getByRole("button", { name: "README.md", exact: true })).toHaveCount(2);
     await expect(answer.locator("code")).toContainText([
       "https://example.com/inline",
+      "README.md",
       'https://example.com/code\n::zcode-file-citation{path="README.md"}',
       '::zcode-file-citation{path="README.md"}',
     ]);
     await expect(answer.locator("code button.message-web-link, code .message-file-link")).toHaveCount(0);
     await expect(answer.getByRole("button", { name: "不支持", exact: true })).toHaveCount(0);
     await expect(answer.getByRole("button", { name: "越界路径", exact: true })).toHaveCount(0);
-    await expect(answer.locator(".message-file-link")).toHaveCount(10);
+    await expect(answer.locator(".message-file-link")).toHaveCount(12);
     const config = answer.getByRole("button", { name: "自定义标签", exact: true });
     await expect(config).toHaveCSS("color", "rgb(0, 102, 221)");
     expect(await config.evaluate((element) => element.style.getPropertyValue("--mention-image"))).toMatch(
@@ -109,6 +110,10 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await answer.getByRole("button", { name: "文件 URI", exact: true }).click();
     await expect(page.getByRole("tab", { name: filename, exact: true })).toHaveCount(1);
     await expect(page.locator(".file-text-preview")).toHaveAttribute("data-line", "2");
+    await answer.getByRole("button", { name: "绝对文件", exact: true }).click();
+    await expect(page.locator(".file-text-preview")).toHaveAttribute("data-line", "3");
+    await answer.getByRole("button", { name: "裸文件名", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "README.md", exact: true })).toBeVisible();
     const external = () =>
       app?.evaluate(
         () => (globalThis as typeof globalThis & { markdownExternalUrls: string[] }).markdownExternalUrls,
@@ -116,8 +121,10 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await answer.getByRole("button", { name: "https://example.com/page.html", exact: true }).click();
     await expect.poll(external).toEqual(["https://example.com/page.html"]);
     const local = answer.getByRole("button", { name: "开发网页", exact: true });
+    await answer.getByRole("button", { name: localUrl, exact: true }).click();
+    await expect(page.getByLabel("浏览器地址").last()).toHaveValue(localUrl);
     await local.click();
-    await expect(page.getByLabel("浏览器地址")).toHaveValue(localUrl);
+    await expect(page.getByLabel("浏览器地址").last()).toHaveValue(localUrl);
     await local.click({ modifiers: ["Meta"] });
     await expect.poll(external).toEqual(["https://example.com/page.html", localUrl]);
     await local.click({ button: "right" });
@@ -137,6 +144,10 @@ test("Markdown links and streamed file citations share icons, preview locations 
     expect(page.url()).toBe(mainUrl);
     expect(errors).toEqual([]);
     expect(JSON.stringify(model.requests[0].messages)).toContain("::zcode-file-citation");
+    expect(JSON.stringify(model.requests[0].messages)).toContain(
+      "return local file references as Markdown links",
+    );
+    expect(JSON.stringify(model.requests[0].messages)).toContain("Return web URLs as Markdown links");
     await page.screenshot({ path: "test-results/desktop-markdown-links.png" });
   } finally {
     partial.resolve();

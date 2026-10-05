@@ -149,8 +149,13 @@ export class SettingsStore {
         });
         this.data.lastSelection = this.recoverLastSelection();
       }
-      if (isJsonObject(this.data.interface))
+      if (isJsonObject(this.data.interface)) {
         this.data.interface = { ...defaultPreferences, ...this.data.interface };
+        // Other desktop builds stored font sizes as pixels; restore the nearest supported preset.
+        const fontSize: unknown = this.data.interface.fontSize;
+        if (typeof fontSize === "number" && Number.isInteger(fontSize) && fontSize >= 12 && fontSize <= 20)
+          this.data.interface.fontSize = fontSize <= 13 ? "small" : fontSize <= 15 ? "default" : "large";
+      }
       this.validateData(this.data);
     }
     if (existsSync(creds)) {

@@ -27,6 +27,7 @@ import type {
   CombinedSelection,
   DiffItem,
   ProjectRecord,
+  PromptPreview,
   RunInput,
   SessionControls,
   SessionRecord,
@@ -34,6 +35,7 @@ import type {
 } from "../shared/bridge.ts";
 import { availablePresets, reasoningPresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import { AttachmentStore } from "./attachments.ts";
+import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { fileChanges } from "./file-changes.ts";
 import { HistoryIndex } from "./history-index.ts";
@@ -734,19 +736,21 @@ export class SessionHost {
     this.record(id);
     return this.attachments.remove(id, attachment);
   }
-  async previewPrompt() {
+  async previewPrompt(): Promise<PromptPreview> {
     const info = this.workspaceInfo(null);
     const loader = this.resourceLoader(null);
     await loader.reload();
+    const options = {
+      cwd: info.cwd,
+      projectName: "ZPI",
+      template: this.settings.getTemplate(),
+      tools: createCodingTools(info.cwd),
+    };
     return {
       ...info,
-      prompt: buildSystemPrompt({
-        cwd: info.cwd,
-        projectName: "ZPI",
-        template: citationTemplate(this.settings.getTemplate()),
-        loader,
-        tools: createCodingTools(info.cwd),
-      }),
+      basePrompt: buildSystemPrompt({ ...options, loader }),
+      systemRules: desktopSystemRules,
+      prompt: buildSystemPrompt({ ...options, loader: withDesktopSystemRules(loader) }),
     };
   }
   listTools() {
@@ -1004,8 +1008,8 @@ export class SessionHost {
           await createAgentSession({
             cwd: this.cwd(record),
             agentDir: join(this.dir, "agent"),
-            resourceLoader: this.resourceLoader(id),
-            promptTemplate: () => citationTemplate(this.configuration(id).template),
+            resourceLoader: withDesktopSystemRules(this.resourceLoader(id)),
+            promptTemplate: () => this.configuration(id).template,
             projectName: () => this.workspaceInfo(id).projectName,
             modelRuntime: runtime,
             model,
@@ -1314,11 +1318,4 @@ export class SessionHost {
     await queueClose;
     for (const index of this.indexes.values()) index.flush();
   }
-}
-
-function citationTemplate(template: PromptTemplate): PromptTemplate {
-  return {
-    ...template,
-    rules: `${template.rules}\nTo cite a local file in your answer, use ::zcode-file-citation{path="path/to/file"}. Use only existing files or files you created. Paths are absolute or relative to the current working directory; append :line:column or #Lstart-Lend for a location. For a custom display label, use a Markdown link instead. Keep URLs and citation examples inside code as code.`,
-  };
 }

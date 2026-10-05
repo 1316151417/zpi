@@ -923,6 +923,10 @@
   max-height: 400px;
   overflow: auto;
 }
+.settings-screen .resource-settings .prompt-preview,
+.settings-screen .resource-settings .system-rules-preview {
+  max-height: 260px;
+}
 .settings-screen .provider-list button {
   font-size: var(--text-caption);
   font-weight: 400;
