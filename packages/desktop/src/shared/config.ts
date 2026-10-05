@@ -24,6 +24,8 @@ export const defaultPreferences: InterfacePreferences = {
   fontSize: 14,
   showContextUsage: false,
   showSendButton: false,
+  notificationEnabled: true,
+  notificationSoundEnabled: true,
   sidebarCollapsed: false,
   sidebarWidth: sidebarLimits.default,
   collapsedProjectIds: [],

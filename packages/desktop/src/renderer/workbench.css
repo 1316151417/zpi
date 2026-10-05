@@ -1054,6 +1054,35 @@
   outline: 2px solid var(--color-focus);
   outline-offset: 3px;
 }
+.settings-switch input:disabled {
+  cursor: not-allowed;
+}
+.settings-switch input:disabled + span {
+  opacity: 0.5;
+}
+.task-notification-switch,
+.task-notification-switch > span {
+  width: 32px;
+  height: 18px;
+}
+.general-settings .settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 192px;
+}
+.general-settings .task-notification-switch {
+  justify-self: end;
+}
+.task-notification-switch > span {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+.task-notification-switch > span::after {
+  width: 16px;
+  height: 16px;
+  margin: 1px;
+  box-shadow: none;
+  background: var(--color-on-primary);
+}
 .settings-hint {
   color: var(--color-text-muted);
   font-size: var(--text-small);

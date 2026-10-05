@@ -52,6 +52,7 @@ import {
   withdrawQueuedInput,
 } from "./store.ts";
 import { TaskMenu } from "./TaskMenu.tsx";
+import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { WindowChrome } from "./WindowChrome.tsx";
@@ -194,6 +195,20 @@ export function App() {
   useEffect(() => {
     const unsubscribe = subscribeEvents();
     const offPanes = listenPanes();
+    const offNotificationClick = window.zpi.onTaskNotificationClick((id) => {
+      void refresh()
+        .then(async () => {
+          if (!useStore.getState().sessions.has(id)) return;
+          setSettingsOpen(false);
+          setModelOpen(false);
+          setAction(undefined);
+          await selectSession(id);
+        })
+        .catch(report);
+    });
+    const offNotificationSound = window.zpi.onTaskNotificationSound(() => {
+      void playTaskNotificationSound();
+    });
     const offSettings = window.zpi.onSettings((settings) => {
       useStore.setState({ settings });
       void refresh().catch(report);
@@ -202,6 +217,8 @@ export function App() {
     return () => {
       unsubscribe();
       offPanes();
+      offNotificationClick();
+      offNotificationSound();
       offSettings();
     };
   }, []);

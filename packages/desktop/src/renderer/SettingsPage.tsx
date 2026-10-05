@@ -14,6 +14,7 @@ import {
   Plus,
   Puzzle,
   RefreshCcw,
+  Settings2,
   Sparkles,
   Sun,
   Trash2,
@@ -31,6 +32,7 @@ import { SettingsSelect } from "./SettingsSelect.tsx";
 import { refresh, unwrap, useStore } from "./store.ts";
 
 const sections = [
+  ["general", "常规", Settings2],
   ["interface", "界面设置", Monitor],
   ["prompt", "系统提示词", Sparkles],
   ["tools", "工具", Wrench],
@@ -319,6 +321,40 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             <div className="settings-page">
               {tab === "archived" ? (
                 <ArchivedTasks />
+              ) : tab === "general" ? (
+                <div className="general-settings">
+                  <div className="settings-group">
+                    {(
+                      [
+                        ["notificationEnabled", "任务通知", "任务完成、失败或需要确认时发送桌面通知。"],
+                        ["notificationSoundEnabled", "通知声音", "通知开启后，可单独关闭任务通知提示音。"],
+                      ] as const
+                    ).map(([field, label, description]) => (
+                      <label className="settings-row" key={field}>
+                        <span className="settings-row-copy">
+                          <strong>{label}</strong>
+                          <small>{description}</small>
+                        </span>
+                        <span className="settings-switch task-notification-switch">
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label={label}
+                            aria-checked={settings?.interface[field] ?? defaultPreferences[field]}
+                            checked={settings?.interface[field] ?? defaultPreferences[field]}
+                            disabled={
+                              field === "notificationSoundEnabled" &&
+                              !(settings?.interface.notificationEnabled ?? true)
+                            }
+                            onChange={(event) => updateAppearance({ [field]: event.target.checked })}
+                          />
+                          <span aria-hidden="true" />
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {error && <div role="alert">{error}</div>}
+                </div>
               ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (
                 <ResourceSettings page={tab} />
               ) : tab === "interface" ? (

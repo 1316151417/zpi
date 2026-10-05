@@ -5,6 +5,16 @@ import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
 const bridge: DesktopBridge = {
   platform: process.platform,
+  onTaskNotificationClick(listener) {
+    const handler = (_: Electron.IpcRendererEvent, sessionId: string) => listener(sessionId);
+    ipcRenderer.on("zpi:task-notification-click", handler);
+    return () => ipcRenderer.removeListener("zpi:task-notification-click", handler);
+  },
+  onTaskNotificationSound(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("zpi:task-notification-sound", handler);
+    return () => ipcRenderer.removeListener("zpi:task-notification-sound", handler);
+  },
   archiveSession: (id) => call("archiveSession", id),
   listArchivedSessions: () => call("listArchivedSessions"),
   restoreSession: (id) => call("restoreSession", id),

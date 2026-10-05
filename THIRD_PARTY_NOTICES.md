@@ -375,6 +375,8 @@ specific language governing permissions and limitations under the License.
 
 # ZCode desktop presentation
 
+Task notifications follow ZCode commit 872ad960de7ec172591f7e1952f7849229f94521: desktopNotifications.ts, taskNotificationOrchestrator.ts, taskNotificationPreferences.ts, taskNotificationSound.ts, settingsPageHelpers.tsx and zh-CN notification labels. The original task-notification-pop.mp3 is copied into packages/desktop/src/renderer/assets/notification-sounds. Notification delivery, preference persistence and task navigation are adapted to zpi's live run events and Electron bridge. Apache-2.0 attribution and license below apply.
+
 MermaidBlock rendering queue, CSS color normalization and base theme, mermaid-budget.ts and mermaid-language.ts are adapted from ZCode commit 872ad960de7ec172591f7e1952f7849229f94521. UI labels, theme-token names, preview shell, desktop SVG sizing and queued cancellation are adapted for zpi.
 
 The process layout and icon selection in packages/ui/src/components/Conversation.tsx, process-specific CSS tokens/styles, and work-duration/latest-reasoning-line helpers in process-presentation.ts follow the same ZCode commit. References: packages/ui/src/v4/ConversationTurnGroup.tsx, packages/ui/src/ToolCallBlocks/ToolLayout.tsx, ToolSummaryRow.tsx and renderers, packages/ui/src/lib/workDuration.ts, packages/ui/src/components/ai-elements/reasoning.tsx, and styles.css. Adapted to zpi's existing Pi tool names, desktop events and expansion state.

@@ -77,6 +77,8 @@ export interface InterfacePreferences {
   fontSize: number;
   showContextUsage: boolean;
   showSendButton: boolean;
+  notificationEnabled: boolean;
+  notificationSoundEnabled: boolean;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   collapsedProjectIds: string[];
@@ -171,6 +173,8 @@ export interface PaneBounds {
 }
 export interface DesktopBridge {
   readonly platform: string;
+  onTaskNotificationClick(listener: (sessionId: string) => void): () => void;
+  onTaskNotificationSound(listener: () => void): () => void;
   archiveSession(id: string): Promise<Result<void>>;
   listArchivedSessions(): Promise<Result<(SessionRecord & { projectName: string })[]>>;
   restoreSession(id: string): Promise<Result<SessionRecord>>;

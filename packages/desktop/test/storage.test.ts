@@ -7,6 +7,47 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import type { InterfacePreferences } from "../src/shared/bridge.ts";
 
+it("notification preferences default on, migrate old settings and preserve the independent sound choice", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-notification-settings-"));
+  const encryption = {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.alloc(0),
+    decryptString: () => "",
+  };
+  try {
+    const store = new SettingsStore(dir, encryption);
+    expect(store.get().interface).toMatchObject({
+      notificationEnabled: true,
+      notificationSoundEnabled: true,
+    });
+    store.updatePreferences({ notificationSoundEnabled: false });
+    store.updatePreferences({ notificationEnabled: false });
+    store.updatePreferences({ notificationEnabled: true });
+    expect(new SettingsStore(dir, encryption).get().interface).toMatchObject({
+      notificationEnabled: true,
+      notificationSoundEnabled: false,
+    });
+    for (const key of ["notificationEnabled", "notificationSoundEnabled"]) {
+      expect(() => store.updatePreferences({ [key]: "false" } as unknown as InterfacePreferences)).toThrow(
+        "无效界面设置",
+      );
+    }
+    const file = join(dir, "settings.json");
+    const data = JSON.parse(await readFile(file, "utf8"));
+    delete data.interface.notificationEnabled;
+    delete data.interface.notificationSoundEnabled;
+    const original = JSON.stringify(data);
+    await writeFile(file, original);
+    expect(new SettingsStore(dir, encryption).get().interface).toMatchObject({
+      notificationEnabled: true,
+      notificationSoundEnabled: true,
+    });
+    expect(await readFile(file, "utf8")).toBe(original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it("pixel font sizes persist and invalid updates leave settings intact", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-font-size-"));
   const encryption = {

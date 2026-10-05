@@ -32,6 +32,7 @@ import { PaneServices } from "./pane-services.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
 import { SettingsStore } from "./storage.ts";
+import { TaskNotifications } from "./task-notifications.ts";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
 const testMode = process.env.ZPI_TEST_MODE === "1";
@@ -141,8 +142,14 @@ async function launch(): Promise<void> {
   window.webContents.on("will-redirect", (e) => e.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_, __, cb) => cb(false));
   window.webContents.session.setPermissionCheckHandler(() => false);
+  const notifications = new TaskNotifications(window, () => settings.get().interface);
   host.subscribe((event) => {
     if (!window.isDestroyed()) window.webContents.send("zpi:event", event);
+    if (!ending && event.event.type === "settled")
+      notifications.handle(
+        event,
+        host.listRecentSessions().find((record) => record.id === event.sessionId)?.title ?? "",
+      );
   });
   ipcMain.handle("zpi:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
     try {
@@ -433,6 +440,8 @@ async function launch(): Promise<void> {
               "fontSize",
               "showContextUsage",
               "showSendButton",
+              "notificationEnabled",
+              "notificationSoundEnabled",
               "sidebarCollapsed",
               "sidebarWidth",
               "collapsedProjectIds",
@@ -582,6 +591,7 @@ async function launch(): Promise<void> {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
+    notifications.dispose();
     panes.close();
     void host.close().finally(() => app.quit());
   });

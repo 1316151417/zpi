@@ -516,6 +516,8 @@ export class SettingsStore {
       [
         prefs.showContextUsage,
         prefs.showSendButton,
+        prefs.notificationEnabled,
+        prefs.notificationSoundEnabled,
         prefs.sidebarCollapsed,
         prefs.projectsCollapsed,
         prefs.tasksCollapsed,
