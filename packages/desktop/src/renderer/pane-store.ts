@@ -69,6 +69,10 @@ export async function openWebLink(url: string, options?: WebOpenOptions) {
 }
 export async function openFile(sessionId: string, path: string, location?: FileLocation) {
   const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
+  if (preview.kind === "directory") {
+    unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
+    return;
+  }
   if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
     await openBrowser(location?.fileUrl ?? preview.path);
     return;

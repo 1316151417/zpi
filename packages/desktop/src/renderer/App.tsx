@@ -268,8 +268,8 @@ export function App() {
     [selected],
   );
   const fileAction = useCallback(
-    (path: string, action: FileAction) =>
-      selected ? window.zpi.fileAction(selected, path, action).then(unwrap) : Promise.resolve(),
+    (path: string, action: FileAction, location?: FileLocation) =>
+      selected ? window.zpi.fileAction(selected, path, action, location).then(unwrap) : Promise.resolve(),
     [selected],
   );
   const earlier = useCallback(

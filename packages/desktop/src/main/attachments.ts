@@ -91,9 +91,13 @@ export class AttachmentStore {
     );
   }
   private async readSaved(sessionId: string, item: Saved | undefined) {
+    const image = await this.readSavedBytes(sessionId, item);
+    return { metadata: image.metadata, data: image.data.toString("base64") };
+  }
+  private async readSavedBytes(sessionId: string, item: Saved | undefined) {
     if (!item) throw new Error("not_found: 图片附件不存在或不属于此会话");
     const { used: _, queued: _queued, ...metadata } = item;
-    const data = (await readFile(join(this.directory(sessionId), `${item.id}.png`))).toString("base64");
+    const data = await readFile(join(this.directory(sessionId), `${item.id}.png`));
     return { metadata, data };
   }
   async load(sessionId: string, ids: string[]) {
@@ -154,8 +158,8 @@ export class AttachmentStore {
       const metadata: Saved[] = [];
       await mkdir(this.directory(targetId), { recursive: true });
       for (const id of new Set(ids)) {
-        const image = await this.readSaved(sourceId, entries.get(id));
-        await writeFile(join(this.directory(targetId), `${id}.png`), Buffer.from(image.data, "base64"), {
+        const image = await this.readSavedBytes(sourceId, entries.get(id));
+        await writeFile(join(this.directory(targetId), `${id}.png`), image.data, {
           mode: 0o600,
         });
         metadata.push({ ...image.metadata, used: true });

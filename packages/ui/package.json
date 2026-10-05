@@ -1,12 +1,13 @@
 {
   "name": "zpi-ui",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./styles.css": "./src/styles.css",
     "./projection": "./src/reducer.ts",
+    "./selections": "./src/conversation-selections.ts",
     "./links": "./src/link-target.ts"
   },
   "dependencies": {
@@ -29,7 +30,7 @@
     "react-dom": "19.3.0",
     "rehype-sanitize": "6.0.0",
     "streamdown": "2.7.0",
-    "zpi-agent": "0.1.9",
-    "zpi-coding-agent": "0.1.9"
+    "zpi-agent": "0.1.10",
+    "zpi-coding-agent": "0.1.10"
   }
 }

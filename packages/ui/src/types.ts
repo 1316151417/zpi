@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "zpi-agent";
 import type { Message, ToolCall, ToolResultMessage } from "zpi-ai";
 import type { ContextUsage, ImageAttachment, ResourceDiagnostic } from "zpi-coding-agent";
+import type { FileLocation } from "./link-target.ts";
 export interface SessionControls {
   selection: {
     provider: string;
@@ -31,6 +32,7 @@ export interface FileChangeSummary {
   reason?: string;
 }
 export type FileAction = "open" | "reveal" | "copy-absolute" | "copy-relative";
+export type FileActionHandler = (path: string, action: FileAction, location?: FileLocation) => Promise<void>;
 export type ViewBlock =
   | {
       id: string;

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { fetchProviderModels, getProviderPreset } from "zpi-ai";
 import { beginChatGPTLogin, type ChatGPTLogin, revokeChatGPTCredential } from "zpi-ai/auth/openai-chatgpt";
+import { mergeDiscoveredModels } from "../shared/config.ts";
 import type { SettingsStore } from "./storage.ts";
 
 export class ChatGPTAuth {
@@ -75,16 +76,7 @@ export class ChatGPTAuth {
         const { apiKey: _key, ...saved } = this.settings.snapshot(providerId);
         this.settings.saveProvider({
           ...saved,
-          models: discovered.models.map((model) => {
-            const old = saved.models.find((item) => item.id === model.id);
-            return old?.useRecommendedConfig === false
-              ? old
-              : {
-                  ...model,
-                  useRecommendedConfig: true,
-                  ...(old?.enabled !== undefined ? { enabled: old.enabled } : {}),
-                };
-          }),
+          models: mergeDiscoveredModels(saved.models, discovered.models),
         });
       } catch {
         warning = "ChatGPT 已登录，模型列表获取失败，请点击获取模型列表重试。";

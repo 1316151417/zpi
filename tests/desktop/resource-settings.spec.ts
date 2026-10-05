@@ -207,7 +207,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     expect(wire).not.toContain("available_skills");
     expect(JSON.stringify(server.requests[0].messages)).toContain("image_url");
     await expect(page.locator(".composer .image-chip")).toHaveCount(0);
-    await expect(page.locator(".user-message .image-chip img")).toHaveCount(1);
+    await expect(page.locator(".user-message-row .message-images .image-chip img")).toHaveCount(1);
     await expect(page.locator(".changed-files")).not.toHaveAttribute("open");
     await page.locator(".changed-files-summary").click();
     await expect(page.locator(".changed-file-card")).toContainText("existing.txt");
@@ -244,7 +244,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await expect(page.locator(".right-pane")).toBeVisible();
-    await expect(page.locator(".right-pane").getByRole("button", { name: /existing.txt/ })).toBeVisible();
+    await expect(page.locator(".right-pane").getByRole("tab", { name: "变更", exact: true })).toBeVisible();
+    await expect(page.locator("diffs-container")).toContainText("external old");
+    await expect(page.locator("diffs-container")).toContainText("new result");
     await expect(page.getByRole("alert")).toHaveCount(0);
     expect(await readFile(join(project, "existing.txt"), "utf8")).toBe("new result\n");
     await page.getByLabel("消息", { exact: true }).fill("compact check");

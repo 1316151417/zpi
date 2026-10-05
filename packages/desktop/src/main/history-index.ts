@@ -19,6 +19,7 @@ import {
   type SessionEntry,
   type SessionHeader,
 } from "zpi-coding-agent";
+import { entryFileChange } from "./file-changes.ts";
 import { atomicJson } from "./storage.ts";
 
 interface Span {
@@ -169,13 +170,7 @@ export class HistoryIndex {
     end = start + Buffer.byteLength(JSON.stringify(entry)) + 1,
   ): void {
     const d = this.data;
-    if (
-      entry.type === "message" &&
-      entry.message.role === "toolResult" &&
-      isJsonObject(entry.message.details) &&
-      isJsonObject(entry.message.details.fileChange)
-    )
-      d.fileChanges.push({ start, end });
+    if (entryFileChange(entry)) d.fileChanges.push({ start, end });
     d.parentId = entry.id;
     d.size = end;
     this.dirty = true;

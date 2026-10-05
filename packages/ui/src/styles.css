@@ -2386,6 +2386,24 @@ button.inline-mention,
   height: 1px;
   background: var(--color-border);
 }
+.message-file-menu {
+  width: 208px;
+  min-width: 176px;
+  max-width: var(--radix-context-menu-content-available-width);
+  overflow: hidden;
+  transform-origin: var(--radix-context-menu-content-transform-origin);
+  background: var(--color-input);
+  box-shadow:
+    0 4px 6px -1px #0000001a,
+    0 2px 4px -2px #0000001a;
+  z-index: 60;
+}
+.message-file-menu [role="menuitem"] {
+  user-select: none;
+}
+.message-file-menu [data-highlighted] {
+  background: light-dark(#f0f0f0, #363636);
+}
 
 .message-web-link:hover:not(:disabled) {
   background: transparent;

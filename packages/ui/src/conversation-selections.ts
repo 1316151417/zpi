@@ -15,9 +15,15 @@ export function validSelections(value: unknown): value is ConversationSelection[
     value.every(
       (item) =>
         item &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
         typeof item.text === "string" &&
         item.text.length <= selectionLimits.single &&
-        (item.path === undefined || typeof item.path === "string"),
+        ["path", "id", "sourceKey", "sourceTitle"].every(
+          (key) => item[key] === undefined || typeof item[key] === "string",
+        ) &&
+        (item.contentType === undefined ||
+          ["user", "assistant", "reasoning", "tool", "markdown"].includes(item.contentType)),
     ) &&
     value.reduce((sum, item) => sum + item.text.length, 0) <= selectionLimits.total
   );

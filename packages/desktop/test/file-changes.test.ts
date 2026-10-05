@@ -1,8 +1,9 @@
-import { mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import type { SessionEntry } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
-import { fileChanges } from "../src/main/file-changes.ts";
+import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "../src/main/file-changes.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture, run } from "./helpers/context-fixture.ts";
 
@@ -72,6 +73,7 @@ test("file snapshots reject sibling directories and symlink escapes while retain
     [valid, true],
     [outside, false],
     [escaped, false],
+    [root, false],
   ] as const) {
     const [item] = await fileChanges(
       [
@@ -93,4 +95,95 @@ test("file snapshots reject sibling directories and symlink escapes while retain
       expect(item.reason).toContain("快照不属于此任务");
     }
   }
+});
+
+test("forked binary snapshots preserve original bytes and do not rewrite parent history", async () => {
+  const f = await fixture();
+  const source = join(f.dir, "snapshots"),
+    target = join(f.dir, "fork-snapshots");
+  await mkdir(source);
+  const before = Buffer.from([0, 255, 254, 195, 40]),
+    after = Buffer.from([0, 255, 254, 195, 41]),
+    beforeFile = join(source, "binary.before"),
+    afterFile = join(source, "binary.after");
+  await writeFile(beforeFile, before);
+  await writeFile(afterFile, after);
+  const entry: SessionEntry = {
+    type: "message",
+    id: "tool-result",
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    message: {
+      role: "toolResult",
+      toolName: "write",
+      toolCallId: "write-binary",
+      content: [{ type: "text", text: "partial failure" }],
+      isError: true,
+      timestamp: Date.now(),
+      details: {
+        fileChange: {
+          path: "binary.bin",
+          operation: "modified",
+          toolCallId: "write-binary",
+          beforeHash: "before",
+          afterHash: "after",
+          beforeFile,
+          afterFile,
+        },
+      },
+    },
+  };
+  const [copied] = await copyFileChangeSnapshots([entry], source, target);
+  const change = entryFileChange(copied);
+  expect(change?.failed).toBe(true);
+  expect(change?.beforeFile).toBe(join(target, "binary.before"));
+  expect(change?.afterFile).toBe(join(target, "binary.after"));
+  expect(await readFile(join(target, "binary.before"))).toEqual(before);
+  expect(await readFile(join(target, "binary.after"))).toEqual(after);
+  expect(entryFileChange(entry)).toMatchObject({ beforeFile, afterFile });
+});
+
+test("missing and out-of-bounds legacy patches retain diagnostics without dropping valid changes", async () => {
+  const f = await fixture();
+  const root = join(f.dir, "snapshots"),
+    outside = join(f.dir, "outside.patch");
+  await mkdir(root);
+  await writeFile(outside, "outside");
+  const patch = "--- a/valid.txt\n+++ b/valid.txt\n@@ -1 +1 @@\n-before\n+after\n";
+  const changes = await fileChanges(
+    [
+      {
+        path: "missing.txt",
+        toolCallId: "missing",
+        operation: "modified",
+        beforeHash: "before",
+        afterHash: "after",
+        patchFile: join(root, "missing.patch"),
+        failed: true,
+      },
+      {
+        path: "outside.txt",
+        toolCallId: "outside",
+        operation: "modified",
+        beforeHash: "before",
+        afterHash: "after",
+        patchFile: outside,
+      },
+      {
+        path: "valid.txt",
+        toolCallId: "valid",
+        operation: "modified",
+        beforeHash: "before",
+        afterHash: "after",
+        patch,
+      },
+    ],
+    root,
+    "task",
+  );
+  expect(changes).toHaveLength(3);
+  expect(changes[0]).toMatchObject({ path: "missing.txt", failed: true });
+  expect(changes[0].reason).toContain("文件快照不可用");
+  expect(changes[1].reason).toContain("快照不属于此任务");
+  expect(changes[2]).toMatchObject({ path: "valid.txt", patch });
 });

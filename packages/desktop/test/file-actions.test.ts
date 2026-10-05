@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { resolveLinkTarget } from "zpi-ui/links";
 import { performFileAction } from "../src/main/file-actions.ts";
 
 const directories: string[] = [];
@@ -51,10 +52,30 @@ test("copying paths is relative to the session workspace, including absolute pat
   expect(services.showItemInFolder).not.toHaveBeenCalled();
 });
 
-test("invalid actions, missing files, directories and escaping relative paths never reach the system shell", async () => {
+test("folders open in Finder rather than revealing their parent, including paths with special characters", async () => {
+  const { cwd, services } = await fixture();
+  const folder = join(cwd, "资料 %20 #1");
+  await mkdir(folder);
+  await performFileAction(cwd, "资料 %20 #1", "reveal", services);
+  expect(services.openPath).toHaveBeenLastCalledWith(folder);
+  expect(services.showItemInFolder).not.toHaveBeenCalled();
+  await performFileAction(cwd, folder, "open", services);
+  expect(services.openPath).toHaveBeenCalledTimes(2);
+  await performFileAction(cwd, folder, "copy-absolute", services);
+  expect(services.writeText).toHaveBeenLastCalledWith(folder);
+  await performFileAction(cwd, folder, "copy-relative", services);
+  expect(services.writeText).toHaveBeenLastCalledWith("资料 %20 #1");
+  await performFileAction(cwd, cwd, "copy-relative", services);
+  expect(services.writeText).toHaveBeenLastCalledWith(".");
+  services.openPath.mockResolvedValueOnce("无法打开 Finder");
+  await expect(performFileAction(cwd, folder, "reveal", services)).rejects.toThrow("无法打开 Finder");
+});
+
+test("invalid actions, missing files and escaping relative paths never reach the system shell", async () => {
   const { dir, cwd, services } = await fixture();
   await writeFile(join(dir, "outside.txt"), "outside");
   await symlink(join(dir, "outside.txt"), join(cwd, "escape.txt"));
+  await symlink(dir, join(cwd, "escape-folder"));
   for (const [path, action] of [
     ["", "open"],
     ["invalid\0path", "reveal"],
@@ -62,11 +83,26 @@ test("invalid actions, missing files, directories and escaping relative paths ne
     ["../outside.txt", "open"],
     ["../outside.txt", "copy-absolute"],
     ["escape.txt", "reveal"],
+    ["escape-folder", "reveal"],
     ["missing.txt", "open"],
-    [cwd, "open"],
   ])
     await expect(performFileAction(cwd, path, action, services)).rejects.toThrow();
   expect(services.openPath).not.toHaveBeenCalled();
   expect(services.showItemInFolder).not.toHaveBeenCalled();
   expect(services.writeText).not.toHaveBeenCalled();
+});
+
+test("resolved Markdown links retain their relative boundary for Finder actions", async () => {
+  const { dir, cwd, services } = await fixture();
+  const outside = join(dir, "outside.txt");
+  await writeFile(outside, "outside");
+  await symlink(outside, join(cwd, "escape.txt"));
+  const target = resolveLinkTarget("./escape.txt", { cwd });
+  if (target?.kind !== "file") throw new Error("file target");
+  const { kind: _kind, path, ...location } = target;
+  await expect(performFileAction(cwd, path, "reveal", services, location)).rejects.toThrow("超出");
+  expect(services.showItemInFolder).not.toHaveBeenCalled();
+  await performFileAction(cwd, path, "reveal", services);
+  expect(services.showItemInFolder).toHaveBeenCalledWith(path);
+  await expect(performFileAction(cwd, path, "reveal", services, { relative: "yes" })).rejects.toThrow();
 });

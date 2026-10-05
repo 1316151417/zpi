@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronRight, Copy, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import type { FileAction, RunView } from "../types.ts";
+import type { FileAction, FileActionHandler, RunView } from "../types.ts";
 import { FileIcon } from "./Reference.tsx";
 
 function OpenFileButton({
@@ -12,7 +12,7 @@ function OpenFileButton({
 }: {
   path: string;
   name: string;
-  onAction?: (path: string, action: FileAction) => Promise<void>;
+  onAction?: FileActionHandler;
   onError: (error: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -85,7 +85,7 @@ export function ChangedFiles({
   run: RunView;
   cwd?: string;
   onChanges?: (runId: string, path?: string) => void;
-  onFileAction?: (path: string, action: FileAction) => Promise<void>;
+  onFileAction?: FileActionHandler;
 }) {
   const [error, setError] = useState("");
   const files = new Map<

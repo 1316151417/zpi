@@ -1,10 +1,124 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+
+test("conversation files and folders share ZCode menus; folders open in Finder and files use the sidebar", async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-conversation-file-menu-")));
+  const project = join(dir, "中文 项目");
+  const folder = join(project, "资料 目录");
+  await mkdir(folder, { recursive: true });
+  const file = join(folder, "订单 %20 #1.json");
+  await writeFile(file, '{"preview":"订单文件"}\n');
+  const server = await fakeServer((_, response) => {
+    send(
+      response,
+      chunk({
+        content: [
+          `[文件](<${pathToFileURL(file).href}#L1>)`,
+          `[资料目录](<${folder}/>)`,
+          "[相对目录](<./资料 目录/>)",
+          `[文件 URL 目录](${pathToFileURL(folder).href})`,
+        ].join("\n\n"),
+      }),
+    );
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url, project });
+    const page = await app.firstWindow();
+    await page.emulateMedia({ colorScheme: "light" });
+    await app.evaluate(({ shell }) => {
+      const calls: { action: string; path: string }[] = [];
+      (globalThis as typeof globalThis & { fileMenuCalls: typeof calls }).fileMenuCalls = calls;
+      shell.openPath = async (path) => {
+        calls.push({ action: "open", path });
+        return "";
+      };
+      shell.showItemInFolder = (path) => {
+        calls.push({ action: "reveal", path });
+      };
+    });
+    const calls = () =>
+      app?.evaluate(() => (globalThis as typeof globalThis & { fileMenuCalls: unknown[] }).fileMenuCalls);
+    const readClipboard = () => app?.evaluate(({ clipboard }) => clipboard.readText());
+    const absoluteFolder = await realpath(folder);
+    const absoluteFile = await realpath(file);
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill(`检查 [订单](<${file}>)`);
+    await editor.press("Enter");
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    const answer = page.locator(".answer");
+    const menu = page.getByRole("menu");
+    for (const name of ["资料目录", "相对目录", "文件 URL 目录"])
+      await answer.getByRole("button", { name, exact: true }).click();
+    await expect
+      .poll(calls)
+      .toEqual(Array.from({ length: 3 }, () => ({ action: "open", path: absoluteFolder })));
+    await expect(page.locator(".right-pane")).toBeHidden();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    const folderLink = answer.getByRole("button", { name: "资料目录", exact: true });
+    await folderLink.click({ button: "right" });
+    await expect(menu.getByRole("menuitem")).toHaveText(["打开", "Finder", "复制绝对路径", "复制相对路径"]);
+    await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect.poll(calls).toHaveLength(4);
+    expect((await calls())?.at(-1)).toEqual({ action: "open", path: absoluteFolder });
+    await folderLink.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
+    await expect.poll(readClipboard).toBe("资料 目录");
+    await expect(page.locator(".right-pane")).toBeHidden();
+
+    const fileLink = answer.getByRole("button", { name: "文件", exact: true });
+    await fileLink.click({ button: "right" });
+    await expect(menu.getByRole("menuitem")).toHaveText(["打开", "Finder", "复制绝对路径", "复制相对路径"]);
+    await expect(menu.getByRole("separator")).toHaveCount(2);
+    await expect(menu).toHaveCSS("width", "208px");
+    const finderIcon = menu.getByRole("menuitem", { name: "Finder", exact: true }).locator("img");
+    await expect
+      .poll(() => finderIcon.evaluate((img: HTMLImageElement) => img.naturalWidth))
+      .toBeGreaterThan(0);
+    await page.screenshot({ path: "test-results/conversation-file-menu-light.png" });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.screenshot({ path: "test-results/conversation-file-menu-dark.png" });
+    await menu.getByRole("menuitem", { name: "打开", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "订单 %20 #1.json", exact: true })).toBeVisible();
+    await expect(page.locator(".file-text-preview")).toContainText("订单文件");
+    await expect(page.locator(".file-text-preview")).toHaveAttribute("data-line", "1");
+    await fileLink.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect.poll(calls).toHaveLength(5);
+    expect((await calls())?.at(-1)).toEqual({ action: "reveal", path: absoluteFile });
+    await fileLink.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "复制绝对路径", exact: true }).click();
+    await expect.poll(readClipboard).toBe(absoluteFile);
+    await fileLink.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
+    await expect.poll(readClipboard).toBe("资料 目录/订单 %20 #1.json");
+
+    const userFile = page.locator(".user-message-text").getByRole("button", { name: "订单", exact: true });
+    await userFile.click({ button: "right" });
+    await expect(menu.getByRole("menuitem")).toHaveCount(4);
+    await menu.getByRole("menuitem", { name: "复制绝对路径", exact: true }).click();
+    await expect.poll(readClipboard).toBe(absoluteFile);
+    await rm(file);
+    await fileLink.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("文件不存在");
+    expect(await calls()).toHaveLength(5);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("file references share icons and canonical text; chat files open reusable sidebar previews", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-file-references-"));

@@ -199,7 +199,7 @@ async function launch(): Promise<void> {
         saveDraft: 2,
         getHistoryPage: 2,
         copyText: 1,
-        fileAction: 3,
+        fileAction: 4,
         searchFiles: 2,
         getWorkspaceInfo: 1,
         readFilePreview: 3,
@@ -332,11 +332,17 @@ async function launch(): Promise<void> {
           break;
         }
         case "fileAction":
-          await performFileAction(host.workspaceInfo(string(0)).cwd, string(1), string(2), {
-            openPath: (path) => shell.openPath(path),
-            showItemInFolder: (path) => shell.showItemInFolder(path),
-            writeText: (text) => clipboard.writeText(text),
-          });
+          await performFileAction(
+            host.workspaceInfo(string(0)).cwd,
+            string(1),
+            string(2),
+            {
+              openPath: (path) => shell.openPath(path),
+              showItemInFolder: (path) => shell.showItemInFolder(path),
+              writeText: (text) => clipboard.writeText(text),
+            },
+            args[3],
+          );
           break;
         case "downloadImage": {
           const src = string(0);

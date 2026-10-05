@@ -166,6 +166,7 @@ export type FilePreview = { location?: FileLocation } & (
   | { path: string; kind: "text"; text: string; truncated: boolean }
   | { path: string; kind: "image" | "media" | "xlsx" | "docx"; bytes: Uint8Array; mime?: string }
   | { path: string; kind: "unsupported" }
+  | { path: string; kind: "directory" }
 );
 export interface BrowserState {
   id: string;
@@ -213,7 +214,12 @@ export interface DesktopBridge {
     before: number,
   ): Promise<Result<{ view: SessionView; cursor: number | null; calls: number }>>;
   copyText(text: string): Promise<Result<void>>;
-  fileAction(sessionId: string, path: string, action: FileAction): Promise<Result<void>>;
+  fileAction(
+    sessionId: string,
+    path: string,
+    action: FileAction,
+    location?: FileLocation,
+  ): Promise<Result<void>>;
   searchFiles(
     sessionId: string,
     query: string,

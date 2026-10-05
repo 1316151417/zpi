@@ -1,7 +1,7 @@
 import { File } from "@pierre/diffs/react";
 import { Copy, RefreshCw, WrapText } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConversationSelectionMenu, FileIcon, Markdown, useAppearance } from "zpi-ui";
+import { ConversationSelectionMenu, type FileAction, FileIcon, Markdown, useAppearance } from "zpi-ui";
 import type { FileLocation, WebOpenOptions } from "zpi-ui/links";
 import type { FilePreview } from "../shared/bridge.ts";
 import { readMarkdownImage } from "./markdown-image.ts";
@@ -57,6 +57,11 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
   );
   const openReference = useCallback(
     (path: string, location?: FileLocation) => paneTask(openFile(sessionId, path, location)),
+    [sessionId],
+  );
+  const fileAction = useCallback(
+    (path: string, action: FileAction, location?: FileLocation) =>
+      window.zpi.fileAction(sessionId, path, action, location).then(unwrap),
     [sessionId],
   );
   const markdown = /\.md$/i.test(preview.path) && preview.kind === "text";
@@ -140,6 +145,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
                 onCopy={copyText}
                 onLink={openLink}
                 onFile={openReference}
+                onFileAction={fileAction}
               />
             </div>
           ) : preview.text.length > 180000 ? (

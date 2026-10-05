@@ -17,6 +17,28 @@ export const sidebarLimits = {
 } as const;
 export const uiFontSizeLimits = { min: 12, max: 20 } as const;
 export const taskPinLimit = 5;
+export function mergeDiscoveredModels<T extends ModelSettings>(
+  current: readonly T[],
+  discovered: readonly T[],
+): T[] {
+  const previous = new Map(current.map((model) => [model.id, model]));
+  const discoveredIds = new Set(discovered.map((model) => model.id));
+  return [
+    ...discovered.map((model) => {
+      const old = previous.get(model.id);
+      return old?.useRecommendedConfig === false
+        ? old
+        : {
+            ...model,
+            useRecommendedConfig: true,
+            ...(old?.enabled !== undefined ? { enabled: old.enabled } : {}),
+          };
+    }),
+    ...current.filter(
+      (model) => model.id && model.useRecommendedConfig === false && !discoveredIds.has(model.id),
+    ),
+  ];
+}
 export const reasoningPresets = ["none", "low", "medium", "high", "xhigh", "max"] as const;
 export const reasoningLabels: Record<string, string> = {
   none: "关闭",

@@ -39,7 +39,9 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
       expect(iconBox?.x).toBeGreaterThan((labelBox?.x ?? 0) + (labelBox?.width ?? 0));
     }
     await expect(taskHeader.locator("svg.lucide-message-circle-plus")).toHaveCount(1);
-    await expect(projectHeader.locator("svg.lucide-message-circle-plus")).toHaveCount(1);
+    await expect(
+      projectHeader.getByLabel("添加项目", { exact: true }).locator("svg.lucide-plus"),
+    ).toHaveCount(1);
     for (const header of [projectHeader, taskHeader]) {
       await header.hover();
       const background = await header.evaluate((el) => getComputedStyle(el).backgroundColor);

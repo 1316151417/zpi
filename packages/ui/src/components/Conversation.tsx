@@ -30,7 +30,7 @@ import {
 import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { progressSummary } from "../reducer.ts";
 import type {
-  FileAction,
+  FileActionHandler,
   FileRewindConflict,
   InputQueue,
   InputSuggestion,
@@ -182,6 +182,7 @@ function ProcessBlock({
   workspace,
   onCopy,
   onFile,
+  onFileAction,
   onImage,
   onDownloadImage,
 }: {
@@ -189,6 +190,7 @@ function ProcessBlock({
   onDownloadImage?: (src: string) => Promise<void>;
   block: ViewBlock;
   onFile?: (path: string, location?: FileLocation) => void;
+  onFileAction?: FileActionHandler;
   expanded: boolean;
   toggle: () => void;
   workspace?: LinkContext;
@@ -325,6 +327,7 @@ function ProcessBlock({
         onLink={onLink}
         onCopy={onCopy}
         onFile={onFile}
+        onFileAction={onFileAction}
       />
     </div>
   );
@@ -376,7 +379,7 @@ export const RunGroup = memo(function RunGroup({
   sessionId?: string;
   context?: ComposerContext;
   onChanges?: (runId: string, path?: string) => void;
-  onFileAction?: (path: string, action: FileAction) => Promise<void>;
+  onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
   workspace?: LinkContext;
@@ -447,6 +450,7 @@ export const RunGroup = memo(function RunGroup({
                         path={mention.path}
                         label={mention.label}
                         onOpen={onFile}
+                        onAction={onFileAction}
                       />,
                     );
                     previous = mention.end;
@@ -461,6 +465,7 @@ export const RunGroup = memo(function RunGroup({
                           path={path}
                           label={path.split("/").at(-1) ?? path}
                           onOpen={onFile}
+                          onAction={onFileAction}
                         />,
                       );
                   return parts;
@@ -493,6 +498,7 @@ export const RunGroup = memo(function RunGroup({
               onLink={onLink}
               onCopy={onCopy}
               onFile={onFile}
+              onFileAction={onFileAction}
             />
           ))}
         </div>
@@ -530,6 +536,7 @@ export const RunGroup = memo(function RunGroup({
                 onLink={onLink}
                 onCopy={onCopy}
                 onFile={onFile}
+                onFileAction={onFileAction}
               />
             ))}
         </div>
@@ -609,7 +616,7 @@ export function Conversation({
   onLink: (url: string, options?: WebOpenOptions) => void;
   context?: ComposerContext;
   onChanges?: (runId: string, path?: string) => void;
-  onFileAction?: (path: string, action: FileAction) => Promise<void>;
+  onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
 }) {

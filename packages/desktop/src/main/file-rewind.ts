@@ -4,6 +4,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { FileChange } from "zpi-coding-agent";
 import type { FileRewindConflict } from "zpi-ui";
+import { readFileSnapshot } from "./file-changes.ts";
 import { isPathInside } from "./path-bounds.ts";
 
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -47,11 +48,7 @@ export async function planFileRewind(
       let before: Buffer | null = null;
       if (first.beforeHash !== null) {
         if (!first.beforeFile) throw new Error("缺少文件 checkpoint");
-        const root = await realpath(snapshotRoot),
-          snapshot = await realpath(first.beforeFile);
-        if (!isPathInside(root, snapshot) || (await stat(snapshot)).size > 4 * 1024 * 1024)
-          throw new Error("旧 checkpoint 无法安全还原");
-        before = await readFile(snapshot);
+        before = await readFileSnapshot(first.beforeFile, snapshotRoot);
         if (hash(before) !== first.beforeHash) throw new Error("无法读取文件 checkpoint");
       }
       plan.files.push({ path: actual, before, current, mode: info.mode });

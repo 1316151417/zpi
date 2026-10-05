@@ -1,5 +1,5 @@
 import { buildMentionMarkdown } from "zpi-coding-agent/input";
-import type { DesktopEventEnvelope, InputSuggestion, SessionView } from "zpi-ui";
+import type { DesktopEvent, DesktopEventEnvelope, InputSuggestion, SessionView } from "zpi-ui";
 import {
   appendSelection,
   ComposerDraftStore,
@@ -110,6 +110,18 @@ const snapshotRequests = new Map<string, Promise<void>>();
 const pendingSnapshots = new Map<string, DesktopEventEnvelope[]>();
 let queue: DesktopEventEnvelope[] = [];
 let frame = 0;
+function reduceSessionRecord(record: SessionRecord, event: DesktopEvent): SessionRecord {
+  switch (event.type) {
+    case "session_changed":
+      return { ...record, title: event.title };
+    case "started":
+      return { ...record, draft: false, status: "running", updatedAt: event.startedAt };
+    case "settled":
+      return { ...record, status: event.status, updatedAt: event.endedAt, unreadAt: event.unreadAt };
+    default:
+      return record;
+  }
+}
 function apply(events: DesktopEventEnvelope[]): void {
   const state = useStore.getState(),
     views = new Map(state.views),
@@ -124,23 +136,12 @@ function apply(events: DesktopEventEnvelope[]): void {
     const view = views.get(e.sessionId);
     if (view) views.set(e.sessionId, reduceSession(view, e));
     const record = records.get(e.sessionId);
-    if (
-      record &&
-      (e.event.type === "started" || e.event.type === "settled" || e.event.type === "session_changed")
-    ) {
-      recordsChanged = true;
-      records.set(
-        e.sessionId,
-        e.event.type === "session_changed"
-          ? { ...record, title: e.event.title }
-          : {
-              ...record,
-              ...(e.event.type === "started" ? { draft: false } : {}),
-              ...(e.event.type === "settled" ? { unreadAt: e.event.unreadAt } : {}),
-              status: e.event.type === "started" ? "running" : e.event.status,
-              updatedAt: e.event.type === "started" ? e.event.startedAt : e.event.endedAt,
-            },
-      );
+    if (record) {
+      const next = reduceSessionRecord(record, e.event);
+      if (next !== record) {
+        recordsChanged = true;
+        records.set(e.sessionId, next);
+      }
     }
   }
   useStore.setState({ views, ...(recordsChanged ? { sessions: records } : {}) });
@@ -258,19 +259,7 @@ export async function selectSession(id: string): Promise<void> {
       views.set(id, view);
       historyCursors.set(id, cursor);
       let record = snapshot.session;
-      for (const e of buffered)
-        if (e.seq > snapshot.seq) {
-          if (e.event.type === "session_changed") record = { ...record, title: e.event.title };
-          if (e.event.type === "started")
-            record = { ...record, draft: false, status: "running", updatedAt: e.event.startedAt };
-          if (e.event.type === "settled")
-            record = {
-              ...record,
-              status: e.event.status,
-              updatedAt: e.event.endedAt,
-              unreadAt: e.event.unreadAt,
-            };
-        }
+      for (const e of buffered) if (e.seq > snapshot.seq) record = reduceSessionRecord(record, e.event);
       sessions.set(id, record);
       useStore.setState({ views, sessions, historyCursors });
       trimViews(id);

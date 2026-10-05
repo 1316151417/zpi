@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "vitest";
 import { searchFiles, validatedFile } from "../src/main/workspace-files.ts";
@@ -64,4 +65,21 @@ test("preview locations stay bounded across symlinks and decoded paths, with cle
   ])
     await expect(readFilePreview(f.workspace, name, invalid)).rejects.toThrow("定位");
   expect((await f.host.previewPrompt()).prompt).toContain('::zcode-file-citation{path="path/to/file"}');
+});
+
+test("folder previews return their type for Finder routing and preserve relative path boundaries", async () => {
+  const { readFilePreview } = await import("../src/main/file-preview.ts");
+  const f = await fixture();
+  const folder = join(f.workspace, "资料 %20 #1");
+  await mkdir(folder);
+  const path = await realpath(folder);
+  for (const target of ["资料 %20 #1/", folder, pathToFileURL(folder).href])
+    expect(await readFilePreview(f.workspace, target)).toMatchObject({ kind: "directory", path });
+  await symlink(f.dir, join(f.workspace, "escape-folder"));
+  await expect(readFilePreview(f.workspace, "escape-folder")).rejects.toThrow("超出");
+  await expect(readFilePreview(f.workspace, "../")).rejects.toThrow("超出");
+  expect(await readFilePreview(f.workspace, f.dir)).toMatchObject({
+    kind: "directory",
+    path: await realpath(f.dir),
+  });
 });

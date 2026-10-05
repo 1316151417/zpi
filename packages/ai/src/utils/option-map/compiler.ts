@@ -7,35 +7,17 @@ import {
   type ModelOptionMapProgram,
   type ModelOptionName,
   RestrictedCelError,
-  type RestrictedCelProgram,
   type RestrictedCelValue,
 } from "./types.ts";
 
-const programCache = new Map<string, RestrictedCelProgram>();
 const optionMapCache = new Map<string, ModelOptionMapProgram>();
-const expressionCache = new Map<string, RestrictedCelExpression>();
-
-export function compileRestrictedCel(source: string, variableName: ModelOptionName): RestrictedCelProgram {
-  const normalizedSource = normalizeSource(source);
-  const cacheKey = createCacheKey(normalizedSource, variableName);
-  const cached = programCache.get(cacheKey);
-  if (cached) return cached;
-
-  const expression = parseExpression(normalizedSource, variableName);
-  const program: RestrictedCelProgram = Object.freeze({
-    source: normalizedSource,
-    evaluate: (input: RestrictedCelValue) => evaluateRestrictedCel(expression, input),
-  });
-  programCache.set(cacheKey, program);
-  return program;
-}
 
 export function compileModelOptionMap(source: string, variableName: ModelOptionName): ModelOptionMapProgram {
   const normalizedSource = normalizeSource(source);
   const cacheKey = createCacheKey(normalizedSource, variableName);
   const cached = optionMapCache.get(cacheKey);
   if (cached) return cached;
-  const expression = parseExpression(normalizedSource, variableName);
+  const expression = parseRestrictedCel(tokenizeRestrictedCel(normalizedSource), variableName);
   assertObjectResultExpression(expression);
   const program: ModelOptionMapProgram = Object.freeze({
     source: normalizedSource,
@@ -47,6 +29,10 @@ export function compileModelOptionMap(source: string, variableName: ModelOptionN
       return result;
     },
   });
+  if (optionMapCache.size >= 128) {
+    const oldest = optionMapCache.keys().next().value;
+    if (oldest !== undefined) optionMapCache.delete(oldest);
+  }
   optionMapCache.set(cacheKey, program);
   return program;
 }
@@ -57,15 +43,6 @@ function normalizeSource(source: string): string {
     throw new RestrictedCelError("expression must not be empty", 0);
   }
   return normalizedSource;
-}
-
-function parseExpression(source: string, variableName: ModelOptionName): RestrictedCelExpression {
-  const cacheKey = createCacheKey(source, variableName);
-  const cached = expressionCache.get(cacheKey);
-  if (cached) return cached;
-  const expression = parseRestrictedCel(tokenizeRestrictedCel(source), variableName);
-  expressionCache.set(cacheKey, expression);
-  return expression;
 }
 
 function createCacheKey(source: string, variableName: ModelOptionName): string {

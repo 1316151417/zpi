@@ -24,6 +24,7 @@ import {
 } from "zpi-coding-agent";
 import type { DesktopEvent, DesktopEventEnvelope, InputQueue, RunStatus, SessionView } from "zpi-ui";
 import { reduceSession, sessionViewBytes } from "zpi-ui/projection";
+import { parseSelectionPrompt, validSelections } from "zpi-ui/selections";
 import type {
   CombinedSelection,
   DiffItem,
@@ -40,7 +41,7 @@ import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/
 import { AttachmentStore } from "./attachments.ts";
 import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
-import { copyFileChangeSnapshots, fileChanges } from "./file-changes.ts";
+import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "./file-changes.ts";
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
 import { SessionInputQueue } from "./input-queue.ts";
@@ -154,10 +155,16 @@ export class SessionHost {
         const draft = this.drafts.get(id);
         if (draft.text.trim() || draft.fileReferences.length || draft.selections?.length)
           throw new Error("invalid_input: 请先发送或清空当前草稿，再编辑队列消息。");
+        const parsed = parseSelectionPrompt(item.text);
+        if (!validSelections(parsed.selections)) {
+          parsed.text = item.text;
+          parsed.selections = [];
+        }
         this.drafts.save(id, {
-          text: item.text,
+          text: parsed.text,
+          selections: parsed.selections,
           fileReferences: item.fileReferences,
-          selection: [item.text.length, item.text.length],
+          selection: [parsed.text.length, parsed.text.length],
           revision: draft.revision + 1,
         });
       },
@@ -811,17 +818,8 @@ export class SessionHost {
         typeof e.data.runId === "string"
       )
         current = e.data.runId;
-      if (
-        current === runId &&
-        e.type === "message" &&
-        e.message.role === "toolResult" &&
-        isJsonObject(e.message.details) &&
-        isJsonObject(e.message.details.fileChange)
-      )
-        changes.push({
-          ...(e.message.details.fileChange as unknown as FileChange),
-          failed: e.message.isError || (e.message.details.fileChange as unknown as FileChange).failed,
-        });
+      const change = current === runId ? entryFileChange(e) : undefined;
+      if (change) changes.push(change);
     }
     return changes;
   }
@@ -831,19 +829,10 @@ export class SessionHost {
     const index = this.indexes.get(id);
     if (!index) throw new Error("not_found: 任务不存在");
     return index.data.fileChanges.flatMap((span) =>
-      index.read(span).flatMap((entry) =>
-        entry.type === "message" &&
-        entry.message.role === "toolResult" &&
-        isJsonObject(entry.message.details) &&
-        isJsonObject(entry.message.details.fileChange)
-          ? [
-              {
-                ...(entry.message.details.fileChange as unknown as FileChange),
-                failed: entry.message.isError || Boolean(entry.message.details.fileChange.failed),
-              },
-            ]
-          : [],
-      ),
+      index.read(span).flatMap((entry) => {
+        const change = entryFileChange(entry);
+        return change ? [change] : [];
+      }),
     );
   }
   private allChanges(id: string, runId: string | null): Promise<DiffItem[]> {
@@ -975,7 +964,7 @@ export class SessionHost {
     const parent = this.record(id);
     if (this.closing || this.deleting.has(id) || this.updating.has(id)) throw new Error("busy: 任务正在更新");
     const entries = this.manager(id).getEntries();
-    this.runStart(entries, runId);
+    const start = this.runStart(entries, runId);
     const end = entries.findIndex(
       (entry) =>
         entry.type === "custom" &&
@@ -986,7 +975,7 @@ export class SessionHost {
     );
     if (end < 0) throw new Error("busy: 只能分叉已结束的回复");
     const prefix = entries.slice(0, end + 1);
-    const turn = restoreView(id, parent.title, prefix).runs.find((run) => run.runId === runId);
+    const turn = restoreView(id, parent.title, entries.slice(start, end + 1)).runs[0];
     if (!turn?.finalAnswerBlockIds.length) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
     const child = this.createSession(parent.projectId);
     try {
@@ -1107,25 +1096,24 @@ export class SessionHost {
       const manager = this.manager(id);
       const current = manager.getEntries();
       const boundary = this.runStart(current, runId);
-      const metadata = [...current]
-        .reverse()
-        .filter(
-          (entry, index, all) =>
-            entry.type === "custom" &&
-            ["zpi.session_meta", "zpi.title", "zpi.selection", "zpi.configuration", "zpi.queue"].includes(
-              entry.customType,
-            ) &&
-            all.findIndex((other) => other.type === "custom" && other.customType === entry.customType) ===
-              index,
-        )
-        .reverse();
+      const remaining = new Set([
+        "zpi.session_meta",
+        "zpi.title",
+        "zpi.selection",
+        "zpi.configuration",
+        "zpi.queue",
+      ]);
+      const metadata: SessionEntry[] = [];
+      for (let i = current.length - 1; i >= 0 && remaining.size; i--) {
+        const entry = current[i];
+        if (entry.type === "custom" && remaining.delete(entry.customType)) metadata.push(entry);
+      }
+      metadata.reverse();
       const title = current.findLast((entry) => entry.type === "session_info");
       if (title) metadata.push(title);
       const prefix = current.slice(0, boundary);
-      const transcript = [
-        ...prefix,
-        ...metadata.filter((entry) => !prefix.some((prior) => prior.id === entry.id)),
-      ];
+      const prefixIds = new Set(prefix.map((entry) => entry.id));
+      const transcript = [...prefix, ...metadata.filter((entry) => !prefixIds.has(entry.id))];
       if (workspaceMode === "rewind") {
         // Shell side effects have no write/edit checkpoints; never present a partial restore as complete.
         if (

@@ -47,7 +47,13 @@ test("Markdown links and streamed file citations share icons, preview locations 
     app = await launchDesktop({ dir, project, url: model.url });
     await app.evaluate(({ shell }) => {
       const opened: string[] = [];
-      Object.assign(globalThis, { markdownExternalUrls: opened });
+      const files: string[] = [];
+      Object.assign(globalThis, { markdownExternalUrls: opened, markdownFinderPaths: files });
+      shell.openPath = async (path) => {
+        files.push(path);
+        return "";
+      };
+      shell.showItemInFolder = (path) => files.push(path);
       shell.openExternal = async (url) => {
         opened.push(url);
       };
@@ -141,6 +147,14 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await expect(page.getByText(/文件不存在：/).first()).toBeVisible();
     await answer.getByRole("button", { name: "越界符号链接", exact: true }).click();
     await expect(page.getByText(/相对文件链接超出当前工作目录/).first()).toBeVisible();
+    await answer.getByRole("button", { name: "越界符号链接", exact: true }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect(answer.getByRole("alert")).toContainText("相对文件链接超出当前工作目录");
+    expect(
+      await app.evaluate(
+        () => (globalThis as typeof globalThis & { markdownFinderPaths: string[] }).markdownFinderPaths,
+      ),
+    ).toEqual([]);
     expect(page.url()).toBe(mainUrl);
     expect(errors).toEqual([]);
     expect(JSON.stringify(model.requests[0].messages)).toContain("::zcode-file-citation");

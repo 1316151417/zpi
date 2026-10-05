@@ -75,6 +75,30 @@ export function ReasoningLevelEditor({
     setDraggingIndex(null);
   };
 
+  const renderInput = (isNew = false) => (
+    <input
+      spellCheck={false}
+      autoComplete="off"
+      autoCapitalize="off"
+      ref={inputRef}
+      value={editingValue}
+      className={`model-reasoning-input${isNew ? " model-reasoning-new" : ""}`}
+      aria-label="推理等级名称"
+      data-model-reasoning-level-input="true"
+      onChange={(event) => setEditingValue(event.target.value)}
+      onBlur={commitEdit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitEdit();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelEdit();
+        }
+      }}
+    />
+  );
+
   // 档位外层是普通 div；若沿用 content-box，h-8 会再叠加 2px 边框，
   // 导致静态档位、编辑框和新增按钮的实际高度不一致。
   return (
@@ -101,27 +125,7 @@ export function ReasoningLevelEditor({
           data-dragging={draggingIndex === index}
         >
           {editingIndex === index ? (
-            <input
-              spellCheck={false}
-              autoComplete="off"
-              autoCapitalize="off"
-              ref={inputRef}
-              value={editingValue}
-              className="model-reasoning-input"
-              aria-label="推理等级名称"
-              data-model-reasoning-level-input="true"
-              onChange={(event) => setEditingValue(event.target.value)}
-              onBlur={commitEdit}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  commitEdit();
-                } else if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancelEdit();
-                }
-              }}
-            />
+            renderInput()
           ) : (
             <button
               type="button"
@@ -144,27 +148,7 @@ export function ReasoningLevelEditor({
         </fieldset>
       ))}
       {editingIndex === values.length ? (
-        <input
-          spellCheck={false}
-          autoComplete="off"
-          autoCapitalize="off"
-          ref={inputRef}
-          value={editingValue}
-          className="model-reasoning-input model-reasoning-new"
-          aria-label="推理等级名称"
-          data-model-reasoning-level-input="true"
-          onChange={(event) => setEditingValue(event.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              commitEdit();
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              cancelEdit();
-            }
-          }}
-        />
+        renderInput(true)
       ) : (
         <button
           type="button"

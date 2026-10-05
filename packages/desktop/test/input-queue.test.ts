@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import sharp from "sharp";
 import { expect, it } from "vitest";
+import { buildSelectionPrompt } from "zpi-ui/selections";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
@@ -116,4 +117,41 @@ it("stopped queues and image ownership survive restart; errors pause without los
   await restart.submitInput({ sessionId: id, text: "new" }, "keep");
   await expect.poll(() => restart.getSessionSnapshot(id).view.runs.at(-1)?.userMessage).toBe("after error");
   await expect.poll(() => restart.activeRuns.size).toBe(0);
+});
+
+it("withdrawing queued quoted input restores editable text and reference cards", async () => {
+  const release = deferred();
+  const f = await fixture(async (_body, response) => {
+    await release.promise;
+    if (!response.destroyed) done(response);
+  });
+  const id = f.host.createSession(f.a.id).id;
+  await f.host.submitInput({ sessionId: id, text: "hold" });
+  await expect.poll(() => f.server.requests.length).toBe(1);
+  const selections = [{ text: "const result = 1;", path: join(f.dir, "example.ts") }];
+  const text = buildSelectionPrompt("解释一下", selections);
+  const queued = await f.host.submitInput({ sessionId: id, text });
+  if (!("queueItemId" in queued) || !queued.queueItemId) throw new Error("queue ACK");
+  const edited = await f.host.editQueuedInput(id, queued.queueItemId);
+  expect(edited.item.text).toBe(text);
+  expect(edited.draft).toMatchObject({ text: "解释一下", selections, selection: [4, 4] });
+  expect(buildSelectionPrompt(edited.draft.text, edited.draft.selections ?? [])).toBe(text);
+  expect(f.host.getSessionSnapshot(id).view.queue?.items).toHaveLength(0);
+  f.host.saveDraft(id, {
+    ...edited.draft,
+    text: "",
+    selections: [],
+    selection: [0, 0],
+    revision: edited.draft.revision + 1,
+  });
+  const excessive = buildSelectionPrompt(
+    "手写引用块",
+    Array.from({ length: 9 }, () => ({ text: "quote" })),
+  );
+  const next = await f.host.submitInput({ sessionId: id, text: excessive });
+  if (!("queueItemId" in next) || !next.queueItemId) throw new Error("queue ACK");
+  const fallback = await f.host.editQueuedInput(id, next.queueItemId);
+  expect(fallback.draft.text).toBe(excessive);
+  expect(fallback.draft.selections).toEqual([]);
+  release.resolve();
 });

@@ -50,7 +50,12 @@ const sections = [
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
 
-import { defaultPreferences, modelDefaults, uiFontSizeLimits } from "../shared/config.ts";
+import {
+  defaultPreferences,
+  mergeDiscoveredModels,
+  modelDefaults,
+  uiFontSizeLimits,
+} from "../shared/config.ts";
 
 const recommendedModels = (provider?: ProviderRecord) =>
   new Map<string, ModelSettings>([
@@ -61,22 +66,6 @@ const recommendedModels = (provider?: ProviderRecord) =>
   ]);
 const contextLabel = (value: number) =>
   new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-const mergeModels = (current: ModelDraft[], discovered: ModelSettings[]) => [
-  ...discovered.map((model) => {
-    const old = current.find((item) => item.id === model.id);
-    return old?.useRecommendedConfig === false
-      ? old
-      : draftModel({
-          ...model,
-          useRecommendedConfig: true,
-          ...(old?.enabled !== undefined ? { enabled: old.enabled } : {}),
-        });
-  }),
-  ...current.filter(
-    (model) =>
-      model.id && model.useRecommendedConfig === false && !discovered.some((item) => item.id === model.id),
-  ),
-];
 const newModel = () => ({
   id: "",
   ...modelDefaults,
@@ -226,7 +215,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       );
       if (revision !== discoveryRevision.current) return;
       recommended.current = new Map(result.models.map((model) => [model.id, model]));
-      setModels((current) => mergeModels(current, result.models));
+      setModels((current) => mergeDiscoveredModels(current, result.models.map(draftModel)));
       setNotice(result.warning ?? `已获取 ${result.models.length} 个模型。`);
     } catch (error) {
       if (revision === discoveryRevision.current) setError(String(error));
@@ -267,7 +256,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             apiKey: key,
           }),
         );
-        nextModels = mergeModels(nextModels, result.models);
+        nextModels = mergeDiscoveredModels(nextModels, result.models.map(draftModel));
         recommended.current = new Map(result.models.map((model) => [model.id, model]));
         discoveryNotice = result.warning ?? "";
       }

@@ -9,11 +9,6 @@ export interface JsonObject {
 export type RestrictedCelValue = string | number;
 export type ModelOptionName = "reasoningLevel" | "maxOutputTokens";
 
-export interface RestrictedCelProgram {
-  readonly source: string;
-  evaluate(input: RestrictedCelValue): JsonValue;
-}
-
 export interface ModelOptionMapProgram {
   readonly source: string;
   evaluate(input: RestrictedCelValue): JsonObject;

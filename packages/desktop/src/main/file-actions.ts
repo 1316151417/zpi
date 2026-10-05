@@ -1,7 +1,6 @@
 import { stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
-import { isPathInside } from "./path-bounds.ts";
-import { validatedFile } from "./workspace-files.ts";
+import { isAbsolute, relative } from "node:path";
+import { localFileCandidate, resolveLocalFilePath, validateFileLocation } from "./local-file-path.ts";
 
 interface FileActionServices {
   openPath(path: string): Promise<string>;
@@ -14,6 +13,7 @@ export async function performFileAction(
   target: string,
   action: string,
   services: FileActionServices,
+  input?: unknown,
 ): Promise<void> {
   if (
     !target ||
@@ -22,21 +22,18 @@ export async function performFileAction(
     !["open", "reveal", "copy-absolute", "copy-relative"].includes(action)
   )
     throw new Error("invalid_input: 文件操作无效");
-  const path = resolve(cwd, target);
-  if (!isAbsolute(target) && !isPathInside(resolve(cwd), path))
-    throw new Error("invalid_input: 相对文件路径超出当前工作目录");
+  const location = validateFileLocation(input);
+  const bounded = location?.relative || !isAbsolute(target);
+  const path = localFileCandidate(cwd, target, bounded);
   if (action === "copy-absolute" || action === "copy-relative") {
-    services.writeText(action === "copy-absolute" ? path : relative(cwd, path));
+    services.writeText(action === "copy-absolute" ? path : relative(cwd, path) || ".");
     return;
   }
-  try {
-    if (!(await stat(path)).isFile()) throw new Error("invalid_input: 仅支持打开文件");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error(`not_found: 文件不存在：${path}`);
-    throw error;
-  }
-  if (!isAbsolute(target)) await validatedFile(cwd, target);
-  if (action === "reveal") services.showItemInFolder(path);
+  const actual = await resolveLocalFilePath(cwd, target, bounded);
+  const info = await stat(actual);
+  const directory = info.isDirectory();
+  if (!info.isFile() && !directory) throw new Error("invalid_input: 仅支持打开文件及文件夹");
+  if (action === "reveal" && !directory) services.showItemInFolder(path);
   else {
     const failure = await services.openPath(path);
     if (failure) throw new Error(`storage: ${failure}`);

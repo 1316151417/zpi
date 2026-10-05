@@ -6,11 +6,30 @@ import type { FileChange, SessionEntry } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import { isPathInside } from "./path-bounds.ts";
 
-async function snapshot(path: string, root: string, maxBytes = 4 * 1024 * 1024): Promise<string> {
+export function entryFileChange(entry: SessionEntry): FileChange | undefined {
+  if (
+    entry.type !== "message" ||
+    entry.message.role !== "toolResult" ||
+    !isJsonObject(entry.message.details) ||
+    !isJsonObject(entry.message.details.fileChange)
+  )
+    return undefined;
+  return {
+    ...(entry.message.details.fileChange as unknown as FileChange),
+    failed: entry.message.isError || Boolean(entry.message.details.fileChange.failed),
+  };
+}
+
+export async function readFileSnapshot(
+  path: string,
+  root: string,
+  maxBytes = 4 * 1024 * 1024,
+): Promise<Buffer> {
   const [actual, directory] = await Promise.all([realpath(path), realpath(root)]);
-  if (!isPathInside(directory, actual) || (await stat(actual)).size > maxBytes)
-    throw new Error("invalid_input: 文件快照不属于此任务或超限");
-  return readFile(actual, "utf8");
+  if (!isPathInside(directory, actual)) throw new Error("invalid_input: 文件快照不属于此任务或超限");
+  const info = await stat(actual);
+  if (!info.isFile() || info.size > maxBytes) throw new Error("invalid_input: 文件快照不属于此任务或超限");
+  return readFile(actual);
 }
 /** Forked history owns its snapshots, so deleting its parent cannot break file previews. */
 export async function copyFileChangeSnapshots(
@@ -20,6 +39,7 @@ export async function copyFileChangeSnapshots(
 ): Promise<SessionEntry[]> {
   const copied = structuredClone(entries);
   const paths = new Map<string, string>();
+  let targetReady = false;
   for (const entry of copied) {
     if (
       entry.type !== "message" ||
@@ -35,8 +55,15 @@ export async function copyFileChangeSnapshots(
       let target = paths.get(path);
       if (!target) {
         try {
-          const content = await snapshot(path, sourceRoot, key === "patchFile" ? 8 * 1024 * 1024 : undefined);
-          await mkdir(targetRoot, { recursive: true });
+          const content = await readFileSnapshot(
+            path,
+            sourceRoot,
+            key === "patchFile" ? 8 * 1024 * 1024 : undefined,
+          );
+          if (!targetReady) {
+            await mkdir(targetRoot, { recursive: true });
+            targetReady = true;
+          }
           target = join(targetRoot, basename(path));
           await writeFile(target, content, { mode: 0o600 });
           paths.set(path, target);
@@ -66,10 +93,12 @@ export async function fileChanges(changes: FileChange[], root: string, area: str
       last = writes.at(-1) as FileChange;
     if (last.afterFile && (first.beforeHash === null || first.beforeFile)) {
       try {
-        const [before, after] = await Promise.all([
-          first.beforeFile ? snapshot(first.beforeFile, root) : "",
-          snapshot(last.afterFile, root),
+        const [beforeBytes, afterBytes] = await Promise.all([
+          first.beforeFile ? readFileSnapshot(first.beforeFile, root) : Buffer.alloc(0),
+          readFileSnapshot(last.afterFile, root),
         ]);
+        const before = beforeBytes.toString("utf8"),
+          after = afterBytes.toString("utf8");
         if (before === after && first.beforeHash !== null) continue;
         const patch = createTwoFilesPatch(
           first.beforeHash === null ? "/dev/null" : path,
@@ -95,20 +124,28 @@ export async function fileChanges(changes: FileChange[], root: string, area: str
           path,
           status: last.operation,
           area,
+          failed: writes.some((c) => c.failed),
           reason: `文件快照不可用：${String(error)}`,
         });
       }
     } else {
       for (const change of writes) {
-        let patch = change.patch;
-        if (!patch && change.patchFile) patch = await snapshot(change.patchFile, root, 8 * 1024 * 1024);
+        let patch = change.patch,
+          reason = change.reason;
+        if (!patch && change.patchFile) {
+          try {
+            patch = (await readFileSnapshot(change.patchFile, root, 8 * 1024 * 1024)).toString("utf8");
+          } catch (error) {
+            reason = `文件快照不可用：${String(error)}`;
+          }
+        }
         result.push({
           id: `operation:${change.toolCallId}`,
           path,
           status: change.operation,
           area,
           patch,
-          reason: change.reason,
+          reason,
           failed: change.failed,
         });
       }

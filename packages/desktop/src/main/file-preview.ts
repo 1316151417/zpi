@@ -1,9 +1,8 @@
-import { open, realpath } from "node:fs/promises";
-import { extname, isAbsolute, resolve } from "node:path";
+import { open, stat } from "node:fs/promises";
+import { extname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FileLocation } from "zpi-ui/links";
 import type { FilePreview } from "../shared/bridge.ts";
-import { isPathInside } from "./path-bounds.ts";
+import { resolveLocalFilePath, validateFileLocation } from "./local-file-path.ts";
 
 const imageTypes: Record<string, string> = {
   png: "image/png",
@@ -29,7 +28,7 @@ const mediaTypes: Record<string, string> = {
 export async function readFilePreview(cwd: string, target: string, input?: unknown): Promise<FilePreview> {
   if (!target || target.includes("\0") || target.length > 8192)
     throw new Error("invalid_input: 文件路径无效");
-  const location = validateLocation(input);
+  const location = validateFileLocation(input);
   if (process.platform !== "win32" && /^(?:[a-z]:[\\/]|\\\\|\/\/)/i.test(target))
     throw new Error("invalid_input: 当前系统无法打开 Windows 文件路径");
   let path = target;
@@ -40,19 +39,8 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
   }
   // Keep filesystem access in main. References may point to generated files outside the workspace.
   const bounded = location?.relative || !isAbsolute(path);
-  const candidate = resolve(cwd, path);
-  const inside = (root: string, actual: string) => {
-    if (!isPathInside(root, actual)) throw new Error("invalid_input: 相对文件链接超出当前工作目录");
-  };
-  if (bounded) inside(resolve(cwd), candidate);
-  try {
-    path = await realpath(candidate);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      throw new Error(`not_found: 文件不存在：${candidate}`);
-    throw error;
-  }
-  if (bounded) inside(await realpath(cwd), path);
+  path = await resolveLocalFilePath(cwd, path, bounded);
+  if ((await stat(path)).isDirectory()) return { path, location, kind: "directory" };
   const file = await open(path, "r");
   try {
     const stat = await file.stat();
@@ -88,30 +76,4 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
   } finally {
     await file.close();
   }
-}
-
-function validateLocation(input: unknown): FileLocation | undefined {
-  if (input === undefined) return undefined;
-  if (!input || typeof input !== "object" || Array.isArray(input))
-    throw new Error("invalid_input: 文件定位信息无效");
-  const value = input as Record<string, unknown>;
-  for (const [key, item] of Object.entries(value)) {
-    if (item === undefined) continue;
-    if (key === "fileUrl") {
-      if (typeof item !== "string" || item.length > 8192 || new URL(item).protocol !== "file:")
-        throw new Error("invalid_input: 文件预览 URL 无效");
-      continue;
-    }
-    if (
-      key === "relative"
-        ? typeof item !== "boolean"
-        : !["line", "column", "endLine"].includes(key) || !Number.isSafeInteger(item) || (item as number) < 1
-    )
-      throw new Error("invalid_input: 文件定位信息无效");
-  }
-  if ((value.column !== undefined || value.endLine !== undefined) && value.line === undefined)
-    throw new Error("invalid_input: 文件定位缺少行号");
-  if (typeof value.endLine === "number" && typeof value.line === "number" && value.endLine < value.line)
-    throw new Error("invalid_input: 文件定位范围无效");
-  return value as FileLocation;
 }

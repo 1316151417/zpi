@@ -10,6 +10,7 @@ import { fileCitationRemarkPlugin, projectFileCitations } from "../file-citation
 import { type FileLocation, resolveLinkTarget, type WebOpenOptions } from "../link-target.ts";
 import { type MarkdownFence, markdownFence } from "../markdown-fence.ts";
 import { markdownLinkRemarkPlugin } from "../markdown-link-nodes.ts";
+import type { FileActionHandler } from "../types.ts";
 import { MarkdownContext, type MarkdownServices } from "./MarkdownActions.tsx";
 import { MarkdownCode } from "./MarkdownCode.tsx";
 import { MarkdownImage } from "./MarkdownImage.tsx";
@@ -160,12 +161,14 @@ export const Markdown = memo(function Markdown({
   onLink,
   onCopy,
   onFile,
+  onFileAction,
   onImage,
   onDownloadImage,
 }: MarkdownServices & {
   text: string;
   onLink: (url: string, options?: WebOpenOptions) => void;
   onFile?: (path: string, location?: FileLocation) => void;
+  onFileAction?: FileActionHandler;
 }) {
   const components = useMemo<NonNullable<StreamdownProps["components"]>>(
     () => ({
@@ -182,6 +185,7 @@ export const Markdown = memo(function Markdown({
               path={path}
               label={rawText(children) || path.split("/").at(-1) || path}
               onOpen={() => onFile(path, location)}
+              onAction={onFileAction ? (path, action) => onFileAction(path, action, location) : undefined}
             />
           );
         }
@@ -198,7 +202,7 @@ export const Markdown = memo(function Markdown({
       p: ImageParagraph,
       img: MarkdownImage,
     }),
-    [onLink, onFile, workspace],
+    [onLink, onFile, onFileAction, workspace],
   );
   const markdown = useMemo(
     () => normalizeMath(groupImages(projectFileCitations(text, streaming))),

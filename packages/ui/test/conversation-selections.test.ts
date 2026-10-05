@@ -4,6 +4,7 @@ import {
   appendSelection,
   buildSelectionPrompt,
   parseSelectionPrompt,
+  validSelections,
 } from "../src/conversation-selections.ts";
 
 it("selection wire format round trips quotes, code fences, newlines and optional source paths", () => {
@@ -48,4 +49,17 @@ it("message time follows local calendar days, yesterday and year boundaries", ()
   expect(messageTime(new Date(2026, 9, 4, 9, 3).getTime(), now)).toBe("昨天 09:03");
   expect(messageTime(new Date(2025, 9, 4, 9, 3).getTime(), now)).toContain("2025");
   expect(messageTime(Number.NaN, now)).toBe("");
+});
+
+it("draft references reject malformed metadata before it reaches rendering", () => {
+  expect(validSelections([{ text: "quote", sourceTitle: "回复", contentType: "assistant" }])).toBe(true);
+  for (const item of [
+    null,
+    ["quote"],
+    { text: "quote", sourceTitle: {} },
+    { text: "quote", sourceKey: 1 },
+    { text: "quote", id: false },
+    { text: "quote", contentType: "unknown" },
+  ])
+    expect(validSelections([item])).toBe(false);
 });
