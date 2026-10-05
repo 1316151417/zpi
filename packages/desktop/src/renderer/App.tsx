@@ -18,6 +18,7 @@ import {
   ChatComposer,
   type ComposerContext,
   Conversation,
+  type FileAction,
   type FileLocation,
   type WebOpenOptions,
 } from "zpi-ui";
@@ -257,6 +258,11 @@ export function App() {
     (runId: string, path?: string) => {
       if (selected) showChanges(selected, runId, path);
     },
+    [selected],
+  );
+  const fileAction = useCallback(
+    (path: string, action: FileAction) =>
+      selected ? window.zpi.fileAction(selected, path, action).then(unwrap) : Promise.resolve(),
     [selected],
   );
   const earlier = useCallback(
@@ -608,6 +614,7 @@ export function App() {
               onLink={openLink}
               context={inputContext}
               onChanges={openChanges}
+              onFileAction={fileAction}
               onCopy={copyCode}
               onFile={openFile}
             />

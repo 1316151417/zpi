@@ -37,6 +37,7 @@ const bridge: DesktopBridge = {
   saveDraft: (id, draft) => call("saveDraft", id, draft),
   getHistoryPage: (id, before) => call("getHistoryPage", id, before),
   copyText: (text) => call("copyText", text),
+  fileAction: (id, path, action) => call("fileAction", id, path, action),
   searchFiles: (id, q) => call("searchFiles", id, q),
   getWorkspaceInfo: (id) => call("getWorkspaceInfo", id),
   downloadImage: (src) => call("downloadImage", src),

@@ -1,6 +1,13 @@
 import type { Model, ModelDiscoveryResult, OpenAICompletionsCompat, ProviderPresetId } from "zpi-ai";
 import type { DiscoveredSkill, ImageAttachment, SkillList } from "zpi-coding-agent";
-import type { DesktopEventEnvelope, QueuedInput, RunStatus, SessionControls, SessionView } from "zpi-ui";
+import type {
+  DesktopEventEnvelope,
+  FileAction,
+  QueuedInput,
+  RunStatus,
+  SessionControls,
+  SessionView,
+} from "zpi-ui";
 import type { FileLocation } from "zpi-ui/links";
 
 export type { SessionControls } from "zpi-ui";
@@ -199,6 +206,7 @@ export interface DesktopBridge {
     before: number,
   ): Promise<Result<{ view: SessionView; cursor: number | null; calls: number }>>;
   copyText(text: string): Promise<Result<void>>;
+  fileAction(sessionId: string, path: string, action: FileAction): Promise<Result<void>>;
   searchFiles(
     sessionId: string,
     query: string,
@@ -277,6 +285,7 @@ export const methods = [
   "saveDraft",
   "getHistoryPage",
   "copyText",
+  "fileAction",
   "searchFiles",
   "getWorkspaceInfo",
   "readFilePreview",

@@ -1211,11 +1211,11 @@ small {
   display: flex;
 }
 .diff-added {
-  color: #32663d;
+  color: var(--color-diff-added);
   background: #e8f1e8;
 }
 .diff-removed {
-  color: #9a3636;
+  color: var(--color-diff-removed);
   background: #fae9e4;
 }
 .diff-hunk {
@@ -1451,55 +1451,248 @@ button.inline-mention,
 }
 
 .changed-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  --color-diff-added: light-dark(#1e8a3e, #46bf72);
+  --color-diff-removed: light-dark(#e03131, #ff5c5c);
+  width: 100%;
   margin-top: 16px;
-}
-.changed-files:empty {
-  display: none;
-}
-.changed-file-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-panel);
-  background: var(--color-surface);
-  padding: 10px 16px;
-  text-align: left;
-  max-width: 100%;
+  background: var(--color-input);
+  overflow: hidden;
 }
-.changed-file-card:hover {
-  background: var(--color-surface-muted);
-}
-.changed-file-card > svg {
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-.changed-file-info {
+.changed-files-summary {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: inherit;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.changed-files-summary::-webkit-details-marker {
+  display: none;
+}
+.changed-files-summary:hover {
+  background: var(--color-fill-hover);
+}
+.changed-files[open] > .changed-files-summary {
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+}
+.changed-files-summary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-focus);
+}
+.changed-files-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
-.changed-file-info strong {
+.changed-files-heading strong {
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.changed-files-warning {
+  display: flex;
+  color: var(--color-waiting);
+}
+.changed-files-totals,
 .changed-file-counts {
   display: flex;
+  align-items: center;
   gap: 8px;
-  font-size: var(--text-small);
   font-variant-numeric: tabular-nums;
 }
-.diff-added {
-  color: var(--color-diff-added);
+.changed-files-totals {
+  flex-shrink: 0;
+  font-size: var(--text-body);
 }
-.diff-removed {
-  color: var(--color-diff-removed);
+.changed-files-totals .diff-added,
+.changed-files-totals .diff-removed {
+  background: transparent;
+}
+.changed-files-chevron {
+  color: var(--color-text-muted);
+  transition: transform 150ms ease;
+}
+.changed-files[open] .changed-files-chevron {
+  transform: rotate(90deg);
+}
+.changed-files-list {
+  max-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--color-border);
+}
+.changed-file-row {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: color-mix(in oklab, var(--color-bg) 50%, transparent);
+}
+.changed-file-row:hover {
+  --changed-file-hover: light-dark(rgb(13 13 13 / 1.5%), rgb(255 255 255 / 1.5%));
+  background-image: linear-gradient(var(--changed-file-hover), var(--changed-file-hover));
+}
+.changed-file-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  text-align: left;
+}
+.changed-file-card:hover:not(:disabled) {
+  background: transparent;
+}
+.changed-file-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.changed-file-card:focus-visible {
+  outline: none;
+}
+.changed-file-card:focus-visible::after {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.changed-file-card:active:not(:disabled),
+.changed-file-actions button:active:not(:disabled) {
+  transform: none;
+}
+.changed-file-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.changed-file-info strong,
+.changed-file-directory {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changed-file-info strong {
+  font-weight: 500;
+}
+.changed-file-directory {
+  color: var(--color-text-subtlest);
+  font-size: var(--text-body);
+}
+.changed-file-note {
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+.changed-file-counts {
+  flex-shrink: 0;
+  font-size: var(--text-body);
+}
+.changed-file-counts .diff-added,
+.changed-file-counts .diff-removed {
+  background: transparent;
+}
+.changed-file-actions,
+.changed-file-open {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.changed-file-actions {
+  gap: 6px;
+}
+.changed-file-review,
+.changed-file-open {
+  position: relative;
+  z-index: 1;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-nested);
+  background: var(--color-input);
+  font-size: var(--text-body);
+}
+.changed-file-review {
+  padding: 0 8px;
+}
+.changed-file-open {
+  overflow: hidden;
+}
+.changed-file-review:hover:not(:disabled),
+.changed-file-open:hover {
+  border-color: var(--color-focus);
+}
+.changed-file-open :where(button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border-radius: 0;
+}
+.changed-file-open-default {
+  padding: 0 6px 0 8px;
+}
+.changed-file-open-menu {
+  width: 20px;
+  padding: 0;
+  color: var(--color-text-subtlest);
+}
+.changed-file-open button:focus-visible {
+  outline-offset: -3px;
+}
+.changed-file-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 176px;
+  min-width: 128px;
+  max-width: var(--radix-dropdown-menu-content-available-width);
+  border-radius: var(--radius-nested);
+  background: var(--color-input);
+  box-shadow:
+    0 4px 6px -1px #0000001a,
+    0 2px 4px -2px #0000001a;
+  z-index: 60;
+}
+.changed-file-menu .menu-item {
+  min-height: 28px;
+  padding: 4px 8px;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: var(--text-body);
+  line-height: 1.625;
+  cursor: default;
+}
+.changed-file-menu .menu-item[data-highlighted] {
+  background: light-dark(#f0f0f0, #363636);
+}
+.changed-file-menu-separator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--color-border);
+}
+.changed-files-error {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--color-error);
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .changed-files-chevron {
+    transition: none;
+  }
 }
 /* Message typography and rich blocks share the desktop theme and font scale. */
 .markdown-body {

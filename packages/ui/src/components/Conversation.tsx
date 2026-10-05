@@ -20,7 +20,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { buildMentionMarkdown, imageLimits, parseMentions } from "zpi-coding-agent/input";
 import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { progressSummary } from "../reducer.ts";
-import type { InputQueue, InputSuggestion, RunView, SessionView, ViewBlock } from "../types.ts";
+import type { FileAction, InputQueue, InputSuggestion, RunView, SessionView, ViewBlock } from "../types.ts";
+import { ChangedFiles } from "./ChangedFiles.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { DraftGreeting } from "./DraftGreeting.tsx";
 import {
@@ -221,6 +222,7 @@ export const RunGroup = memo(function RunGroup({
   onBlockToggle,
   context,
   onChanges,
+  onFileAction,
   onCopy,
   onFile,
   sessionId,
@@ -229,6 +231,7 @@ export const RunGroup = memo(function RunGroup({
   sessionId?: string;
   context?: ComposerContext;
   onChanges?: (runId: string, path?: string) => void;
+  onFileAction?: (path: string, action: FileAction) => Promise<void>;
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
   workspace?: LinkContext;
@@ -345,49 +348,7 @@ export const RunGroup = memo(function RunGroup({
             />
           ))}
       </div>
-      <div className="changed-files">
-        {run.orderedBlocks.some((block) => block.type === "tool" && block.fileChange) && (
-          <span className="changed-files-label">变更的文件</span>
-        )}
-        {Array.from(
-          new Set(
-            run.orderedBlocks.flatMap((b) => (b.type === "tool" && b.fileChange ? [b.fileChange.path] : [])),
-          ),
-        ).map((path) => {
-          const changes = run.orderedBlocks.flatMap((b) =>
-            b.type === "tool" && b.fileChange?.path === path ? [b.fileChange] : [],
-          );
-          const known = changes.every((c) => c.additions !== undefined && c.deletions !== undefined);
-          const additions = changes.reduce((sum, c) => sum + (c.additions ?? 0), 0),
-            deletions = changes.reduce((sum, c) => sum + (c.deletions ?? 0), 0);
-          return (
-            <button
-              type="button"
-              className="changed-file-card"
-              key={path}
-              onClick={() => onChanges?.(run.runId, path)}
-              title={`${path}${changes.length > 1 ? "\n多次工具修改的累计行数" : ""}`}
-              aria-label={`查看修改 ${path.split("/").at(-1)}`}
-            >
-              <FileIcon path={path} size={15} />
-              <span className="changed-file-info">
-                <strong>{path.split("/").at(-1)}</strong>
-                <span className="changed-file-counts">
-                  {known ? (
-                    <>
-                      <span className="diff-added">+{additions}</span>
-                      <span className="diff-removed">−{deletions}</span>
-                    </>
-                  ) : (
-                    <span>无法统计行数</span>
-                  )}
-                  {changes.some((c) => c.failed) && <span>部分修改失败</span>}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <ChangedFiles run={run} cwd={workspace?.cwd} onChanges={onChanges} onFileAction={onFileAction} />
     </article>
   );
 });
@@ -397,6 +358,7 @@ export function Conversation({
   workspace,
   context,
   onChanges,
+  onFileAction,
   onCopy,
   onFile,
   hasEarlier = false,
@@ -413,6 +375,7 @@ export function Conversation({
   onLink: (url: string, options?: WebOpenOptions) => void;
   context?: ComposerContext;
   onChanges?: (runId: string, path?: string) => void;
+  onFileAction?: (path: string, action: FileAction) => Promise<void>;
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
 }) {
@@ -579,6 +542,7 @@ export function Conversation({
                 sessionId={view.sessionId}
                 context={context}
                 onChanges={onChanges}
+                onFileAction={onFileAction}
                 onCopy={onCopy}
                 onFile={onFile}
                 onLink={onLink}
