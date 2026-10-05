@@ -10,6 +10,7 @@ import {
   LoaderIcon,
   MessageCirclePlus,
   Pin,
+  Plus,
   Settings,
   X,
 } from "lucide-react";
@@ -39,6 +40,7 @@ import { RightPane } from "./RightPane.tsx";
 import { SessionToolbar } from "./SessionToolbar.tsx";
 import { SettingsPage } from "./SettingsPage.tsx";
 import {
+  addConversationSelection,
   archiveSession,
   drafts,
   initialize,
@@ -46,6 +48,7 @@ import {
   newSession,
   refresh,
   report,
+  resetSession,
   selectSession,
   subscribeEvents,
   unwrap,
@@ -224,6 +227,10 @@ export function App() {
     };
   }, []);
   const selected = state.selected;
+  const addSelection = useCallback(
+    (reference: import("zpi-ui").ConversationSelection) => addConversationSelection(reference, selected),
+    [selected],
+  );
   const workspace = useWorkspace(selected);
   const views = useStore.getState().views;
   const view = selected ? views.get(selected) : undefined;
@@ -403,7 +410,7 @@ export function App() {
                     {prefs?.projectsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                   </button>
                   <button aria-label="添加项目" className="muted-icon" onClick={() => void addProject()}>
-                    <MessageCirclePlus size={14} />
+                    <Plus size={14} strokeWidth={1.5} aria-hidden="true" />
                   </button>
                 </div>
                 <div className="projects" hidden={prefs?.projectsCollapsed}>
@@ -608,6 +615,38 @@ export function App() {
             <Conversation
               workspace={workspace}
               view={view}
+              onNavigateOrigin={(origin) => {
+                void (async () => {
+                  if (!useStore.getState().sessions.has(origin.sessionId)) throw new Error("原任务已不存在");
+                  await selectSession(origin.sessionId);
+                  while (
+                    !useStore
+                      .getState()
+                      .views.get(origin.sessionId)
+                      ?.runs.some((run) => run.runId === origin.runId) &&
+                    useStore.getState().historyCursors.get(origin.sessionId) != null
+                  ) {
+                    if (useStore.getState().selected !== origin.sessionId) return;
+                    const cursor = useStore.getState().historyCursors.get(origin.sessionId);
+                    await loadEarlier(origin.sessionId);
+                    if (useStore.getState().historyCursors.get(origin.sessionId) === cursor) break;
+                  }
+                  requestAnimationFrame(() =>
+                    window.dispatchEvent(new CustomEvent("zpi:scroll-to-run", { detail: origin })),
+                  );
+                })().catch(report);
+              }}
+              onAddSelection={addSelection}
+              onEdit={async (runId, input) => {
+                const result = unwrap(await window.zpi.editUserMessage(view.sessionId, runId, input));
+                if ("conflicts" in result) return result;
+                resetSession(result);
+              }}
+              onFork={async (runId) => {
+                const child = unwrap(await window.zpi.forkSession(view.sessionId, runId));
+                await refresh();
+                await selectSession(child.id);
+              }}
               historyCursor={state.historyCursors.get(view.sessionId)}
               hasEarlier={state.historyCursors.get(view.sessionId) != null}
               loadingEarlier={state.historyLoading.has(view.sessionId)}

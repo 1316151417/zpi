@@ -3,7 +3,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { defaultPreferences } from "../../packages/desktop/src/shared/config.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+
+test("desktop starts with saved notification preferences and preserves the settings", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-notification-compatibility-"));
+  const file = join(dir, "settings.json");
+  const settings = {
+    version: 4,
+    templates: [],
+    selectedTemplateId: "pi",
+    disabledSkillPaths: [],
+    providers: [],
+    lastSelection: null,
+    interface: {
+      ...defaultPreferences,
+      theme: "dark",
+      fontSize: 17,
+      sidebarWidth: 200,
+      notificationEnabled: true,
+      notificationSoundEnabled: false,
+    },
+  };
+  await writeFile(file, JSON.stringify(settings));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    await expect(page.getByRole("button", { name: "设置", exact: true })).toBeVisible();
+    const restored = await page.evaluate(async () => {
+      const result = await window.zpi.getSettings();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value.interface;
+    });
+    expect(restored).toEqual(settings.interface);
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual(settings);
+  } finally {
+    await app?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 for (const fontSize of [14, 17]) {
   test(`desktop preserves ${fontSize}px settings and the archived tab shares the new settings frame`, async () => {

@@ -17,6 +17,7 @@ import {
   parseInput,
   parseMentions,
   piTemplate,
+  type SessionEntry,
   SessionManager,
   supportedThinkingLevels,
   validateTemplate,
@@ -26,6 +27,8 @@ import { reduceSession, sessionViewBytes } from "zpi-ui/projection";
 import type {
   CombinedSelection,
   DiffItem,
+  EditUserInput,
+  EditUserResult,
   ProjectRecord,
   PromptPreview,
   RunInput,
@@ -37,7 +40,8 @@ import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/
 import { AttachmentStore } from "./attachments.ts";
 import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
-import { fileChanges } from "./file-changes.ts";
+import { copyFileChangeSnapshots, fileChanges } from "./file-changes.ts";
+import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { projectEvent, restoreView } from "./projection.ts";
@@ -112,7 +116,8 @@ export class SessionHost {
     this.inputQueue = new SessionInputQueue({
       check: (id) => {
         if (this.record(id).archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
-        if (this.closing || this.deleting.has(id)) throw new Error("busy: 会话正在关闭或删除");
+        if (this.closing || this.deleting.has(id) || this.updating.has(id))
+          throw new Error("busy: 会话正在关闭或更新");
         if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
       },
       running: (id) => this.activeRuns.has(id) || this.updating.has(id),
@@ -147,7 +152,7 @@ export class SessionHost {
       },
       withdraw: async (id, item) => {
         const draft = this.drafts.get(id);
-        if (draft.text.trim() || draft.fileReferences.length)
+        if (draft.text.trim() || draft.fileReferences.length || draft.selections?.length)
           throw new Error("invalid_input: 请先发送或清空当前草稿，再编辑队列消息。");
         this.drafts.save(id, {
           text: item.text,
@@ -587,7 +592,15 @@ export class SessionHost {
       this.views.set(id, view);
     }
     const controls = this.getControls(id);
-    view = { ...view, title: record.title, controls, queue: this.inputQueue.get(id) };
+    const origin = index.data.state["zpi.fork"];
+    const forkOrigin =
+      origin?.type === "custom" &&
+      isJsonObject(origin.data) &&
+      typeof origin.data.parentSessionId === "string" &&
+      typeof origin.data.runId === "string"
+        ? { sessionId: origin.data.parentSessionId, runId: origin.data.runId }
+        : undefined;
+    view = { ...view, title: record.title, controls, queue: this.inputQueue.get(id), forkOrigin };
     this.views.delete(id);
     this.views.set(id, view);
     this.trimCaches(id);
@@ -945,6 +958,212 @@ export class SessionHost {
   submitInput(input: RunInput, disposition?: "keep" | "clear") {
     this.record(input.sessionId);
     return this.inputQueue.submit(input, disposition);
+  }
+  private runStart(entries: SessionEntry[], runId: string): number {
+    const index = entries.findIndex(
+      (entry) =>
+        entry.type === "custom" &&
+        entry.customType === "zpi.run" &&
+        isJsonObject(entry.data) &&
+        entry.data.phase === "start" &&
+        entry.data.runId === runId,
+    );
+    if (index < 0) throw new Error("not_found: 消息已失效，请重新加载任务");
+    return index;
+  }
+  async forkSession(id: string, runId: string): Promise<SessionRecord> {
+    const parent = this.record(id);
+    if (this.closing || this.deleting.has(id) || this.updating.has(id)) throw new Error("busy: 任务正在更新");
+    const entries = this.manager(id).getEntries();
+    this.runStart(entries, runId);
+    const end = entries.findIndex(
+      (entry) =>
+        entry.type === "custom" &&
+        entry.customType === "zpi.run" &&
+        isJsonObject(entry.data) &&
+        entry.data.phase === "end" &&
+        entry.data.runId === runId,
+    );
+    if (end < 0) throw new Error("busy: 只能分叉已结束的回复");
+    const prefix = entries.slice(0, end + 1);
+    const turn = restoreView(id, parent.title, prefix).runs.find((run) => run.runId === runId);
+    if (!turn?.finalAnswerBlockIds.length) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
+    const child = this.createSession(parent.projectId);
+    try {
+      const transcript = prefix.filter(
+        (entry) =>
+          entry.type !== "session_info" &&
+          !(
+            entry.type === "custom" &&
+            ["zpi.session_meta", "zpi.title", "zpi.queue", "zpi.attention"].includes(entry.customType)
+          ),
+      );
+      const manager = this.manager(child.id);
+      manager.replaceEntries(
+        await copyFileChangeSnapshots(
+          transcript,
+          join(this.dir, "agent", "tool-output", id),
+          join(this.dir, "agent", "tool-output", child.id),
+        ),
+      );
+      await this.attachments.copyTo(
+        id,
+        child.id,
+        prefix.flatMap((entry) =>
+          entry.type === "custom" &&
+          entry.customType === "zpi.run" &&
+          isJsonObject(entry.data) &&
+          Array.isArray(entry.data.attachments)
+            ? entry.data.attachments.flatMap((image) =>
+                isJsonObject(image) && typeof image.id === "string" ? [image.id] : [],
+              )
+            : [],
+        ),
+      );
+      manager.appendSessionInfo(`Fork of ${parent.title}`.slice(0, 200));
+      manager.appendCustomEntry("zpi.session_meta", {
+        projectId: child.projectId,
+        pinnedAt: null,
+        draft: false,
+      });
+      manager.appendCustomEntry("zpi.title", { state: "manual" });
+      manager.appendCustomEntry("zpi.fork", { parentSessionId: id, runId });
+      this.managers.delete(child.id);
+      const index = new HistoryIndex(this.path(child));
+      await index.load();
+      this.indexes.set(child.id, index);
+      index.flush();
+      Object.assign(this.record(child.id), {
+        title: `Fork of ${parent.title}`.slice(0, 200),
+        draft: false,
+        status: turn.status,
+      });
+      return structuredClone(this.record(child.id));
+    } catch (error) {
+      await this.deleteSession(child.id);
+      throw error;
+    }
+  }
+  async editUserMessage(id: string, runId: string, input: EditUserInput): Promise<EditUserResult> {
+    const record = this.record(id);
+    if (this.closing || this.deleting.has(id) || this.updating.has(id) || record.archivedAt != null)
+      throw new Error("busy: 任务正在关闭或更新");
+    const entries = this.manager(id).getEntries();
+    const start = this.runStart(entries, runId);
+    if (
+      entries
+        .slice(start + 1)
+        .some(
+          (entry) =>
+            entry.type === "custom" &&
+            entry.customType === "zpi.run" &&
+            isJsonObject(entry.data) &&
+            entry.data.phase === "start",
+        )
+    )
+      throw new Error("invalid_input: 只能编辑最新一轮用户消息");
+    if (input.workspaceMode !== undefined && !["preserve", "rewind"].includes(input.workspaceMode))
+      throw new Error("invalid_input: 文件重置参数无效");
+    const { workspaceMode, ...prompt } = input;
+    const next: RunInput = { ...prompt, sessionId: id };
+    validateRunInputText(next);
+    const selection = this.getControls(id).selection;
+    if (!selection || !this.settings.isSelectionValid(selection))
+      throw new Error("configuration: 请先选择有效模型");
+    this.updating.add(id);
+    try {
+      // Validate before stopping or changing durable history. A failed edit keeps the existing turn.
+      const { loaded, parsed } = await this.loadInput(next);
+      const configuredModel = this.settings.getModel(selection);
+      const context = SessionManager.inMemory(
+        this.cwd(record),
+        {},
+        entries.slice(0, start),
+      ).buildSessionContext();
+      if (
+        parsed.kind !== "compact" &&
+        !configuredModel?.input.includes("image") &&
+        (loaded.images.length ||
+          context.messages.some(
+            (message) =>
+              message.role === "user" &&
+              Array.isArray(message.content) &&
+              message.content.some((part) => part.type === "image"),
+          ))
+      )
+        throw new Error("configuration: 当前模型不支持图片，请选择图片模型或移除附件");
+      if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
+      if (parsed.kind === "skill") {
+        const loader = this.resourceLoader(id);
+        await loader.reload();
+        await loader.loadSkill(parsed.name);
+      }
+      const job = this.titleJobs.get(id);
+      job?.controller.abort();
+      await job?.done;
+      const active = this.activeRuns.get(id);
+      if (active) await this.abortRun({ sessionId: id, runId: active.runId });
+      if (this.closing) throw new Error("busy: 应用正在关闭");
+      const manager = this.manager(id);
+      const current = manager.getEntries();
+      const boundary = this.runStart(current, runId);
+      const metadata = [...current]
+        .reverse()
+        .filter(
+          (entry, index, all) =>
+            entry.type === "custom" &&
+            ["zpi.session_meta", "zpi.title", "zpi.selection", "zpi.configuration", "zpi.queue"].includes(
+              entry.customType,
+            ) &&
+            all.findIndex((other) => other.type === "custom" && other.customType === entry.customType) ===
+              index,
+        )
+        .reverse();
+      const title = current.findLast((entry) => entry.type === "session_info");
+      if (title) metadata.push(title);
+      const prefix = current.slice(0, boundary);
+      const transcript = [
+        ...prefix,
+        ...metadata.filter((entry) => !prefix.some((prior) => prior.id === entry.id)),
+      ];
+      if (workspaceMode === "rewind") {
+        // Shell side effects have no write/edit checkpoints; never present a partial restore as complete.
+        if (
+          current
+            .slice(boundary)
+            .some(
+              (entry) =>
+                entry.type === "message" &&
+                entry.message.role === "toolResult" &&
+                entry.message.toolName === "bash",
+            )
+        )
+          return { conflicts: [{ path: "bash/shell", reason: "bash/shell 修改已忽略", ignored: true }] };
+        const plan = await planFileRewind(
+          this.recordedChanges(id, runId),
+          join(this.dir, "agent", "tool-output", id),
+          this.cwd(record),
+        );
+        const conflicts = applyFileRewind(plan, () => manager.replaceEntries(transcript));
+        if (conflicts.length) return { conflicts };
+      } else manager.replaceEntries(transcript);
+      this.sessions.get(id)?.dispose();
+      this.sessions.delete(id);
+      this.managers.delete(id);
+      this.views.delete(id);
+      this.cursors.delete(id);
+      const index = new HistoryIndex(this.path(record));
+      await index.load();
+      this.indexes.set(id, index);
+      index.flush();
+      const snapshot = this.getSessionSnapshot(id);
+      this.emit(id, runId, { type: "history_reset", view: snapshot.view });
+      this.updating.delete(id);
+      await this.startRun(next);
+      return this.getSessionSnapshot(id);
+    } finally {
+      this.updating.delete(id);
+    }
   }
   async editQueuedInput(id: string, itemId: string) {
     this.record(id);

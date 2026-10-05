@@ -1,6 +1,13 @@
 import { buildMentionMarkdown } from "zpi-coding-agent/input";
 import type { DesktopEventEnvelope, InputSuggestion, SessionView } from "zpi-ui";
-import { ComposerDraftStore, mergeHistory, reduceSession, sessionViewBytes } from "zpi-ui";
+import {
+  appendSelection,
+  ComposerDraftStore,
+  type ConversationSelection,
+  mergeHistory,
+  reduceSession,
+  sessionViewBytes,
+} from "zpi-ui";
 import { create } from "zustand";
 import type {
   DesktopBridge,
@@ -61,6 +68,7 @@ drafts.subscribe((id) => {
   void window.zpi
     .saveDraft(id, {
       text: draft.text,
+      selections: draft.selections,
       fileReferences: draft.fileReferences,
       selection: draft.selection ?? [draft.text.length, draft.text.length],
       revision,
@@ -342,4 +350,36 @@ export async function initialize(): Promise<void> {
   } finally {
     useStore.setState({ ready: true });
   }
+}
+
+export function addConversationSelection(
+  reference: ConversationSelection,
+  sessionId = useStore.getState().selected,
+): void {
+  if (!sessionId) return;
+  const draft = drafts.get(sessionId);
+  if (!draft) return;
+  try {
+    drafts.set(sessionId, {
+      ...draft,
+      selections: appendSelection(draft.selections ?? [], reference),
+      error: undefined,
+    });
+  } catch (error) {
+    drafts.set(sessionId, { ...draft, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnapshot): void {
+  const state = useStore.getState();
+  const views = new Map(state.views),
+    sessions = new Map(state.sessions),
+    cursors = new Map(state.historyCursors);
+  const current = views.get(snapshot.session.id);
+  // Newer events already passed history_reset in sequence; keep their streamed content.
+  if (!current || current.seq <= snapshot.seq) {
+    views.set(snapshot.session.id, snapshot.view);
+    sessions.set(snapshot.session.id, snapshot.session);
+  }
+  cursors.set(snapshot.session.id, snapshot.historyCursor ?? null);
+  useStore.setState({ views, sessions, historyCursors: cursors });
 }

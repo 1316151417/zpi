@@ -20,7 +20,7 @@ export function useStopOnEscape(stop?: () => void) {
         event.isComposing ||
         event.keyCode === 229 ||
         document.querySelector(
-          'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen',
+          'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-conversation-selection-tooltip], .command-panel, .settings-screen',
         )
       )
         blocked.add(event);

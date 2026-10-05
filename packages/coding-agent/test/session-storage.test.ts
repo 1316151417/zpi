@@ -5,6 +5,26 @@ import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-age
 import { demoServer, fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 
+it("transcript replacement rekeys compaction boundaries, persists a valid chain and rejects invalid replacement atomically", async () => {
+  const cwd = await directory();
+  const source = SessionManager.inMemory(cwd);
+  source.appendMessage({ role: "user", content: "compacted", timestamp: 1 });
+  const kept = source.appendMessage({ role: "user", content: "kept", timestamp: 2 });
+  source.appendCompaction("summary", kept);
+  const target = SessionManager.create(cwd, join(cwd, "sessions"));
+  target.replaceEntries(source.getEntries());
+  expect(target.getEntries().map((entry) => entry.id)).not.toContain(kept);
+  const file = target.getSessionFile() as string;
+  const restored = SessionManager.open(file);
+  expect(restored.buildSessionContext()).toEqual(source.buildSessionContext());
+  const before = await readFile(file, "utf8"),
+    entries = target.getEntries();
+  expect(() => target.replaceEntries([entries[0], entries[0]])).toThrow("Duplicate");
+  expect(() => target.replaceEntries(entries.slice(-1))).toThrow("boundary");
+  expect(await readFile(file, "utf8")).toBe(before);
+  expect(target.getEntries()).toEqual(entries);
+});
+
 it("bad tail is backed up, middle damage fails, unpaired call recovers without executing", async () => {
   const cwd = await directory();
   const m = SessionManager.create(cwd, cwd);

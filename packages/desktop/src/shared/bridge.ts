@@ -116,6 +116,8 @@ export interface RunInput {
   fileReferences?: string[];
   attachments?: string[];
 }
+export type EditUserInput = Omit<RunInput, "sessionId"> & { workspaceMode?: "preserve" | "rewind" };
+export type EditUserResult = SessionSnapshot | { conflicts: import("zpi-ui").FileRewindConflict[] };
 export interface WorkspaceInfo {
   home: string;
   cwd: string;
@@ -154,6 +156,7 @@ export interface SkillSettings {
   directories: string[];
 }
 export interface TextDraft {
+  selections?: import("zpi-ui").ConversationSelection[];
   text: string;
   fileReferences: string[];
   selection: [number, number];
@@ -252,6 +255,8 @@ export interface DesktopBridge {
   sendQueuedNow(sessionId: string, itemId: string): Promise<Result<void>>;
   moveQueuedInput(sessionId: string, itemId: string, beforeId: string | null): Promise<Result<void>>;
   resumeInputQueue(sessionId: string): Promise<Result<void>>;
+  forkSession(id: string, runId: string): Promise<Result<SessionRecord>>;
+  editUserMessage(id: string, runId: string, input: EditUserInput): Promise<Result<EditUserResult>>;
   abortRun(input: { sessionId: string; runId: string }): Promise<Result<void>>;
   getSettings(): Promise<Result<PublicSettings>>;
   beginChatGPTLogin(providerId: string | null): Promise<Result<{ loginId: string; url: string }>>;
@@ -335,6 +340,8 @@ export const methods = [
   "sendQueuedNow",
   "moveQueuedInput",
   "resumeInputQueue",
+  "forkSession",
+  "editUserMessage",
   "abortRun",
   "getSettings",
   "discoverModels",

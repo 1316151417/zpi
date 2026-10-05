@@ -236,6 +236,8 @@ async function launch(): Promise<void> {
         sendQueuedNow: 2,
         moveQueuedInput: 3,
         resumeInputQueue: 1,
+        forkSession: 2,
+        editUserMessage: 3,
         abortRun: 1,
         getSettings: 0,
         beginChatGPTLogin: 1,
@@ -313,6 +315,7 @@ async function launch(): Promise<void> {
               "text",
               "fileReferences",
               "selection",
+              "selections",
               "revision",
             ]) as unknown as import("../shared/bridge.ts").TextDraft,
           );
@@ -489,6 +492,19 @@ async function launch(): Promise<void> {
         case "deleteSession":
           value = await host.deleteSession(string(0));
           break;
+        case "forkSession":
+          value = await host.forkSession(string(0), string(1));
+          break;
+        case "editUserMessage": {
+          const input = object(2, ["text", "fileReferences", "attachments", "workspaceMode"]);
+          if (typeof input.text !== "string") throw new Error("invalid_input: 消息参数无效");
+          value = await host.editUserMessage(
+            string(0),
+            string(1),
+            input as unknown as import("../shared/bridge.ts").EditUserInput,
+          );
+          break;
+        }
         case "startRun": {
           const o = object(0, ["sessionId", "text", "fileReferences", "attachments"]);
           if (typeof o.sessionId !== "string" || typeof o.text !== "string")

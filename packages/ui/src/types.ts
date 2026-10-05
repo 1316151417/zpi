@@ -69,6 +69,7 @@ export interface RunView {
   notice?: string;
 }
 export interface SessionView {
+  forkOrigin?: { sessionId: string; runId: string };
   sessionId: string;
   title: string;
   seq: number;
@@ -91,6 +92,7 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
+  | { type: "history_reset"; view: SessionView }
   | { type: "queue_changed"; queue: InputQueue }
   | { type: "session_changed"; title: string }
   | { type: "controls_changed"; controls: SessionControls }
@@ -140,4 +142,9 @@ export interface DesktopEventEnvelope {
 }
 export function resultText(message: Pick<ToolResultMessage, "content">): string {
   return message.content.map((c) => (c.type === "text" ? c.text : "[Image]")).join("\n");
+}
+export interface FileRewindConflict {
+  path: string;
+  reason: string;
+  ignored?: boolean;
 }

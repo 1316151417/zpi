@@ -147,6 +147,22 @@ export class AttachmentStore {
       await rm(join(this.directory(sessionId), `${id}.png`), { force: true });
     });
   }
+  async copyTo(sourceId: string, targetId: string, ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    const entries = new Map((await this.list(sourceId)).map((item) => [item.id, item]));
+    await this.serial(targetId, async () => {
+      const metadata: Saved[] = [];
+      await mkdir(this.directory(targetId), { recursive: true });
+      for (const id of new Set(ids)) {
+        const image = await this.readSaved(sourceId, entries.get(id));
+        await writeFile(join(this.directory(targetId), `${id}.png`), Buffer.from(image.data, "base64"), {
+          mode: 0o600,
+        });
+        metadata.push({ ...image.metadata, used: true });
+      }
+      atomicJson(join(this.directory(targetId), "index.json"), metadata);
+    });
+  }
   async deleteSession(id: string) {
     await this.operations.get(id)?.catch(() => {});
     await rm(this.directory(id), { recursive: true, force: true });

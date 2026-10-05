@@ -4,7 +4,9 @@ import {
   ArrowUp,
   Brain,
   ChevronRight,
+  FileClock,
   FileCode2,
+  GitBranch,
   ImagePlus,
   Info,
   type LucideIcon,
@@ -13,17 +15,34 @@ import {
   Search,
   Square,
   SquareTerminal,
+  TrendingUpDown,
   Wrench,
+  X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { buildMentionMarkdown, imageLimits, parseMentions } from "zpi-coding-agent/input";
+import {
+  buildSelectionPrompt,
+  type ConversationSelection,
+  parseSelectionPrompt,
+} from "../conversation-selections.ts";
 import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { progressSummary } from "../reducer.ts";
-import type { FileAction, InputQueue, InputSuggestion, RunView, SessionView, ViewBlock } from "../types.ts";
+import type {
+  FileAction,
+  FileRewindConflict,
+  InputQueue,
+  InputSuggestion,
+  RunView,
+  SessionView,
+  ViewBlock,
+} from "../types.ts";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
+import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
 import { DraftGreeting } from "./DraftGreeting.tsx";
+import { FileRewindConflictDialog } from "./FileRewindConflictDialog.tsx";
 import {
   type ComposerContext,
   type ComposerDraft,
@@ -32,11 +51,109 @@ import {
 } from "./InputContext.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
+import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
 import { reasoningSummary, workDuration } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 
+export interface MessageEditInput {
+  workspaceMode?: "preserve" | "rewind";
+  text: string;
+  fileReferences: string[];
+  attachments: string[];
+}
+export type EditMessage = (
+  runId: string,
+  input: MessageEditInput,
+) => Promise<undefined | { conflicts: FileRewindConflict[] }>;
+function UserMessageEditor({
+  run,
+  sessionId,
+  context,
+  onEdit,
+  onCancel,
+}: {
+  run: RunView;
+  sessionId: string;
+  context?: ComposerContext;
+  onEdit: EditMessage;
+  onCancel: () => void;
+}) {
+  const storage = useRef(new ComposerDraftStore());
+  const [conflict, setConflict] = useState<{ files: FileRewindConflict[]; input: MessageEditInput }>();
+  const [resolving, setResolving] = useState(false);
+  const report = (error: unknown) => {
+    const draft = storage.current.get(sessionId);
+    if (draft) storage.current.set(sessionId, { ...draft, error: String(error) });
+  };
+  const parsed = parseSelectionPrompt(run.userMessage);
+  if (!storage.current.has(sessionId))
+    storage.current.set(sessionId, {
+      text: parsed.text,
+      selections: parsed.selections,
+      fileReferences: run.fileReferences ?? [],
+      attachments: run.attachments ?? [],
+      pending: 0,
+    });
+  return (
+    <section className="user-message-editor" aria-label="编辑消息">
+      <ChatComposer
+        sessionId={sessionId}
+        busy={false}
+        draftStorage={storage.current}
+        context={context}
+        showSendButton
+        onStop={() => {}}
+        onCancel={onCancel}
+        resetFiles={{
+          disabled:
+            run.status === "running" ||
+            !run.orderedBlocks.some((block) => block.type === "tool" && block.fileChange),
+          description:
+            run.status === "running"
+              ? "请等待当前工作停止"
+              : run.orderedBlocks.some((block) => block.type === "tool" && block.fileChange)
+                ? "恢复本轮文件、重置对话并发送"
+                : "本轮没有可安全恢复的文件改动",
+        }}
+        onSubmit={async (text, input) => {
+          try {
+            const edit: MessageEditInput = {
+              text,
+              fileReferences: input.fileReferences,
+              attachments: input.attachments,
+              ...(input.workspaceMode ? { workspaceMode: input.workspaceMode } : {}),
+            };
+            const result = await onEdit(run.runId, edit);
+            if (result?.conflicts) {
+              setConflict({ files: result.conflicts, input: edit });
+              return "blocked";
+            }
+            onCancel();
+          } catch (error) {
+            report(error);
+            throw error;
+          }
+        }}
+      />
+      {conflict && (
+        <FileRewindConflictDialog
+          conflicts={conflict.files}
+          pending={resolving}
+          onClose={() => setConflict(undefined)}
+          onContinue={() => {
+            setResolving(true);
+            void onEdit(run.runId, { ...conflict.input, workspaceMode: "preserve" })
+              .then(onCancel)
+              .catch(report)
+              .finally(() => setResolving(false));
+          }}
+        />
+      )}
+    </section>
+  );
+}
 const processTools: Record<string, { icon: LucideIcon; label: string }> = {
   read: { icon: Search, label: "读取" },
   bash: { icon: SquareTerminal, label: "终端" },
@@ -126,12 +243,20 @@ function ProcessBlock({
                   $
                 </span>
               )}
-              <pre className="tool-command">{block.name === "bash" ? command : block.argsText}</pre>
+              <pre
+                className="tool-command"
+                data-conversation-selectable="tool"
+                data-selection-key={`${block.id}:args`}
+              >
+                {block.name === "bash" ? command : block.argsText}
+              </pre>
             </div>
             {block.output && (
               <pre
                 ref={output}
                 className="tool-output"
+                data-conversation-selectable="tool"
+                data-selection-key={block.id}
                 onScroll={() => {
                   const el = output.current;
                   if (el) following.current = el.scrollHeight - el.clientHeight - el.scrollTop < 24;
@@ -170,7 +295,11 @@ function ProcessBlock({
           />
         </button>
         {expanded && (
-          <pre className="thinking-body">
+          <pre
+            className="thinking-body"
+            data-conversation-selectable="reasoning"
+            data-selection-key={block.id}
+          >
             {block.text.trim()
               ? block.text
               : block.streaming
@@ -182,7 +311,11 @@ function ProcessBlock({
     );
   }
   return (
-    <div className="process-text answer">
+    <div
+      className="process-text answer"
+      data-conversation-selectable="assistant"
+      data-selection-key={block.id}
+    >
       <Markdown
         workspace={workspace}
         onImage={onImage}
@@ -234,7 +367,11 @@ export const RunGroup = memo(function RunGroup({
   onCopy,
   onFile,
   sessionId,
+  onEdit,
+  onFork,
 }: {
+  onEdit?: EditMessage;
+  onFork?: (runId: string) => Promise<void>;
   run: RunView;
   sessionId?: string;
   context?: ComposerContext;
@@ -256,55 +393,90 @@ export const RunGroup = memo(function RunGroup({
         : Promise.reject(new Error("图片预览不可用")),
     [context, sessionId],
   );
+  const [editing, setEditing] = useState(false);
+  const [forking, setForking] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const cancelEdit = useCallback(() => setEditing(false), []);
+  const parsedUser = parseSelectionPrompt(run.userMessage);
+  useEffect(() => {
+    if (!onEdit) setEditing(false);
+  }, [onEdit]);
   const process = run.orderedBlocks.filter((b) => !run.finalAnswerBlockIds.includes(b.id));
   return (
-    <article className="run-group" data-testid="run" data-status={run.status}>
-      <div className="user-message">
-        <div className="message-images">
-          {context &&
-            sessionId &&
-            run.attachments?.map((image) => (
-              <ImagePreview
-                key={image.id}
-                sessionId={sessionId}
-                image={image}
-                read={context.readAttachment}
-              />
-            ))}
-        </div>
-        <div className="user-message-text">
-          {(() => {
-            const parts: ReactNode[] = [];
-            let previous = 0;
-            const mentions = displayReferences(run.userMessage);
-            for (const mention of mentions) {
-              parts.push(run.userMessage.slice(previous, mention.start));
-              parts.push(
-                <Reference
-                  key={mention.start}
-                  kind={mention.kind}
-                  path={mention.path}
-                  label={mention.label}
-                  onOpen={onFile}
-                />,
-              );
-              previous = mention.end;
-            }
-            parts.push(run.userMessage.slice(previous));
-            for (const path of run.fileReferences ?? [])
-              if (!mentions.some((m) => m.path === path))
-                parts.push(
-                  <Reference
-                    key={path}
-                    kind="file"
-                    path={path}
-                    label={path.split("/").at(-1) ?? path}
-                    onOpen={onFile}
-                  />,
-                );
-            return parts;
-          })()}
-        </div>
+    <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
+      <div className="user-message-row">
+        {editing && onEdit && sessionId ? (
+          <UserMessageEditor
+            run={run}
+            sessionId={sessionId}
+            context={context}
+            onEdit={onEdit}
+            onCancel={cancelEdit}
+          />
+        ) : (
+          <>
+            <div className="message-images">
+              <SelectionReferenceChip references={parsedUser.selections} />
+              {context &&
+                sessionId &&
+                run.attachments?.map((image) => (
+                  <ImagePreview
+                    key={image.id}
+                    sessionId={sessionId}
+                    image={image}
+                    read={context.readAttachment}
+                  />
+                ))}
+            </div>
+            <div className="user-message">
+              <div
+                className="user-message-text"
+                data-conversation-selectable="user"
+                data-selection-key={`${sessionId}:${run.runId}:user`}
+              >
+                {(() => {
+                  const parts: ReactNode[] = [];
+                  let previous = 0;
+                  const mentions = displayReferences(parsedUser.text);
+                  for (const mention of mentions) {
+                    parts.push(parsedUser.text.slice(previous, mention.start));
+                    parts.push(
+                      <Reference
+                        key={mention.start}
+                        kind={mention.kind}
+                        path={mention.path}
+                        label={mention.label}
+                        onOpen={onFile}
+                      />,
+                    );
+                    previous = mention.end;
+                  }
+                  parts.push(parsedUser.text.slice(previous));
+                  for (const path of run.fileReferences ?? [])
+                    if (!mentions.some((m) => m.path === path))
+                      parts.push(
+                        <Reference
+                          key={path}
+                          kind="file"
+                          path={path}
+                          label={path.split("/").at(-1) ?? path}
+                          onOpen={onFile}
+                        />,
+                      );
+                  return parts;
+                })()}
+              </div>
+            </div>
+            <div className="message-actions user-message-actions">
+              <CopyMessage text={run.userMessage} onCopy={onCopy} />
+              {onEdit && (
+                <MessageAction label="编辑" onClick={() => setEditing(true)}>
+                  <Pencil size={14} />
+                </MessageAction>
+              )}
+            </div>
+          </>
+        )}
       </div>
       <WorkProgress run={run} expanded={expanded} toggle={() => onToggle(run.runId, !expanded)} />
       {expanded && (
@@ -339,24 +511,70 @@ export const RunGroup = memo(function RunGroup({
       {run.status === "interrupted" && (
         <div className="run-notice">应用退出时运行尚未结束，工具未重新执行。</div>
       )}
-      <div className="answer">
-        {run.orderedBlocks
-          .filter((b) => run.finalAnswerBlockIds.includes(b.id) && b.type === "text")
-          .map((b) => (
-            <Markdown
-              workspace={workspace}
-              key={b.id}
-              onImage={onImage}
-              onDownloadImage={context?.downloadImage}
-              text={b.type === "text" ? b.text : ""}
-              streaming={run.status === "running"}
-              onLink={onLink}
+      <div className="assistant-message-row">
+        <div
+          className="answer"
+          data-conversation-selectable="assistant"
+          data-selection-key={`${sessionId}:${run.runId}:answer`}
+        >
+          {run.orderedBlocks
+            .filter((b) => run.finalAnswerBlockIds.includes(b.id) && b.type === "text")
+            .map((b) => (
+              <Markdown
+                workspace={workspace}
+                key={b.id}
+                onImage={onImage}
+                onDownloadImage={context?.downloadImage}
+                text={b.type === "text" ? b.text : ""}
+                streaming={run.status === "running"}
+                onLink={onLink}
+                onCopy={onCopy}
+                onFile={onFile}
+              />
+            ))}
+        </div>
+        <ChangedFiles run={run} cwd={workspace?.cwd} onChanges={onChanges} onFileAction={onFileAction} />
+        {run.status !== "running" && run.finalAnswerBlockIds.length > 0 && (
+          <div className="message-actions assistant-message-actions">
+            <CopyMessage
+              text={run.orderedBlocks
+                .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                .join("\n\n")}
               onCopy={onCopy}
-              onFile={onFile}
             />
-          ))}
+            {onFork && (
+              <MessageAction
+                label="分叉"
+                disabled={forking}
+                onClick={() => {
+                  setForking(true);
+                  setActionError("");
+                  void onFork(run.runId)
+                    .catch((error) => setActionError(String(error)))
+                    .finally(() => setForking(false));
+                }}
+              >
+                <TrendingUpDown size={14} />
+              </MessageAction>
+            )}
+            <span className="message-time">
+              {messageTime(
+                run.orderedBlocks
+                  .filter(
+                    (block): block is Extract<ViewBlock, { type: "text" | "thinking" }> =>
+                      block.type === "text" && run.finalAnswerBlockIds.includes(block.id),
+                  )
+                  .at(-1)?.startedAt ?? run.startedAt,
+              )}
+            </span>
+          </div>
+        )}
+        {actionError && (
+          <div className="run-error" role="alert">
+            {actionError}
+          </div>
+        )}
       </div>
-      <ChangedFiles run={run} cwd={workspace?.cwd} onChanges={onChanges} onFileAction={onFileAction} />
     </article>
   );
 });
@@ -373,7 +591,15 @@ export function Conversation({
   loadingEarlier = false,
   onLoadEarlier,
   historyCursor,
+  onEdit,
+  onFork,
+  onAddSelection,
+  onNavigateOrigin,
 }: {
+  onNavigateOrigin?: (origin: NonNullable<SessionView["forkOrigin"]>) => void;
+  onEdit?: EditMessage;
+  onFork?: (runId: string) => Promise<void>;
+  onAddSelection?: (reference: ConversationSelection) => void;
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
   onLoadEarlier?: () => Promise<void>;
@@ -451,6 +677,21 @@ export function Conversation({
     lastScrollTop.current = el.scrollTop;
   };
   const [showLatest, setShowLatest] = useState(false);
+  useEffect(() => {
+    const navigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId: string; runId: string }>).detail;
+      const root = ref.current;
+      if (!root || detail.sessionId !== view.sessionId) return;
+      const target = root.querySelector<HTMLElement>(`[data-run-id="${CSS.escape(detail.runId)}"]`);
+      if (!target) return;
+      following.current = false;
+      root.scrollTop += target.getBoundingClientRect().top - root.getBoundingClientRect().top;
+      setShowLatest(root.scrollHeight - root.scrollTop - root.clientHeight >= 60);
+    };
+    window.addEventListener("zpi:scroll-to-run", navigate);
+    return () => window.removeEventListener("zpi:scroll-to-run", navigate);
+  }, [view.sessionId]);
+
   const prepend = useRef<{ height: number; top: number } | null>(null);
   const saveReading = () => {
     const el = ref.current;
@@ -543,22 +784,40 @@ export function Conversation({
           )}
           {view.runs.length ? (
             view.runs.map((run) => (
-              <RunGroup
-                workspace={workspace}
-                key={run.runId}
-                run={run}
-                sessionId={view.sessionId}
-                context={context}
-                onChanges={onChanges}
-                onFileAction={onFileAction}
-                onCopy={onCopy}
-                onFile={onFile}
-                onLink={onLink}
-                expanded={expanded[run.runId] ?? false}
-                onToggle={toggle}
-                blocks={blocks}
-                onBlockToggle={toggleBlock}
-              />
+              <Fragment key={run.runId}>
+                <RunGroup
+                  workspace={workspace}
+                  key={run.runId}
+                  run={run}
+                  sessionId={view.sessionId}
+                  context={context}
+                  onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}
+                  onFork={onFork}
+                  onChanges={onChanges}
+                  onFileAction={onFileAction}
+                  onCopy={onCopy}
+                  onFile={onFile}
+                  onLink={onLink}
+                  expanded={expanded[run.runId] ?? false}
+                  onToggle={toggle}
+                  blocks={blocks}
+                  onBlockToggle={toggleBlock}
+                />
+                {view.forkOrigin?.runId === run.runId && (
+                  <button
+                    type="button"
+                    className="fork-notice"
+                    onClick={() => view.forkOrigin && onNavigateOrigin?.(view.forkOrigin)}
+                  >
+                    <span />
+                    <strong>
+                      <GitBranch size={14} />
+                      <span>从对话中派生</span>
+                    </strong>
+                    <span />
+                  </button>
+                )}
+              </Fragment>
             ))
           ) : (
             <div className="empty-chat">
@@ -567,6 +826,7 @@ export function Conversation({
           )}
         </div>
       </div>
+      <ConversationSelectionMenu rootRef={ref} scopeKey={view.sessionId} onAdd={onAddSelection} />
       {showLatest && (
         <button
           className="latest"
@@ -601,13 +861,22 @@ export function ChatComposer({
   queue,
   queueActions,
   onFile,
+  onCancel,
+  resetFiles,
 }: {
+  onCancel?: () => void;
+  resetFiles?: { disabled: boolean; description: string };
   onFile?: (path: string, location?: FileLocation) => void;
   busy: boolean;
   onSubmit: (
     text: string,
-    input: { fileReferences: string[]; attachments: string[]; queueDisposition?: "keep" | "clear" },
-  ) => Promise<void> | Promise<"confirmationRequired" | undefined>;
+    input: {
+      fileReferences: string[];
+      attachments: string[];
+      queueDisposition?: "keep" | "clear";
+      workspaceMode?: "preserve" | "rewind";
+    },
+  ) => Promise<void> | Promise<"confirmationRequired" | "blocked" | undefined>;
   onStop: () => void;
   sessionId: string;
   toolbar?: ReactNode;
@@ -640,6 +909,12 @@ export function ChatComposer({
   const composing = useRef(false);
   const textarea = useRef<MentionEditorHandle>(null);
   const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (onCancel) {
+      const frame = requestAnimationFrame(() => textarea.current?.focus());
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [onCancel]);
   const [inputQuery, setInputQuery] = useState<{
     start: number;
     end: number;
@@ -782,16 +1057,23 @@ export function ChatComposer({
     return () => document.removeEventListener("pointerdown", close);
   }, []);
   const hasDraft = Boolean(
-    draft.trim() || value.attachments.length || value.fileReferences.length || value.pending,
+    draft.trim() ||
+      value.attachments.length ||
+      value.fileReferences.length ||
+      value.selections?.length ||
+      value.pending,
   );
-  const submit = async (queueDisposition?: "keep" | "clear") => {
+  const submit = async (queueDisposition?: "keep" | "clear", workspaceMode?: "preserve" | "rewind") => {
     if (
       editing ||
       submitLock.current ||
       drafts.current.submitting.has(sessionId) ||
       submitting ||
       value.pending ||
-      (!draft.trim() && !value.attachments.length && !value.fileReferences.length)
+      (!draft.trim() &&
+        !value.attachments.length &&
+        !value.fileReferences.length &&
+        !value.selections?.length)
     )
       return;
     const submitted = value,
@@ -802,7 +1084,8 @@ export function ChatComposer({
     drafts.current.submitting.add(submittedSession);
     setSubmitting(true);
     try {
-      const result = await onSubmit(submitted.text, {
+      const result = await onSubmit(buildSelectionPrompt(submitted.text, submitted.selections ?? []), {
+        ...(workspaceMode ? { workspaceMode } : {}),
         ...(queueDisposition ? { queueDisposition } : {}),
         fileReferences: [
           ...new Set([
@@ -818,6 +1101,7 @@ export function ChatComposer({
         if (currentSession.current === submittedSession) setQueueConfirmation(true);
         return;
       }
+      if (result === "blocked") return;
       setQueueConfirmation(false);
       const entries = appendPromptHistory(readPromptHistory(workspace, submittedHistory), submitted.text);
       savePromptHistory(workspace, entries);
@@ -830,12 +1114,15 @@ export function ChatComposer({
         const unchanged =
           drafts.current.revision(submittedSession) === submittedRevision &&
           current.text === submitted.text &&
-          JSON.stringify(current.fileReferences) === JSON.stringify(submitted.fileReferences);
+          JSON.stringify(current.fileReferences) === JSON.stringify(submitted.fileReferences) &&
+          JSON.stringify(current.selections) === JSON.stringify(submitted.selections);
         const usedImages = new Set(submitted.attachments.map((image) => image.id));
         const next = {
           ...current,
           error: undefined,
-          ...(unchanged ? { text: "", fileReferences: [], selection: [0, 0] as [number, number] } : {}),
+          ...(unchanged
+            ? { text: "", fileReferences: [], selections: [], selection: [0, 0] as [number, number] }
+            : {}),
           attachments: current.attachments.filter((image) => !usedImages.has(image.id)),
         };
         drafts.current.set(submittedSession, next);
@@ -855,7 +1142,11 @@ export function ChatComposer({
       current = drafts.current.get(id);
     if (
       current &&
-      (current.text.trim() || current.fileReferences.length || current.attachments.length || current.pending)
+      (current.text.trim() ||
+        current.fileReferences.length ||
+        current.selections?.length ||
+        current.attachments.length ||
+        current.pending)
     )
       throw new Error("请先发送或清空当前草稿，再编辑队列消息。");
     setEditing(true);
@@ -863,7 +1154,8 @@ export function ChatComposer({
     drafts.current.submitting.add(id);
     try {
       const restored = await queueActions.edit(itemId);
-      drafts.current.set(id, restored);
+      const parsed = parseSelectionPrompt(restored.text);
+      drafts.current.set(id, { ...restored, text: parsed.text, selections: parsed.selections });
       if (currentSession.current === id) {
         requestAnimationFrame(() => {
           if (currentSession.current !== id) return;
@@ -878,7 +1170,22 @@ export function ChatComposer({
     }
   };
   return (
-    <div className={`composer-stack${header ? " with-header" : ""}`}>
+    <form
+      onSubmit={(event) => event.preventDefault()}
+      className={`composer-stack${header ? " with-header" : ""}`}
+      onKeyDown={(event) => {
+        if (
+          onCancel &&
+          !submitting &&
+          event.key === "Escape" &&
+          !event.defaultPrevented &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+    >
       {header}
       {queue && queueActions && (
         <ConversationQueuePanel
@@ -890,6 +1197,11 @@ export function ChatComposer({
       )}
       <div className="composer" ref={root}>
         <div className="input-context">
+          <SelectionReferenceChip
+            references={value.selections ?? []}
+            onChange={(selections) => updateValue(sessionId, (old) => ({ ...old, selections }))}
+          />
+
           {context &&
             value.attachments.map((image) => (
               <ImagePreview
@@ -1245,6 +1557,26 @@ export function ChatComposer({
           </Menu.Root>
           <div className="composer-actions">
             {toolbar}
+            {onCancel && (
+              <MessageAction label="取消" shortcut="Esc" disabled={submitting} onClick={onCancel}>
+                <X size={16} />
+              </MessageAction>
+            )}
+            {resetFiles && (
+              <ActionHint label="与文件一起重置" description={resetFiles.description} side="top">
+                <span className="edit-rewind-tooltip">
+                  <button
+                    type="button"
+                    className="edit-rewind"
+                    aria-label="对话 + 文件重置"
+                    disabled={submitting || resetFiles.disabled || !hasDraft || value.pending > 0}
+                    onClick={() => void submit(undefined, "rewind")}
+                  >
+                    <FileClock size={16} />
+                  </button>
+                </span>
+              </ActionHint>
+            )}
             {busy && !hasDraft ? (
               <button className="send stop" aria-label="停止" title="停止生成" onClick={onStop}>
                 <Square size={16} fill="currentColor" />
@@ -1258,7 +1590,10 @@ export function ChatComposer({
                   submitting ||
                   editing ||
                   value.pending > 0 ||
-                  (!draft.trim() && !value.attachments.length && !value.fileReferences.length)
+                  (!draft.trim() &&
+                    !value.attachments.length &&
+                    !value.fileReferences.length &&
+                    !value.selections?.length)
                 }
                 onClick={() => void submit()}
               >
@@ -1289,6 +1624,6 @@ export function ChatComposer({
           </div>
         </dialog>
       )}
-    </div>
+    </form>
   );
 }

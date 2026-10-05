@@ -1,9 +1,11 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ImageAttachment } from "zpi-coding-agent";
+import type { ConversationSelection } from "../conversation-selections.ts";
 import type { FileLocation } from "../link-target.ts";
 import { EditorHistory } from "./editor-history.ts";
 export interface ComposerDraft {
+  selections?: ConversationSelection[];
   selection?: [number, number];
   warnings?: string[];
   text: string;
@@ -46,7 +48,8 @@ export class ComposerDraftStore extends Map<string, ComposerDraft> {
     if (
       !previous ||
       previous.text !== draft.text ||
-      JSON.stringify(previous.fileReferences) !== JSON.stringify(draft.fileReferences)
+      JSON.stringify(previous.fileReferences) !== JSON.stringify(draft.fileReferences) ||
+      JSON.stringify(previous.selections) !== JSON.stringify(draft.selections)
     )
       this.contentRevisions.set(id, this.revision(id) + 1);
     super.set(id, draft);

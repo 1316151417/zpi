@@ -1,12 +1,12 @@
 import { File } from "@pierre/diffs/react";
 import { Copy, RefreshCw, WrapText } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileIcon, Markdown, useAppearance } from "zpi-ui";
+import { ConversationSelectionMenu, FileIcon, Markdown, useAppearance } from "zpi-ui";
 import type { FileLocation, WebOpenOptions } from "zpi-ui/links";
 import type { FilePreview } from "../shared/bridge.ts";
 import { readMarkdownImage } from "./markdown-image.ts";
 import { openFile, openWebLink, paneTask } from "./pane-store.ts";
-import { unwrap } from "./store.ts";
+import { addConversationSelection, unwrap, useStore } from "./store.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
 const OfficePreview = lazy(() => import("./OfficePreview.tsx"));
@@ -38,6 +38,12 @@ function MediaPreview({ preview }: { preview: Extract<FilePreview, { bytes: Uint
 export function FilePane({ preview, sessionId }: { preview: FilePreview; sessionId: string }) {
   const { theme } = useAppearance();
   const positioned = useRef<FilePreview | undefined>(undefined);
+  const selectionRoot = useRef<HTMLDivElement>(null);
+  const currentTask = useStore((state) => state.selected);
+  const addSelection = useCallback(
+    (reference: import("zpi-ui").ConversationSelection) => addConversationSelection(reference, currentTask),
+    [currentTask],
+  );
   const [wrap, setWrap] = useState(false);
   const [renderMarkdown, setRenderMarkdown] = useState(!preview.location?.line);
   useEffect(() => {
@@ -99,6 +105,11 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
           <RefreshCw size={15} />
         </button>
       </div>
+      <ConversationSelectionMenu
+        rootRef={selectionRoot}
+        scopeKey={`${currentTask}:${preview.path}`}
+        onAdd={currentTask ? addSelection : undefined}
+      />
       {error && (
         <p role="alert" className="run-error">
           {error}
@@ -106,13 +117,20 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
       )}
       {preview.kind === "text" ? (
         <div
+          ref={selectionRoot}
           className="file-text-preview"
           data-line={preview.location?.line}
           data-column={preview.location?.column}
         >
           {preview.truncated && <p className="run-notice">文件较大，显示前 2 MB。</p>}
           {markdown && renderMarkdown ? (
-            <div className="answer file-markdown-preview">
+            <div
+              className="answer file-markdown-preview"
+              data-conversation-selectable="markdown"
+              data-selection-key={preview.path}
+              data-selection-path={preview.path}
+              data-selection-title={preview.path}
+            >
               <Markdown
                 workspace={workspace}
                 onImage={readImage}

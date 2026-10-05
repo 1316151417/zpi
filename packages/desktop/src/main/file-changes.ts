@@ -1,6 +1,8 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { createTwoFilesPatch } from "diff";
-import type { FileChange } from "zpi-coding-agent";
+import { isJsonObject } from "zpi-ai";
+import type { FileChange, SessionEntry } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import { isPathInside } from "./path-bounds.ts";
 
@@ -9,6 +11,46 @@ async function snapshot(path: string, root: string, maxBytes = 4 * 1024 * 1024):
   if (!isPathInside(directory, actual) || (await stat(actual)).size > maxBytes)
     throw new Error("invalid_input: 文件快照不属于此任务或超限");
   return readFile(actual, "utf8");
+}
+/** Forked history owns its snapshots, so deleting its parent cannot break file previews. */
+export async function copyFileChangeSnapshots(
+  entries: SessionEntry[],
+  sourceRoot: string,
+  targetRoot: string,
+): Promise<SessionEntry[]> {
+  const copied = structuredClone(entries);
+  const paths = new Map<string, string>();
+  for (const entry of copied) {
+    if (
+      entry.type !== "message" ||
+      entry.message.role !== "toolResult" ||
+      !isJsonObject(entry.message.details) ||
+      !isJsonObject(entry.message.details.fileChange)
+    )
+      continue;
+    const change = entry.message.details.fileChange;
+    for (const key of ["beforeFile", "afterFile", "patchFile"] as const) {
+      const path = change[key];
+      if (typeof path !== "string") continue;
+      let target = paths.get(path);
+      if (!target) {
+        try {
+          const content = await snapshot(path, sourceRoot, key === "patchFile" ? 8 * 1024 * 1024 : undefined);
+          await mkdir(targetRoot, { recursive: true });
+          target = join(targetRoot, basename(path));
+          await writeFile(target, content, { mode: 0o600 });
+          paths.set(path, target);
+        } catch (error) {
+          // A missing historical artifact must not make an otherwise valid conversation unforkable.
+          delete change[key];
+          change.reason = `文件快照不可用：${String(error)}`;
+          continue;
+        }
+      }
+      change[key] = target;
+    }
+  }
+  return copied;
 }
 /** Same semantics as ZCode taskChangeSummary: original before -> final after per file. */
 export async function fileChanges(changes: FileChange[], root: string, area: string): Promise<DiffItem[]> {

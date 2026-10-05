@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { ThinkingLevel } from "zpi-agent";
@@ -138,6 +147,39 @@ export class SessionManager {
   }
   getLastEntry(): SessionEntry | undefined {
     return structuredClone(this.entries.at(-1));
+  }
+  /** Atomically replace a transcript after a stable fork or conversation rewind. */
+  replaceEntries(source: SessionEntry[]): void {
+    if (this.storageError) throw this.storageError;
+    const ids = new Map(source.map((entry) => [entry.id, randomUUID()]));
+    if (ids.size !== source.length) throw new Error("Duplicate session entry IDs");
+    let parentId: string | null = null;
+    const entries = source.map((entry) => {
+      const id = ids.get(entry.id);
+      if (!id) throw new Error("Invalid session entry identity");
+      const next = { ...structuredClone(entry), id, parentId };
+      if (next.type === "compaction") {
+        const boundary = ids.get(next.firstKeptEntryId);
+        if (!boundary) throw new Error("Invalid compaction boundary");
+        next.firstKeptEntryId = boundary;
+      }
+      if (!isSessionEntry(next) || Buffer.byteLength(JSON.stringify(next)) > maxSessionEntryBytes)
+        throw new Error("Invalid session entry");
+      parentId = next.id;
+      return next;
+    });
+    if (this.file) {
+      const temporary = `${this.file}.${randomUUID()}.tmp`;
+      try {
+        writeFileSync(temporary, `${[this.header, ...entries].map((e) => JSON.stringify(e)).join("\n")}\n`, {
+          mode: 0o600,
+        });
+        renameSync(temporary, this.file);
+      } finally {
+        rmSync(temporary, { force: true });
+      }
+    }
+    this.entries = entries;
   }
   buildSessionContext(): SessionContext {
     const context: SessionContext = {

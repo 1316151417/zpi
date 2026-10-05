@@ -19,6 +19,7 @@ export function sessionViewBytes(view: SessionView): number {
 export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope): SessionView {
   if (envelope.sessionId !== view.sessionId || envelope.seq <= view.seq) return view;
   const { event, runId, seq } = envelope;
+  if (event.type === "history_reset") return { ...event.view, seq };
   if (event.type === "session_changed") return { ...view, seq, title: event.title };
   if (event.type === "controls_changed") return { ...view, seq, controls: event.controls };
   if (event.type === "queue_changed") return { ...view, seq, queue: event.queue };
@@ -107,7 +108,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         type: event.kind,
         text: "",
         streaming: true,
-        ...(event.kind === "thinking" && event.timestamp !== undefined ? { startedAt: event.timestamp } : {}),
+        ...(event.timestamp !== undefined ? { startedAt: event.timestamp } : {}),
       });
       if (event.kind === "text") run.finalAnswerBlockIds.push(id);
     }
@@ -187,7 +188,9 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
             type: c.type,
             ...(previous?.type === "thinking" && previous.startedAt !== undefined
               ? { startedAt: previous.startedAt, endedAt: previous.endedAt ?? event.timestamp }
-              : {}),
+              : c.type === "text"
+                ? { startedAt: m.timestamp }
+                : {}),
             text: c.type === "text" ? c.text : c.thinking,
             streaming: false,
           });

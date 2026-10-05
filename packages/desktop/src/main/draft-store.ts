@@ -1,7 +1,9 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { type ConversationSelection, validSelections } from "zpi-ui";
 import { atomicJson } from "./storage.ts";
 export interface TextDraft {
+  selections?: ConversationSelection[];
   text: string;
   fileReferences: string[];
   selection: [number, number];
@@ -32,6 +34,7 @@ export class DraftStore {
     if (
       !value ||
       typeof value.text !== "string" ||
+      (value.selections !== undefined && !validSelections(value.selections)) ||
       value.text.length > 100000 ||
       !Array.isArray(value.fileReferences) ||
       value.fileReferences.length > 30 ||

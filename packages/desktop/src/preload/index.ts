@@ -70,6 +70,8 @@ const bridge: DesktopBridge = {
   sendQueuedNow: (id, itemId) => call("sendQueuedNow", id, itemId),
   moveQueuedInput: (id, itemId, beforeId) => call("moveQueuedInput", id, itemId, beforeId),
   resumeInputQueue: (id) => call("resumeInputQueue", id),
+  forkSession: (id, runId) => call("forkSession", id, runId),
+  editUserMessage: (id, runId, input) => call("editUserMessage", id, runId, input),
   abortRun: (input) => call("abortRun", input),
   getSettings: () => call("getSettings"),
   onSettings(listener) {
