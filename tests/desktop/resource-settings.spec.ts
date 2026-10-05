@@ -100,6 +100,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "工具",
       "技能",
       "模型",
+      "已归档任务",
     ]);
     await expect(page.locator(".settings-tabs button").first()).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();

@@ -38,6 +38,7 @@ import { RightPane } from "./RightPane.tsx";
 import { SessionToolbar } from "./SessionToolbar.tsx";
 import { SettingsPage } from "./SettingsPage.tsx";
 import {
+  archiveSession,
   drafts,
   initialize,
   loadEarlier,
@@ -50,6 +51,8 @@ import {
   useStore,
   withdrawQueuedInput,
 } from "./store.ts";
+import { TaskMenu } from "./TaskMenu.tsx";
+import { useStopOnEscape } from "./use-stop-on-escape.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { WindowChrome } from "./WindowChrome.tsx";
 
@@ -77,6 +80,7 @@ function ActionModal({ action, onClose }: { action: ActionDialog; onClose: () =>
   const [value, setValue] = useState(action.value ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const confirming = useRef(false);
   return (
     <Dialog.Root
       open
@@ -95,34 +99,44 @@ function ActionModal({ action, onClose }: { action: ActionDialog; onClose: () =>
             if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
           }}
         >
-          <Dialog.Title asChild>
-            <h2>{action.title}</h2>
-          </Dialog.Title>
-          {action.destructive ? (
-            <p>此操作只影响 zpi 中的记录。项目源文件不会被删除。</p>
-          ) : (
-            <label>
-              名称
-              <input aria-label="名称" value={value} onChange={(e) => setValue(e.target.value)} />
-            </label>
-          )}
-          {error && <div className="run-error">{error}</div>}
-          <div className="modal-actions">
-            <button onClick={onClose}>取消</button>
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                void action.onConfirm(value).then(onClose, (e) => {
-                  setError(String(e));
-                  setBusy(false);
-                });
-              }}
-            >
-              确认
-            </button>
-          </div>
+          <form
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229))
+                event.preventDefault();
+            }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (confirming.current) return;
+              confirming.current = true;
+              setBusy(true);
+              void action.onConfirm(value).then(onClose, (e) => {
+                setError(String(e));
+                confirming.current = false;
+                setBusy(false);
+              });
+            }}
+          >
+            <Dialog.Title asChild>
+              <h2>{action.title}</h2>
+            </Dialog.Title>
+            {action.destructive ? (
+              <p>此操作只影响 zpi 中的记录。项目源文件不会被删除。</p>
+            ) : (
+              <label>
+                名称
+                <input aria-label="名称" value={value} onChange={(e) => setValue(e.target.value)} />
+              </label>
+            )}
+            {error && <div className="run-error">{error}</div>}
+            <div className="modal-actions">
+              <button type="button" onClick={onClose}>
+                取消
+              </button>
+              <button type="submit" className="primary" disabled={busy}>
+                确认
+              </button>
+            </div>
+          </form>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -214,6 +228,11 @@ export function App() {
     ).values(),
   ];
   const activeRun = view?.runs.find((r) => r.status === "running");
+  const stop = useCallback(() => {
+    if (selected && activeRun)
+      void window.zpi.abortRun({ sessionId: selected, runId: activeRun.runId }).then(unwrap).catch(report);
+  }, [selected, activeRun?.runId]);
+  useStopOnEscape(activeRun ? stop : undefined);
   const copyCode = useCallback((text: string) => window.zpi.copyText(text).then(unwrap), []);
   const openFile = useCallback(
     (path: string, location?: FileLocation) => {
@@ -304,18 +323,9 @@ export function App() {
       <button
         className="row-action task-archive"
         aria-label={`归档任务 ${r.title}`}
-        title="归档"
-        onClick={() =>
-          task(async () => {
-            unwrap(await window.zpi.archiveSession(r.id));
-            await refresh();
-            if (selected === r.id && r.status !== "running") {
-              const next = [...useStore.getState().sessions.values()][0];
-              if (next) await selectSession(next.id);
-              else useStore.setState({ selected: undefined });
-            }
-          })
-        }
+        title={r.status === "running" ? "请先停止运行" : "归档"}
+        disabled={r.status === "running" || Boolean(r.diagnostic)}
+        onClick={() => task(() => archiveSession(r.id))}
       >
         <Archive size={14} />
       </button>
@@ -539,6 +549,21 @@ export function App() {
             <Folder size={16} />
             <span>{record?.title ?? view?.title ?? "新对话"}</span>
           </div>
+          {record && !record.draft && !record.diagnostic && (
+            <TaskMenu
+              record={record}
+              onRename={() =>
+                setAction({
+                  title: "重命名任务",
+                  value: record.title,
+                  onConfirm: async (name) => {
+                    unwrap(await window.zpi.renameSession(record.id, name));
+                    await refresh();
+                  },
+                })
+              }
+            />
+          )}
           <div className="topbar-drag-space" aria-hidden="true" />
         </header>
         {state.error && (
@@ -632,20 +657,13 @@ export function App() {
                     throw e;
                   }
                 }}
-                onStop={() => {
-                  if (activeRun)
-                    task(async () =>
-                      unwrap(
-                        await window.zpi.abortRun({ sessionId: view.sessionId, runId: activeRun.runId }),
-                      ),
-                    );
-                }}
+                onStop={stop}
               />
             </div>
           </>
         ) : (
           <div className="empty-chat" role="status">
-            正在准备任务…
+            {state.ready ? "新建或选择一个任务开始对话" : "正在准备任务…"}
           </div>
         )}
       </main>

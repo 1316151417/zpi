@@ -166,6 +166,9 @@ async function launch(): Promise<void> {
       const count: Record<(typeof methods)[number], number> = {
         activateSession: 1,
         archiveSession: 1,
+        listArchivedSessions: 0,
+        restoreSession: 1,
+        openSessionDirectory: 1,
         createTerminal: 1,
         terminalInput: 2,
         resizeTerminal: 3,
@@ -230,8 +233,19 @@ async function launch(): Promise<void> {
       let value: unknown;
       switch (method) {
         case "archiveSession":
-          host.archiveSession(string(0));
+          await host.archiveSession(string(0));
           break;
+        case "listArchivedSessions":
+          value = host.listArchivedSessions();
+          break;
+        case "restoreSession":
+          value = host.restoreSession(string(0));
+          break;
+        case "openSessionDirectory": {
+          const failure = await shell.openPath(host.workspaceInfo(string(0)).cwd);
+          if (failure) throw new Error(`storage: ${failure}`);
+          break;
+        }
         case "createTerminal":
           value = await panes.createTerminal(host.workspaceInfo(string(0)).cwd);
           break;

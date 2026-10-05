@@ -165,6 +165,9 @@ export interface PaneBounds {
 export interface DesktopBridge {
   readonly platform: string;
   archiveSession(id: string): Promise<Result<void>>;
+  listArchivedSessions(): Promise<Result<(SessionRecord & { projectName: string })[]>>;
+  restoreSession(id: string): Promise<Result<SessionRecord>>;
+  openSessionDirectory(id: string): Promise<Result<void>>;
   createTerminal(sessionId: string): Promise<Result<{ id: string; shell: string }>>;
   terminalInput(id: string, data: string): Promise<Result<void>>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<Result<void>>;
@@ -249,6 +252,9 @@ export interface DesktopBridge {
 }
 export const methods = [
   "archiveSession",
+  "listArchivedSessions",
+  "restoreSession",
+  "openSessionDirectory",
   "createTerminal",
   "terminalInput",
   "resizeTerminal",
