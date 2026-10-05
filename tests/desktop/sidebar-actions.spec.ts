@@ -75,6 +75,8 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
     await editor.press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(page.locator(".topbar-title")).toHaveText("项目任务");
+    await expect(page.locator(".projects .session-name")).toHaveText("项目任务");
+    await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
     await projectRow.hover();
     await create.click();
     await expect(page.locator(".topbar-title")).toHaveText("新任务");
@@ -95,7 +97,11 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
     await taskHeader.getByRole("button", { name: "收起任务列表", exact: true }).click();
     await expect(page.locator(".recent-sessions")).toBeHidden();
     await taskHeader.getByRole("button", { name: "展开任务列表", exact: true }).click();
-    await expect(page.locator(".recent-sessions")).toBeVisible();
+    await expect(taskHeader.getByRole("button", { name: "收起任务列表", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await expect(page.locator(".recent-sessions")).not.toHaveAttribute("hidden");
 
     await projectRow.hover();
     await more.click();
@@ -127,6 +133,70 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
     await expect(
       page.locator(".projects").getByRole("button", { name: "项目任务", exact: true }),
     ).toBeVisible();
+    await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("tasks appear in one section and return to their original group after unpinning and restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-groups-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    let page = await app.firstWindow();
+    const expectGroup = async (title: string, group: string) => {
+      await expect(page.locator(".sidebar").getByRole("button", { name: title, exact: true })).toHaveCount(1);
+      for (const section of [".projects", ".recent-sessions", ".pinned-tasks"]) {
+        await expect(page.locator(section).getByRole("button", { name: title, exact: true })).toHaveCount(
+          section === group ? 1 : 0,
+        );
+      }
+    };
+    await page.getByLabel("添加项目", { exact: true }).click();
+    await page.getByLabel("消息", { exact: true }).fill("项目任务");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    const taskHeader = page.locator(".sidebar-heading").filter({ hasText: /^任务$/ });
+    await taskHeader.getByLabel("新建任务", { exact: true }).click();
+    await page.getByLabel("消息", { exact: true }).fill("独立任务");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await expectGroup("项目任务", ".projects");
+    await expectGroup("独立任务", ".recent-sessions");
+
+    await page.locator(".projects .session-row").hover();
+    await page.getByLabel("置顶任务 项目任务", { exact: true }).click();
+    await expectGroup("项目任务", ".pinned-tasks");
+    await page.getByLabel("任务菜单", { exact: true }).click();
+    await page.getByRole("menuitem", { name: "置顶", exact: true }).click();
+    await expectGroup("独立任务", ".pinned-tasks");
+    await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-exclusive-pinned.png" });
+    await app.close();
+    app = await launchDesktop({ dir, project, url: server.url });
+    page = await app.firstWindow();
+    await expectGroup("项目任务", ".pinned-tasks");
+    await expectGroup("独立任务", ".pinned-tasks");
+
+    await page.locator(".pinned-tasks .session-row").filter({ hasText: "项目任务" }).hover();
+    await page.getByLabel("取消置顶任务 项目任务", { exact: true }).click();
+    await expectGroup("项目任务", ".projects");
+    await page.getByLabel("任务菜单", { exact: true }).click();
+    await page.getByRole("menuitem", { name: "取消置顶", exact: true }).click();
+    await expectGroup("独立任务", ".recent-sessions");
+    await expect(page.locator(".pinned-tasks")).toHaveCount(0);
+    await page.reload();
+    await expectGroup("项目任务", ".projects");
+    await expectGroup("独立任务", ".recent-sessions");
+    await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-exclusive-groups.png" });
   } finally {
     await app?.close();
     await server.close();
