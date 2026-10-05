@@ -542,13 +542,13 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           <div className="provider-template-grid">
                             <button onClick={() => select()}>
                               <Package size={24} />
-                              <span>自定义提供商</span>
+                              <span className="provider-template-label">自定义提供商</span>
                               <ChevronRight size={16} />
                             </button>
                             {providerPresets.map((item) => (
                               <button key={item.id} onClick={() => selectPreset(item.id)}>
                                 <ProviderLogo preset={item.id} size={32} />
-                                <span>{item.name}</span>
+                                <span className="provider-template-label">{item.name}</span>
                                 <ChevronRight size={16} />
                               </button>
                             ))}

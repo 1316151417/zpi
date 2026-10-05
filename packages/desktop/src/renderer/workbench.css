@@ -1817,6 +1817,15 @@
   object-fit: contain;
   flex-shrink: 0;
 }
+.provider-logo-chatgpt {
+  display: inline-flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+.provider-logo-chatgpt > img {
+  /* The 2048px asset has a 1648px visible body, surrounded by transparent padding. */
+  transform: scale(1.242718);
+}
 .provider-template-picker > header {
   display: flex;
   align-items: center;
@@ -1846,7 +1855,7 @@
   border-radius: var(--radius-panel);
   text-align: left;
 }
-.provider-template-grid > button > span {
+.provider-template-label {
   flex: 1;
 }
 .provider-template-grid > button > svg:last-child {

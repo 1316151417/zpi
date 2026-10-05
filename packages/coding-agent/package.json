@@ -1,6 +1,6 @@
 {
   "name": "zpi-coding-agent",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "type": "module",
   "exports": {
@@ -15,7 +15,7 @@
     "sharp": "0.35.5",
     "typebox": "1.3.27",
     "yaml": "2.9.1",
-    "zpi-agent": "0.1.8",
-    "zpi-ai": "0.1.8"
+    "zpi-agent": "0.1.9",
+    "zpi-ai": "0.1.9"
   }
 }

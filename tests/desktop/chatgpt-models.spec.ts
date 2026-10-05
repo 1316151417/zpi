@@ -61,10 +61,17 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "模型", exact: true }).click();
-    await page
+    const chatgptTemplate = page
       .locator(".provider-template-grid")
-      .getByRole("button", { name: "OpenAI（ChatGPT）", exact: true })
-      .click();
+      .getByRole("button", { name: "OpenAI（ChatGPT）", exact: true });
+    const icon = await chatgptTemplate.locator(".provider-logo-chatgpt").boundingBox();
+    const label = await chatgptTemplate.locator(".provider-template-label").boundingBox();
+    expect(icon).not.toBeNull();
+    expect(label).not.toBeNull();
+    expect(icon?.width).toBe(32);
+    expect((label?.x ?? 0) - (icon?.x ?? 0) - (icon?.width ?? 0)).toBeCloseTo(12);
+    await page.screenshot({ path: "test-results/chatgpt-provider-picker-light.png" });
+    await chatgptTemplate.click();
     await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("Base URL", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("API 格式", { exact: true })).toHaveValue(

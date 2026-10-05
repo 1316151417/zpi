@@ -1,3 +1,7 @@
+# ChatGPT provider icon
+
+The ChatGPT provider image in packages/desktop/src/renderer/assets/providers/chatgpt.png is the user-supplied OpenAI ChatGPT application icon, provided through icon-chatgpt.png. The ChatGPT name and icon belong to OpenAI; the asset is used to identify the provider.
+
 # Pi implementation
 
 The system prompt and adapted tool modules in packages/coding-agent/src/core/tools/pi originate from Pi commit c20cb09772bf4e2590a316cb54514cef76df4293.
