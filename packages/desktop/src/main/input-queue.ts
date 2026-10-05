@@ -205,6 +205,15 @@ export class SessionInputQueue {
     await this.operations.get(id)?.catch(() => {});
     this.states.delete(id);
   }
+  archive(id: string, persist: () => void): Promise<void> {
+    return this.serial(id, async () => {
+      if (this.runtime.running(id)) throw new Error("busy: 请先停止运行");
+      const items = this.get(id).items;
+      this.commit(id, { items: [], autoDrain: false });
+      persist();
+      for (const item of items) await this.runtime.discard(id, item).catch(() => {});
+    });
+  }
   async close(): Promise<void> {
     this.closing = true;
     await Promise.allSettled(this.operations.values());

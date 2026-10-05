@@ -1,5 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
+  Archive,
   ArrowLeft,
   Braces,
   ChevronRight,
@@ -22,6 +23,7 @@ import { useEffect, useRef, useState } from "react";
 import { getProviderPreset, type ProviderPresetId, presetModels, providerPresets } from "zpi-ai";
 import { SortableList } from "zpi-ui";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
+import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
@@ -34,6 +36,7 @@ const sections = [
   ["tools", "工具", Wrench],
   ["skills", "技能", Puzzle],
   ["models", "模型", Braces],
+  ["archived", "已归档任务", Archive],
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
 
@@ -310,9 +313,13 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         <div className="settings-titlebar" aria-hidden="true" />
         <div className="settings-scroll">
           <div className={`settings-content ${tab === "models" ? "model-settings-content" : ""}`}>
-            <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
+            {tab !== "archived" && (
+              <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
+            )}
             <div className="settings-page">
-              {tab === "prompt" || tab === "tools" || tab === "skills" ? (
+              {tab === "archived" ? (
+                <ArchivedTasks />
+              ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (
                 <ResourceSettings page={tab} />
               ) : tab === "interface" ? (
                 <div className="interface-settings">

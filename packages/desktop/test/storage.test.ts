@@ -48,6 +48,34 @@ it("pixel font sizes persist and invalid updates leave settings intact", async (
   }
 });
 
+it("restores numeric font sizes without changing other settings or rewriting stored data", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-font-settings-"));
+  const encryption = {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.alloc(0),
+    decryptString: () => "",
+  };
+  try {
+    const store = new SettingsStore(dir, encryption);
+    store.updatePreferences({ theme: "dark", sidebarWidth: 200, collapsedProjectIds: ["my-project"] });
+    const file = join(dir, "settings.json");
+    const data = JSON.parse(await readFile(file, "utf8"));
+    for (const pixels of [12, 13, 14, 15, 16, 17, 20]) {
+      const raw = JSON.stringify({ ...data, interface: { ...data.interface, fontSize: pixels } });
+      await writeFile(file, raw);
+      const restored = new SettingsStore(dir, encryption);
+      expect(restored.get().interface).toEqual({ ...data.interface, fontSize: pixels });
+      expect(await readFile(file, "utf8")).toBe(raw);
+    }
+    for (const fontSize of [11, 21, 14.5, "14"]) {
+      await writeFile(file, JSON.stringify({ ...data, interface: { ...data.interface, fontSize } }));
+      expect(() => new SettingsStore(dir, encryption)).toThrow("无效界面设置");
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it("credential restore is bound to the endpoint and unavailable encryption removes stale credentials", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-storage-"));
   let available = true;

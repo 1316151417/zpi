@@ -109,6 +109,13 @@ export interface WorkspaceInfo {
   projectName: string;
   projectId: string | null;
 }
+export interface PromptPreview {
+  cwd: string;
+  projectName: string;
+  basePrompt: string;
+  systemRules: string;
+  prompt: string;
+}
 export interface DiffItem {
   id: string;
   path: string;
@@ -165,6 +172,9 @@ export interface PaneBounds {
 export interface DesktopBridge {
   readonly platform: string;
   archiveSession(id: string): Promise<Result<void>>;
+  listArchivedSessions(): Promise<Result<(SessionRecord & { projectName: string })[]>>;
+  restoreSession(id: string): Promise<Result<SessionRecord>>;
+  openSessionDirectory(id: string): Promise<Result<void>>;
   createTerminal(sessionId: string): Promise<Result<{ id: string; shell: string }>>;
   terminalInput(id: string, data: string): Promise<Result<void>>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<Result<void>>;
@@ -198,7 +208,7 @@ export interface DesktopBridge {
   removeAttachment(sessionId: string, id: string): Promise<Result<void>>;
   getChanges(sessionId: string, runId: string | null): Promise<Result<DiffItem[]>>;
   readPatch(sessionId: string, runId: string | null, id: string): Promise<Result<string>>;
-  previewPrompt(): Promise<Result<{ prompt: string; cwd: string; projectName: string }>>;
+  previewPrompt(): Promise<Result<PromptPreview>>;
   listTools(): Promise<Result<ToolInfo[]>>;
   getSkillSettings(): Promise<Result<SkillSettings>>;
   readSkill(path: string): Promise<Result<string>>;
@@ -248,6 +258,9 @@ export interface DesktopBridge {
 }
 export const methods = [
   "archiveSession",
+  "listArchivedSessions",
+  "restoreSession",
+  "openSessionDirectory",
   "createTerminal",
   "terminalInput",
   "resizeTerminal",

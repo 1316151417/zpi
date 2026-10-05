@@ -778,6 +778,20 @@ export function ChatComposer({
     promptHistory.current = readPromptHistory(workspace, sentMessages);
     recalled.current = null;
   }, [sessionId, workspace]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (
+        document.querySelector(
+          'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
+        )
+      )
+        return;
+      const positions = drafts.current.get(sessionId)?.selection;
+      textarea.current?.focus();
+      if (positions) textarea.current?.setSelectionRange(...positions);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sessionId]);
   useEffect(
     () =>
       drafts.current.subscribe((id) => {

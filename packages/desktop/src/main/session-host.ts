@@ -27,6 +27,7 @@ import type {
   CombinedSelection,
   DiffItem,
   ProjectRecord,
+  PromptPreview,
   RunInput,
   SessionControls,
   SessionRecord,
@@ -34,6 +35,7 @@ import type {
 } from "../shared/bridge.ts";
 import { availablePresets, reasoningPresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import { AttachmentStore } from "./attachments.ts";
+import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { fileChanges } from "./file-changes.ts";
 import { HistoryIndex } from "./history-index.ts";
@@ -109,7 +111,7 @@ export class SessionHost {
     this.attachments = new AttachmentStore(join(dir, "agent", "attachments"));
     this.inputQueue = new SessionInputQueue({
       check: (id) => {
-        this.record(id);
+        if (this.record(id).archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
         if (this.closing || this.deleting.has(id)) throw new Error("busy: 会话正在关闭或删除");
         if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
       },
@@ -416,6 +418,21 @@ export class SessionHost {
         }),
     );
   }
+  listArchivedSessions() {
+    return structuredClone(
+      [...this.records.values()]
+        .filter((r) => r.archivedAt != null || r.diagnostic || this.blocked.has(r.id))
+        .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
+        .map((r) => ({
+          ...r,
+          diagnostic: r.diagnostic ?? this.blocked.get(r.id),
+          projectName:
+            r.projectId === null
+              ? "无项目"
+              : (this.projects.find((p) => p.id === r.projectId)?.name ?? "原项目"),
+        })),
+    );
+  }
   createSession(projectId: string | null): SessionRecord {
     if (this.closing) throw new Error("busy: 应用正在关闭");
     const cwd = projectId === null ? this.defaultWorkspace : this.project(projectId).path;
@@ -468,7 +485,7 @@ export class SessionHost {
   }
   setSessionPinned(id: string, pinned: boolean): SessionRecord {
     if (typeof pinned !== "boolean") throw new Error("invalid_input: 无效置顶操作");
-    if (this.closing || this.blocked.has(id)) throw new Error("busy: 会话不可修改");
+    if (this.closing || this.deleting.has(id) || this.blocked.has(id)) throw new Error("busy: 会话不可修改");
     const record = this.record(id);
     if ((record.pinnedAt != null) !== pinned) {
       if (
@@ -495,11 +512,36 @@ export class SessionHost {
     }
     return structuredClone(record);
   }
-  archiveSession(id: string): void {
+  async archiveSession(id: string): Promise<void> {
     const record = this.record(id);
-    if (this.closing || this.blocked.has(id)) throw new Error("busy: 任务不可修改");
+    if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
+    await this.inputQueue.archive(id, () => {
+      const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
+      const archivedAt = Date.now();
+      this.meta(id, {
+        type: "custom",
+        customType: "zpi.session_meta",
+        data: {
+          ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
+          projectId: record.projectId,
+          pinnedAt: null,
+          archivedAt,
+        },
+      });
+      Object.assign(record, { archivedAt, pinnedAt: null });
+      if (this.visibleSessionId === id) this.visibleSessionId = undefined;
+    });
+  }
+  restoreSession(id: string): SessionRecord {
+    const record = this.record(id);
+    if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
+    if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
+    if (record.diagnostic || this.blocked.has(id)) throw new Error("storage: 无法读取的任务只能删除");
     const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
-    const archivedAt = Date.now();
+    if (record.projectId !== null) {
+      const project = this.project(record.projectId);
+      if (project.hidden) this.saveProject({ ...project, hidden: false });
+    }
     this.meta(id, {
       type: "custom",
       customType: "zpi.session_meta",
@@ -507,10 +549,11 @@ export class SessionHost {
         ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
         projectId: record.projectId,
         pinnedAt: null,
-        archivedAt,
+        archivedAt: null,
       },
     });
-    Object.assign(record, { archivedAt, pinnedAt: null });
+    Object.assign(record, { archivedAt: null, pinnedAt: null });
+    return structuredClone(record);
   }
   private manager(id: string): SessionManager {
     let m = this.managers.get(id);
@@ -687,19 +730,21 @@ export class SessionHost {
     this.record(id);
     return this.attachments.remove(id, attachment);
   }
-  async previewPrompt() {
+  async previewPrompt(): Promise<PromptPreview> {
     const info = this.workspaceInfo(null);
     const loader = this.resourceLoader(null);
     await loader.reload();
+    const options = {
+      cwd: info.cwd,
+      projectName: "ZPI",
+      template: this.settings.getTemplate(),
+      tools: createCodingTools(info.cwd),
+    };
     return {
       ...info,
-      prompt: buildSystemPrompt({
-        cwd: info.cwd,
-        projectName: "ZPI",
-        template: citationTemplate(this.settings.getTemplate()),
-        loader,
-        tools: createCodingTools(info.cwd),
-      }),
+      basePrompt: buildSystemPrompt({ ...options, loader }),
+      systemRules: desktopSystemRules,
+      prompt: buildSystemPrompt({ ...options, loader: withDesktopSystemRules(loader) }),
     };
   }
   listTools() {
@@ -820,28 +865,30 @@ export class SessionHost {
 
   renameSession(id: string, name: string): SessionRecord {
     const record = this.record(id);
+    if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
+    if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
     const title = this.name(name);
-    const session = this.sessions.get(id);
-    if (session) session.setSessionName(title);
-    else this.meta(id, { type: "session_info", name: title });
+    this.meta(id, { type: "session_info", name: title });
     this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "manual" } });
-    const next = { ...record, title };
-    this.records.set(id, next);
+    record.title = title;
     const view = this.views.get(id);
     if (view) this.views.set(id, { ...view, title });
     this.emit(id, "title", { type: "session_changed", title });
-    return structuredClone(next);
+    return structuredClone(record);
   }
   async deleteSession(id: string): Promise<void> {
-    if (this.activeRuns.has(id) || this.deleting.has(id)) throw new Error("busy: 请先停止运行");
+    if (this.activeRuns.has(id) || this.updating.has(id) || this.deleting.has(id))
+      throw new Error("busy: 请先停止运行");
     const record = this.record(id);
     this.deleting.add(id);
     this.titleJobs.get(id)?.controller.abort();
     try {
       await this.inputQueue.delete(id);
       await this.attachments.deleteSession(id);
-      await rm(this.path(record), { force: true });
       await rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true });
+      await rm(`${this.path(record)}.index.json`, { force: true });
+      this.drafts.delete(id);
+      await rm(this.path(record), { force: true });
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
@@ -853,8 +900,6 @@ export class SessionHost {
       this.indexes.delete(id);
       this.cursors.delete(id);
       this.sequences.delete(id);
-      await rm(`${this.path(record)}.index.json`, { force: true });
-      this.drafts.delete(id);
       this.blocked.delete(id);
     } finally {
       this.deleting.delete(id);
@@ -905,6 +950,7 @@ export class SessionHost {
   async startRun(input: RunInput, queueItemId?: string): Promise<{ runId: string }> {
     const { sessionId: id, text } = input;
     const record = this.record(id);
+    if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 应用正在关闭或会话正在删除");
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 此会话正在运行或更新");
     if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
@@ -956,8 +1002,8 @@ export class SessionHost {
           await createAgentSession({
             cwd: this.cwd(record),
             agentDir: join(this.dir, "agent"),
-            resourceLoader: this.resourceLoader(id),
-            promptTemplate: () => citationTemplate(this.configuration(id).template),
+            resourceLoader: withDesktopSystemRules(this.resourceLoader(id)),
+            promptTemplate: () => this.configuration(id).template,
             projectName: () => this.workspaceInfo(id).projectName,
             modelRuntime: runtime,
             model,
@@ -1266,11 +1312,4 @@ export class SessionHost {
     await queueClose;
     for (const index of this.indexes.values()) index.flush();
   }
-}
-
-function citationTemplate(template: PromptTemplate): PromptTemplate {
-  return {
-    ...template,
-    rules: `${template.rules}\nTo cite a local file in your answer, use ::zcode-file-citation{path="path/to/file"}. Use only existing files or files you created. Paths are absolute or relative to the current working directory; append :line:column or #Lstart-Lend for a location. For a custom display label, use a Markdown link instead. Keep URLs and citation examples inside code as code.`,
-  };
 }

@@ -111,7 +111,7 @@ it("five pins are enforced globally, idempotently and persist through unpin/arch
   expect(f.host.setSessionPinned(tasks[0].id, true).pinnedAt).toBe(initial[0].pinnedAt);
   f.host.setSessionPinned(tasks[0].id, false);
   f.host.setSessionPinned(tasks[5].id, true);
-  f.host.archiveSession(tasks[1].id);
+  await f.host.archiveSession(tasks[1].id);
   f.host.setSessionPinned(tasks[6].id, true);
   expect(() => f.host.setSessionPinned(tasks[1].id, true)).toThrow();
   await f.host.close();

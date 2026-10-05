@@ -319,10 +319,20 @@ export async function newSession(
     openingDrafts.delete(key);
   }
 }
+export async function archiveSession(id: string): Promise<void> {
+  unwrap(await window.zpi.archiveSession(id));
+  await refresh();
+  if (useStore.getState().selected === id) {
+    localStorage.removeItem("zpi.selectedSession");
+    useStore.setState({ selected: undefined });
+    const next = [...useStore.getState().sessions.values()].find((r) => !r.diagnostic);
+    if (next) await selectSession(next.id);
+  }
+}
 export async function initialize(): Promise<void> {
   try {
     await refresh();
-    const records = [...useStore.getState().sessions.values()];
+    const records = [...useStore.getState().sessions.values()].filter((r) => !r.diagnostic);
     const saved = localStorage.getItem("zpi.selectedSession");
     const first = records.find((r) => r.id === saved) ?? records[0];
     if (first) await selectSession(first.id);

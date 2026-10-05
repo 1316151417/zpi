@@ -45,7 +45,7 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   expect((await f.host.getChanges(f.session.id, runId))[0].patch).toBe(entries[0].patch);
   expect(await f.host.readPatch(f.session.id, null, entries[0].id)).toBe(entries[0].patch);
   f.host.saveDraft(f.session.id, { text: "未发送草稿", fileReferences: [], selection: [3, 3], revision: 1 });
-  f.host.archiveSession(f.session.id);
+  await f.host.archiveSession(f.session.id);
   expect(f.host.listRecentSessions().some((record) => record.id === f.session.id)).toBe(false);
   await f.host.close();
   const reopened = new SessionHost(f.dir, f.settings, f.resources, f.workspace, undefined, []);

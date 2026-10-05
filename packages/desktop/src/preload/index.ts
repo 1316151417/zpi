@@ -6,6 +6,9 @@ const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:cal
 const bridge: DesktopBridge = {
   platform: process.platform,
   archiveSession: (id) => call("archiveSession", id),
+  listArchivedSessions: () => call("listArchivedSessions"),
+  restoreSession: (id) => call("restoreSession", id),
+  openSessionDirectory: (id) => call("openSessionDirectory", id),
   activateSession: (id) => call("activateSession", id),
   createTerminal: (id) => call("createTerminal", id),
   terminalInput: (id, data) => call("terminalInput", id, data),

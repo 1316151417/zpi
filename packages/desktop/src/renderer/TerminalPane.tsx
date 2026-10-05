@@ -8,6 +8,7 @@ import { openBrowser, paneTask, terminalListeners, terminalOutput } from "./pane
 import { report, unwrap } from "./store.ts";
 export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolean; cwd: string }) {
   const root = useRef<HTMLDivElement>(null),
+    terminal = useRef<Terminal | undefined>(undefined),
     fit = useRef<FitAddon | undefined>(undefined);
   useEffect(() => {
     const element = root.current;
@@ -20,6 +21,7 @@ export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolea
       allowProposedApi: false,
     });
     const fitting = new FitAddon();
+    terminal.current = term;
     fit.current = fitting;
     term.loadAddon(fitting);
     term.loadAddon(
@@ -79,12 +81,19 @@ export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolea
       terminalListeners.delete(id);
       unsubscribeAppearance();
       term.dispose();
+      terminal.current = undefined;
       fit.current = undefined;
     };
   }, [id]);
   useEffect(() => {
-    if (visible) requestAnimationFrame(() => fit.current?.fit());
-  }, [visible]);
+    if (!visible) return;
+    const frame = requestAnimationFrame(() => {
+      fit.current?.fit();
+      if (!document.querySelector('dialog[open], [role="dialog"], [role="menu"], .settings-screen'))
+        terminal.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [id, visible]);
   return (
     <div className="terminal-pane" title={cwd}>
       <div className="terminal-cwd">{cwd}</div>

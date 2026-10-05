@@ -100,6 +100,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "工具",
       "技能",
       "模型",
+      "已归档任务",
     ]);
     await expect(page.locator(".settings-tabs button").first()).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
@@ -111,6 +112,20 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".prompt-preview")).toContainText("Use bash for file operations");
     await expect(page.locator(".prompt-preview")).not.toContainText("PROJECT POLICY");
     await expect(page.locator(".prompt-preview")).toContainText("available_skills");
+    await expect(page.locator(".prompt-preview")).not.toContainText("<system_rules>");
+    await expect(page.getByRole("heading", { name: "基础系统提示词 只读", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "系统规则 zpi 补充 · 只读", exact: true })).toBeVisible();
+    const rules = page.locator(".system-rules-preview");
+    await expect(rules).toContainText("Return web URLs as Markdown links");
+    await expect(rules).toContainText("return local file references as Markdown links");
+    const systemRules = await rules.textContent();
+    await expect(page.locator(".resource-settings")).toContainText("仅追加少量桌面规则");
+    expect(
+      await page.locator(".prompt-preview").evaluate((base) => {
+        const rules = document.querySelector(".system-rules-preview");
+        return !!rules && !!(base.compareDocumentPosition(rules) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
+    ).toBe(true);
     await page.getByRole("button", { name: "技能", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "启用技能 review user" })).toBeChecked();
     await page.getByRole("checkbox", { name: "启用技能 review user" }).click();
@@ -136,6 +151,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".tool-resource-detail")).toHaveCount(0);
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(page.locator(".prompt-preview")).not.toContainText("available_skills");
+    await expect(rules).toContainText("Return web URLs as Markdown links");
 
     await page.screenshot({ path: "test-results/desktop-resource-settings-prompt.png" });
     await page.getByLabel("关闭设置").click();
@@ -183,6 +199,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     )?.content;
     expect(wire).toContain("Be concise in your responses");
     expect(wire).toContain("PROJECT POLICY");
+    expect(wire).toContain(systemRules);
     expect(wire).not.toContain("available_skills");
     expect(JSON.stringify(server.requests[0].messages)).toContain("image_url");
     await expect(page.locator(".composer .image-chip")).toHaveCount(0);

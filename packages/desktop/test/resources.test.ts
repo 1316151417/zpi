@@ -1,9 +1,59 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import { desktopSystemRules } from "../src/main/desktop-prompt.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
+
+test("desktop link instructions reach prompt previews, new runs and restored custom sessions", async () => {
+  for (const template of [
+    undefined,
+    { id: "custom", name: "Custom", preamble: "Custom assistant", rules: "CUSTOM RULE" },
+  ]) {
+    const f = await fixture(undefined, template);
+    const assertLinks = (prompt: string) => {
+      expect(prompt).toContain("Return web URLs as Markdown links");
+      expect(prompt).toContain("return local file references as Markdown links");
+      expect(prompt).toContain("use absolute paths for link destinations");
+      expect(prompt).toContain("[My Report.md](</absolute/path/My Report.md>)");
+      expect(prompt).toContain("outside inline code and code blocks");
+      expect(prompt).toContain("Prefer Markdown links for ordinary file references");
+      expect(prompt).not.toContain("To cite a local file in your answer, use ::zcode-file-citation");
+      expect(prompt).toContain(desktopSystemRules);
+      if (template) expect(prompt).toContain("CUSTOM RULE");
+    };
+    const preview = await f.host.previewPrompt();
+    assertLinks(preview.prompt);
+    expect(preview.systemRules).toBe(desktopSystemRules);
+    expect(preview.basePrompt).not.toContain("<system_rules>");
+    expect(preview.basePrompt).not.toContain("return local file references as Markdown links");
+    expect(preview.prompt.replace(`\n\n${preview.systemRules}`, "")).toBe(preview.basePrompt);
+    await run(f, "list files and the preview URL");
+    const requestPrompt = (index: number) => {
+      const messages = f.server.requests[index].messages as unknown as { role: string; content: string }[];
+      return messages.find((message) => message.role === "system")?.content ?? "";
+    };
+    const systemPrompt = requestPrompt(0);
+    assertLinks(systemPrompt);
+    expect(systemPrompt).toBe(preview.prompt);
+    expect(systemPrompt.split("<system_rules>")).toHaveLength(2);
+    await f.host.close();
+    const restarted = new SessionHost(
+      f.dir,
+      new SettingsStore(f.dir, codec),
+      f.resources,
+      f.workspace,
+      undefined,
+      [],
+    );
+    await restarted.init();
+    cleanup.push(() => restarted.close());
+    await restarted.startRun({ sessionId: f.session.id, text: "show clickable paths" });
+    await restarted.activeRuns.get(f.session.id)?.done;
+    assertLinks(requestPrompt(1));
+  }
+});
 
 test("legacy prompt snapshots and skill defaults survive restart; the read-only preview omits project context", async () => {
   const f = await fixture(undefined, {
