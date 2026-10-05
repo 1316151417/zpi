@@ -14,7 +14,7 @@ import {
   screen,
   shell,
 } from "electron";
-import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput } from "zpi-ai";
+import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
 import { imageLimits, listCommands } from "zpi-coding-agent";
 import type {
   CombinedSelection,
@@ -26,6 +26,7 @@ import type {
 } from "../shared/bridge.ts";
 import { methods } from "../shared/bridge.ts";
 import { browserUrl } from "./browser-url.ts";
+import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { readFilePreview } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { PaneServices } from "./pane-services.ts";
@@ -60,6 +61,8 @@ async function launch(): Promise<void> {
   const settings = new SettingsStore(app.getPath("userData"), encryption);
   nativeTheme.themeSource = settings.get().interface.theme;
   const discovered = testMode ? [] : settings.discoverEnvironment(process.env);
+  const chatgptAuth = new ChatGPTAuth(settings, requestFetch);
+  app.on("before-quit", () => chatgptAuth.close());
   if (testMode && process.env.ZPI_TEST_BASE_URL && settings.get().providers.length === 0)
     settings.save({
       baseUrl: process.env.ZPI_TEST_BASE_URL,
@@ -73,7 +76,7 @@ async function launch(): Promise<void> {
     });
   if (testMode && process.env.ZPI_TEST_AUTO_SELECTION === "1") {
     if (!settings.get().lastSelection)
-      settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "disabled" });
+      settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
     settings.updatePreferences({ showSendButton: true, showContextUsage: true });
   }
   const host = new SessionHost(
@@ -233,6 +236,11 @@ async function launch(): Promise<void> {
         resumeInputQueue: 1,
         abortRun: 1,
         getSettings: 0,
+        beginChatGPTLogin: 1,
+        completeChatGPTLogin: 1,
+        submitChatGPTCallback: 2,
+        cancelChatGPTLogin: 1,
+        disconnectChatGPT: 1,
         openExternal: 1,
         saveProvider: 1,
         reorderProviders: 1,
@@ -524,6 +532,29 @@ async function launch(): Promise<void> {
         case "getSettings":
           value = settings.get();
           break;
+        case "beginChatGPTLogin": {
+          const login = await chatgptAuth.begin(args[0] === null ? null : string(0));
+          try {
+            await shell.openExternal(login.url);
+          } catch {
+            chatgptAuth.cancel(login.loginId);
+            throw new Error("provider: 无法打开浏览器，请重试");
+          }
+          value = login;
+          break;
+        }
+        case "completeChatGPTLogin":
+          value = await chatgptAuth.complete(string(0));
+          break;
+        case "submitChatGPTCallback":
+          chatgptAuth.submit(string(0), string(1));
+          break;
+        case "cancelChatGPTLogin":
+          chatgptAuth.cancel(string(0));
+          break;
+        case "disconnectChatGPT":
+          value = await chatgptAuth.disconnect(string(0));
+          break;
         case "discoverModels": {
           const input = object(0, ["preset", "providerId", "baseUrl", "apiKey"]);
           if (Object.values(input).some((value) => typeof value !== "string"))
@@ -537,7 +568,13 @@ async function launch(): Promise<void> {
             {
               preset,
               baseUrl: input.baseUrl ?? saved?.baseUrl,
-              apiKey: input.apiKey ?? saved?.apiKey ?? "",
+              apiKey: usesChatGPTAuth(preset as string | undefined)
+                ? saved
+                  ? await settings.getRequestApiKey(saved.id, requestFetch)
+                  : (() => {
+                      throw new Error("configuration: 请先登录 ChatGPT");
+                    })()
+                : (input.apiKey ?? saved?.apiKey ?? ""),
             } as ModelDiscoveryInput,
             requestFetch,
           );
@@ -545,7 +582,7 @@ async function launch(): Promise<void> {
         }
         case "saveProvider": {
           const input = object(0, ["id", "name", "baseUrl", "models", "apiKey", "preset", "enabled"]);
-          if (typeof input.apiKey !== "string")
+          if (!usesChatGPTAuth(input.preset as string | undefined) && typeof input.apiKey !== "string")
             throw new Error("invalid_input: 保存时必须提供实际 API key，可为空字符串");
           value = settings.saveProvider(input as unknown as ProviderInput);
           break;

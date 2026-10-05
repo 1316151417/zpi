@@ -590,9 +590,10 @@ export function App() {
             </button>
           </div>
         )}
-        {state.settings?.providers.some((p) => p.hasApiKey) && !state.settings.credentialsPersisted && (
-          <div className="banner">系统加密不可用，凭据仅保存在本次应用内存中。</div>
-        )}
+        {state.settings?.providers.some((p) => p.hasApiKey || p.chatgptAccount?.connected) &&
+          !state.settings.credentialsPersisted && (
+            <div className="banner">系统加密不可用，凭据仅保存在本次应用内存中。</div>
+          )}
         {!state.settings?.providers.some((p) => p.models.length) && state.ready && (
           <div className="banner">先在设置中添加提供商和模型。</div>
         )}

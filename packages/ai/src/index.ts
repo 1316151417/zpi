@@ -5,8 +5,11 @@ export {
   discoverProviderCredentials,
   getProviderPreset,
   presetModels,
+  providerApi,
   providerPresets,
+  usesChatGPTAuth,
 } from "./providers/registry.ts";
+export { streamSimple } from "./stream.ts";
 export type * from "./types.ts";
 export { openAICompletionsCompatKeys } from "./types.ts";
 export type { ContextUsageAnchor } from "./utils/estimate.ts";
@@ -18,7 +21,15 @@ export {
   usageAnchor,
 } from "./utils/estimate.ts";
 export { AssistantMessageEventStream, createAssistantMessageEventStream } from "./utils/event-stream.ts";
-export { canControlThinking, reasoningParameters, validateThinkingMap } from "./utils/reasoning.ts";
+export {
+  canControlThinking,
+  defaultThinkingLevel,
+  editableReasoningConfig,
+  reasoningParameters,
+  thinkingChoices,
+  validateReasoningConfig,
+  validateThinkingMap,
+} from "./utils/reasoning.ts";
 export {
   assertSupportedOptions,
   emptyAssistant,

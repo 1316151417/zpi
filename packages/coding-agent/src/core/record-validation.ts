@@ -77,9 +77,7 @@ const header = Type.Object({
   timestamp: Type.String(),
   cwd: Type.String(),
 });
-const level = Type.Union(
-  ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((v) => Type.Literal(v)),
-);
+const level = Type.String({ minLength: 1, maxLength: 128, pattern: "\\S" });
 const entry = Type.Intersect([
   Type.Object({
     id: Type.String(),

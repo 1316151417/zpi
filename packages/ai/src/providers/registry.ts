@@ -10,10 +10,20 @@ export interface DiscoveredModel {
   maxTokens?: number;
   compat?: OpenAICompletionsCompat;
   thinkingLevelMap?: Model["thinkingLevelMap"];
+  defaultThinkingLevel?: Model["defaultThinkingLevel"];
+  availability?: "listed" | "unverified";
   samplingParams?: Model["samplingParams"];
   metadataSource?: "remote" | "catalog" | "defaults";
 }
 export const providerPresets = [
+  {
+    id: "openai-chatgpt",
+    name: "OpenAI（ChatGPT）",
+    family: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    envKeys: [],
+    catalog: "openai-chatgpt",
+  },
   {
     id: "deepseek",
     name: "DeepSeek",
@@ -77,7 +87,13 @@ export function getProviderPreset(id: string) {
 }
 export function presetModels(id: string): DiscoveredModel[] {
   const preset = getProviderPreset(id);
-  return preset ? (structuredClone(catalog[preset.catalog]) as DiscoveredModel[]) : [];
+  return preset?.catalog ? (structuredClone(catalog[preset.catalog]) as DiscoveredModel[]) : [];
+}
+export function usesChatGPTAuth(preset?: string): boolean {
+  return preset === "openai-chatgpt";
+}
+export function providerApi(preset?: string): Model["api"] {
+  return usesChatGPTAuth(preset) ? "openai-responses" : "openai-completions";
 }
 export function discoverProviderCredentials(env: Record<string, string | undefined>) {
   return providerPresets.flatMap((preset) => {

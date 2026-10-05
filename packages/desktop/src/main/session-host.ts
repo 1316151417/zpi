@@ -33,7 +33,7 @@ import type {
   SessionRecord,
   SessionSnapshot,
 } from "../shared/bridge.ts";
-import { availablePresets, reasoningPresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
+import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
@@ -452,7 +452,7 @@ export class SessionHost {
       const selected = this.settings.get().lastSelection;
       if (selected && this.settings.isSelectionValid(selected)) {
         manager.appendModelChange(selected.provider, selected.modelId);
-        manager.appendThinkingLevelChange(toThinking(selected.reasoning));
+        manager.appendThinkingLevelChange(toThinking(selected.reasoning, this.settings.getModel(selected)));
       }
     } catch (error) {
       if (manager.getSessionFile()) rmSyncFile(manager.getSessionFile() as string);
@@ -633,14 +633,18 @@ export class SessionHost {
       data &&
       typeof data.provider === "string" &&
       typeof data.modelId === "string" &&
-      reasoningPresets.includes(data.reasoning as CombinedSelection["reasoning"])
+      typeof data.reasoning === "string" &&
+      data.reasoning.trim()
         ? {
             provider: data.provider,
             modelId: data.modelId,
             reasoning: data.reasoning as CombinedSelection["reasoning"],
           }
         : context.model
-          ? { ...context.model, reasoning: toPreset(context.thinkingLevel) }
+          ? {
+              ...context.model,
+              reasoning: toPreset(context.thinkingLevel, this.settings.getModel(context.model)),
+            }
           : null;
     const model = selection ? this.settings.getModel(selection) : undefined;
     const usageModel = this.activeRuns.get(id)?.session?.model ?? model;
@@ -648,9 +652,9 @@ export class SessionHost {
     return {
       selection,
       presets,
-      selectionValid: Boolean(selection && presets.includes(selection.reasoning)),
+      selectionValid: Boolean(selection && this.settings.isSelectionValid(selection)),
       model: selection ? { provider: selection.provider, modelId: selection.modelId } : null,
-      thinkingLevel: selection ? toThinking(selection.reasoning) : context.thinkingLevel,
+      thinkingLevel: selection ? toThinking(selection.reasoning, model) : context.thinkingLevel,
       lastThinkingLevel:
         index.data.state.thinking_last?.type === "thinking_level_change"
           ? index.data.state.thinking_last.thinkingLevel
@@ -1012,8 +1016,8 @@ export class SessionHost {
         ).session;
         this.sessions.set(id, session);
       } else await session.setModel(model);
-      if (session.state.thinkingLevel !== toThinking(selection.reasoning))
-        session.setThinkingLevel(toThinking(selection.reasoning));
+      if (session.state.thinkingLevel !== toThinking(selection.reasoning, model))
+        session.setThinkingLevel(toThinking(selection.reasoning, model));
       run.session = session;
       const inputContext = { images: loaded.images, fileReferences: references };
       const prepared = await session.prepareInput(text, inputContext);
@@ -1219,21 +1223,15 @@ export class SessionHost {
   ): void {
     runtime.clearProviders();
     runtime.registerProvider(providerId, {
-      api: "openai-completions",
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
+      ...(config.preset === "openai-chatgpt"
+        ? { getApiKey: () => this.settings.getRequestApiKey(providerId, this.requestFetch) }
+        : {}),
       models: config.models
         .filter((m) => m.enabled !== false)
         .map((m) => {
-          const {
-            provider: _provider,
-            baseUrl: _url,
-            api: _api,
-            ...model
-          } = resolveModel(
-            { id: providerId, name: config.name, baseUrl: config.baseUrl, models: config.models },
-            m,
-          );
+          const { provider: _provider, baseUrl: _url, ...model } = resolveModel(config, m);
           return model;
         }),
     });

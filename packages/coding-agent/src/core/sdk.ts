@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { AgentTool, ThinkingLevel } from "zpi-agent";
 import type { Model } from "zpi-ai";
-import { assertSupportedOptions } from "zpi-ai";
+import { assertSupportedOptions, defaultThinkingLevel } from "zpi-ai";
 import { AgentSession } from "./agent-session.ts";
 import type { CompactionOptions } from "./compaction.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -168,9 +168,13 @@ export async function createAgentSession(
       tools: session?.state.tools ?? active,
       loader,
     });
-  const thinking = options.thinkingLevel ?? restored.thinkingLevel;
-  if (options.thinkingLevel && options.thinkingLevel !== restored.thinkingLevel)
-    manager.appendThinkingLevelChange(thinking);
+  const thinking =
+    options.thinkingLevel ??
+    (model.defaultThinkingLevel &&
+    !manager.getEntries().some((entry) => entry.type === "thinking_level_change")
+      ? defaultThinkingLevel(model)
+      : restored.thinkingLevel);
+  if (thinking !== restored.thinkingLevel) manager.appendThinkingLevelChange(thinking);
   session = new AgentSession(model, runtime, manager, all, active, buildPrompt(), thinking, {
     loader,
     buildPrompt,

@@ -1,49 +1,36 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Check, ChevronDown, CircleHelp, LockKeyhole, X } from "lucide-react";
+import { Check, CircleHelp, LoaderCircle, LockKeyhole, X } from "lucide-react";
 import { useRef, useState } from "react";
+import type { ReasoningConfig } from "zpi-ai";
+import { editableReasoningConfig, validateReasoningConfig } from "zpi-ai";
 import type { ModelSettings } from "../shared/bridge.ts";
-import { modelDefaults, reasoningLabels, reasoningPresets, toThinking } from "../shared/config.ts";
+import { modelDefaults, reasoningModel, toPreset } from "../shared/config.ts";
+import { ModelConfigAdvanced } from "./ModelConfigAdvanced.tsx";
+import { ReasoningLevelEditor } from "./ReasoningLevelEditor.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 
 export interface ModelDraft extends ModelSettings {
-  thinkingText: Record<string, string>;
+  reasoningConfig: ReasoningConfig;
   samplingText: string;
 }
 export const draftModel = (model: ModelSettings): ModelDraft => ({
   ...model,
-  thinkingText: Object.fromEntries(
-    reasoningPresets.map((preset) => {
-      const value = model.thinkingLevelMap?.[toThinking(preset)];
-      return [preset, value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value)];
-    }),
-  ),
+  reasoningConfig: editableReasoningConfig(reasoningModel(model)),
+  ...(model.defaultThinkingLevel
+    ? { defaultThinkingLevel: toPreset(model.defaultThinkingLevel, model) }
+    : {}),
   samplingText: model.samplingParams ? JSON.stringify(model.samplingParams, null, 2) : "",
 });
-export function serializeModel({ thinkingText, samplingText, ...model }: ModelDraft): ModelSettings {
+export function serializeModel({ samplingText, ...model }: ModelDraft): ModelSettings {
+  validateReasoningConfig(model.reasoningConfig);
   const result: ModelSettings = {
     id: model.id,
     ...Object.fromEntries(Object.entries(model).filter(([, value]) => value !== undefined)),
   };
-  result.thinkingLevelMap = Object.assign(
-    Object.fromEntries(
-      Object.entries(model.thinkingLevelMap ?? {}).filter(
-        ([level]) => !["off", "low", "high", "max"].includes(level),
-      ),
-    ),
-    Object.fromEntries(
-      reasoningPresets.flatMap((preset) => {
-        const text = thinkingText[preset]?.trim();
-        return text
-          ? [
-              [
-                toThinking(preset),
-                text === "null" || text.startsWith("{") || text.startsWith('"') ? JSON.parse(text) : text,
-              ],
-            ]
-          : [];
-      }),
-    ),
-  );
+  delete result.thinkingLevelMap;
+  if (result.reasoning === false) delete result.defaultThinkingLevel;
+  else if (result.defaultThinkingLevel && !model.reasoningConfig.levels.includes(result.defaultThinkingLevel))
+    result.defaultThinkingLevel = model.reasoningConfig.levels.at(-1);
   if (samplingText.trim()) result.samplingParams = JSON.parse(samplingText);
   else delete result.samplingParams;
   return result;
@@ -58,18 +45,22 @@ function Help({ text }: { text: string }) {
 export function ModelConfigDialog({
   initial,
   recommended,
+  chatgpt = false,
   onClose,
   onSave,
 }: {
   initial: ModelDraft;
   recommended?: ModelSettings;
+  chatgpt?: boolean;
   onClose: () => void;
   onSave: (value: ModelDraft) => Promise<void>;
 }) {
   const content = useRef<HTMLDivElement>(null);
   const [model, setModel] = useState(initial),
     [error, setError] = useState(""),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [invalidMapping, setInvalidMapping] = useState(false),
+    [validationAttempt, setValidationAttempt] = useState(0);
   const edit = (field: keyof ModelDraft, value: unknown) =>
     setModel((current) => ({
       ...current,
@@ -79,14 +70,21 @@ export function ModelConfigDialog({
   const save = async () => {
     setSaving(true);
     setError("");
+    setInvalidMapping(false);
     try {
       serializeModel(model);
       await onSave(model);
       onClose();
     } catch (error) {
       setError(String(error));
+      try {
+        validateReasoningConfig(model.reasoningConfig);
+      } catch {
+        setInvalidMapping(true);
+      }
     } finally {
       setSaving(false);
+      setValidationAttempt((value) => value + 1);
     }
   };
   return (
@@ -110,6 +108,13 @@ export function ModelConfigDialog({
               ?.focus();
           }}
           onEscapeKeyDown={(event) => {
+            if (
+              event.target instanceof Element &&
+              event.target.matches("[data-model-reasoning-level-input]")
+            ) {
+              event.preventDefault();
+              return;
+            }
             event.stopPropagation();
             if (saving) event.preventDefault();
           }}
@@ -120,7 +125,7 @@ export function ModelConfigDialog({
               设置模型 ID、上下文、输入类型及推理参数。
             </Dialog.Description>
             <Dialog.Close className="model-config-close" aria-label="关闭模型配置" disabled={saving}>
-              <X size={16} />
+              <X size={12} />
             </Dialog.Close>
             <label className="model-smart-switch">
               <strong>智能配置</strong>
@@ -145,28 +150,35 @@ export function ModelConfigDialog({
           </header>
           <div className="model-config-body">
             <fieldset disabled={saving}>
-              <label>
-                模型 ID
-                <input
-                  aria-label="Model ID"
-                  value={model.id}
-                  onChange={(event) => edit("id", event.target.value)}
-                />
-              </label>
-              <label>
-                显示名称
-                <input
-                  aria-label="模型显示名称"
-                  value={model.name ?? ""}
-                  onChange={(event) => edit("name", event.target.value)}
-                />
-              </label>
+              {!initial.id && (
+                <div className="model-config-identity">
+                  <label>
+                    模型 ID
+                    <input
+                      aria-label="Model ID"
+                      value={model.id}
+                      onChange={(event) => edit("id", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    显示名称
+                    <input
+                      aria-label="模型显示名称"
+                      value={model.name ?? ""}
+                      onChange={(event) => edit("name", event.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
               <label>
                 <span>
                   上下文窗口 <Help text="输入和输出 token 的总容量。" />
                 </span>
                 <input
                   aria-label="上下文容量"
+                  data-inherited={
+                    model.useRecommendedConfig && model.contextWindow === recommended?.contextWindow
+                  }
                   type="number"
                   value={model.contextWindow ?? ""}
                   placeholder={String(modelDefaults.contextWindow)}
@@ -177,10 +189,18 @@ export function ModelConfigDialog({
               </label>
               <label>
                 <span>
-                  最大输出 Token <Help text="模型单次响应的输出上限。" />
+                  最大输出 Token{" "}
+                  <Help
+                    text={
+                      chatgpt
+                        ? "用于本地上下文预算；ChatGPT 套餐响应长度由服务端控制。"
+                        : "模型单次响应的输出上限。"
+                    }
+                  />
                 </span>
                 <input
                   aria-label="输出上限"
+                  data-inherited={model.useRecommendedConfig && model.maxTokens === recommended?.maxTokens}
                   type="number"
                   value={model.maxTokens ?? ""}
                   placeholder={String(modelDefaults.maxTokens)}
@@ -189,11 +209,7 @@ export function ModelConfigDialog({
                   }
                 />
               </label>
-              <details className="model-config-advanced">
-                <summary>
-                  <ChevronDown size={16} />
-                  高级配置
-                </summary>
+              <ModelConfigAdvanced invalidMapping={invalidMapping} validationAttempt={validationAttempt}>
                 <div className="model-option-group">
                   <span>
                     输入类型 <Help text="根据服务端声明或 Pi 目录设置；文本始终启用。" />
@@ -217,9 +233,9 @@ export function ModelConfigDialog({
                             )
                           }
                         >
-                          <span className="model-option-check">{selected && <Check size={13} />}</span>
+                          <span className="model-option-check">{selected && <Check size={12} />}</span>
                           {{ text: "文本", image: "图片", video: "视频", pdf: "PDF" }[type]}
-                          {type === "text" && <LockKeyhole size={13} />}
+                          {type === "text" && <LockKeyhole size={14} />}
                         </button>
                       );
                     })}
@@ -237,7 +253,7 @@ export function ModelConfigDialog({
                       onClick={() => edit("reasoning", !(model.reasoning ?? true))}
                     >
                       <span className="model-option-check">
-                        {(model.reasoning ?? true) && <Check size={13} />}
+                        {(model.reasoning ?? true) && <Check size={12} />}
                       </span>
                       推理
                     </button>
@@ -254,98 +270,111 @@ export function ModelConfigDialog({
                       }
                     >
                       <span className="model-option-check">
-                        {model.compat?.structuredOutput === "json_object" && <Check size={13} />}
+                        {model.compat?.structuredOutput === "json_object" && <Check size={12} />}
                       </span>
                       结构化输出
                     </button>
                   </div>
                 </div>
-                <div className="model-option-group">
-                  <span>推理等级（从低到高）</span>
-                  <div className="model-reasoning-labels">
-                    {reasoningPresets.map((preset) => (
-                      <span key={preset}>{preset}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="model-option-group">
-                  <span>
-                    推理参数映射{" "}
-                    <Help text="字符串、JSON 参数片段或 null（禁用该档位）；保持 Pi 参数语义。" />
-                  </span>
-                  {reasoningPresets.map((preset) => (
-                    <label key={preset}>
-                      {reasoningLabels[preset]}
-                      <textarea
-                        aria-label={`思考映射 ${reasoningLabels[preset]}`}
-                        value={model.thinkingText[preset] ?? ""}
-                        onChange={(event) =>
-                          edit("thinkingText", { ...model.thinkingText, [preset]: event.target.value })
+                {(model.reasoning ?? true) && (
+                  <>
+                    <div className="model-option-group">
+                      <span>
+                        推理等级（从低到高）
+                        <Help text="点击编辑等级名称，拖动或按 Alt + 左右方向键排序；最后一级为自定义模型的默认值。" />
+                      </span>
+                      <ReasoningLevelEditor
+                        values={model.reasoningConfig.levels}
+                        overridden={model.useRecommendedConfig === false}
+                        addLabel="添加推理等级"
+                        deleteLabel="删除推理等级"
+                        onChange={(levels) =>
+                          edit("reasoningConfig", { ...model.reasoningConfig, levels: [...levels] })
                         }
-                        placeholder="字符串、JSON 参数片段或 null"
+                      />
+                    </div>
+                    <label>
+                      <span>
+                        推理参数映射
+                        <Help text="使用 reasoningLevel 变量编写 CEL 表达式，结果为请求参数 JSON 对象。每个等级都必须能得到有效映射。" />
+                      </span>
+                      <textarea
+                        aria-label="推理参数映射"
+                        spellCheck={false}
+                        value={model.reasoningConfig.map}
+                        onChange={(event) =>
+                          edit("reasoningConfig", { ...model.reasoningConfig, map: event.target.value })
+                        }
                       />
                     </label>
-                  ))}
-                </div>
-                <label htmlFor="model-output-field">
-                  输出上限字段
-                  <SettingsSelect
-                    id="model-output-field"
-                    label="输出上限字段"
-                    value={model.compat?.maxTokensField ?? "max_tokens"}
-                    options={[
-                      { value: "max_tokens", label: "max_tokens" },
-                      { value: "max_completion_tokens", label: "max_completion_tokens" },
-                    ]}
-                    onChange={(value) => edit("compat", { ...model.compat, maxTokensField: value })}
-                  />
-                </label>
-                <div className="model-option-chips">
-                  {(
-                    [
-                      ["supportsDeveloperRole", "developer role"],
-                      ["supportsReasoningEffort", "reasoning_effort"],
-                      ["supportsUsageInStreaming", "流式 usage"],
-                      ["requiresReasoningContentOnAssistantMessages", "回传 reasoning_content"],
-                    ] as const
-                  ).map(([field, label]) => (
-                    <button
-                      key={field}
-                      type="button"
-                      className="model-option-chip"
-                      aria-pressed={
-                        model.compat?.[field] ??
-                        (field === "supportsUsageInStreaming" || field === "supportsReasoningEffort")
-                      }
-                      onClick={() =>
-                        edit("compat", {
-                          ...model.compat,
-                          [field]: !(
-                            model.compat?.[field] ??
-                            (field === "supportsUsageInStreaming" || field === "supportsReasoningEffort")
-                          ),
-                        })
-                      }
-                    >
-                      <span className="model-option-check">
-                        {(model.compat?.[field] ??
-                          (field === "supportsUsageInStreaming" || field === "supportsReasoningEffort")) && (
-                          <Check size={13} />
-                        )}
-                      </span>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <label>
-                  samplingParams（JSON）
-                  <textarea
-                    aria-label="samplingParams"
-                    value={model.samplingText}
-                    onChange={(event) => edit("samplingText", event.target.value)}
-                  />
-                </label>
-              </details>
+                  </>
+                )}
+                <details className="model-transport-options">
+                  <summary>请求参数</summary>
+                  {!chatgpt && (
+                    <>
+                      <label htmlFor="model-output-field">
+                        输出上限字段
+                        <SettingsSelect
+                          id="model-output-field"
+                          label="输出上限字段"
+                          value={model.compat?.maxTokensField ?? "max_tokens"}
+                          options={[
+                            { value: "max_tokens", label: "max_tokens" },
+                            { value: "max_completion_tokens", label: "max_completion_tokens" },
+                          ]}
+                          onChange={(value) => edit("compat", { ...model.compat, maxTokensField: value })}
+                        />
+                      </label>
+                      <div className="model-option-chips">
+                        {(
+                          [
+                            ["supportsDeveloperRole", "developer role"],
+                            ["supportsReasoningEffort", "reasoning_effort"],
+                            ["supportsUsageInStreaming", "流式 usage"],
+                            ["requiresReasoningContentOnAssistantMessages", "回传 reasoning_content"],
+                          ] as const
+                        ).map(([field, label]) => (
+                          <button
+                            key={field}
+                            type="button"
+                            className="model-option-chip"
+                            aria-pressed={
+                              model.compat?.[field] ??
+                              (field === "supportsUsageInStreaming" || field === "supportsReasoningEffort")
+                            }
+                            onClick={() =>
+                              edit("compat", {
+                                ...model.compat,
+                                [field]: !(
+                                  model.compat?.[field] ??
+                                  (field === "supportsUsageInStreaming" ||
+                                    field === "supportsReasoningEffort")
+                                ),
+                              })
+                            }
+                          >
+                            <span className="model-option-check">
+                              {(model.compat?.[field] ??
+                                (field === "supportsUsageInStreaming" ||
+                                  field === "supportsReasoningEffort")) && <Check size={12} />}
+                            </span>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <label>
+                    samplingParams（JSON）
+                    <textarea
+                      aria-label="samplingParams"
+                      value={model.samplingText}
+                      onChange={(event) => edit("samplingText", event.target.value)}
+                    />
+                  </label>
+                </details>
+              </ModelConfigAdvanced>
             </fieldset>
           </div>
           {error && (
@@ -369,7 +398,7 @@ export function ModelConfigDialog({
             </button>
             <Dialog.Close disabled={saving}>取消</Dialog.Close>
             <button className="primary" disabled={saving} onClick={() => void save()}>
-              {saving ? "保存中…" : "保存"}
+              {saving && <LoaderCircle size={14} className="spin" />}保存
             </button>
           </footer>
         </Dialog.Content>

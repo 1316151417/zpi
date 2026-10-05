@@ -2,10 +2,14 @@ import type { TSchema } from "typebox";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.ts";
-export type Api = "openai-completions" | (string & {});
+export type Api = "openai-completions" | "openai-responses" | (string & {});
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | JsonObject;
 export type JsonObject = { [key: string]: JsonValue };
-export type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | (string & {});
+export interface ReasoningConfig {
+  levels: string[];
+  map: string;
+}
 export interface OpenAICompletionsCompat {
   thinkingFormat?: "deepseek" | "zai";
   structuredOutput?: "prompt" | "json_object" | "json_schema";
@@ -31,6 +35,7 @@ export interface Model<TApi extends Api = Api> {
   api: TApi;
   provider: string;
   baseUrl: string;
+  auth?: "chatgpt";
   input: ("text" | "image")[];
   reasoning: boolean;
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
@@ -39,6 +44,8 @@ export interface Model<TApi extends Api = Api> {
   headers?: Record<string, string>;
   compat?: OpenAICompletionsCompat;
   thinkingLevelMap?: Partial<Record<"off" | ThinkingLevel, string | JsonObject | null>>;
+  reasoningConfig?: ReasoningConfig;
+  defaultThinkingLevel?: "off" | ThinkingLevel;
   samplingParams?: Record<string, unknown>;
 }
 export interface TextContent {

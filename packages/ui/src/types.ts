@@ -2,8 +2,12 @@ import type { ThinkingLevel } from "zpi-agent";
 import type { Message, ToolCall, ToolResultMessage } from "zpi-ai";
 import type { ContextUsage, ImageAttachment, ResourceDiagnostic } from "zpi-coding-agent";
 export interface SessionControls {
-  selection: { provider: string; modelId: string; reasoning: "disabled" | "low" | "high" | "max" } | null;
-  presets: ("disabled" | "low" | "high" | "max")[];
+  selection: {
+    provider: string;
+    modelId: string;
+    reasoning: string;
+  } | null;
+  presets: string[];
   selectionValid: boolean;
   model: { provider: string; modelId: string } | null;
   thinkingLevel: ThinkingLevel;

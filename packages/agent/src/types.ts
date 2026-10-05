@@ -17,7 +17,7 @@ import type {
 // biome-ignore lint/suspicious/noEmptyInterface: Public declaration merging extension point.
 export interface CustomAgentMessages {}
 export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevel = "off" | import("zpi-ai").ThinkingLevel;
 export type ToolExecutionMode = "sequential" | "parallel";
 export type StreamFn = (
   model: Model,

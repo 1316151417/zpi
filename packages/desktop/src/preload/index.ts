@@ -80,6 +80,11 @@ const bridge: DesktopBridge = {
     return () => ipcRenderer.removeListener("zpi:settings", handler);
   },
   discoverModels: (input) => call("discoverModels", input),
+  beginChatGPTLogin: (providerId) => call("beginChatGPTLogin", providerId),
+  completeChatGPTLogin: (loginId) => call("completeChatGPTLogin", loginId),
+  submitChatGPTCallback: (loginId, url) => call("submitChatGPTCallback", loginId, url),
+  cancelChatGPTLogin: (loginId) => call("cancelChatGPTLogin", loginId),
+  disconnectChatGPT: (providerId) => call("disconnectChatGPT", providerId),
   saveProvider: (input) => call("saveProvider", input),
   reorderProviders: (ids) => call("reorderProviders", ids),
   deleteProvider: (id) => call("deleteProvider", id),

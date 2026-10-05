@@ -19,8 +19,16 @@ import {
   isJsonObject,
   openAICompletionsCompatKeys,
   presetModels,
+  providerApi,
+  usesChatGPTAuth,
+  validateReasoningConfig,
   validateThinkingMap,
 } from "zpi-ai";
+import {
+  type ChatGPTCredential,
+  isChatGPTCredential,
+  refreshChatGPTCredential,
+} from "zpi-ai/auth/openai-chatgpt";
 import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
 import type {
   CombinedSelection,
@@ -56,10 +64,11 @@ export interface CredentialEncryption {
   encryptString(value: string): Buffer;
   decryptString(value: Buffer): string;
 }
-type ProviderData = Omit<ProviderRecord, "hasApiKey">;
+type ProviderData = Omit<ProviderRecord, "hasApiKey" | "chatgptAccount">;
 interface Credentials {
   baseUrl: string;
   apiKey: string;
+  chatgpt?: ChatGPTCredential;
 }
 interface SettingsData {
   version: 4;
@@ -74,7 +83,8 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
   return {
     id: input.id,
     name: input.name?.trim() || input.id,
-    api: "openai-completions",
+    api: providerApi(provider.preset),
+    ...(usesChatGPTAuth(provider.preset) ? { auth: "chatgpt" as const } : {}),
     provider: provider.id,
     baseUrl: provider.baseUrl,
     input: (input.input ?? ["text"]).filter(
@@ -84,7 +94,9 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
     contextWindow: input.contextWindow ?? modelDefaults.contextWindow,
     maxTokens: input.maxTokens ?? modelDefaults.maxTokens,
     compat: { ...modelDefaults.compat, ...input.compat },
+    ...(input.reasoningConfig ? { reasoningConfig: structuredClone(input.reasoningConfig) } : {}),
     ...(input.thinkingLevelMap ? { thinkingLevelMap: structuredClone(input.thinkingLevelMap) } : {}),
+    ...(input.defaultThinkingLevel ? { defaultThinkingLevel: input.defaultThinkingLevel } : {}),
     ...(input.samplingParams ? { samplingParams: structuredClone(input.samplingParams) } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
@@ -100,6 +112,7 @@ export class SettingsStore {
     interface: structuredClone(defaultPreferences),
   };
   private credentials: Record<string, Credentials> = {};
+  private refreshes = new Map<string, Promise<string>>();
   private persisted = false;
   private unreadCredentials = false;
   private dir: string;
@@ -111,6 +124,7 @@ export class SettingsStore {
       creds = join(dir, "credentials.enc");
     let oldVersion: 1 | 2 | 3 | undefined;
     let migratedFontSize = false;
+    let clearedSelection = false;
     if (existsSync(file)) {
       const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
       if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
@@ -160,6 +174,17 @@ export class SettingsStore {
           migratedFontSize = true;
         }
       }
+      const lastSelection: unknown = this.data.lastSelection;
+      if (
+        isJsonObject(lastSelection) &&
+        (typeof lastSelection.reasoning !== "string" ||
+          !lastSelection.reasoning.trim() ||
+          (!this.getModel(lastSelection as unknown as CombinedSelection)?.reasoningConfig &&
+            !(reasoningPresets as readonly string[]).includes(lastSelection.reasoning)))
+      ) {
+        this.data.lastSelection = null;
+        clearedSelection = true;
+      }
       this.validateData(this.data);
     }
     if (existsSync(creds)) {
@@ -173,7 +198,11 @@ export class SettingsStore {
           if (!isJsonObject(value) || typeof value.baseUrl !== "string" || typeof value.apiKey !== "string")
             throw new Error("storage: Invalid credential record");
           if (this.data.providers.find((p) => p.id === id)?.baseUrl === value.baseUrl)
-            this.credentials[id] = { baseUrl: value.baseUrl, apiKey: value.apiKey };
+            this.credentials[id] = {
+              baseUrl: value.baseUrl,
+              apiKey: value.apiKey,
+              ...(isChatGPTCredential(value.chatgpt) ? { chatgpt: value.chatgpt } : {}),
+            };
         }
         this.persisted = true;
       }
@@ -183,7 +212,7 @@ export class SettingsStore {
         if (existsSync(path) && !existsSync(`${path}.v${oldVersion}.bak`))
           copyFileSync(path, `${path}.v${oldVersion}.bak`);
       this.writeConfiguration(this.data, encryption.isEncryptionAvailable() ? this.credentials : undefined);
-    } else if (migratedFontSize) atomicJson(file, this.data);
+    } else if (migratedFontSize || clearedSelection) atomicJson(file, this.data);
   }
   private recoverLastSelection(): CombinedSelection | null {
     const root = join(this.dir, "agent", "sessions");
@@ -230,6 +259,16 @@ export class SettingsStore {
       providers: this.data.providers.map((p) => ({
         ...structuredClone(p),
         hasApiKey: Boolean(this.credentials[p.id]?.apiKey),
+        ...(this.credentials[p.id]?.chatgpt
+          ? {
+              chatgptAccount: {
+                label: `${this.credentials[p.id].chatgpt?.email ?? "ChatGPT"} · ${this.credentials[p.id].chatgpt?.clientId.slice(-8)}`,
+                connected: Boolean(
+                  this.credentials[p.id].chatgpt?.access && this.credentials[p.id].chatgpt?.refresh,
+                ),
+              },
+            }
+          : {}),
       })),
       lastSelection: structuredClone(this.data.lastSelection),
       interface: structuredClone(this.data.interface),
@@ -246,13 +285,14 @@ export class SettingsStore {
     const model = this.getModel(selection);
     return Boolean(
       model &&
-        reasoningPresets.includes(selection.reasoning) &&
-        canControlThinking(model, toThinking(selection.reasoning)),
+        typeof selection.reasoning === "string" &&
+        canControlThinking(model, toThinking(selection.reasoning, model)),
     );
   }
   getProviderCredentials(id: string): { apiKey: string } {
     if (!this.data.providers.some((p) => p.id === id)) throw new Error("not_found: 提供商不存在");
     if (this.unreadCredentials) throw new Error("configuration: 保存的凭据尚未解锁，无法读取");
+    if (usesChatGPTAuth(this.data.providers.find((p) => p.id === id)?.preset)) return { apiKey: "" };
     return { apiKey: this.credentials[id]?.apiKey ?? "" };
   }
   snapshot(providerId = "custom"): ProviderInput & { id: string; apiKey: string } {
@@ -286,19 +326,93 @@ export class SettingsStore {
       models: structuredClone(input.models),
     };
     this.validateProvider(provider);
+    if (usesChatGPTAuth(input.preset) && input.apiKey !== undefined)
+      throw new Error("configuration: ChatGPT 提供商需要登录授权");
     if (input.apiKey !== undefined && typeof input.apiKey !== "string")
       throw new Error("configuration: 无效凭据");
     if (this.unreadCredentials && input.apiKey === undefined)
       throw new Error("configuration: 保存的凭据尚未解锁");
     const credentials = {
       ...this.credentials,
-      [id]: { baseUrl: provider.baseUrl, apiKey: input.apiKey ?? this.credentials[id]?.apiKey ?? "" },
+      [id]: {
+        baseUrl: provider.baseUrl,
+        apiKey: input.apiKey ?? this.credentials[id]?.apiKey ?? "",
+        ...(usesChatGPTAuth(input.preset) && this.credentials[id]?.chatgpt
+          ? { chatgpt: this.credentials[id].chatgpt }
+          : {}),
+      },
     };
     const providers = this.data.providers.some((p) => p.id === id)
       ? this.data.providers.map((p) => (p.id === id ? provider : p))
       : [...this.data.providers, provider];
     this.persist({ ...this.data, providers }, credentials);
     return this.get();
+  }
+  getChatGPTHostId(): string {
+    const file = join(this.dir, "chatgpt-host.json");
+    if (existsSync(file)) {
+      const data: unknown = JSON.parse(readFileSync(file, "utf8"));
+      if (isJsonObject(data) && typeof data.hostId === "string") return data.hostId;
+      throw new Error("storage: ChatGPT 安装标识损坏");
+    }
+    const hostId = `urn:uuid:${randomUUID()}`;
+    atomicJson(file, { hostId });
+    return hostId;
+  }
+  getChatGPTCredential(id: string): ChatGPTCredential | undefined {
+    if (this.unreadCredentials) throw new Error("configuration: 保存的凭据尚未解锁");
+    if (!usesChatGPTAuth(this.data.providers.find((p) => p.id === id)?.preset))
+      throw new Error("configuration: 不是 ChatGPT 提供商");
+    return structuredClone(this.credentials[id]?.chatgpt);
+  }
+  saveChatGPTCredential(id: string, credential: ChatGPTCredential): PublicSettings {
+    this.getChatGPTCredential(id);
+    if (!isChatGPTCredential(credential)) throw new Error("configuration: 无效 ChatGPT 凭据");
+    this.persist(this.data, {
+      ...this.credentials,
+      [id]: {
+        baseUrl: this.credentials[id]?.baseUrl ?? this.snapshot(id).baseUrl,
+        apiKey: "",
+        chatgpt: structuredClone(credential),
+      },
+    });
+    return this.get();
+  }
+  disconnectChatGPT(id: string): PublicSettings {
+    const credential = this.getChatGPTCredential(id);
+    if (!credential) return this.get();
+    return this.saveChatGPTCredential(id, {
+      ...credential,
+      access: "",
+      refresh: "",
+      idToken: "",
+      expires: 0,
+      scopes: [],
+    });
+  }
+  async getRequestApiKey(id: string, fetcher: typeof fetch = fetch): Promise<string> {
+    const provider = this.data.providers.find((p) => p.id === id);
+    if (!provider) throw new Error("configuration: 所选提供商已删除");
+    if (!usesChatGPTAuth(provider.preset)) return this.getProviderCredentials(id).apiKey;
+    const pending = this.refreshes.get(id);
+    if (pending) return pending;
+    const credential = this.getChatGPTCredential(id);
+    if (!credential?.access || !credential.refresh) throw new Error("configuration: 请先登录 ChatGPT");
+    if (credential.expires > Date.now() + 3 * 60 * 1000) return credential.access;
+    const refresh = (async () => {
+      const next = await refreshChatGPTCredential(credential, fetcher);
+      const current = this.getChatGPTCredential(id);
+      if (current?.refresh !== credential.refresh || current.access !== credential.access)
+        throw new Error("configuration: ChatGPT 登录状态已改变，请重试");
+      this.saveChatGPTCredential(id, next);
+      return next.access;
+    })();
+    this.refreshes.set(id, refresh);
+    try {
+      return await refresh;
+    } finally {
+      if (this.refreshes.get(id) === refresh) this.refreshes.delete(id);
+    }
   }
   reorderProviders(ids: string[]): PublicSettings {
     if (
@@ -506,7 +620,9 @@ export class SettingsStore {
       (!isJsonObject(selection) ||
         typeof selection.provider !== "string" ||
         typeof selection.modelId !== "string" ||
-        !reasoningPresets.includes(selection.reasoning))
+        typeof selection.reasoning !== "string" ||
+        !selection.reasoning.trim() ||
+        selection.reasoning.length > 128)
     )
       throw new Error("storage: Invalid model selection");
     const prefs = data.interface;
@@ -580,6 +696,9 @@ export class SettingsStore {
           "maxTokens",
           "compat",
           "thinkingLevelMap",
+          "reasoningConfig",
+          "defaultThinkingLevel",
+          "availability",
           "samplingParams",
         ],
         "model settings",
@@ -627,7 +746,17 @@ export class SettingsStore {
           )
             throw new Error("configuration: 无效 compat");
       }
+      if (m.reasoningConfig !== undefined) validateReasoningConfig(m.reasoningConfig);
       if (m.thinkingLevelMap !== undefined) validateThinkingMap(m.thinkingLevelMap);
+      if (
+        m.defaultThinkingLevel !== undefined &&
+        (typeof m.defaultThinkingLevel !== "string" ||
+          !m.defaultThinkingLevel.trim() ||
+          !canControlThinking(resolveModel(p, m), m.defaultThinkingLevel))
+      )
+        throw new Error("configuration: 无效默认思考强度");
+      if (m.availability !== undefined && !["listed", "unverified"].includes(m.availability))
+        throw new Error("configuration: 无效模型可用性");
       if (m.samplingParams !== undefined && !isJsonObject(m.samplingParams))
         throw new Error("configuration: samplingParams 必须为 JSON 对象");
     }

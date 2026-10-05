@@ -1,9 +1,43 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { SettingsStore } from "../src/main/storage.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
+
+it("medium, xhigh and max survive task reload and reach the provider unchanged; obsolete settings selections are cleared", async () => {
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  const task = f.host.createSession(f.a.id);
+  for (const reasoning of ["medium", "xhigh", "max"] as const) {
+    await f.host.setSessionSelection(task.id, { provider: "custom", modelId: "fake", reasoning });
+    await f.host.startRun({ sessionId: task.id, text: reasoning });
+    await f.host.activeRuns.get(task.id)?.done;
+    expect(f.server.requests.at(-1)?.reasoning_effort).toBe(reasoning);
+    expect(f.host.getSessionSnapshot(task.id).controls?.thinkingLevel).toBe(reasoning);
+  }
+  await f.host.close();
+  const file = join(f.dir, "settings.json");
+  const old = JSON.parse(await readFile(file, "utf8"));
+  old.lastSelection.reasoning = "disabled";
+  await writeFile(file, JSON.stringify(old));
+  const settings = new SettingsStore(f.dir, {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.alloc(0),
+    decryptString: () => "",
+  });
+  expect(settings.get().lastSelection).toBeNull();
+  const host = new SessionHost(f.dir, settings, join(f.dir, "agent"), undefined, undefined, []);
+  cleanup.push(() => host.close());
+  await host.init();
+  expect(host.getSessionSnapshot(task.id).controls?.selection?.reasoning).toBe("max");
+  await host.startRun({ sessionId: task.id, text: "继续" });
+  await host.activeRuns.get(task.id)?.done;
+  expect(f.server.requests.at(-1)?.reasoning_effort).toBe("max");
+});
 
 it("running selection changes preserve old tool turns and use the new provider on the next message", async () => {
   const aStarted = deferred();
@@ -46,10 +80,10 @@ it("running selection changes preserve old tool turns and use the new provider o
   await f.host.setSessionSelection(a.id, {
     provider: "next-provider",
     modelId: "new-model",
-    reasoning: "disabled",
+    reasoning: "none",
   });
   expect(f.host.getSessionSnapshot(a.id).controls).toMatchObject({
-    selection: { provider: "next-provider", modelId: "new-model", reasoning: "disabled" },
+    selection: { provider: "next-provider", modelId: "new-model", reasoning: "none" },
     selectionValid: true,
     usage: { contextWindow: 32768 },
   });
@@ -57,7 +91,7 @@ it("running selection changes preserve old tool turns and use the new provider o
   await f.host.setSessionSelection(b.id, {
     provider: "next-provider",
     modelId: "new-model",
-    reasoning: "disabled",
+    reasoning: "none",
   });
   await f.host.startRun({ sessionId: b.id, text: "B" });
   const bRun = f.host.activeRuns.get(b.id);

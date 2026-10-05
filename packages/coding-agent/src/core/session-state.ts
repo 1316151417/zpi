@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "zpi-agent";
 import type { ContextBreakdownItem, Model } from "zpi-ai";
-import { canControlThinking } from "zpi-ai";
+import { thinkingChoices } from "zpi-ai";
 import type { SessionEntry } from "./session-manager.ts";
 
 export interface ContextUsage {
@@ -61,7 +61,5 @@ export function contextUsage(entries: SessionEntry[], model: Model): ContextUsag
   return result;
 }
 export function supportedThinkingLevels(model: Model): ThinkingLevel[] {
-  return ["off", "minimal", "low", "medium", "high", "xhigh", "max"].filter((level) =>
-    canControlThinking(model, level as ThinkingLevel),
-  ) as ThinkingLevel[];
+  return thinkingChoices(model);
 }

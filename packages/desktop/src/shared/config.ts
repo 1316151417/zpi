@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "zpi-agent";
-import { canControlThinking } from "zpi-ai";
+import { defaultThinkingLevel, thinkingChoices } from "zpi-ai";
 import type { InterfacePreferences, ModelSettings, ReasoningPreset } from "./bridge.ts";
 export const modelDefaults = {
   contextWindow: 1000000,
@@ -17,8 +17,18 @@ export const sidebarLimits = {
 } as const;
 export const uiFontSizeLimits = { min: 12, max: 20 } as const;
 export const taskPinLimit = 5;
-export const reasoningPresets = ["disabled", "low", "high", "max"] as const;
-export const reasoningLabels = { disabled: "关闭", low: "低", high: "高", max: "最高" } as const;
+export const reasoningPresets = ["none", "low", "medium", "high", "xhigh", "max"] as const;
+export const reasoningLabels: Record<string, string> = {
+  none: "关闭",
+  off: "关闭",
+  disabled: "关闭",
+  minimal: "低",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "极高",
+  max: "最高",
+} as const;
 export const defaultPreferences: InterfacePreferences = {
   theme: "system",
   fontSize: 14,
@@ -32,30 +42,43 @@ export const defaultPreferences: InterfacePreferences = {
   projectsCollapsed: false,
   tasksCollapsed: false,
 };
-export function toThinking(preset: ReasoningPreset): ThinkingLevel {
-  return preset === "disabled" ? "off" : preset;
+export function toThinking(preset: ReasoningPreset, model?: ModelSettings): ThinkingLevel {
+  if (model?.reasoningConfig && model.reasoning !== false) return preset;
+  return preset === "none" ? "off" : preset;
 }
-export function toPreset(level: ThinkingLevel): ReasoningPreset {
-  if (level === "off") return "disabled";
-  if (level === "minimal" || level === "low") return "low";
-  if (level === "medium" || level === "high") return "high";
-  return "max";
+export function toPreset(level: ThinkingLevel, model?: ModelSettings): ReasoningPreset {
+  if (model?.reasoningConfig && model.reasoning !== false && model.reasoningConfig.levels.includes(level))
+    return level;
+  if (level === "off") return "none";
+  if (level === "minimal") return "low";
+  return level;
 }
 
 export function availablePresets(model: ModelSettings): ReasoningPreset[] {
-  return reasoningPresets.filter((p) =>
-    canControlThinking(
-      {
-        reasoning: model.reasoning ?? modelDefaults.reasoning,
-        compat: { ...modelDefaults.compat, ...model.compat },
-        thinkingLevelMap: model.thinkingLevelMap,
-      },
-      toThinking(p),
-    ),
-  );
+  const choices = thinkingChoices(reasoningModel(model));
+  if (model.reasoningConfig) return choices.map((level) => toPreset(level, model));
+  return reasoningPresets.filter((preset) => choices.includes(toThinking(preset)));
+}
+export function reasoningModel(model: ModelSettings) {
+  return {
+    reasoning: model.reasoning ?? modelDefaults.reasoning,
+    compat: { ...modelDefaults.compat, ...model.compat },
+    thinkingLevelMap: model.thinkingLevelMap,
+    defaultThinkingLevel: model.defaultThinkingLevel,
+    reasoningConfig: model.reasoningConfig,
+  };
+}
+export function defaultPreset(model: ModelSettings): ReasoningPreset {
+  return toPreset(defaultThinkingLevel(reasoningModel(model)), model);
 }
 
 export function modelReasoningLabel(model: ModelSettings | undefined, preset: ReasoningPreset): string {
-  if (model?.reasoning && preset === "high" && model.compat?.supportsReasoningEffort === false) return "默认";
-  return reasoningLabels[preset];
+  if (
+    !model?.reasoningConfig &&
+    model?.reasoning &&
+    preset === "high" &&
+    model.compat?.supportsReasoningEffort === false
+  )
+    return "默认";
+  return reasoningLabels[preset] ?? preset;
 }

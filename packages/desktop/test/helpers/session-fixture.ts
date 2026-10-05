@@ -33,7 +33,7 @@ export async function setup(title?: Parameters<typeof fakeServer>[1]) {
     maxTokens: 4096,
     compat: { structuredOutput: "json_schema" },
   });
-  settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "disabled" });
+  settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
   const host = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined, []);
   await host.init();
   cleanup.push(() => host.close());

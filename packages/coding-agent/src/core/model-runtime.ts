@@ -6,8 +6,13 @@ import type {
   SimpleStreamOptions,
   TranscriptContext,
 } from "zpi-ai";
-import { assertSupportedOptions, normalizeContext, validateThinkingMap } from "zpi-ai";
-import { streamSimple as openaiStream } from "zpi-ai/api/openai-completions";
+import {
+  assertSupportedOptions,
+  normalizeContext,
+  streamSimple,
+  validateReasoningConfig,
+  validateThinkingMap,
+} from "zpi-ai";
 export interface ProviderChatModelConfig extends Omit<Model, "provider" | "api" | "baseUrl"> {
   type?: "chat";
   api?: Api;
@@ -17,6 +22,7 @@ export interface ProviderConfigInput {
   baseUrl?: string;
   api?: Api;
   apiKey?: string;
+  getApiKey?: () => Promise<string>;
   headers?: Record<string, string>;
   models?: ProviderChatModelConfig[];
   streamSimple?: (
@@ -42,7 +48,7 @@ export class ModelRuntime {
   registerProvider(id: string, config: ProviderConfigInput): void {
     assertSupportedOptions(
       config,
-      ["name", "baseUrl", "api", "apiKey", "headers", "models", "streamSimple"],
+      ["name", "baseUrl", "api", "apiKey", "getApiKey", "headers", "models", "streamSimple"],
       "provider",
     );
     for (const model of config.models ?? []) {
@@ -53,6 +59,7 @@ export class ModelRuntime {
           "id",
           "name",
           "api",
+          "auth",
           "input",
           "cost",
           "reasoning",
@@ -61,12 +68,15 @@ export class ModelRuntime {
           "headers",
           "compat",
           "thinkingLevelMap",
+          "reasoningConfig",
+          "defaultThinkingLevel",
           "samplingParams",
         ],
         "model",
       );
       if (model.type && model.type !== "chat") throw new Error("Only chat models are supported");
       if (model.thinkingLevelMap) validateThinkingMap(model.thinkingLevelMap);
+      if (model.reasoningConfig) validateReasoningConfig(model.reasoningConfig);
     }
     const old = this.providers.get(id);
     this.providers.set(id, { ...old, ...config, headers: config.headers ?? old?.headers });
@@ -88,7 +98,7 @@ export class ModelRuntime {
   async getAvailable(): Promise<readonly Model[]> {
     const models: Model[] = [];
     for (const [id, p] of this.providers)
-      if (p.streamSimple || this.keys.has(id))
+      if (p.streamSimple || p.getApiKey || this.keys.has(id))
         for (const m of p.models ?? []) {
           const model = this.getModel(id, m.id);
           if (model) models.push(model);
@@ -108,6 +118,9 @@ export class ModelRuntime {
       apiKey: options?.apiKey ?? this.keys.get(model.provider),
     };
     if (p.streamSimple) return p.streamSimple(model, transcript, opts);
-    return openaiStream(model, transcript, opts);
+    return streamSimple(model, transcript, {
+      ...opts,
+      ...(p.getApiKey && options?.apiKey === undefined ? { getApiKey: p.getApiKey } : {}),
+    });
   }
 }

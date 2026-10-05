@@ -1,4 +1,75 @@
 {
+  "openai-chatgpt": [
+    {
+      "id": "gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "input": ["text", "image"],
+      "reasoning": true,
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "compat": {
+        "supportsReasoningEffort": true
+      },
+      "thinkingLevelMap": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "defaultThinkingLevel": "medium",
+      "availability": "unverified",
+      "metadataSource": "catalog"
+    },
+    {
+      "id": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "input": ["text", "image"],
+      "reasoning": true,
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "compat": {
+        "supportsReasoningEffort": true
+      },
+      "thinkingLevelMap": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "defaultThinkingLevel": "medium",
+      "availability": "unverified",
+      "metadataSource": "catalog"
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "input": ["text", "image"],
+      "reasoning": true,
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "compat": {
+        "supportsReasoningEffort": true
+      },
+      "thinkingLevelMap": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "defaultThinkingLevel": "medium",
+      "availability": "unverified",
+      "metadataSource": "catalog"
+    }
+  ],
   "deepseek": [
     {
       "id": "deepseek-flash",
@@ -12,7 +83,8 @@
         "low": "low",
         "medium": null,
         "high": "high",
-        "max": "max"
+        "max": "max",
+        "xhigh": null
       },
       "compat": {
         "supportsDeveloperRole": false,
@@ -34,7 +106,8 @@
         "low": null,
         "medium": null,
         "high": "high",
-        "max": "max"
+        "max": "max",
+        "xhigh": null
       },
       "compat": {
         "supportsDeveloperRole": false,

@@ -38,7 +38,7 @@ export async function fixture(
       { id: "plain", input: ["text"] },
     ],
   });
-  settings.rememberSelection({ provider: "p", modelId: "vision", reasoning: "disabled" });
+  settings.rememberSelection({ provider: "p", modelId: "vision", reasoning: "none" });
   if (legacyTemplate) {
     const file = join(dir, "settings.json");
     const data = JSON.parse(await readFile(file, "utf8"));

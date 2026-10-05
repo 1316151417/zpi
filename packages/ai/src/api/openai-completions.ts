@@ -23,6 +23,7 @@ import {
   getCurrentTools,
   isJsonObject,
 } from "../utils/transcript.ts";
+import { transformMessages } from "./transform-messages.ts";
 export interface OpenAICompletionsOptions extends StreamOptions {
   reasoningEffort?: string;
   reasoning?: SimpleStreamOptions["reasoning"];
@@ -50,7 +51,7 @@ function serialize(context: TranscriptContext, model: Model): ChatCompletionMess
   const prompt = getCurrentSystemPrompt(context.messages);
   if (prompt)
     messages.push({ role: model.compat?.supportsDeveloperRole ? "developer" : "system", content: prompt });
-  for (const m of context.messages) {
+  for (const m of transformMessages(context.messages, model)) {
     if (m.role === "system") continue;
     if (m.role === "user") {
       messages.push({
@@ -61,21 +62,12 @@ function serialize(context: TranscriptContext, model: Model): ChatCompletionMess
             : m.content.map((c) => (c.type === "image" ? imagePart(c) : { type: "text", text: c.text })),
       });
     } else if (m.role === "assistant") {
-      // Pi transform-messages: incomplete turns are kept in history, never replayed to the provider.
-      if (m.stopReason === "error" || m.stopReason === "aborted") continue;
       const sameModel = m.provider === model.provider && m.api === model.api && m.model === model.id;
       const calls = m.content.filter((c) => c.type === "toolCall");
-      // Pi converts non-redacted thinking to plain text when switching models.
       const content = m.content
-        .flatMap((c) =>
-          c.type === "text"
-            ? c.text.trim()
-              ? [c.text]
-              : []
-            : c.type === "thinking" && !sameModel && !c.redacted && c.thinking.trim()
-              ? [c.thinking]
-              : [],
-        )
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .filter((text) => text.trim())
         .join("\n");
       // Reasoning fields alone do not satisfy Chat Completions' assistant message contract.
       if (!content && !calls.length) continue;

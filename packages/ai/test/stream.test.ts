@@ -108,6 +108,11 @@ describe("OpenAI streaming contract", () => {
       normalizeContext({
         messages: [
           {
+            ...emptyAssistant(fakeModel(s.url)),
+            stopReason: "toolUse",
+            content: [{ type: "toolCall", id: "c", name: "shot", arguments: {} }],
+          },
+          {
             role: "toolResult",
             toolCallId: "c",
             toolName: "shot",
@@ -120,8 +125,8 @@ describe("OpenAI streaming contract", () => {
       { apiKey: "local" },
     ).result();
     const messages = s.requests[0].messages as unknown as { role: string; tool_call_id?: string }[];
-    expect(messages.map((m) => m.role)).toEqual(["tool", "user"]);
-    expect(messages[0].tool_call_id).toBe("c");
+    expect(messages.map((m) => m.role)).toEqual(["assistant", "tool", "user"]);
+    expect(messages[1].tool_call_id).toBe("c");
   });
 });
 

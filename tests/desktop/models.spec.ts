@@ -49,7 +49,7 @@ test("preset discovery, model configuration and custom provider persist without 
       );
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "模型", exact: true }).click();
-    await expect(page.locator(".provider-template-grid button")).toHaveCount(8);
+    await expect(page.locator(".provider-template-grid button")).toHaveCount(9);
     await expect(page.getByRole("button", { name: "保存提供商", exact: true })).toHaveCount(0);
     await page
       .locator(".provider-template-grid")
@@ -220,11 +220,11 @@ test("preset discovery, model configuration and custom provider persist without 
     await restartedPage.getByRole("button", { name: "模型", exact: true }).click();
     for (let i = 0; i < expectedIds.length; i++) {
       await restartedPage.getByLabel("供应商操作", { exact: true }).click();
-      await restartedPage.getByRole("menuitem", { name: "删除供应商", exact: true }).click();
-      await restartedPage.getByRole("button", { name: "确认删除提供商", exact: true }).click();
+      await restartedPage.getByRole("menuitem", { name: "删除", exact: true }).click();
+      await restartedPage.getByRole("button", { name: "确认删除", exact: true }).click();
       await expect(restartedPage.locator(".sortable-provider")).toHaveCount(expectedIds.length - i - 1);
     }
-    await expect(restartedPage.locator(".provider-template-grid button")).toHaveCount(8);
+    await expect(restartedPage.locator(".provider-template-grid button")).toHaveCount(9);
   } finally {
     await app?.close();
     await server.close();

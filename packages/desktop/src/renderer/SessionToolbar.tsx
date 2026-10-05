@@ -2,7 +2,7 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SessionView } from "zpi-ui";
-import { availablePresets, modelReasoningLabel, reasoningPresets } from "../shared/config.ts";
+import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { accept, refresh, report, unwrap, useStore } from "./store.ts";
 export function SessionToolbar({
   view,
@@ -23,7 +23,7 @@ export function SessionToolbar({
   const mainMenu = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<string>();
   const [updating, setUpdating] = useState(false);
-  const select = (provider: string, modelId: string, reasoning: (typeof reasoningPresets)[number]) => {
+  const select = (provider: string, modelId: string, reasoning: string, close = true) => {
     setUpdating(true);
     void window.zpi
       .setSessionSelection(view.sessionId, { provider, modelId, reasoning })
@@ -31,7 +31,7 @@ export function SessionToolbar({
       .then(async (snapshot) => {
         accept(snapshot);
         await refresh();
-        onOpenChange(false);
+        if (close) onOpenChange(false);
       })
       .catch(report)
       .finally(() => setUpdating(false));
@@ -138,7 +138,7 @@ export function SessionToolbar({
                 ? "重新选择模型"
                 : "模型选择"}
           </span>
-          {chosen && configured && controls?.selectionValid && chosen.reasoning !== "disabled" && (
+          {chosen && configured && controls?.selectionValid && chosen.reasoning !== "none" && (
             <span className="model-reasoning">{modelReasoningLabel(configured, chosen.reasoning)}</span>
           )}
           <ChevronDown size={14} />
@@ -167,7 +167,11 @@ export function SessionToolbar({
                             className="menu-item"
                             disabled={updating}
                             onFocus={() => setActive(id)}
-                            onClick={() => setActive(id)}
+                            onClick={() => {
+                              setActive(id);
+                              if (chosen?.provider !== p.id || chosen.modelId !== m.id)
+                                select(p.id, m.id, defaultPreset(m), false);
+                            }}
                           >
                             <span>{m.name || m.id}</span>
                             <ChevronRight size={12} />
@@ -180,11 +184,11 @@ export function SessionToolbar({
                                 if (event.target === mainMenu.current) event.preventDefault();
                               }}
                             >
-                              {reasoningPresets.map((reasoning) => (
+                              {supported.map((reasoning) => (
                                 <Menu.Item
                                   key={reasoning}
                                   className="menu-item"
-                                  disabled={updating || !supported.includes(reasoning)}
+                                  disabled={updating}
                                   onSelect={(event) => {
                                     event.preventDefault();
                                     select(p.id, m.id, reasoning);
@@ -192,7 +196,9 @@ export function SessionToolbar({
                                 >
                                   <span>
                                     {modelReasoningLabel(m, reasoning)}
-                                    {!supported.includes(reasoning) && <small> · 未配置支持</small>}
+                                    {m.defaultThinkingLevel && defaultPreset(m) === reasoning && (
+                                      <small> · 默认</small>
+                                    )}
                                   </span>
                                   {chosen?.provider === p.id &&
                                     chosen.modelId === m.id &&

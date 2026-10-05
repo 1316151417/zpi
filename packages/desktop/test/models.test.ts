@@ -120,7 +120,7 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
   settings.rememberSelection({
     provider: settings.get().providers[0].id,
     modelId: settings.get().providers[0].models[0].id,
-    reasoning: "disabled",
+    reasoning: "none",
   });
   const host = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
   await host.init();
@@ -134,7 +134,7 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
     message: expect.stringContaining("EISDIR"),
   });
   await host.setSessionSelection(a.id, { provider: "one", modelId: "reason", reasoning: "high" });
-  await host.setSessionSelection(b.id, { provider: "two", modelId: "plain", reasoning: "disabled" });
+  await host.setSessionSelection(b.id, { provider: "two", modelId: "plain", reasoning: "none" });
   expect(host.getSessionSnapshot(a.id).controls.thinkingLevel).toBe("high");
   await expect(
     host.setSessionSelection(a.id, { provider: "one", modelId: "reason", reasoning: "max" }),
@@ -142,7 +142,7 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
   await host.startRun({ sessionId: a.id, text: "first" });
   await host.activeRuns.get(a.id)?.done;
   expect(server.requests[0]).toMatchObject({ model: "reason", reasoning_effort: "high" });
-  await host.setSessionSelection(a.id, { provider: "two", modelId: "plain", reasoning: "disabled" });
+  await host.setSessionSelection(a.id, { provider: "two", modelId: "plain", reasoning: "none" });
   expect(host.getSessionSnapshot(a.id).controls).toMatchObject({
     thinkingLevel: "off",
     lastThinkingLevel: "high",

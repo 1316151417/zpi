@@ -78,7 +78,7 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
     "---\nname: inspect\ndescription: Workspace\n---\nWORKSPACE SKILL",
   );
   expect((await f.host.listSessionSkills(s.id)).skills.map((s) => s.name)).toContain("inspect");
-  await f.host.setSessionSelection(s.id, { provider: "p", modelId: "new", reasoning: "disabled" });
+  await f.host.setSessionSelection(s.id, { provider: "p", modelId: "new", reasoning: "none" });
   await f.host.startRun({ sessionId: s.id, text: "/init" });
   await f.host.activeRuns.get(s.id)?.done;
   expect(await readFile(join(f.workspace, "AGENTS.md"), "utf8")).toBe("workspace instructions");

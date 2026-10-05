@@ -168,7 +168,15 @@ function ProcessBlock({
             className={`process-chevron ${expanded ? "rotated" : ""}`}
           />
         </button>
-        {expanded && <pre className="thinking-body">{block.text}</pre>}
+        {expanded && (
+          <pre className="thinking-body">
+            {block.text.trim()
+              ? block.text
+              : block.streaming
+                ? "等待模型返回思考摘要…"
+                : "模型未返回可展示的思考摘要。"}
+          </pre>
+        )}
       </div>
     );
   }

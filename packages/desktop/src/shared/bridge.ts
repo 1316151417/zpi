@@ -49,6 +49,9 @@ export interface ModelSettings {
   maxTokens?: number;
   compat?: OpenAICompletionsCompat;
   thinkingLevelMap?: Model["thinkingLevelMap"];
+  reasoningConfig?: Model["reasoningConfig"];
+  defaultThinkingLevel?: Model["defaultThinkingLevel"];
+  availability?: "listed" | "unverified";
   samplingParams?: Model["samplingParams"];
 }
 export interface ProviderInput {
@@ -63,12 +66,13 @@ export interface ProviderInput {
 export interface ProviderRecord extends Omit<ProviderInput, "apiKey" | "id"> {
   id: string;
   hasApiKey: boolean;
+  chatgptAccount?: { label: string; connected: boolean };
 }
 export interface ModelSelection {
   provider: string;
   modelId: string;
 }
-export type ReasoningPreset = "disabled" | "low" | "high" | "max";
+export type ReasoningPreset = string;
 export interface CombinedSelection extends ModelSelection {
   reasoning: ReasoningPreset;
 }
@@ -242,6 +246,13 @@ export interface DesktopBridge {
   resumeInputQueue(sessionId: string): Promise<Result<void>>;
   abortRun(input: { sessionId: string; runId: string }): Promise<Result<void>>;
   getSettings(): Promise<Result<PublicSettings>>;
+  beginChatGPTLogin(providerId: string | null): Promise<Result<{ loginId: string; url: string }>>;
+  completeChatGPTLogin(
+    loginId: string,
+  ): Promise<Result<{ settings: PublicSettings; providerId: string; warning?: string }>>;
+  submitChatGPTCallback(loginId: string, url: string): Promise<Result<void>>;
+  cancelChatGPTLogin(loginId: string): Promise<Result<void>>;
+  disconnectChatGPT(providerId: string): Promise<Result<{ settings: PublicSettings; warning?: string }>>;
   onSettings(listener: (settings: PublicSettings) => void): () => void;
   discoverModels(input: {
     preset?: ProviderPresetId;
@@ -261,6 +272,11 @@ export interface DesktopBridge {
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
 export const methods = [
+  "beginChatGPTLogin",
+  "completeChatGPTLogin",
+  "submitChatGPTCallback",
+  "cancelChatGPTLogin",
+  "disconnectChatGPT",
   "archiveSession",
   "listArchivedSessions",
   "restoreSession",

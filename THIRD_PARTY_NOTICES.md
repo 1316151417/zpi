@@ -6,6 +6,10 @@ Assistant history replay rules in packages/ai/src/api/openai-completions.ts also
 
 The provider model data in packages/ai/src/providers/catalog.json are selected from the same Pi commit, src/providers/data/{deepseek,zai,zai-coding-cn,minimax-cn,xiaomi,xiaomi-token-plan-cn}.json. Cost and unrelated transport fields are omitted; thinking compatibility is adapted to zpi's existing OpenAI transport. MiniMax OpenAI thinking toggles and reasoning_split are based on the official CN OpenAI SDK documentation; fixed-depth models expose only their default enabled level.
 
+GPT-6.1 Sol, GPT-6 Astra and GPT-6 Luna capability presets use the current OpenAI model documentation and the reference Pi OpenAI catalog. ChatGPT context limits are taken from account discovery when present; presets use Pi's conservative 272K plan context. Preset capabilities do not establish account availability.
+
+ChatGPT OAuth in packages/ai/src/auth/openai-chatgpt.ts and Responses history conversion in packages/ai/src/api/{openai-responses,transform-messages}.ts are adapted from the reference Pi implementation in src/auth/oauth/openai-chatgpt.ts and src/api/{openai-responses-shared,transform-messages}.ts, with OIDC validation and the current public ChatGPT plan API requirements.
+
 Context estimation, compaction summary/boundary rules, and provider retry in packages/ai/src/utils/{estimate,provider-retry}.ts and packages/coding-agent/src/core/compaction.ts are adapted from the same Pi commit.
 
 MIT License
@@ -665,3 +669,5 @@ Markdown table layout/actions, code highlighting controls, image galleries/previ
 The Markdown link routing, Windows destination recovery and basic file citation parsing adapt ZCode UI source (`markdownFileLink.ts`, `embeddedBrowserHelpers.ts`, `windowsFileLinkEscapeRemarkPlugin.ts`, `assistantDirectiveParser.ts`, `zcodeFileCitation.ts`, `zcodeFileCitationRemarkPlugin.ts`, and `message.tsx`) under the ZCode license stated above.
 
 The desktop task menu order, compact trigger and separated directory actions follow ZCode packages/ui/src/WorkspaceHeaderSections.tsx and TaskActionMenuContent.tsx. The archived-task delete control uses the same Lucide Trash2 asset as ZCode WorkspaceArchivedTasksFlatSection.tsx. The archive settings layout follows the user-provided Codex screenshot. The existing ZCode Apache-2.0 and Lucide ISC attributions above apply.
+
+The model provider action menu, delete confirmation and editable reasoning level chips adapt ZCode `ProviderCardSections.tsx`, `dropdown-menu.tsx`, `ConfirmDialog.tsx`, `ProviderModelReasoningLevelEditor.tsx`, and model metadata dialog components. The restricted CEL compiler, tokenizer, parser, and evaluator in `packages/ai/src/utils/option-map` adapt ZCode `packages/model-option-map/src` (Apache-2.0), with its logic retained and TypeScript imports adapted. Existing ZCode and Lucide license attributions above apply.

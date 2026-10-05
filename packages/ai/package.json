@@ -5,10 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./api/openai-completions": "./src/api/openai-completions.ts"
+    "./api/openai-completions": "./src/api/openai-completions.ts",
+    "./auth/openai-chatgpt": "./src/auth/openai-chatgpt.ts"
   },
   "dependencies": {
-    "typebox": "1.3.27",
-    "openai": "7.19.0"
+    "jose": "6.2.12",
+    "openai": "7.19.0",
+    "typebox": "1.3.27"
   }
 }

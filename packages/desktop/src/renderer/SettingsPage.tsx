@@ -1,3 +1,4 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Archive,
@@ -21,10 +22,17 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getProviderPreset, type ProviderPresetId, presetModels, providerPresets } from "zpi-ai";
+import {
+  getProviderPreset,
+  type ProviderPresetId,
+  presetModels,
+  providerPresets,
+  usesChatGPTAuth,
+} from "zpi-ai";
 import { SortableList } from "zpi-ui";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
+import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
@@ -128,6 +136,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [models, setModels] = useState<ModelDraft[]>((original?.models ?? []).map(draftModel));
   const [editing, setEditing] = useState<{ index: number; draft: ModelDraft }>();
   const [preset, setPreset] = useState<ProviderPresetId | undefined>(original?.preset);
+  const chatgpt = usesChatGPTAuth(preset);
   const [picker, setPicker] = useState(!settings?.providers.length);
   const [discovering, setDiscovering] = useState(false);
   const discoveryRevision = useRef(0);
@@ -142,6 +151,10 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const renameInput = useRef<HTMLInputElement>(null);
+  const renameStart = useRef("");
+  const renameRequested = useRef(false);
   useEffect(
     () => () => {
       discoveryRevision.current++;
@@ -168,11 +181,16 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     setError("");
     setNotice("");
     setConfirmDelete(false);
+    setRenaming(false);
   };
   useEffect(() => {
     let active = true;
     setKey("");
     setKeyReady(!selected);
+    if (chatgpt) {
+      setKeyReady(true);
+      return;
+    }
     if (selected)
       void window.zpi
         .getProviderCredentials(selected)
@@ -192,7 +210,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     return () => {
       active = false;
     };
-  }, [selected, credentialRequest]);
+  }, [selected, credentialRequest, chatgpt]);
   const loadModels = async () => {
     if (!keyReady) return;
     const revision = ++discoveryRevision.current;
@@ -203,7 +221,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         await window.zpi.discoverModels({
           ...(preset ? { preset } : { baseUrl: url }),
           ...(selected ? { providerId: selected } : {}),
-          apiKey: key,
+          ...(!chatgpt ? { apiKey: key } : {}),
         }),
       );
       if (revision !== discoveryRevision.current) return;
@@ -236,13 +254,13 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       .then((value) => useStore.setState({ settings: value }))
       .catch((error) => setError(String(error)));
   };
-  const save = async (nextModels = models, nextEnabled = enabled) => {
+  const save = async (nextModels = models, nextEnabled = enabled, nextName = name) => {
     if (!keyReady) return false;
     setSaving(true);
     setError("");
     try {
       let discoveryNotice = "";
-      if (!selected && preset && key.trim()) {
+      if (!selected && preset && !chatgpt && key.trim()) {
         const result = unwrap(
           await window.zpi.discoverModels({
             preset,
@@ -257,11 +275,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         await window.zpi.saveProvider({
           ...(selected ? { id: selected } : {}),
           ...(preset ? { preset } : {}),
-          name,
+          name: nextName,
           enabled: nextEnabled,
           baseUrl: url,
           models: nextModels.map(serializeModel),
-          apiKey: key,
+          ...(!chatgpt ? { apiKey: key } : {}),
         }),
       );
       useStore.setState({ settings: value });
@@ -441,7 +459,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         className="model-refresh"
                         aria-label="获取模型"
                         title="刷新模型列表"
-                        disabled={saving || discovering || picker || !keyReady || !url.trim()}
+                        disabled={
+                          saving ||
+                          discovering ||
+                          picker ||
+                          !keyReady ||
+                          !url.trim() ||
+                          (chatgpt && !original?.chatgptAccount?.connected)
+                        }
                         onClick={() => void loadModels()}
                       >
                         <RefreshCcw size={16} className={discovering ? "spin" : undefined} />
@@ -533,7 +558,31 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         <>
                           <header className="provider-detail-heading">
                             <ProviderLogo preset={preset} size={20} />
-                            <h2>{name || "新提供商"}</h2>
+                            {renaming ? (
+                              <input
+                                ref={renameInput}
+                                className="provider-rename-input"
+                                aria-label="重命名供应商"
+                                value={name}
+                                onChange={(event) => setName(event.target.value)}
+                                onBlur={() => {
+                                  setRenaming(false);
+                                  if (name.trim() && name.trim() !== renameStart.current)
+                                    void save(models, enabled, name.trim());
+                                  else setName(renameStart.current);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") event.currentTarget.blur();
+                                  if (event.key === "Escape") {
+                                    event.stopPropagation();
+                                    setName(renameStart.current);
+                                    setRenaming(false);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <h2>{name || "新提供商"}</h2>
+                            )}
                             <div className="provider-heading-actions">
                               <label className="settings-switch provider-enabled-switch">
                                 <input
@@ -560,13 +609,41 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                     <MoreHorizontal size={16} />
                                   </Menu.Trigger>
                                   <Menu.Portal>
-                                    <Menu.Content className="selection-menu" align="end">
+                                    <Menu.Content
+                                      className="provider-actions-menu"
+                                      align="end"
+                                      sideOffset={2}
+                                      onCloseAutoFocus={(event) => {
+                                        if (renameRequested.current) {
+                                          event.preventDefault();
+                                          renameRequested.current = false;
+                                          renameInput.current?.focus();
+                                          renameInput.current?.select();
+                                        }
+                                      }}
+                                    >
+                                      {!preset && (
+                                        <>
+                                          <Menu.Item
+                                            className="provider-action-item"
+                                            onSelect={() => {
+                                              renameStart.current = name;
+                                              renameRequested.current = true;
+                                              setRenaming(true);
+                                            }}
+                                          >
+                                            <Pencil size={14} />
+                                            重命名
+                                          </Menu.Item>
+                                          <Menu.Separator className="provider-action-separator" />
+                                        </>
+                                      )}
                                       <Menu.Item
-                                        className="menu-item"
+                                        className="provider-action-item provider-action-delete"
                                         onSelect={() => setConfirmDelete(true)}
                                       >
                                         <Trash2 size={14} />
-                                        删除供应商
+                                        删除
                                       </Menu.Item>
                                     </Menu.Content>
                                   </Menu.Portal>
@@ -597,7 +674,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               </label>
                             </div>
                           )}
-                          {preset && (
+                          {preset && !chatgpt && (
                             <label>
                               Base URL
                               <input aria-label="Base URL" readOnly value={url} />
@@ -608,30 +685,49 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                             <input
                               readOnly
                               aria-label="API 格式"
-                              value="OpenAI Chat Completions (/v1/chat/completions)"
+                              value={
+                                chatgpt
+                                  ? "OpenAI Responses · ChatGPT 套餐授权"
+                                  : "OpenAI Chat Completions (/v1/chat/completions)"
+                              }
                             />
                           </label>
-                          <label>
-                            API Key
-                            <span className="credential-input">
-                              <input
-                                aria-label="API key"
-                                type={keyVisible ? "text" : "password"}
-                                autoComplete="off"
-                                value={key}
-                                onChange={(event) => setKey(event.target.value)}
-                                disabled={!keyReady || saving || discovering}
-                                placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
-                              />
-                              <button
-                                type="button"
-                                aria-label={keyVisible ? "隐藏 API key" : "显示 API key"}
-                                onClick={() => setKeyVisible(!keyVisible)}
-                              >
-                                {keyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                              </button>
-                            </span>
-                          </label>
+                          {chatgpt ? (
+                            <ChatGPTConnection
+                              key={selected ?? "new-chatgpt"}
+                              provider={original}
+                              onBusy={setSaving}
+                              onError={setError}
+                              onNotice={setNotice}
+                              onSettings={(value, providerId) => {
+                                useStore.setState({ settings: value });
+                                select(value.providers.find((provider) => provider.id === providerId));
+                                void refresh();
+                              }}
+                            />
+                          ) : (
+                            <label>
+                              API Key
+                              <span className="credential-input">
+                                <input
+                                  aria-label="API key"
+                                  type={keyVisible ? "text" : "password"}
+                                  autoComplete="off"
+                                  value={key}
+                                  onChange={(event) => setKey(event.target.value)}
+                                  disabled={!keyReady || saving || discovering}
+                                  placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={keyVisible ? "隐藏 API key" : "显示 API key"}
+                                  onClick={() => setKeyVisible(!keyVisible)}
+                                >
+                                  {keyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </span>
+                            </label>
+                          )}
                           <div className="model-list-heading">
                             <h3>模型列表</h3>
                             <div className="model-list-actions">
@@ -678,8 +774,16 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                   >
                                     <div className="model-row-summary">
                                       <span className="model-row-name" title={model.name || model.id}>
-                                        {model.id}
+                                        {model.name || model.id}
                                       </span>
+                                      {model.availability === "unverified" && (
+                                        <span
+                                          className="model-context-badge"
+                                          title="账号目录尚未返回该模型，调用取决于账号权限。"
+                                        >
+                                          预置 · 待验证
+                                        </span>
+                                      )}
                                       <span
                                         className="model-context-badge"
                                         title={`上下文窗口 ${model.contextWindow ?? modelDefaults.contextWindow}`}
@@ -740,39 +844,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 {notice}
                               </div>
                             )}
-                            {confirmDelete && (
-                              <div className="run-error" role="alert">
-                                确认删除此提供商？历史保留，之后发送需要重新选择模型。
-                                <button className="secondary" onClick={() => setConfirmDelete(false)}>
-                                  取消删除
-                                </button>
-                              </div>
-                            )}
                             <div className="modal-actions">
-                              {selected && confirmDelete && (
-                                <button
-                                  className="danger-button"
-                                  disabled={saving}
-                                  onClick={() => {
-                                    void window.zpi
-                                      .deleteProvider(selected)
-                                      .then(unwrap)
-                                      .then((value) => {
-                                        useStore.setState({ settings: value });
-                                        void refresh();
-                                        select(value.providers[0]);
-                                        setPicker(value.providers.length === 0);
-                                      })
-                                      .catch((error) => setError(String(error)));
-                                  }}
-                                >
-                                  确认删除提供商
-                                </button>
-                              )}
                               <button
                                 className="primary"
                                 disabled={
-                                  saving || !keyReady || (Boolean(preset) && !key.trim()) || discovering
+                                  saving ||
+                                  !keyReady ||
+                                  (chatgpt ? !selected : Boolean(preset) && !key.trim()) ||
+                                  discovering
                                 }
                                 onClick={() => void save()}
                               >
@@ -784,10 +863,79 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                       )}
                     </div>
                   </div>
+                  <Dialog.Root
+                    open={confirmDelete}
+                    onOpenChange={(open) => {
+                      if (!saving) setConfirmDelete(open);
+                    }}
+                  >
+                    <Dialog.Portal>
+                      <Dialog.Overlay className="model-config-backdrop" />
+                      <Dialog.Content
+                        className="provider-delete-dialog"
+                        onOpenAutoFocus={(event) => {
+                          event.preventDefault();
+                          document
+                            .querySelector<HTMLButtonElement>(".provider-delete-dialog .primary")
+                            ?.focus();
+                        }}
+                        onKeyDownCapture={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            event.currentTarget.querySelector<HTMLButtonElement>(".primary")?.click();
+                          }
+                        }}
+                        onEscapeKeyDown={(event) => {
+                          if (saving) event.preventDefault();
+                        }}
+                      >
+                        <header>
+                          <Dialog.Title>删除供应商“{name}”？</Dialog.Title>
+                          <Dialog.Description>
+                            删除后将移除这条自定义 Provider 配置，当前设置页中的相关内容不会自动恢复。
+                          </Dialog.Description>
+                        </header>
+                        {error && (
+                          <div className="model-config-error" role="alert">
+                            {error}
+                          </div>
+                        )}
+                        <footer>
+                          <Dialog.Close className="secondary" disabled={saving}>
+                            取消<span aria-hidden="true">esc</span>
+                          </Dialog.Close>
+                          <button
+                            className="primary"
+                            disabled={saving}
+                            onClick={async () => {
+                              if (!selected || saving) return;
+                              setSaving(true);
+                              setError("");
+                              try {
+                                const value = unwrap(await window.zpi.deleteProvider(selected));
+                                useStore.setState({ settings: value });
+                                await refresh();
+                                select(value.providers[0]);
+                                setPicker(value.providers.length === 0);
+                              } catch (error) {
+                                setError(String(error));
+                              } finally {
+                                setSaving(false);
+                              }
+                            }}
+                          >
+                            确认删除<span aria-hidden="true">⏎</span>
+                          </button>
+                        </footer>
+                      </Dialog.Content>
+                    </Dialog.Portal>
+                  </Dialog.Root>
                   {editing && (
                     <ModelConfigDialog
                       key={`${selected ?? preset ?? "new"}:${editing.index}`}
                       initial={editing.draft}
+                      chatgpt={chatgpt}
                       recommended={recommended.current.get(editing.draft.id)}
                       onClose={() => setEditing(undefined)}
                       onSave={async (model) => {

@@ -85,3 +85,57 @@ it("manual rename and deletion win over late title responses; title failure is n
   expect(failed.server.titleRequests).toHaveLength(1);
   expect(failed.host.listRecentSessions()[0].title).toBe("临时标题");
 });
+
+it("generates a Responses title using an available effort and the portable structured-output preference", async () => {
+  const { ModelRuntime } = await import("zpi-coding-agent");
+  const { generateSessionTitle } = await import("../src/main/session-title.ts");
+  let payload: Record<string, unknown> = {};
+  const runtime = await ModelRuntime.create({
+    fetch: (async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      const item = {
+        type: "message",
+        id: "msg_title",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text: '{"session_title":"ChatGPT 标题"}', annotations: [] }],
+      };
+      return new Response(
+        `data: ${JSON.stringify({ type: "response.output_item.done", item })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "resp_title", model: "reasoning", status: "completed", output: [item] } })}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof fetch,
+  });
+  runtime.registerProvider("oauth", {
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "secret",
+    models: [
+      {
+        id: "reasoning",
+        name: "Reasoning",
+        api: "openai-responses",
+        auth: "chatgpt",
+        input: ["text"],
+        reasoning: true,
+        contextWindow: 100000,
+        maxTokens: 10000,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        compat: { supportsReasoningEffort: true, structuredOutput: "json_schema" },
+        thinkingLevelMap: { off: null, minimal: null, low: "low", max: "xhigh" },
+      },
+    ],
+  });
+  const model = runtime.getModel("oauth", "reasoning");
+  if (!model) throw new Error("Missing model");
+  expect(await generateSessionTitle(runtime, model, "first turn", [], new AbortController().signal)).toBe(
+    "ChatGPT 标题",
+  );
+  expect(payload).toMatchObject({
+    store: false,
+    stream: true,
+    reasoning: { effort: "low" },
+    text: { format: { type: "json_schema", name: "session_title", strict: true } },
+  });
+  expect(payload).not.toHaveProperty("max_output_tokens");
+  expect(payload).not.toHaveProperty("response_format");
+});

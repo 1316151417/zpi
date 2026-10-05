@@ -1,6 +1,6 @@
 import { isJsonObject } from "../utils/transcript.ts";
 import type { DiscoveredModel, ProviderPresetId } from "./registry.ts";
-import { getProviderPreset, presetModels } from "./registry.ts";
+import { getProviderPreset, presetModels, usesChatGPTAuth } from "./registry.ts";
 
 export interface ModelDiscoveryInput {
   preset?: ProviderPresetId;
@@ -21,7 +21,9 @@ function normalizeModel(
 ): DiscoveredModel | undefined {
   const item = typeof value === "string" ? { id: value } : value;
   if (!isJsonObject(item)) return;
-  const id = typeof item.id === "string" ? item.id : item.slug;
+  if (usesChatGPTAuth(input.preset) && item.visibility !== "list") return;
+  const chatgpt = usesChatGPTAuth(input.preset);
+  const id = chatgpt ? (item.slug ?? item.id) : (item.id ?? item.slug);
   if (typeof id !== "string" || !id.trim() || id.length > 200) return;
   const known = catalog.get(id.toLowerCase());
   const model: DiscoveredModel = known
@@ -35,7 +37,8 @@ function normalizeModel(
         compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
       };
   model.id = id;
-  if (typeof item.name === "string" && item.name.trim()) model.name = item.name.slice(0, 200);
+  const name = item.display_name ?? item.name;
+  if (typeof name === "string" && name.trim()) model.name = name.slice(0, 200);
   const contextWindow = positive(item.context_window ?? item.contextWindow ?? item.context_length);
   const maxTokens = positive(item.max_output_tokens ?? item.maxTokens ?? item.max_tokens);
   if (contextWindow) model.contextWindow = contextWindow;
@@ -50,6 +53,48 @@ function normalizeModel(
         ["image", "video", "pdf"].includes(String(type)),
       ),
     ];
+  }
+  if (usesChatGPTAuth(input.preset)) {
+    model.availability = "listed";
+    if (item.supports_image_inputs === true) model.input = ["text", "image"];
+    const levels = item.supported_reasoning_levels ?? item.supported_reasoning_efforts;
+    const supported = Array.isArray(levels)
+      ? levels.flatMap((value) =>
+          typeof value === "string"
+            ? [value]
+            : isJsonObject(value) && typeof value.effort === "string"
+              ? [value.effort]
+              : [],
+        )
+      : [];
+    if (supported.length) {
+      model.reasoning = supported.some((level) => level !== "none");
+      model.compat = { supportsReasoningEffort: true };
+      model.thinkingLevelMap = Object.fromEntries(
+        ["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) => [
+          level,
+          level === "off"
+            ? supported.includes("none")
+              ? "none"
+              : null
+            : supported.includes(level)
+              ? level
+              : null,
+        ]),
+      );
+      const defaultLevel = item.default_reasoning_level ?? item.default_reasoning_effort;
+      const defaultThinkingLevel = (
+        typeof defaultLevel === "string" && supported.includes(defaultLevel)
+          ? defaultLevel === "none"
+            ? "off"
+            : defaultLevel
+          : supported.includes("medium")
+            ? "medium"
+            : undefined
+      ) as DiscoveredModel["defaultThinkingLevel"];
+      if (defaultThinkingLevel) model.defaultThinkingLevel = defaultThinkingLevel;
+      else delete model.defaultThinkingLevel;
+    }
   }
   const effort = isJsonObject(item.effort) ? item.effort.supported_levels : undefined;
   if (Array.isArray(effort) && input.preset === "deepseek") {
@@ -88,6 +133,7 @@ export async function fetchProviderModels(
         ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
       },
       signal: controller.signal,
+      cache: "no-store",
       redirect: "error",
     });
     if (!response.ok) {
@@ -119,7 +165,11 @@ export async function fetchProviderModels(
       offset += part.length;
     }
     const data: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    const container = isJsonObject(data) ? (data.data ?? data.models) : data;
+    const container = isJsonObject(data)
+      ? usesChatGPTAuth(input.preset)
+        ? (data.models ?? data.data)
+        : (data.data ?? data.models)
+      : data;
     const entries = Array.isArray(container)
       ? container
       : isJsonObject(container) && Array.isArray(container.models)
@@ -134,13 +184,32 @@ export async function fetchProviderModels(
       ).values(),
     ];
     if (!models.length) throw new Error("未返回可用模型");
+    if (usesChatGPTAuth(input.preset)) {
+      // Only supplement models absent from the response, never ones explicitly hidden by the account.
+      const returned = new Set(
+        entries.flatMap((item) =>
+          isJsonObject(item) && typeof (item.slug ?? item.id) === "string" ? [item.slug ?? item.id] : [],
+        ),
+      );
+      const supplemental = catalog.filter((model) => !returned.has(model.id));
+      return {
+        models: [...models, ...supplemental],
+        source: "remote",
+        ...(supplemental.length
+          ? {
+              warning: `已获取账号模型目录；${supplemental.map((model) => model.name).join("、")} 为预置补充，账号可用性待验证。`,
+            }
+          : {}),
+      };
+    }
     return { models, source: "remote" };
   } catch (error) {
     const models = catalog.map((model) => ({
       ...model,
       metadataSource: "catalog" as const,
     }));
-    if (!models.length) throw new Error("provider: 无法获取模型列表，请检查地址、凭据和网络");
+    if (!models.length || usesChatGPTAuth(input.preset))
+      throw new Error("provider: 无法获取模型列表，请检查地址、凭据和网络");
     // Never include response bodies, headers or credentials in diagnostics.
     const status = error instanceof Error && /^HTTP \d{3}$/.test(error.message) ? `（${error.message}）` : "";
     return { models, source: "catalog", warning: `在线模型列表暂不可用${status}，保留 Pi 预置目录。` };
