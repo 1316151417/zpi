@@ -355,12 +355,6 @@ export class SessionHost {
     this.projects = next;
     return structuredClone(p);
   }
-  renameProject(id: string, name: string): ProjectRecord {
-    const p = this.project(id);
-    const next = { ...p, name: this.name(name), updatedAt: Date.now() };
-    this.saveProject(next);
-    return structuredClone(next);
-  }
   removeProject(id: string): void {
     const p = this.project(id);
     this.saveProject({ ...p, hidden: true, updatedAt: Date.now() });

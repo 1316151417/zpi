@@ -267,7 +267,7 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
     const draftId = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(draftId);
     const text = `待发送 [main.txt](${join(dir, "workspace", "main.txt")})`;
     await page.getByLabel("消息", { exact: true }).fill(text);
@@ -367,9 +367,9 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await editor.press("Enter");
     await expect(page.locator(".answer")).toHaveText("ok");
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(1);
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     await editor.fill("下一份待发送草稿");
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(editor).toHaveText("下一份待发送草稿");
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(1);
     await expect(page.getByRole("alert")).toHaveCount(0);

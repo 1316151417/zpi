@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 // ZCode ConversationDraftEmptyState greeting and responsive typography.
 export function DraftGreeting() {
@@ -19,5 +19,36 @@ export function DraftGreeting() {
             : hour < 23 && hour >= 18
               ? "晚上好呀，今天辛苦啦"
               : "夜深啦，别忘了照顾好自己哦";
-  return <h1 className="draft-greeting">{greeting}</h1>;
+  const container = useRef<HTMLHeadingElement>(null);
+  const measurement = useRef<HTMLSpanElement>(null);
+  const [fontSize, setFontSize] = useState(30);
+  useLayoutEffect(() => {
+    const heading = container.current;
+    const text = measurement.current;
+    if (!heading || !text) return;
+    const measure = () => {
+      const style = getComputedStyle(heading);
+      const width =
+        heading.getBoundingClientRect().width -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight);
+      const naturalWidth = text.getBoundingClientRect().width;
+      setFontSize(
+        naturalWidth > 0 ? Math.max(20, Math.min(30, Math.floor((30 * width) / naturalWidth))) : 30,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(heading);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, [greeting]);
+  return (
+    <h1 ref={container} className="draft-greeting" style={{ fontSize }}>
+      <span ref={measurement} className="draft-greeting-measurement" aria-hidden="true">
+        {greeting}
+      </span>
+      <span>{greeting}</span>
+    </h1>
+  );
 }

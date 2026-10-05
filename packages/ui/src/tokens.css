@@ -1,15 +1,20 @@
 :root {
   color-scheme: light;
   --color-bg: #f8f8f8;
+  --color-window-bg: #ececee;
+  --color-window-bg-mac: color-mix(in oklab, var(--color-bg) 70%, transparent);
+  --color-input: #ffffff;
+  --color-fill: rgba(13, 13, 13, 0.03);
+  --color-fill-hover: rgba(13, 13, 13, 0.05);
   --color-surface: #ffffff;
   --color-surface-muted: #f0f0f0;
-  --color-text: #262626;
+  --color-text: var(--color-neutral-800);
   --color-text-muted: color-mix(in oklab, var(--color-foreground) 60%, transparent);
-  --color-foreground: #262626;
+  --color-foreground: var(--color-text);
   --color-text-subtle: color-mix(in oklab, var(--color-foreground) 60%, transparent);
   --color-text-subtlest: color-mix(in oklab, var(--color-foreground) 40%, transparent);
-  --color-process-subtle: color-mix(in oklab, #262626 60%, transparent);
-  --color-process-subtlest: color-mix(in oklab, #262626 40%, transparent);
+  --color-process-subtle: var(--color-text-subtle);
+  --color-process-subtlest: var(--color-text-subtlest);
   --brand-blue: #4f9fc3;
   --brand-coral: #ef857a;
   --brand-amber: #f2be4d;
@@ -37,13 +42,19 @@
   --color-usage-bar: #28627e;
   --color-terminal-selection: #28627e38;
   --color-overlay: #26323840;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
-  --font-code: "SFMono-Regular", Consolas, monospace;
+  /* Match ZCode's Tailwind 4.2 sans stack; an explicit PingFang fallback changes Chinese glyph metrics. */
+  --font-body:
+    ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji";
+  --font-code:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace;
   --ui-font-size: 14px;
   --text-xs: calc(var(--ui-font-size) - 4px);
   --text-small: calc(var(--ui-font-size) - 2px);
   --text-caption: calc(var(--ui-font-size) - 1px);
   --text-body: var(--ui-font-size);
+  --text-heading: calc(var(--ui-font-size) + 2px);
   --text-title: calc(var(--ui-font-size) + 4px);
   --line-body: 1.5;
   --space-1: 4px;
@@ -67,14 +78,17 @@
 [data-theme="dark"] {
   color-scheme: dark;
   --color-bg: #161616;
+  --color-window-bg: #2b2b2b;
+  --color-window-bg-mac: color-mix(in oklab, var(--color-window-bg) 60%, transparent);
+  --color-input: #2b2b2b;
+  --color-fill: rgba(255, 255, 255, 0.05);
+  --color-fill-hover: rgba(255, 255, 255, 0.1);
   --color-surface: #202020;
   --color-surface-muted: #161616;
-  --color-text: #d4d4d4;
+  --color-text: var(--color-neutral-300);
   --color-text-muted: color-mix(in oklab, var(--color-foreground) 60%, transparent);
-  --color-foreground: #d4d4d4;
+  --color-foreground: var(--color-text);
   --color-text-subtlest: color-mix(in oklab, var(--color-foreground) 30%, transparent);
-  --color-process-subtle: color-mix(in oklab, #d4d4d4 60%, transparent);
-  --color-process-subtlest: color-mix(in oklab, #d4d4d4 30%, transparent);
   --color-border: rgba(255, 255, 255, 0.1);
   --color-active: rgba(255, 255, 255, 0.1);
   --color-primary: #ffffff;

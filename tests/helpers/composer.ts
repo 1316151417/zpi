@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 export async function create(page: Page) {
-  await page.locator(".sidebar-global").getByRole("button", { name: "新对话", exact: true }).click();
+  await page.locator(".sidebar-global").getByRole("button", { name: "新建任务", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
 }
 export async function select(page: Page, id: string) {

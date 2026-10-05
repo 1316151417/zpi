@@ -9,10 +9,7 @@ export function startAppearance(): () => void {
     const root = document.documentElement;
     root.dataset.theme =
       preferences.theme === "system" ? (media.matches ? "dark" : "light") : preferences.theme;
-    root.style.setProperty(
-      "--ui-font-size",
-      { small: "12px", default: "14px", large: "16px" }[preferences.fontSize],
-    );
+    root.style.setProperty("--ui-font-size", `${preferences.fontSize}px`);
   };
   const systemChanged = () => {
     if (preferences.theme === "system") apply();

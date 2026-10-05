@@ -150,7 +150,8 @@ test("read-only resource settings, skill defaults, file changes and compaction u
         .locator(".inline-mention.skill")
         .getAttribute("data-markdown"),
     ).toContain("[$review](");
-    await page.getByRole("button", { name: "新对话 project", exact: true }).click();
+    await page.locator(".project-title").hover();
+    await page.getByRole("button", { name: "新建任务 project", exact: true }).click();
     await page.getByLabel("消息", { exact: true }).fill("$");
     await expect(page.getByRole("option", { name: /\$review/ })).toHaveCount(0);
     await page.getByLabel("消息", { exact: true }).press("Escape");

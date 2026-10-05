@@ -35,7 +35,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
   try {
     app = await launchDesktop({ dir, url: model.url });
     const page = await app.firstWindow();
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "终端", exact: true }).click();
     const input = page.locator(".right-pane .xterm-helper-textarea");
@@ -51,8 +51,8 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     const appearance = page.getByRole("region", { name: "设置", exact: true });
     await appearance.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page.getByRole("option", { name: "深色", exact: true }).click();
-    await appearance.getByRole("combobox", { name: "界面字号", exact: true }).click();
-    await page.getByRole("option", { name: "大", exact: true }).click();
+    await appearance.getByRole("spinbutton", { name: "界面字号", exact: true }).fill("16");
+    await appearance.getByRole("spinbutton", { name: "界面字号", exact: true }).press("Enter");
     await appearance.getByLabel("关闭设置").click();
     await expect.poll(terminalColor).not.toBe(lightTerminal);
     await expect
@@ -61,8 +61,8 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await appearance.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page.getByRole("option", { name: "浅色", exact: true }).click();
-    await appearance.getByRole("combobox", { name: "界面字号", exact: true }).click();
-    await page.getByRole("option", { name: "默认", exact: true }).click();
+    await appearance.getByRole("spinbutton", { name: "界面字号", exact: true }).fill("14");
+    await appearance.getByRole("spinbutton", { name: "界面字号", exact: true }).press("Enter");
     await appearance.getByLabel("关闭设置").click();
     await expect.poll(terminalColor).toBe(lightTerminal);
     await page.screenshot({ path: "test-results/desktop-terminal.png" });
@@ -180,7 +180,7 @@ test("local HTML links and address-bar paths load sandboxed pages, assets and re
   try {
     app = await launchDesktop({ dir, url: server.url, project });
     const page = await app.firstWindow();
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     await page.getByLabel("消息", { exact: true }).fill("打开本地文件");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await page.locator(".answer").getByRole("button", { name: "打开本地页面" }).click();

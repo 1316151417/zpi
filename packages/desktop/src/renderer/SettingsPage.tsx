@@ -37,7 +37,7 @@ const sections = [
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
 
-import { modelDefaults } from "../shared/config.ts";
+import { defaultPreferences, modelDefaults, uiFontSizeLimits } from "../shared/config.ts";
 
 const recommendedModels = (provider?: ProviderRecord) =>
   new Map<string, ModelSettings>([
@@ -70,6 +70,41 @@ const newModel = () => ({
   input: ["text"] as ModelSettings["input"],
   useRecommendedConfig: false,
 });
+function FontSizeInput({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const commit = () => {
+    const number = draft.trim() ? Number(draft) : Number.NaN;
+    const next = Number.isFinite(number)
+      ? Math.max(uiFontSizeLimits.min, Math.min(uiFontSizeLimits.max, Math.round(number)))
+      : value;
+    setDraft(String(next));
+    if (next !== value) onChange(next);
+  };
+  return (
+    <div className="settings-font-size">
+      <input
+        aria-label="界面字号"
+        type="number"
+        inputMode="numeric"
+        min={uiFontSizeLimits.min}
+        max={uiFontSizeLimits.max}
+        step={1}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            setDraft(String(value));
+          }
+        }}
+      />
+      <span aria-hidden="true">px</span>
+    </div>
+  );
+}
 export function SettingsPage({ onClose }: { onClose: () => void }) {
   const opener = useRef(document.activeElement);
   const settings = useStore((s) => s.settings);
@@ -251,6 +286,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       }}
     >
       <aside className="settings-sidebar">
+        <div className="settings-sidebar-drag-space" aria-hidden="true" />
         <button ref={back} className="settings-back" aria-label="关闭设置" title="返回任务" onClick={onClose}>
           <ArrowLeft size={17} />
           <span>返回任务</span>
@@ -271,9 +307,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         </nav>
       </aside>
       <div className="settings-main">
-        <header className="settings-breadcrumb">
-          设置 <span>/</span> {title}
-        </header>
+        <div className="settings-titlebar" aria-hidden="true" />
         <div className="settings-scroll">
           <div className={`settings-content ${tab === "models" ? "model-settings-content" : ""}`}>
             <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
@@ -304,16 +338,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                     <div className="settings-row">
                       <span className="settings-row-copy">
                         <strong>界面字号</strong>
-                        <small>调整应用界面的文字大小。</small>
+                        <small>调整应用界面的文字大小，图标和布局尺寸不受影响。</small>
                       </span>
-                      <SettingsSelect
-                        label="界面字号"
-                        value={settings?.interface.fontSize ?? "default"}
-                        options={[
-                          { value: "small", label: "小" },
-                          { value: "default", label: "默认" },
-                          { value: "large", label: "大" },
-                        ]}
+                      <FontSizeInput
+                        key={settings?.interface.fontSize ?? defaultPreferences.fontSize}
+                        value={settings?.interface.fontSize ?? defaultPreferences.fontSize}
                         onChange={(fontSize) => updateAppearance({ fontSize })}
                       />
                     </div>

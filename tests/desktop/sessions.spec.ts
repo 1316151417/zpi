@@ -29,7 +29,8 @@ test("A/B background runs, sidebar indicators and hover pin; stop, reload and un
     await page.getByLabel("消息", { exact: true }).fill("A");
     await page.getByLabel("发送", { exact: true }).click();
     await expect(page.locator(".answer")).toContainText("A first");
-    await page.getByRole("button", { name: "新对话 project", exact: true }).click();
+    await page.locator(".project-title").hover();
+    await page.getByRole("button", { name: "新建任务 project", exact: true }).click();
     await page.getByLabel("消息", { exact: true }).fill("B");
     await page.getByLabel("发送", { exact: true }).click();
     await expect(page.locator(".answer")).toContainText("B first");
@@ -165,7 +166,7 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     await editor().press("ArrowUp");
     await expect(editor()).toHaveText("项目第二条消息修改");
     await editor().fill("");
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("工作项目");
     await editor().press("ArrowUp");
     await expect(editor()).toHaveText("项目第二条消息");
@@ -177,7 +178,7 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     expect(await selectedProject()).toBeNull();
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.locator(".answer")).toHaveText("ok");
-    await page.getByLabel("新对话", { exact: true }).first().click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("选择项目");
     expect(await selectedProject()).toBeNull();
     await editor().press("ArrowUp");

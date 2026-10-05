@@ -167,15 +167,26 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     await page.getByRole("option", { name: "浅色", exact: true }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe("light");
-    await settings.getByRole("combobox", { name: "界面字号", exact: true }).click();
-    await page.getByRole("option", { name: "小", exact: true }).click();
+    await settings.getByRole("spinbutton", { name: "界面字号", exact: true }).fill("12");
+    await settings.getByRole("spinbutton", { name: "界面字号", exact: true }).press("Enter");
     await expect
-      .poll(() => page.locator("html").evaluate((el) => getComputedStyle(el).fontSize))
+      .poll(() =>
+        page
+          .locator(".markdown-body")
+          .first()
+          .evaluate((el) => getComputedStyle(el).fontSize),
+      )
       .toBe("12px");
-    await settings.getByRole("combobox", { name: "界面字号", exact: true }).click();
-    await page.getByRole("option", { name: "大", exact: true }).click();
+    await expect(page.locator("html")).toHaveCSS("font-size", "16px");
+    await settings.getByRole("spinbutton", { name: "界面字号", exact: true }).fill("16");
+    await settings.getByRole("spinbutton", { name: "界面字号", exact: true }).press("Enter");
     await expect
-      .poll(() => page.locator("html").evaluate((el) => getComputedStyle(el).fontSize))
+      .poll(() =>
+        page
+          .locator(".markdown-body")
+          .first()
+          .evaluate((el) => getComputedStyle(el).fontSize),
+      )
       .toBe("16px");
     await settings.getByLabel("关闭设置").click();
     await expect.poll(() => keyword.evaluate((el) => getComputedStyle(el).color)).toBe(lightColor);
@@ -219,7 +230,12 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     const restarted = await app.firstWindow();
     await expect(restarted.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect
-      .poll(() => restarted.locator("html").evaluate((el) => getComputedStyle(el).fontSize))
+      .poll(() =>
+        restarted
+          .locator(".markdown-body")
+          .first()
+          .evaluate((el) => getComputedStyle(el).fontSize),
+      )
       .toBe("16px");
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe("dark");
     await restarted.getByTestId("progress").first().click();

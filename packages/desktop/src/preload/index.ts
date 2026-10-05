@@ -41,7 +41,6 @@ const bridge: DesktopBridge = {
   setSkillEnabled: (path, enabled) => call("setSkillEnabled", path, enabled),
   listProjects: () => call("listProjects"),
   addProject: () => call("addProject"),
-  renameProject: (id, name) => call("renameProject", id, name),
   removeProject: (id) => call("removeProject", id),
   listSessions: (id) => call("listSessions", id),
   listRecentSessions: () => call("listRecentSessions"),

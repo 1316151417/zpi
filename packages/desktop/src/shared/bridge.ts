@@ -74,7 +74,7 @@ export interface CombinedSelection extends ModelSelection {
 }
 export interface InterfacePreferences {
   theme: "system" | "light" | "dark";
-  fontSize: "small" | "default" | "large";
+  fontSize: number;
   showContextUsage: boolean;
   showSendButton: boolean;
   sidebarCollapsed: boolean;
@@ -205,7 +205,6 @@ export interface DesktopBridge {
   setSkillEnabled(path: string, enabled: boolean): Promise<Result<PublicSettings>>;
   listProjects(): Promise<Result<ProjectRecord[]>>;
   addProject(): Promise<Result<ProjectRecord | null>>;
-  renameProject(id: string, name: string): Promise<Result<ProjectRecord>>;
   removeProject(id: string): Promise<Result<void>>;
   listSessions(projectId: string): Promise<Result<SessionRecord[]>>;
   listRecentSessions(): Promise<Result<SessionRecord[]>>;
@@ -278,7 +277,6 @@ export const methods = [
   "setSkillEnabled",
   "listProjects",
   "addProject",
-  "renameProject",
   "removeProject",
   "listSessions",
   "listRecentSessions",

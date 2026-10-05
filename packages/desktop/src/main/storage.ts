@@ -39,6 +39,7 @@ import {
   sidebarLimits,
   toPreset,
   toThinking,
+  uiFontSizeLimits,
 } from "../shared/config.ts";
 export function atomicJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -109,6 +110,7 @@ export class SettingsStore {
     const file = join(dir, "settings.json"),
       creds = join(dir, "credentials.enc");
     let oldVersion: 1 | 2 | 3 | undefined;
+    let migratedFontSize = false;
     if (existsSync(file)) {
       const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
       if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
@@ -149,8 +151,15 @@ export class SettingsStore {
         });
         this.data.lastSelection = this.recoverLastSelection();
       }
-      if (isJsonObject(this.data.interface))
+      if (isJsonObject(this.data.interface)) {
         this.data.interface = { ...defaultPreferences, ...this.data.interface };
+        const legacySize: unknown = this.data.interface.fontSize;
+        const legacySizes: Record<string, number> = { small: 12, default: 14, large: 16 };
+        if (typeof legacySize === "string" && Object.hasOwn(legacySizes, legacySize)) {
+          this.data.interface.fontSize = legacySizes[legacySize];
+          migratedFontSize = true;
+        }
+      }
       this.validateData(this.data);
     }
     if (existsSync(creds)) {
@@ -174,7 +183,7 @@ export class SettingsStore {
         if (existsSync(path) && !existsSync(`${path}.v${oldVersion}.bak`))
           copyFileSync(path, `${path}.v${oldVersion}.bak`);
       this.writeConfiguration(this.data, encryption.isEncryptionAvailable() ? this.credentials : undefined);
-    }
+    } else if (migratedFontSize) atomicJson(file, this.data);
   }
   private recoverLastSelection(): CombinedSelection | null {
     const root = join(this.dir, "agent", "sessions");
@@ -512,7 +521,9 @@ export class SettingsStore {
         prefs.tasksCollapsed,
       ].some((v) => typeof v !== "boolean") ||
       !["system", "light", "dark"].includes(prefs.theme) ||
-      !["small", "default", "large"].includes(prefs.fontSize) ||
+      !Number.isInteger(prefs.fontSize) ||
+      prefs.fontSize < uiFontSizeLimits.min ||
+      prefs.fontSize > uiFontSizeLimits.max ||
       !Number.isFinite(prefs.sidebarWidth) ||
       prefs.sidebarWidth < sidebarLimits.min ||
       prefs.sidebarWidth > sidebarLimits.max ||

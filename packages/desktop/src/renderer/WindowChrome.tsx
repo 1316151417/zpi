@@ -41,7 +41,12 @@ export function WindowChrome({
             <LeftIcon size={16} aria-hidden="true" />
           </button>
           {leftCollapsed && (
-            <button className="window-chrome-button" aria-label="新对话" title="新建任务" onClick={onNewTask}>
+            <button
+              className="window-chrome-button"
+              aria-label="新建任务"
+              title="新建任务"
+              onClick={onNewTask}
+            >
               <MessageCirclePlus size={16} />
             </button>
           )}

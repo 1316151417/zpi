@@ -1,15 +1,14 @@
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Archive,
   ChevronDown,
   ChevronRight,
+  Ellipsis,
   Folder,
   FolderOpen,
   LoaderIcon,
   MessageCirclePlus,
-  Pencil,
   Pin,
-  Plus,
   Settings,
   X,
 } from "lucide-react";
@@ -66,68 +65,6 @@ const inputContext: ComposerContext = {
     return `data:${result.metadata.mimeType};base64,${result.data}`;
   },
 };
-interface ActionDialog {
-  title: string;
-  value?: string;
-  destructive?: boolean;
-  onConfirm: (value: string) => Promise<void>;
-}
-function ActionModal({ action, onClose }: { action: ActionDialog; onClose: () => void }) {
-  const opener = useRef(document.activeElement);
-  const [value, setValue] = useState(action.value ?? "");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  return (
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <Dialog.Portal>
-        <Dialog.Overlay className="modal-backdrop" />
-        <Dialog.Content
-          className="modal"
-          aria-label={action.title}
-          aria-describedby={undefined}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
-          }}
-        >
-          <Dialog.Title asChild>
-            <h2>{action.title}</h2>
-          </Dialog.Title>
-          {action.destructive ? (
-            <p>此操作只影响 zpi 中的记录。项目源文件不会被删除。</p>
-          ) : (
-            <label>
-              名称
-              <input aria-label="名称" value={value} onChange={(e) => setValue(e.target.value)} />
-            </label>
-          )}
-          {error && <div className="run-error">{error}</div>}
-          <div className="modal-actions">
-            <button onClick={onClose}>取消</button>
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                void action.onConfirm(value).then(onClose, (e) => {
-                  setError(String(e));
-                  setBusy(false);
-                });
-              }}
-            >
-              确认
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
 function openLink(url: string, options?: WebOpenOptions): void {
   paneTask(openWebLink(url, options));
 }
@@ -181,7 +118,6 @@ export function App() {
       if (resizing.current) document.body.style.userSelect = oldSelect.current;
     };
   }, []);
-  const [action, setAction] = useState<ActionDialog | undefined>();
   useEffect(() => {
     const unsubscribe = subscribeEvents();
     const offPanes = listenPanes();
@@ -205,6 +141,7 @@ export function App() {
     [state.sessions],
   );
   const record = selected ? state.sessions.get(selected) : undefined;
+  const taskTitle = record?.draft ? "新任务" : (record?.title ?? view?.title ?? "新任务");
   const diagnostics = [
     ...new Map(
       [...(view?.controls?.diagnostics ?? []), ...(state.activeDiagnostics ?? [])].map((d) => [
@@ -353,7 +290,7 @@ export function App() {
         () => (
           <aside className="sidebar" hidden={collapsed} style={{ width }}>
             <div className="sidebar-global">
-              <button aria-label="新对话" onClick={() => task(() => newSession())}>
+              <button aria-label="新建任务" onClick={() => task(() => newSession())}>
                 <MessageCirclePlus size={16} />
                 新建任务
               </button>
@@ -373,10 +310,11 @@ export function App() {
                     aria-expanded={!prefs?.projectsCollapsed}
                     onClick={() => updatePrefs({ projectsCollapsed: !prefs?.projectsCollapsed })}
                   >
-                    {prefs?.projectsCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}项目
+                    <span>项目</span>
+                    {prefs?.projectsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                   </button>
                   <button aria-label="添加项目" className="muted-icon" onClick={() => void addProject()}>
-                    <Plus size={15} />
+                    <MessageCirclePlus size={14} />
                   </button>
                 </div>
                 <div className="projects" hidden={prefs?.projectsCollapsed}>
@@ -413,44 +351,43 @@ export function App() {
                         >
                           {p.name}
                         </button>
+                        <Menu.Root>
+                          <Menu.Trigger
+                            className="project-row-action"
+                            aria-label={`项目操作 ${p.name}`}
+                            title="更多"
+                          >
+                            <Ellipsis size={14} />
+                          </Menu.Trigger>
+                          <Menu.Portal>
+                            <Menu.Content
+                              className="project-action-menu"
+                              align="end"
+                              sideOffset={4}
+                              aria-label={`项目操作 ${p.name}`}
+                            >
+                              <Menu.Item
+                                className="project-action-menu-item"
+                                onSelect={() =>
+                                  task(async () => {
+                                    unwrap(await window.zpi.removeProject(p.id));
+                                    await refresh();
+                                  })
+                                }
+                              >
+                                <X size={14} />
+                                移除
+                              </Menu.Item>
+                            </Menu.Content>
+                          </Menu.Portal>
+                        </Menu.Root>
                         <button
-                          className="row-action"
-                          aria-label={`重命名项目 ${p.name}`}
-                          onClick={() =>
-                            setAction({
-                              title: "重命名项目",
-                              value: p.name,
-                              onConfirm: async (name) => {
-                                unwrap(await window.zpi.renameProject(p.id, name));
-                                await refresh();
-                              },
-                            })
-                          }
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          className="row-action"
-                          aria-label={`移除项目 ${p.name}`}
-                          onClick={() =>
-                            setAction({
-                              title: "隐藏项目",
-                              destructive: true,
-                              onConfirm: async () => {
-                                unwrap(await window.zpi.removeProject(p.id));
-                                await refresh();
-                              },
-                            })
-                          }
-                        >
-                          <X size={12} />
-                        </button>
-                        <button
-                          aria-label={`新对话 ${p.name}`}
-                          className="muted-icon"
+                          aria-label={`新建任务 ${p.name}`}
+                          title="新建任务"
+                          className="project-row-action"
                           onClick={() => task(() => newSession(p.id))}
                         >
-                          <Plus size={14} />
+                          <MessageCirclePlus size={14} />
                         </button>
                       </div>
                       {!prefs?.collapsedProjectIds.includes(p.id) &&
@@ -471,7 +408,16 @@ export function App() {
                     aria-expanded={!prefs?.tasksCollapsed}
                     onClick={() => updatePrefs({ tasksCollapsed: !prefs?.tasksCollapsed })}
                   >
-                    {prefs?.tasksCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}任务
+                    <span>任务</span>
+                    {prefs?.tasksCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  <button
+                    aria-label="新建任务"
+                    title="新建任务"
+                    className="muted-icon"
+                    onClick={() => task(() => newSession(null))}
+                  >
+                    <MessageCirclePlus size={14} />
                   </button>
                 </div>
                 <div className="recent-sessions" hidden={prefs?.tasksCollapsed}>
@@ -533,11 +479,11 @@ export function App() {
           onDoubleClick={() => updatePrefs({ sidebarWidth: sidebarLimits.default })}
         />
       )}
-      <main className={`main ${view && !view.runs.length ? "draft-main" : ""}`}>
+      <main className={`main ${record?.draft ? "draft-main" : ""}`}>
         <header className="topbar">
-          <div className="topbar-title" title={record?.title ?? view?.title ?? "新对话"}>
+          <div className="topbar-title" title={taskTitle}>
             <Folder size={16} />
-            <span>{record?.title ?? view?.title ?? "新对话"}</span>
+            <span>{taskTitle}</span>
           </div>
           <div className="topbar-drag-space" aria-hidden="true" />
         </header>
@@ -556,7 +502,7 @@ export function App() {
           <div className="banner">先在设置中添加提供商和模型。</div>
         )}
         {view ? (
-          <>
+          <div className="task-body">
             <Conversation
               workspace={workspace}
               view={view}
@@ -642,7 +588,7 @@ export function App() {
                 }}
               />
             </div>
-          </>
+          </div>
         ) : (
           <div className="empty-chat" role="status">
             正在准备任务…
@@ -653,8 +599,7 @@ export function App() {
       {useMemo(
         () => (settingsOpen ? <SettingsPage onClose={() => setSettingsOpen(false)} /> : null),
         [settingsOpen],
-      )}{" "}
-      {action && <ActionModal action={action} onClose={() => setAction(undefined)} />}
+      )}
     </div>
   );
 }

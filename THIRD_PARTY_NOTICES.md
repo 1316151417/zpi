@@ -381,6 +381,8 @@ The process layout and icon selection in packages/ui/src/components/Conversation
 
 WindowChrome, macOS window-button placement, sidebar typography/icons/pinned section, the empty side-pane launcher, and skills/model-provider settings layouts also follow this commit. References: DesktopTopOverlay.tsx, WorkspaceSidePaneToggleButton.tsx, WorkspaceSidebarItem.tsx, WorkspacePinnedTasksSection.tsx, TaskListItem.tsx, app-shell/AnimatedSidePanePanel.tsx, settings/SkillsSection.tsx, SettingsResourceGroup.tsx, model-provider-section/SectionLayout.tsx, Navigation.tsx, ApiKeyInput.tsx and desktopWindowButtonPosition.ts. Adapted to zpi's existing session, settings and pane APIs; capabilities not present in zpi were not added.
 
+Pixel-based interface font settings, rounded settings/workspace frames, transparent 4px resize gutters and side-pane launcher fills follow the same ZCode commit. References: lib/uiFontSize.ts, settingsCodePreview.tsx, SettingsPage.tsx, app-shell/WorkspaceShellLayout.tsx, app-shell/AnimatedSidePanePanel.tsx, WorkspaceHeader.tsx, v4/ConversationTimeline.tsx, v4/ConversationDraftEmptyState.tsx, v4/ConversationComposer.tsx, desktopWindowSize.ts and theme-zai tokens in styles.css. Adapted to zpi's preference storage and existing panes. Workspace surfaces, translucent macOS backdrop and native overlay scrollbar styling follow ZCode styles.css and DesktopWindowFrame.tsx; native under-window vibrancy and active visual effects follow desktopWindowChrome.ts. Colors retain the reference alpha compositing instead of hardcoding sampled display RGB values.
+
 Copyright 2026 Z.AI Co., Ltd
 
 ZCode's reasoning.tsx is derived from vercel/ai-elements packages/elements/src/reasoning.tsx.

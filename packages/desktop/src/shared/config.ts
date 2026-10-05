@@ -13,14 +13,15 @@ export const sidebarLimits = {
   max: 420,
   collapsed: 0,
   chatMin: 400,
-  resizer: 5,
+  resizer: 4,
 } as const;
+export const uiFontSizeLimits = { min: 12, max: 20 } as const;
 export const taskPinLimit = 5;
 export const reasoningPresets = ["disabled", "low", "high", "max"] as const;
 export const reasoningLabels = { disabled: "关闭", low: "低", high: "高", max: "最高" } as const;
 export const defaultPreferences: InterfacePreferences = {
   theme: "system",
-  fontSize: "default",
+  fontSize: 14,
   showContextUsage: false,
   showSendButton: false,
   sidebarCollapsed: false,

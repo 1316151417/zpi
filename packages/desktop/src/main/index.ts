@@ -86,8 +86,8 @@ async function launch(): Promise<void> {
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
   const window = new BrowserWindow({
-    width: Math.min(1500, display.width - 40),
-    height: Math.min(960, display.height - 40),
+    width: Math.min(1200, display.width),
+    height: Math.min(800, display.height),
     minWidth: 740,
     minHeight: 560,
     title: "zpi",
@@ -95,7 +95,14 @@ async function launch(): Promise<void> {
     icon,
     // 与 ZCode 的 macOS 顶栏一致，让原生红绿灯和侧栏开关位于同一排。
     titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
-    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 22, y: 23 } } : {}),
+    ...(process.platform === "darwin"
+      ? {
+          backgroundColor: "#00000000",
+          trafficLightPosition: { x: 22, y: 23 },
+          vibrancy: "under-window",
+          visualEffectState: "active",
+        }
+      : {}),
     webPreferences: {
       preload: join(dir, "../preload/index.cjs"),
       contextIsolation: true,
@@ -195,7 +202,6 @@ async function launch(): Promise<void> {
         setSkillEnabled: 2,
         listProjects: 0,
         addProject: 0,
-        renameProject: 2,
         removeProject: 1,
         listSessions: 1,
         listRecentSessions: 0,
@@ -386,9 +392,6 @@ async function launch(): Promise<void> {
           value = path ? await host.addProject(path) : null;
           break;
         }
-        case "renameProject":
-          value = host.renameProject(string(0), string(1));
-          break;
         case "removeProject":
           value = host.removeProject(string(0));
           break;

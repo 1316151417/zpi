@@ -6,7 +6,9 @@
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
 @theme {
   --color-border: rgba(13, 13, 13, 0.1);
-  --color-foreground: #262626;
+  --color-foreground: var(--color-text);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
 }
 @theme inline {
   --color-background: var(--color-bg);
@@ -16,8 +18,9 @@
 :root {
   font-family: var(--font-body);
   color: var(--color-text);
-  background: var(--color-bg);
-  font-size: var(--text-body);
+  background: transparent;
+  /* Keep rem geometry at ZCode's 16px root; interface scaling belongs on text only. */
+  font-size: 16px;
   font-synthesis: none;
 }
 * {
@@ -25,6 +28,8 @@
 }
 body {
   margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--line-body);
 }
 button,
 input,
@@ -83,8 +88,8 @@ small {
 .sidebar {
   width: 248px;
   flex-shrink: 0;
-  background: var(--color-surface-muted);
-  border-right: 1px solid var(--color-border);
+  background: transparent;
+  border-right: 0;
   display: flex;
   flex-direction: column;
   padding: var(--space-4) var(--space-3) var(--space-3);
@@ -153,7 +158,6 @@ small {
   opacity: 1;
 }
 .sidebar-footer {
-  border-top: 1px solid var(--color-border);
   padding: var(--space-4) var(--space-2) var(--space-1);
 }
 .sidebar-footer button {
@@ -441,7 +445,7 @@ small {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--color-text);
 }
 .queue-text.compact {
@@ -475,7 +479,7 @@ small {
 .queue-now {
   padding: 0 8px 0 6px;
   gap: 4px;
-  font-size: 14px;
+  font-size: var(--text-body);
   border-radius: 6px;
   background: var(--color-secondary);
 }
@@ -488,7 +492,7 @@ small {
   margin-bottom: 4px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  font-size: 14px;
+  font-size: var(--text-body);
   background: var(--color-surface);
 }
 .queue-paused span {
@@ -497,7 +501,7 @@ small {
 }
 .queue-paused button {
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--color-text-subtle);
 }
 .queue-error {
@@ -970,18 +974,41 @@ small {
 .sidebar.collapsed .sidebar-footer {
   margin-top: auto;
 }
+/* ZCode uses a transparent 4px gutter with a subtle hover/focus indicator. */
 .sidebar-resizer {
+  position: relative;
   cursor: col-resize;
-  background: var(--color-border);
+  background: transparent;
   touch-action: none;
   border: 0;
-  flex: 0 0 5px;
-  width: 5px;
+  flex: 0 0 4px;
+  width: 4px;
   margin: 0;
+  outline: none;
+  -webkit-app-region: no-drag;
 }
-.sidebar-resizer:hover,
-.sidebar-resizer:focus-visible {
-  background: var(--color-focus);
+.sidebar-resizer::after,
+.right-resizer::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--color-text-subtlest) 50%, transparent);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.sidebar-resizer:hover::after,
+.sidebar-resizer:active::after,
+.sidebar-resizer:focus-visible::after,
+.right-resizer:hover::after,
+.right-resizer:active::after,
+.right-resizer:focus-visible::after {
+  opacity: 1;
 }
 .projects {
   flex: 0 42%;
@@ -2012,7 +2039,12 @@ button.inline-mention,
   flex-shrink: 0;
 }
 
-/* Native scrollbars share ZCode's dimensions; Firefox uses its standard fallback. */
+/* ZCode uses standard scrollbar properties so Chromium retains native overlay
+   fading and hover expansion. WebKit pseudo-elements are the legacy fallback. */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-border) transparent;
+}
 *::-webkit-scrollbar {
   width: 14px;
   height: 14px;
@@ -2028,15 +2060,6 @@ button.inline-mention,
   border-radius: var(--radius-full);
   background: var(--color-border);
   background-clip: padding-box;
-}
-@supports not selector(::-webkit-scrollbar) {
-  * {
-    scrollbar-width: auto;
-    scrollbar-color: var(--color-border) transparent;
-  }
-  .conversation {
-    scrollbar-width: none;
-  }
 }
 
 .composer:hover {

@@ -5,6 +5,48 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
+import type { InterfacePreferences } from "../src/shared/bridge.ts";
+
+it("pixel font sizes persist and invalid updates leave settings intact", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-font-size-"));
+  const encryption = {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.alloc(0),
+    decryptString: () => "",
+  };
+  try {
+    const store = new SettingsStore(dir, encryption);
+    expect(store.get().interface.fontSize).toBe(14);
+    for (const fontSize of [12, 15, 20]) {
+      store.updatePreferences({ fontSize });
+      expect(new SettingsStore(dir, encryption).get().interface.fontSize).toBe(fontSize);
+    }
+    for (const fontSize of [11, 21, 14.5, NaN, Infinity, "large", null]) {
+      expect(() => store.updatePreferences({ fontSize } as InterfacePreferences)).toThrow(
+        /Invalid interface preferences|无效界面设置/,
+      );
+      expect(store.get().interface.fontSize).toBe(20);
+      expect(new SettingsStore(dir, encryption).get().interface.fontSize).toBe(20);
+    }
+    const file = join(dir, "settings.json");
+    const data = JSON.parse(await readFile(file, "utf8"));
+    // Migration changes only settings; locked credentials must remain byte-for-byte intact.
+    const credentialFile = join(dir, "credentials.enc");
+    await writeFile(credentialFile, "locked credentials");
+    for (const [legacy, fontSize] of [
+      ["small", 12],
+      ["default", 14],
+      ["large", 16],
+    ]) {
+      await writeFile(file, JSON.stringify({ ...data, interface: { ...data.interface, fontSize: legacy } }));
+      expect(new SettingsStore(dir, encryption).get().interface.fontSize).toBe(fontSize);
+      expect(JSON.parse(await readFile(file, "utf8")).interface.fontSize).toBe(fontSize);
+      expect(await readFile(credentialFile, "utf8")).toBe("locked credentials");
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 it("credential restore is bound to the endpoint and unavailable encryption removes stale credentials", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-storage-"));
