@@ -278,7 +278,13 @@ export function App() {
   const task = (fn: () => Promise<unknown>) => {
     void fn().catch(report);
   };
-  const pinnedCount = records.filter((record) => record.pinnedAt != null).length;
+  const pinned = records
+    .filter((r) => r.pinnedAt != null)
+    .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0));
+  const unpinned = records.filter((r) => r.pinnedAt == null).sort((a, b) => b.updatedAt - a.updatedAt);
+  const projectIds = new Set(state.projects.map((p) => p.id));
+  const tasks = unpinned.filter((r) => r.projectId === null || !projectIds.has(r.projectId));
+  const pinnedCount = pinned.length;
   const renderRow = (r: SessionRecord) => (
     <div
       key={r.id}
@@ -348,15 +354,6 @@ export function App() {
     300,
     Math.min((viewport - width) * paneRatio, viewport - width - (viewport >= 1100 ? 380 : 60)),
   );
-  const recent = [...records].sort((a, b) =>
-    a.pinnedAt != null && b.pinnedAt != null
-      ? a.pinnedAt - b.pinnedAt
-      : a.pinnedAt != null
-        ? -1
-        : b.pinnedAt != null
-          ? 1
-          : b.updatedAt - a.updatedAt,
-  );
   return (
     <div
       className={`shell ${window.zpi.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""}`}
@@ -383,10 +380,10 @@ export function App() {
             </div>
             {!collapsed && (
               <div className="sidebar-sections">
-                {recent.some((r) => r.pinnedAt != null) && (
+                {pinned.length > 0 && (
                   <section className="pinned-tasks" aria-label="置顶任务">
                     <h3 className="sidebar-heading">置顶</h3>
-                    {recent.filter((r) => r.pinnedAt != null).map(renderRow)}
+                    {pinned.map(renderRow)}
                   </section>
                 )}
                 <div className="sidebar-heading">
@@ -477,10 +474,7 @@ export function App() {
                         </button>
                       </div>
                       {!prefs?.collapsedProjectIds.includes(p.id) &&
-                        records
-                          .filter((r) => r.projectId === p.id)
-                          .sort((a, b) => b.updatedAt - a.updatedAt)
-                          .map(renderRow)}
+                        unpinned.filter((r) => r.projectId === p.id).map(renderRow)}
                     </section>
                   ))}
                   {!state.projects.length && (
@@ -507,7 +501,7 @@ export function App() {
                   </button>
                 </div>
                 <div className="recent-sessions" hidden={prefs?.tasksCollapsed}>
-                  {recent.map(renderRow)}
+                  {tasks.map(renderRow)}
                 </div>
               </div>
             )}

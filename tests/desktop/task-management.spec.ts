@@ -50,7 +50,7 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await editor(page).press("Enter");
     await expect(page.locator(".answer")).toHaveText("live response");
     const run = page.getByTestId("run");
-    const row = page.locator('.recent-sessions [data-testid="session-row"]').first();
+    const row = page.locator('.projects [data-testid="session-row"]').first();
     await expect(row.getByLabel("归档任务 运行任务", { exact: true })).toBeDisabled();
     await expect(row.getByLabel("归档任务 运行任务", { exact: true })).toHaveAttribute(
       "title",
@@ -167,7 +167,7 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await archived.getByRole("button", { name: "恢复", exact: true }).click();
     await expect(archived).toHaveCount(0);
     await page.getByLabel("关闭设置").click();
-    await page.locator(".recent-sessions .session-name").filter({ hasText: "手动名称" }).click();
+    await page.locator(".projects .session-name").filter({ hasText: "手动名称" }).click();
     await expect(editor(page)).toBeFocused();
     await expect(page.locator(".conversation-queue")).toHaveCount(0);
     expect(server.requests).toHaveLength(1);

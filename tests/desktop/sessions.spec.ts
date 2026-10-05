@@ -40,7 +40,7 @@ test("A/B background runs, sidebar indicators and hover pin; stop, reload and un
         .getByTestId("session-row")
         .filter({ has: page.getByRole("button", { name: "A", exact: true }) }),
     ).toHaveAttribute("data-status", "running");
-    const rowA = page.locator('.recent-sessions [data-testid="session-row"]').filter({
+    const rowA = page.locator('.sidebar [data-testid="session-row"]').filter({
       has: page.getByRole("button", { name: "A", exact: true }),
     });
     const leadingA = rowA.locator(".task-indicator");
@@ -53,34 +53,36 @@ test("A/B background runs, sidebar indicators and hover pin; stop, reload and un
     await rowA.hover();
     await expect(leadingA).toHaveCSS("opacity", "0");
     await expect(rowA.getByLabel("置顶任务 A", { exact: true })).toHaveCSS("opacity", "1");
+    expect((await rowA.locator(".session-name").boundingBox())?.x).toBe(titleX);
     await rowA.getByLabel("置顶任务 A", { exact: true }).click();
     await expect(page.locator(".pinned-tasks").getByRole("button", { name: "A", exact: true })).toBeVisible();
     await page.getByLabel("消息", { exact: true }).hover();
     await expect(leadingA).toHaveCSS("opacity", "1");
     await expect(rowA.getByLabel("取消置顶任务 A", { exact: true })).toHaveCSS("opacity", "0");
-    expect((await rowA.locator(".session-name").boundingBox())?.x).toBe(titleX);
-    await expect(page.locator('.projects [data-loading-indicator="true"]')).toHaveCount(2);
+    await expect(page.locator('.projects [data-loading-indicator="true"]')).toHaveCount(1);
+    await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
+    await expect(rowA).toHaveCount(1);
     await expect(page.locator('.pinned-tasks [data-loading-indicator="true"]')).toHaveCount(1);
     await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-running.png" });
-    await page.locator(".recent-sessions").getByRole("button", { name: "A", exact: true }).click();
+    await page.locator(".pinned-tasks").getByRole("button", { name: "A", exact: true }).click();
     await page.getByLabel("停止", { exact: true }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "aborted");
-    await page.locator(".recent-sessions").getByRole("button", { name: "B", exact: true }).click();
+    await page.locator(".projects").getByRole("button", { name: "B", exact: true }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
     await page.reload();
     await expect(page.locator(".answer")).toContainText("B first");
-    await expect(page.locator('.recent-sessions [data-loading-indicator="true"]')).toHaveCount(1);
-    await page.locator(".recent-sessions").getByRole("button", { name: "A", exact: true }).click();
+    await expect(page.locator('.projects [data-loading-indicator="true"]')).toHaveCount(1);
+    await page.locator(".pinned-tasks").getByRole("button", { name: "A", exact: true }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "aborted");
     releaseB.resolve();
     const rowB = () =>
-      page.locator('.recent-sessions [data-testid="session-row"]').filter({
+      page.locator('.projects [data-testid="session-row"]').filter({
         has: page.getByRole("button", { name: "B", exact: true }),
       });
     await expect(rowB()).toHaveAttribute("data-status", "completed");
     await expect(rowB().locator('[data-unread-indicator="true"]')).toBeVisible();
     await expect(rowB().locator(".task-unread-dot")).toHaveCSS("width", "6px");
-    await expect(page.locator('.recent-sessions [data-loading-indicator="true"]')).toHaveCount(0);
+    await expect(page.locator('.projects [data-loading-indicator="true"]')).toHaveCount(0);
     await app.close();
     app = await launchDesktop({ dir, project, url: server.url });
     page = await app.firstWindow();
