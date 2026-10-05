@@ -1,6 +1,6 @@
 {
   "name": "zpi-ui",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "exports": {
@@ -28,7 +28,7 @@
     "react-dom": "19.3.0",
     "rehype-sanitize": "6.0.0",
     "streamdown": "2.7.0",
-    "zpi-agent": "0.1.4",
-    "zpi-coding-agent": "0.1.4"
+    "zpi-agent": "0.1.5",
+    "zpi-coding-agent": "0.1.5"
   }
 }
