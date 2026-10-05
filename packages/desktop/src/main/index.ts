@@ -27,6 +27,7 @@ import type {
 import { methods } from "../shared/bridge.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
+import { performFileAction } from "./file-actions.ts";
 import { readFilePreview } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { PaneServices } from "./pane-services.ts";
@@ -198,6 +199,7 @@ async function launch(): Promise<void> {
         saveDraft: 2,
         getHistoryPage: 2,
         copyText: 1,
+        fileAction: 3,
         searchFiles: 2,
         getWorkspaceInfo: 1,
         readFilePreview: 3,
@@ -326,6 +328,13 @@ async function launch(): Promise<void> {
           clipboard.writeText(text);
           break;
         }
+        case "fileAction":
+          await performFileAction(host.workspaceInfo(string(0)).cwd, string(1), string(2), {
+            openPath: (path) => shell.openPath(path),
+            showItemInFolder: (path) => shell.showItemInFolder(path),
+            writeText: (text) => clipboard.writeText(text),
+          });
+          break;
         case "downloadImage": {
           const src = string(0);
           if (

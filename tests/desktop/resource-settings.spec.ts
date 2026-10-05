@@ -95,6 +95,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await page.getByRole("button", { name: "设置", exact: true }).click();
 
     await expect(page.locator(".settings-tabs button")).toHaveText([
+      "常规",
       "界面设置",
       "系统提示词",
       "工具",
@@ -102,7 +103,10 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "模型",
       "已归档任务",
     ]);
-    await expect(page.locator(".settings-tabs button").first()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "界面设置", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(
       page.locator(".resource-settings input, .resource-settings textarea, .resource-settings select"),
@@ -204,8 +208,10 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     expect(JSON.stringify(server.requests[0].messages)).toContain("image_url");
     await expect(page.locator(".composer .image-chip")).toHaveCount(0);
     await expect(page.locator(".user-message .image-chip img")).toHaveCount(1);
+    await expect(page.locator(".changed-files")).not.toHaveAttribute("open");
+    await page.locator(".changed-files-summary").click();
     await expect(page.locator(".changed-file-card")).toContainText("existing.txt");
-    await expect(page.locator(".changed-file-counts")).toHaveText("+1−1");
+    await expect(page.locator(".changed-file-counts")).toHaveText("+1-1");
     const cardBox = await page.locator(".changed-file-card").boundingBox();
     const answerBox = await page.locator(".answer").boundingBox();
     expect(cardBox?.y).toBeGreaterThan(answerBox?.y ?? 0);

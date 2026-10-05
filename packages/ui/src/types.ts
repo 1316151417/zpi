@@ -30,6 +30,7 @@ export interface FileChangeSummary {
   failed?: boolean;
   reason?: string;
 }
+export type FileAction = "open" | "reveal" | "copy-absolute" | "copy-relative";
 export type ViewBlock =
   | {
       id: string;
