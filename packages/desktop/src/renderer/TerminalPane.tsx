@@ -6,7 +6,17 @@ import "@xterm/xterm/css/xterm.css";
 import { observeAppearance } from "ZPI-ui";
 import { openBrowser, paneTask, terminalListeners, terminalOutput } from "./pane-store.ts";
 import { report, unwrap } from "./store.ts";
-export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolean; cwd: string }) {
+export function TerminalPane({
+  id,
+  sessionId,
+  visible,
+  cwd,
+}: {
+  id: string;
+  sessionId: string;
+  visible: boolean;
+  cwd: string;
+}) {
   const root = useRef<HTMLDivElement>(null),
     terminal = useRef<Terminal | undefined>(undefined),
     fit = useRef<FitAddon | undefined>(undefined);
@@ -27,7 +37,7 @@ export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolea
     term.loadAddon(
       new WebLinksAddon((event, url) => {
         event.preventDefault();
-        paneTask(openBrowser(url));
+        paneTask(openBrowser(url, sessionId));
       }),
     );
     term.open(element);
@@ -84,7 +94,7 @@ export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolea
       terminal.current = undefined;
       fit.current = undefined;
     };
-  }, [id]);
+  }, [id, sessionId]);
   useEffect(() => {
     if (!visible) return;
     const frame = requestAnimationFrame(() => {

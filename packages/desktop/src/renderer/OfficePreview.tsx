@@ -96,7 +96,13 @@ function DocxPreview({ buffer }: { buffer: ArrayBuffer }) {
   );
 }
 
-export default function OfficePreview({ preview }: { preview: Extract<FilePreview, { bytes: Uint8Array }> }) {
+export default function OfficePreview({
+  preview,
+  sessionId,
+}: {
+  preview: Extract<FilePreview, { bytes: Uint8Array }>;
+  sessionId: string;
+}) {
   const { theme } = useAppearance();
   const buffer = useMemo(() => new Uint8Array(preview.bytes).buffer, [preview]);
   const root = useRef<HTMLDivElement>(null);
@@ -109,7 +115,7 @@ export default function OfficePreview({ preview }: { preview: Extract<FilePrevie
       event.preventDefault();
       event.stopPropagation();
       const target = anchor.getAttribute("href") ?? "";
-      if (/^https?:\/\//i.test(target)) paneTask(openBrowser(target));
+      if (/^https?:\/\//i.test(target)) paneTask(openBrowser(target, sessionId));
     };
     element.addEventListener("click", navigate, true);
     element.addEventListener("auxclick", navigate, true);
@@ -117,7 +123,7 @@ export default function OfficePreview({ preview }: { preview: Extract<FilePrevie
       element.removeEventListener("click", navigate, true);
       element.removeEventListener("auxclick", navigate, true);
     };
-  }, []);
+  }, [sessionId]);
   return (
     <div
       ref={root}

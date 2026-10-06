@@ -32,6 +32,7 @@ import {
   listenPanes,
   openWebLink,
   paneTask,
+  setPaneOpen,
   openChanges as showChanges,
   openFile as showFile,
   usePane,
@@ -379,7 +380,7 @@ export function App() {
         hidden={settingsOpen}
         onNewTask={() => task(() => newSession())}
         onToggleLeft={() => updatePrefs({ sidebarCollapsed: !collapsed })}
-        onToggleRight={() => usePane.setState({ open: !paneOpen })}
+        onToggleRight={() => setPaneOpen(!paneOpen)}
       />
       {useMemo(
         () => (

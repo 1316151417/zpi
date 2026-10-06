@@ -5,7 +5,17 @@ import { useEffect, useRef } from "react";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
-import { closeTab, openBrowser, openChanges, openTerminal, paneTask, usePane } from "./pane-store.ts";
+import {
+  activatePaneTab,
+  closeTab,
+  openBrowser,
+  openChanges,
+  openTerminal,
+  paneTask,
+  reorderPaneTab,
+  usePane,
+  visiblePaneTabs,
+} from "./pane-store.ts";
 import { TerminalPane } from "./TerminalPane.tsx";
 export function RightPane({
   width,
@@ -17,6 +27,8 @@ export function RightPane({
   sessionId?: string;
 }) {
   const state = usePane();
+  const tabs = visiblePaneTabs(sessionId, state.tabs);
+  const active = tabs.find((tab) => tab.id === state.active)?.id;
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const active = tabsRef.current?.querySelector<HTMLElement>(".pane-tab.selected");
@@ -58,7 +70,7 @@ export function RightPane({
       <div className="right-pane-frame">
         <div className="pane-header">
           <div ref={tabsRef} role="tablist" aria-label="侧栏标签" className="pane-tabs">
-            {state.tabs.map((tab) => (
+            {tabs.map((tab) => (
               <div
                 role="tab"
                 aria-label={tab.title}
@@ -71,13 +83,10 @@ export function RightPane({
                   }
                   if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
                     event.preventDefault();
-                    const index = state.tabs.findIndex((item) => item.id === tab.id);
+                    const index = tabs.findIndex((item) => item.id === tab.id);
                     const next =
-                      state.tabs[
-                        (index + (event.key === "ArrowRight" ? 1 : -1) + state.tabs.length) %
-                          state.tabs.length
-                      ];
-                    if (next) usePane.setState({ active: next.id });
+                      tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+                    if (next) activatePaneTab(next.id);
                   }
                 }}
                 key={tab.id}
@@ -92,16 +101,7 @@ export function RightPane({
                 onDrop={(event) => {
                   event.preventDefault();
                   const id = event.dataTransfer.getData("application/x-ZPI-pane-tab");
-                  const tabs = usePane.getState().tabs;
-                  const source = tabs.find((item) => item.id === id);
-                  if (!source || source.id === tab.id) return;
-                  const reordered = tabs.filter((item) => item.id !== id);
-                  reordered.splice(
-                    tabs.findIndex((item) => item.id === tab.id),
-                    0,
-                    source,
-                  );
-                  usePane.setState({ tabs: reordered });
+                  reorderPaneTab(id, tab.id);
                 }}
                 onAuxClick={(event) => {
                   if (event.button === 1) {
@@ -114,7 +114,7 @@ export function RightPane({
                   className="pane-tab-trigger"
                   title={tab.title}
                   onClick={(event) => {
-                    if (event.button !== 1) usePane.setState({ active: tab.id });
+                    if (event.button !== 1) activatePaneTab(tab.id);
                   }}
                 >
                   {tab.type === "changes" ? (
@@ -138,7 +138,7 @@ export function RightPane({
               </div>
             ))}
           </div>
-          {state.tabs.length > 0 && (
+          {tabs.length > 0 && (
             <Dropdown.Root>
               <Dropdown.Trigger asChild>
                 <button className="pane-add-tab" aria-label="新增侧栏标签" title="新增标签">
@@ -165,7 +165,7 @@ export function RightPane({
                     <TerminalSquare size={16} />
                     终端
                   </Dropdown.Item>
-                  <Dropdown.Item onSelect={() => paneTask(openBrowser())}>
+                  <Dropdown.Item onSelect={() => paneTask(openBrowser("", sessionId))}>
                     <Globe size={16} />
                     浏览器
                   </Dropdown.Item>
@@ -175,7 +175,7 @@ export function RightPane({
           )}
           <div className="pane-drag-space" aria-hidden="true" />
         </div>
-        {state.tabs.length === 0 && (
+        {tabs.length === 0 && (
           <div className="pane-empty-launcher">
             <h2>打开标签页</h2>
             <p>选择要在侧栏中打开的标签。</p>
@@ -198,7 +198,7 @@ export function RightPane({
                 <TerminalSquare size={16} />
                 终端
               </button>
-              <button onClick={() => paneTask(openBrowser())}>
+              <button onClick={() => paneTask(openBrowser("", sessionId))}>
                 <Globe size={16} />
                 浏览器
               </button>
@@ -211,21 +211,26 @@ export function RightPane({
             className="pane-content"
             role="tabpanel"
             aria-label={tab.title}
-            hidden={tab.id !== state.active}
+            hidden={tab.id !== active}
           >
             {tab.type === "changes" ? (
               <ChangesPane
                 sessionId={tab.sessionId}
                 runId={tab.runId}
                 path={tab.path}
-                visible={state.open && tab.id === state.active}
+                visible={state.open && tab.id === active}
               />
             ) : tab.type === "terminal" ? (
-              <TerminalPane id={tab.id} cwd={tab.cwd} visible={state.open && tab.id === state.active} />
+              <TerminalPane
+                id={tab.id}
+                sessionId={tab.sessionId}
+                cwd={tab.cwd}
+                visible={state.open && tab.id === active}
+              />
             ) : tab.type === "file" ? (
               <FilePane preview={tab.preview} sessionId={tab.sessionId} />
             ) : (
-              <BrowserPane state={tab.state} visible={state.open && tab.id === state.active} />
+              <BrowserPane state={tab.state} visible={state.open && tab.id === active} />
             )}
           </div>
         ))}

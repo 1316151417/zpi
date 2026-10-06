@@ -12,7 +12,6 @@ import { useWorkspace } from "./use-workspace.ts";
 const OfficePreview = lazy(() => import("./OfficePreview.tsx"));
 const copyText = (text: string) => window.ZPI.copyText(text).then(unwrap);
 const downloadImage = (src: string) => window.ZPI.downloadImage(src).then(unwrap);
-const openLink = (url: string, options?: WebOpenOptions) => paneTask(openWebLink(url, options));
 
 function MediaPreview({ preview }: { preview: Extract<FilePreview, { bytes: Uint8Array }> }) {
   const [src, setSrc] = useState("");
@@ -37,6 +36,10 @@ function MediaPreview({ preview }: { preview: Extract<FilePreview, { bytes: Uint
 
 export function FilePane({ preview, sessionId }: { preview: FilePreview; sessionId: string }) {
   const { theme } = useAppearance();
+  const openLink = useCallback(
+    (url: string, options?: WebOpenOptions) => paneTask(openWebLink(url, options, sessionId)),
+    [sessionId],
+  );
   const positioned = useRef<FilePreview | undefined>(undefined);
   const selectionRoot = useRef<HTMLDivElement>(null);
   const currentTask = useStore((state) => state.selected);
@@ -193,7 +196,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
         <MediaPreview preview={preview} />
       ) : preview.kind === "xlsx" || preview.kind === "docx" ? (
         <Suspense fallback={<p className="pane-empty">正在加载文件…</p>}>
-          <OfficePreview preview={preview} />
+          <OfficePreview sessionId={sessionId} preview={preview} />
         </Suspense>
       ) : (
         <p className="pane-empty">此文件类型暂不支持预览。</p>
