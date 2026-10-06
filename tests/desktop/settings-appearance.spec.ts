@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("settings use ZCode typography and keep titlebar dragging separate from controls", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-settings-appearance-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-appearance-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });

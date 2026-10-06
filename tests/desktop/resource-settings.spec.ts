@@ -8,10 +8,10 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 async function configureModels(page: Page) {
   await page.evaluate(async () => {
-    const result = await window.zpi.getSettings();
+    const result = await window.ZPI.getSettings();
     if (!result.ok) throw Error(result.error.message);
     const p = result.value.providers[0];
-    const saved = await window.zpi.saveProvider({
+    const saved = await window.ZPI.saveProvider({
       id: p.id,
       name: p.name,
       baseUrl: p.baseUrl,
@@ -25,7 +25,7 @@ async function configureModels(page: Page) {
   });
 }
 test("read-only resource settings, skill defaults, file changes and compaction use the live runtime", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-resource-settings-")),
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-resource-settings-")),
     project = join(dir, "project");
   await mkdir(project);
   await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
@@ -118,7 +118,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".prompt-preview")).toContainText("available_skills");
     await expect(page.locator(".prompt-preview")).not.toContainText("<system_rules>");
     await expect(page.getByRole("heading", { name: "基础系统提示词 只读", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "系统规则 zpi 补充 · 只读", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "系统规则 ZPI 补充 · 只读", exact: true })).toBeVisible();
     const rules = page.locator(".system-rules-preview");
     await expect(rules).toContainText("Return web URLs as Markdown links");
     await expect(rules).toContainText("return local file references as Markdown links");

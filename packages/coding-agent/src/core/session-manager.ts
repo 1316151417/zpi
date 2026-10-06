@@ -1,3 +1,6 @@
+import type { ThinkingLevel } from "ZPI-agent";
+import type { JsonValue, Message, SystemMessage } from "ZPI-ai";
+import { assertSupportedOptions, getCurrentTools } from "ZPI-ai";
 import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
@@ -11,19 +14,17 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { ThinkingLevel } from "zpi-agent";
-import type { JsonValue, Message, SystemMessage } from "zpi-ai";
-import { assertSupportedOptions, getCurrentTools } from "zpi-ai";
 import {
   isSessionEntry,
   isSessionHeader,
   maxSessionEntryBytes,
+  normalizeSessionRecord,
   validateMessage,
 } from "./record-validation.ts";
 export interface SessionHeader {
   type: "session";
   version: 1;
-  format: "zpi";
+  format: "ZPI";
   id: string;
   timestamp: string;
   cwd: string;
@@ -66,7 +67,7 @@ export class SessionManager {
     this.header = {
       type: "session",
       version: 1,
-      format: "zpi",
+      format: "ZPI",
       id,
       timestamp: new Date().toISOString(),
       cwd: resolve(cwd),
@@ -74,7 +75,7 @@ export class SessionManager {
   }
   static create(
     cwd: string,
-    sessionDir = join(homedir(), ".zpi", "agent", "sessions"),
+    sessionDir = join(homedir(), ".ZPI", "agent", "sessions"),
     options: { id?: string } = {},
   ): SessionManager {
     assertSupportedOptions(options, ["id"], "SessionManager.create");
@@ -106,7 +107,7 @@ export class SessionManager {
       try {
         if (Buffer.byteLength(lines[i]) > maxSessionEntryBytes)
           throw new Error("Session entry exceeds 8 MiB");
-        parsed.push(JSON.parse(lines[i]));
+        parsed.push(normalizeSessionRecord(JSON.parse(lines[i])));
       } catch (error) {
         if (i !== lines.length - 1 || i === 0 || raw.endsWith("\n"))
           throw new Error(`Corrupt session at line ${i + 1}: ${String(error)}`);
@@ -192,7 +193,7 @@ export class SessionManager {
       if (e.type === "message") {
         const message = structuredClone(e.message);
         // Ignore obsolete instructions in memory; never migrate the historical JSONL.
-        if (message.role === "system" && message.sections) delete message.sections["zpi.goal"];
+        if (message.role === "system" && message.sections) delete message.sections["ZPI.goal"];
         context.messages.push(message);
       } else if (e.type === "model_change") context.model = { provider: e.provider, modelId: e.modelId };
       else if (e.type === "thinking_level_change") {

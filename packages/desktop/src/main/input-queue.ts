@@ -1,5 +1,5 @@
+import type { InputQueue, QueuedInput, RunStatus } from "ZPI-ui";
 import { randomUUID } from "node:crypto";
-import type { InputQueue, QueuedInput, RunStatus } from "zpi-ui";
 import type { RunInput } from "../shared/bridge.ts";
 
 interface QueueRuntime {

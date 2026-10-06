@@ -5,7 +5,7 @@ import { afterEach } from "vitest";
 
 const dirs: string[] = [];
 export async function temp() {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-tools-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-tools-"));
   dirs.push(dir);
   return dir;
 }

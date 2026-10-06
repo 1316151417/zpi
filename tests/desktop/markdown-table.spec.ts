@@ -10,7 +10,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("tables use theme borders and support Markdown copy, CSV, preview and horizontal scrolling; prose and image previews remain interactive", async () => {
   test.setTimeout(60000);
-  const dir = await mkdtemp(join(tmpdir(), "zpi-table-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-table-"));
   const project = join(dir, "project");
   await mkdir(project);
   const svg =
@@ -152,9 +152,9 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     await expect.poll(async () => readFile(remoteImagePath, "utf8").catch(() => "")).toBe(svg);
     await imagePreview.getByRole("button", { name: "关闭图片预览" }).click();
     const rejected = await page.evaluate(async () => [
-      await window.zpi.downloadImage("file:///etc/hosts"),
-      await window.zpi.downloadImage("javascript:alert(1)"),
-      await window.zpi.downloadImage("data:text/html;base64,YQ=="),
+      await window.ZPI.downloadImage("file:///etc/hosts"),
+      await window.ZPI.downloadImage("javascript:alert(1)"),
+      await window.ZPI.downloadImage("data:text/html;base64,YQ=="),
     ]);
     expect(rejected.every((result) => !result.ok)).toBe(true);
     const expand = wide.getByRole("button", { name: "展开表格滚动区域", exact: true });

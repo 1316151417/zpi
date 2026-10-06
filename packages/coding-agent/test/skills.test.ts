@@ -11,7 +11,7 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 async function temp() {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-skills-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-skills-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -56,15 +56,15 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
   await writeFile(join(f.cwd, "AGENTS.md"), "PROJECT RULE");
   await writeSkill(join(f.agentDir, "skills"), "review", "User review", "USER SECRET BODY");
   await writeSkill(
-    join(f.cwd, ".zpi", "skills"),
+    join(f.cwd, ".ZPI", "skills"),
     "review",
     "Project review",
     "PROJECT SECRET BODY\nUse references/check.md",
   );
-  await writeSkill(join(f.cwd, ".zpi", "skills"), "another", "Another", "ANOTHER BODY");
-  await mkdir(join(f.cwd, ".zpi", "skills", "broken"));
+  await writeSkill(join(f.cwd, ".ZPI", "skills"), "another", "Another", "ANOTHER BODY");
+  await mkdir(join(f.cwd, ".ZPI", "skills", "broken"));
   await writeFile(
-    join(f.cwd, ".zpi", "skills", "broken", "SKILL.md"),
+    join(f.cwd, ".ZPI", "skills", "broken", "SKILL.md"),
     "---\nname: [bad\ndescription: bad\n---\n",
   );
   const loader = new FileResourceLoader({ userSkillPaths: [], cwd: f.cwd, agentDir: f.agentDir });
@@ -79,7 +79,7 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
   expect(await loader.loadSkill("review")).toMatchObject({
     source: "project",
     body: "PROJECT SECRET BODY\nUse references/check.md",
-    baseDir: await realpath(join(f.cwd, ".zpi", "skills", "review")),
+    baseDir: await realpath(join(f.cwd, ".ZPI", "skills", "review")),
   });
   await expect(loader.loadSkill("missing")).rejects.toThrow("not found");
   const extraRoot = join(f.dir, "extra-skills");
@@ -100,11 +100,11 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
 
 it("explicit skills expand only at input start and invalid skills never reach the provider", async () => {
   const f = await resourceFixture((_, r) => done(r));
-  await writeSkill(join(f.cwd, ".zpi", "skills"), "review", "Review", "BODY ON DEMAND");
+  await writeSkill(join(f.cwd, ".ZPI", "skills"), "review", "Review", "BODY ON DEMAND");
   await f.session.submit("$review check sources");
   expect(JSON.stringify(f.server.requests[0])).toContain("BODY ON DEMAND");
   expect(f.server.requestHeaders[0].authorization).toBeUndefined();
-  const missing = buildMentionMarkdown("$missing", join(f.cwd, ".zpi", "skills", "missing", "SKILL.md"));
+  const missing = buildMentionMarkdown("$missing", join(f.cwd, ".ZPI", "skills", "missing", "SKILL.md"));
   await expect(f.session.submit(`${missing} do it`)).rejects.toThrow("not found");
   expect(f.server.requests).toHaveLength(1);
   expect(parseInput("Mention /compact and $review")).toEqual({
@@ -115,7 +115,7 @@ it("explicit skills expand only at input start and invalid skills never reach th
 
 it("unknown dollar-prefixed text is sent unchanged without expanding a skill", async () => {
   const f = await resourceFixture((_, r) => done(r));
-  await writeSkill(join(f.cwd, ".zpi", "skills"), "review", "Review", "BODY ON DEMAND");
+  await writeSkill(join(f.cwd, ".ZPI", "skills"), "review", "Review", "BODY ON DEMAND");
   const text = "  $100 is the price\n$review is mentioned later  ";
   await f.session.submit(text);
   expect(f.server.requests[0].messages).toContainEqual(

@@ -1,10 +1,36 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { seedHistory } from "../../../tests/history-fixture.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
+
+it("legacy transcripts rebuild old indexes and retain run metadata and paged history", async () => {
+  const { host, dir, cwd } = await setup();
+  const seed = seedHistory(dir, cwd, 2, { perRun: 2 });
+  await host.close();
+  const before = new HistoryIndex(seed.file);
+  await before.load();
+  const original = await readFile(seed.file, "utf8");
+  const legacy = original.replaceAll("ZPI", "ZPI".toLowerCase());
+  await writeFile(seed.file, legacy);
+  const { stat } = await import("node:fs/promises");
+  const fileStat = await stat(seed.file);
+  await writeFile(
+    `${seed.file}.index.json`,
+    JSON.stringify({ ...before.data, version: 5, size: fileStat.size, modified: fileStat.mtimeMs }),
+  );
+  const restored = new HistoryIndex(seed.file);
+  await restored.load();
+  expect(restored.readBytes).toBeGreaterThan(0);
+  expect(restored.data.header.format).toBe("ZPI");
+  expect(restored.data.diagnostic).toBeUndefined();
+  expect(restored.data.state["ZPI.session_meta"]).toMatchObject({ customType: "ZPI.session_meta" });
+  expect(restored.data.calls).toHaveLength(2);
+  expect(restored.page().entries).toEqual(before.page().entries);
+  expect(await readFile(seed.file, "utf8")).toBe(legacy);
+});
 
 it("page counts Agent pairs, includes interrupted invocation, and keeps continuation anchor without reducing model history", async () => {
   const { host, dir, cwd, settings, server } = await setup();

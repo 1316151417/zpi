@@ -33,7 +33,7 @@ describe("changed file summaries", () => {
   });
 
   it("keeps unknown counts and partial failures visible instead of presenting incomplete totals", () => {
-    vi.stubGlobal("document", { baseURI: "https://zpi.test/" });
+    vi.stubGlobal("document", { baseURI: "https://ZPI.test/" });
     const markup = renderToStaticMarkup(
       createElement(ChangedFiles, {
         run: runWithChanges([

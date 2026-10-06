@@ -1,3 +1,12 @@
+import { isJsonObject } from "ZPI-ai";
+import {
+  isSessionEntry,
+  isSessionHeader,
+  maxSessionEntryBytes,
+  normalizeSessionRecord,
+  type SessionEntry,
+  type SessionHeader,
+} from "ZPI-coding-agent";
 import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
@@ -11,14 +20,6 @@ import {
   statSync,
   truncateSync,
 } from "node:fs";
-import { isJsonObject } from "zpi-ai";
-import {
-  isSessionEntry,
-  isSessionHeader,
-  maxSessionEntryBytes,
-  type SessionEntry,
-  type SessionHeader,
-} from "zpi-coding-agent";
 import { entryFileChange } from "./file-changes.ts";
 import { atomicJson } from "./storage.ts";
 
@@ -39,7 +40,7 @@ interface RunBoundary {
   auxiliary?: boolean;
 }
 interface IndexData {
-  version: 5;
+  version: 6;
   size: number;
   modified: number;
   header: SessionHeader;
@@ -67,10 +68,10 @@ export class HistoryIndex {
     const index = new HistoryIndex(path),
       stat = statSync(path);
     index.data = {
-      version: 5,
+      version: 6,
       size: stat.size,
       modified: stat.mtimeMs,
-      header: JSON.parse(readFileSync(path, "utf8")),
+      header: normalizeSessionRecord(JSON.parse(readFileSync(path, "utf8"))) as SessionHeader,
       parentId: null,
       calls: [],
       runs: {},
@@ -86,7 +87,7 @@ export class HistoryIndex {
     try {
       const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
       if (
-        cached.version === 5 &&
+        cached.version === 6 &&
         cached.size === stat.size &&
         cached.modified === stat.mtimeMs &&
         cached.header &&
@@ -100,7 +101,7 @@ export class HistoryIndex {
       /* Missing/stale derived index is rebuilt with a bounded streaming scan. */
     }
     this.data = {
-      version: 5,
+      version: 6,
       size: 0,
       modified: 0,
       header: undefined as unknown as SessionHeader,
@@ -139,7 +140,7 @@ export class HistoryIndex {
         truncateSync(this.path, position);
       }
     }
-    if (this.data.header?.format !== "zpi") throw new Error("Unsupported session header");
+    if (this.data.header?.format !== "ZPI") throw new Error("Unsupported session header");
     const finalStat = statSync(this.path);
     this.data.size = finalStat.size;
     this.data.modified = finalStat.mtimeMs;
@@ -150,7 +151,8 @@ export class HistoryIndex {
   private consume(bytes: Buffer, start: number, end: number): void {
     try {
       if (bytes.length > maxSessionEntryBytes) throw new Error("Session entry exceeds 8 MiB");
-      const row = JSON.parse(bytes.toString("utf8"));
+      const row = normalizeSessionRecord(JSON.parse(bytes.toString("utf8")));
+      if (!isJsonObject(row)) throw new Error("Invalid session record");
       if (row.type === "session") {
         if (start !== 0 || !isSessionHeader(row)) throw new Error("Unsupported session header");
         this.data.header = row;
@@ -183,13 +185,13 @@ export class HistoryIndex {
           "model_change",
           "thinking_level_change",
           "session_info",
-          "zpi.configuration",
-          "zpi.session_meta",
-          "zpi.title",
-          "zpi.queue",
-          "zpi.selection",
-          "zpi.attention",
-          "zpi.fork",
+          "ZPI.configuration",
+          "ZPI.session_meta",
+          "ZPI.title",
+          "ZPI.queue",
+          "ZPI.selection",
+          "ZPI.attention",
+          "ZPI.fork",
         ].includes(key)
       )
         d.state[key] = entry;
@@ -216,8 +218,8 @@ export class HistoryIndex {
     }
     if (entry.type === "custom" && isJsonObject(entry.data)) {
       const value = entry.data;
-      if (entry.customType === "zpi.run" && typeof value.runId === "string") {
-        d.state["zpi.run"] = {
+      if (entry.customType === "ZPI.run" && typeof value.runId === "string") {
+        d.state["ZPI.run"] = {
           ...entry,
           data: {
             phase: value.phase ?? null,
@@ -228,9 +230,9 @@ export class HistoryIndex {
             queueItemId:
               value.queueItemId ??
               (value.phase === "end" &&
-              d.state["zpi.run"]?.type === "custom" &&
-              isJsonObject(d.state["zpi.run"].data)
-                ? (d.state["zpi.run"].data.queueItemId ?? null)
+              d.state["ZPI.run"]?.type === "custom" &&
+              isJsonObject(d.state["ZPI.run"].data)
+                ? (d.state["ZPI.run"].data.queueItemId ?? null)
                 : null),
           },
         };
@@ -268,7 +270,7 @@ export class HistoryIndex {
           }
         }
       }
-      if (entry.customType === "zpi.agent_call" && d.runs[this.currentRun]) {
+      if (entry.customType === "ZPI.agent_call" && d.runs[this.currentRun]) {
         const run = d.runs[this.currentRun],
           last = d.calls.at(-1);
         if (value.phase === "start") {
@@ -313,10 +315,10 @@ export class HistoryIndex {
   }
   append(
     fields:
-      | { type: "custom"; customType: string; data: import("zpi-ai").JsonValue }
+      | { type: "custom"; customType: string; data: import("ZPI-ai").JsonValue }
       | { type: "session_info"; name: string }
       | { type: "model_change"; provider: string; modelId: string }
-      | { type: "thinking_level_change"; thinkingLevel: import("zpi-agent").ThinkingLevel },
+      | { type: "thinking_level_change"; thinkingLevel: import("ZPI-agent").ThinkingLevel },
   ): void {
     const entry = {
       ...fields,
@@ -345,7 +347,7 @@ export class HistoryIndex {
         .toString("utf8")
         .split("\n")
         .filter(Boolean)
-        .map((line) => JSON.parse(line) as SessionEntry);
+        .map((line) => normalizeSessionRecord(JSON.parse(line)) as SessionEntry);
     } finally {
       closeSync(fd);
     }

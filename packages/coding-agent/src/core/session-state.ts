@@ -1,6 +1,6 @@
-import type { ThinkingLevel } from "zpi-agent";
-import type { ContextBreakdownItem, Model } from "zpi-ai";
-import { thinkingChoices } from "zpi-ai";
+import type { ThinkingLevel } from "ZPI-agent";
+import type { ContextBreakdownItem, Model } from "ZPI-ai";
+import { thinkingChoices } from "ZPI-ai";
 import type { SessionEntry } from "./session-manager.ts";
 
 export interface ContextUsage {

@@ -1,3 +1,4 @@
+import { buildMentionMarkdown, imageLimits, parseMentions } from "ZPI-coding-agent/input";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   ArrowDown,
@@ -21,7 +22,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { buildMentionMarkdown, imageLimits, parseMentions } from "zpi-coding-agent/input";
 import {
   buildSelectionPrompt,
   type ConversationSelection,
@@ -701,8 +701,8 @@ export function Conversation({
       root.scrollTop += target.getBoundingClientRect().top - root.getBoundingClientRect().top;
       setShowLatest(root.scrollHeight - root.scrollTop - root.clientHeight >= 60);
     };
-    window.addEventListener("zpi:scroll-to-run", navigate);
-    return () => window.removeEventListener("zpi:scroll-to-run", navigate);
+    window.addEventListener("ZPI:scroll-to-run", navigate);
+    return () => window.removeEventListener("ZPI:scroll-to-run", navigate);
   }, [view.sessionId]);
 
   const prepend = useRef<{ height: number; top: number } | null>(null);
@@ -710,14 +710,14 @@ export function Conversation({
     const el = ref.current;
     if (el)
       localStorage.setItem(
-        `zpi.reading.${view.sessionId}`,
+        `ZPI.reading.${view.sessionId}`,
         JSON.stringify({ top: el.scrollTop, following: following.current, cursor: historyCursor ?? 0 }),
       );
   };
   useLayoutEffect(() => {
     let saved: { top: number; following: boolean } | undefined;
     try {
-      saved = JSON.parse(localStorage.getItem(`zpi.reading.${view.sessionId}`) ?? "null") ?? undefined;
+      saved = JSON.parse(localStorage.getItem(`ZPI.reading.${view.sessionId}`) ?? "null") ?? undefined;
     } catch {
       /* Invalid optional bookmark starts at latest. */
     }
@@ -983,7 +983,7 @@ export function ChatComposer({
     textarea.current?.focus();
     textarea.current?.setSelectionRange(start + markdown.length + 1, start + markdown.length + 1);
   };
-  const addImages = async (operation: () => Promise<import("zpi-coding-agent").ImageAttachment[]>) => {
+  const addImages = async (operation: () => Promise<import("ZPI-coding-agent").ImageAttachment[]>) => {
     const id = sessionId;
     updateValue(id, (old) => ({ ...old, pending: old.pending + 1, error: undefined }));
     try {
@@ -1383,7 +1383,7 @@ export function ChatComposer({
               end = textarea.current?.selectionEnd ?? start;
             if (text) updateDraft(draft.slice(0, start) + text + draft.slice(end));
             void addImages(async () => {
-              const imported: import("zpi-coding-agent").ImageAttachment[] = [];
+              const imported: import("ZPI-coding-agent").ImageAttachment[] = [];
               try {
                 for (const file of images) {
                   if (file.size > imageLimits.sourceBytes) throw new Error("图片单张上限为 10 MiB");

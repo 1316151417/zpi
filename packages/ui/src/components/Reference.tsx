@@ -1,7 +1,7 @@
+import { parseMentions } from "ZPI-coding-agent/input";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Copy, ExternalLink } from "lucide-react";
 import { type CSSProperties, useState } from "react";
-import { parseMentions } from "zpi-coding-agent/input";
 import { selectionIntersects } from "../conversation-selections.ts";
 import { fileIconSource } from "../file-icons.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";

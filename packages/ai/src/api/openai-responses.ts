@@ -55,7 +55,7 @@ export function responsesInput(model: Model, context: TranscriptContext): Respon
             name: block.name,
             arguments: JSON.stringify(block.arguments),
             ...(model.auth === "chatgpt"
-              ? { namespace: "zpi" }
+              ? { namespace: "ZPI" }
               : block.namespace
                 ? { namespace: block.namespace }
                 : {}),
@@ -140,7 +140,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     )
       throw new Error("Model does not support images in the effective context");
     const client = new OpenAI({
-      apiKey: options.apiKey || "zpi-no-auth",
+      apiKey: options.apiKey || "ZPI-no-auth",
       adminAPIKey: null,
       organization: null,
       project: null,
@@ -183,7 +183,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         ? {
             tools:
               model.auth === "chatgpt"
-                ? [{ type: "namespace", name: "zpi", description: "Local coding tools", tools }]
+                ? [{ type: "namespace", name: "ZPI", description: "Local coding tools", tools }]
                 : tools,
           }
         : {}),

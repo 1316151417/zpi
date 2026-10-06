@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("context indicator appears after the first response and keeps measured usage across model switches and restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-context-indicator-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-context-indicator-"));
   const first = deferred();
   const second = deferred();
   const server = await fakeServer(async (body, response) => {
@@ -32,7 +32,7 @@ test("context indicator appears after the first response and keeps measured usag
     app = await launchDesktop({ dir, url: server.url });
     let page = await app.firstWindow();
     await page.evaluate(async (url) => {
-      const result = await window.zpi.saveProvider({
+      const result = await window.ZPI.saveProvider({
         id: "context-other",
         name: "Other provider",
         baseUrl: url,

@@ -1,8 +1,8 @@
+import { isJsonObject } from "ZPI-ai";
+import type { FileChange, SessionEntry } from "ZPI-coding-agent";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createTwoFilesPatch } from "diff";
-import { isJsonObject } from "zpi-ai";
-import type { FileChange, SessionEntry } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import { isPathInside } from "./path-bounds.ts";
 

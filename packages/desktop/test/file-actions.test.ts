@@ -1,8 +1,8 @@
+import { resolveLinkTarget } from "ZPI-ui/links";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { resolveLinkTarget } from "zpi-ui/links";
 import { performFileAction } from "../src/main/file-actions.ts";
 
 const directories: string[] = [];
@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-file-actions-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-file-actions-")));
   directories.push(dir);
   const cwd = join(dir, "workspace");
   await mkdir(cwd);

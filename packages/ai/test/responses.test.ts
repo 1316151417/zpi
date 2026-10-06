@@ -1,6 +1,6 @@
+import { emptyAssistant, normalizeContext, presetModels, streamSimple } from "ZPI-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { emptyAssistant, normalizeContext, presetModels, streamSimple } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { responsesInput } from "../src/api/openai-responses.ts";
 import type { Message, Model } from "../src/types.ts";
@@ -29,7 +29,7 @@ const callItem = {
   id: "fc_test",
   call_id: "call_test",
   name: "read",
-  namespace: "zpi",
+  namespace: "ZPI",
   arguments: '{"path":"README.md"}',
   status: "completed",
 };
@@ -244,7 +244,7 @@ describe("Responses protocol and portable transcripts", () => {
       {
         type: "toolCall",
         id: "call_test|fc_test",
-        namespace: "zpi",
+        namespace: "ZPI",
         name: "read",
         arguments: { path: "README.md" },
       },
@@ -257,7 +257,7 @@ describe("Responses protocol and portable transcripts", () => {
       stream: true,
       instructions: "instructions",
       reasoning: { effort: "high" },
-      tools: [{ type: "namespace", name: "zpi" }],
+      tools: [{ type: "namespace", name: "ZPI" }],
     });
     for (const key of ["max_output_tokens", "temperature", "metadata", "previous_response_id"])
       expect(body).not.toHaveProperty(key);
@@ -399,7 +399,7 @@ describe("Responses protocol and portable transcripts", () => {
       call_id: "call_deepseek",
       name: "read",
       arguments: '{"path":"README.md"}',
-      namespace: "zpi",
+      namespace: "ZPI",
     });
     expect(
       returnedInput.filter((row) => row.type === "function_call_output").map((row) => row.call_id),
@@ -436,7 +436,7 @@ describe("Responses protocol and portable transcripts", () => {
     const before = JSON.stringify(history);
     const input = responsesInput(responsesModel(), normalizeContext({ messages: history }));
     expect(input).toContainEqual(
-      expect.objectContaining({ type: "function_call", call_id: "bad_call_id", namespace: "zpi" }),
+      expect.objectContaining({ type: "function_call", call_id: "bad_call_id", namespace: "ZPI" }),
     );
     expect(JSON.stringify(input)).toContain("data:image/png;base64,abc");
     expect(JSON.stringify(input)).not.toContain("orphan");

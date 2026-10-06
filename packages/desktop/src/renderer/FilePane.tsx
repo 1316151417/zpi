@@ -1,8 +1,8 @@
+import { ConversationSelectionMenu, type FileAction, FileIcon, Markdown, useAppearance } from "ZPI-ui";
+import type { FileLocation, WebOpenOptions } from "ZPI-ui/links";
 import { File } from "@pierre/diffs/react";
 import { Copy, RefreshCw, WrapText } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConversationSelectionMenu, type FileAction, FileIcon, Markdown, useAppearance } from "zpi-ui";
-import type { FileLocation, WebOpenOptions } from "zpi-ui/links";
 import type { FilePreview } from "../shared/bridge.ts";
 import { readMarkdownImage } from "./markdown-image.ts";
 import { openFile, openWebLink, paneTask } from "./pane-store.ts";
@@ -10,8 +10,8 @@ import { addConversationSelection, unwrap, useStore } from "./store.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
 const OfficePreview = lazy(() => import("./OfficePreview.tsx"));
-const copyText = (text: string) => window.zpi.copyText(text).then(unwrap);
-const downloadImage = (src: string) => window.zpi.downloadImage(src).then(unwrap);
+const copyText = (text: string) => window.ZPI.copyText(text).then(unwrap);
+const downloadImage = (src: string) => window.ZPI.downloadImage(src).then(unwrap);
 const openLink = (url: string, options?: WebOpenOptions) => paneTask(openWebLink(url, options));
 
 function MediaPreview({ preview }: { preview: Extract<FilePreview, { bytes: Uint8Array }> }) {
@@ -41,7 +41,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
   const selectionRoot = useRef<HTMLDivElement>(null);
   const currentTask = useStore((state) => state.selected);
   const addSelection = useCallback(
-    (reference: import("zpi-ui").ConversationSelection) => addConversationSelection(reference, currentTask),
+    (reference: import("ZPI-ui").ConversationSelection) => addConversationSelection(reference, currentTask),
     [currentTask],
   );
   const [wrap, setWrap] = useState(false);
@@ -61,7 +61,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
   );
   const fileAction = useCallback(
     (path: string, action: FileAction, location?: FileLocation) =>
-      window.zpi.fileAction(sessionId, path, action, location).then(unwrap),
+      window.ZPI.fileAction(sessionId, path, action, location).then(unwrap),
     [sessionId],
   );
   const markdown = /\.md$/i.test(preview.path) && preview.kind === "text";
@@ -97,7 +97,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
             </button>
             <button
               aria-label="复制文件内容"
-              onClick={() => task(window.zpi.copyText(preview.text).then(unwrap))}
+              onClick={() => task(window.ZPI.copyText(preview.text).then(unwrap))}
             >
               <Copy size={15} />
             </button>

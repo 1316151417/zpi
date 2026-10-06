@@ -1,6 +1,6 @@
-import type { ThinkingLevel } from "zpi-agent";
-import type { Message, ToolCall, ToolResultMessage } from "zpi-ai";
-import type { ContextUsage, ImageAttachment, ResourceDiagnostic } from "zpi-coding-agent";
+import type { ThinkingLevel } from "ZPI-agent";
+import type { Message, ToolCall, ToolResultMessage } from "ZPI-ai";
+import type { ContextUsage, ImageAttachment, ResourceDiagnostic } from "ZPI-coding-agent";
 import type { FileLocation } from "./link-target.ts";
 export interface SessionControls {
   selection: {

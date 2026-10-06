@@ -8,7 +8,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("changed files start collapsed, group repeated edits, scroll within the card and open diffs", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-changed-files-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-changed-files-"));
   const project = join(dir, "project");
   await mkdir(join(project, "src"), { recursive: true });
   await mkdir(join(project, "tests"));
@@ -217,7 +217,7 @@ test("changed files start collapsed, group repeated edits, scroll within the car
 });
 
 test("changed HTML opens in the same built-in browser as conversation links, with explicit default-app opening", async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-changed-html-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-changed-html-")));
   const project = join(dir, "project");
   await mkdir(project);
   const name = "页面 #1.html";

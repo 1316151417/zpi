@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("provider menu appears above settings, supports keyboard access and deletes the chosen provider", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-provider-menu-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-provider-menu-"));
   const app = await launchDesktop({ dir, url: "" });
   try {
     const page = await app.firstWindow();
@@ -14,7 +14,7 @@ test("provider menu appears above settings, supports keyboard access and deletes
         ["delete", "菜单测试"],
         ["keep", "保留供应商"],
       ]) {
-        const result = await window.zpi.saveProvider({
+        const result = await window.ZPI.saveProvider({
           id,
           name,
           baseUrl: "http://127.0.0.1:1/v1",
@@ -79,7 +79,7 @@ test("provider menu appears above settings, supports keyboard access and deletes
     await expect(page.locator('[data-provider-id="delete"]')).toHaveCount(0);
     await expect(page.locator('[data-provider-id="keep"]')).toHaveCount(1);
     await page.reload();
-    const settings = await page.evaluate(() => window.zpi.getSettings());
+    const settings = await page.evaluate(() => window.ZPI.getSettings());
     expect(settings.ok && settings.value.providers.map((provider) => provider.id)).toEqual(["keep"]);
   } finally {
     await app.close();

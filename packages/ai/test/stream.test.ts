@@ -1,6 +1,6 @@
+import { emptyAssistant, normalizeContext } from "ZPI-ai";
+import { streamSimple } from "ZPI-ai/api/openai-completions";
 import { afterEach, describe, expect, it } from "vitest";
-import { emptyAssistant, normalizeContext } from "zpi-ai";
-import { streamSimple } from "zpi-ai/api/openai-completions";
 import { chunk, deferred, done, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 
 const cleanup: (() => Promise<void>)[] = [];

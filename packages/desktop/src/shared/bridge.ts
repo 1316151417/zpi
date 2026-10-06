@@ -1,5 +1,5 @@
-import type { Model, ModelDiscoveryResult, OpenAICompletionsCompat, ProviderPresetId } from "zpi-ai";
-import type { DiscoveredSkill, ImageAttachment, SkillList } from "zpi-coding-agent";
+import type { Model, ModelDiscoveryResult, OpenAICompletionsCompat, ProviderPresetId } from "ZPI-ai";
+import type { DiscoveredSkill, ImageAttachment, SkillList } from "ZPI-coding-agent";
 import type {
   DesktopEventEnvelope,
   FileAction,
@@ -7,10 +7,10 @@ import type {
   RunStatus,
   SessionControls,
   SessionView,
-} from "zpi-ui";
-import type { FileLocation } from "zpi-ui/links";
+} from "ZPI-ui";
+import type { FileLocation } from "ZPI-ui/links";
 
-export type { SessionControls } from "zpi-ui";
+export type { SessionControls } from "ZPI-ui";
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
 export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode; message: string } };
 export interface ProjectRecord {
@@ -117,7 +117,7 @@ export interface RunInput {
   attachments?: string[];
 }
 export type EditUserInput = Omit<RunInput, "sessionId"> & { workspaceMode?: "preserve" | "rewind" };
-export type EditUserResult = SessionSnapshot | { conflicts: import("zpi-ui").FileRewindConflict[] };
+export type EditUserResult = SessionSnapshot | { conflicts: import("ZPI-ui").FileRewindConflict[] };
 export interface WorkspaceInfo {
   home: string;
   cwd: string;
@@ -156,7 +156,7 @@ export interface SkillSettings {
   directories: string[];
 }
 export interface TextDraft {
-  selections?: import("zpi-ui").ConversationSelection[];
+  selections?: import("ZPI-ui").ConversationSelection[];
   text: string;
   fileReferences: string[];
   selection: [number, number];

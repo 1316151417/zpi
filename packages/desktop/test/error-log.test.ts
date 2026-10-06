@@ -10,7 +10,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 async function directory() {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-error-log-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-error-log-"));
   directories.push(dir);
   return dir;
 }

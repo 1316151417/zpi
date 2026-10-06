@@ -7,7 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("preset discovery, model configuration and custom provider persist without exposing credentials", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-provider-ui-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-provider-ui-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "ok" }));
     done(response);
@@ -92,7 +92,7 @@ test("preset discovery, model configuration and custom provider persist without 
     );
     await expect
       .poll(async () => {
-        const value = await page.evaluate(() => window.zpi.getSettings());
+        const value = await page.evaluate(() => window.ZPI.getSettings());
         return value.ok ? value.value.providers.find((p) => p.preset === "deepseek")?.models[0]?.id : "";
       })
       .toBe("deepseek-v4-pro");
@@ -119,7 +119,7 @@ test("preset discovery, model configuration and custom provider persist without 
     await page.getByRole("button", { name: "获取模型", exact: true }).click();
     await expect(page.locator(".provider-editor .run-notice[role=status]")).toContainText("已获取");
     await page.getByRole("button", { name: "保存提供商", exact: true }).click();
-    const saved = await page.evaluate(() => window.zpi.getSettings());
+    const saved = await page.evaluate(() => window.ZPI.getSettings());
     expect(JSON.stringify(saved)).not.toContain("isolated-key");
     if (!saved.ok) throw new Error(saved.error.message);
     expect(
@@ -199,7 +199,7 @@ test("preset discovery, model configuration and custom provider persist without 
     const expectedIds = [initialIds.at(-1), ...initialIds.slice(0, -1)];
     await expect
       .poll(async () => {
-        const value = await page.evaluate(() => window.zpi.getSettings());
+        const value = await page.evaluate(() => window.ZPI.getSettings());
         return value.ok ? value.value.providers.map((p) => p.id) : [];
       })
       .toEqual(expectedIds);
@@ -210,7 +210,7 @@ test("preset discovery, model configuration and custom provider persist without 
     await app.close();
     app = await launchDesktop({ dir, url: "" });
     const restartedPage = await app.firstWindow();
-    const persisted = await restartedPage.evaluate(() => window.zpi.getSettings());
+    const persisted = await restartedPage.evaluate(() => window.ZPI.getSettings());
     if (!persisted.ok) throw Error(persisted.error.message);
     expect(persisted.value.providers.map((p) => p.id)).toEqual(expectedIds);
     expect(persisted.value.providers.find((p) => p.preset === "deepseek")?.models.map((m) => m.id)).toEqual([

@@ -2,8 +2,18 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { startAppearance } from "./appearance.ts";
 import { logRendererError } from "./error-log.ts";
-import "zpi-ui/styles.css";
+import "ZPI-ui/styles.css";
 import "./workbench.css";
+
+// Preserve local UI preferences written before the brand names were unified.
+for (const key of Object.keys(localStorage)) {
+  const canonical = key.replace(/^ZPI(?=[.:-])/i, "ZPI");
+  if (canonical !== key) {
+    const value = localStorage.getItem(key);
+    if (value !== null && localStorage.getItem(canonical) === null) localStorage.setItem(canonical, value);
+    localStorage.removeItem(key);
+  }
+}
 
 window.addEventListener("error", (event) => {
   logRendererError(

@@ -8,7 +8,12 @@ export * from "./core/images.ts";
 export * from "./core/mentions.ts";
 export type { ProviderChatModelConfig, ProviderConfigInput } from "./core/model-runtime.ts";
 export { ModelRuntime } from "./core/model-runtime.ts";
-export { isSessionEntry, isSessionHeader, maxSessionEntryBytes } from "./core/record-validation.ts";
+export {
+  isSessionEntry,
+  isSessionHeader,
+  maxSessionEntryBytes,
+  normalizeSessionRecord,
+} from "./core/record-validation.ts";
 export type { DiscoveredSkill, LoadedSkill, SkillList, SkillMetadata } from "./core/resources.ts";
 export { FileResourceLoader, SkillCatalog } from "./core/resources.ts";
 export type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./core/sdk.ts";

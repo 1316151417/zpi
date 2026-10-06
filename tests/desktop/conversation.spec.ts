@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("streaming tools, manual expansion, default collapse, IME, safe renderer and restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "README.md"), "# Test project");
@@ -19,7 +19,7 @@ test("streaming tools, manual expansion, default collapse, IME, safe renderer an
     const calls = [
       { name: "read", arguments: { path: "README.md" } },
       { name: "write", arguments: { path: "demo.txt", content: "hello\n" } },
-      { name: "edit", arguments: { path: "demo.txt", edits: [{ oldText: "hello", newText: "zpi" }] } },
+      { name: "edit", arguments: { path: "demo.txt", edits: [{ oldText: "hello", newText: "ZPI" }] } },
       { name: "bash", arguments: { command: "cat demo.txt" } },
     ];
     if (user === "完整工具演示" && results.length < 4) {
@@ -73,7 +73,7 @@ test("streaming tools, manual expansion, default collapse, IME, safe renderer an
     await page.getByTestId("progress").click();
     await expect(page.getByTestId("progress")).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator(".answer")).toContainText("最终回复");
-    expect(await readFile(join(project, "demo.txt"), "utf8")).toBe("zpi\n");
+    expect(await readFile(join(project, "demo.txt"), "utf8")).toBe("ZPI\n");
     await page.getByLabel("消息", { exact: true }).fill("第二轮");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveCount(2);
@@ -93,10 +93,10 @@ test("streaming tools, manual expansion, default collapse, IME, safe renderer an
     expect(
       await page.evaluate(() => ({
         node: typeof (window as unknown as { require?: unknown }).require,
-        key: window.zpi.getSettings().then((r) => JSON.stringify(r)),
+        key: window.ZPI.getSettings().then((r) => JSON.stringify(r)),
       })),
     ).toMatchObject({ node: "undefined" });
-    const settings = await page.evaluate(() => window.zpi.getSettings());
+    const settings = await page.evaluate(() => window.ZPI.getSettings());
     expect(JSON.stringify(settings)).not.toContain("local-test-key");
     expect(errors).toEqual([]);
     await app.close();

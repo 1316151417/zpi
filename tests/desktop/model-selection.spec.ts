@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("running Zhipu selection switches to DeepSeek for an immediate queued message and safe retry", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-switch-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-switch-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "README.md"), "switch fixture");
@@ -65,7 +65,7 @@ test("running Zhipu selection switches to DeepSeek for an immediate queued messa
         ["switch-zhipu", "智谱测试", "glm-fixture"],
         ["switch-deepseek", "DeepSeek测试", "deepseek-fixture"],
       ]) {
-        const result = await window.zpi.saveProvider({
+        const result = await window.ZPI.saveProvider({
           id,
           name,
           baseUrl: url,

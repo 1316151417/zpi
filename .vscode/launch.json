@@ -4,7 +4,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "zpi: Coding session",
+      "name": "ZPI: Coding session",
       "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/tsx",
       "program": "${workspaceFolder}/examples/coding-session.ts",
       "cwd": "${workspaceFolder}",
@@ -14,12 +14,12 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "zpi: Electron main",
+      "name": "ZPI: Electron main",
       "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
       "runtimeArgs": ["--remote-debugging-port=9222"],
       "program": "${workspaceFolder}/packages/desktop/dist/main/index.js",
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "zpi: build",
+      "preLaunchTask": "ZPI: build",
       "sourceMaps": true,
       "outFiles": ["${workspaceFolder}/packages/desktop/dist/main/**/*.js"],
       "console": "integratedTerminal",

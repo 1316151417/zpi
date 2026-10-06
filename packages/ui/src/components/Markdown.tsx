@@ -49,12 +49,12 @@ function preserveTargets() {
     const visit = (node: MarkdownNode) => {
       if (node.properties) {
         const key = node.tagName === "a" ? "href" : node.tagName === "img" ? "src" : undefined;
-        const target = node.properties.dataZpiTarget ?? (key ? node.properties[key] : undefined);
+        const target = node.properties.dataZPITarget ?? (key ? node.properties[key] : undefined);
         if (key && typeof target === "string") {
-          node.properties.dataZpiTarget = target;
+          node.properties.dataZPITarget = target;
           // Keep the original destination before sanitizer/harden normalize local paths.
           if (!/^https?:/i.test(target) && !(key === "src" && /^data:image\//i.test(target)))
-            node.properties[key] = "/zpi-local-target";
+            node.properties[key] = "/ZPI-local-target";
         }
       }
       node.children?.forEach(visit);
@@ -71,8 +71,8 @@ const rehypePlugins: StreamdownProps["rehypePlugins"] = [
       ...sanitizeSchema,
       attributes: {
         ...sanitizeSchema.attributes,
-        a: [...(sanitizeSchema.attributes?.a ?? []), "dataZpiTarget"],
-        img: [...(sanitizeSchema.attributes?.img ?? []), "dataZpiTarget"],
+        a: [...(sanitizeSchema.attributes?.a ?? []), "dataZPITarget"],
+        img: [...(sanitizeSchema.attributes?.img ?? []), "dataZPITarget"],
       },
     },
   ],
@@ -173,7 +173,7 @@ export const Markdown = memo(function Markdown({
   const components = useMemo<NonNullable<StreamdownProps["components"]>>(
     () => ({
       a: ({ href, children, node }) => {
-        const original = node?.properties?.dataZpiTarget;
+        const original = node?.properties?.dataZPITarget;
         const destination = typeof original === "string" ? original : href;
         const target = destination ? resolveLinkTarget(destination, workspace) : null;
         if (target?.kind === "file" && onFile) {

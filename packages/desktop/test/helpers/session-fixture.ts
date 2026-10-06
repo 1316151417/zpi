@@ -10,7 +10,7 @@ afterEach(async () => {
   for (const f of cleanup.splice(0).reverse()) await f();
 });
 export async function setup(title?: Parameters<typeof fakeServer>[1]) {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-session-metadata-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-session-metadata-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);

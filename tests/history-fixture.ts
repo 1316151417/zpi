@@ -1,8 +1,8 @@
+import { emptyAssistant } from "ZPI-ai";
+import { piTemplate, SessionManager } from "ZPI-coding-agent";
 import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { emptyAssistant } from "zpi-ai";
-import { piTemplate, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "./fake-server.ts";
 export function seedHistory(
   dir: string,
@@ -22,9 +22,9 @@ export function seedHistory(
     { id: options.id ?? randomUUID() },
   );
   manager.appendSessionInfo("历史标题");
-  manager.appendCustomEntry("zpi.configuration", { template: { ...piTemplate }, disabledSkillPaths: [] });
-  manager.appendCustomEntry("zpi.session_meta", { projectId: options.projectId ?? null, pinnedAt: null });
-  manager.appendCustomEntry("zpi.title", { state: "legacy" });
+  manager.appendCustomEntry("ZPI.configuration", { template: { ...piTemplate }, disabledSkillPaths: [] });
+  manager.appendCustomEntry("ZPI.session_meta", { projectId: options.projectId ?? null, pinnedAt: null });
+  manager.appendCustomEntry("ZPI.title", { state: "legacy" });
   manager.appendModelChange("custom", "fake");
   manager.appendThinkingLevelChange("off");
   const file = manager.getSessionFile() as string;
@@ -49,7 +49,7 @@ export function seedHistory(
       append(
         {
           type: "custom",
-          customType: "zpi.run",
+          customType: "ZPI.run",
           data: {
             phase: "start",
             runId,
@@ -62,7 +62,7 @@ export function seedHistory(
         i,
       );
     }
-    append({ type: "custom", customType: "zpi.agent_call", data: { phase: "start", runId, ordinal } }, i);
+    append({ type: "custom", customType: "ZPI.agent_call", data: { phase: "start", runId, ordinal } }, i);
     append(
       {
         type: "message",
@@ -122,12 +122,12 @@ export function seedHistory(
     );
     ordinal++;
     if (!(options.interrupted && i === calls - 1)) {
-      append({ type: "custom", customType: "zpi.agent_call", data: { phase: "end", runId, ordinal } }, i);
+      append({ type: "custom", customType: "ZPI.agent_call", data: { phase: "end", runId, ordinal } }, i);
       if ((i + 1) % (options.perRun ?? 1) === 0 || i === calls - 1)
         append(
           {
             type: "custom",
-            customType: "zpi.run",
+            customType: "ZPI.run",
             data: { phase: "end", runId, status: "completed", endedAt: base + i * 1000 + 20 },
           },
           i,

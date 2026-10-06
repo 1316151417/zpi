@@ -7,8 +7,7 @@ export function useWorkspace(sessionId: string | undefined) {
   useEffect(() => {
     if (!sessionId) return;
     let active = true;
-    void window.zpi
-      .getWorkspaceInfo(sessionId)
+    void window.ZPI.getWorkspaceInfo(sessionId)
       .then((result) => {
         if (active) setWorkspace({ id: sessionId, info: unwrap(result) });
       })

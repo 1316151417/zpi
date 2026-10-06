@@ -14,7 +14,7 @@ export function ArchivedTasks() {
   const [query, setQuery] = useState("");
   const [deleting, setDeleting] = useState<ArchivedRecord[]>();
   const load = useCallback(async () => {
-    setRecords(unwrap(await window.zpi.listArchivedSessions()));
+    setRecords(unwrap(await window.ZPI.listArchivedSessions()));
   }, []);
   useEffect(() => {
     void load()
@@ -38,7 +38,7 @@ export function ArchivedTasks() {
     try {
       for (const r of targets) {
         try {
-          unwrap(await window.zpi.deleteSession(r.id));
+          unwrap(await window.ZPI.deleteSession(r.id));
         } catch (e) {
           failures.push(`${r.title}：${e instanceof Error ? e.message : String(e)}`);
         }
@@ -131,8 +131,7 @@ export function ArchivedTasks() {
                       onClick={() => {
                         setBusy(true);
                         setError("");
-                        void window.zpi
-                          .restoreSession(r.id)
+                        void window.ZPI.restoreSession(r.id)
                           .then(unwrap)
                           .then(load)
                           .then(refresh)

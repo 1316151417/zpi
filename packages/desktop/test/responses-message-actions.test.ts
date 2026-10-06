@@ -19,7 +19,7 @@ const sse = (events: unknown[]) =>
   });
 
 async function fixture(holdText?: string) {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-responses-message-actions-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-responses-message-actions-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const codec = {
     isEncryptionAvailable: () => true,
@@ -144,7 +144,7 @@ async function fixture(holdText?: string) {
           type: "function_call",
           id: `fc_${id}`,
           call_id: `call_${id}`,
-          namespace: "zpi",
+          namespace: "ZPI",
           name: "write",
           arguments: JSON.stringify({ path: "note.txt", content: text }),
           status: "completed",

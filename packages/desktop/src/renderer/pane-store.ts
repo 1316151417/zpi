@@ -1,4 +1,4 @@
-import { type FileLocation, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
+import { type FileLocation, type WebOpenOptions, webOpenTarget } from "ZPI-ui/links";
 import { create } from "zustand";
 import type { BrowserState, FilePreview, PaneEvent } from "../shared/bridge.ts";
 import { report, unwrap } from "./store.ts";
@@ -15,7 +15,7 @@ interface PaneState {
 }
 let savedRatio = 0.45;
 try {
-  const value = Number(localStorage.getItem("zpi.rightPaneRatio"));
+  const value = Number(localStorage.getItem("ZPI.rightPaneRatio"));
   if (value >= 0.2 && value <= 0.7) savedRatio = value;
 } catch {
   /* Optional UI preference. */
@@ -24,7 +24,7 @@ export const usePane = create<PaneState>(() => ({ open: false, tabs: [], ratio: 
 export const terminalOutput = new Map<string, string>();
 export const terminalListeners = new Map<string, (event: Extract<PaneEvent, { type: "terminal" }>) => void>();
 export function listenPanes() {
-  return window.zpi.onPaneEvent((event) => {
+  return window.ZPI.onPaneEvent((event) => {
     if (event.type === "terminal") {
       terminalOutput.set(event.id, ((terminalOutput.get(event.id) ?? "") + event.data).slice(-524288));
       terminalListeners.get(event.id)?.(event);
@@ -55,22 +55,22 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
   showTab({ id, type: "changes", sessionId, runId, path, title: "变更" });
 }
 export async function openTerminal(sessionId: string) {
-  const cwd = unwrap(await window.zpi.getWorkspaceInfo(sessionId)).cwd;
-  const created = unwrap(await window.zpi.createTerminal(sessionId));
+  const cwd = unwrap(await window.ZPI.getWorkspaceInfo(sessionId)).cwd;
+  const created = unwrap(await window.ZPI.createTerminal(sessionId));
   showTab({ type: "terminal", id: created.id, title: created.shell, sessionId, cwd });
 }
 export async function openBrowser(url = "") {
-  const created = unwrap(await window.zpi.createBrowser(url));
+  const created = unwrap(await window.ZPI.createBrowser(url));
   showTab({ type: "browser", id: created.id, title: "浏览器", state: created });
 }
 export async function openWebLink(url: string, options?: WebOpenOptions) {
   if (webOpenTarget(url, options) === "app-browser") await openBrowser(url);
-  else unwrap(await window.zpi.openExternal(url));
+  else unwrap(await window.ZPI.openExternal(url));
 }
 export async function openFile(sessionId: string, path: string, location?: FileLocation) {
-  const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
+  const preview = unwrap(await window.ZPI.readFilePreview(sessionId, path, location));
   if (preview.kind === "directory") {
-    unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
+    unwrap(await window.ZPI.fileAction(sessionId, preview.path, "reveal"));
     return;
   }
   if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
@@ -91,10 +91,10 @@ export async function closeTab(id: string) {
     tab = state.tabs.find((t) => t.id === id);
   if (!tab) return;
   if (tab.type === "terminal") {
-    unwrap(await window.zpi.closeTerminal(id));
+    unwrap(await window.ZPI.closeTerminal(id));
     terminalOutput.delete(id);
   }
-  if (tab.type === "browser") unwrap(await window.zpi.closeBrowser(id));
+  if (tab.type === "browser") unwrap(await window.ZPI.closeBrowser(id));
   const current = usePane.getState();
   const index = current.tabs.findIndex((item) => item.id === id);
   const tabs = current.tabs.filter((item) => item.id !== id);

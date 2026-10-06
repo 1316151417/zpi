@@ -7,7 +7,7 @@ import { defaultPreferences } from "../../packages/desktop/src/shared/config.ts"
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("desktop starts with saved notification preferences and preserves the settings", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-notification-compatibility-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-notification-compatibility-"));
   const file = join(dir, "settings.json");
   const settings = {
     version: 4,
@@ -32,7 +32,7 @@ test("desktop starts with saved notification preferences and preserves the setti
     const page = await app.firstWindow();
     await expect(page.getByRole("button", { name: "设置", exact: true })).toBeVisible();
     const restored = await page.evaluate(async () => {
-      const result = await window.zpi.getSettings();
+      const result = await window.ZPI.getSettings();
       if (!result.ok) throw new Error(result.error.message);
       return result.value.interface;
     });
@@ -46,7 +46,7 @@ test("desktop starts with saved notification preferences and preserves the setti
 
 for (const fontSize of [14, 17]) {
   test(`desktop preserves ${fontSize}px settings and the archived tab shares the new settings frame`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "zpi-settings-compatibility-"));
+    const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-compatibility-"));
     const file = join(dir, "settings.json");
     const raw = JSON.stringify({
       version: 4,
@@ -74,7 +74,7 @@ for (const fontSize of [14, 17]) {
       const page = await app.firstWindow();
       await expect(page.getByRole("button", { name: "设置", exact: true })).toBeVisible();
       const settings = await page.evaluate(async () => {
-        const result = await window.zpi.getSettings();
+        const result = await window.ZPI.getSettings();
         if (!result.ok) throw new Error(result.error.message);
         return result.value;
       });

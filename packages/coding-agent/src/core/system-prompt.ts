@@ -1,4 +1,4 @@
-import type { AgentTool } from "zpi-agent";
+import type { AgentTool } from "ZPI-agent";
 import { formatSkillsForPrompt } from "./resources.ts";
 import type { ResourceLoader } from "./types.ts";
 export interface PromptTemplate {
@@ -9,9 +9,9 @@ export interface PromptTemplate {
 }
 export const piTemplate: PromptTemplate = {
   id: "pi",
-  name: "zpi 通用",
+  name: "ZPI 通用",
   preamble:
-    "You are an expert coding assistant operating inside zpi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+    "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
   rules: "Be concise in your responses\nShow file paths clearly when working with files",
 };
 export function validateTemplate(template: PromptTemplate): void {

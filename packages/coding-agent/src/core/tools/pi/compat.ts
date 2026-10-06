@@ -1,6 +1,6 @@
+import type { AgentToolResult, AgentToolUpdateCallback, ThinkingLevel } from "ZPI-agent";
+import type { Model } from "ZPI-ai";
 import type { Static, TSchema } from "typebox";
-import type { AgentToolResult, AgentToolUpdateCallback, ThinkingLevel } from "zpi-agent";
-import type { Model } from "zpi-ai";
 import type { SessionManager } from "../../session-manager.ts";
 import type { ImageResizeOptions } from "./utils/image-resize-core.ts";
 export interface ExtensionContext {

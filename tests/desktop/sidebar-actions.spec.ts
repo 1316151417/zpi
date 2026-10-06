@@ -7,7 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("sidebar headers reveal trailing chevrons and contextual actions; project menu only removes its entry", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-actions-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-actions-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "keep.txt"), "project source");
@@ -144,7 +144,7 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
 });
 
 test("tasks appear in one section and return to their original group after unpinning and restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-groups-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-groups-"));
   const project = join(dir, "project");
   await mkdir(project);
   const server = await fakeServer((_, response) => {

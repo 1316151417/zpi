@@ -6,7 +6,7 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
 it("continues one persisted task across both protocols with all four tools, title generation and compaction", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-protocol-switch-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-protocol-switch-"));
   const codec = {
     isEncryptionAvailable: () => true,
     encryptString: (value: string) => Buffer.from(value),
@@ -52,7 +52,7 @@ it("continues one persisted task across both protocols with all four tools, titl
           type: "function_call",
           id: `fc_${results.length}`,
           call_id: `call_response_${results.length}`,
-          namespace: "zpi",
+          namespace: "ZPI",
           name: operation.name,
           arguments: JSON.stringify(operation.arguments),
           status: "completed",

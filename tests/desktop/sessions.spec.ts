@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("A/B background runs, sidebar indicators and hover pin; stop, reload and unread restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
   const releaseB = deferred();
@@ -111,7 +111,7 @@ test("A/B background runs, sidebar indicators and hover pin; stop, reload and un
 });
 
 test("draft workspace picker, contextual new tasks and per-project drafts persist until first send", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-draft-project-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-draft-project-"));
   const project = join(dir, "工作项目");
   await mkdir(project);
   const server = await fakeServer((_, response) => {
@@ -124,8 +124,8 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     let page = await app.firstWindow();
     const selectedProject = async () => {
       const result = await page.evaluate(async () => {
-        const id = localStorage.getItem("zpi.selectedSession");
-        const value = await window.zpi.listRecentSessions();
+        const id = localStorage.getItem("ZPI.selectedSession");
+        const value = await window.ZPI.listRecentSessions();
         return value.ok ? value.value.find((record) => record.id === id)?.projectId : undefined;
       });
       return result;

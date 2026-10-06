@@ -3,7 +3,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { observeAppearance } from "zpi-ui";
+import { observeAppearance } from "ZPI-ui";
 import { openBrowser, paneTask, terminalListeners, terminalOutput } from "./pane-store.ts";
 import { report, unwrap } from "./store.ts";
 export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolean; cwd: string }) {
@@ -33,9 +33,9 @@ export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolea
     term.open(element);
     term.write(terminalOutput.get(id) ?? "");
     terminalListeners.set(id, (event) => term.write(event.data));
-    const input = term.onData((data) => paneTask(window.zpi.terminalInput(id, data).then(unwrap)));
+    const input = term.onData((data) => paneTask(window.ZPI.terminalInput(id, data).then(unwrap)));
     const resize = term.onResize(({ cols, rows }) =>
-      paneTask(window.zpi.resizeTerminal(id, cols, rows).then(unwrap)),
+      paneTask(window.ZPI.resizeTerminal(id, cols, rows).then(unwrap)),
     );
     let frame = 0;
     const fitSize = () => {
@@ -63,7 +63,7 @@ export function TerminalPane({ id, visible, cwd }: { id: string; visible: boolea
     const copy = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c" && term.hasSelection()) {
         event.preventDefault();
-        void window.zpi.copyText(term.getSelection()).then(unwrap).catch(report);
+        void window.ZPI.copyText(term.getSelection()).then(unwrap).catch(report);
       }
     };
     term.attachCustomKeyEventHandler((event) => {

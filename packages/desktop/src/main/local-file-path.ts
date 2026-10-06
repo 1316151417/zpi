@@ -1,6 +1,6 @@
+import type { FileLocation } from "ZPI-ui/links";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import type { FileLocation } from "zpi-ui/links";
 import { isPathInside } from "./path-bounds.ts";
 
 export function localFileCandidate(cwd: string, target: string, bounded = !isAbsolute(target)): string {

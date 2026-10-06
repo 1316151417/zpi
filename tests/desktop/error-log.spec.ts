@@ -6,18 +6,18 @@ import metadata from "../../package.json" with { type: "json" };
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("persists IPC, renderer and main-process errors, rejects malformed reports, and records renderer crashes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-error-log-desktop-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-error-log-desktop-"));
   const app = await launchDesktop({ dir, url: "" });
   const file = join(dir, "agent", "logs", "error.log");
   try {
     const page = await app.firstWindow();
     await expect(page.locator(".shell")).toBeVisible();
     await page.evaluate(async () => {
-      await window.zpi.getSessionSnapshot("missing-session");
-      window.zpi.logError({ source: "manual", message: "synthetic handled error", stack: "synthetic stack" });
-      window.zpi.logError({ source: "oversized", message: "x".repeat(32_001) });
-      window.zpi.logError({ source: "invalid", message: 123 } as unknown as Parameters<
-        typeof window.zpi.logError
+      await window.ZPI.getSessionSnapshot("missing-session");
+      window.ZPI.logError({ source: "manual", message: "synthetic handled error", stack: "synthetic stack" });
+      window.ZPI.logError({ source: "oversized", message: "x".repeat(32_001) });
+      window.ZPI.logError({ source: "invalid", message: 123 } as unknown as Parameters<
+        typeof window.ZPI.logError
       >[0]);
       setTimeout(() => {
         throw new Error("synthetic renderer exception");

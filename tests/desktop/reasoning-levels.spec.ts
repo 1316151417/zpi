@@ -1,13 +1,13 @@
+import { presetModels } from "ZPI-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { presetModels } from "zpi-ai";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("GPT models offer five or six efforts with medium default; Chinese models show only their controls", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-efforts-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-efforts-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "ok" }));
     done(response);
@@ -17,7 +17,7 @@ test("GPT models offer five or six efforts with medium default; Chinese models s
     const page = await app.firstWindow();
     await page.evaluate(
       async ({ url, modelsJson }) => {
-        const result = await window.zpi.saveProvider({
+        const result = await window.ZPI.saveProvider({
           id: "efforts",
           name: "档位测试",
           baseUrl: url,

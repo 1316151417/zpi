@@ -36,7 +36,7 @@ async function scrollbarPixels(page: Page, area: Locator, reference: number[]) {
 }
 
 test("native conversation scrollbar matches ZCode alpha compositing, expands, fades and remains draggable", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-scrollbar-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-scrollbar-"));
   const server = await fakeServer((_, response) => {
     send(
       response,

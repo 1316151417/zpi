@@ -135,5 +135,5 @@ it("recovers reference definitions and entities with the same Windows destinatio
   const plugin = markdownLinkRemarkPlugin as () => (tree: unknown, file: unknown) => void;
   plugin()({ type: "root", children: [reference, definition] }, source);
   expect(definition.url).toBe("C:\\My Files\\.config\\a&b.json");
-  expect(reference.data.hProperties).toEqual({ dataZpiTarget: definition.url });
+  expect(reference.data.hProperties).toEqual({ dataZPITarget: definition.url });
 });

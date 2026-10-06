@@ -5,14 +5,14 @@ import type {
   Model,
   SimpleStreamOptions,
   TranscriptContext,
-} from "zpi-ai";
+} from "ZPI-ai";
 import {
   assertSupportedOptions,
   normalizeContext,
   streamSimple,
   validateReasoningConfig,
   validateThinkingMap,
-} from "zpi-ai";
+} from "ZPI-ai";
 export interface ProviderChatModelConfig extends Omit<Model, "provider" | "api" | "baseUrl"> {
   type?: "chat";
   api?: Api;

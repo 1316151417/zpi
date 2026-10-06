@@ -6,7 +6,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survive reload and reach inference", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-reasoning-editor-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-reasoning-editor-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "ok" }));
     done(response);
@@ -15,7 +15,7 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
   try {
     const page = await app.firstWindow();
     await page.evaluate(async (url) => {
-      const result = await window.zpi.saveProvider({
+      const result = await window.ZPI.saveProvider({
         id: "domestic",
         name: "国产模型",
         baseUrl: url,
@@ -90,7 +90,7 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
       : {"thinking": {"type": "enabled"}, "reasoning_effort": "low"}`);
     await dialog.getByRole("button", { name: "保存", exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    const stored = await page.evaluate(() => window.zpi.getSettings());
+    const stored = await page.evaluate(() => window.ZPI.getSettings());
     expect(
       stored.ok && stored.value.providers.find((p) => p.id === "domestic")?.models[0].reasoningConfig?.levels,
     ).toEqual(["disabled", "balanced"]);

@@ -157,7 +157,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
       throw new Error("Model does not support images in the effective context");
     const client = new OpenAI({
       // OpenAI's constructor requires a nonempty value; the explicit no-auth path removes its header.
-      apiKey: options.apiKey || "zpi-no-auth",
+      apiKey: options.apiKey || "ZPI-no-auth",
       adminAPIKey: null,
       organization: null,
       project: null,

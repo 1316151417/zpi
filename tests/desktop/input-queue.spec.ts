@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("queued messages reorder, edit, delete, send immediately and persist through stop/restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-queue-ui-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-queue-ui-"));
   const server = await fakeServer((body, res) => {
     const user =
       (body.messages as unknown as { role: string; content: string }[])
@@ -29,7 +29,7 @@ test("queued messages reorder, edit, delete, send immediately and persist throug
     app = await launchDesktop({ dir, url: server.url });
     let page = await app.firstWindow();
     await select(page, a);
-    await page.evaluate(() => window.zpi.updatePreferences({ showSendButton: true }));
+    await page.evaluate(() => window.ZPI.updatePreferences({ showSendButton: true }));
     let editor = page.getByLabel("消息", { exact: true });
     await expect(page.getByLabel("发送", { exact: true })).toBeDisabled();
     await editor.fill("阻塞一");

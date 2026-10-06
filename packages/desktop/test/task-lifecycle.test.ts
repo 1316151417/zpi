@@ -1,7 +1,7 @@
+import { SessionManager } from "ZPI-coding-agent";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";

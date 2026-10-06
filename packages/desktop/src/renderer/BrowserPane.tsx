@@ -49,7 +49,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
         const serialized = JSON.stringify(bounds);
         if (serialized !== last) {
           last = serialized;
-          paneTask(window.zpi.browserBounds(state.id, bounds).then(unwrap));
+          paneTask(window.ZPI.browserBounds(state.id, bounds).then(unwrap));
         }
       });
     };
@@ -65,11 +65,11 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       overlay.disconnect();
       window.removeEventListener("resize", update);
       cancelAnimationFrame(frame);
-      paneTask(window.zpi.browserBounds(state.id, null).then(unwrap));
+      paneTask(window.ZPI.browserBounds(state.id, null).then(unwrap));
     };
   }, [state.id, state.url, visible]);
   const action = (name: "back" | "forward" | "reload" | "stop") =>
-    paneTask(window.zpi.browserAction(state.id, name).then(unwrap));
+    paneTask(window.ZPI.browserAction(state.id, name).then(unwrap));
   return (
     <div className="browser-pane">
       <div className="browser-toolbar">
@@ -95,8 +95,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
             event.preventDefault();
             submittedAddress.current = address;
             paneTask(
-              window.zpi
-                .browserAction(state.id, "navigate", address)
+              window.ZPI.browserAction(state.id, "navigate", address)
                 .then(unwrap)
                 .catch((error) => {
                   submittedAddress.current = null;
@@ -116,7 +115,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
           aria-label="在外部浏览器打开"
           title="在外部浏览器打开"
           disabled={!state.url}
-          onClick={() => paneTask(window.zpi.openExternal(state.url).then(unwrap))}
+          onClick={() => paneTask(window.ZPI.openExternal(state.url).then(unwrap))}
         >
           <ExternalLink size={14} />
         </button>

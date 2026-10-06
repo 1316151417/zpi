@@ -1,6 +1,6 @@
+import type { ImageAttachment } from "ZPI-coding-agent";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { ImageAttachment } from "zpi-coding-agent";
 import type { ConversationSelection } from "../conversation-selections.ts";
 import type { FileLocation } from "../link-target.ts";
 import { EditorHistory } from "./editor-history.ts";

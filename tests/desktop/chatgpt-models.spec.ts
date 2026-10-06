@@ -6,7 +6,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and cancel or disconnect", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-chatgpt-ui-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-chatgpt-ui-"));
   const app = await launchDesktop({ dir, url: "" });
   try {
     const keys = await generateKeyPair("RS256", { extractable: true });
@@ -84,7 +84,7 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
       await app.evaluate(() => (globalThis as unknown as { oauthTest: { url: string } }).oauthTest.url),
     );
     expect(authorize.searchParams.get("client_id")).toBe("dynamic_agent_client");
-    expect(authorize.searchParams.get("agent_name_hint")).toBe("zpi");
+    expect(authorize.searchParams.get("agent_name_hint")).toBe("ZPI");
     const idToken = await new SignJWT({
       nonce: authorize.searchParams.get("nonce"),
       email: "test@example.com",
@@ -119,9 +119,9 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);
     expect(await readFile(join(dir, "settings.json"), "utf8")).not.toContain("ui-private-");
     const publicCredentials = await page.evaluate(async () => {
-      const settings = await window.zpi.getSettings();
+      const settings = await window.ZPI.getSettings();
       if (!settings.ok) throw new Error(settings.error.message);
-      return window.zpi.getProviderCredentials(settings.value.providers[0].id);
+      return window.ZPI.getProviderCredentials(settings.value.providers[0].id);
     });
     expect(publicCredentials).toEqual({ ok: true, value: { apiKey: "" } });
     await page.screenshot({ path: "test-results/chatgpt-model-settings-light.png" });

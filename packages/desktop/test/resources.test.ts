@@ -1,7 +1,7 @@
+import { buildMentionMarkdown } from "ZPI-coding-agent";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { buildMentionMarkdown } from "zpi-coding-agent";
 import { desktopSystemRules } from "../src/main/desktop-prompt.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";

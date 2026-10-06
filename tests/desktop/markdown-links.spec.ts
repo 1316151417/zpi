@@ -11,7 +11,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("Markdown links and streamed file citations share icons, preview locations and browser routing", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-markdown-links-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-markdown-links-"));
   const project = join(dir, "project");
   await mkdir(project);
   const filename = "订单 %20.json",

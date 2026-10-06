@@ -1,4 +1,4 @@
-import type { FileResourceLoader, ResourceLoader } from "zpi-coding-agent";
+import type { FileResourceLoader, ResourceLoader } from "ZPI-coding-agent";
 
 export const desktopSystemRules = [
   "<system_rules>",

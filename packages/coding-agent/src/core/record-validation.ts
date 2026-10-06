@@ -1,7 +1,34 @@
+import type { Message } from "ZPI-ai";
 import { Type } from "typebox";
 import { Check } from "typebox/value";
-import type { Message } from "zpi-ai";
 import type { SessionEntry, SessionHeader } from "./session-manager.ts";
+
+/** Canonicalize reserved names from older transcripts without rewriting their files. */
+export function normalizeSessionRecord(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const row = value as Record<string, unknown>;
+  if (row.type === "session" && typeof row.format === "string" && row.format.toUpperCase() === "ZPI")
+    return { ...row, format: "ZPI" };
+  if (row.type === "custom" && typeof row.customType === "string")
+    return { ...row, customType: row.customType.replace(/^ZPI\./i, "ZPI.") };
+  if (row.type === "message" && row.message && typeof row.message === "object") {
+    const message = row.message as Record<string, unknown>;
+    if (message.role === "system" && message.sections && typeof message.sections === "object")
+      return {
+        ...row,
+        message: {
+          ...message,
+          sections: Object.fromEntries(
+            Object.entries(message.sections).map(([key, section]) => [
+              key.replace(/^ZPI\./i, "ZPI."),
+              section,
+            ]),
+          ),
+        },
+      };
+  }
+  return value;
+}
 
 export const maxSessionEntryBytes = 8 * 1024 * 1024;
 
@@ -72,7 +99,7 @@ const message = Type.Union([
 const header = Type.Object({
   type: Type.Literal("session"),
   version: Type.Literal(1),
-  format: Type.Literal("zpi"),
+  format: Type.Literal("ZPI"),
   id: Type.String({ pattern: "^[a-zA-Z0-9_-]+$" }),
   timestamp: Type.String(),
   cwd: Type.String(),

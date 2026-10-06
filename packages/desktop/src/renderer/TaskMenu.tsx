@@ -21,7 +21,7 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             disabled={!pinned && pins >= taskPinLimit}
             onSelect={() =>
               task(async () => {
-                unwrap(await window.zpi.setSessionPinned(record.id, !pinned));
+                unwrap(await window.ZPI.setSessionPinned(record.id, !pinned));
                 await refresh();
               })
             }
@@ -46,7 +46,7 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
           <Menu.Separator className="menu-separator" />
           <Menu.Item
             className="menu-item"
-            onSelect={() => task(() => window.zpi.openSessionDirectory(record.id).then(unwrap))}
+            onSelect={() => task(() => window.ZPI.openSessionDirectory(record.id).then(unwrap))}
           >
             <FolderOpen size={14} />在 Finder 中打开
           </Menu.Item>
@@ -54,8 +54,8 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             className="menu-item"
             onSelect={() =>
               task(async () => {
-                const { cwd } = unwrap(await window.zpi.getWorkspaceInfo(record.id));
-                unwrap(await window.zpi.copyText(cwd));
+                const { cwd } = unwrap(await window.ZPI.getWorkspaceInfo(record.id));
+                unwrap(await window.ZPI.copyText(cwd));
               })
             }
           >

@@ -2,7 +2,7 @@
 
 ## Architecture & Scope
 
-zpi is a minimal coding desktop client: a ZCode-inspired interface with a Pi-style core. Apply the same minimalism to the client: keep the interface clean and direct, and prioritize the essential, frequently used features of everyday coding. Favor changes that save tokens and time while keeping the codebase small, maintainable, and easy to customize.
+ZPI is a minimal coding desktop client: a ZCode-inspired interface with a Pi-style core. Apply the same minimalism to the client: keep the interface clean and direct, and prioritize the essential, frequently used features of everyday coding. Favor changes that save tokens and time while keeping the codebase small, maintainable, and easy to customize.
 
 Keep the core limited to `read`, `write`, `edit`, and `bash`; preserve the absence of telemetry, subagents, MCP, and background-task orchestration. Reuse existing components and remove obsolete code when replacing functionality. The SDK remains a small supporting capability.
 

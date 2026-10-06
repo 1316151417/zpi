@@ -22,7 +22,7 @@ async function fixture(
     done(r);
   },
 ) {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-projects-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-projects-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const server = await fakeServer(handler);
   cleanup.push(server.close);
@@ -72,9 +72,9 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   const s = f.host.createSession(null);
   expect(s).toMatchObject({ projectId: null, cwd: f.workspace });
   expect(f.host.listProjects()).toEqual([]);
-  await mkdir(join(f.workspace, ".zpi", "skills", "inspect"), { recursive: true });
+  await mkdir(join(f.workspace, ".ZPI", "skills", "inspect"), { recursive: true });
   await writeFile(
-    join(f.workspace, ".zpi", "skills", "inspect", "SKILL.md"),
+    join(f.workspace, ".ZPI", "skills", "inspect", "SKILL.md"),
     "---\nname: inspect\ndescription: Workspace\n---\nWORKSPACE SKILL",
   );
   expect((await f.host.listSessionSkills(s.id)).skills.map((s) => s.name)).toContain("inspect");

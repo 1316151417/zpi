@@ -1,6 +1,6 @@
+import { emptyAssistant } from "ZPI-ai";
+import { contextUsage, SessionManager } from "ZPI-coding-agent";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { contextUsage, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 it("retains the last measured context across models and missing usage, updates on valid usage and clears on compaction", () => {

@@ -1,10 +1,10 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
 
+import type { ImageContent, Model, TextContent } from "ZPI-ai";
 import { constants } from "node:fs";
 import { access as fsAccess, readFile as fsReadFile } from "node:fs/promises";
 import { Type } from "typebox";
-import type { ImageContent, Model, TextContent } from "zpi-ai";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import {

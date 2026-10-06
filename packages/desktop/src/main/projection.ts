@@ -1,9 +1,9 @@
-import type { Message } from "zpi-ai";
-import { isJsonObject } from "zpi-ai";
-import type { AgentSessionEvent, ImageAttachment, SessionEntry } from "zpi-coding-agent";
-import { patchLineCounts } from "zpi-coding-agent";
-import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView } from "zpi-ui";
-import { emptySession, reduceSession, resultText } from "zpi-ui/projection";
+import type { Message } from "ZPI-ai";
+import { isJsonObject } from "ZPI-ai";
+import type { AgentSessionEvent, ImageAttachment, SessionEntry } from "ZPI-coding-agent";
+import { patchLineCounts } from "ZPI-coding-agent";
+import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView } from "ZPI-ui";
+import { emptySession, reduceSession, resultText } from "ZPI-ui/projection";
 
 function fileChangeSummary(details: unknown): FileChangeSummary | undefined {
   if (
@@ -96,7 +96,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
   for (const e of entries) {
     if (
       e.type === "custom" &&
-      e.customType === "zpi.notice" &&
+      e.customType === "ZPI.notice" &&
       isJsonObject(e.data) &&
       typeof e.data.text === "string" &&
       e.data.runId === runId
@@ -104,7 +104,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
       apply({ type: "notice", text: e.data.text });
     if (
       e.type === "custom" &&
-      e.customType === "zpi.run" &&
+      e.customType === "ZPI.run" &&
       e.data &&
       typeof e.data === "object" &&
       !Array.isArray(e.data)

@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("user file mentions align with adjacent text and truncate within the message bubble", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-user-mention-layout-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-user-mention-layout-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "正文 [2.txt](./2.txt) text" }));
     done(response);

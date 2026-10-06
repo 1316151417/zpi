@@ -20,7 +20,7 @@ test("Pi prompt facts, literal nonrecursive variables, custom rules replace defa
   await loader.reload();
   const prompt = buildSystemPrompt({ cwd, tools: createCodingTools(cwd), loader });
   expect(prompt.startsWith(piTemplate.preamble)).toBe(true);
-  expect(prompt).toContain("operating inside zpi,");
+  expect(prompt).toContain("operating inside ZPI,");
   expect(prompt).toContain("inspect ZPI_* environment variables");
   expect(prompt).not.toMatch(/\bPI_\*|operating inside pi,/);
   expect(prompt).toContain("Use bash for file operations like ls, rg, find");

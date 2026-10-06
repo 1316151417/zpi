@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("packaged ten complete Agent calls, upward paging, reading position and restart; title hover is complete", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-history-")),
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-history-")),
     cwd = join(dir, "workspace");
   await mkdir(cwd);
   const seed = seedHistory(dir, cwd, 30);
@@ -59,7 +59,7 @@ test("packaged ten complete Agent calls, upward paging, reading position and res
     const title = "这是一个保存完整内容、仅在窄侧边栏和顶部视觉省略的会话标题";
     await page.evaluate(
       async ({ id, title }) => {
-        const r = await window.zpi.renameSession(id, title);
+        const r = await window.ZPI.renameSession(id, title);
         if (!r.ok) throw Error(r.error.message);
       },
       { id: seed.id, title },

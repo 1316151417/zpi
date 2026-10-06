@@ -18,7 +18,7 @@ async function selectText(locator: Locator) {
 }
 
 test("selections inside or crossing Markdown file and web links can be added to the current task", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-link-selection-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-link-selection-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "notes.md"), "document");
@@ -90,8 +90,8 @@ test("selections inside or crossing Markdown file and web links can be added to 
       await expect
         .poll(async () => {
           const result = await page.evaluate(async () => {
-            const id = localStorage.getItem("zpi.selectedSession") as string;
-            return window.zpi.getDraft(id);
+            const id = localStorage.getItem("ZPI.selectedSession") as string;
+            return window.ZPI.getDraft(id);
           });
           return result.ok ? result.value.selections?.[0]?.text : undefined;
         })
@@ -132,7 +132,7 @@ async function expectZCodeSurfaces(page: Page, bubble: Locator, reference: Locat
 }
 
 test("message hover actions, inline editing, selection wire format, draft restart and fork navigation", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-message-actions-")),
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-message-actions-")),
     project = join(dir, "project");
   await mkdir(project);
   const server = await fakeServer((_, res, index) => {
@@ -230,8 +230,8 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect
       .poll(async () => {
         const draft = await page.evaluate(async () => {
-          const sessions = await window.zpi.listRecentSessions();
-          return sessions.ok ? window.zpi.getDraft(sessions.value[0].id) : null;
+          const sessions = await window.ZPI.listRecentSessions();
+          return sessions.ok ? window.ZPI.getDraft(sessions.value[0].id) : null;
         });
         return draft?.ok ? draft.value.selections?.length : 0;
       })
@@ -259,7 +259,7 @@ test("message hover actions, inline editing, selection wire format, draft restar
       page.getByTestId("run").last().locator(".selection-reference-chip"),
     );
     const parent = await page.evaluate(async () => {
-      const sessions = await window.zpi.listRecentSessions();
+      const sessions = await window.ZPI.listRecentSessions();
       return sessions.ok ? sessions.value[0].id : "";
     });
     await page.getByTestId("run").first().getByLabel("分叉", { exact: true }).click();
@@ -267,9 +267,9 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect(page.getByTestId("run").first().locator(".user-message-text")).toHaveText(
       "edited user input",
     );
-    const sessions = await page.evaluate(() => window.zpi.listRecentSessions());
+    const sessions = await page.evaluate(() => window.ZPI.listRecentSessions());
     expect(sessions.ok && sessions.value.filter((session) => !session.draft).length).toBe(2);
-    const snapshot = await page.evaluate((id) => window.zpi.getSessionSnapshot(id), parent);
+    const snapshot = await page.evaluate((id) => window.ZPI.getSessionSnapshot(id), parent);
     expect(snapshot.ok && snapshot.value.view.runs.length).toBe(2);
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
     await page.getByTestId("run").first().locator(".assistant-message-row").hover();
@@ -287,7 +287,7 @@ test("message hover actions, inline editing, selection wire format, draft restar
 });
 
 test("Markdown selections use source paths, cross-message selections are excluded and edit file conflicts retain the original turn", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-message-conflict-")),
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-message-conflict-")),
     project = join(dir, "project");
   await mkdir(project);
   const documentPath = join(project, "notes.md"),
@@ -338,8 +338,8 @@ test("Markdown selections use source paths, cross-message selections are exclude
       "notes.md · 引用",
     );
     const draft = await page.evaluate(async () => {
-      const id = localStorage.getItem("zpi.selectedSession") as string;
-      return window.zpi.getDraft(id);
+      const id = localStorage.getItem("ZPI.selectedSession") as string;
+      return window.ZPI.getDraft(id);
     });
     expect(draft.ok && draft.value.selections?.[0]).toMatchObject({
       path: await realpath(documentPath),

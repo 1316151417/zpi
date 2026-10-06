@@ -68,7 +68,7 @@ export class PaneServices {
     const url = input === "" ? "" : browserUrl(input);
     if (this.browsers.size >= 12) throw new Error("busy: 请先关闭部分浏览器标签");
     const id = randomUUID();
-    const isolated = session.fromPartition("persist:zpi-browser");
+    const isolated = session.fromPartition("persist:ZPI-browser");
     isolated.setPermissionRequestHandler((_, __, callback) => callback(false));
     isolated.setPermissionCheckHandler(() => false);
     const view = new WebContentsView({

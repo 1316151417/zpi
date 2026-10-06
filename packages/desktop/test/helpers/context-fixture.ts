@@ -1,9 +1,9 @@
+import type { PromptTemplate } from "ZPI-coding-agent";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterEach } from "vitest";
-import type { PromptTemplate } from "zpi-coding-agent";
 import { chunk, done, fakeServer, send } from "../../../../tests/fake-server.ts";
 import { SessionHost } from "../../src/main/session-host.ts";
 import { SettingsStore } from "../../src/main/storage.ts";
@@ -23,7 +23,7 @@ export async function fixture(
   },
   legacyTemplate?: PromptTemplate,
 ) {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-context-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-context-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const server = await fakeServer(handler);
   cleanup.push(server.close);

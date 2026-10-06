@@ -1,6 +1,6 @@
+import { createBashTool, SessionManager } from "ZPI-coding-agent";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
-import { createBashTool, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

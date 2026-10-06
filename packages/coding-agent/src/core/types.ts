@@ -1,6 +1,6 @@
+import type { AgentToolResult, AgentToolUpdateCallback, ToolExecutionMode } from "ZPI-agent";
+import type { JsonValue, Model } from "ZPI-ai";
 import type { Static, TSchema } from "typebox";
-import type { AgentToolResult, AgentToolUpdateCallback, ToolExecutionMode } from "zpi-agent";
-import type { JsonValue, Model } from "zpi-ai";
 import type { LoadedSkill, SkillList } from "./resources.ts";
 import type { SessionManager } from "./session-manager.ts";
 export interface ResourceLoader {

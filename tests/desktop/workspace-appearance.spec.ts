@@ -12,7 +12,7 @@ async function bounds(locator: Locator) {
 }
 
 test("workspace has independent rounded panels, transparent gutters and ZCode launcher fills", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-workspace-appearance-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-workspace-appearance-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });

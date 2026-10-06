@@ -1,9 +1,9 @@
+import { fetchProviderModels, normalizeContext } from "ZPI-ai";
+import { streamSimple } from "ZPI-ai/api/openai-completions";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { fetchProviderModels, normalizeContext } from "zpi-ai";
-import { streamSimple } from "zpi-ai/api/openai-completions";
 import { chunk, done, fakeServer, send } from "../../../tests/fake-server.ts";
 import { reasoningParameters } from "../../ai/src/utils/reasoning.ts";
 import { SessionHost } from "../src/main/session-host.ts";
@@ -25,7 +25,7 @@ const codec = {
   decryptString: (v: Buffer) => v.toString(),
 };
 async function directory() {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-models-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-models-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }

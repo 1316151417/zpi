@@ -1,7 +1,7 @@
+import type { AgentTool, AgentToolResult } from "ZPI-agent";
+import type { JsonValue, Model } from "ZPI-ai";
 import { createHash } from "node:crypto";
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import type { AgentTool, AgentToolResult } from "zpi-agent";
-import type { JsonValue, Model } from "zpi-ai";
 import { beforeFile, type FileChange, recordFileChange } from "./file-change.ts";
 import { type BashToolOptions, createBashToolDefinition } from "./pi/bash.ts";
 import type { ExtensionContext, ToolDefinition } from "./pi/compat.ts";

@@ -8,7 +8,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("conversation files and folders share ZCode menus; folders open in Finder and files use the sidebar", async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-conversation-file-menu-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-conversation-file-menu-")));
   const project = join(dir, "中文 项目");
   const folder = join(project, "资料 目录");
   await mkdir(folder, { recursive: true });
@@ -141,7 +141,7 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
 });
 
 test("file references share icons and canonical text; chat files open reusable sidebar previews", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-file-references-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-file-references-"));
   const project = join(dir, "中文 项目");
   await mkdir(project);
   const config = join(project, "订单 汇总.json");
@@ -219,7 +219,7 @@ test("file references share icons and canonical text; chat files open reusable s
 });
 
 test("embedded file images retain their preview across theme changes and reload on refresh", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-file-images-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-file-images-"));
   const project = join(dir, "project");
   await mkdir(project);
   const image = join(project, "image.svg");

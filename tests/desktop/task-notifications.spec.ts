@@ -13,7 +13,7 @@ declare global {
 }
 
 test("ZCode notification settings, disabled sound state and independent preferences survive restarts", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-notification-preferences-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-notification-preferences-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });
@@ -59,7 +59,7 @@ test("ZCode notification settings, disabled sound state and independent preferen
 });
 
 test("live task completion, failure and interruption notify once, and clicking restores the matching task", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-task-notifications-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-task-notifications-"));
   const responses = new Map<number, import("node:http").ServerResponse>();
   const server = await fakeServer((_, response, index) => {
     responses.set(index, response);
@@ -87,15 +87,15 @@ test("live task completion, failure and interruption notify once, and clicking r
     // Observe the bridge sound signal independently of whether OS autoplay is permitted.
     await page.evaluate(() => {
       (window as unknown as { notificationSounds: number }).notificationSounds = 0;
-      window.zpi.onTaskNotificationSound(() => {
+      window.ZPI.onTaskNotificationSound(() => {
         (window as unknown as { notificationSounds: number }).notificationSounds++;
       });
     });
     const start = async (text: string) =>
       page.evaluate(async (text) => {
-        const session = await window.zpi.createSession(null);
+        const session = await window.ZPI.createSession(null);
         if (!session.ok) throw new Error(session.error.message);
-        const run = await window.zpi.startRun({ sessionId: session.value.id, text });
+        const run = await window.ZPI.startRun({ sessionId: session.value.id, text });
         if (!run.ok) throw new Error(run.error.message);
         return { id: session.value.id, runId: run.value.runId };
       }, text);
@@ -107,7 +107,7 @@ test("live task completion, failure and interruption notify once, and clicking r
     await expect
       .poll(() =>
         page.evaluate(async (id) => {
-          const snapshot = await window.zpi.getSessionSnapshot(id);
+          const snapshot = await window.ZPI.getSessionSnapshot(id);
           return snapshot.ok ? snapshot.value.session.status : "error";
         }, foreground.id),
       )
@@ -144,7 +144,7 @@ test("live task completion, failure and interruption notify once, and clicking r
     await expect(page.getByRole("region", { name: "设置", exact: true })).toHaveCount(0);
     await expect(page.locator(".topbar-title")).toHaveText("后台完成");
     await expect(page.locator(".answer")).toHaveText("reply 1");
-    expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(completed.id);
+    expect(await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"))).toBe(completed.id);
     expect(
       await app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
@@ -155,7 +155,7 @@ test("live task completion, failure and interruption notify once, and clicking r
     const interrupted = await start("手动停止");
     await expect.poll(() => responses.has(2)).toBe(true);
     await page.evaluate(async ({ id, runId }) => {
-      const result = await window.zpi.abortRun({ sessionId: id, runId });
+      const result = await window.ZPI.abortRun({ sessionId: id, runId });
       if (!result.ok) throw new Error(result.error.message);
     }, interrupted);
     await expect.poll(count).toBe(2);
@@ -169,7 +169,7 @@ test("live task completion, failure and interruption notify once, and clicking r
     expect(await app.evaluate(() => globalThis.notificationTest.shown[2].title)).toBe("任务出错");
 
     await page.evaluate(async () => {
-      const result = await window.zpi.updatePreferences({ notificationEnabled: false });
+      const result = await window.ZPI.updatePreferences({ notificationEnabled: false });
       if (!result.ok) throw new Error(result.error.message);
     });
     const disabled = await start("已关闭通知");
@@ -178,7 +178,7 @@ test("live task completion, failure and interruption notify once, and clicking r
     await expect
       .poll(() =>
         page.evaluate(async (id) => {
-          const snapshot = await window.zpi.getSessionSnapshot(id);
+          const snapshot = await window.ZPI.getSessionSnapshot(id);
           return snapshot.ok ? snapshot.value.session.status : "error";
         }, disabled.id),
       )

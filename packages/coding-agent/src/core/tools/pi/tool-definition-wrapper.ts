@@ -1,6 +1,6 @@
+import type { AgentTool } from "ZPI-agent";
+import type { JsonValue } from "ZPI-ai";
 import type { TSchema } from "typebox";
-import type { AgentTool } from "zpi-agent";
-import type { JsonValue } from "zpi-ai";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
 export function wrapToolDefinition<T extends TSchema, D>(
   definition: ToolDefinition<T, D>,

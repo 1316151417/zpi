@@ -1,7 +1,7 @@
+import { SessionManager } from "ZPI-coding-agent";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
@@ -87,7 +87,7 @@ it("manual rename and deletion win over late title responses; title failure is n
 });
 
 it("generates a Responses title using an available effort and the portable structured-output preference", async () => {
-  const { ModelRuntime } = await import("zpi-coding-agent");
+  const { ModelRuntime } = await import("ZPI-coding-agent");
   const { generateSessionTitle } = await import("../src/main/session-title.ts");
   let payload: Record<string, unknown> = {};
   const runtime = await ModelRuntime.create({

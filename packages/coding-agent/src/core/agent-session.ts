@@ -1,6 +1,6 @@
-import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "zpi-agent";
-import { Agent } from "zpi-agent";
-import type { ContextUsageAnchor, ImageContent, Model, SimpleStreamOptions, TranscriptContext } from "zpi-ai";
+import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "ZPI-agent";
+import { Agent } from "ZPI-agent";
+import type { ContextUsageAnchor, ImageContent, Model, SimpleStreamOptions, TranscriptContext } from "ZPI-ai";
 import {
   assertSupportedOptions,
   createAssistantMessageEventStream,
@@ -10,7 +10,7 @@ import {
   normalizeContext,
   restoreUsageAnchor,
   usageAnchor,
-} from "zpi-ai";
+} from "ZPI-ai";
 import type { ParsedInput } from "./commands.ts";
 import { parseInput } from "./commands.ts";
 import {
@@ -90,7 +90,7 @@ export class AgentSession {
       manager.appendMessage({
         role: "system",
         content: "",
-        sections: { "zpi.instructions": systemPrompt },
+        sections: { "ZPI.instructions": systemPrompt },
         toolsAdded: activeTools.map((t) => ({
           name: t.name,
           description: t.description,
@@ -100,14 +100,14 @@ export class AgentSession {
       });
     const sections = restored.messages
       .filter((m) => m.role === "system")
-      .map((m) => m.sections?.["zpi.instructions"])
+      .map((m) => m.sections?.["ZPI.instructions"])
       .filter((value) => value !== undefined);
     const prior = sections.at(-1);
     if (prior !== undefined && prior !== systemPrompt)
       manager.appendMessage({
         role: "system",
         content: "",
-        sections: { "zpi.instructions": systemPrompt },
+        sections: { "ZPI.instructions": systemPrompt },
         timestamp: Date.now(),
       });
     this.agent = new Agent({
@@ -237,7 +237,7 @@ export class AgentSession {
   private async refreshInstructions(): Promise<void> {
     await this.resources?.loader.reload?.();
 
-    if (this.resources) this.syncSection("zpi.instructions", this.resources.buildPrompt());
+    if (this.resources) this.syncSection("ZPI.instructions", this.resources.buildPrompt());
   }
   private compactionBoundary(manual = true, force = false) {
     const keep = this.resources?.compaction?.keepRecentTokens ?? 20000;

@@ -1,5 +1,5 @@
+import { getProviderPreset } from "ZPI-ai";
 import { Package } from "lucide-react";
-import { getProviderPreset } from "zpi-ai";
 import openai from "./assets/providers/chatgpt.png";
 import deepseek from "./assets/providers/deepseek.png";
 import mimo from "./assets/providers/mimo.png";

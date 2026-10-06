@@ -1,8 +1,8 @@
+import { useAppearance } from "ZPI-ui";
 import { setWasmSource, XlsxViewer, type XlsxViewerController } from "@extend-ai/react-xlsx";
 import xlsxWasmUrl from "@extend-ai/react-xlsx/duke_sheets_wasm_bg.wasm?url";
 import { renderAsync } from "docx-preview";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAppearance } from "zpi-ui";
 import type { FilePreview } from "../shared/bridge.ts";
 import { logRendererError } from "./error-log.ts";
 import { openBrowser, paneTask } from "./pane-store.ts";

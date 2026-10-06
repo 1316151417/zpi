@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
-const getBinDir = () => join(homedir(), ".zpi", "agent", "bin");
+const getBinDir = () => join(homedir(), ".ZPI", "agent", "bin");
 
 export interface ShellConfig {
   shell: string;

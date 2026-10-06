@@ -1,8 +1,8 @@
+import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
 import { randomUUID } from "node:crypto";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { demoServer, fakeConfig } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 
@@ -39,7 +39,7 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   );
   stopMutating();
   stopChecking();
-  expect(await readFile(join(cwd, "demo.txt"), "utf8")).toBe("zpi\n");
+  expect(await readFile(join(cwd, "demo.txt"), "utf8")).toBe("ZPI\n");
   expect(session.messages.filter((m) => m.role === "toolResult")).toHaveLength(4);
   session.dispose();
   // Old goal records remain readable, but cannot reactivate an automatic prompt loop.
@@ -47,7 +47,7 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   manager.appendMessage({
     role: "system",
     content: "",
-    sections: { "zpi.goal": "OBSOLETE GOAL INSTRUCTION" },
+    sections: { "ZPI.goal": "OBSOLETE GOAL INSTRUCTION" },
     timestamp: Date.now(),
   });
   await appendFile(

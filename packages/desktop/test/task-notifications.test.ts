@@ -1,7 +1,7 @@
+import type { DesktopEventEnvelope } from "ZPI-ui";
 import { EventEmitter } from "node:events";
 import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { DesktopEventEnvelope } from "zpi-ui";
 import { TaskNotifications } from "../src/main/task-notifications.ts";
 import { defaultPreferences } from "../src/shared/config.ts";
 
@@ -84,7 +84,7 @@ it("matches ZCode copy, silent system delivery, custom sound and interrupted com
     expect(electron.notifications.at(-1)?.options).toEqual({ title, body: "任务：修复登录", silent: true });
   }
   expect(window.webContents.send).toHaveBeenCalledTimes(3);
-  expect(window.webContents.send).toHaveBeenCalledWith("zpi:task-notification-sound");
+  expect(window.webContents.send).toHaveBeenCalledWith("ZPI:task-notification-sound");
   expect(notifications.handle(settled("error", "blank"), " ")).toBe(true);
   expect(electron.notifications.at(-1)?.options.body).toBe("任务出错");
 });
@@ -141,7 +141,7 @@ it("restores and shows the sender window before activating the app, focusing and
     ...(process.platform === "darwin" ? ["dock.show", "app.show", "app.focus"] : []),
     "window.focus",
   ]);
-  expect(window.webContents.send).toHaveBeenLastCalledWith("zpi:task-notification-click", "task");
+  expect(window.webContents.send).toHaveBeenLastCalledWith("ZPI:task-notification-click", "task");
   notifications.dispose();
   expect(electron.notifications[0].close).not.toHaveBeenCalled();
 });

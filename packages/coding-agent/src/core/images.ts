@@ -1,6 +1,6 @@
+import type { ImageContent } from "ZPI-ai";
 import bmp from "bmp-js";
 import sharp, { type Sharp } from "sharp";
-import type { ImageContent } from "zpi-ai";
 import { imageLimits } from "./image-limits.ts";
 export function imageFormat(bytes: Uint8Array): string | undefined {
   const b = Buffer.from(bytes);

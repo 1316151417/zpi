@@ -1,10 +1,10 @@
+import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { demoServer, fakeConfig } from "../tests/fake-server.ts";
 
-const cwd = await mkdtemp(join(tmpdir(), "zpi-example-"));
+const cwd = await mkdtemp(join(tmpdir(), "ZPI-example-"));
 await writeFile(join(cwd, "README.md"), "# Demo project\nAll tools run inside this temporary directory.\n");
 const server = await demoServer();
 const runtime = await ModelRuntime.create();

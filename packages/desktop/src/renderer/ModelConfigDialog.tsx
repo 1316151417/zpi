@@ -1,8 +1,8 @@
+import type { ReasoningConfig } from "ZPI-ai";
+import { editableReasoningConfig, validateReasoningConfig } from "ZPI-ai";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Check, CircleHelp, LoaderCircle, LockKeyhole, X } from "lucide-react";
 import { useRef, useState } from "react";
-import type { ReasoningConfig } from "zpi-ai";
-import { editableReasoningConfig, validateReasoningConfig } from "zpi-ai";
 import type { ModelSettings } from "../shared/bridge.ts";
 import { modelDefaults, reasoningModel, toPreset } from "../shared/config.ts";
 import { ModelConfigAdvanced } from "./ModelConfigAdvanced.tsx";

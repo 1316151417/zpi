@@ -7,7 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("default window, draft spacing and fixed sidebar footer match ZCode", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-draft-layout-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-draft-layout-"));
   const projects = await Promise.all(
     Array.from({ length: 24 }, async (_, index) => {
       const path = join(dir, `project-${index}`);

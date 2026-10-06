@@ -211,7 +211,7 @@ export interface BashToolOptions {
   commandPrefix?: string;
   /** Optional explicit shell path from settings */
   shellPath?: string;
-  /** Expose current zpi session metadata as ZPI_* environment variables. Default: true */
+  /** Expose current ZPI session metadata as ZPI_* environment variables. Default: true */
   exposeSessionEnvironment?: boolean;
   /** Hook to adjust command, cwd, or env before execution */
   spawnHook?: BashSpawnHook;
@@ -410,7 +410,7 @@ const bashToolConfig: ShellToolConfig = {
   shellName: "bash",
   promptSnippet: bashToolSystemPromptContribution.snippet,
   promptGuidelines: bashToolSystemPromptContribution.guidelines,
-  tempFilePrefix: "zpi-bash",
+  tempFilePrefix: "ZPI-bash",
 };
 
 export function createBashToolDefinition(

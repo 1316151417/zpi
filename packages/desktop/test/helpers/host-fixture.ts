@@ -15,7 +15,7 @@ afterEach(async () => {
   );
 });
 export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
-  const dir = await mkdtemp(join(tmpdir(), "zpi-host-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-host-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const server = await fakeServer(handler);
   cleanup.push(server.close);

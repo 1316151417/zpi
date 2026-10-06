@@ -1,6 +1,6 @@
 // Match ZCode's workspace history: 30 entries, consecutive duplicate suppression.
 const limit = 30;
-const key = (workspace: string) => `zpi-chat-prompt-history:${workspace}`;
+const key = (workspace: string) => `ZPI-chat-prompt-history:${workspace}`;
 export function readPromptHistory(workspace: string, seed: readonly string[] = []): string[] {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(key(workspace)) ?? "null");

@@ -7,7 +7,7 @@ import { SettingsStore } from "../src/main/storage.ts";
 
 it("GUI launches recover profile credentials and PATH without overriding explicit credentials or saved models", async () => {
   if (process.platform === "win32") return;
-  const dir = await mkdtemp(join(tmpdir(), "zpi-shell-env-"));
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-shell-env-"));
   try {
     await writeFile(
       join(dir, ".zshrc"),
@@ -37,6 +37,31 @@ it("GUI launches recover profile credentials and PATH without overriding explici
     expect(await shellEnvironment({ SHELL: join(dir, "missing") })).toEqual({
       SHELL: join(dir, "missing"),
     });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("commenting a profile export leaves inherited MiniMax credentials available for automatic discovery", async () => {
+  if (process.platform === "win32") return;
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-inherited-env-"));
+  try {
+    await writeFile(join(dir, ".zshrc"), "# export MINIMAX_API_KEY='old-profile-key'\n");
+    const base = { SHELL: "/bin/zsh", ZDOTDIR: dir, PATH: "/usr/bin:/bin" };
+    const inherited = await shellEnvironment({ ...base, MINIMAX_API_KEY: "inherited-key" });
+    expect(inherited.MINIMAX_API_KEY).toBe("inherited-key");
+    const settings = new SettingsStore(dir, {
+      isEncryptionAvailable: () => true,
+      encryptString: (value) => Buffer.from(value),
+      decryptString: (value) => value.toString(),
+    });
+    expect(settings.discoverEnvironment(inherited)).toEqual(["env-minimax-coding"]);
+    settings.deleteProvider("env-minimax-coding");
+    expect(settings.discoverEnvironment(inherited)).toEqual(["env-minimax-coding"]);
+    settings.deleteProvider("env-minimax-coding");
+    const fresh = await shellEnvironment(base);
+    expect(fresh.MINIMAX_API_KEY).toBeUndefined();
+    expect(settings.discoverEnvironment(fresh)).toEqual([]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
-import { buildMentionMarkdown } from "zpi-coding-agent/input";
-import type { DesktopEvent, DesktopEventEnvelope, InputSuggestion, SessionView } from "zpi-ui";
+import { buildMentionMarkdown } from "ZPI-coding-agent/input";
+import type { DesktopEvent, DesktopEventEnvelope, InputSuggestion, SessionView } from "ZPI-ui";
 import {
   appendSelection,
   ComposerDraftStore,
@@ -7,7 +7,7 @@ import {
   mergeHistory,
   reduceSession,
   sessionViewBytes,
-} from "zpi-ui";
+} from "ZPI-ui";
 import { create } from "zustand";
 import type {
   DesktopBridge,
@@ -20,7 +20,7 @@ import { logRendererError } from "./error-log.ts";
 
 declare global {
   interface Window {
-    zpi: DesktopBridge;
+    ZPI: DesktopBridge;
   }
 }
 export function unwrap<T>(result: Result<T>): T {
@@ -55,7 +55,7 @@ const draftRevisions = new Map<string, number>();
 const draftLoaded = new Set<string>();
 const draftSaving = new Set<string>();
 export async function withdrawQueuedInput(id: string, itemId: string) {
-  const { item, draft } = unwrap(await window.zpi.editQueuedInput(id, itemId));
+  const { item, draft } = unwrap(await window.ZPI.editQueuedInput(id, itemId));
   // Main saved the withdrawn text before removing it from the durable queue.
   draftRevisions.set(id, draft.revision);
   return { ...draft, attachments: item.attachments, pending: 0 };
@@ -66,14 +66,13 @@ drafts.subscribe((id) => {
   const revision = (draftRevisions.get(id) ?? 0) + 1;
   draftRevisions.set(id, revision);
   draftSaving.add(id);
-  void window.zpi
-    .saveDraft(id, {
-      text: draft.text,
-      selections: draft.selections,
-      fileReferences: draft.fileReferences,
-      selection: draft.selection ?? [draft.text.length, draft.text.length],
-      revision,
-    })
+  void window.ZPI.saveDraft(id, {
+    text: draft.text,
+    selections: draft.selections,
+    fileReferences: draft.fileReferences,
+    selection: draft.selection ?? [draft.text.length, draft.text.length],
+    revision,
+  })
     .then(unwrap)
     .catch(report)
     .finally(() => {
@@ -82,7 +81,7 @@ drafts.subscribe((id) => {
 });
 async function loadDraft(id: string): Promise<void> {
   if (draftLoaded.has(id)) return;
-  const draft = unwrap(await window.zpi.getDraft(id));
+  const draft = unwrap(await window.ZPI.getDraft(id));
   draftRevisions.set(id, draft.revision);
   if (!drafts.has(id)) drafts.set(id, { ...draft, attachments: [], pending: 0 });
   draftLoaded.add(id);
@@ -152,7 +151,7 @@ export function report(error: unknown): void {
   useStore.setState({ error: error instanceof Error ? error.message : String(error) });
 }
 export function subscribeEvents(): () => void {
-  return window.zpi.onEvent((e) => {
+  return window.ZPI.onEvent((e) => {
     queue.push(e);
     if (!frame)
       frame = requestAnimationFrame(() => {
@@ -165,8 +164,8 @@ export function subscribeEvents(): () => void {
 }
 export async function refreshSuggestions(id: string): Promise<void> {
   const [commands, catalog] = await Promise.all([
-    window.zpi.listCommands().then(unwrap),
-    window.zpi.listSessionSkills(id).then(unwrap),
+    window.ZPI.listCommands().then(unwrap),
+    window.ZPI.listSessionSkills(id).then(unwrap),
   ]);
   const state = useStore.getState();
   const resourceDiagnostics = new Map(state.resourceDiagnostics),
@@ -185,9 +184,9 @@ export async function refreshSuggestions(id: string): Promise<void> {
 }
 export async function refresh(): Promise<void> {
   const [projects, records, settings] = await Promise.all([
-    window.zpi.listProjects().then(unwrap),
-    window.zpi.listRecentSessions().then(unwrap),
-    window.zpi.getSettings().then(unwrap),
+    window.ZPI.listProjects().then(unwrap),
+    window.ZPI.listRecentSessions().then(unwrap),
+    window.ZPI.getSettings().then(unwrap),
   ]);
   useStore.setState({
     projects,
@@ -209,9 +208,9 @@ export function accept(snapshot: import("../shared/bridge.ts").SessionSnapshot):
   }
 }
 export async function selectSession(id: string): Promise<void> {
-  localStorage.setItem("zpi.selectedSession", id);
+  localStorage.setItem("ZPI.selectedSession", id);
   useStore.setState({ selected: id });
-  const active = unwrap(await window.zpi.activateSession(id));
+  const active = unwrap(await window.ZPI.activateSession(id));
   const sessions = new Map(useStore.getState().sessions);
   const record = sessions.get(id);
   if (record) {
@@ -228,18 +227,18 @@ export async function selectSession(id: string): Promise<void> {
   pendingSnapshots.set(id, []);
   const request = (async () => {
     try {
-      const snapshot = unwrap(await window.zpi.getSessionSnapshot(id));
+      const snapshot = unwrap(await window.ZPI.getSessionSnapshot(id));
       let view = snapshot.view,
         cursor = snapshot.historyCursor ?? null;
       try {
-        const reading = JSON.parse(localStorage.getItem(`zpi.reading.${id}`) ?? "null");
+        const reading = JSON.parse(localStorage.getItem(`ZPI.reading.${id}`) ?? "null");
         while (
           reading?.following === false &&
           Number.isSafeInteger(reading.cursor) &&
           cursor !== null &&
           cursor > reading.cursor
         ) {
-          const page = unwrap(await window.zpi.getHistoryPage(id, cursor));
+          const page = unwrap(await window.ZPI.getHistoryPage(id, cursor));
           view = mergeHistory(page.view, view);
           cursor = page.cursor;
         }
@@ -280,7 +279,7 @@ export async function loadEarlier(id: string): Promise<void> {
   if (cursor == null || state.historyLoading.has(id)) return;
   useStore.setState({ historyLoading: new Set(state.historyLoading).add(id) });
   try {
-    const page = unwrap(await window.zpi.getHistoryPage(id, cursor));
+    const page = unwrap(await window.ZPI.getHistoryPage(id, cursor));
     const current = useStore.getState(),
       view = current.views.get(id);
     if (!view) return;
@@ -307,7 +306,7 @@ export async function newSession(
     const draft = [...useStore.getState().sessions.values()]
       .filter((record) => record.draft && record.projectId === projectId && record.archivedAt == null)
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    const record = draft ?? unwrap(await window.zpi.createSession(projectId));
+    const record = draft ?? unwrap(await window.ZPI.createSession(projectId));
     if (!draft) await refresh();
     await selectSession(record.id);
   })();
@@ -319,10 +318,10 @@ export async function newSession(
   }
 }
 export async function archiveSession(id: string): Promise<void> {
-  unwrap(await window.zpi.archiveSession(id));
+  unwrap(await window.ZPI.archiveSession(id));
   await refresh();
   if (useStore.getState().selected === id) {
-    localStorage.removeItem("zpi.selectedSession");
+    localStorage.removeItem("ZPI.selectedSession");
     useStore.setState({ selected: undefined });
     const next = [...useStore.getState().sessions.values()].find((r) => !r.diagnostic);
     if (next) await selectSession(next.id);
@@ -332,7 +331,7 @@ export async function initialize(): Promise<void> {
   try {
     await refresh();
     const records = [...useStore.getState().sessions.values()].filter((r) => !r.diagnostic);
-    const saved = localStorage.getItem("zpi.selectedSession");
+    const saved = localStorage.getItem("ZPI.selectedSession");
     const first = records.find((r) => r.id === saved) ?? records[0];
     if (first) await selectSession(first.id);
     else await newSession();

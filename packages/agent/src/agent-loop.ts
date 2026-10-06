@@ -1,6 +1,6 @@
+import type { ToolCall, ToolResultMessage } from "ZPI-ai";
+import { emptyAssistant, getCurrentTools, isJsonValue, normalizeContext, toToolDeclaration } from "ZPI-ai";
 import { Check } from "typebox/value";
-import type { ToolCall, ToolResultMessage } from "zpi-ai";
-import { emptyAssistant, getCurrentTools, isJsonValue, normalizeContext, toToolDeclaration } from "zpi-ai";
 import type {
   AgentContext,
   AgentEventSink,

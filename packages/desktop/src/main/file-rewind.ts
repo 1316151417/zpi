@@ -1,9 +1,9 @@
+import type { FileChange } from "ZPI-coding-agent";
+import type { FileRewindConflict } from "ZPI-ui";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { FileChange } from "zpi-coding-agent";
-import type { FileRewindConflict } from "zpi-ui";
 import { readFileSnapshot } from "./file-changes.ts";
 import { isPathInside } from "./path-bounds.ts";
 
@@ -61,7 +61,7 @@ export async function planFileRewind(
   return plan;
 }
 function replaceFile(path: string, content: Buffer, mode: number) {
-  const temporary = join(dirname(path), `.zpi-rewind-${randomUUID()}`);
+  const temporary = join(dirname(path), `.ZPI-rewind-${randomUUID()}`);
   try {
     writeFileSync(temporary, content, { mode, flag: "wx" });
     renameSync(temporary, path);

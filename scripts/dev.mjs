@@ -11,8 +11,8 @@ import { mainBuild, preloadBuild } from "./desktop-build.mjs";
 await buildAppIcon();
 let executable = electron;
 if (process.platform === "darwin") {
-  // Give the development app its own Dock name without modifying the installed Electron bundle.
-  const bundle = resolve("node_modules/.cache/zpi-dev/ZPI.app");
+  // Match Preview's identity without modifying the installed Electron bundle.
+  const bundle = resolve("node_modules/.cache/ZPI-dev/ZPI Preview.app");
   await cp(resolve(dirname(electron), "../.."), bundle, {
     recursive: true,
     verbatimSymlinks: true,
@@ -20,7 +20,7 @@ if (process.platform === "darwin") {
   });
   const plist = join(bundle, "Contents/Info.plist");
   for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
-    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ZPI`, plist]);
+    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ZPI Preview`, plist]);
   }
   executable = join(bundle, "Contents/MacOS/Electron");
 }
@@ -67,7 +67,7 @@ await build({
       ],
       { stdio: "inherit", env },
     );
-    console.log("ZPI Desktop started. Ctrl+C stops the app and development server.");
+    console.log("ZPI Preview Desktop started. Ctrl+C stops the app and development server.");
   },
 });
 async function close() {

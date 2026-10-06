@@ -1,7 +1,7 @@
+import type { SessionEntry } from "ZPI-coding-agent";
 import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import type { SessionEntry } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "../src/main/file-changes.ts";
 import { SessionHost } from "../src/main/session-host.ts";

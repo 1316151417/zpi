@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "zpi-agent";
-import { defaultThinkingLevel, thinkingChoices } from "zpi-ai";
+import type { ThinkingLevel } from "ZPI-agent";
+import { defaultThinkingLevel, thinkingChoices } from "ZPI-ai";
 import type { InterfacePreferences, ModelSettings, ReasoningPreset } from "./bridge.ts";
 export const modelDefaults = {
   contextWindow: 1000000,

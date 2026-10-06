@@ -1,8 +1,8 @@
+import type { JsonObject, Model } from "ZPI-ai";
 import { once } from "node:events";
 import type { IncomingHttpHeaders, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { JsonObject, Model } from "zpi-ai";
 export function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((r) => {
@@ -118,7 +118,7 @@ export async function demoServer() {
     const tools = [
       { name: "read", arguments: { path: "README.md" } },
       { name: "write", arguments: { path: "demo.txt", content: "hello\n" } },
-      { name: "edit", arguments: { path: "demo.txt", edits: [{ oldText: "hello", newText: "zpi" }] } },
+      { name: "edit", arguments: { path: "demo.txt", edits: [{ oldText: "hello", newText: "ZPI" }] } },
       { name: "bash", arguments: { command: "cat demo.txt" } },
     ].filter((t) => toolNames.includes(t.name));
     if (results.length < tools.length) {

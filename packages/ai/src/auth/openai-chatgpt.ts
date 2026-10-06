@@ -280,7 +280,7 @@ export async function beginChatGPTLogin(options: {
   const url = new URL(`${issuer}/api/accounts/authorize`);
   url.search = new URLSearchParams({
     client_id: options.credential?.clientId ?? "dynamic_agent_client",
-    ...(!options.credential ? { agent_name_hint: "zpi" } : {}),
+    ...(!options.credential ? { agent_name_hint: "ZPI" } : {}),
     ext_agent_host_id: options.hostId,
     response_type: "code",
     redirect_uri: redirectUri,

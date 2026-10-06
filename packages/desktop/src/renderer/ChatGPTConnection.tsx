@@ -23,7 +23,7 @@ export function ChatGPTConnection({
   useEffect(
     () => () => {
       mounted.current = false;
-      if (pending.current) void window.zpi.cancelChatGPTLogin(pending.current);
+      if (pending.current) void window.ZPI.cancelChatGPTLogin(pending.current);
     },
     [],
   );
@@ -33,14 +33,14 @@ export function ChatGPTConnection({
     onError("");
     onNotice("");
     try {
-      const attempt = unwrap(await window.zpi.beginChatGPTLogin(provider?.id ?? null));
+      const attempt = unwrap(await window.ZPI.beginChatGPTLogin(provider?.id ?? null));
       if (!mounted.current) {
-        void window.zpi.cancelChatGPTLogin(attempt.loginId);
+        void window.ZPI.cancelChatGPTLogin(attempt.loginId);
         return;
       }
       pending.current = attempt.loginId;
       setLogin(attempt);
-      const result = unwrap(await window.zpi.completeChatGPTLogin(attempt.loginId));
+      const result = unwrap(await window.ZPI.completeChatGPTLogin(attempt.loginId));
       if (!mounted.current || pending.current !== attempt.loginId) return;
       pending.current = undefined;
       setLogin(undefined);
@@ -61,7 +61,7 @@ export function ChatGPTConnection({
   const cancel = () => {
     const id = pending.current;
     pending.current = "cancelled";
-    if (id) void window.zpi.cancelChatGPTLogin(id);
+    if (id) void window.ZPI.cancelChatGPTLogin(id);
   };
   const disconnect = async () => {
     if (!provider) return;
@@ -69,7 +69,7 @@ export function ChatGPTConnection({
     onBusy(true);
     onError("");
     try {
-      const result = unwrap(await window.zpi.disconnectChatGPT(provider.id));
+      const result = unwrap(await window.ZPI.disconnectChatGPT(provider.id));
       if (mounted.current) {
         onSettings(result.settings, provider.id);
         onNotice(result.warning ?? "已退出 ChatGPT。");
@@ -103,7 +103,7 @@ export function ChatGPTConnection({
       {login && (
         <div className="chatgpt-login-pending">
           <p role="status">正在等待浏览器完成授权…</p>
-          <button onClick={() => void window.zpi.openExternal(login.url)}>重新打开登录页面</button>
+          <button onClick={() => void window.ZPI.openExternal(login.url)}>重新打开登录页面</button>
           <button onClick={cancel}>取消登录</button>
           <label>
             回调地址（浏览器未能自动返回时）
@@ -117,8 +117,7 @@ export function ChatGPTConnection({
           <button
             disabled={!callback.trim()}
             onClick={() => {
-              void window.zpi
-                .submitChatGPTCallback(login.loginId, callback)
+              void window.ZPI.submitChatGPTCallback(login.loginId, callback)
                 .then(unwrap)
                 .then(() => setCallback(""))
                 .catch((error) => onError(String(error)));

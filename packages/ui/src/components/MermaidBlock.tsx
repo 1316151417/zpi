@@ -1,5 +1,5 @@
 // Rendering queue, palette normalization and base theme adapted from ZCode 872ad960.
-// Apache-2.0; desktop labels and theme tokens adapted for zpi. See THIRD_PARTY_NOTICES.md.
+// Apache-2.0; desktop labels and theme tokens adapted for ZPI. See THIRD_PARTY_NOTICES.md.
 import { createMermaidPlugin, type MermaidConfig } from "@streamdown/mermaid";
 import { Maximize2, X } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useState } from "react";
@@ -182,7 +182,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
       return;
     }
     setRenderState({ status: "loading" });
-    const renderId = `zpi-mermaid-${renderIdPrefix}-${hashMermaidCode(`${dark}:${trimmedCode}`)}`;
+    const renderId = `ZPI-mermaid-${renderIdPrefix}-${hashMermaidCode(`${dark}:${trimmedCode}`)}`;
     void enqueueMermaidRender(async () => {
       if (cancelled) return undefined;
       return mermaidPlugin.getMermaid(config).render(renderId, trimmedCode);
@@ -202,7 +202,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
       data-streamdown="mermaid-block"
       data-mermaid-block=""
       data-render-state={renderState.status}
-      className="zpi-mermaid"
+      className="ZPI-mermaid"
     >
       <div className="mermaid-toolbar">
         <span>mermaid</span>

@@ -7,7 +7,7 @@ import { MarkdownPreview, useMarkdown } from "./MarkdownActions.tsx";
 
 export function MarkdownImage({ src, alt = "图片预览", node }: ComponentProps<"img"> & ExtraProps) {
   const { onImage, onDownloadImage, workspace } = useMarkdown();
-  const original = node?.properties?.dataZpiTarget;
+  const original = node?.properties?.dataZPITarget;
   const target = typeof original === "string" ? original : typeof src === "string" ? src : "";
   const resolved = resolveLinkTarget(target, workspace);
   const path = resolved?.kind === "file" ? resolved.path : undefined;

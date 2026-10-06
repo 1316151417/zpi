@@ -7,7 +7,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("streaming code, formulas and Mermaid follow both themes; IPC copy reports success and failure without browser clipboard", async () => {
   test.setTimeout(60000);
-  const dir = await mkdtemp(join(tmpdir(), "zpi-markdown-")),
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-markdown-")),
     project = join(dir, "project");
   await mkdir(project);
   const reasoning = deferred();
@@ -134,8 +134,8 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     await code.getByRole("button", { name: "复制失败，点击重试", exact: true }).click();
     await expect(code.getByRole("status")).toHaveText("已复制");
     const rejected = await page.evaluate(async () => [
-      await window.zpi.copyText(12 as never),
-      await window.zpi.copyText("x".repeat(2 * 1024 * 1024 + 1)),
+      await window.ZPI.copyText(12 as never),
+      await window.ZPI.copyText("x".repeat(2 * 1024 * 1024 + 1)),
     ]);
     expect(rejected.every((result) => !result.ok)).toBe(true);
     await page.getByTestId("progress").click();

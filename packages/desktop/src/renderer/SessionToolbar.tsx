@@ -1,7 +1,7 @@
+import type { SessionView } from "ZPI-ui";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
-import type { SessionView } from "zpi-ui";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { accept, refresh, report, unwrap, useStore } from "./store.ts";
 export function SessionToolbar({
@@ -25,8 +25,7 @@ export function SessionToolbar({
   const [updating, setUpdating] = useState(false);
   const select = (provider: string, modelId: string, reasoning: string, close = true) => {
     setUpdating(true);
-    void window.zpi
-      .setSessionSelection(view.sessionId, { provider, modelId, reasoning })
+    void window.ZPI.setSessionSelection(view.sessionId, { provider, modelId, reasoning })
       .then(unwrap)
       .then(async (snapshot) => {
         accept(snapshot);

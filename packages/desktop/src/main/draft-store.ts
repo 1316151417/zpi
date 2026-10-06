@@ -1,6 +1,6 @@
+import { type ConversationSelection, validSelections } from "ZPI-ui/selections";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { type ConversationSelection, validSelections } from "zpi-ui/selections";
 import { atomicJson } from "./storage.ts";
 export interface TextDraft {
   selections?: ConversationSelection[];

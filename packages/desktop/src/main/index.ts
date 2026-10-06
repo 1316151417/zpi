@@ -1,3 +1,5 @@
+import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "ZPI-ai";
+import { imageLimits, listCommands } from "ZPI-coding-agent";
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -14,8 +16,6 @@ import {
   screen,
   shell,
 } from "electron";
-import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
-import { imageLimits, listCommands } from "zpi-coding-agent";
 import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
@@ -43,10 +43,10 @@ const testMode = process.env.ZPI_TEST_MODE === "1";
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });
 let ending = false;
-// Keep existing sessions and settings in their original directories after the display-name change.
-const dataName = app.isPackaged ? app.getName().replace(/^ZPI\b/, "zpi") : "Electron";
+// Development shares Preview's data and Keychain identity; production remains separate.
+const dataName = app.isPackaged ? app.getName() : "ZPI Preview";
+app.setName(dataName);
 app.setPath("userData", join(app.getPath("appData"), dataName));
-if (!app.isPackaged) app.setName("ZPI");
 if (testMode && process.env.ZPI_TEST_DATA_DIR) app.setPath("userData", process.env.ZPI_TEST_DATA_DIR);
 const errors = new ErrorLog(app.getPath("userData"), {
   version: app.isPackaged ? app.getVersion() : version,
@@ -123,7 +123,7 @@ async function launch(): Promise<void> {
   const host = new SessionHost(
     app.getPath("userData"),
     settings,
-    testMode ? join(app.getPath("userData"), "resources") : join(homedir(), ".zpi", "agent"),
+    testMode ? join(app.getPath("userData"), "resources") : join(homedir(), ".ZPI", "agent"),
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
     requestFetch,
     testMode ? [join(app.getPath("userData"), ".agents", "skills")] : undefined,
@@ -136,7 +136,7 @@ async function launch(): Promise<void> {
     height: Math.min(800, display.height),
     minWidth: 740,
     minHeight: 560,
-    title: "ZPI",
+    title: dataName,
     backgroundColor: "#f8f8f8",
     icon,
     // 与 ZCode 的 macOS 顶栏一致，让原生红绿灯和侧栏开关位于同一排。
@@ -161,7 +161,7 @@ async function launch(): Promise<void> {
     if (details.level === "error")
       errors.write("renderer.console", details.message, { file: details.sourceId, line: details.lineNumber });
   });
-  ipcMain.on("zpi:error", (event, error: unknown) => {
+  ipcMain.on("ZPI:error", (event, error: unknown) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return;
     if (!error || typeof error !== "object") return;
     const details = error as { source?: unknown; message?: unknown; stack?: unknown };
@@ -191,7 +191,7 @@ async function launch(): Promise<void> {
           models: result.models.map((model) => ({ ...model, useRecommendedConfig: true })),
         });
         await settingsReady;
-        if (!window.isDestroyed()) window.webContents.send("zpi:settings", settings.get());
+        if (!window.isDestroyed()) window.webContents.send("ZPI:settings", settings.get());
       })
       .catch((error) => {
         errors.write("models.discovery", error, { providerId: id });
@@ -199,7 +199,7 @@ async function launch(): Promise<void> {
       });
   }
   const panes = new PaneServices(window, (event) => {
-    if (!window.isDestroyed()) window.webContents.send("zpi:pane-event", event);
+    if (!window.isDestroyed()) window.webContents.send("ZPI:pane-event", event);
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -208,14 +208,14 @@ async function launch(): Promise<void> {
   window.webContents.session.setPermissionCheckHandler(() => false);
   const notifications = new TaskNotifications(window, () => settings.get().interface);
   host.subscribe((event) => {
-    if (!window.isDestroyed()) window.webContents.send("zpi:event", event);
+    if (!window.isDestroyed()) window.webContents.send("ZPI:event", event);
     if (!ending && event.event.type === "settled")
       notifications.handle(
         event,
         host.listRecentSessions().find((record) => record.id === event.sessionId)?.title ?? "",
       );
   });
-  ipcMain.handle("zpi:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
+  ipcMain.handle("ZPI:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)
         throw new Error("invalid_input: 未授权的 IPC sender");

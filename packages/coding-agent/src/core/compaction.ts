@@ -1,6 +1,6 @@
 // Adapted from Pi (commit c20cb09772bf4e2590a316cb54514cef76df4293) Copyright (c) 2025 Mario Zechner. MIT license
-import type { Message } from "zpi-ai";
-import { messageChars } from "zpi-ai";
+import type { Message } from "ZPI-ai";
+import { messageChars } from "ZPI-ai";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 
 export interface CompactionOptions {

@@ -70,7 +70,7 @@ export const markdownLinkRemarkPlugin: Plugin = function markdownLinkRemarkPlugi
       const target = node.url ?? (node.identifier ? definitions.get(node.identifier) : undefined);
       if (target && ["link", "image", "linkReference", "imageReference"].includes(node.type)) {
         node.data ??= {};
-        node.data.hProperties = { ...node.data.hProperties, dataZpiTarget: target };
+        node.data.hProperties = { ...node.data.hProperties, dataZPITarget: target };
       }
       node.children?.forEach(preserve);
     };

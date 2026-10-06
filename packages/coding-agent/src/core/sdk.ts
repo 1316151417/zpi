@@ -1,8 +1,8 @@
+import type { AgentTool, ThinkingLevel } from "ZPI-agent";
+import type { Model } from "ZPI-ai";
+import { assertSupportedOptions, defaultThinkingLevel } from "ZPI-ai";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { AgentTool, ThinkingLevel } from "zpi-agent";
-import type { Model } from "zpi-ai";
-import { assertSupportedOptions, defaultThinkingLevel } from "zpi-ai";
 import { AgentSession } from "./agent-session.ts";
 import type { CompactionOptions } from "./compaction.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -65,7 +65,7 @@ export async function createAgentSession(
       if (!Number.isSafeInteger(value) || value < 1) throw new Error("Invalid compaction token budget");
   }
   const cwd = resolve(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
-  const agentDir = options.agentDir ?? join(homedir(), ".zpi", "agent");
+  const agentDir = options.agentDir ?? join(homedir(), ".ZPI", "agent");
   const runtime = options.modelRuntime ?? (await ModelRuntime.create());
   const manager = options.sessionManager ?? SessionManager.create(cwd, join(agentDir, "sessions"));
   const restored = manager.buildSessionContext();

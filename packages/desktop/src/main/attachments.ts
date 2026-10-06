@@ -1,7 +1,7 @@
+import { type ImageAttachment, imageLimits, processImage } from "ZPI-coding-agent";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type ImageAttachment, imageLimits, processImage } from "zpi-coding-agent";
 import { atomicJson } from "./storage.ts";
 
 interface Saved extends ImageAttachment {
