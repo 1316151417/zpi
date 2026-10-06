@@ -792,10 +792,6 @@ small {
   min-width: 0;
   display: flex;
 }
-.context-indicator {
-  display: flex;
-  position: relative;
-}
 .context-circle {
   padding: 2px;
   display: flex;
@@ -820,21 +816,15 @@ small {
   border: 1px solid var(--color-border);
   width: 335px;
   min-width: 0;
-  max-width: calc(100vw - 32px);
+  max-width: min(calc(100vw - 32px), var(--radix-tooltip-content-available-width));
+  max-height: var(--radix-tooltip-content-available-height);
   z-index: var(--layer-popover);
   font-size: var(--text-small);
   line-height: var(--line-body);
   box-shadow: var(--shadow-popover);
   border-radius: var(--radius-panel);
   padding: 16px;
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
-}
-.context-indicator:hover .context-tooltip,
-.context-indicator:focus-within .context-tooltip {
-  display: block;
+  overflow: auto;
 }
 /* ZCode MentionPanel: shared rounded surface, scrollable list and hint footer. */
 .command-panel {
@@ -1298,6 +1288,7 @@ small {
 }
 .context-summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;

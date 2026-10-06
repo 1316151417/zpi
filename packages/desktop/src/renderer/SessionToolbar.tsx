@@ -1,5 +1,6 @@
 import type { SessionView } from "ZPI-ui";
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import * as Tooltip from "@radix-ui/react-tooltip";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
@@ -54,73 +55,85 @@ export function SessionToolbar({
   return (
     <div ref={setToolbar} className="session-toolbar">
       {settings?.interface.showContextUsage && hasResponse && (
-        <div className="context-indicator">
-          <button
-            className="context-circle"
-            aria-label="上下文占用"
-            aria-describedby={`context-${view.sessionId}`}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-              <circle className="context-track" cx="12" cy="12" r="9" />
-              <circle
-                className={`context-value ${percent == null ? "unknown" : ""}`}
-                cx="12"
-                cy="12"
-                r="9"
-                pathLength="100"
-                strokeDasharray={`${percent == null ? 18 : Math.min(100, Math.max(0, percent))} 100`}
-              />
-            </svg>
-          </button>
-          <div className="context-tooltip" id={`context-${view.sessionId}`} role="tooltip">
-            <div className="context-summary">
-              <strong>上下文容量</strong>
-              <span>
-                {usage?.inputTokens == null ? "未知" : compact(usage.inputTokens)}/
-                {usage?.contextWindow ? compact(usage.contextWindow) : "未知"}
-                {percent == null ? "" : `（${percent.toFixed(1)}%）`}
-              </span>
-            </div>
-            <div
-              className="context-progress"
-              role="progressbar"
-              aria-label="上下文容量"
-              aria-valuenow={percent ?? undefined}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <span style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
-            </div>
-            <div
-              className="context-breakdown"
-              data-testid="context-breakdown"
-              title="分类占比按实际请求文本与工具 Schema 的字符数计算；顶部 token 总量来自服务端。"
-            >
-              {(breakdown.length
-                ? [...breakdown].sort((a, b) => b.chars - a.chars)
-                : Object.keys(labels).map((source) => ({ source: source as keyof typeof labels, chars: 0 }))
-              ).map((item, index) => (
-                <div key={item.source}>
-                  <i style={{ opacity: Math.max(0.25, 1 - index * 0.17) }} />
-                  <span>{labels[item.source]}</span>
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button className="context-circle" aria-label="上下文占用">
+                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle className="context-track" cx="12" cy="12" r="9" />
+                  <circle
+                    className={`context-value ${percent == null ? "unknown" : ""}`}
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    pathLength="100"
+                    strokeDasharray={`${percent == null ? 18 : Math.min(100, Math.max(0, percent))} 100`}
+                  />
+                </svg>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                className="context-tooltip"
+                side="top"
+                align="start"
+                sideOffset={8}
+                collisionBoundary={menuBoundary}
+                collisionPadding={8}
+              >
+                <div className="context-summary">
+                  <strong>上下文容量</strong>
+                  <span>
+                    {usage?.inputTokens == null ? "未知" : compact(usage.inputTokens)}/
+                    {usage?.contextWindow ? compact(usage.contextWindow) : "未知"}
+                    {percent == null ? "" : `（${percent.toFixed(1)}%）`}
+                  </span>
+                </div>
+                <div
+                  className="context-progress"
+                  role="progressbar"
+                  aria-label="上下文容量"
+                  aria-valuenow={percent ?? undefined}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
+                </div>
+                <div
+                  className="context-breakdown"
+                  data-testid="context-breakdown"
+                  title="分类占比按实际请求文本与工具 Schema 的字符数计算；顶部 token 总量来自服务端。"
+                >
+                  {(breakdown.length
+                    ? [...breakdown].sort((a, b) => b.chars - a.chars)
+                    : Object.keys(labels).map((source) => ({
+                        source: source as keyof typeof labels,
+                        chars: 0,
+                      }))
+                  ).map((item, index) => (
+                    <div key={item.source}>
+                      <i style={{ opacity: Math.max(0.25, 1 - index * 0.17) }} />
+                      <span>{labels[item.source]}</span>
+                      <strong>
+                        {totalChars
+                          ? `${((item.chars / totalChars) * 100).toFixed(1).replace(/\.0$/, "")}%`
+                          : "—"}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="context-cache">
+                  <span>平均缓存命中率</span>
                   <strong>
-                    {totalChars
-                      ? `${((item.chars / totalChars) * 100).toFixed(1).replace(/\.0$/, "")}%`
-                      : "—"}
+                    {usage?.averageCacheHitRate == null
+                      ? "未知"
+                      : `${(usage.averageCacheHitRate * 100).toFixed(1)}%`}
                   </strong>
                 </div>
-              ))}
-            </div>
-            <div className="context-cache">
-              <span>平均缓存命中率</span>
-              <strong>
-                {usage?.averageCacheHitRate == null
-                  ? "未知"
-                  : `${(usage.averageCacheHitRate * 100).toFixed(1)}%`}
-              </strong>
-            </div>
-          </div>
-        </div>
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
       )}
       <Menu.Root open={open} onOpenChange={onOpenChange}>
         <Menu.Trigger

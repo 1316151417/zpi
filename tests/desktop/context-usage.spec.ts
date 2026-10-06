@@ -63,6 +63,50 @@ test("context indicator appears after the first response and keeps measured usag
     await indicator().hover();
     await expect(tooltip()).toContainText("75.0%");
     const breakdown = await page.getByTestId("context-breakdown").innerText();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1200, 900));
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    const rightHandle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
+    for (let i = 0; i < 9; i++) await rightHandle.press("ArrowLeft");
+    const panel = page.locator(".shell > main");
+    await expect.poll(async () => (await panel.boundingBox())?.width).toBeLessThan(400);
+    const expectUnclippedTooltip = async () => {
+      await expect(tooltip()).toBeVisible();
+      await expect
+        .poll(async () => {
+          const popup = await tooltip().boundingBox();
+          const main = await panel.boundingBox();
+          return Boolean(
+            popup &&
+              main &&
+              popup.x >= main.x + 8 &&
+              popup.x + popup.width <= main.x + main.width - 8 &&
+              popup.y >= main.y + 8 &&
+              popup.y + popup.height <= main.y + main.height - 8,
+          );
+        })
+        .toBe(true);
+      expect(
+        await tooltip().evaluate((el) => {
+          const box = el.getBoundingClientRect();
+          return [
+            [box.left + 8, box.top + 8],
+            [box.right - 8, box.top + 8],
+            [box.left + 8, box.bottom - 8],
+            [box.right - 8, box.bottom - 8],
+          ].every(([x, y]) => el.contains(document.elementFromPoint(x, y)));
+        }),
+      ).toBe(true);
+    };
+    await indicator().hover();
+    await expectUnclippedTooltip();
+    await page.screenshot({ path: "test-results/context-indicator-narrow-panel.png" });
+    await page.mouse.move(0, 0);
+    await expect(tooltip()).toBeHidden();
+    await indicator().focus();
+    await expectUnclippedTooltip();
+    await indicator().press("Escape");
+    await expect(tooltip()).toBeHidden();
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
     await choose("context-other");
     await indicator().hover();
     await expect(tooltip()).not.toContainText("未知");

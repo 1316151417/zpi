@@ -1,6 +1,6 @@
 {
   "name": "ZPI-desktop",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -8,6 +8,7 @@
     "@radix-ui/react-dialog": "1.1.23",
     "@radix-ui/react-dropdown-menu": "2.1.24",
     "@radix-ui/react-select": "2.2.6",
+    "@radix-ui/react-tooltip": "1.2.16",
     "@xterm/addon-fit": "0.10.0",
     "@xterm/addon-web-links": "0.11.0",
     "@xterm/xterm": "5.5.0",
@@ -16,10 +17,10 @@
     "node-pty": "1.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "ZPI-agent": "0.1.22",
-    "ZPI-ai": "0.1.22",
-    "ZPI-coding-agent": "0.1.22",
-    "ZPI-ui": "0.1.22",
+    "ZPI-agent": "0.1.23",
+    "ZPI-ai": "0.1.23",
+    "ZPI-coding-agent": "0.1.23",
+    "ZPI-ui": "0.1.23",
     "zustand": "5.0.15"
   }
 }
