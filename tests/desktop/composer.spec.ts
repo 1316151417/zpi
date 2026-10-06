@@ -8,6 +8,86 @@ import { clipboardText, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
+test("empty prefix suggestions allow Enter to send while matching suggestions still insert references", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-prefix-input-"));
+  const server = await fakeServer((_, res) => {
+    send(res, chunk({ content: "reply" }));
+    done(res);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    const cwd = join(dir, "workspace"),
+      skillDir = join(dir, "resources", "skills", "review");
+    await mkdir(cwd);
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(cwd, "main.txt"), "file content");
+    await writeFile(
+      join(skillDir, "SKILL.md"),
+      "---\nname: review\ndescription: Review code\n---\nSKILL BODY ON DEMAND",
+    );
+    const id = seedHistory(dir, cwd, 1).id;
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await select(page, id);
+    const editor = page.getByLabel("消息", { exact: true });
+    for (const text of [
+      "/中文读杠",
+      "/tmp/missing",
+      "$100",
+      "$missing",
+      "$中文",
+      "@missing-file",
+      "@someone@example.com",
+    ]) {
+      await editor.fill(text);
+      if (text === "/tmp/missing" || text === "@someone@example.com")
+        await expect(page.getByRole("listbox")).toHaveCount(0);
+      else await expect(page.getByRole("listbox")).toBeVisible();
+      await expect(page.getByRole("option")).toHaveCount(0);
+      const index = server.requests.length;
+      await editor.press("Enter");
+      await expect.poll(() => server.requests.length).toBe(index + 1);
+      expect(server.requests[index].messages).toContainEqual(
+        expect.objectContaining({ role: "user", content: text }),
+      );
+      await expect(page.locator(".answer").last()).toHaveText("reply");
+      await expect(editor).toHaveText("");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    }
+    const count = server.requests.length;
+    await editor.fill("/init");
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await editor.press("Tab");
+    await expect(editor.locator(".inline-mention.command")).toHaveText("Init");
+    await expect(editor.locator(".inline-mention.command")).toHaveAttribute("data-markdown", "/init");
+    expect(server.requests).toHaveLength(count);
+    await editor.fill("$review");
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await editor.press("Enter");
+    await expect(editor.locator(".inline-mention.skill")).toHaveText("review");
+    expect(server.requests).toHaveLength(count);
+    await editor.press("Enter");
+    await expect.poll(() => server.requests.length).toBe(count + 1);
+    expect(JSON.stringify(server.requests[count])).toContain("SKILL BODY ON DEMAND");
+    await expect(editor).toHaveText("");
+    await editor.fill("@main");
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await editor.press("Tab");
+    await expect(editor.locator(".inline-mention.file")).toHaveText("main.txt");
+    expect(server.requests).toHaveLength(count + 1);
+    await editor.press("Enter");
+    await expect.poll(() => server.requests.length).toBe(count + 2);
+    expect(JSON.stringify(server.requests[count + 1])).toContain("Referenced project files");
+    expect(JSON.stringify(server.requests[count + 1])).toContain(join(cwd, "main.txt"));
+    await expect(editor).toHaveText("");
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("canonical reference editing, IME, selection, undo/redo, cross-session caret and restart drafts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-editor-"));
   const server = await fakeServer((_, res) => {

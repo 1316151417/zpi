@@ -1,10 +1,27 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import { buildMentionMarkdown } from "zpi-coding-agent";
 import { desktopSystemRules } from "../src/main/desktop-prompt.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
+
+test.each(["/中文读杠", "$100", "$missing task", "@someone@example.com"])(
+  "ordinary input %j reaches the provider and remains in desktop history",
+  async (text) => {
+    const f = await fixture();
+    await run(f, text);
+    expect(f.server.requests).toHaveLength(1);
+    expect(f.server.requests[0].messages).toContainEqual(
+      expect.objectContaining({ role: "user", content: text }),
+    );
+    expect(f.host.getSessionSnapshot(f.session.id).view.runs[0]).toMatchObject({
+      userMessage: text,
+      status: "completed",
+    });
+  },
+);
 
 test("desktop link instructions reach prompt previews, new runs and restored custom sessions", async () => {
   for (const template of [
@@ -88,7 +105,7 @@ test("legacy prompt snapshots and skill defaults survive restart; the read-only 
   expect(JSON.stringify(f.server.requests[1])).toContain("BODY");
   f.session = f.host.createSession(null);
   expect((await f.host.listSessionSkills(f.session.id)).skills).toHaveLength(0);
-  await expect(run(f, "$review task")).rejects.toThrow("disabled");
+  await expect(run(f, `${buildMentionMarkdown("$review", path)} task`)).rejects.toThrow("disabled");
   expect(f.host.getSessionSnapshot(f.session.id).session.draft).toBe(true);
   await run(f, "new session");
   expect(JSON.stringify(f.server.requests[2])).toContain("MY RULE");

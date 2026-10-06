@@ -190,7 +190,10 @@ export class AgentSession {
   async prepareInput(text: string, context: InputContext = {}): Promise<ParsedInput> {
     this.idleCheck();
     await this.resources?.loader.reload?.();
-    const parsed = parseInput(text);
+    const parsed = parseInput(
+      text,
+      this.listSkills().skills.map((skill) => skill.name),
+    );
     validateInputContext(parsed, context);
     if (parsed.kind === "skill") {
       const skill = await this.loadSkill(parsed.name);

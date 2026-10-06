@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, test } from "vitest";
 import { done } from "../../../tests/fake-server.ts";
-import { FileResourceLoader, parseInput, SkillCatalog } from "../src/index.ts";
+import { buildMentionMarkdown, FileResourceLoader, parseInput, SkillCatalog } from "../src/index.ts";
 import { fixture as resourceFixture, skill as writeSkill } from "./helpers/resource-fixture.ts";
 
 const cleanup: (() => Promise<unknown>)[] = [];
@@ -104,11 +104,22 @@ it("explicit skills expand only at input start and invalid skills never reach th
   await f.session.submit("$review check sources");
   expect(JSON.stringify(f.server.requests[0])).toContain("BODY ON DEMAND");
   expect(f.server.requestHeaders[0].authorization).toBeUndefined();
-  await expect(f.session.submit("$missing do it")).rejects.toThrow("not found");
+  const missing = buildMentionMarkdown("$missing", join(f.cwd, ".zpi", "skills", "missing", "SKILL.md"));
+  await expect(f.session.submit(`${missing} do it`)).rejects.toThrow("not found");
   expect(f.server.requests).toHaveLength(1);
   expect(parseInput("Mention /compact and $review")).toEqual({
     kind: "prompt",
     text: "Mention /compact and $review",
   });
-  expect(() => parseInput("/compact-extra")).toThrow("未知命令");
+});
+
+it("unknown dollar-prefixed text is sent unchanged without expanding a skill", async () => {
+  const f = await resourceFixture((_, r) => done(r));
+  await writeSkill(join(f.cwd, ".zpi", "skills"), "review", "Review", "BODY ON DEMAND");
+  const text = "  $100 is the price\n$review is mentioned later  ";
+  await f.session.submit(text);
+  expect(f.server.requests[0].messages).toContainEqual(
+    expect.objectContaining({ role: "user", content: text }),
+  );
+  expect(JSON.stringify(f.server.requests[0])).not.toContain("BODY ON DEMAND");
 });

@@ -939,7 +939,15 @@ export class SessionHost {
       throw new Error("invalid_input: 文件引用列表无效");
     for (const path of references) await this.referencedFile(id, path);
     const loaded = await this.attachments.load(id, input.attachments ?? []);
-    const parsed = parseInput(text);
+    let parsed = parseInput(text);
+    if (text.trimStart().startsWith("$")) {
+      const loader = this.resourceLoader(id);
+      await loader.reload();
+      parsed = parseInput(
+        text,
+        loader.listSkills().skills.map((skill) => skill.name),
+      );
+    }
     if ((references.length || loaded.images.length) && parsed.kind === "compact")
       throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
     return { references, loaded, parsed };

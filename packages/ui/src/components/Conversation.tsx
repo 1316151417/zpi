@@ -1133,7 +1133,13 @@ export function ChatComposer({
           attachments: current.attachments.filter((image) => !usedImages.has(image.id)),
         };
         drafts.current.set(submittedSession, next);
-        if (unchanged) drafts.current.history(submittedSession).clear();
+        if (unchanged) {
+          drafts.current.history(submittedSession).clear();
+          if (currentSession.current === submittedSession) {
+            setFileQuery(undefined);
+            setInputQuery(undefined);
+          }
+        }
       }
     } catch {
       /* Caller displays the business error; preserve the complete draft. */
@@ -1430,7 +1436,7 @@ export function ChatComposer({
                 setFileQuery(undefined);
                 return;
               }
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              if (fileMatches.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                 e.preventDefault();
                 setHighlighted(
                   (n) =>
@@ -1439,7 +1445,7 @@ export function ChatComposer({
                 );
                 return;
               }
-              if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+              if (fileMatches.length && ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab")) {
                 e.preventDefault();
                 const file = fileMatches[highlighted] ?? fileMatches[0];
                 if (file) chooseFile(file);
@@ -1459,7 +1465,7 @@ export function ChatComposer({
                 );
                 return;
               }
-              if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+              if (matches.length && ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab")) {
                 e.preventDefault();
                 const suggestion = matches[highlighted] ?? matches[0];
                 if (suggestion) insert(suggestion);
