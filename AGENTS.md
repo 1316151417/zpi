@@ -38,4 +38,6 @@ Name tests by behavior: `*.test.ts` for Vitest and `*.spec.ts` for Playwright. C
 
 ## Commit & Pull Request Guidelines
 
-The repository currently has no commits, so no commit convention is established. Use concise, imperative messages describing the resulting change. PRs should explain the problem, implementation, validation, and relevant issues; include screenshots for visual changes. Keep credentials, local data, and generated build artifacts out of commits.
+- Follow the existing history: use concise English commit subjects in the imperative, such as `Fix mention alignment` or `Add file menus`. Conventional Commit prefixes are optional. Keep each commit focused on one coherent change; mention the version when the commit includes a release bump.
+- Write PR titles around the resulting behavior. In the description, explain the problem, implementation, and validation; link relevant issues and include screenshots for visual changes. Report the checks actually run and any remaining limitations.
+- Review the diff before committing. Keep credentials, local data, and generated build artifacts out of commits.
