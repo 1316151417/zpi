@@ -8,6 +8,16 @@ export interface ConversationSelection {
   contentType?: "user" | "assistant" | "reasoning" | "tool" | "markdown";
 }
 export const selectionLimits = { count: 8, single: 8_000, total: 16_000 };
+// 拖选链接后浏览器仍会派发 click；保留选区，避免同时打开文件或网页。
+export function selectionIntersects(element: Element): boolean {
+  const selection = element.ownerDocument.getSelection();
+  return Boolean(
+    selection &&
+      !selection.isCollapsed &&
+      selection.rangeCount > 0 &&
+      selection.getRangeAt(0).intersectsNode(element),
+  );
+}
 export function validSelections(value: unknown): value is ConversationSelection[] {
   return (
     Array.isArray(value) &&

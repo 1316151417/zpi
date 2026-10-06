@@ -1437,6 +1437,18 @@ button.inline-mention,
 .user-message-text {
   white-space: pre-wrap;
 }
+/* ZCode 的用户消息引用共用行盒顶部，避免前置图标的合成基线让文件名偏离正文。 */
+.user-message-text .inline-mention {
+  vertical-align: top;
+  line-height: 24px;
+  margin-inline: 2px;
+  max-width: 100%;
+}
+.user-message-text .reference-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .message-images {
   display: flex;
   flex-wrap: wrap;

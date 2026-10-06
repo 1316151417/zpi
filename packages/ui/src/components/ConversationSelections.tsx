@@ -127,8 +127,9 @@ export function ConversationSelectionMenu({
       const start = element(range.startContainer),
         end = element(range.endContainer);
       const region = start?.closest<HTMLElement>("[data-conversation-selectable]");
+      // 正文链接用按钮拦截原生跳转，但其文字仍属于消息选区，不能按操作控件排除。
       const excluded =
-        "button,input,textarea,[role=button],[role=dialog],[contenteditable=true],[data-conversation-selection-tooltip]";
+        "button:not([data-conversation-inline-link]),input,textarea,[role=button]:not([data-conversation-inline-link]),[role=dialog],[contenteditable=true],[data-conversation-selection-tooltip]";
       if (
         !region ||
         region !== end?.closest("[data-conversation-selectable]") ||

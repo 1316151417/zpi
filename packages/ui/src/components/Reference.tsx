@@ -2,6 +2,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Copy } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { parseMentions } from "zpi-coding-agent/input";
+import { selectionIntersects } from "../conversation-selections.ts";
 import { fileIconSource } from "../file-icons.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";
 
@@ -71,9 +72,12 @@ export function Reference({
       <button
         type="button"
         className={`inline-mention file ${className}`}
+        data-conversation-inline-link="true"
         style={style}
         title={path}
-        onClick={() => onOpen(path)}
+        onClick={(event) => {
+          if (!selectionIntersects(event.currentTarget)) onOpen(path);
+        }}
       >
         <span className="reference-label">{label}</span>
       </button>

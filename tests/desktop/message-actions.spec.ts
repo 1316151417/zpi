@@ -17,6 +17,98 @@ async function selectText(locator: Locator) {
   });
 }
 
+test("selections inside or crossing Markdown file and web links can be added to the current task", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-link-selection-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  await writeFile(join(project, "notes.md"), "document");
+  const server = await fakeServer((_, response) => {
+    send(
+      response,
+      chunk({ content: "正文 [文件链接](./notes.md) 中间 [网页链接](https://example.com) 结束" }),
+    );
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    await app.evaluate(({ shell }) => {
+      shell.openExternal = async () => {
+        throw Error("Selecting a link must not open a browser");
+      };
+    });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("链接划词");
+    await page.getByLabel("发送", { exact: true }).click();
+    const run = page.getByTestId("run");
+    await expect(run).toHaveAttribute("data-status", "completed");
+    const paragraph = run.locator(".answer p");
+    for (const selector of [".message-file-link .reference-label", ".message-web-link"]) {
+      const bounds = await paragraph.locator(selector).boundingBox();
+      if (!bounds) throw Error("Missing link layout");
+      await page.mouse.move(bounds.x + 1, bounds.y + bounds.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width - 1, bounds.y + bounds.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await expect(page.getByRole("button", { name: "添加到当前任务", exact: true })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "notes.md", exact: true })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+    }
+    for (const [start, end, expected] of [
+      ["file", "file", "文件链接"],
+      ["web", "web", "网页链接"],
+      ["before", "file", "正文 文件链接"],
+      ["file", "after", "文件链接 中间 网页链接 结束"],
+      ["file", "web", "文件链接 中间 网页链接"],
+    ]) {
+      const selectedText = await paragraph.evaluate(
+        (element, { start, end }) => {
+          const nodes: Record<string, Node | null | undefined> = {
+            file: element.querySelector(".message-file-link .reference-label")?.firstChild,
+            web: element.querySelector(".message-web-link")?.firstChild,
+            before: element.firstChild,
+            after: element.lastChild,
+          };
+          const first = nodes[start],
+            last = nodes[end];
+          if (!first || !last) throw Error("Missing link selection endpoints");
+          const range = document.createRange();
+          range.setStart(first, 0);
+          range.setEnd(last, last.textContent?.length ?? 0);
+          window.getSelection()?.removeAllRanges();
+          window.getSelection()?.addRange(range);
+          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+          return window.getSelection()?.toString().trim() ?? "";
+        },
+        { start, end },
+      );
+      expect(selectedText.replace(/\s+/g, " ")).toBe(expected);
+      const add = page.getByRole("button", { name: "添加到当前任务", exact: true });
+      await expect(add).toBeVisible();
+      await add.click();
+      await expect
+        .poll(async () => {
+          const result = await page.evaluate(async () => {
+            const id = localStorage.getItem("zpi.selectedSession") as string;
+            return window.zpi.getDraft(id);
+          });
+          return result.ok ? result.value.selections?.[0]?.text : undefined;
+        })
+        .toBe(selectedText);
+      await expect(page.getByRole("tab", { name: "notes.md", exact: true })).toHaveCount(0);
+      await page.locator(".composer-container").getByLabel("移除对话引用").click();
+    }
+    await selectText(paragraph.locator(".message-file-link"));
+    await expect(page.getByRole("button", { name: "添加到当前任务", exact: true })).toBeVisible();
+    await page.screenshot({ path: "test-results/markdown-link-selection.png" });
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 async function expectZCodeSurfaces(page: Page, bubble: Locator, reference: Locator) {
   for (const theme of ["light", "dark"]) {
     await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);

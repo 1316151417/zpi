@@ -1,6 +1,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";
+import { selectionIntersects } from "../conversation-selections.ts";
 import type { WebOpenOptions } from "../link-target.ts";
 
 export function MarkdownLink({
@@ -18,8 +19,12 @@ export function MarkdownLink({
         <button
           type="button"
           className="message-web-link"
+          data-conversation-inline-link="true"
           title={url}
-          onClick={(event) => onOpen(url, { forceExternal: event.metaKey || event.ctrlKey })}
+          onClick={(event) => {
+            if (!selectionIntersects(event.currentTarget))
+              onOpen(url, { forceExternal: event.metaKey || event.ctrlKey });
+          }}
         >
           {children}
         </button>
