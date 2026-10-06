@@ -189,6 +189,7 @@ export interface PaneBounds {
 export interface DesktopBridge {
   logError(error: { source: string; message: string; stack?: string }): void;
   readonly platform: string;
+  onBeforeQuit(listener: () => Promise<void>): () => void;
   onTaskNotificationClick(listener: (sessionId: string) => void): () => void;
   onTaskNotificationSound(listener: () => void): () => void;
   archiveSession(id: string): Promise<Result<void>>;

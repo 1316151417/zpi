@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ElectronApplication, expect, test } from "@playwright/test";
@@ -7,6 +7,117 @@ import { done, fakeServer } from "../fake-server.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
+
+interface DraftSaveGate {
+  entered: boolean;
+  release: () => void;
+}
+
+for (const mode of ["scheduled", "in flight"] as const) {
+  test(`quitting waits for ${mode} draft saves even after repeated quit requests`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ZPI-quit-draft-"));
+    const app = await launchDesktop({ dir, url: "" });
+    try {
+      const page = await app.firstWindow();
+      await app.evaluate(({ ipcMain }) => {
+        const internal = ipcMain as unknown as {
+          _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
+        };
+        const original = internal._invokeHandlers.get("ZPI:call");
+        if (!original) throw Error("handler");
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const state = { entered: false, release };
+        (globalThis as unknown as { draftSaveGate: DraftSaveGate }).draftSaveGate = state;
+        ipcMain.removeHandler("ZPI:call");
+        ipcMain.handle("ZPI:call", async (event, method, args) => {
+          if (method === "saveDraft") {
+            state.entered = true;
+            await gate;
+          }
+          return original(event, method, args);
+        });
+      });
+      await page.getByLabel("消息", { exact: true }).fill("草稿必须保存后才能退出");
+      const id = await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+      const entered = () =>
+        app.evaluate(() => (globalThis as unknown as { draftSaveGate: DraftSaveGate }).draftSaveGate.entered);
+      if (mode === "in flight") await expect.poll(entered).toBe(true);
+      await app.evaluate(({ app }) => {
+        app.quit();
+        app.quit();
+      });
+      await expect.poll(entered).toBe(true);
+      expect(app.process().exitCode).toBeNull();
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isEnabled())).toBe(
+        false,
+      );
+      await expect(page.getByLabel("消息", { exact: true })).toHaveText("草稿必须保存后才能退出");
+      await app.evaluate(() =>
+        (globalThis as unknown as { draftSaveGate: DraftSaveGate }).draftSaveGate.release(),
+      );
+      await app.close();
+      const draft = JSON.parse(await readFile(join(dir, "drafts", `${id}.json`), "utf8"));
+      expect(draft.text).toBe("草稿必须保存后才能退出");
+    } finally {
+      await app
+        .evaluate(() => (globalThis as unknown as { draftSaveGate?: DraftSaveGate }).draftSaveGate?.release())
+        .catch(() => {});
+      await app.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("draft save failure cancels quitting and allows a successful retry", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-quit-draft-failure-"));
+  const app = await launchDesktop({ dir, url: "" });
+  try {
+    const page = await app.firstWindow();
+    await app.evaluate(({ ipcMain }) => {
+      const internal = ipcMain as unknown as {
+        _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
+      };
+      const original = internal._invokeHandlers.get("ZPI:call");
+      if (!original) throw Error("handler");
+      ipcMain.removeHandler("ZPI:call");
+      ipcMain.handle("ZPI:call", async (event, method, args) =>
+        method === "saveDraft"
+          ? { ok: false, error: { code: "storage", message: "disk full" } }
+          : original(event, method, args),
+      );
+      (globalThis as unknown as { restoreDraftHandler: () => void }).restoreDraftHandler = () => {
+        ipcMain.removeHandler("ZPI:call");
+        ipcMain.handle("ZPI:call", original);
+      };
+    });
+    await page.getByLabel("消息", { exact: true }).fill("保存失败后仍然保留的草稿");
+    const id = await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+    await app.evaluate(({ app }) => app.quit());
+    await expect
+      .poll(() => readFile(join(dir, "agent", "logs", "error.log"), "utf8"))
+      .toContain("drafts.quit");
+    expect(app.process().exitCode).toBeNull();
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isEnabled())).toBe(
+      true,
+    );
+    await expect(page.getByLabel("消息", { exact: true })).toHaveText("保存失败后仍然保留的草稿");
+    await app.evaluate(() =>
+      (globalThis as unknown as { restoreDraftHandler: () => void }).restoreDraftHandler(),
+    );
+    await app.close();
+    const draft = JSON.parse(await readFile(join(dir, "drafts", `${id}.json`), "utf8"));
+    expect(draft.text).toBe("保存失败后仍然保留的草稿");
+  } finally {
+    await app
+      .evaluate(() => (globalThis as unknown as { restoreDraftHandler?: () => void }).restoreDraftHandler?.())
+      .catch(() => {});
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("leaving the models tab during ChatGPT login restores settings controls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-login-unmount-"));

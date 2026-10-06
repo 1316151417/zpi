@@ -110,7 +110,6 @@ async function launch(): Promise<void> {
     }
   }
   const chatgptAuth = new ChatGPTAuth(settings, requestFetch, errors);
-  app.on("before-quit", () => chatgptAuth.close());
   if (testMode && process.env.ZPI_TEST_BASE_URL && settings.get().providers.length === 0)
     settings.save({
       baseUrl: process.env.ZPI_TEST_BASE_URL,
@@ -722,14 +721,32 @@ async function launch(): Promise<void> {
   process.on("SIGTERM", () => app.quit());
   process.on("SIGINT", () => app.quit());
   let quitting = false;
+  let preparingQuit = false;
   app.on("before-quit", (event) => {
-    ending = true;
     if (quitting) return;
     event.preventDefault();
-    quitting = true;
-    notifications.dispose();
-    panes.close();
-    void host.close().finally(() => app.quit());
+    if (preparingQuit) return;
+    preparingQuit = true;
+    ending = true;
+    if (!window.isDestroyed()) window.setEnabled(false);
+    void flushDraftsBeforeQuit(window)
+      .then(async () => {
+        chatgptAuth.close();
+        notifications.dispose();
+        panes.close();
+        await host.close().catch((error) => errors.write("main.quit", error));
+        quitting = true;
+        app.quit();
+      })
+      .catch((error) => {
+        ending = false;
+        if (!window.isDestroyed()) window.setEnabled(true);
+        errors.write("drafts.quit", error);
+        if (!testMode) dialog.showErrorBox("草稿未保存，已取消退出", String(error));
+      })
+      .finally(() => {
+        preparingQuit = false;
+      });
   });
   window.on("close", (event) => {
     if (!quitting) {
@@ -743,4 +760,37 @@ async function launch(): Promise<void> {
   });
   const devUrl = process.env.ZPI_DEV_URL;
   await loadRenderer(window, devUrl ?? pathToFileURL(join(dir, "../renderer/index.html")).href);
+}
+
+let draftFlushRequest = 0;
+function flushDraftsBeforeQuit(window: BrowserWindow): Promise<void> {
+  const contents = window.webContents;
+  if (contents.isDestroyed() || contents.isCrashed() || !contents.getURL()) return Promise.resolve();
+  const request = ++draftFlushRequest;
+  return new Promise((resolveFlush, rejectFlush) => {
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      ipcMain.removeListener("ZPI:drafts-flushed", reply);
+      contents.removeListener("render-process-gone", gone);
+      contents.removeListener("destroyed", gone);
+      if (error) rejectFlush(error);
+      else resolveFlush();
+    };
+    const gone = () => finish();
+    const reply = (event: Electron.IpcMainEvent, id: unknown, failure: unknown) => {
+      if (
+        event.sender !== contents ||
+        event.senderFrame !== contents.mainFrame ||
+        id !== request ||
+        (failure !== null && typeof failure !== "string")
+      )
+        return;
+      finish(failure === null ? undefined : new Error(failure));
+    };
+    const timer = setTimeout(() => finish(new Error("草稿保存确认超时，请重试退出")), 5000);
+    ipcMain.on("ZPI:drafts-flushed", reply);
+    contents.once("render-process-gone", gone);
+    contents.once("destroyed", gone);
+    contents.send("ZPI:prepare-quit", request);
+  });
 }

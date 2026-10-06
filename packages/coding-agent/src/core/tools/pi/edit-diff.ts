@@ -6,20 +6,17 @@
 
 import * as Diff from "diff";
 
-export function detectLineEnding(content: string): "\r\n" | "\n" {
-  const crlfIdx = content.indexOf("\r\n");
-  const lfIdx = content.indexOf("\n");
-  if (lfIdx === -1) return "\n";
-  if (crlfIdx === -1) return "\n";
-  return crlfIdx < lfIdx ? "\r\n" : "\n";
+export function detectLineEnding(content: string): "\r\n" | "\r" | "\n" {
+  const ending = content.match(/\r\n|\r|\n/)?.[0];
+  return ending === "\r\n" || ending === "\r" ? ending : "\n";
 }
 
 export function normalizeToLF(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
-export function restoreLineEndings(text: string, ending: "\r\n" | "\n"): string {
-  return ending === "\r\n" ? text.replace(/\n/g, "\r\n") : text;
+export function restoreLineEndings(text: string, ending: "\r\n" | "\r" | "\n"): string {
+  return ending === "\n" ? text : text.replace(/\n/g, ending);
 }
 
 /**

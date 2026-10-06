@@ -3,9 +3,24 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("ZPI:call", method, args);
+let beforeQuit: (() => Promise<void>) | undefined;
+ipcRenderer.on("ZPI:prepare-quit", async (_event, request: number) => {
+  try {
+    await beforeQuit?.();
+    ipcRenderer.send("ZPI:drafts-flushed", request, null);
+  } catch (error) {
+    ipcRenderer.send("ZPI:drafts-flushed", request, error instanceof Error ? error.message : String(error));
+  }
+});
 const bridge: DesktopBridge = {
   logError: (error) => ipcRenderer.send("ZPI:error", error),
   platform: process.platform,
+  onBeforeQuit(listener) {
+    beforeQuit = listener;
+    return () => {
+      if (beforeQuit === listener) beforeQuit = undefined;
+    };
+  },
   onTaskNotificationClick(listener) {
     const handler = (_: Electron.IpcRendererEvent, sessionId: string) => listener(sessionId);
     ipcRenderer.on("ZPI:task-notification-click", handler);

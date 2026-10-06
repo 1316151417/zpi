@@ -20,6 +20,9 @@ it.each([
   ["first\r\nsecond\nthird\n", "first", "FIRST", "FIRST\r\nsecond\nthird\n"],
   ["first\r\nsecond\nthird\r\n", "second", "SECOND", "first\r\nSECOND\nthird\r\n"],
   ["first\r\nsecond\r\n", "first", "new\nline", "new\r\nline\r\nsecond\r\n"],
+  ["first\rsecond\rthird\r", "second", "SECOND", "first\rSECOND\rthird\r"],
+  ["first\rsecond\r", "first", "new\nline", "new\rline\rsecond\r"],
+  ["first\rsecond\nthird\r\n", "first", "FIRST", "FIRST\rsecond\nthird\r\n"],
   ["\uFEFFfirst\r\n“second”  \nthird\r\n", '"second"', "SECOND", "\uFEFFfirst\r\nSECOND\nthird\r\n"],
 ])("edit preserves untouched line endings in %j", async (before, oldText, newText, after) => {
   const file = editable(before);

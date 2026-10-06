@@ -56,6 +56,7 @@ const draftRevisions = new Map<string, number>();
 const draftLoaded = new Set<string>();
 const draftSaving = new Set<string>();
 const draftSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const draftSaveRequests = new Map<string, Promise<void>>();
 export async function withdrawQueuedInput(id: string, itemId: string) {
   await saveDraft(id);
   const { item, draft } = unwrap(await window.ZPI.editQueuedInput(id, itemId));
@@ -72,11 +73,14 @@ drafts.subscribe((id) => {
   clearTimeout(draftSaveTimers.get(id));
   draftSaveTimers.set(
     id,
-    setTimeout(() => void saveDraft(id), 200),
+    setTimeout(() => void saveDraft(id).catch(report), 200),
   );
 });
 function saveDraft(id: string): Promise<void> {
-  if (!draftSaveTimers.has(id)) return Promise.resolve();
+  if (!draftSaveTimers.has(id)) {
+    const pending = draftSaveRequests.get(id);
+    if (pending || !draftSaving.has(id)) return pending ?? Promise.resolve();
+  }
   clearTimeout(draftSaveTimers.get(id));
   draftSaveTimers.delete(id);
   const draft = drafts.get(id);
@@ -85,7 +89,7 @@ function saveDraft(id: string): Promise<void> {
     return Promise.resolve();
   }
   const revision = draftRevisions.get(id) ?? 0;
-  return window.ZPI.saveDraft(id, {
+  const request = window.ZPI.saveDraft(id, {
     text: draft.text,
     selections: draft.selections,
     fileReferences: draft.fileReferences,
@@ -93,13 +97,18 @@ function saveDraft(id: string): Promise<void> {
     revision,
   })
     .then(unwrap)
-    .catch(report)
-    .finally(() => {
+    .then(() => {
       if (draftRevisions.get(id) === revision) draftSaving.delete(id);
     });
+  draftSaveRequests.set(id, request);
+  const cleanup = () => {
+    if (draftSaveRequests.get(id) === request) draftSaveRequests.delete(id);
+  };
+  void request.then(cleanup, cleanup);
+  return request;
 }
-function flushDrafts(): void {
-  for (const id of draftSaveTimers.keys()) void saveDraft(id);
+async function flushDrafts(): Promise<void> {
+  while (draftSaving.size) await Promise.all([...draftSaving].map(saveDraft));
 }
 async function loadDraft(id: string): Promise<void> {
   if (draftLoaded.has(id)) return;
@@ -173,9 +182,11 @@ export function report(error: unknown): void {
   useStore.setState({ error: error instanceof Error ? error.message : String(error) });
 }
 export function subscribeEvents(): () => void {
-  window.addEventListener("beforeunload", flushDrafts);
+  const flush = () => void flushDrafts().catch(report);
+  const offBeforeQuit = window.ZPI.onBeforeQuit(flushDrafts);
+  window.addEventListener("beforeunload", flush);
   const visibility = () => {
-    if (document.visibilityState === "hidden") flushDrafts();
+    if (document.visibilityState === "hidden") flush();
   };
   document.addEventListener("visibilitychange", visibility);
   const off = window.ZPI.onEvent((e) => {
@@ -189,8 +200,9 @@ export function subscribeEvents(): () => void {
       });
   });
   return () => {
-    flushDrafts();
-    window.removeEventListener("beforeunload", flushDrafts);
+    flush();
+    offBeforeQuit();
+    window.removeEventListener("beforeunload", flush);
     document.removeEventListener("visibilitychange", visibility);
     off();
   };

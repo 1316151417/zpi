@@ -17,6 +17,7 @@ async function setup() {
   const frames: FrameRequestCallback[] = [];
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
   let emit!: (event: DesktopEventEnvelope) => void;
+  let beforeQuit!: () => Promise<void>;
   const session = { id: "session", title: "Task", projectId: null, updatedAt: 0 };
   const snapshot = {
     session,
@@ -37,6 +38,10 @@ async function setup() {
       emit = listener;
       return () => {};
     }),
+    onBeforeQuit: vi.fn((listener: typeof beforeQuit) => {
+      beforeQuit = listener;
+      return () => {};
+    }),
     logError: vi.fn(),
   };
   const window = Object.assign(new EventTarget(), { ZPI: bridge });
@@ -54,6 +59,7 @@ async function setup() {
     window,
     document,
     unsubscribe,
+    beforeQuit: () => beforeQuit(),
     emit: (event: DesktopEventEnvelope) => emit(event),
     frame: () => {
       for (const callback of frames.splice(0)) callback(0);
@@ -93,6 +99,58 @@ it("snapshot failure replays both buffered and pending-frame events and allows a
   expect(f.store.useStore.getState().sessions.get(f.session.id)?.status).toBe("completed");
   await f.store.selectSession(f.session.id);
   expect(f.bridge.getSessionSnapshot).toHaveBeenCalledTimes(2);
+  f.unsubscribe();
+});
+
+it.each(["scheduled", "in flight"])(
+  "quitting waits for %s saves and subsequent draft changes",
+  async (mode) => {
+    const f = await setup();
+    await f.store.selectSession(f.session.id);
+    vi.useFakeTimers();
+    const gate = deferred();
+    f.bridge.saveDraft.mockImplementationOnce(async () => {
+      await gate.promise;
+      return { ok: true, value: undefined };
+    });
+    const update = (text: string) => {
+      const draft = f.store.drafts.get(f.session.id);
+      if (!draft) throw new Error("draft missing");
+      f.store.drafts.set(f.session.id, { ...draft, text });
+    };
+    update("first save");
+    if (mode === "in flight") vi.advanceTimersByTime(200);
+    let flushed = false;
+    const flushing = f.beforeQuit().then(() => {
+      flushed = true;
+    });
+    await Promise.resolve();
+    expect(f.bridge.saveDraft).toHaveBeenCalledOnce();
+    expect(flushed).toBe(false);
+    update("latest draft");
+    gate.resolve();
+    await flushing;
+    expect(f.bridge.saveDraft).toHaveBeenCalledTimes(2);
+    expect(f.bridge.saveDraft.mock.calls[1]).toEqual([
+      f.session.id,
+      expect.objectContaining({ text: "latest draft" }),
+    ]);
+    f.unsubscribe();
+  },
+);
+
+it("a failed quit flush keeps the draft dirty so the next attempt can retry", async () => {
+  const f = await setup();
+  await f.store.selectSession(f.session.id);
+  vi.useFakeTimers();
+  const draft = f.store.drafts.get(f.session.id);
+  if (!draft) throw new Error("draft missing");
+  f.store.drafts.set(f.session.id, { ...draft, text: "unsaved draft" });
+  f.bridge.saveDraft.mockRejectedValueOnce(new Error("disk full"));
+  await expect(f.beforeQuit()).rejects.toThrow("disk full");
+  await f.beforeQuit();
+  expect(f.bridge.saveDraft).toHaveBeenCalledTimes(2);
+  expect(f.bridge.saveDraft.mock.calls[1]).toEqual(f.bridge.saveDraft.mock.calls[0]);
   f.unsubscribe();
 });
 
