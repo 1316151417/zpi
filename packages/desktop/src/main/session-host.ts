@@ -1312,7 +1312,8 @@ export class SessionHost {
           manager.appendCustomEntry("ZPI.notice", { runId: run.runId, text: e.message });
         if (e.type === "entry_appended" && e.entry.type === "compaction")
           this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
-        if (e.type === "message_start") {
+        // Match restoreView and HistoryIndex: internal system declarations have no visible ordinal.
+        if (e.type === "message_start" && e.message.role !== "system") {
           run.ordinal++;
           if (e.message.role === "assistant") run.hasAssistant = true;
         }

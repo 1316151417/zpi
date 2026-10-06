@@ -163,7 +163,7 @@ export class HistoryIndex {
       this.ids.add(row.id);
       this.ingest(row, start, end);
     } catch (error) {
-      this.data.diagnostic = `storage: Invalid JSONL record at byte ${start}: ${String(error)}`;
+      this.data.diagnostic ??= `storage: Invalid JSONL record at byte ${start}: ${String(error)}`;
     }
   }
   ingest(

@@ -20,8 +20,20 @@ import { detectSupportedImageMimeTypeFromFile } from "./utils/mime.ts";
 
 const readSchema = Type.Object({
   path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
-  offset: Type.Optional(Type.Number({ description: "Line number to start reading from (1-indexed)" })),
-  limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
+  offset: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+      description: "Line number to start reading from (1-indexed)",
+    }),
+  ),
+  limit: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+      description: "Maximum number of lines to read",
+    }),
+  ),
 });
 
 export const readToolSystemPromptContribution = {
@@ -89,6 +101,11 @@ export function createReadToolDefinition(
       _onUpdate?,
       ctx?: ExtensionContext,
     ) {
+      // SDK callers can execute tools directly without the agent's schema validation.
+      for (const [name, value] of Object.entries({ offset, limit })) {
+        if (value !== undefined && (!Number.isSafeInteger(value) || value < 1))
+          throw new Error(`${name} must be a positive integer`);
+      }
       return new Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }>(
         (resolve, reject) => {
           if (signal?.aborted) {
@@ -142,7 +159,7 @@ export function createReadToolDefinition(
                 const allLines = textContent.split("\n");
                 const totalFileLines = allLines.length;
                 // Apply offset if specified. Convert from 1-indexed input to 0-indexed array access.
-                const startLine = offset ? Math.max(0, offset - 1) : 0;
+                const startLine = offset === undefined ? 0 : offset - 1;
                 const startLineDisplay = startLine + 1;
                 // Check if offset is out of bounds.
                 if (startLine >= allLines.length) {

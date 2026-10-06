@@ -1,10 +1,55 @@
+import { SessionManager } from "ZPI-coding-agent";
+import { mergeHistory } from "ZPI-ui";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { seedHistory } from "../../../tests/history-fixture.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { fixture } from "./helpers/host-fixture.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
+
+it("legacy tool declarations preserve block identity between streaming and paged history", async () => {
+  const release = deferred(),
+    streamed = deferred();
+  const { host, dir, a, settings } = await fixture(async (_, response) => {
+    send(response, chunk({ content: "first" }));
+    await release.promise;
+    send(response, chunk({ content: " second" }));
+    done(response);
+  });
+  const seed = seedHistory(dir, a.path, 1, { projectId: a.id });
+  SessionManager.open(seed.file).appendMessage({ role: "system", content: "legacy", timestamp: Date.now() });
+  await host.close();
+  const reopened = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
+  await reopened.init();
+  cleanup.push(() => reopened.close());
+  reopened.subscribe(({ event }) => {
+    if (event.type === "block_delta") streamed.resolve();
+  });
+  try {
+    reopened.getSessionSnapshot(seed.id);
+    const { runId } = await reopened.startRun({ sessionId: seed.id, text: "continue legacy" });
+    await streamed.promise;
+    const live = reopened.getSessionSnapshot(seed.id).view;
+    const liveBlocks = live.runs.find((run) => run.runId === runId)?.orderedBlocks;
+    expect(liveBlocks).toMatchObject([{ messageId: `${runId}:2`, text: "first" }]);
+    const messages = SessionManager.open(seed.file)
+      .getEntries()
+      .filter((entry) => entry.type === "message");
+    expect(messages.at(-2)).toMatchObject({ message: { role: "system", toolsAdded: expect.any(Array) } });
+    release.resolve();
+    await idle(reopened, seed.id);
+    const settled = reopened.getSessionSnapshot(seed.id).view;
+    const restored = reopened.getHistoryPage(seed.id, 2).view;
+    const blocks = (view: typeof live) => view.runs.find((run) => run.runId === runId)?.orderedBlocks;
+    expect(blocks(restored)?.map((block) => block.id)).toEqual(blocks(settled)?.map((block) => block.id));
+    expect(blocks(mergeHistory(restored, settled))).toHaveLength(1);
+  } finally {
+    release.resolve();
+  }
+});
 
 it("legacy transcripts rebuild old indexes and retain run metadata and paged history", async () => {
   const { host, dir, cwd } = await setup();
@@ -30,6 +75,21 @@ it("legacy transcripts rebuild old indexes and retain run metadata and paged his
   expect(restored.data.calls).toHaveLength(2);
   expect(restored.page().entries).toEqual(before.page().entries);
   expect(await readFile(seed.file, "utf8")).toBe(legacy);
+});
+
+it("history diagnostics retain the first damaged record's byte offset", async () => {
+  const { host, dir, cwd } = await setup();
+  const seed = seedHistory(dir, cwd, 1);
+  await host.close();
+  const original = await readFile(seed.file, "utf8");
+  const firstNewline = original.indexOf("\n") + 1;
+  const header = original.slice(0, firstNewline);
+  const damaged = `${header}{broken\n{also-broken\n${original.slice(firstNewline)}`;
+  await writeFile(seed.file, damaged);
+  const index = new HistoryIndex(seed.file);
+  await index.load();
+  expect(index.data.diagnostic).toContain(`Invalid JSONL record at byte ${Buffer.byteLength(header)}:`);
+  expect(await readFile(seed.file, "utf8")).toBe(damaged);
 });
 
 it("page counts Agent pairs, includes interrupted invocation, and keeps continuation anchor without reducing model history", async () => {

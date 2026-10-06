@@ -110,13 +110,33 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
       await expect(page.getByRole("alert")).toHaveCount(0);
     }
     const count = server.requests.length;
+    // Hold caret restoration until after a newer user selection to expose stale frame callbacks.
+    const resumeFrames = await page.evaluateHandle(() => {
+      const original = window.requestAnimationFrame;
+      const callbacks = new Map<number, FrameRequestCallback>();
+      window.requestAnimationFrame = (callback) => {
+        const id = original(() => {});
+        callbacks.set(id, callback);
+        return id;
+      };
+      return () => {
+        window.requestAnimationFrame = original;
+        for (const callback of callbacks.values()) callback(performance.now());
+        callbacks.clear();
+      };
+    });
     await editor.fill("/init");
     await expect(page.getByRole("option")).toHaveCount(1);
     await editor.press("Tab");
     await expect(editor.locator(".inline-mention.command")).toHaveText("Init");
     await expect(editor.locator(".inline-mention.command")).toHaveAttribute("data-markdown", "/init");
     expect(server.requests).toHaveLength(count);
-    await editor.fill("$review");
+    await editor.press("Meta+A");
+    await resumeFrames.evaluate((resume) => resume());
+    await resumeFrames.dispose();
+    await editor.pressSequentially("$review");
+    const draft = await page.evaluate((id) => window.ZPI.getDraft(id), id);
+    expect(draft).toMatchObject({ ok: true, value: { text: "$review" } });
     await expect(page.getByRole("option")).toHaveCount(1);
     await editor.press("Enter");
     await expect(editor.locator(".inline-mention.skill")).toHaveText("review");

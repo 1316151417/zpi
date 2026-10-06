@@ -1022,10 +1022,9 @@ export function ChatComposer({
     const inserted = suggestion.insert;
     updateDraft(draft.slice(0, start) + inserted + draft.slice(end));
     setInputQuery(undefined);
-    requestAnimationFrame(() => {
-      textarea.current?.focus();
-      textarea.current?.setSelectionRange(start + inserted.length, start + inserted.length);
-    });
+    // The editor applies this caret when it renders the new text, before another user selection.
+    textarea.current?.focus();
+    textarea.current?.setSelectionRange(start + inserted.length, start + inserted.length);
   };
   useLayoutEffect(() => {
     currentSession.current = sessionId;
