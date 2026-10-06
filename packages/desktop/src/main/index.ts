@@ -101,7 +101,14 @@ async function launch(): Promise<void> {
     : safeStorage;
   const settings = new SettingsStore(app.getPath("userData"), encryption);
   nativeTheme.themeSource = settings.get().interface.theme;
-  const discovered = testMode ? [] : settings.discoverEnvironment(process.env);
+  let discovered: string[] = [];
+  if (!testMode) {
+    try {
+      discovered = settings.discoverEnvironment(process.env);
+    } catch (error) {
+      errors.write("settings.discovery", error);
+    }
+  }
   const chatgptAuth = new ChatGPTAuth(settings, requestFetch, errors);
   app.on("before-quit", () => chatgptAuth.close());
   if (testMode && process.env.ZPI_TEST_BASE_URL && settings.get().providers.length === 0)

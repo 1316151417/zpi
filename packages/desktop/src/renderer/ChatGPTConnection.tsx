@@ -17,18 +17,26 @@ export function ChatGPTConnection({
 }) {
   const pending = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
+  const busyRef = useRef(false);
+  const onBusyRef = useRef(onBusy);
+  onBusyRef.current = onBusy;
   const [login, setLogin] = useState<{ loginId: string; url: string }>();
   const [callback, setCallback] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
       if (pending.current) void window.ZPI.cancelChatGPTLogin(pending.current);
-    },
-    [],
-  );
+      if (busyRef.current) {
+        busyRef.current = false;
+        onBusyRef.current(false);
+      }
+    };
+  }, []);
   const signIn = async () => {
     setBusy(true);
+    busyRef.current = true;
     onBusy(true);
     onError("");
     onNotice("");
@@ -54,6 +62,7 @@ export function ChatGPTConnection({
         pending.current = undefined;
         setLogin(undefined);
         setBusy(false);
+        busyRef.current = false;
         onBusy(false);
       }
     }
@@ -66,6 +75,7 @@ export function ChatGPTConnection({
   const disconnect = async () => {
     if (!provider) return;
     setBusy(true);
+    busyRef.current = true;
     onBusy(true);
     onError("");
     try {
@@ -79,6 +89,7 @@ export function ChatGPTConnection({
     } finally {
       if (mounted.current) {
         setBusy(false);
+        busyRef.current = false;
         onBusy(false);
       }
     }

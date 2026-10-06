@@ -220,7 +220,13 @@ export class SessionHost {
     }
   }
   async init(): Promise<void> {
-    await this.attachments.cleanUnsent();
+    try {
+      await this.attachments.cleanUnsent((error, sessionId) =>
+        this.errors.write("attachments.cleanup", error, { sessionId }),
+      );
+    } catch (error) {
+      this.errors.write("attachments.cleanup", error);
+    }
     const root = join(this.dir, "agent", "sessions");
     await mkdir(root, { recursive: true });
     for (const partition of await readdir(root, { withFileTypes: true })) {
@@ -1199,6 +1205,7 @@ export class SessionHost {
       ordinal: 0,
     };
     this.activeRuns.set(id, run);
+    let started = false;
     try {
       const manager = this.manager(id);
       const { references, loaded, parsed } = await this.loadInput(input);
@@ -1273,6 +1280,17 @@ export class SessionHost {
           supportsImages: model.input.includes("image"),
         },
       });
+      started = true;
+      record.status = "running";
+      record.updatedAt = startedAt;
+      this.emit(id, run.runId, {
+        type: "started",
+        text,
+        fileReferences: references,
+        attachments: loaded.metadata,
+        startedAt,
+        modelLabel,
+      });
       await this.attachments.markUsed(id, input.attachments === undefined ? [] : input.attachments);
       if (record.draft) {
         const prior = this.indexes.get(id)?.data.state["ZPI.session_meta"];
@@ -1284,16 +1302,6 @@ export class SessionHost {
         });
         record.draft = false;
       }
-      record.status = "running";
-      record.updatedAt = startedAt;
-      this.emit(id, run.runId, {
-        type: "started",
-        text,
-        fileReferences: references,
-        attachments: loaded.metadata,
-        startedAt,
-        modelLabel,
-      });
       this.startTitle(
         id,
         text || (references.length ? references.join("\n") : ""),
@@ -1329,6 +1337,11 @@ export class SessionHost {
         .finally(unsubscribe);
       return { runId: run.runId };
     } catch (error) {
+      if (started) {
+        record.draft = false;
+        this.settle(id, run, error);
+        throw error;
+      }
       if (record.draft) {
         this.configurations.delete(id);
         this.sessions.delete(id);

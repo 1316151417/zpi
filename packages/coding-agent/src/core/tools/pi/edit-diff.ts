@@ -53,7 +53,7 @@ export function normalizeForFuzzyMatch(text: string): string {
 }
 
 function splitLinesWithEndings(content: string): string[] {
-  return content.match(/[^\n]*\n|[^\n]+/g) ?? [];
+  return content.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+/g) ?? [];
 }
 
 interface LineSpan {
@@ -160,10 +160,13 @@ export function applyReplacementsPreservingUnchangedLines(
 
     const groupStartOffset = baseLines[group.startLine].start;
     const groupEndOffset = baseLines[group.endLine - 1].end;
-    result += applyReplacements(
-      baseContent.slice(groupStartOffset, groupEndOffset),
-      group.replacements,
-      groupStartOffset,
+    result += restoreLineEndings(
+      applyReplacements(
+        baseContent.slice(groupStartOffset, groupEndOffset),
+        group.replacements,
+        groupStartOffset,
+      ),
+      detectLineEnding(originalLines[group.startLine]),
     );
     originalLineIndex = group.endLine;
   }
@@ -220,7 +223,7 @@ export function fuzzyFindText(content: string, oldText: string): FuzzyMatchResul
   // Try fuzzy match - work entirely in normalized space
   const fuzzyContent = normalizeForFuzzyMatch(content);
   const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-  const fuzzyIndex = fuzzyContent.indexOf(fuzzyOldText);
+  const fuzzyIndex = fuzzyOldText.length ? fuzzyContent.indexOf(fuzzyOldText) : -1;
 
   if (fuzzyIndex === -1) {
     return {
@@ -247,6 +250,7 @@ export function fuzzyFindText(content: string, oldText: string): FuzzyMatchResul
 function countOccurrences(content: string, oldText: string): number {
   const fuzzyContent = normalizeForFuzzyMatch(content);
   const fuzzyOldText = normalizeForFuzzyMatch(oldText);
+  if (!fuzzyOldText.length) return content.split(oldText).length - 1;
   return fuzzyContent.split(fuzzyOldText).length - 1;
 }
 
@@ -295,12 +299,14 @@ function getNoChangeError(path: string, totalEdits: number): Error {
  * then applied in reverse order so offsets remain stable. If any edit needs
  * fuzzy matching, the operation runs in fuzzy-normalized content space and then
  * overlays those line-level changes onto the original content so unchanged line
- * blocks keep their original bytes.
+ * blocks keep their original bytes. Supply originalContent to also preserve its
+ * line endings; changed blocks use the ending of their first original line.
  */
 export function applyEditsToNormalizedContent(
   normalizedContent: string,
   edits: Edit[],
   path: string,
+  originalContent = normalizedContent,
 ): AppliedEditsResult {
   const normalizedEdits = edits.map((edit) => ({
     oldText: normalizeToLF(edit.oldText),
@@ -351,10 +357,11 @@ export function applyEditsToNormalizedContent(
     }
   }
 
-  const baseContent = normalizedContent;
-  const newContent = usedFuzzyMatch
-    ? applyReplacementsPreservingUnchangedLines(normalizedContent, replacementBaseContent, matchedEdits)
-    : applyReplacements(replacementBaseContent, matchedEdits);
+  const baseContent = originalContent;
+  const newContent =
+    usedFuzzyMatch || originalContent !== normalizedContent
+      ? applyReplacementsPreservingUnchangedLines(originalContent, replacementBaseContent, matchedEdits)
+      : applyReplacements(replacementBaseContent, matchedEdits);
 
   if (baseContent === newContent) {
     throw getNoChangeError(path, normalizedEdits.length);

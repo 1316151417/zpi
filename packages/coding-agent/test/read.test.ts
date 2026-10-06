@@ -39,3 +39,31 @@ it("read uses one-based integer offsets and gives a continuation that reads the 
     "Offset 5 is beyond end of file (4 lines total)",
   );
 });
+
+it("a trailing newline ends the last line without introducing an extra readable line", async () => {
+  const read = createReadToolDefinition(process.cwd(), {
+    operations: { access: async () => {}, readFile: async () => Buffer.from("one\ntwo\n") },
+  });
+  expect((await read.execute("all", { path: "example.txt" })).content).toEqual([
+    { type: "text", text: "one\ntwo\n" },
+  ]);
+  expect((await read.execute("part", { path: "example.txt", limit: 1 })).content).toEqual([
+    { type: "text", text: "one\n\n[1 more lines in file. Use offset=2 to continue.]" },
+  ]);
+  expect((await read.execute("last", { path: "example.txt", offset: 2, limit: 1 })).content).toEqual([
+    { type: "text", text: "two\n" },
+  ]);
+  await expect(read.execute("past-end", { path: "example.txt", offset: 3 })).rejects.toThrow(
+    "Offset 3 is beyond end of file (2 lines total)",
+  );
+});
+
+it("empty files are readable and contain zero addressable lines", async () => {
+  const read = createReadToolDefinition(process.cwd(), {
+    operations: { access: async () => {}, readFile: async () => Buffer.alloc(0) },
+  });
+  expect((await read.execute("empty", { path: "example.txt" })).content).toEqual([
+    { type: "text", text: "" },
+  ]);
+  await expect(read.execute("offset", { path: "example.txt", offset: 1 })).rejects.toThrow("0 lines total");
+});

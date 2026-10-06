@@ -156,13 +156,14 @@ export function createReadToolDefinition(
                 // Read text content.
                 const buffer = await ops.readFile(absolutePath);
                 const textContent = buffer.toString("utf-8");
-                const allLines = textContent.split("\n");
+                const allLines = textContent ? textContent.split("\n") : [];
+                if (textContent.endsWith("\n")) allLines.pop();
                 const totalFileLines = allLines.length;
                 // Apply offset if specified. Convert from 1-indexed input to 0-indexed array access.
                 const startLine = offset === undefined ? 0 : offset - 1;
                 const startLineDisplay = startLine + 1;
                 // Check if offset is out of bounds.
-                if (startLine >= allLines.length) {
+                if (startLine >= allLines.length && (offset !== undefined || allLines.length > 0)) {
                   throw new Error(`Offset ${offset} is beyond end of file (${allLines.length} lines total)`);
                 }
                 let selectedContent: string;
@@ -175,6 +176,11 @@ export function createReadToolDefinition(
                 } else {
                   selectedContent = allLines.slice(startLine).join("\n");
                 }
+                if (
+                  textContent.endsWith("\n") &&
+                  (limit === undefined || startLine + limit >= totalFileLines)
+                )
+                  selectedContent += "\n";
                 // Apply truncation, respecting both line and byte limits.
                 const truncation = truncateHead(selectedContent);
                 let outputText: string;

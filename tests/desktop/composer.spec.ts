@@ -135,8 +135,12 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
     await resumeFrames.evaluate((resume) => resume());
     await resumeFrames.dispose();
     await editor.pressSequentially("$review");
-    const draft = await page.evaluate((id) => window.ZPI.getDraft(id), id);
-    expect(draft).toMatchObject({ ok: true, value: { text: "$review" } });
+    await expect
+      .poll(() => page.evaluate((id) => window.ZPI.getDraft(id), id))
+      .toMatchObject({
+        ok: true,
+        value: { text: "$review" },
+      });
     await expect(page.getByRole("option")).toHaveCount(1);
     await editor.press("Enter");
     await expect(editor.locator(".inline-mention.skill")).toHaveText("review");

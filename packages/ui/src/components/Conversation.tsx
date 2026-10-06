@@ -706,13 +706,33 @@ export function Conversation({
   }, [view.sessionId]);
 
   const prepend = useRef<{ height: number; top: number } | null>(null);
+  const readingWrite = useRef<{ key: string; value: string } | null>(null);
+  const readingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flushReading = useCallback(() => {
+    clearTimeout(readingTimer.current);
+    readingTimer.current = undefined;
+    const pending = readingWrite.current;
+    readingWrite.current = null;
+    if (pending) {
+      try {
+        localStorage.setItem(pending.key, pending.value);
+      } catch {
+        // A bookmark is optional when browser storage is unavailable.
+      }
+    }
+  }, []);
+  useEffect(() => {
+    window.addEventListener("pagehide", flushReading);
+    return () => window.removeEventListener("pagehide", flushReading);
+  }, [flushReading]);
   const saveReading = () => {
     const el = ref.current;
-    if (el)
-      localStorage.setItem(
-        `ZPI.reading.${view.sessionId}`,
-        JSON.stringify({ top: el.scrollTop, following: following.current, cursor: historyCursor ?? 0 }),
-      );
+    if (!el) return;
+    readingWrite.current = {
+      key: `ZPI.reading.${view.sessionId}`,
+      value: JSON.stringify({ top: el.scrollTop, following: following.current, cursor: historyCursor ?? 0 }),
+    };
+    readingTimer.current ??= setTimeout(flushReading, 250);
   };
   useLayoutEffect(() => {
     let saved: { top: number; following: boolean } | undefined;
@@ -727,7 +747,8 @@ export function Conversation({
     const el = ref.current;
     lastScrollTop.current = el?.scrollTop ?? 0;
     setShowLatest(Boolean(el && el.scrollHeight - el.clientHeight - el.scrollTop >= 60));
-  }, [view.sessionId]);
+    return flushReading;
+  }, [view.sessionId, flushReading]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -1380,7 +1401,10 @@ export function ChatComposer({
             const text = e.clipboardData.getData("text/plain");
             const start = textarea.current?.selectionStart ?? draft.length,
               end = textarea.current?.selectionEnd ?? start;
-            if (text) updateDraft(draft.slice(0, start) + text + draft.slice(end));
+            if (text) {
+              updateDraft(draft.slice(0, start) + text + draft.slice(end));
+              textarea.current?.setSelectionRange(start + text.length, start + text.length);
+            }
             void addImages(async () => {
               const imported: import("ZPI-coding-agent").ImageAttachment[] = [];
               try {

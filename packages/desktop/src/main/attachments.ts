@@ -17,6 +17,10 @@ export class AttachmentStore {
     if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) throw new Error("invalid_input: 无效会话 ID");
     return join(this.root, sessionId);
   }
+  private imagePath(sessionId: string, id: string) {
+    if (typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("invalid_input: 无效附件 ID");
+    return join(this.directory(sessionId), `${id}.png`);
+  }
   private async list(sessionId: string): Promise<Saved[]> {
     try {
       return JSON.parse(await readFile(join(this.directory(sessionId), "index.json"), "utf8"));
@@ -36,16 +40,20 @@ export class AttachmentStore {
       .catch(() => {});
     return result;
   }
-  async cleanUnsent(): Promise<void> {
+  async cleanUnsent(onError: (error: unknown, sessionId: string) => void = () => {}): Promise<void> {
     await mkdir(this.root, { recursive: true });
     for (const dir of await readdir(this.root, { withFileTypes: true })) {
-      if (!dir.isDirectory()) continue;
-      for (const item of await this.list(dir.name))
-        if (!item.used && !item.queued) await this.remove(dir.name, item.id);
-      const keep = new Set((await this.list(dir.name)).map((item) => `${item.id}.png`));
-      for (const file of await readdir(this.directory(dir.name)))
-        if (file.endsWith(".png") && !keep.has(file))
-          await rm(join(this.directory(dir.name), file), { force: true });
+      if (!dir.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(dir.name)) continue;
+      try {
+        for (const item of await this.list(dir.name))
+          if (!item.used && !item.queued) await this.remove(dir.name, item.id);
+        const keep = new Set((await this.list(dir.name)).map((item) => `${item.id}.png`));
+        for (const file of await readdir(this.directory(dir.name)))
+          if (file.endsWith(".png") && !keep.has(file))
+            await rm(join(this.directory(dir.name), file), { force: true });
+      } catch (error) {
+        onError(error, dir.name);
+      }
     }
   }
   async import(sessionId: string, name: string, bytes: Uint8Array): Promise<ImageAttachment> {
@@ -73,11 +81,11 @@ export class AttachmentStore {
         ...(processed.warning ? { warning: processed.warning } : {}),
       };
       await mkdir(this.directory(sessionId), { recursive: true });
-      await writeFile(join(this.directory(sessionId), `${item.id}.png`), processed.bytes, { mode: 0o600 });
+      await writeFile(this.imagePath(sessionId, item.id), processed.bytes, { mode: 0o600 });
       try {
         atomicJson(join(this.directory(sessionId), "index.json"), [...entries, item]);
       } catch (e) {
-        await rm(join(this.directory(sessionId), `${item.id}.png`), { force: true });
+        await rm(this.imagePath(sessionId, item.id), { force: true });
         throw e;
       }
       const { used: _, queued: _queued, ...metadata } = item;
@@ -97,7 +105,7 @@ export class AttachmentStore {
   private async readSavedBytes(sessionId: string, item: Saved | undefined) {
     if (!item) throw new Error("not_found: 图片附件不存在或不属于此会话");
     const { used: _, queued: _queued, ...metadata } = item;
-    const data = await readFile(join(this.directory(sessionId), `${item.id}.png`));
+    const data = await readFile(this.imagePath(sessionId, item.id));
     return { metadata, data };
   }
   async load(sessionId: string, ids: string[]) {
@@ -140,6 +148,7 @@ export class AttachmentStore {
     });
   }
   async remove(sessionId: string, id: string) {
+    const path = this.imagePath(sessionId, id);
     await this.serial(sessionId, async () => {
       const entries = await this.list(sessionId);
       const item = entries.find((e) => e.id === id);
@@ -148,7 +157,7 @@ export class AttachmentStore {
         join(this.directory(sessionId), "index.json"),
         entries.filter((e) => e.id !== id),
       );
-      await rm(join(this.directory(sessionId), `${id}.png`), { force: true });
+      await rm(path, { force: true });
     });
   }
   async copyTo(sourceId: string, targetId: string, ids: string[]): Promise<void> {
@@ -159,7 +168,7 @@ export class AttachmentStore {
       await mkdir(this.directory(targetId), { recursive: true });
       for (const id of new Set(ids)) {
         const image = await this.readSavedBytes(sourceId, entries.get(id));
-        await writeFile(join(this.directory(targetId), `${id}.png`), image.data, {
+        await writeFile(this.imagePath(targetId, id), image.data, {
           mode: 0o600,
         });
         metadata.push({ ...image.metadata, used: true });

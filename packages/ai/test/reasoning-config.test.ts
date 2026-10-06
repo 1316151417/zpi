@@ -37,8 +37,10 @@ it("custom levels preserve their order and map independently of provider effort 
 });
 
 it("domestic and GPT recommendations seed complete editable configurations", () => {
-  for (const preset of ["deepseek", "mimo-api", "zai-coding-plan", "openai-chatgpt"]) {
-    for (const model of presetModels(preset)) {
+  for (const preset of ["deepseek", "mimo-api", "zhipu-coding", "openai-chatgpt"]) {
+    const models = presetModels(preset);
+    expect(models.length).toBeGreaterThan(0);
+    for (const model of models) {
       const resolved = { reasoning: model.reasoning ?? true, compat: model.compat, ...model };
       const editable = editableReasoningConfig(resolved);
       validateReasoningConfig(editable);

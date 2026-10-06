@@ -209,8 +209,8 @@ export class SessionInputQueue {
     return this.serial(id, async () => {
       if (this.runtime.running(id)) throw new Error("busy: 请先停止运行");
       const items = this.get(id).items;
-      this.commit(id, { items: [], autoDrain: false });
       persist();
+      this.commit(id, { items: [], autoDrain: false });
       for (const item of items) await this.runtime.discard(id, item).catch(() => {});
     });
   }

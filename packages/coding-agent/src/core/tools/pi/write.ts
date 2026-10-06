@@ -64,8 +64,8 @@ export function createWriteToolDefinition(
       return withFileMutationQueue(absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the
         // mutation queue while an in-flight filesystem operation may still finish.
-        // Checking signal.aborted after each await observes the same aborts while
-        // keeping the queue locked until the current operation has settled.
+        // Check cancellation before writing, and keep the queue locked until the
+        // write settles. A successful write must still be reported as successful.
         const throwIfAborted = (): void => {
           if (signal?.aborted) throw new Error("Operation aborted");
         };
@@ -77,7 +77,6 @@ export function createWriteToolDefinition(
 
         // Write the file contents.
         await ops.writeFile(absolutePath, content);
-        throwIfAborted();
 
         return {
           content: [{ type: "text", text: `Successfully wrote to ${path}` }],

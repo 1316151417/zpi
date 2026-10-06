@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
 import { randomBytes } from "node:crypto";
 import { createWriteStream, type WriteStream } from "node:fs";
-import { open } from "node:fs/promises";
+import { open, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type TruncationResult, truncateTail } from "./truncate.ts";
@@ -28,6 +28,21 @@ export interface FullOutput {
 function defaultTempFilePath(prefix: string): string {
   const id = randomBytes(8).toString("hex");
   return join(tmpdir(), `${prefix}-${id}.log`);
+}
+
+/** Keep recent output available to read, and prune expired logs on the next bash invocation. */
+export async function cleanupOutputFiles(prefix: string, directory = tmpdir()): Promise<void> {
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (const file of await readdir(directory, { withFileTypes: true })) {
+    if (!file.isFile() || !file.name.startsWith(`${prefix}-`)) continue;
+    if (!/^[a-f0-9]{16}\.log$/.test(file.name.slice(prefix.length + 1))) continue;
+    const path = join(directory, file.name);
+    try {
+      if ((await stat(path)).mtimeMs < cutoff) await rm(path, { force: true });
+    } catch {
+      // Optional cleanup must not prevent a command from running.
+    }
+  }
 }
 
 function byteLength(text: string): number {
@@ -62,6 +77,7 @@ export class OutputAccumulator {
 
   private tempFilePath: string | undefined;
   private tempFileStream: WriteStream | undefined;
+  private tempFileError: Error | undefined;
 
   constructor(options: OutputAccumulatorOptions = {}) {
     this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -133,21 +149,16 @@ export class OutputAccumulator {
     }
 
     const stream = this.tempFileStream;
+    if (!stream.closed)
+      await new Promise<void>((resolve) => {
+        stream.once("close", resolve);
+        stream.end();
+      });
     this.tempFileStream = undefined;
-
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        stream.off("finish", onFinish);
-        reject(error);
-      };
-      const onFinish = () => {
-        stream.off("error", onError);
-        resolve();
-      };
-      stream.once("error", onError);
-      stream.once("finish", onFinish);
-      stream.end();
-    });
+    if (this.tempFileError) {
+      if (this.tempFilePath) await rm(this.tempFilePath, { force: true }).catch(() => {});
+      throw this.tempFileError;
+    }
   }
 
   /**
@@ -258,7 +269,10 @@ export class OutputAccumulator {
       return;
     }
     this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
-    this.tempFileStream = createWriteStream(this.tempFilePath);
+    this.tempFileStream = createWriteStream(this.tempFilePath, { mode: 0o600 });
+    this.tempFileStream.on("error", (error) => {
+      this.tempFileError = error;
+    });
     for (const chunk of this.rawChunks) {
       this.tempFileStream.write(chunk);
     }

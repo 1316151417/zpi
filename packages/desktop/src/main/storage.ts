@@ -431,6 +431,8 @@ export class SettingsStore {
     return this.get();
   }
   discoverEnvironment(env: Record<string, string | undefined>): string[] {
+    // Discovery is optional; never replace credentials that could not be decrypted.
+    if (this.unreadCredentials) return [];
     const added: string[] = [];
     for (const discovery of discoverProviderCredentials(env)) {
       const preset = getProviderPreset(discovery.preset);

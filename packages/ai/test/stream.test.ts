@@ -1,5 +1,5 @@
 import { emptyAssistant, normalizeContext } from "ZPI-ai";
-import { streamSimple } from "ZPI-ai/api/openai-completions";
+import { stream, streamSimple } from "ZPI-ai/api/openai-completions";
 import { afterEach, describe, expect, it } from "vitest";
 import { chunk, deferred, done, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 
@@ -13,6 +13,47 @@ async function server(handler: Parameters<typeof fakeServer>[0]) {
   return s;
 }
 describe("OpenAI streaming contract", () => {
+  it.each(["", undefined])("accepts a no-argument tool call with arguments %j", async (argumentsText) => {
+    const s = await server((_, res) => {
+      send(res, chunk({ content: "Calling tool" }));
+      send(
+        res,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "empty",
+              type: "function",
+              function: { name: "no_args", arguments: argumentsText },
+            },
+          ],
+        }),
+      );
+      done(res, "tool_calls");
+    });
+    const result = await streamSimple(fakeModel(s.url), normalizeContext({ messages: [] }), {
+      apiKey: "local",
+    }).result();
+    expect(result.stopReason).toBe("toolUse");
+    expect(result.content).toEqual([
+      { type: "text", text: "Calling tool" },
+      { type: "toolCall", id: "empty", name: "no_args", arguments: {} },
+    ]);
+  });
+  it("explicit reasoning effort overrides the model default", async () => {
+    const s = await server((_, res) => done(res));
+    const model = {
+      ...fakeModel(s.url),
+      defaultThinkingLevel: "high",
+      compat: { supportsReasoningEffort: true },
+    };
+    const result = await stream(model, normalizeContext({ messages: [] }), {
+      apiKey: "local",
+      reasoningEffort: "low",
+    }).result();
+    expect(result.stopReason).toBe("stop");
+    expect(s.requests[0].reasoning_effort).toBe("low");
+  });
   it("streams before release, handles split UTF-8, interleaved calls and usage tail", async () => {
     const release = deferred();
     const first = deferred<string>();

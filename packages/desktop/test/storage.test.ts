@@ -7,6 +7,36 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import type { InterfacePreferences } from "../src/shared/bridge.ts";
 
+it("environment discovery skips locked credentials without modifying persisted settings or secrets", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-locked-discovery-"));
+  let available = true;
+  const encryption = {
+    isEncryptionAvailable: () => available,
+    encryptString: (value: string) => Buffer.from(value),
+    decryptString: (value: Buffer) => value.toString(),
+  };
+  try {
+    new SettingsStore(dir, encryption).saveProvider({
+      id: "saved",
+      name: "Saved",
+      baseUrl: "https://example.com/v1",
+      models: [{ id: "model" }],
+      apiKey: "secret",
+    });
+    const settings = await readFile(join(dir, "settings.json"));
+    const credentials = await readFile(join(dir, "credentials.enc"));
+    available = false;
+    const locked = new SettingsStore(dir, encryption);
+    expect(locked.discoverEnvironment({ DEEPSEEK_API_KEY: "environment-key" })).toEqual([]);
+    expect(await readFile(join(dir, "settings.json"))).toEqual(settings);
+    expect(await readFile(join(dir, "credentials.enc"))).toEqual(credentials);
+    available = true;
+    expect(new SettingsStore(dir, encryption).snapshot("saved").apiKey).toBe("secret");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it("notification preferences default on, migrate old settings and preserve the independent sound choice", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-notification-settings-"));
   const encryption = {

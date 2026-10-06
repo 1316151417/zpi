@@ -35,18 +35,27 @@ export function ChangesPane({
       .finally(() => {
         if (active) setLoading(false);
       });
+    return () => {
+      active = false;
+    };
+  }, [sessionId, runId, revision, visible]);
+  useEffect(() => {
+    if (!visible) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const off = window.ZPI.onEvent((event) => {
       if (
         event.sessionId === sessionId &&
         (event.event.type === "settled" || event.event.type === "tool_end")
-      )
-        setRevision((n) => n + 1);
+      ) {
+        clearTimeout(timer);
+        timer = setTimeout(() => setRevision((n) => n + 1), 200);
+      }
     });
     return () => {
-      active = false;
+      clearTimeout(timer);
       off();
     };
-  }, [sessionId, runId, revision, visible]);
+  }, [sessionId, visible]);
   const load = useCallback(
     (id: string) => window.ZPI.readPatch(sessionId, runId, id).then(unwrap),
     [sessionId, runId],

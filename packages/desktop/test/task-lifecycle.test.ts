@@ -1,10 +1,33 @@
 import { SessionManager } from "ZPI-coding-agent";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
+
+it("failure after persisting a run start records an error end and releases the running state", async () => {
+  const f = await fixture((_, response) => done(response));
+  const id = f.host.createSession(f.a.id).id;
+  const markUsed = vi
+    .spyOn(f.host.attachments, "markUsed")
+    .mockRejectedValueOnce(new Error("attachment failure"));
+  await expect(f.host.startRun({ sessionId: id, text: "first" })).rejects.toThrow("attachment failure");
+  markUsed.mockRestore();
+  expect(f.host.activeRuns.has(id)).toBe(false);
+  const snapshot = f.host.getSessionSnapshot(id);
+  expect(snapshot.session).toMatchObject({ status: "error", draft: false });
+  expect(snapshot.view.runs[0]).toMatchObject({ status: "error", error: "attachment failure" });
+  expect(f.server.requests).toHaveLength(0);
+  await f.host.close();
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  await reopened.init();
+  cleanup.push(() => reopened.close());
+  expect(reopened.getSessionSnapshot(id).view.runs[0].status).toBe("error");
+  await reopened.startRun({ sessionId: id, text: "retry" });
+  await reopened.activeRuns.get(id)?.done;
+  expect(reopened.getSessionSnapshot(id).view.runs.at(-1)?.status).toBe("completed");
+});
 
 it("running tasks reject archive/restore/delete while metadata rename and pin preserve the conversation", async () => {
   const f = await fixture((_, response) => send(response, chunk({ content: "still running" })));

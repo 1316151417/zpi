@@ -8,7 +8,7 @@ import { access as fsAccess } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
 import { type Static, Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
-import { OutputAccumulator } from "./output-accumulator.ts";
+import { cleanupOutputFiles, OutputAccumulator } from "./output-accumulator.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
 import { waitForChildProcess } from "./utils/child-process.ts";
 import { getShellConfig, getShellEnv, killProcessTree, type ShellConfig } from "./utils/shell.ts";
@@ -17,6 +17,7 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 /** Output limit of `structuredContent.output`, which programmatic callers such as codemode scripts receive. */
 const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_SECONDS = MAX_TIMEOUT_MS / 1000;
+const outputCleanups = new Map<string, { startedAt: number; done: Promise<void> }>();
 
 function resolveTimeoutMs(timeout: number | undefined): number | undefined {
   if (timeout === undefined) return undefined;
@@ -259,6 +260,12 @@ export function createShellToolDefinition(
         exposeSessionEnvironment,
         ctx,
       );
+      let cleanup = outputCleanups.get(config.tempFilePrefix);
+      if (!cleanup || Date.now() - cleanup.startedAt >= 24 * 60 * 60 * 1000) {
+        cleanup = { startedAt: Date.now(), done: cleanupOutputFiles(config.tempFilePrefix).catch(() => {}) };
+        outputCleanups.set(config.tempFilePrefix, cleanup);
+      }
+      await cleanup.done;
       const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix });
       let acceptingOutput = true;
       let updateTimer: NodeJS.Timeout | undefined;

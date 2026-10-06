@@ -4,6 +4,7 @@ import {
   appendSelection,
   ComposerDraftStore,
   type ConversationSelection,
+  emptySession,
   mergeHistory,
   reduceSession,
   sessionViewBytes,
@@ -54,7 +55,9 @@ export const drafts = new ComposerDraftStore();
 const draftRevisions = new Map<string, number>();
 const draftLoaded = new Set<string>();
 const draftSaving = new Set<string>();
+const draftSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export async function withdrawQueuedInput(id: string, itemId: string) {
+  await saveDraft(id);
   const { item, draft } = unwrap(await window.ZPI.editQueuedInput(id, itemId));
   // Main saved the withdrawn text before removing it from the durable queue.
   draftRevisions.set(id, draft.revision);
@@ -66,7 +69,23 @@ drafts.subscribe((id) => {
   const revision = (draftRevisions.get(id) ?? 0) + 1;
   draftRevisions.set(id, revision);
   draftSaving.add(id);
-  void window.ZPI.saveDraft(id, {
+  clearTimeout(draftSaveTimers.get(id));
+  draftSaveTimers.set(
+    id,
+    setTimeout(() => void saveDraft(id), 200),
+  );
+});
+function saveDraft(id: string): Promise<void> {
+  if (!draftSaveTimers.has(id)) return Promise.resolve();
+  clearTimeout(draftSaveTimers.get(id));
+  draftSaveTimers.delete(id);
+  const draft = drafts.get(id);
+  if (!draft) {
+    draftSaving.delete(id);
+    return Promise.resolve();
+  }
+  const revision = draftRevisions.get(id) ?? 0;
+  return window.ZPI.saveDraft(id, {
     text: draft.text,
     selections: draft.selections,
     fileReferences: draft.fileReferences,
@@ -78,7 +97,10 @@ drafts.subscribe((id) => {
     .finally(() => {
       if (draftRevisions.get(id) === revision) draftSaving.delete(id);
     });
-});
+}
+function flushDrafts(): void {
+  for (const id of draftSaveTimers.keys()) void saveDraft(id);
+}
 async function loadDraft(id: string): Promise<void> {
   if (draftLoaded.has(id)) return;
   const draft = unwrap(await window.ZPI.getDraft(id));
@@ -151,7 +173,12 @@ export function report(error: unknown): void {
   useStore.setState({ error: error instanceof Error ? error.message : String(error) });
 }
 export function subscribeEvents(): () => void {
-  return window.ZPI.onEvent((e) => {
+  window.addEventListener("beforeunload", flushDrafts);
+  const visibility = () => {
+    if (document.visibilityState === "hidden") flushDrafts();
+  };
+  document.addEventListener("visibilitychange", visibility);
+  const off = window.ZPI.onEvent((e) => {
     queue.push(e);
     if (!frame)
       frame = requestAnimationFrame(() => {
@@ -161,6 +188,12 @@ export function subscribeEvents(): () => void {
         apply(batch);
       });
   });
+  return () => {
+    flushDrafts();
+    window.removeEventListener("beforeunload", flushDrafts);
+    document.removeEventListener("visibilitychange", visibility);
+    off();
+  };
 }
 export async function refreshSuggestions(id: string): Promise<void> {
   const [commands, catalog] = await Promise.all([
@@ -208,6 +241,8 @@ export function accept(snapshot: import("../shared/bridge.ts").SessionSnapshot):
   }
 }
 export async function selectSession(id: string): Promise<void> {
+  const previous = useStore.getState().selected;
+  if (previous && previous !== id) await saveDraft(previous);
   localStorage.setItem("ZPI.selectedSession", id);
   useStore.setState({ selected: id });
   const active = unwrap(await window.ZPI.activateSession(id));
@@ -264,6 +299,21 @@ export async function selectSession(id: string): Promise<void> {
       sessions.set(id, record);
       useStore.setState({ views, sessions, historyCursors });
       trimViews(id);
+    } catch (error) {
+      const buffered = [
+        ...(pendingSnapshots.get(id) ?? []),
+        ...queue.filter((event) => event.sessionId === id),
+      ];
+      queue = queue.filter((event) => event.sessionId !== id);
+      pendingSnapshots.delete(id);
+      if (!useStore.getState().views.has(id)) {
+        const state = useStore.getState();
+        useStore.setState({
+          views: new Map(state.views).set(id, emptySession(id, state.sessions.get(id)?.title)),
+        });
+      }
+      apply(buffered.sort((a, b) => a.seq - b.seq));
+      throw error;
     } finally {
       pendingSnapshots.delete(id);
       snapshotRequests.delete(id);

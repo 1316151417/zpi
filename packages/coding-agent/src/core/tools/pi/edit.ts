@@ -7,12 +7,10 @@ import { type Static, Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
 import {
   applyEditsToNormalizedContent,
-  detectLineEnding,
   type Edit,
   generateDiffString,
   generateUnifiedPatch,
   normalizeToLF,
-  restoreLineEndings,
 } from "./edit-diff.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
@@ -168,8 +166,8 @@ export function createEditToolDefinition(
       return withFileMutationQueue(absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the
         // mutation queue while an in-flight filesystem operation may still finish.
-        // Checking signal.aborted after each await observes the same aborts while
-        // keeping the queue locked until the current operation has settled.
+        // Check cancellation before writing, and keep the queue locked until the
+        // write settles. A successful write must still be reported as successful.
         const throwIfAborted = (): void => {
           if (signal?.aborted) throw new Error("Operation aborted");
         };
@@ -194,14 +192,17 @@ export function createEditToolDefinition(
 
         // Strip BOM before matching. The model will not include an invisible BOM in oldText.
         const { bom, text: content } = splitBom(rawContent);
-        const originalEnding = detectLineEnding(content);
         const normalizedContent = normalizeToLF(content);
-        const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path);
+        const { baseContent, newContent } = applyEditsToNormalizedContent(
+          normalizedContent,
+          edits,
+          path,
+          content,
+        );
         throwIfAborted();
 
-        const finalContent = bom + restoreLineEndings(newContent, originalEnding);
+        const finalContent = bom + newContent;
         await ops.writeFile(absolutePath, finalContent);
-        throwIfAborted();
 
         const diffResult = generateDiffString(baseContent, newContent);
         const patch = generateUnifiedPatch(path, baseContent, newContent);

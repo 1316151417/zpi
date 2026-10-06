@@ -190,9 +190,6 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
           }
         : {}),
       ...(options.toolChoice ? { tool_choice: options.toolChoice } : {}),
-      ...(options.reasoningEffort && model.compat?.supportsReasoningEffort
-        ? { reasoning_effort: options.reasoningEffort }
-        : {}),
       ...model.samplingParams,
       ...options.samplingParams,
     };
@@ -201,6 +198,13 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
       for (const key of reasoningParameterKeys) delete payload[key];
       Object.assign(payload, thinking ?? {});
     }
+    if (
+      isJsonObject(payload) &&
+      model.reasoning &&
+      options.reasoningEffort &&
+      model.compat?.supportsReasoningEffort
+    )
+      payload.reasoning_effort = options.reasoningEffort;
     const replacement = await options.onPayload?.(payload, model);
     if (replacement !== undefined) payload = replacement;
     if (!isJsonObject(payload) || payload.stream !== true)
@@ -329,7 +333,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
     if (options.signal?.aborted) throw new Error("Request aborted");
     if (!finish) throw new Error("Stream ended without finish_reason");
     for (const state of toolStates.values()) {
-      const args: unknown = JSON.parse(state.raw);
+      const args: unknown = JSON.parse(state.raw || "{}");
       if (!state.call.id || !state.call.name || !isJsonObject(args)) throw new Error("Incomplete tool call");
       state.call.arguments = args;
       completeCalls.add(state.call);

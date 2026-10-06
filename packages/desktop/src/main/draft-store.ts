@@ -1,5 +1,6 @@
 import { type ConversationSelection, validSelections } from "ZPI-ui/selections";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { atomicJson } from "./storage.ts";
 export interface TextDraft {
@@ -20,10 +21,17 @@ export class DraftStore {
   }
   get(id: string): TextDraft {
     const path = this.path(id);
-    if (!existsSync(path)) return { text: "", fileReferences: [], selection: [0, 0], revision: 0 };
-    const value = JSON.parse(readFileSync(path, "utf8"));
-    this.validate(value);
-    return value;
+    const empty: TextDraft = { text: "", fileReferences: [], selection: [0, 0], revision: 0 };
+    if (!existsSync(path)) return empty;
+    const content = readFileSync(path, "utf8");
+    try {
+      const value = JSON.parse(content);
+      this.validate(value);
+      return value;
+    } catch {
+      renameSync(path, `${path}.corrupt-${Date.now()}-${randomUUID()}`);
+      return empty;
+    }
   }
   save(id: string, value: TextDraft): void {
     this.validate(value);
