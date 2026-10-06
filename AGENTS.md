@@ -2,7 +2,9 @@
 
 ## Architecture & Scope
 
-Read `README.md` before changing product scope. zpi is a minimal coding desktop client: a ZCode-inspired interface with a Pi-style core. Keep the core limited to `read`, `write`, `edit`, and `bash`; preserve the absence of telemetry, subagents, MCP, and background-task orchestration. Reuse existing components and remove obsolete code when replacing functionality. The SDK remains a small supporting capability.
+zpi is a minimal coding desktop client: a ZCode-inspired interface with a Pi-style core. Apply the same minimalism to the client: keep the interface clean and direct, and prioritize the essential, frequently used features of everyday coding. Favor changes that save tokens and time while keeping the codebase small, maintainable, and easy to customize.
+
+Keep the core limited to `read`, `write`, `edit`, and `bash`; preserve the absence of telemetry, subagents, MCP, and background-task orchestration. Reuse existing components and remove obsolete code when replacing functionality. The SDK remains a small supporting capability.
 
 ## Project Structure & Module Organization
 
@@ -16,7 +18,7 @@ Read `README.md` before changing product scope. zpi is a minimal coding desktop 
 
 ## Build, Test, and Development Commands
 
-Use Node.js 24 and npm. Follow the README setup commands for Electron and native terminal dependencies.
+Use Node.js 24 and npm. For initial setup, run `npm install --ignore-scripts`, `npm run install:electron`, and `npm run install:terminal` in order. Building the native terminal module on macOS requires Xcode Command Line Tools; rerun `npm run install:terminal` after upgrading Electron.
 
 - `npm run dev`: start Electron and Vite with reload support.
 - `npm run build`: build the desktop application.
