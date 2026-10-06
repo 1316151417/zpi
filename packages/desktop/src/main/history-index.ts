@@ -39,7 +39,7 @@ interface RunBoundary {
   auxiliary?: boolean;
 }
 interface IndexData {
-  version: 4;
+  version: 5;
   size: number;
   modified: number;
   header: SessionHeader;
@@ -67,7 +67,7 @@ export class HistoryIndex {
     const index = new HistoryIndex(path),
       stat = statSync(path);
     index.data = {
-      version: 4,
+      version: 5,
       size: stat.size,
       modified: stat.mtimeMs,
       header: JSON.parse(readFileSync(path, "utf8")),
@@ -86,7 +86,7 @@ export class HistoryIndex {
     try {
       const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
       if (
-        cached.version === 4 &&
+        cached.version === 5 &&
         cached.size === stat.size &&
         cached.modified === stat.mtimeMs &&
         cached.header &&
@@ -100,7 +100,7 @@ export class HistoryIndex {
       /* Missing/stale derived index is rebuilt with a bounded streaming scan. */
     }
     this.data = {
-      version: 4,
+      version: 5,
       size: 0,
       modified: 0,
       header: undefined as unknown as SessionHeader,
@@ -196,11 +196,17 @@ export class HistoryIndex {
       if (entry.type === "model_change" || entry.type === "compaction") {
         d.cacheRead = 0;
         d.cacheInput = 0;
+      }
+      if (entry.type === "compaction") {
         delete d.state.usage;
       }
     } else if (entry.message.role === "assistant") {
       const m = entry.message;
-      if (!["error", "aborted"].includes(m.stopReason) && m.usageAvailable !== false) {
+      if (
+        !["error", "aborted"].includes(m.stopReason) &&
+        m.usageAvailable !== false &&
+        (m.usageAvailable === true || m.usage.totalTokens > 0)
+      ) {
         d.state.usage = { ...entry, message: { ...m, content: [] } };
         if (m.cacheUsageAvailable === true) {
           d.cacheRead += m.usage.cacheRead;

@@ -41,12 +41,11 @@ export function contextUsage(entries: SessionEntry[], model: Model): ContextUsag
     totalInput += m.usage.input + m.usage.cacheRead;
   }
   for (const entry of [...entries].reverse()) {
-    if (entry.type === "compaction" || entry.type === "model_change") break;
+    if (entry.type === "compaction") break;
     if (entry.type !== "message" || entry.message.role !== "assistant") continue;
     const m = entry.message;
-    if (m.model !== model.id || m.provider !== model.provider) break;
     if (m.stopReason === "error" || m.stopReason === "aborted") continue;
-    if (m.usageAvailable === false || (m.usageAvailable !== true && m.usage.totalTokens === 0)) break;
+    if (m.usageAvailable === false || (m.usageAvailable !== true && m.usage.totalTokens === 0)) continue;
     const inputTokens = m.usage.input + m.usage.cacheRead;
     return {
       contextWindow: model.contextWindow,

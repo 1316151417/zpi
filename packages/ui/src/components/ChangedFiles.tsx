@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronRight, Copy, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { FileAction, FileActionHandler, RunView } from "../types.ts";
 import { FileIcon } from "./Reference.tsx";
@@ -7,11 +7,13 @@ import { FileIcon } from "./Reference.tsx";
 function OpenFileButton({
   path,
   name,
+  onOpen,
   onAction,
   onError,
 }: {
   path: string;
   name: string;
+  onOpen?: (path: string) => void;
   onAction?: FileActionHandler;
   onError: (error: string) => void;
 }) {
@@ -34,10 +36,10 @@ function OpenFileButton({
         <button
           type="button"
           className="changed-file-open-default"
-          disabled={!onAction || busy}
+          disabled={!onOpen || busy}
           aria-label={`打开 ${name}`}
-          title="使用默认应用程序打开"
-          onClick={() => void perform("open")}
+          title="在 ZPI 中打开"
+          onClick={() => onOpen?.(path)}
         >
           打开
         </button>
@@ -61,6 +63,10 @@ function OpenFileButton({
             />
             <span>Finder</span>
           </Menu.Item>
+          <Menu.Item className="menu-item" onSelect={() => void perform("open")}>
+            <ExternalLink size={16} aria-hidden="true" />
+            <span>使用默认程序打开</span>
+          </Menu.Item>
           <Menu.Separator className="changed-file-menu-separator" />
           <Menu.Item className="menu-item" onSelect={() => void perform("copy-absolute")}>
             <Copy size={16} aria-hidden="true" />
@@ -80,11 +86,13 @@ export function ChangedFiles({
   run,
   cwd,
   onChanges,
+  onFile,
   onFileAction,
 }: {
   run: RunView;
   cwd?: string;
   onChanges?: (runId: string, path?: string) => void;
+  onFile?: (path: string) => void;
   onFileAction?: FileActionHandler;
 }) {
   const [error, setError] = useState("");
@@ -185,7 +193,13 @@ export function ChangedFiles({
                 >
                   审查
                 </button>
-                <OpenFileButton path={path} name={name} onAction={onFileAction} onError={setError} />
+                <OpenFileButton
+                  path={path}
+                  name={name}
+                  onOpen={onFile}
+                  onAction={onFileAction}
+                  onError={setError}
+                />
               </span>
             </li>
           );

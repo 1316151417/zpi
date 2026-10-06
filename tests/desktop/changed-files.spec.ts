@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
@@ -104,13 +105,19 @@ test("changed files start collapsed, group repeated edits, scroll within the car
       { x: (rowBox?.width ?? 0) - 2, y: (rowBox?.height ?? 0) - 2 },
     ]) {
       await first.click({ position });
-      await expect(page.locator("diffs-container")).toContainText("original 0");
-      await expect(page.locator("diffs-container")).toContainText("updated again");
+      await expect(
+        page.getByRole("tabpanel", { name: "变更", exact: true }).locator("diffs-container"),
+      ).toContainText("original 0");
+      await expect(
+        page.getByRole("tabpanel", { name: "变更", exact: true }).locator("diffs-container"),
+      ).toContainText("updated again");
       await page.getByLabel("收起右侧栏", { exact: true }).click();
     }
     await first.getByRole("button", { name: "查看修改 1.txt", exact: true }).focus();
     await first.getByRole("button", { name: "查看修改 1.txt", exact: true }).press("Enter");
-    await expect(page.locator("diffs-container")).toContainText("updated again");
+    await expect(
+      page.getByRole("tabpanel", { name: "变更", exact: true }).locator("diffs-container"),
+    ).toContainText("updated again");
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await app.evaluate(({ shell }) => {
       const calls: { action: string; path: string }[] = [];
@@ -127,11 +134,17 @@ test("changed files start collapsed, group repeated edits, scroll within the car
       app?.evaluate(() => (globalThis as typeof globalThis & { fileActionCalls: unknown[] }).fileActionCalls);
     const absolutePath = await realpath(join(project, paths[0]));
     await first.getByRole("button", { name: "打开 1.txt", exact: true }).click();
-    await expect.poll(recordedActions).toEqual([{ action: "open", path: absolutePath }]);
-    await expect(page.locator(".right-pane")).toBeHidden();
+    await expect(page.locator(".file-text-preview")).toContainText("updated again");
+    expect(await recordedActions()).toEqual([]);
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
     const menu = first.getByRole("button", { name: "打开菜单 1.txt", exact: true });
     await menu.click();
-    await expect(page.getByRole("menuitem")).toHaveText(["Finder", "复制绝对路径", "复制相对路径"]);
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Finder",
+      "使用默认程序打开",
+      "复制绝对路径",
+      "复制相对路径",
+    ]);
     await expect
       .poll(() =>
         page
@@ -142,9 +155,15 @@ test("changed files start collapsed, group repeated edits, scroll within the car
       .toBeGreaterThan(0);
     await page.screenshot({ path: "test-results/changed-files-open-menu.png" });
     await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect.poll(recordedActions).toEqual([{ action: "reveal", path: absolutePath }]);
+    await menu.click();
+    await expect(
+      page.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).locator("svg"),
+    ).toBeVisible();
+    await page.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
     await expect.poll(recordedActions).toEqual([
-      { action: "open", path: absolutePath },
       { action: "reveal", path: absolutePath },
+      { action: "open", path: absolutePath },
     ]);
     await menu.click();
     await page.getByRole("menuitem", { name: "复制绝对路径", exact: true }).click();
@@ -156,7 +175,8 @@ test("changed files start collapsed, group repeated edits, scroll within the car
     await app.evaluate(({ shell }) => {
       shell.openPath = async () => "没有可用的默认应用程序";
     });
-    await first.getByRole("button", { name: "打开 1.txt", exact: true }).click();
+    await menu.click();
+    await page.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
     await expect(card.getByRole("alert")).toContainText("没有可用的默认应用程序");
     await menu.click();
     await page.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
@@ -166,8 +186,12 @@ test("changed files start collapsed, group repeated edits, scroll within the car
       .nth(1)
       .getByRole("button", { name: "审查 1.txt", exact: true })
       .click();
-    await expect(page.locator("diffs-container")).toContainText("original 1");
-    await expect(page.locator("diffs-container")).toContainText("updated 1");
+    await expect(
+      page.getByRole("tabpanel", { name: "变更", exact: true }).locator("diffs-container"),
+    ).toContainText("original 1");
+    await expect(
+      page.getByRole("tabpanel", { name: "变更", exact: true }).locator("diffs-container"),
+    ).toContainText("updated 1");
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(840, 720));
     await expect.poll(() => card.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
@@ -186,6 +210,79 @@ test("changed files start collapsed, group repeated edits, scroll within the car
     await expect(page.locator(".changed-files-totals")).toHaveText("+21-21");
   } finally {
     release.resolve();
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("changed HTML opens in the same built-in browser as conversation links, with explicit default-app opening", async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-changed-html-")));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const name = "页面 #1.html";
+  const path = join(project, name);
+  const server = await fakeServer((body, response) => {
+    const messages = body.messages as unknown as { role: string }[];
+    if (!messages.some((message) => message.role === "tool")) {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "write-html",
+              type: "function",
+              function: {
+                name: "write",
+                arguments: JSON.stringify({ path: name, content: "<h1>Built-in preview</h1>" }),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: `[页面](<${pathToFileURL(path).href}>)` }));
+      done(response);
+    }
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await app.evaluate(({ shell }) => {
+      Object.assign(globalThis, { htmlOpenCalls: [] as string[] });
+      shell.openPath = async (path) => {
+        (globalThis as typeof globalThis & { htmlOpenCalls: string[] }).htmlOpenCalls.push(path);
+        return "";
+      };
+    });
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("create page");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await page.locator(".changed-files summary").click();
+    await page.getByRole("button", { name: `打开 ${name}`, exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "浏览器地址", exact: true })).toHaveValue(
+      pathToFileURL(path).href,
+    );
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
+    await page.locator(".answer").getByRole("button", { name: "页面", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "浏览器地址", exact: true })).toHaveValue(
+      pathToFileURL(path).href,
+    );
+    expect(
+      await app.evaluate(() => (globalThis as typeof globalThis & { htmlOpenCalls: string[] }).htmlOpenCalls),
+    ).toEqual([]);
+    await page.getByRole("button", { name: `打开菜单 ${name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
+    await expect
+      .poll(() =>
+        app?.evaluate(() => (globalThis as typeof globalThis & { htmlOpenCalls: string[] }).htmlOpenCalls),
+      )
+      .toEqual([path]);
+  } finally {
     await app?.close();
     await server.close();
     await rm(dir, { recursive: true, force: true });

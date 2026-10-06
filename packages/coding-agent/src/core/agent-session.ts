@@ -283,6 +283,7 @@ export class AgentSession {
       }),
       {
         signal,
+        sessionId: `${this.sessionId}:compact`,
         maxTokens: Math.min(this.model.maxTokens, this.resources?.compaction?.reserveTokens ?? 16384),
         reasoning: this.thinkingLevel,
       },
@@ -311,6 +312,7 @@ export class AgentSession {
     });
   }
   private streamWithCompaction(model: Model, context: TranscriptContext, options: SimpleStreamOptions = {}) {
+    options = { ...options, sessionId: this.sessionId };
     const output = createAssistantMessageEventStream();
     void (async () => {
       let request = context;

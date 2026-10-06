@@ -540,7 +540,13 @@ export const RunGroup = memo(function RunGroup({
               />
             ))}
         </div>
-        <ChangedFiles run={run} cwd={workspace?.cwd} onChanges={onChanges} onFileAction={onFileAction} />
+        <ChangedFiles
+          run={run}
+          cwd={workspace?.cwd}
+          onChanges={onChanges}
+          onFile={onFile}
+          onFileAction={onFileAction}
+        />
         {run.status !== "running" && run.finalAnswerBlockIds.length > 0 && (
           <div className="message-actions assistant-message-actions">
             <CopyMessage

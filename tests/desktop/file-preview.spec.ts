@@ -66,7 +66,13 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
 
     const folderLink = answer.getByRole("button", { name: "资料目录", exact: true });
     await folderLink.click({ button: "right" });
-    await expect(menu.getByRole("menuitem")).toHaveText(["打开", "Finder", "复制绝对路径", "复制相对路径"]);
+    await expect(menu.getByRole("menuitem")).toHaveText([
+      "打开",
+      "Finder",
+      "使用默认程序打开",
+      "复制绝对路径",
+      "复制相对路径",
+    ]);
     await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
     await expect.poll(calls).toHaveLength(4);
     expect((await calls())?.at(-1)).toEqual({ action: "open", path: absoluteFolder });
@@ -77,7 +83,13 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
 
     const fileLink = answer.getByRole("button", { name: "文件", exact: true });
     await fileLink.click({ button: "right" });
-    await expect(menu.getByRole("menuitem")).toHaveText(["打开", "Finder", "复制绝对路径", "复制相对路径"]);
+    await expect(menu.getByRole("menuitem")).toHaveText([
+      "打开",
+      "Finder",
+      "使用默认程序打开",
+      "复制绝对路径",
+      "复制相对路径",
+    ]);
     await expect(menu.getByRole("separator")).toHaveCount(2);
     await expect(menu).toHaveCSS("width", "208px");
     const finderIcon = menu.getByRole("menuitem", { name: "Finder", exact: true }).locator("img");
@@ -103,16 +115,24 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
     await menu.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
     await expect.poll(readClipboard).toBe("资料 目录/订单 %20 #1.json");
 
+    await fileLink.click({ button: "right" });
+    await expect(
+      menu.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).locator("svg"),
+    ).toBeVisible();
+    await menu.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
+    await expect.poll(calls).toHaveLength(6);
+    expect((await calls())?.at(-1)).toEqual({ action: "open", path: absoluteFile });
+
     const userFile = page.locator(".user-message-text").getByRole("button", { name: "订单", exact: true });
     await userFile.click({ button: "right" });
-    await expect(menu.getByRole("menuitem")).toHaveCount(4);
+    await expect(menu.getByRole("menuitem")).toHaveCount(5);
     await menu.getByRole("menuitem", { name: "复制绝对路径", exact: true }).click();
     await expect.poll(readClipboard).toBe(absoluteFile);
     await rm(file);
     await fileLink.click({ button: "right" });
     await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("文件不存在");
-    expect(await calls()).toHaveLength(5);
+    expect(await calls()).toHaveLength(6);
   } finally {
     await app?.close();
     await server.close();

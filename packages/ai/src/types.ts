@@ -143,6 +143,7 @@ declare const transcriptBrand: unique symbol;
 export type TranscriptContext = { messages: Message[]; readonly [transcriptBrand]: true };
 export interface StreamOptions {
   signal?: AbortSignal;
+  sessionId?: string;
   apiKey?: string;
   fetch?: typeof globalThis.fetch;
   headers?: Record<string, string | null>;

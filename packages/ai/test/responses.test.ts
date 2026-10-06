@@ -59,6 +59,33 @@ function sse(events: unknown[]) {
 }
 
 describe("Responses protocol and portable transcripts", () => {
+  it("keeps Responses cache affinity stable across retries and repeated requests", async () => {
+    const sessionId = "b8aef346-bf4b-43b0-9b0d-d437054d9418";
+    const requests: { body: Record<string, unknown>; headers: Headers }[] = [];
+    const fetcher = (async (_url, init) => {
+      requests.push({ body: JSON.parse(String(init?.body)), headers: new Headers(init?.headers) });
+      return requests.length === 1
+        ? new Response('{"error":{"message":"retry"}}', {
+            status: 503,
+            headers: { "content-type": "application/json", "retry-after-ms": "1" },
+          })
+        : sse([terminal([textItem])]);
+    }) as typeof fetch;
+    for (let turn = 0; turn < 2; turn++) {
+      const result = await streamSimple(responsesModel(), normalizeContext({ messages: [] }), {
+        apiKey: "fake",
+        sessionId,
+        fetch: fetcher,
+      }).result();
+      expect(result.stopReason).toBe("stop");
+    }
+    expect(requests).toHaveLength(3);
+    for (const request of requests) {
+      expect(request.body.prompt_cache_key).toBe(sessionId);
+      expect(request.headers.get("session_id")).toBe(sessionId);
+      expect(request.headers.get("x-client-request-id")).toBe(sessionId);
+    }
+  });
   it("requests summaries for custom reasoning objects and final request overrides", async () => {
     for (const override of [undefined, { effort: "high" }, { effort: "high", summary: "detailed" }]) {
       let request: Record<string, unknown> = {};
@@ -275,6 +302,110 @@ describe("Responses protocol and portable transcripts", () => {
     );
     expect(JSON.stringify(reverse)).not.toContain("encrypted-reasoning");
     expect(JSON.stringify(reverse)).not.toContain("fc_test");
+  });
+  it("round-trips OpenAI → DeepSeek → OpenAI with reasoning, paired tools and isolated credentials", async () => {
+    const openai = { ...responsesModel(), provider: "openai" };
+    const deepseek: Model = {
+      ...fakeModel("https://api.deepseek.com"),
+      ...presetModels("deepseek")[0],
+      provider: "deepseek",
+      input: ["text", "image"],
+    };
+    const history: Message[] = [];
+    const requests: Record<string, unknown>[] = [];
+    const tools = [{ name: "read", description: "Read", parameters: Type.Object({ path: Type.String() }) }];
+    const fetcher = (async (url, init) => {
+      const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push(request);
+      const responses = String(url).endsWith("/responses");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        `Bearer ${responses ? "openai-key" : "deepseek-key"}`,
+      );
+      expect(new Headers(init?.headers).get("session_id")).toBe(responses ? "roundtrip-session" : null);
+      if (responses) expect(request.prompt_cache_key).toBe("roundtrip-session");
+      else expect(request).not.toHaveProperty("prompt_cache_key");
+      if (responses) {
+        const returned = requests.length > 4;
+        const item = returned ? { ...callItem, id: "fc_return", call_id: "call_return" } : callItem;
+        const reasoning = returned ? { ...reasonItem, id: "rs_return" } : reasonItem;
+        return sse([terminal(requests.length % 2 ? [reasoning, item] : [textItem])]);
+      }
+      const tool = requests.length === 3;
+      return sse([
+        {
+          id: "deepseek-reply",
+          choices: [
+            {
+              index: 0,
+              delta: tool
+                ? {
+                    reasoning_content: "DeepSeek tool reasoning",
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_deepseek",
+                        type: "function",
+                        function: { name: "read", arguments: '{"path":"README.md"}' },
+                      },
+                    ],
+                  }
+                : { reasoning_content: "DeepSeek final reasoning", content: "DeepSeek answer" },
+              finish_reason: tool ? "tool_calls" : "stop",
+            },
+          ],
+        },
+      ]);
+    }) as typeof fetch;
+    for (const model of [openai, deepseek, openai]) {
+      history.push({ role: "user", content: "read and continue", timestamp: 0 });
+      for (let step = 0; step < 2; step++) {
+        const before = structuredClone(history);
+        const result = await streamSimple(model, normalizeContext({ messages: history, tools }), {
+          apiKey: model === openai ? "openai-key" : "deepseek-key",
+          sessionId: "roundtrip-session",
+          reasoning: "high",
+          fetch: fetcher,
+        }).result();
+        expect(history).toEqual(before);
+        expect(result.stopReason).toBe(step ? "stop" : "toolUse");
+        history.push(result);
+        for (const call of result.content.filter((block) => block.type === "toolCall"))
+          history.push({
+            role: "toolResult",
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text", text: "file contents" }],
+            isError: false,
+            timestamp: 0,
+          });
+      }
+    }
+    const deepseekInput = requests[3].messages as Record<string, unknown>[];
+    const assistants = deepseekInput.filter((row) => row.role === "assistant");
+    expect(assistants.map((row) => row.reasoning_content)).toEqual(["", "", "DeepSeek tool reasoning"]);
+    expect(deepseekInput.filter((row) => row.role === "tool").map((row) => row.tool_call_id)).toEqual([
+      "call_test",
+      "call_deepseek",
+    ]);
+    expect(JSON.stringify(deepseekInput)).not.toMatch(/encrypted-reasoning|rs_test|fc_test|namespace/);
+    expect(deepseekInput).toContainEqual(expect.objectContaining({ content: "计划", role: "assistant" }));
+    const returnedInput = requests[4].input as Record<string, unknown>[];
+    expect(returnedInput).toContainEqual(reasonItem);
+    expect(returnedInput).toContainEqual(
+      expect.objectContaining({ type: "function_call", call_id: "call_test", id: "fc_test" }),
+    );
+    expect(returnedInput).toContainEqual({
+      type: "function_call",
+      call_id: "call_deepseek",
+      name: "read",
+      arguments: '{"path":"README.md"}',
+      namespace: "zpi",
+    });
+    expect(
+      returnedInput.filter((row) => row.type === "function_call_output").map((row) => row.call_id),
+    ).toEqual(["call_test", "call_deepseek"]);
+    expect(JSON.stringify(returnedInput)).toContain("DeepSeek final reasoning");
+    expect(JSON.stringify(history)).toContain("encrypted-reasoning");
   });
   it("converts completion tools, images and interrupted turns without changing stored history", () => {
     const assistant = {

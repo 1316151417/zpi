@@ -1,5 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Copy } from "lucide-react";
+import { Copy, ExternalLink } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { parseMentions } from "zpi-coding-agent/input";
 import { selectionIntersects } from "../conversation-selections.ts";
@@ -109,6 +109,10 @@ export function Reference({
                 alt=""
               />
               <span>Finder</span>
+            </ContextMenu.Item>
+            <ContextMenu.Item onSelect={() => perform("open")}>
+              <ExternalLink size={16} aria-hidden="true" />
+              <span>使用默认程序打开</span>
             </ContextMenu.Item>
             <ContextMenu.Separator />
             <ContextMenu.Item onSelect={() => perform("copy-absolute")}>

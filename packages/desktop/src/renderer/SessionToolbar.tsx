@@ -39,6 +39,7 @@ export function SessionToolbar({
   const usage = controls?.usage,
     percent = usage?.percent;
   const breakdown = usage?.breakdown ?? [];
+  const hasResponse = view.runs.some((run) => run.status !== "running" && run.orderedBlocks.length > 0);
   const totalChars = breakdown.reduce((sum, item) => sum + item.chars, 0);
   const labels = {
     messages: "消息",
@@ -51,7 +52,7 @@ export function SessionToolbar({
     new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(number);
   return (
     <div className="session-toolbar">
-      {settings?.interface.showContextUsage && (
+      {settings?.interface.showContextUsage && hasResponse && (
         <div className="context-indicator">
           <button
             className="context-circle"

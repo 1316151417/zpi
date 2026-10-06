@@ -31,6 +31,7 @@ export interface OpenAICompletionsOptions extends StreamOptions {
 }
 const commonOptions = [
   "signal",
+  "sessionId",
   "apiKey",
   "fetch",
   "headers",

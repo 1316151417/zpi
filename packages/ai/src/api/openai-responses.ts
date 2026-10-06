@@ -95,6 +95,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     options,
     [
       "signal",
+      "sessionId",
       "apiKey",
       "fetch",
       "headers",
@@ -148,6 +149,9 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       timeout: options.timeoutMs,
       fetch: options.fetch,
       defaultHeaders: {
+        ...(options.sessionId
+          ? { session_id: options.sessionId, "x-client-request-id": options.sessionId }
+          : {}),
         ...model.headers,
         ...options.headers,
         ...(options.apiKey === "" ? { Authorization: null } : {}),
@@ -173,6 +177,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       instructions: getCurrentSystemPrompt(context.messages),
       store: false,
       stream: true,
+      ...(options.sessionId ? { prompt_cache_key: options.sessionId.slice(0, 64) } : {}),
       include: ["reasoning.encrypted_content"],
       ...(tools.length
         ? {

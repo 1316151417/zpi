@@ -13,7 +13,7 @@ it("continues one persisted task across both protocols with all four tools, titl
     decryptString: (value: Buffer) => value.toString(),
   };
   const settings = new SettingsStore(dir, codec);
-  const requests: { url: string; body: Record<string, unknown> }[] = [];
+  const requests: { url: string; body: Record<string, unknown>; headers: Headers }[] = [];
   const operations = [
     { name: "read", arguments: { path: "README.md" } },
     { name: "write", arguments: { path: "note.txt", content: "before\n" } },
@@ -33,7 +33,7 @@ it("continues one persisted task across both protocols with all four tools, titl
       : isResponse
         ? "response answer"
         : "completion answer";
-    if (!isTitle) requests.push({ url: String(url), body });
+    if (!isTitle) requests.push({ url: String(url), body, headers: new Headers(init?.headers) });
     if (!isResponse)
       return sse([
         {
@@ -125,8 +125,17 @@ it("continues one persisted task across both protocols with all four tools, titl
     expect(await readFile(join(dir, "note.txt"), "utf8")).toBe("after\n");
     const responseCalls = requests.filter((request) => request.url.endsWith("/responses"));
     expect(responseCalls).toHaveLength(5);
+    const sessionId = responseCalls[0].headers.get("session_id");
+    expect(sessionId).toBe(task.id);
+    for (const request of responseCalls) {
+      expect(request.headers.get("session_id")).toBe(sessionId);
+      expect(request.headers.get("x-client-request-id")).toBe(sessionId);
+      expect(request.body.prompt_cache_key).toBe(sessionId);
+    }
     expect(JSON.stringify(responseCalls[0].body.input)).toContain("completion answer");
     expect(JSON.stringify(responseCalls.at(-1)?.body.input)).toContain("after");
+    const measured = host.getSessionSnapshot(task.id).controls.usage;
+    expect(measured.inputTokens).toBe(10);
     await host.close();
     host = new SessionHost(
       dir,
@@ -138,7 +147,11 @@ it("continues one persisted task across both protocols with all four tools, titl
     );
     await host.init();
     await host.setSessionSelection(task.id, { provider: "chat", modelId: "chat", reasoning: "none" });
+    expect(host.getSessionSnapshot(task.id).controls.usage.inputTokens).toBe(measured.inputTokens);
+    expect(host.getSessionSnapshot(task.id).controls.usage.breakdown).toEqual(measured.breakdown);
     await run("continue after reopening");
+    expect(host.getSessionSnapshot(task.id).controls.usage.inputTokens).toBe(measured.inputTokens);
+    expect(host.getSessionSnapshot(task.id).controls.usage.breakdown).toEqual(measured.breakdown);
     const reverse = requests.at(-1)?.body.messages as {
       role: string;
       tool_call_id?: string;
@@ -151,7 +164,14 @@ it("continues one persisted task across both protocols with all four tools, titl
     expect(JSON.stringify(reverse)).not.toContain("|fc_");
     await host.setSessionSelection(task.id, { provider: "oauth", modelId: "oauth", reasoning: "none" });
     await run("/compact");
+    expect(requests.at(-1)?.headers.get("session_id")).toBe(`${sessionId}:compact`);
     await run("continue after compaction");
+    expect(requests.at(-1)?.headers.get("session_id")).toBe(sessionId);
+    expect(requests.at(-1)?.body.prompt_cache_key).toBe(sessionId);
+    for (const request of requests.filter((request) => request.url.endsWith("/chat/completions"))) {
+      expect(request.headers.has("session_id")).toBe(false);
+      expect(request.body).not.toHaveProperty("prompt_cache_key");
+    }
     expect(host.getSessionSnapshot(task.id).controls.model).toEqual({ provider: "oauth", modelId: "oauth" });
     expect(JSON.stringify(host.getSessionSnapshot(task.id))).not.toContain("oauth-token");
   } finally {
