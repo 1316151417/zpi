@@ -124,7 +124,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
         new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
     );
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
-    await page.getByRole("menuitem", { name: "fake", exact: true }).click();
+    await page.getByRole("menuitem", { name: "fake", exact: true }).hover();
     await expect(page.getByRole("menu")).toHaveCount(2);
     await expect
       .poll(() =>
@@ -274,5 +274,89 @@ test("local HTML links and address-bar paths load sandboxed pages, assets and re
     await app?.close();
     await server.close();
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("reasoning submenu keeps the native browser visible with long model names and a wide sidebar", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-reasoning-pane-"));
+  await mkdir(join(dir, "workspace"));
+  const file = join(dir, "workspace", "preview.html");
+  await writeFile(
+    file,
+    '<html><meta charset="utf-8"><title>菜单预览</title><body>Browser stays visible</body></html>',
+  );
+  const url = pathToFileURL(file).href;
+  const app = await launchDesktop({ dir, url: "" });
+  try {
+    const page = await app.firstWindow();
+    await page.evaluate(async () => {
+      const result = await window.ZPI.saveProvider({
+        id: "menu-fixture",
+        name: "菜单测试",
+        baseUrl: "http://127.0.0.1:1",
+        apiKey: "fake",
+        models: [
+          {
+            id: "model",
+            name: "测试模型名称较长时思考级别菜单仍应保持浏览器可见",
+            reasoning: true,
+            input: ["text"],
+          },
+        ],
+      });
+      if (!result.ok) throw Error(result.error.message);
+    });
+    await page.reload();
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator(".pane-empty-launcher").getByRole("button", { name: "浏览器", exact: true }).click();
+    await page.getByLabel("浏览器地址").fill(url);
+    await page.getByLabel("浏览器地址").press("Enter");
+    await expect(page.getByRole("tab", { name: "菜单预览", exact: true })).toBeVisible();
+    const attached = () =>
+      app.evaluate(
+        ({ BrowserWindow, WebContentsView }, url) =>
+          BrowserWindow.getAllWindows()[0]?.contentView.children.filter(
+            (child) => child instanceof WebContentsView && child.webContents.getURL() === url,
+          ).length,
+        url,
+      );
+    for (let i = 0; i < 9; i++) await page.getByLabel("右侧栏宽度", { exact: true }).press("ArrowLeft");
+    for (const width of [1200, 1100]) {
+      await app.evaluate(
+        ({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]?.setSize(width, 800),
+        width,
+      );
+      await expect.poll(attached).toBe(1);
+      await page.getByLabel("模型选择", { exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "测试模型名称较长时思考级别菜单仍应保持浏览器可见", exact: true })
+        .hover();
+      await expect(page.getByRole("menu")).toHaveCount(2);
+      await expect.poll(attached).toBe(1);
+      await expect
+        .poll(() =>
+          page.getByRole("menu").evaluateAll((menus) => {
+            const surface = document
+              .querySelector('[data-testid="browser-surface"]')
+              ?.getBoundingClientRect();
+            const main = document.querySelector("main")?.getBoundingClientRect();
+            return (
+              surface &&
+              main &&
+              menus.every((menu) => {
+                const rect = menu.getBoundingClientRect();
+                return rect.left >= main.left && rect.right <= surface.left;
+              })
+            );
+          }),
+        )
+        .toBe(true);
+      await page.getByRole("menuitem", { name: "高", exact: true }).click();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect.poll(attached).toBe(1);
+    }
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });

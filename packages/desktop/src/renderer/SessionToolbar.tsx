@@ -26,14 +26,14 @@ export function SessionToolbar({
   const menuBoundary = toolbar?.closest("main");
   const [active, setActive] = useState<string>();
   const [updating, setUpdating] = useState(false);
-  const select = (provider: string, modelId: string, reasoning: string, close = true) => {
+  const select = (provider: string, modelId: string, reasoning: string) => {
     setUpdating(true);
     void window.ZPI.setSessionSelection(view.sessionId, { provider, modelId, reasoning })
       .then(unwrap)
       .then(async (snapshot) => {
         accept(snapshot);
         await refresh();
-        if (close) onOpenChange(false);
+        onOpenChange(false);
       })
       .catch(report)
       .finally(() => setUpdating(false));
@@ -161,7 +161,7 @@ export function SessionToolbar({
         <Menu.Portal>
           <Menu.Content
             ref={mainMenu}
-            className="selection-menu"
+            className="selection-menu model-menu"
             side="top"
             align="end"
             collisionBoundary={menuBoundary}
@@ -189,18 +189,14 @@ export function SessionToolbar({
                             className="menu-item"
                             disabled={updating}
                             onFocus={() => setActive(id)}
-                            onClick={() => {
-                              setActive(id);
-                              if (chosen?.provider !== p.id || chosen.modelId !== m.id)
-                                select(p.id, m.id, defaultPreset(m), false);
-                            }}
+                            onClick={() => select(p.id, m.id, defaultPreset(m))}
                           >
                             <span>{m.name || m.id}</span>
                             <ChevronRight size={12} />
                           </Menu.SubTrigger>
                           <Menu.Portal>
                             <Menu.SubContent
-                              className="selection-menu"
+                              className="selection-menu reasoning-menu"
                               collisionBoundary={menuBoundary}
                               collisionPadding={8}
                               onFocusOutside={(event) => {

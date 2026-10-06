@@ -38,16 +38,22 @@ test("GPT models offer five or six efforts with medium default; Chinese models s
     await page.reload();
     const openModel = async (name: string) => {
       await page.getByLabel("模型选择", { exact: true }).click();
-      await page.getByRole("menuitem", { name, exact: true }).click();
+      await page.getByRole("menuitem", { name, exact: true }).hover();
     };
     const efforts = () =>
       page.getByRole("menuitem").filter({ hasText: /^(关闭|低|中|高|极高|最高)( · 默认)?$/ });
     const editor = page.getByLabel("消息", { exact: true });
+    const modelButton = page.getByLabel("模型选择", { exact: true });
+    await modelButton.click();
+    await page.getByRole("menuitem", { name: "GPT-6.1 Sol", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(modelButton).toHaveText("GPT-6.1 Sol中");
     await openModel("GPT-6.1 Sol");
     await expect(efforts()).toHaveText(["低", "中 · 默认", "高", "极高", "最高"]);
-    await expect(page.getByLabel("模型选择", { exact: true })).toContainText("中");
+    await expect(modelButton).toHaveText("GPT-6.1 Sol中");
     await page.screenshot({ path: "test-results/gpt-reasoning-levels.png" });
-    await page.getByRole("menuitem", { name: "中 · 默认", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
     await editor.fill("medium");
     await editor.press("Enter");
     await expect(page.getByTestId("run")).toHaveCount(1);
@@ -55,13 +61,21 @@ test("GPT models offer five or six efforts with medium default; Chinese models s
     expect(server.requests.at(-1)?.reasoning_effort).toBe("medium");
     await openModel("GPT-6 Astra");
     await expect(efforts()).toHaveText(["低", "中 · 默认", "高", "极高", "最高"]);
+    await expect(modelButton).toHaveText("GPT-6.1 Sol中");
     await page.getByRole("menuitem", { name: "极高", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(page.getByLabel("模型选择", { exact: true })).toContainText("极高");
     await editor.fill("xhigh");
     await editor.press("Enter");
     await expect(page.getByTestId("run")).toHaveCount(2);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     expect(server.requests.at(-1)?.reasoning_effort).toBe("xhigh");
+    await modelButton.click();
+    await page.getByRole("menuitem", { name: "GPT-6 Astra", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(modelButton).toHaveText("GPT-6 Astra中");
+    await page.reload();
+    await expect(modelButton).toHaveText("GPT-6 Astra中");
     await openModel("GPT-6 Luna");
     await expect(efforts()).toHaveText(["关闭", "低", "中 · 默认", "高", "极高", "最高"]);
     await page.getByRole("menuitem", { name: "最高", exact: true }).click();

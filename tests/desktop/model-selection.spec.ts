@@ -88,7 +88,7 @@ test("running Zhipu selection switches to DeepSeek for an immediate queued messa
     await page.reload();
     const choose = async (model: string) => {
       await page.getByLabel("模型选择", { exact: true }).click();
-      await page.getByRole("menuitem", { name: model, exact: true }).click();
+      await page.getByRole("menuitem", { name: model, exact: true }).hover();
       await page.getByRole("menuitem", { name: "关闭", exact: true }).click();
       await expect(page.getByLabel("模型选择", { exact: true })).toContainText(model);
     };

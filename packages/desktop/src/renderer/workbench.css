@@ -497,6 +497,15 @@
   max-height: min(450px, calc(100dvh - 48px));
   overflow: auto;
 }
+.model-menu,
+.reasoning-menu {
+  min-width: min(180px, var(--radix-dropdown-menu-content-available-width));
+  max-width: min(320px, var(--radix-dropdown-menu-content-available-width), calc(100vw - 24px));
+}
+.model-menu {
+  /* Leave room for the reasoning submenu inside the chat boundary. */
+  max-width: min(320px, calc(var(--radix-dropdown-menu-content-available-width) - 180px));
+}
 @media (max-width: 1099px) {
   /* 窄窗侧栏沿用覆盖方式，顶栏为三个动作保留侧栏左侧的位置。 */
   .pane-open .topbar {

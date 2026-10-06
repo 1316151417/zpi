@@ -44,7 +44,7 @@ test("context indicator appears after the first response and keeps measured usag
     await page.reload();
     const choose = async (model: string) => {
       await page.getByLabel("模型选择", { exact: true }).click();
-      await page.getByRole("menuitem", { name: model, exact: true }).click();
+      await page.getByRole("menuitem", { name: model, exact: true }).hover();
       await page.getByRole("menuitem", { name: "关闭", exact: true }).click();
       await expect(page.getByLabel("模型选择", { exact: true })).toContainText(model);
     };

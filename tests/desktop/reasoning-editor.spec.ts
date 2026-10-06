@@ -96,7 +96,7 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
     ).toEqual(["disabled", "balanced"]);
     await page.getByLabel("关闭设置", { exact: true }).click();
     await page.getByLabel("模型选择", { exact: true }).click();
-    await page.getByRole("menuitem", { name: "二档模型", exact: true }).click();
+    await page.getByRole("menuitem", { name: "二档模型", exact: true }).hover();
     await page.getByRole("menuitem", { name: "balanced", exact: true }).click();
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("balanced");
@@ -106,7 +106,7 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
     await page.reload();
     await expect(page.getByLabel("模型选择", { exact: true })).toContainText("balanced");
     await page.getByLabel("模型选择", { exact: true }).click();
-    await page.getByRole("menuitem", { name: "二档模型", exact: true }).click();
+    await page.getByRole("menuitem", { name: "二档模型", exact: true }).hover();
     await page.getByRole("menuitem", { name: "关闭", exact: true }).click();
     await editor.fill("disabled");
     await editor.press("Enter");
