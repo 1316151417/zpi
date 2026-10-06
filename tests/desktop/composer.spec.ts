@@ -8,6 +8,60 @@ import { clipboardText, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
+test("Shift+Enter moves the caret to a visible empty line and preserves repeated line breaks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-newline-"));
+  const server = await fakeServer((_, res) => {
+    send(res, chunk({ content: "reply" }));
+    done(res);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    const cwd = join(dir, "workspace");
+    await mkdir(cwd);
+    const id = seedHistory(dir, cwd, 1).id;
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await select(page, id);
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("第一行\n第二行\n第三行");
+    const height = () => editor.evaluate((el) => el.getBoundingClientRect().height);
+    const initialHeight = await height();
+    await editor.press("Shift+Enter");
+    expect(await height()).toBe(initialHeight + 20);
+    await editor.press("Shift+Enter");
+    expect(await height()).toBe(initialHeight + 40);
+    await editor.press("Meta+Z");
+    expect(await height()).toBe(initialHeight + 20);
+    await editor.press("Meta+Shift+Z");
+    expect(await height()).toBe(initialHeight + 40);
+    await editor.pressSequentially("末行");
+    await editor.press("Meta+A");
+    expect(await clipboardText(page)).toBe("第一行\n第二行\n第三行\n\n末行");
+    await editor.fill("首行");
+    await editor.press("Shift+Enter");
+    await editor.press("ArrowUp");
+    await editor.pressSequentially("X");
+    await editor.press("Meta+A");
+    expect(await clipboardText(page)).toBe("X首行\n");
+    await editor.fill("");
+    await editor.press("Shift+Enter");
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Input.imeSetComposition", { text: "中文", selectionStart: 2, selectionEnd: 2 });
+    await cdp.send("Input.insertText", { text: "中文" });
+    await expect
+      .poll(async () => {
+        const draft = await page.evaluate((id) => window.zpi.getDraft(id), id);
+        return draft.ok ? draft.value.text : "";
+      })
+      .toBe("\n中文");
+    expect(server.requests).toHaveLength(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("empty prefix suggestions allow Enter to send while matching suggestions still insert references", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-prefix-input-"));
   const server = await fakeServer((_, res) => {

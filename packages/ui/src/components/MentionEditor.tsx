@@ -11,7 +11,7 @@ export interface MentionEditorHandle {
 function text(node: Node): string {
   if (node instanceof HTMLElement && node.dataset.markdown) return node.dataset.markdown;
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-  if (node instanceof HTMLBRElement) return "\n";
+  if (node instanceof HTMLBRElement) return node.dataset.editorTail ? "" : "\n";
   return Array.from(node.childNodes)
     .map((child, i) => `${i && child instanceof HTMLDivElement ? "\n" : ""}${text(child)}`)
     .join("");
@@ -186,8 +186,10 @@ export const MentionEditor = forwardRef<
       }
       const mentions = displayReferences(value);
       const rendered = Array.from(element.querySelectorAll<HTMLElement>("[data-markdown]"));
+      const tail = element.querySelector("br[data-editor-tail]");
       if (
         text(element) === value &&
+        (value.endsWith("\n") ? tail !== null && tail === element.lastChild : tail === null) &&
         mentions.length === rendered.length &&
         mentions.every((mention, i) => mention.markdown === rendered[i].dataset.markdown)
       ) {
@@ -218,6 +220,13 @@ export const MentionEditor = forwardRef<
         previous = mention.end;
       }
       fragment.append(document.createTextNode(value.slice(previous)));
+      // A final newline needs a trailing break to give Chromium a visible empty line and caret.
+      // This break is only a layout placeholder, not part of the draft.
+      if (value.endsWith("\n")) {
+        const tail = document.createElement("br");
+        tail.dataset.editorTail = "true";
+        fragment.append(tail);
+      }
       element.replaceChildren(fragment);
       if (active) {
         setSelection(element, ...caret);
