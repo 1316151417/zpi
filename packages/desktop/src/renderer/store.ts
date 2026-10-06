@@ -16,6 +16,7 @@ import type {
   Result,
   SessionRecord,
 } from "../shared/bridge.ts";
+import { logRendererError } from "./error-log.ts";
 
 declare global {
   interface Window {
@@ -147,6 +148,7 @@ function apply(events: DesktopEventEnvelope[]): void {
   useStore.setState({ views, ...(recordsChanged ? { sessions: records } : {}) });
 }
 export function report(error: unknown): void {
+  logRendererError("reported", error);
   useStore.setState({ error: error instanceof Error ? error.message : String(error) });
 }
 export function subscribeEvents(): () => void {

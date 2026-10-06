@@ -4,6 +4,7 @@ import { renderAsync } from "docx-preview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppearance } from "zpi-ui";
 import type { FilePreview } from "../shared/bridge.ts";
+import { logRendererError } from "./error-log.ts";
 import { openBrowser, paneTask } from "./pane-store.ts";
 
 setWasmSource(xlsxWasmUrl);
@@ -74,6 +75,7 @@ function DocxPreview({ buffer }: { buffer: ArrayBuffer }) {
         resize.observe(container);
       })
       .catch((error) => {
+        logRendererError("docx-preview", error);
         if (active) setError(String(error));
       });
     return () => {

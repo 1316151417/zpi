@@ -31,7 +31,7 @@ export async function launchDesktop({
   if (project) env.ZPI_TEST_PROJECT_DIR = project;
   let executablePath: string | undefined;
   if (packaged) {
-    const source = process.env.ZPI_TEST_PACKAGED_APP || resolve("release/mac-arm64/zpi.app");
+    const source = process.env.ZPI_TEST_PACKAGED_APP || resolve("release/mac-arm64/ZPI.app");
     const bundle = join(dir, basename(source));
     // Keep packaged tests outside the repository so missing dependencies cannot resolve from it.
     await cp(source, bundle, {

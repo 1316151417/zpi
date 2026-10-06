@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -17,7 +17,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "package:mac": "npm run build && electron-builder --mac dmg",
-    "package:mac:preview": "npm run build && electron-builder --mac dmg -c.productName=\"zpi Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"zpi Preview\"",
+    "package:mac:preview": "npm run build && electron-builder --mac dmg -c.productName=\"ZPI Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"ZPI Preview\"",
     "example:coding": "tsx examples/coding-session.ts",
     "install:electron": "node node_modules/electron/install.js",
     "install:terminal": "electron-rebuild -f -w node-pty"
@@ -42,7 +42,7 @@
   },
   "build": {
     "appId": "local.zpi.desktop",
-    "productName": "zpi",
+    "productName": "ZPI",
     "directories": {
       "output": "release"
     },
@@ -52,6 +52,7 @@
       "THIRD_PARTY_NOTICES.md"
     ],
     "extraMetadata": {
+      "productName": "ZPI",
       "main": "packages/desktop/dist/main/index.js"
     },
     "asar": true,

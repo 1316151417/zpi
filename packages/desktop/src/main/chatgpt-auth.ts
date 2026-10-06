@@ -2,15 +2,18 @@ import { randomUUID } from "node:crypto";
 import { fetchProviderModels, getProviderPreset } from "zpi-ai";
 import { beginChatGPTLogin, type ChatGPTLogin, revokeChatGPTCredential } from "zpi-ai/auth/openai-chatgpt";
 import { mergeDiscoveredModels } from "../shared/config.ts";
+import type { ErrorLog } from "./error-log.ts";
 import type { SettingsStore } from "./storage.ts";
 
 export class ChatGPTAuth {
   private pending = new Map<string, { login: ChatGPTLogin; providerId?: string; completing: boolean }>();
   private settings: SettingsStore;
   private fetcher: typeof fetch;
-  constructor(settings: SettingsStore, fetcher: typeof fetch = fetch) {
+  private errors?: ErrorLog;
+  constructor(settings: SettingsStore, fetcher: typeof fetch = fetch, errors?: ErrorLog) {
     this.settings = settings;
     this.fetcher = fetcher;
+    this.errors = errors;
   }
   async begin(providerId: string | null) {
     if (this.pending.size) throw new Error("busy: 已有 ChatGPT 登录正在进行");
@@ -78,7 +81,8 @@ export class ChatGPTAuth {
           ...saved,
           models: mergeDiscoveredModels(saved.models, discovered.models),
         });
-      } catch {
+      } catch (error) {
+        this.errors?.write("chatgpt.models", error, { providerId });
         warning = "ChatGPT 已登录，模型列表获取失败，请点击获取模型列表重试。";
       }
       return { settings: this.settings.get(), providerId, ...(warning ? { warning } : {}) };
@@ -103,7 +107,8 @@ export class ChatGPTAuth {
     if (credential) {
       try {
         await revokeChatGPTCredential(credential, this.fetcher);
-      } catch {
+      } catch (error) {
+        this.errors?.write("chatgpt.revoke", error, { providerId });
         warning = "已在本机退出，但无法确认远端撤销。可在 ChatGPT 设置中断开此应用。";
       }
     }

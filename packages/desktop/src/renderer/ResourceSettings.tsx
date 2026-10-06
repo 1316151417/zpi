@@ -126,7 +126,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           </p>
           <pre className="prompt-preview">{preview?.basePrompt ?? "正在生成预览…"}</pre>
           <h2 className="preview-heading">
-            系统规则 <small>zpi 补充 · 只读</small>
+            系统规则 <small>ZPI 补充 · 只读</small>
           </h2>
           <p>相比 Pi，仅补充文件和网页链接的桌面展示约定；基础提示词保持独立。</p>
           <pre className="system-rules-preview">{preview?.systemRules ?? "正在生成预览…"}</pre>

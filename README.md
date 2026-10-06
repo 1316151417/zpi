@@ -1,8 +1,8 @@
-# zpi
+# ZPI
 
 **极简的编码客户端。** 参考 ZCode 的界面，结合 Pi Coding Agent 的极简内核，并把同样的减法理念用到客户端：界面干净、清爽，只保留最核心、最常用的功能，让日常编码保持高效。
 
-## 为什么选择 zpi
+## 为什么选择 ZPI
 
 - 功能简单，操作直接，没有遥测。
 - 以节省 token 和时间为目标，具体对比证据后续补充。
@@ -46,6 +46,8 @@ npm run dev
 
 `npm run dev` 启动 Electron 客户端和 Vite 开发服务器。界面修改通过 HMR 更新，内核、主进程及 preload 修改会自动重启客户端；Ctrl+C 结束开发进程。升级 Electron 后重新运行 `npm run install:terminal`。
 
+异常日志保存在应用数据目录的 `agent/logs/error.log`，与 `agent/sessions` 同级。macOS 开发版为 `~/Library/Application Support/Electron/agent/logs/error.log`，正式版为 `~/Library/Application Support/zpi/agent/logs/error.log`，Preview 版为 `~/Library/Application Support/zpi Preview/agent/logs/error.log`。每行是一个 JSON 记录，包含时间、来源、错误消息、可用堆栈和相关会话/运行 ID；达到 5 MB 后轮换为 `error.log.1`，保留一份旧日志。日志仅存本机，不记录 IPC 参数、完整请求或聊天内容，并屏蔽常见凭据格式；日志写入失败不影响原有错误处理。
+
 调试界面可在 Electron 的 View 菜单打开 Toggle Developer Tools。调试主进程可使用 VS Code 的「zpi: Electron main」配置；也可用 `ZPI_DEV_DEBUG=1 npm run dev` 开放本机 DevTools 调试端口。
 
 常用命令：
@@ -54,7 +56,7 @@ npm run dev
 npm run check                # 类型、格式与静态检查
 npm run test:unit            # 内核及主进程测试
 npm run package:mac          # 构建正式版 macOS DMG，输出到 release/
-npm run package:mac:preview  # 构建 zpi Preview DMG，输出到 release/
+npm run package:mac:preview  # 构建 ZPI Preview DMG，输出到 release/
 npm run test:desktop         # 运行桌面主流程测试（先打包正式版）
 ```
 

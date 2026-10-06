@@ -16,6 +16,7 @@ import {
 } from "electron";
 import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
 import { imageLimits, listCommands } from "zpi-coding-agent";
+import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
   ErrorCode,
@@ -27,6 +28,7 @@ import type {
 import { methods } from "../shared/bridge.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
+import { ErrorLog } from "./error-log.ts";
 import { performFileAction } from "./file-actions.ts";
 import { readFilePreview } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
@@ -41,13 +43,47 @@ const testMode = process.env.ZPI_TEST_MODE === "1";
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });
 let ending = false;
+// Keep existing sessions and settings in their original directories after the display-name change.
+const dataName = app.isPackaged ? app.getName().replace(/^ZPI\b/, "zpi") : "Electron";
+app.setPath("userData", join(app.getPath("appData"), dataName));
+if (!app.isPackaged) app.setName("ZPI");
 if (testMode && process.env.ZPI_TEST_DATA_DIR) app.setPath("userData", process.env.ZPI_TEST_DATA_DIR);
+const errors = new ErrorLog(app.getPath("userData"), {
+  version: app.isPackaged ? app.getVersion() : version,
+  electron: process.versions.electron,
+});
+process.on("uncaughtExceptionMonitor", (error, origin) =>
+  errors.write(origin === "unhandledRejection" ? "main.unhandled-rejection" : "main.uncaught", error),
+);
+// Electron warns about unhandled rejections without routing them through the exception monitor.
+process.on("unhandledRejection", (error) => {
+  errors.write("main.unhandled-rejection", error);
+  console.error("Unhandled promise rejection:", error);
+});
+app.on("web-contents-created", (_event, contents) => {
+  contents.on("preload-error", (_event, _path, error) => errors.write("preload", error));
+  contents.on("render-process-gone", (_event, details) => {
+    if (!ending && details.reason !== "clean-exit")
+      errors.write("renderer.process-gone", details.reason, {
+        webContentsId: contents.id,
+        exitCode: details.exitCode,
+      });
+  });
+});
+app.on("child-process-gone", (_event, details) => {
+  if (!ending && details.reason !== "clean-exit")
+    errors.write("main.child-process-gone", details.reason, {
+      type: details.type,
+      exitCode: details.exitCode,
+    });
+});
 if (!app.requestSingleInstanceLock()) app.quit();
 else
   void launch().catch((error) => {
+    errors.write("main.startup", error);
     if (!ending) {
-      if (testMode) console.error("zpi 启动失败", error);
-      else dialog.showErrorBox("zpi 启动失败", error instanceof Error ? error.message : String(error));
+      if (testMode) console.error("ZPI 启动失败", error);
+      else dialog.showErrorBox("ZPI 启动失败", error instanceof Error ? error.message : String(error));
     }
     app.quit();
   });
@@ -66,7 +102,7 @@ async function launch(): Promise<void> {
   const settings = new SettingsStore(app.getPath("userData"), encryption);
   nativeTheme.themeSource = settings.get().interface.theme;
   const discovered = testMode ? [] : settings.discoverEnvironment(process.env);
-  const chatgptAuth = new ChatGPTAuth(settings, requestFetch);
+  const chatgptAuth = new ChatGPTAuth(settings, requestFetch, errors);
   app.on("before-quit", () => chatgptAuth.close());
   if (testMode && process.env.ZPI_TEST_BASE_URL && settings.get().providers.length === 0)
     settings.save({
@@ -91,6 +127,7 @@ async function launch(): Promise<void> {
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
     requestFetch,
     testMode ? [join(app.getPath("userData"), ".agents", "skills")] : undefined,
+    errors,
   );
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
@@ -99,7 +136,7 @@ async function launch(): Promise<void> {
     height: Math.min(800, display.height),
     minWidth: 740,
     minHeight: 560,
-    title: "zpi",
+    title: "ZPI",
     backgroundColor: "#f8f8f8",
     icon,
     // 与 ZCode 的 macOS 顶栏一致，让原生红绿灯和侧栏开关位于同一排。
@@ -120,6 +157,24 @@ async function launch(): Promise<void> {
       webSecurity: true,
     },
   });
+  window.webContents.on("console-message", (details) => {
+    if (details.level === "error")
+      errors.write("renderer.console", details.message, { file: details.sourceId, line: details.lineNumber });
+  });
+  ipcMain.on("zpi:error", (event, error: unknown) => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return;
+    if (!error || typeof error !== "object") return;
+    const details = error as { source?: unknown; message?: unknown; stack?: unknown };
+    if (
+      typeof details.source !== "string" ||
+      details.source.length > 120 ||
+      typeof details.message !== "string" ||
+      details.message.length > 32_000 ||
+      (details.stack !== undefined && (typeof details.stack !== "string" || details.stack.length > 32_000))
+    )
+      return;
+    errors.write(`renderer.${details.source}`, { message: details.message, stack: details.stack });
+  });
   const settingsReady = new Promise<void>((resolveReady) =>
     window.webContents.once("did-finish-load", () => resolveReady()),
   );
@@ -138,7 +193,8 @@ async function launch(): Promise<void> {
         await settingsReady;
         if (!window.isDestroyed()) window.webContents.send("zpi:settings", settings.get());
       })
-      .catch(() => {
+      .catch((error) => {
+        errors.write("models.discovery", error, { providerId: id });
         /* Keep the usable catalog; settings offers explicit retry. */
       });
   }
@@ -642,6 +698,7 @@ async function launch(): Promise<void> {
       }
       return { ok: true, value };
     } catch (error) {
+      errors.write("ipc", error, { method: typeof method === "string" ? method : "unknown" });
       const message = error instanceof Error ? error.message : String(error);
       const codes: ErrorCode[] = [
         "configuration",

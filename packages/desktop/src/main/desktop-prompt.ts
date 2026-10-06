@@ -2,7 +2,7 @@ import type { FileResourceLoader, ResourceLoader } from "zpi-coding-agent";
 
 export const desktopSystemRules = [
   "<system_rules>",
-  "Your responses are displayed as GitHub-flavored Markdown in the zpi desktop app.",
+  "Your responses are displayed as GitHub-flavored Markdown in the ZPI desktop app.",
   "Return web URLs as Markdown links (e.g., [preview](http://127.0.0.1:8080)).",
   "Unless otherwise specified, return local file references as Markdown links (e.g., [name.md](/absolute/path/to/name.md)). Use only existing files or files you created, and use absolute paths for link destinations.",
   "For file locations, append :line:column or #Lstart-Lend to the path (e.g., [app.ts:42](/absolute/path/to/app.ts:42)). For paths containing spaces, wrap the destination in angle brackets (e.g., [My Report.md](</absolute/path/My Report.md>)).",

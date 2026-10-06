@@ -251,11 +251,11 @@ export async function beginChatGPTLogin(options: {
       accept(new URL(request.url ?? "/", redirectUri));
       response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       response.end(
-        "<!doctype html><title>zpi · ChatGPT</title><p>已收到授权回调，请返回 zpi 查看登录结果。</p>",
+        "<!doctype html><title>ZPI · ChatGPT</title><p>已收到授权回调，请返回 ZPI 查看登录结果。</p>",
       );
     } catch {
       response.writeHead(400, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
-      response.end("无效或过期的登录回调，请返回 zpi 重试。");
+      response.end("无效或过期的登录回调，请返回 ZPI 重试。");
     }
   });
   await new Promise<void>((yes, no) => {

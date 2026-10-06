@@ -1,4 +1,7 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { constants } from "node:fs";
+import { cp } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import electron from "electron";
 import { build } from "tsup";
 import { createServer } from "vite";
@@ -6,6 +9,21 @@ import { buildAppIcon } from "./app-icon.mjs";
 import { mainBuild, preloadBuild } from "./desktop-build.mjs";
 
 await buildAppIcon();
+let executable = electron;
+if (process.platform === "darwin") {
+  // Give the development app its own Dock name without modifying the installed Electron bundle.
+  const bundle = resolve("node_modules/.cache/zpi-dev/ZPI.app");
+  await cp(resolve(dirname(electron), "../.."), bundle, {
+    recursive: true,
+    verbatimSymlinks: true,
+    mode: constants.COPYFILE_FICLONE,
+  });
+  const plist = join(bundle, "Contents/Info.plist");
+  for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
+    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ZPI`, plist]);
+  }
+  executable = join(bundle, "Contents/MacOS/Electron");
+}
 let child;
 let shuttingDown = false;
 const server = await createServer({
@@ -41,7 +59,7 @@ await build({
     const env = { ...process.env, ZPI_DEV_URL: devUrl };
     delete env.ELECTRON_RUN_AS_NODE;
     child = spawn(
-      electron,
+      executable,
       [
         "--enable-source-maps",
         ...(process.env.ZPI_DEV_DEBUG === "1" ? ["--remote-debugging-port=0"] : []),
@@ -49,7 +67,7 @@ await build({
       ],
       { stdio: "inherit", env },
     );
-    console.log("zpi Desktop started. Ctrl+C stops the app and development server.");
+    console.log("ZPI Desktop started. Ctrl+C stops the app and development server.");
   },
 });
 async function close() {

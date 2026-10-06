@@ -41,6 +41,7 @@ import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/
 import { AttachmentStore } from "./attachments.ts";
 import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
+import { ErrorLog } from "./error-log.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "./file-changes.ts";
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
@@ -101,6 +102,7 @@ export class SessionHost {
   private userSkillPaths?: string[];
   private configurations = new Map<string, SessionConfiguration>();
   private searches = new Map<string, AbortController>();
+  private errors: ErrorLog;
   constructor(
     dir: string,
     settings: SettingsStore,
@@ -108,8 +110,10 @@ export class SessionHost {
     defaultWorkspace = join(homedir(), "Documents", "ZPI"),
     requestFetch?: typeof fetch,
     userSkillPaths?: string[],
+    errors = new ErrorLog(dir),
   ) {
     this.dir = dir;
+    this.errors = errors;
     this.drafts = new DraftStore(join(dir, "drafts"));
     this.userSkillPaths = userSkillPaths;
     this.requestFetch = requestFetch;
@@ -229,6 +233,7 @@ export class SessionHost {
         try {
           await index.load();
         } catch (error) {
+          this.errors.write("session.history", error, { sessionId: id });
           const diagnostic = `storage: ${String(error)}`;
           this.records.set(id, { id, projectId, title: "无法读取的会话", updatedAt: 0, diagnostic });
           this.blocked.set(id, diagnostic);
@@ -271,6 +276,7 @@ export class SessionHost {
             ? attention.data.unreadAt
             : undefined;
         if (this.records.has(id)) throw new Error("storage: Duplicate session IDs");
+        if (diagnostic) this.errors.write("session.history", diagnostic, { sessionId: id });
         this.records.set(id, {
           id,
           projectId,
@@ -313,6 +319,7 @@ export class SessionHost {
         if (!this.indexes.get(id)?.data.state["zpi.title"])
           this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "legacy" } });
       } catch (error) {
+        if (!this.blocked.has(id)) this.errors.write("session.restore", error, { sessionId: id });
         this.blocked.set(id, `storage: ${String(error)}`);
       }
     }
@@ -1415,7 +1422,8 @@ export class SessionHost {
         this.record(id).title = title;
         this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "generated" } });
         this.emit(id, "title", { type: "session_changed", title });
-      } catch {
+      } catch (error) {
+        if (!controller.signal.aborted) this.errors.write("session.title", error, { sessionId: id });
         const latest = this.indexes.get(id)?.data.state["zpi.title"];
         if (
           this.records.has(id) &&
@@ -1463,6 +1471,8 @@ export class SessionHost {
       status = "error";
       message = last.errorMessage;
     } else if (last?.stopReason === "aborted" || run.aborted) status = "aborted";
+    if (status === "error")
+      this.errors.write("agent.run", error ?? message ?? "Task failed", { sessionId: id, runId: run.runId });
     const endedAt = Date.now();
     try {
       this.manager(id).appendCustomEntry("zpi.run", {
@@ -1476,6 +1486,7 @@ export class SessionHost {
       if ((status === "completed" || status === "error") && this.visibleSessionId !== id)
         this.saveUnread(id, endedAt);
     } catch (e) {
+      this.errors.write("agent.persist", e, { sessionId: id, runId: run.runId });
       status = "error";
       message = `storage: ${e instanceof Error ? e.message : String(e)}`;
       this.blocked.set(id, message);

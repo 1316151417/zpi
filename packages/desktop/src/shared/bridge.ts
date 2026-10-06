@@ -187,6 +187,7 @@ export interface PaneBounds {
   height: number;
 }
 export interface DesktopBridge {
+  logError(error: { source: string; message: string; stack?: string }): void;
   readonly platform: string;
   onTaskNotificationClick(listener: (sessionId: string) => void): () => void;
   onTaskNotificationSound(listener: () => void): () => void;

@@ -4,6 +4,7 @@ import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
 const bridge: DesktopBridge = {
+  logError: (error) => ipcRenderer.send("zpi:error", error),
   platform: process.platform,
   onTaskNotificationClick(listener) {
     const handler = (_: Electron.IpcRendererEvent, sessionId: string) => listener(sessionId);
