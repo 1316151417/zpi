@@ -39,6 +39,8 @@
   --color-diff-added: #34754b;
   --color-diff-removed: #a14e44;
   --color-focus: rgba(13, 13, 13, 0.15);
+  --color-find-highlight: #fff4eb;
+  --color-find-highlight-active: #ffb26b;
   --color-border-strong: rgba(13, 13, 13, 0.13);
   --color-usage-bar: #28627e;
   --color-terminal-selection: #28627e38;
@@ -102,6 +104,8 @@
   --color-skill-reference: #bda5e6;
   --color-command-reference: #b5c0cc;
   --color-focus: rgba(255, 255, 255, 0.15);
+  --color-find-highlight: #542500;
+  --color-find-highlight-active: #ff8a30;
   --color-danger-surface: #46302c;
   --color-error: #f0a299;
   --color-diff-added: #8ac49b;

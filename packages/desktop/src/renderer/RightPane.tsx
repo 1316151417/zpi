@@ -1,4 +1,4 @@
-import { FileIcon } from "ZPI-ui";
+import { FileIcon, type FindRequest, type FindState } from "ZPI-ui";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { FileDiff as Files, Globe, Plus, SquareTerminal as TerminalSquare, X } from "lucide-react";
 import { useEffect, useRef } from "react";
@@ -21,7 +21,11 @@ export function RightPane({
   width,
   available,
   sessionId,
+  findRequest,
+  onFindStateChange,
 }: {
+  findRequest?: FindRequest;
+  onFindStateChange?: (state: FindState) => void;
   width: number;
   available: number;
   sessionId?: string;
@@ -215,6 +219,8 @@ export function RightPane({
           >
             {tab.type === "changes" ? (
               <ChangesPane
+                findRequest={tab.id === active ? findRequest : undefined}
+                onFindStateChange={onFindStateChange}
                 sessionId={tab.sessionId}
                 runId={tab.runId}
                 path={tab.path}

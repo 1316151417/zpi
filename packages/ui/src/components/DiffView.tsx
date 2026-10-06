@@ -1,7 +1,10 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { FileCode2 } from "lucide-react";
-import { Component, type ReactNode, useEffect, useState } from "react";
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppearance } from "../appearance.ts";
+import type { FindMatch, FindRequest, FindState } from "../find.ts";
+import { patchFindTargets } from "../patch-find.ts";
+import { findHighlightCSS, useTextFind } from "./use-text-find.ts";
 export interface DiffEntry {
   id: string;
   path: string;
@@ -13,54 +16,73 @@ export interface DiffEntry {
   reason?: string;
   failed?: boolean;
 }
-function PlainPatch({ patch }: { patch: string }) {
+function PlainPatch({ patch, id, focusKey }: { patch: string; id: string; focusKey?: string }) {
   let old = 0,
     current = 0;
+  const targets = patchFindTargets(id, "", patch);
+  const lines = patch.split("\n");
+  let targetIndex = 0;
+  const keys = lines.map((line) =>
+    /^[ +-]/.test(line) && !/^(---|\+\+\+) /.test(line) ? targets[targetIndex++]?.key : undefined,
+  );
+  const focusedLine = focusKey ? keys.indexOf(focusKey) : -1;
+  const start = focusedLine >= 2000 ? Math.max(0, focusedLine - 1000) : 0;
+  const end = Math.min(lines.length, start + 2000);
   return (
     <section className="diff-plain" aria-label="文本变更">
-      {patch
-        .split("\n")
-        .slice(0, 2000)
-        .map((line, i) => {
-          const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-          if (header) {
-            old = Number(header[1]);
-            current = Number(header[2]);
-            return (
-              <div className="diff-hunk" key={i}>
-                {line}
-              </div>
-            );
-          }
-          if (
-            line.startsWith("--- ") ||
-            line.startsWith("+++ ") ||
-            line.startsWith("Index:") ||
-            /^=+$/.test(line)
-          )
-            return null;
-          const kind = line[0],
-            left = [" ", "-"].includes(kind) ? old++ : "",
-            right = [" ", "+"].includes(kind) ? current++ : "";
+      {lines.map((line, i) => {
+        const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+        if (header) {
+          old = Number(header[1]);
+          current = Number(header[2]);
+          if (i < start || i >= end) return null;
           return (
-            <div className={`diff-row ${kind === "+" ? "added" : kind === "-" ? "removed" : ""}`} key={i}>
-              <span>{left}</span>
-              <span>{right}</span>
-              <code>{[" ", "-", "+"].includes(kind) ? line.slice(1) : line}</code>
+            <div className="diff-hunk" key={i}>
+              {line}
             </div>
           );
-        })}
-      {patch.split("\n").length > 2000 && <p>大文件预览前 2000 行；可打开文件查看完整内容。</p>}
+        }
+        if (
+          line.startsWith("--- ") ||
+          line.startsWith("+++ ") ||
+          line.startsWith("Index:") ||
+          /^=+$/.test(line)
+        )
+          return null;
+        const kind = line[0],
+          left = [" ", "-"].includes(kind) ? old++ : "",
+          right = [" ", "+"].includes(kind) ? current++ : "";
+        if (i < start || i >= end) return null;
+        return (
+          <div className={`diff-row ${kind === "+" ? "added" : kind === "-" ? "removed" : ""}`} key={i}>
+            <span>{left}</span>
+            <span>{right}</span>
+            <code data-find-key={keys[i]}>{[" ", "-", "+"].includes(kind) ? line.slice(1) : line}</code>
+          </div>
+        );
+      })}
+      {lines.length > 2000 && (
+        <p>
+          {start ? `大文件预览第 ${start + 1}–${end} 行` : "大文件预览前 2000 行"}；可打开文件查看完整内容。
+        </p>
+      )}
     </section>
   );
 }
-class PatchBoundary extends Component<{ patch: string; children: ReactNode }, { failed: boolean }> {
+class PatchBoundary extends Component<
+  { patch: string; id: string; focusKey?: string; children: ReactNode },
+  { failed: boolean }
+> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
   render() {
-    return this.state.failed ? <PlainPatch patch={this.props.patch} /> : this.props.children;
+    return this.state.failed ? (
+      <PlainPatch patch={this.props.patch} id={this.props.id} focusKey={this.props.focusKey} />
+    ) : (
+      this.props.children
+    );
   }
 }
 export function DiffView({
@@ -68,7 +90,11 @@ export function DiffView({
   initialPath,
   loadPatch,
   openFile,
+  findRequest,
+  onFindStateChange,
 }: {
+  findRequest?: FindRequest;
+  onFindStateChange?: (state: FindState) => void;
   entries: DiffEntry[];
   initialPath?: string;
   loadPatch: (id: string) => Promise<string>;
@@ -80,6 +106,39 @@ export function DiffView({
     [error, setError] = useState(""),
     [split, setSplit] = useState(false);
   const { theme } = useAppearance();
+  const root = useRef<HTMLDivElement>(null);
+  const [focusKey, setFocusKey] = useState<string>();
+  const searching = Boolean(findRequest?.query.trim());
+  const patchScope = searching ? undefined : selected;
+  const findTargets = useMemo(
+    () =>
+      searching
+        ? entries.flatMap((entry) =>
+            patchFindTargets(entry.id, entry.path, entry.patch ?? patches[entry.id] ?? ""),
+          )
+        : [],
+    [entries, patches, searching],
+  );
+  const navigateFind = useCallback((match: FindMatch, range?: Range) => {
+    if (match.path) setSelected(match.path);
+    setFocusKey(match.key);
+    const element = range?.startContainer.parentElement;
+    element?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  }, []);
+  useTextFind({
+    rootRef: root,
+    request: findRequest,
+    content: selected,
+    scopeKey: "diff",
+    targets: findTargets,
+    highlightScope: "changes",
+    onStateChange: onFindStateChange,
+    onNavigate: navigateFind,
+  });
+  const rendered = useCallback(
+    (node: HTMLElement) => node.dispatchEvent(new Event("zpi-diff-render", { bubbles: true })),
+    [],
+  );
   useEffect(() => {
     if (initialPath) setSelected(initialPath);
   }, [initialPath]);
@@ -90,23 +149,29 @@ export function DiffView({
   useEffect(() => {
     let active = true;
     setError("");
-    void Promise.all(
+    void Promise.allSettled(
       entries
-        .filter((entry) => entry.path === selected && entry.patchAvailable)
+        .filter(
+          (entry) =>
+            (patchScope === undefined || entry.path === patchScope) &&
+            entry.patchAvailable &&
+            entry.patch === undefined,
+        )
         .map(async (entry) => [entry.id, await loadPatch(entry.id)] as const),
-    )
-      .then((values) => {
-        if (active) setPatches(Object.fromEntries(values));
-      })
-      .catch((error) => {
-        if (active) setError(String(error));
-      });
+    ).then((values) => {
+      if (!active) return;
+      setPatches(
+        Object.fromEntries(values.flatMap((value) => (value.status === "fulfilled" ? [value.value] : []))),
+      );
+      const failure = values.find((value) => value.status === "rejected");
+      if (failure?.status === "rejected") setError(String(failure.reason));
+    });
     return () => {
       active = false;
     };
-  }, [entries, selected, loadPatch]);
+  }, [entries, patchScope, loadPatch]);
   return (
-    <div className="diff-layout">
+    <div ref={root} className="diff-layout">
       <nav aria-label="改动文件">
         {paths.map((path) => (
           <button
@@ -147,7 +212,7 @@ export function DiffView({
             const patch = entry.patch ?? patches[entry.id] ?? "",
               large = patch.length > 180000 || patch.split("\n").length > 1200;
             return (
-              <section key={entry.id}>
+              <section key={entry.id} data-diff-id={entry.id}>
                 <div className="diff-heading">
                   <small>
                     {entry.area}
@@ -164,9 +229,14 @@ export function DiffView({
                 )}
                 {entry.reason && <p className="run-notice">{entry.reason}</p>}
                 {patch ? (
-                  <PatchBoundary key={patch} patch={patch}>
+                  <PatchBoundary
+                    key={patch}
+                    patch={patch}
+                    id={entry.id}
+                    focusKey={searching ? focusKey : undefined}
+                  >
                     {large ? (
-                      <PlainPatch patch={patch} />
+                      <PlainPatch patch={patch} id={entry.id} focusKey={searching ? focusKey : undefined} />
                     ) : (
                       <PatchDiff
                         patch={patch}
@@ -178,6 +248,9 @@ export function DiffView({
                           diffIndicators: "bars",
                           lineDiffType: "word",
                           hunkSeparators: "line-info",
+                          expandUnchanged: searching,
+                          unsafeCSS: findHighlightCSS,
+                          onPostRender: rendered,
                         }}
                       />
                     )}

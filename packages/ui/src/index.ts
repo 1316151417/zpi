@@ -8,6 +8,7 @@ export { ComposerDraftStore } from "./components/InputContext.tsx";
 export { Markdown } from "./components/Markdown.tsx";
 export { FileIcon } from "./components/Reference.tsx";
 export { SortableList } from "./components/SortableList.tsx";
+export { TaskFindBar } from "./components/TaskFindBar.tsx";
 export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,
@@ -15,6 +16,7 @@ export {
   parseSelectionPrompt,
   validSelections,
 } from "./conversation-selections.ts";
+export type { FindRequest, FindState } from "./find.ts";
 export type { FileLocation, LinkContext, WebOpenOptions } from "./link-target.ts";
 export { resolveLinkTarget, webOpenTarget } from "./link-target.ts";
 export { emptySession, mergeHistory, progressSummary, reduceSession, sessionViewBytes } from "./reducer.ts";

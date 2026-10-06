@@ -27,6 +27,7 @@ import {
   type ConversationSelection,
   parseSelectionPrompt,
 } from "../conversation-selections.ts";
+import { type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
 import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { progressSummary } from "../reducer.ts";
 import type {
@@ -56,6 +57,7 @@ import { reasoningSummary, workDuration } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
+import { useTextFind } from "./use-text-find.ts";
 
 export interface MessageEditInput {
   workspaceMode?: "preserve" | "rewind";
@@ -315,6 +317,7 @@ function ProcessBlock({
   return (
     <div
       className="process-text answer"
+      data-find-key={block.id}
       data-conversation-selectable="assistant"
       data-selection-key={block.id}
     >
@@ -434,6 +437,7 @@ export const RunGroup = memo(function RunGroup({
             <div className="user-message">
               <div
                 className="user-message-text"
+                data-find-key={`${run.runId}:user`}
                 data-conversation-selectable="user"
                 data-selection-key={`${sessionId}:${run.runId}:user`}
               >
@@ -520,6 +524,7 @@ export const RunGroup = memo(function RunGroup({
       <div className="assistant-message-row">
         <div
           className="answer"
+          data-find-key={`${run.runId}:answer`}
           data-conversation-selectable="assistant"
           data-selection-key={`${sessionId}:${run.runId}:answer`}
         >
@@ -608,7 +613,13 @@ export function Conversation({
   onFork,
   onAddSelection,
   onNavigateOrigin,
+  findRequest,
+  onFindStateChange,
+  findBar,
 }: {
+  findRequest?: FindRequest;
+  onFindStateChange?: (state: FindState) => void;
+  findBar?: ReactNode;
   onNavigateOrigin?: (origin: NonNullable<SessionView["forkOrigin"]>) => void;
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
@@ -683,6 +694,42 @@ export function Conversation({
   const following = useRef(true);
   const lastScrollTop = useRef(0);
   const latestRun = useRef<string | undefined>(undefined);
+  const navigateFind = useCallback((_match: unknown, range?: Range) => {
+    const root = ref.current;
+    if (!root || !range) return;
+    following.current = false;
+    const bounds = range.getBoundingClientRect();
+    const viewport = root.getBoundingClientRect();
+    root.scrollTo({
+      top: root.scrollTop + bounds.top - viewport.top - root.clientHeight / 2 + bounds.height / 2,
+      // ZCode first brings the target turn into view, then refines the visible hit smoothly.
+      behavior: bounds.bottom < viewport.top || bounds.top > viewport.bottom ? "instant" : "smooth",
+    });
+  }, []);
+  useTextFind({
+    rootRef: ref,
+    request: findRequest,
+    content: view,
+    scopeKey: view.sessionId,
+    onStateChange: onFindStateChange,
+    onNavigate: navigateFind,
+  });
+  const findQuery = normalizeFindQuery(findRequest?.query ?? "");
+  const findLoadAttempt = useRef("");
+  useEffect(() => {
+    if (
+      !findQuery ||
+      !hasEarlier ||
+      loadingEarlier ||
+      !onLoadEarlier ||
+      view.runs.reduce((count, run) => count + 1 + run.orderedBlocks.length, 0) >= 1200
+    )
+      return;
+    const attempt = `${view.sessionId}:${findQuery}:${historyCursor}`;
+    if (attempt === findLoadAttempt.current) return;
+    findLoadAttempt.current = attempt;
+    void onLoadEarlier();
+  }, [findQuery, hasEarlier, loadingEarlier, onLoadEarlier, historyCursor, view]);
   const scrollToBottom = () => {
     const el = ref.current;
     if (!el) return;
@@ -755,7 +802,7 @@ export function Conversation({
     const tail = view.runs.at(-1)?.runId;
     if (tail !== latestRun.current) {
       latestRun.current = tail;
-      following.current = true;
+      if (!findQuery) following.current = true;
     }
     if (prepend.current) {
       el.scrollTop = prepend.current.top + el.scrollHeight - prepend.current.height;
@@ -779,6 +826,7 @@ export function Conversation({
   }, [view.sessionId]);
   return (
     <div className="conversation-wrap">
+      {findBar}
       <div
         ref={ref}
         className="conversation"
@@ -832,7 +880,16 @@ export function Conversation({
                   onCopy={onCopy}
                   onFile={onFile}
                   onLink={onLink}
-                  expanded={expanded[run.runId] ?? false}
+                  expanded={Boolean(
+                    expanded[run.runId] ||
+                      (findQuery &&
+                        run.orderedBlocks.some(
+                          (block) =>
+                            block.type === "text" &&
+                            !run.finalAnswerBlockIds.includes(block.id) &&
+                            normalizeFindQuery(block.text).includes(findQuery),
+                        )),
+                  )}
                   onToggle={toggle}
                   blocks={blocks}
                   onBlockToggle={toggleBlock}

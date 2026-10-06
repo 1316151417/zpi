@@ -1,4 +1,4 @@
-import { DiffView } from "ZPI-ui";
+import { DiffView, type FindRequest, type FindState } from "ZPI-ui";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { DiffItem } from "../shared/bridge.ts";
@@ -9,7 +9,11 @@ export function ChangesPane({
   runId,
   path,
   visible,
+  findRequest,
+  onFindStateChange,
 }: {
+  findRequest?: FindRequest;
+  onFindStateChange?: (state: FindState) => void;
   sessionId: string;
   runId: string | null;
   path?: string;
@@ -85,7 +89,14 @@ export function ChangesPane({
       {loading && !entries.length ? (
         <p className="pane-empty">加载变更…</p>
       ) : (
-        <DiffView entries={entries} initialPath={path} loadPatch={load} openFile={open} />
+        <DiffView
+          entries={entries}
+          initialPath={path}
+          loadPatch={load}
+          openFile={open}
+          findRequest={visible ? findRequest : undefined}
+          onFindStateChange={onFindStateChange}
+        />
       )}
     </div>
   );

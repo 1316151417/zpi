@@ -4,6 +4,7 @@ import {
   Conversation,
   type FileAction,
   type FileLocation,
+  TaskFindBar,
   type WebOpenOptions,
 } from "ZPI-ui";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -59,6 +60,7 @@ import {
 import { TaskMenu } from "./TaskMenu.tsx";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
+import { useTaskFind } from "./use-task-find.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { WindowChrome } from "./WindowChrome.tsx";
 
@@ -234,6 +236,7 @@ export function App() {
   const workspace = useWorkspace(selected);
   const views = useStore.getState().views;
   const view = selected ? views.get(selected) : undefined;
+  const find = useTaskFind(selected, Boolean(view) && !settingsOpen && !action);
   const records = useMemo(
     () => [...state.sessions.values()].filter((record) => !record.draft),
     [state.sessions],
@@ -621,6 +624,22 @@ export function App() {
         {view ? (
           <div className="task-body">
             <Conversation
+              findRequest={find.open && find.scope === "conversation" ? find.request : undefined}
+              onFindStateChange={find.update}
+              findBar={
+                find.open ? (
+                  <TaskFindBar
+                    request={find.request}
+                    state={find.state}
+                    scope={find.scope}
+                    focusRequestId={find.focusRequestId}
+                    onChange={find.change}
+                    onNavigate={find.navigate}
+                    onToggleScope={find.toggleScope}
+                    onClose={find.close}
+                  />
+                ) : undefined
+              }
               workspace={workspace}
               view={view}
               onNavigateOrigin={(origin) => {
@@ -739,7 +758,13 @@ export function App() {
         )}
       </main>
       {action && <ActionModal action={action} onClose={() => setAction(undefined)} />}
-      <RightPane width={paneWidth} available={viewport - width} sessionId={selected} />
+      <RightPane
+        width={paneWidth}
+        available={viewport - width}
+        sessionId={selected}
+        findRequest={find.open && find.scope === "changes" ? find.request : undefined}
+        onFindStateChange={find.update}
+      />
       {useMemo(
         () => (settingsOpen ? <SettingsPage onClose={() => setSettingsOpen(false)} /> : null),
         [settingsOpen],
