@@ -24,6 +24,11 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     const projectHeader = page.locator(".sidebar-heading").filter({ hasText: /^项目$/ });
     const taskHeader = page.locator(".sidebar-heading").filter({ hasText: /^任务$/ });
     await expect(page.locator(".topbar-title")).toHaveText("新任务");
+    // ZCode Root uses 1.5 for all icons; navigation stays 16px.
+    for (const selector of [".sidebar-global svg", ".sidebar-footer svg"]) {
+      await expect(page.locator(selector)).toHaveCSS("width", "16px");
+      await expect(page.locator(selector)).toHaveCSS("stroke-width", "1.5px");
+    }
     await expectZCodeSystemFont(page, [
       ".sidebar-global button",
       ".sidebar-footer button",
@@ -70,6 +75,9 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       await expect(toggle).toHaveCSS("column-gap", "4px");
       await expect(handle).toHaveCSS("width", "24px");
       await expect(handle.locator("svg")).toHaveCSS("width", "14px");
+      for (const icon of await header.locator("svg").all()) {
+        await expect(icon).toHaveCSS("stroke-width", "1.5px");
+      }
       await header.hover();
       await expect(chevron).toHaveCSS("opacity", "1");
       await expect(actions).toHaveCSS("opacity", "1");
@@ -110,6 +118,20 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     await projectHeader.hover();
     await projectHeader.getByLabel("添加项目", { exact: true }).click();
     const projectRow = page.locator(".project-title");
+    const folderToggle = projectRow.locator(".project-toggle");
+    const folderIcon = folderToggle.locator("svg");
+    await expect(folderIcon).toHaveClass(/lucide-folder-open/);
+    await expect(folderIcon).toHaveCSS("width", "14px");
+    await expect(folderIcon).toHaveCSS("height", "14px");
+    await expect(folderIcon).toHaveCSS("stroke-width", "1.5px");
+    const slot = await folderToggle.boundingBox();
+    const icon = await folderIcon.boundingBox();
+    expect(icon?.x).toBe((slot?.x ?? 0) + 1);
+    await folderToggle.click();
+    await expect(folderIcon).toHaveClass(/lucide-folder(?!-open)/);
+    await expect(folderIcon).toHaveCSS("width", "14px");
+    await expect(folderIcon).toHaveCSS("stroke-width", "1.5px");
+    await folderToggle.click();
     const more = projectRow.getByLabel("项目操作 project", { exact: true });
     const create = projectRow.getByLabel("新建任务 project", { exact: true });
     await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("project");

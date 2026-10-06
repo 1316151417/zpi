@@ -30,6 +30,9 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
     ]);
     await expect(tab.locator("svg")).toHaveCSS("width", "16px");
     await expect(settings.locator(".settings-back svg")).toHaveCSS("width", "16px");
+    for (const icon of await settings.locator("svg.lucide").all()) {
+      await expect(icon).toHaveCSS("stroke-width", "1.5px");
+    }
     for (const name of ["常规", "系统提示词", "工具", "技能", "模型", "已归档任务"]) {
       await settings.getByRole("button", { name, exact: true }).click();
       await expectZCodeSystemFont(page, [".settings-content h1"]);
@@ -42,6 +45,9 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
       ["深色", /oklch\(0\.87 0 (?:0|none)\)/],
     ] as const) {
       await settings.getByRole("combobox", { name: "界面主题", exact: true }).click();
+      for (const icon of await page.locator(".settings-select-menu svg.lucide").all()) {
+        await expect(icon).toHaveCSS("stroke-width", "1.5px");
+      }
       await page.getByRole("option", { name: theme, exact: true }).click();
       await expect(tab).toHaveCSS("color", color);
       await expect(label).toHaveCSS("color", color);

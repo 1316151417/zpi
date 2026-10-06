@@ -671,6 +671,8 @@
   background: color-mix(in oklab, var(--color-foreground) 6%, transparent);
 }
 .sidebar .project-toggle {
+  align-items: center;
+  justify-content: center;
   color: inherit;
   padding: 0;
   width: 16px;

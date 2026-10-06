@@ -1,3 +1,4 @@
+import { LucideProvider } from "lucide-react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { startAppearance } from "./appearance.ts";
@@ -30,4 +31,9 @@ window.addEventListener("beforeunload", stopAppearance, { once: true });
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing root");
-createRoot(root).render(<App />);
+// ZCode Root supplies this default to navigation, settings and portal menus.
+createRoot(root).render(
+  <LucideProvider strokeWidth={1.5}>
+    <App />
+  </LucideProvider>,
+);

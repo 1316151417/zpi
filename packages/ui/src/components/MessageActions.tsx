@@ -1,6 +1,6 @@
 // Layout, Lucide assets and copy feedback follow ZCode ConversationRowView (Apache-2.0).
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { Check, Copy, LucideProvider } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useEffect, useState } from "react";
 export function MessageAction({
@@ -10,14 +10,11 @@ export function MessageAction({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: ReactNode; shortcut?: string }) {
   return (
-    // ZCode Root injects 1.5; Lucide's default 2 makes these same-sized icons appear darker.
-    <LucideProvider strokeWidth={1.5}>
-      <ActionHint label={label} shortcut={shortcut}>
-        <button type="button" className="message-action" aria-label={label} {...props}>
-          {children}
-        </button>
-      </ActionHint>
-    </LucideProvider>
+    <ActionHint label={label} shortcut={shortcut}>
+      <button type="button" className="message-action" aria-label={label} {...props}>
+        {children}
+      </button>
+    </ActionHint>
   );
 }
 export function ActionHint({

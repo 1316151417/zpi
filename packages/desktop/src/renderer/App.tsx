@@ -431,9 +431,9 @@ export function App() {
                                 }
                               >
                                 {prefs?.collapsedProjectIds.includes(p.id) ? (
-                                  <Folder size={16} />
+                                  <Folder size={14} />
                                 ) : (
-                                  <FolderOpen size={16} />
+                                  <FolderOpen size={14} />
                                 )}
                               </button>
                               <button
