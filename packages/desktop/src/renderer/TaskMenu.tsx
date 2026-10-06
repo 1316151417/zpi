@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Archive, Copy, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff } from "lucide-react";
+import { Archive, Copy, MoreHorizontal, Pencil, Pin, PinOff } from "lucide-react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { taskPinLimit } from "../shared/config.ts";
 import { archiveSession, refresh, report, unwrap, useStore } from "./store.ts";
@@ -48,7 +48,13 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             className="menu-item"
             onSelect={() => task(() => window.ZPI.openSessionDirectory(record.id).then(unwrap))}
           >
-            <FolderOpen size={14} />在 Finder 中打开
+            <img
+              src={new URL("./file-actions/finder.png", document.baseURI).href}
+              width={16}
+              height={16}
+              alt=""
+            />
+            Finder
           </Menu.Item>
           <Menu.Item
             className="menu-item"

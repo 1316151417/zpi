@@ -119,7 +119,7 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
       };
     });
     await openMenu(page);
-    await page.getByRole("menuitem", { name: "在 Finder 中打开", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
     await expect
       .poll(() =>
         app?.evaluate(() => (globalThis as typeof globalThis & { openedDirectory?: string }).openedDirectory),
