@@ -690,6 +690,9 @@
 .sidebar .task-archive {
   padding: 0;
 }
+.sidebar .task-archive:disabled {
+  opacity: 0;
+}
 .sidebar .session-row:hover .task-archive:disabled,
 .sidebar .session-row:focus-within .task-archive:disabled {
   opacity: 0.45;

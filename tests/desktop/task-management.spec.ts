@@ -57,6 +57,9 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
       "请先停止运行",
     );
     const archiveButton = row.getByLabel("归档任务 运行任务", { exact: true });
+    await editor(page).focus();
+    await editor(page).hover();
+    await expect(archiveButton).toHaveCSS("opacity", "0");
     await row.hover();
     const disabledAppearance = await archiveButton.evaluate((el) => {
       const style = getComputedStyle(el);
@@ -70,6 +73,13 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
       }),
     ).toEqual(disabledAppearance);
     await expect(archiveButton).toHaveCSS("opacity", "0.45");
+    await editor(page).hover();
+    await expect(archiveButton).toHaveCSS("opacity", "0");
+    await row.locator(".session-name").focus();
+    await expect(archiveButton).toHaveCSS("opacity", "0.45");
+    await expect(archiveButton).toBeDisabled();
+    await editor(page).focus();
+    await expect(archiveButton).toHaveCSS("opacity", "0");
     await page.getByLabel("任务菜单").hover();
     const iconOffset = await page.getByLabel("任务菜单").evaluate((el) => {
       const button = el.getBoundingClientRect();

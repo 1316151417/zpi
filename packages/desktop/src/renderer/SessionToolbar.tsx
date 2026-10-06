@@ -21,6 +21,8 @@ export function SessionToolbar({
   const provider = settings?.providers.find((p) => p.id === chosen?.provider);
   const configured = provider?.models.find((m) => m.id === chosen?.modelId);
   const mainMenu = useRef<HTMLDivElement>(null);
+  const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
+  const menuBoundary = toolbar?.closest("main");
   const [active, setActive] = useState<string>();
   const [updating, setUpdating] = useState(false);
   const select = (provider: string, modelId: string, reasoning: string, close = true) => {
@@ -50,7 +52,7 @@ export function SessionToolbar({
   const compact = (number: number) =>
     new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(number);
   return (
-    <div className="session-toolbar">
+    <div ref={setToolbar} className="session-toolbar">
       {settings?.interface.showContextUsage && hasResponse && (
         <div className="context-indicator">
           <button
@@ -144,7 +146,14 @@ export function SessionToolbar({
           <ChevronDown size={14} />
         </Menu.Trigger>
         <Menu.Portal>
-          <Menu.Content ref={mainMenu} className="selection-menu" side="top" align="end" collisionPadding={8}>
+          <Menu.Content
+            ref={mainMenu}
+            className="selection-menu"
+            side="top"
+            align="end"
+            collisionBoundary={menuBoundary}
+            collisionPadding={8}
+          >
             {settings?.providers
               .filter((p) => p.enabled !== false && p.models.some((m) => m.enabled !== false))
               .map((p) => (
@@ -179,6 +188,7 @@ export function SessionToolbar({
                           <Menu.Portal>
                             <Menu.SubContent
                               className="selection-menu"
+                              collisionBoundary={menuBoundary}
                               collisionPadding={8}
                               onFocusOutside={(event) => {
                                 if (event.target === mainMenu.current) event.preventDefault();

@@ -117,6 +117,54 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
       return rejected;
     });
     expect(invalidNavigation).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+    await page.getByLabel("模型选择", { exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(1);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
+    await page.getByRole("menuitem", { name: "fake", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(2);
+    await expect
+      .poll(() =>
+        page.getByRole("menu").evaluateAll((menus) => {
+          const main = document.querySelector("main")?.getBoundingClientRect();
+          return main && menus.every((menu) => menu.getBoundingClientRect().right <= main.right);
+        }),
+      )
+      .toBe(true);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
+    await page.getByRole("menuitem", { name: "关闭", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
+    // A menu over the native surface must still remain accessible, including after repositioning.
+    await page.evaluate(() => {
+      const surface = document.querySelector('[data-testid="browser-surface"]')?.getBoundingClientRect();
+      if (!surface) throw Error("Missing browser surface");
+      const menu = document.createElement("div");
+      menu.id = "overlapping-menu";
+      menu.setAttribute("role", "menu");
+      Object.assign(menu.style, {
+        position: "fixed",
+        left: `${surface.left + 20}px`,
+        top: `${surface.top + 20}px`,
+        width: "100px",
+        height: "100px",
+      });
+      document.body.append(menu);
+    });
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(0);
+    await page.evaluate(() => {
+      const menu = document.getElementById("overlapping-menu");
+      if (menu) menu.style.left = "0px";
+    });
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
+    await page.evaluate(() => document.getElementById("overlapping-menu")?.remove());
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(0);
     await page.getByRole("region", { name: "设置", exact: true }).getByLabel("关闭设置").click();

@@ -32,11 +32,21 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         if (disposed) return;
-        const hidden =
-          document.querySelector(
-            '[role="dialog"], dialog[open], [role="menu"], [role="listbox"], .settings-screen',
-          ) !== null;
         const rect = element.getBoundingClientRect();
+        // Native child views cover DOM overlays, but unrelated menus need not hide the page.
+        const hidden =
+          document.querySelector('[role="dialog"], dialog[open], .settings-screen') !== null ||
+          Array.from(document.querySelectorAll('[role="menu"], [role="listbox"]')).some((menu) => {
+            const overlay = menu.getBoundingClientRect();
+            return (
+              overlay.width > 0 &&
+              overlay.height > 0 &&
+              overlay.left < rect.right &&
+              overlay.right > rect.left &&
+              overlay.top < rect.bottom &&
+              overlay.bottom > rect.top
+            );
+          });
         const bounds =
           hidden || rect.width < 1 || rect.height < 1
             ? null
@@ -56,7 +66,12 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
     const resize = new ResizeObserver(update);
     resize.observe(element);
     const overlay = new MutationObserver(update);
-    overlay.observe(document.body, { childList: true, subtree: true });
+    overlay.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class", "hidden", "data-state"],
+    });
     window.addEventListener("resize", update);
     update();
     return () => {
