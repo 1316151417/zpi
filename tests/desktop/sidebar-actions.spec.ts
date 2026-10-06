@@ -5,8 +5,9 @@ import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 
-test("sidebar headers reveal trailing chevrons and contextual actions; project menu only removes its entry", async () => {
+test("sidebar headings match ZCode hover states and dimensions; project menu only removes its entry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-actions-"));
   const project = join(dir, "project");
   await mkdir(project);
@@ -23,17 +24,68 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
     const projectHeader = page.locator(".sidebar-heading").filter({ hasText: /^项目$/ });
     const taskHeader = page.locator(".sidebar-heading").filter({ hasText: /^任务$/ });
     await expect(page.locator(".topbar-title")).toHaveText("新任务");
+    await expectZCodeSystemFont(page, [
+      ".sidebar-global button",
+      ".sidebar-footer button",
+      ".section-toggle span",
+    ]);
+    if (process.platform === "darwin") {
+      // Measured in ZCode at 14px/500, zoom 1; PingFang SC would be 28px.
+      expect((await projectHeader.locator(".section-toggle span").boundingBox())?.width).toBeCloseTo(
+        26.84375,
+        2,
+      );
+    }
 
+    const colors = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      document.body.append(probe);
+      const color = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const result = {
+        foreground: color("--color-foreground"),
+        subtlest: color("--color-text-subtlest"),
+        subtle: color("--color-text-subtle"),
+      };
+      probe.remove();
+      return result;
+    });
     for (const header of [projectHeader, taskHeader]) {
       await editor.focus();
       await editor.hover();
       const chevron = header.locator(".section-toggle svg");
-      const action = header.locator(".muted-icon");
+      const actions = header.locator(".sidebar-heading-actions");
+      const action = actions.locator(".muted-icon");
+      const toggle = header.locator(".section-toggle");
+      const handle = actions.locator(".section-drag-handle");
       await expect(chevron).toHaveCSS("opacity", "0");
-      await expect(action).toHaveCSS("opacity", "0");
+      await expect(actions).toHaveCSS("opacity", "0");
+      await expect(toggle).toHaveCSS("color", colors.subtlest);
+      await expect(action).toHaveCSS("color", colors.subtle);
+      await expect(toggle).toHaveCSS("font-size", "14px");
+      await expect(toggle).toHaveCSS("font-weight", "500");
+      await expect(toggle).toHaveCSS("height", "28px");
+      await expect(toggle).toHaveCSS("column-gap", "4px");
+      await expect(handle).toHaveCSS("width", "24px");
+      await expect(handle.locator("svg")).toHaveCSS("width", "14px");
       await header.hover();
       await expect(chevron).toHaveCSS("opacity", "1");
-      await expect(action).toHaveCSS("opacity", "1");
+      await expect(actions).toHaveCSS("opacity", "1");
+      await toggle.hover();
+      await expect(toggle).toHaveCSS("color", colors.foreground);
+      await expect(chevron).toHaveCSS("color", colors.foreground);
+      await handle.hover({ position: { x: 4, y: 4 } });
+      await expect(toggle).toHaveCSS("color", colors.subtlest);
+      await expect(handle).toHaveCSS("color", colors.foreground);
+      await action.hover();
+      await expect(action).toHaveCSS("color", colors.foreground);
+      await expect(handle).toHaveCSS("color", colors.subtlest);
+      await editor.hover();
+      await toggle.focus();
+      await expect(toggle).toHaveCSS("color", colors.foreground);
+      await expect(actions).toHaveCSS("opacity", "1");
       const labelBox = await header.locator(".section-toggle span").boundingBox();
       const iconBox = await chevron.boundingBox();
       expect(iconBox?.x).toBeGreaterThan((labelBox?.x ?? 0) + (labelBox?.width ?? 0));
@@ -45,11 +97,12 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
     for (const header of [projectHeader, taskHeader]) {
       await header.hover();
       const background = await header.evaluate((el) => getComputedStyle(el).backgroundColor);
-      expect(background).not.toBe("rgba(0, 0, 0, 0)");
+      expect(background).toBe("rgba(0, 0, 0, 0)");
       await header.locator(".section-toggle").hover();
       await expect(header.locator(".section-toggle")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(header).toHaveCSS("background-color", background);
       await header.locator(".muted-icon").hover();
+      await expect(header.locator(".muted-icon")).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(header).toHaveCSS("background-color", background);
     }
     await projectHeader.hover();
@@ -89,6 +142,7 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
 
     await projectHeader.getByRole("button", { name: "收起项目列表", exact: true }).click();
     await expect(page.locator(".projects")).toBeHidden();
+    await editor.focus();
     await editor.hover();
     await expect(projectHeader.locator(".section-toggle svg")).toHaveCSS("opacity", "0");
     await page.reload();
@@ -136,6 +190,24 @@ test("sidebar headers reveal trailing chevrons and contextual actions; project m
       page.locator(".projects").getByRole("button", { name: "项目任务", exact: true }),
     ).toBeVisible();
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
+    await page.evaluate(() => window.ZPI.updatePreferences({ theme: "dark", fontSize: 18 }));
+    await page.reload();
+    await editor.focus();
+    await editor.hover();
+    const foreground = await page.locator("body").evaluate((el) => getComputedStyle(el).color);
+    for (const header of [projectHeader, taskHeader]) {
+      const toggle = header.locator(".section-toggle");
+      const handle = header.locator(".section-drag-handle");
+      await expect(toggle).toHaveCSS("font-size", "18px");
+      await expect(toggle).toHaveCSS("height", "28px");
+      await toggle.hover();
+      await expect(toggle).toHaveCSS("color", foreground);
+      await expect(toggle.locator("svg")).toHaveCSS("width", "14px");
+      await handle.hover({ position: { x: 4, y: 4 } });
+      await expect(handle).toHaveCSS("color", foreground);
+      await expect(handle).toHaveCSS("background-color", "rgba(255, 255, 255, 0.05)");
+    }
+    await projectHeader.screenshot({ path: "test-results/sidebar-project-heading-dark.png" });
   } finally {
     await app?.close();
     await server.close();
@@ -174,13 +246,47 @@ test("tasks appear in one section and return to their original group after unpin
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expectGroup("项目任务", ".projects");
     await expectGroup("独立任务", ".recent-sessions");
+    await expectZCodeSystemFont(page, [".session-name-text"]);
 
+    // ZCode: text-ui-base headings/names, medium headings, normal names,
+    // 28px purpose headers and 24px task text slots inside 32px rows.
+    for (const size of [14, 18, 14]) {
+      await page.evaluate((fontSize) => window.ZPI.updatePreferences({ fontSize }), size);
+      await page.reload();
+      const headings = page.locator(".section-toggle");
+      const names = page.locator(".sidebar .project-name, .sidebar .session-name");
+      for (const text of [...(await headings.all()), ...(await names.all())]) {
+        await expect(text).toHaveCSS("font-size", `${size}px`);
+        await expect(text).toHaveCSS("line-height", `${size * 1.5}px`);
+        await expect(text).toHaveCSS("font-family", /^ui-sans-serif, system-ui, sans-serif,/);
+        await expect(text).toHaveCSS("letter-spacing", "normal");
+      }
+      for (const heading of await headings.all()) {
+        await expect(heading).toHaveCSS("font-weight", "500");
+        await expect(heading).toHaveCSS("height", "28px");
+      }
+      for (const name of await names.all()) await expect(name).toHaveCSS("font-weight", "400");
+      for (const row of await page.locator(".sidebar .session-row").all()) {
+        await expect(row).toHaveCSS("height", "32px");
+        await expect(row).toHaveCSS("padding-top", "4px");
+        await expect(row.locator(".session-name")).toHaveCSS("height", "24px");
+      }
+      await expect(page.locator(".project-title")).toHaveCSS("height", "32px");
+    }
+    await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-typography.png" });
     await page.locator(".projects .session-row").hover();
     await page.getByLabel("置顶任务 项目任务", { exact: true }).click();
     await expectGroup("项目任务", ".pinned-tasks");
     await page.getByLabel("任务菜单", { exact: true }).click();
     await page.getByRole("menuitem", { name: "置顶", exact: true }).click();
     await expectGroup("独立任务", ".pinned-tasks");
+    const pinnedHeading = page.locator(".pinned-tasks .sidebar-heading");
+    await expect(pinnedHeading).toHaveText("已置顶");
+    await page.getByLabel("消息", { exact: true }).hover();
+    const pinnedColor = await pinnedHeading.evaluate((el) => getComputedStyle(el).color);
+    await pinnedHeading.hover();
+    await expect(pinnedHeading).toHaveCSS("color", pinnedColor);
+    await expect(pinnedHeading).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-exclusive-pinned.png" });
     await app.close();
     app = await launchDesktop({ dir, project, url: server.url });
@@ -202,6 +308,60 @@ test("tasks appear in one section and return to their original group after unpin
   } finally {
     await app?.close();
     await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("sidebar section handles reorder with keyboard and pointer and preserve order after restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-order-"));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    let page = await app.firstWindow();
+    const sections = () => page.locator("[data-sidebar-section]");
+    const order = async () =>
+      sections().evaluateAll((els) => els.map((el) => el.getAttribute("data-sidebar-section")));
+    await expect(sections()).toHaveCount(2);
+    expect(await order()).toEqual(["projects", "tasks"]);
+    await page.getByLabel("收起项目列表", { exact: true }).click();
+    await page.getByLabel("收起任务列表", { exact: true }).click();
+    await expect(page.locator(".projects")).toBeHidden();
+    await expect(page.locator(".recent-sessions")).toBeHidden();
+    const handle = page.getByLabel("移动项目分区", { exact: true });
+    await handle.focus();
+    await handle.press("Space");
+    await expect(handle).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[role=status]")).toContainText(
+      "projects was moved over droppable area projects",
+    );
+    // dnd-kit announces activation before its deferred key listener and layout
+    // measurements are ready. Let the activation render finish before moving.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    await handle.press("ArrowDown");
+    await expect(page.locator("[role=status]")).toContainText("droppable area tasks");
+    await handle.press("Space");
+    await expect.poll(order).toEqual(["tasks", "projects"]);
+    await app.close();
+    app = await launchDesktop({ dir, url: "" });
+    page = await app.firstWindow();
+    await expect.poll(order).toEqual(["tasks", "projects"]);
+    await expect(page.getByLabel("展开项目列表", { exact: true })).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByLabel("展开任务列表", { exact: true })).toHaveAttribute("aria-expanded", "false");
+    const source = await page.getByLabel("移动项目分区", { exact: true }).boundingBox();
+    const target = await page.getByLabel("移动任务分区", { exact: true }).boundingBox();
+    if (!source || !target) throw new Error("Missing section handles");
+    await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await expect.poll(order).toEqual(["projects", "tasks"]);
+    await page.reload();
+    await expect.poll(order).toEqual(["projects", "tasks"]);
+  } finally {
+    await app?.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

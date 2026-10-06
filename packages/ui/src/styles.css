@@ -17,6 +17,9 @@
 }
 :root {
   font-family: var(--font-body);
+  /* Match ZCode's en document font selection while retaining Chinese HTML
+     language metadata for accessibility. Chromium also needs the main locale. */
+  -webkit-locale: "en";
   color: var(--color-text);
   background: transparent;
   /* Keep rem geometry at ZCode's 16px root; interface scaling belongs on text only. */

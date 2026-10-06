@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 
 test("settings use ZCode typography and keep titlebar dragging separate from controls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-appearance-"));
@@ -18,6 +19,22 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
     const heading = settings.locator(".interface-settings h2").first();
     const label = settings.locator(".settings-row-copy strong").first();
     const description = settings.locator(".settings-row-copy small").first();
+    await expectZCodeSystemFont(page, [
+      ".settings-back",
+      ".settings-tabs button",
+      ".settings-content h1",
+      ".interface-settings h2",
+      ".settings-row-copy strong",
+      ".settings-row-copy small",
+      ".settings-select-trigger .settings-select-value",
+    ]);
+    await expect(tab.locator("svg")).toHaveCSS("width", "16px");
+    await expect(settings.locator(".settings-back svg")).toHaveCSS("width", "16px");
+    for (const name of ["常规", "系统提示词", "工具", "技能", "模型", "已归档任务"]) {
+      await settings.getByRole("button", { name, exact: true }).click();
+      await expectZCodeSystemFont(page, [".settings-content h1"]);
+    }
+    await settings.getByRole("button", { name: "界面设置", exact: true }).click();
 
     // Reference: ZCode SettingsPage, SettingsRow and theme-zai-light/theme-zai-dark.
     for (const [theme, color] of [

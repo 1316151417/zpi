@@ -298,7 +298,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       <aside className="settings-sidebar">
         <div className="settings-sidebar-drag-space" aria-hidden="true" />
         <button ref={back} className="settings-back" aria-label="关闭设置" title="返回任务" onClick={onClose}>
-          <ArrowLeft size={17} />
+          <ArrowLeft size={16} />
           <span>返回任务</span>
         </button>
         <nav className="settings-tabs" aria-label="设置分类">
@@ -310,7 +310,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
               aria-pressed={tab === id}
               onClick={() => setTab(id)}
             >
-              <Icon size={17} />
+              <Icon size={16} />
               <span>{label}</span>
             </button>
           ))}

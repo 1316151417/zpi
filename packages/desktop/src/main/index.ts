@@ -39,6 +39,10 @@ import { SettingsStore } from "./storage.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
+// Match ZCode's Chromium locale: on macOS zh-CN changes system-ui's Chinese
+// fallback from PingFang UI Display to PingFang SC, enlarging every UI label.
+// UI copy is supplied by React and remains Chinese.
+if (process.platform === "darwin") app.commandLine.appendSwitch("lang", "en-US");
 const testMode = process.env.ZPI_TEST_MODE === "1";
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });

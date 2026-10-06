@@ -2,6 +2,7 @@ import {
   closestCenter,
   DndContext,
   KeyboardSensor,
+  type Modifier,
   PointerSensor,
   useSensor,
   useSensors,
@@ -33,55 +34,95 @@ class RowPointerSensor extends PointerSensor {
     },
   ];
 }
-type Bindings = Pick<ReturnType<typeof useSortable>, "attributes" | "setNodeRef" | "isDragging"> & {
+type Bindings = Pick<
+  ReturnType<typeof useSortable>,
+  "attributes" | "setNodeRef" | "setActivatorNodeRef" | "isDragging"
+> & {
   style: CSSProperties;
   listeners: ReturnType<typeof useSortable>["listeners"];
 };
 function Row<T extends { id: string }>({
   item,
   disabled,
+  handleOnly,
   renderItem,
 }: {
   item: T;
   disabled: boolean;
+  handleOnly: boolean;
   renderItem(item: T, bindings: Bindings): ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
-    id: item.id,
-    disabled,
-  });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging, transform, transition } =
+    useSortable({
+      id: item.id,
+      disabled,
+    });
   return renderItem(item, {
     attributes,
     setNodeRef,
+    setActivatorNodeRef,
     isDragging,
-    style: { transform: CSS.Transform.toString(transform), transition },
+    style: {
+      transform: CSS.Transform.toString(
+        handleOnly && transform ? { ...transform, scaleX: 1, scaleY: 1 } : transform,
+      ),
+      transition,
+    },
     listeners: {
       ...listeners,
       onKeyDown: (event: KeyboardEvent) => {
-        if (!interactive(event.target)) listeners?.onKeyDown?.(event);
+        if (handleOnly || !interactive(event.target)) listeners?.onKeyDown?.(event);
       },
     },
   });
 }
+const restrictVerticalDragWithinContainer: Modifier = ({
+  transform,
+  draggingNodeRect,
+  activeNodeRect,
+  containerNodeRect,
+  windowRect,
+}) => {
+  const nodeRect = draggingNodeRect ?? activeNodeRect;
+  const boundaryRect = containerNodeRect ?? windowRect;
+  return {
+    ...transform,
+    x: 0,
+    y:
+      nodeRect && boundaryRect
+        ? Math.min(
+            Math.max(transform.y, boundaryRect.top - nodeRect.top),
+            boundaryRect.bottom - nodeRect.bottom,
+          )
+        : transform.y,
+  };
+};
 export function SortableList<T extends { id: string }>({
   items,
   disabled = false,
+  handleOnly = false,
+  constrainVertical = false,
   onReorder,
   renderItem,
 }: {
   items: T[];
   disabled?: boolean;
+  handleOnly?: boolean;
+  constrainVertical?: boolean;
   onReorder(items: T[]): void;
   renderItem(item: T, bindings: Bindings): ReactNode;
 }) {
   const sensors = useSensors(
-    useSensor(RowPointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(handleOnly ? PointerSensor : RowPointerSensor, {
+      activationConstraint: { distance: handleOnly ? 8 : 6 },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      modifiers={constrainVertical ? [restrictVerticalDragWithinContainer] : undefined}
       onDragEnd={({ active, over }) => {
         if (!over || active.id === over.id) return;
         const from = items.findIndex((item) => item.id === active.id);
@@ -91,7 +132,13 @@ export function SortableList<T extends { id: string }>({
     >
       <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
         {items.map((item) => (
-          <Row key={item.id} item={item} disabled={disabled} renderItem={renderItem} />
+          <Row
+            key={item.id}
+            item={item}
+            disabled={disabled}
+            handleOnly={handleOnly}
+            renderItem={renderItem}
+          />
         ))}
       </SortableContext>
     </DndContext>
