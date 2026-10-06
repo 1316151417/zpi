@@ -2,8 +2,10 @@ import { spawn } from "node:child_process";
 import electron from "electron";
 import { build } from "tsup";
 import { createServer } from "vite";
+import { buildAppIcon } from "./app-icon.mjs";
 import { mainBuild, preloadBuild } from "./desktop-build.mjs";
 
+await buildAppIcon();
 let child;
 let shuttingDown = false;
 const server = await createServer({

@@ -54,7 +54,11 @@ else
 async function launch(): Promise<void> {
   await app.whenReady();
   if (!testMode) Object.assign(process.env, await shellEnvironment());
-  const icon = app.isPackaged ? join(process.resourcesPath, "icon.png") : resolve("icon.png");
+  const icon = app.isPackaged
+    ? join(process.resourcesPath, "icon.png")
+    : process.platform === "darwin"
+      ? join(dir, "../icon-mac.png")
+      : resolve("icon.png");
   app.dock?.setIcon(icon);
   const encryption = testMode
     ? { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => "" }

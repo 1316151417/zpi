@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -63,11 +63,11 @@
         "dmg"
       ],
       "category": "public.app-category.developer-tools",
-      "icon": "icon.png"
+      "icon": "packages/desktop/dist/icon-mac.png"
     },
     "extraResources": [
       {
-        "from": "icon.png",
+        "from": "packages/desktop/dist/icon-mac.png",
         "to": "icon.png"
       }
     ],
