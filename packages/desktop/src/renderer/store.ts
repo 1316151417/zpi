@@ -354,6 +354,10 @@ export function addConversationSelection(
       selections: appendSelection(draft.selections ?? [], reference),
       error: undefined,
     });
+    if (sessionId === useStore.getState().selected)
+      document
+        .querySelector<HTMLElement>(".composer-container .mention-editor[contenteditable=true]")
+        ?.focus();
   } catch (error) {
     drafts.set(sessionId, { ...draft, error: error instanceof Error ? error.message : String(error) });
   }

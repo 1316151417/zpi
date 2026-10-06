@@ -189,14 +189,24 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect(run).toHaveAttribute("data-status", "completed");
     await expect(run.locator(".user-message-text")).toHaveText("edited user input");
     await expect(run.locator(".answer")).toContainText("reply 2");
-    await page.locator(".composer-container").getByLabel("消息", { exact: true }).fill("explain");
+    const composer = page.locator(".composer-container").getByLabel("消息", { exact: true });
+    await composer.fill("explain");
+    await composer.press("Home");
+    await composer.press("ArrowRight");
+    await composer.evaluate((element) => element.blur());
     await selectText(run.locator(".answer p"));
     const add = page.getByRole("button", { name: "添加到当前任务", exact: true });
     await expect(add).toBeVisible();
     await expect(page.getByText("辅助对话", { exact: true })).toHaveCount(0);
     await add.click();
+    await expect(composer).toBeFocused();
+    await page.keyboard.insertText("X");
+    await expect(composer).toHaveText("eXxplain");
+    await composer.press("Meta+Z");
+    await expect(composer).toHaveText("explain");
     await selectText(run.locator(".answer p"));
     await add.click();
+    await expect(composer).toBeFocused();
     await expect(
       page.locator(".composer-container [data-conversation-selection-reference-count]"),
     ).toHaveAttribute("data-conversation-selection-reference-count", "1");
@@ -323,6 +333,7 @@ test("Markdown selections use source paths, cross-message selections are exclude
     await expect(page.locator(".file-markdown-preview p")).toHaveText("selected document text");
     await selectText(page.locator(".file-markdown-preview p"));
     await page.getByRole("button", { name: "添加到当前任务", exact: true }).click();
+    await expect(page.locator(".composer-container").getByLabel("消息", { exact: true })).toBeFocused();
     await expect(page.locator(".composer-container .selection-reference-chip")).toContainText(
       "notes.md · 引用",
     );
