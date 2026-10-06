@@ -195,7 +195,7 @@ export interface DesktopBridge {
   archiveSession(id: string): Promise<Result<void>>;
   listArchivedSessions(): Promise<Result<(SessionRecord & { projectName: string })[]>>;
   restoreSession(id: string): Promise<Result<SessionRecord>>;
-  openSessionDirectory(id: string): Promise<Result<void>>;
+  openDirectory(path: string): Promise<Result<void>>;
   createTerminal(sessionId: string): Promise<Result<{ id: string; shell: string }>>;
   terminalInput(id: string, data: string): Promise<Result<void>>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<Result<void>>;
@@ -301,7 +301,7 @@ export const methods = [
   "archiveSession",
   "listArchivedSessions",
   "restoreSession",
-  "openSessionDirectory",
+  "openDirectory",
   "createTerminal",
   "terminalInput",
   "resizeTerminal",

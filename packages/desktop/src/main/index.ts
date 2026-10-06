@@ -2,7 +2,7 @@ import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesC
 import { imageLimits, listCommands } from "ZPI-coding-agent";
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
@@ -256,7 +256,7 @@ async function launch(): Promise<void> {
         archiveSession: 1,
         listArchivedSessions: 0,
         restoreSession: 1,
-        openSessionDirectory: 1,
+        openDirectory: 1,
         createTerminal: 1,
         terminalInput: 2,
         resizeTerminal: 3,
@@ -336,8 +336,11 @@ async function launch(): Promise<void> {
         case "restoreSession":
           value = host.restoreSession(string(0));
           break;
-        case "openSessionDirectory": {
-          const failure = await shell.openPath(host.workspaceInfo(string(0)).cwd);
+        case "openDirectory": {
+          const path = string(0);
+          if (!isAbsolute(path) || !(await stat(path)).isDirectory())
+            throw new Error("invalid_input: 请选目录");
+          const failure = await shell.openPath(path);
           if (failure) throw new Error(`storage: ${failure}`);
           break;
         }

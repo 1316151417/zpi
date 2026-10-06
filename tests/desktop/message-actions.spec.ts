@@ -337,14 +337,18 @@ test("Markdown selections use source paths, cross-message selections are exclude
     await expect(page.locator(".composer-container .selection-reference-chip")).toContainText(
       "notes.md · 引用",
     );
-    const draft = await page.evaluate(async () => {
-      const id = localStorage.getItem("ZPI.selectedSession") as string;
-      return window.ZPI.getDraft(id);
-    });
-    expect(draft.ok && draft.value.selections?.[0]).toMatchObject({
-      path: await realpath(documentPath),
-      text: "selected document text",
-    });
+    await expect
+      .poll(async () => {
+        const draft = await page.evaluate(async () => {
+          const id = localStorage.getItem("ZPI.selectedSession") as string;
+          return window.ZPI.getDraft(id);
+        });
+        return draft.ok ? draft.value.selections?.[0] : undefined;
+      })
+      .toMatchObject({
+        path: await realpath(documentPath),
+        text: "selected document text",
+      });
     await page.locator(".composer-container").getByLabel("移除对话引用").click();
     await expect(page.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
     await turn.evaluate((element) => {

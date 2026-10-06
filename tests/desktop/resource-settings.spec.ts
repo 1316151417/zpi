@@ -31,7 +31,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
   await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
   await writeFile(
     join(dir, ".agents", "skills", "review", "SKILL.md"),
-    "---\nname: review\ndescription: code review\n---\nSECRET BODY",
+    "---\nname: React Review\ndescription: code review\n---\nSECRET BODY",
   );
   await writeFile(join(project, "AGENTS.md"), "PROJECT POLICY");
   await writeFile(join(project, "existing.txt"), "external old\n");
@@ -91,6 +91,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await page.getByLabel("消息", { exact: true }).fill("initial task");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await expect(page.locator(".resource-diagnostics")).toHaveCount(0);
     server.requests.splice(0);
     await page.getByRole("button", { name: "设置", exact: true }).click();
 

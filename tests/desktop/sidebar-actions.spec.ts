@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
@@ -146,6 +146,36 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     await expect(create).toHaveCSS("opacity", "1");
     await expect(create.locator("svg.lucide-message-circle-plus")).toHaveCount(1);
     await expect(more.locator("svg.lucide-ellipsis")).toHaveCount(1);
+    await more.click();
+    const directoryMenu = page.getByRole("menu", { name: "项目操作 project", exact: true });
+    await expect(directoryMenu.getByRole("menuitem")).toHaveText(["移除", "Finder", "复制路径"]);
+    await expect(directoryMenu.getByRole("separator")).toHaveCSS("border-top-style", "dashed");
+    const finder = directoryMenu.getByRole("menuitem", { name: "Finder", exact: true });
+    await expect(finder.locator("img")).toHaveAttribute("src", /\/file-actions\/finder\.png$/);
+    await expect(finder.locator("img")).toHaveCSS("width", "16px");
+    await expect(
+      directoryMenu.getByRole("menuitem", { name: "复制路径", exact: true }).locator("svg"),
+    ).toHaveClass(/lucide-copy/);
+    await directoryMenu.getByRole("menuitem", { name: "复制路径", exact: true }).click();
+    await expect
+      .poll(() => app?.evaluate(({ clipboard }) => clipboard.readText()))
+      .toBe(await realpath(project));
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async (path) => {
+        (globalThis as typeof globalThis & { openedDirectory: string }).openedDirectory = path;
+        return "";
+      };
+    });
+    await projectRow.hover();
+    await more.click();
+    await finder.click();
+    await expect
+      .poll(() =>
+        app?.evaluate(() => (globalThis as typeof globalThis & { openedDirectory?: string }).openedDirectory),
+      )
+      .toBe(await realpath(project));
+    await expect(page.getByTestId("run")).toHaveCount(0);
+    await projectRow.hover();
     await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-project-actions.png" });
 
     await editor.fill("项目任务");
@@ -184,7 +214,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     await projectRow.hover();
     await more.click();
     const menu = page.getByRole("menu", { name: "项目操作 project", exact: true });
-    await expect(menu.getByRole("menuitem")).toHaveText(["移除"]);
+    await expect(menu.getByRole("menuitem")).toHaveText(["移除", "Finder", "复制路径"]);
     await menu.hover();
     await expect(more).toHaveCSS("opacity", "1");
     await menu.press("Escape");
@@ -233,6 +263,51 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
   } finally {
     await app?.close();
     await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("project directory actions preserve literal paths and report Finder failures", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-project-directory-"));
+  const project = join(dir, "project # % 项目 ");
+  await mkdir(project);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async (path) => {
+        (globalThis as typeof globalThis & { openedDirectory: string }).openedDirectory = path;
+        return "";
+      };
+    });
+    const page = await app.firstWindow();
+    await page.getByLabel("添加项目", { exact: true }).click();
+    const row = page.locator(".project-title");
+    const more = row.getByTitle("更多", { exact: true });
+    const menu = page.getByRole("menu");
+    await row.hover();
+    await more.click();
+    await menu.getByRole("menuitem", { name: "复制路径", exact: true }).click();
+    const path = await realpath(project);
+    await expect.poll(() => app?.evaluate(({ clipboard }) => clipboard.readText())).toBe(path);
+    await row.hover();
+    await more.click();
+    await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect
+      .poll(() =>
+        app?.evaluate(() => (globalThis as typeof globalThis & { openedDirectory?: string }).openedDirectory),
+      )
+      .toBe(path);
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async () => "无法打开项目目录";
+    });
+    await row.hover();
+    await more.click();
+    await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("无法打开项目目录");
+    await expect(row).toHaveCount(1);
+  } finally {
+    await app?.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

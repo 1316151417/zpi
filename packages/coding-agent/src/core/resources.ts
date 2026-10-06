@@ -61,14 +61,8 @@ function parseMetadata(path: string, source: SkillMetadata["source"], text: stri
   const value: unknown = doc.toJS({ maxAliasCount: 20 });
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Skill metadata must be a mapping");
-  const { name, description } = value as Record<string, unknown>;
-  if (
-    typeof name !== "string" ||
-    name.length > 64 ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ||
-    name !== basename(dirname(path))
-  )
-    throw new Error("Skill name must match its directory and use lowercase letters, digits and hyphens");
+  const { description } = value as Record<string, unknown>;
+  const name = basename(dirname(path));
   if (typeof description !== "string" || !description.trim() || description.length > 1024)
     throw new Error("Skill description must contain 1–1024 characters");
   return { name, description: description.trim(), path, baseDir: dirname(path), source };
@@ -151,7 +145,7 @@ export class SkillCatalog {
     if (!skill) throw new Error(`invalid_input: Skill not found: ${name}`);
     const text = await readFile(skill.path, "utf8");
     const current = parseMetadata(skill.path, skill.source, text);
-    return { ...current, body: text.slice(frontmatter(text).bodyOffset).trim() };
+    return { ...current, name: skill.name, body: text.slice(frontmatter(text).bodyOffset).trim() };
   }
 }
 export class FileResourceLoader implements ResourceLoader {

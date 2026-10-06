@@ -1,7 +1,8 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Archive, Copy, MoreHorizontal, Pencil, Pin, PinOff } from "lucide-react";
+import { Archive, MoreHorizontal, Pencil, Pin, PinOff } from "lucide-react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { taskPinLimit } from "../shared/config.ts";
+import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { archiveSession, refresh, report, unwrap, useStore } from "./store.ts";
 
 export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename: () => void }) {
@@ -44,30 +45,9 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             {running && <small>请先停止运行</small>}
           </Menu.Item>
           <Menu.Separator className="menu-separator" />
-          <Menu.Item
-            className="menu-item"
-            onSelect={() => task(() => window.ZPI.openSessionDirectory(record.id).then(unwrap))}
-          >
-            <img
-              src={new URL("./file-actions/finder.png", document.baseURI).href}
-              width={16}
-              height={16}
-              alt=""
-            />
-            Finder
-          </Menu.Item>
-          <Menu.Item
-            className="menu-item"
-            onSelect={() =>
-              task(async () => {
-                const { cwd } = unwrap(await window.ZPI.getWorkspaceInfo(record.id));
-                unwrap(await window.ZPI.copyText(cwd));
-              })
-            }
-          >
-            <Copy size={14} />
-            复制路径
-          </Menu.Item>
+          <DirectoryMenuItems
+            getPath={async () => unwrap(await window.ZPI.getWorkspaceInfo(record.id)).cwd}
+          />
         </Menu.Content>
       </Menu.Portal>
     </Menu.Root>

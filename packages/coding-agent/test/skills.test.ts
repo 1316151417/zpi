@@ -49,6 +49,27 @@ test("shared agents skills are discovered, ZPI overrides duplicates, and global 
   expect(catalog.listSkills().skills.map((s) => s.name)).toEqual(["shared"]);
   expect(catalog.listDiscoveredSkills().filter((s) => s.name === "review")).toHaveLength(2);
 });
+it.each(["name: other", "name: React Best Practices", "name: 123", `name: ${"a".repeat(65)}`, ""])(
+  "uses the skill directory name without diagnostics for frontmatter %j",
+  async (name) => {
+    const cwd = await temp();
+    const root = join(cwd, ".agents", "skills");
+    await writeSkill(root, "react-best-practices", "React guidance");
+    await writeFile(
+      join(root, "react-best-practices", "SKILL.md"),
+      `---\n${name}\ndescription: React guidance\n---\nSKILL BODY`,
+    );
+    const loader = new FileResourceLoader({ cwd, agentDir: join(cwd, "agent"), userSkillPaths: [] });
+    await loader.reload();
+    expect(loader.getDiagnostics()).toEqual([]);
+    expect(loader.listSkills().skills.map((skill) => skill.name)).toEqual(["react-best-practices"]);
+    expect(loader.getAppendSystemPrompt().join("\n")).toContain("<name>react-best-practices</name>");
+    expect(await loader.loadSkill("react-best-practices")).toMatchObject({
+      name: "react-best-practices",
+      body: "SKILL BODY",
+    });
+  },
+);
 it("instructions are ordered, skills are metadata-only, project overrides user, bad YAML is diagnosed", async () => {
   const f = await resourceFixture((_, r) => done(r));
   await writeFile(join(f.agentDir, "AGENTS.md"), "USER RULE");

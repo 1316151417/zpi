@@ -24,6 +24,7 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import { useShallow } from "zustand/react/shallow";
 import type { InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
+import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
 import { readMarkdownImage } from "./markdown-image.ts";
 import {
@@ -475,6 +476,11 @@ export function App() {
                                       <X size={14} />
                                       移除
                                     </Menu.Item>
+                                    <Menu.Separator className="menu-separator" />
+                                    <DirectoryMenuItems
+                                      className="project-action-menu-item"
+                                      getPath={async () => p.path}
+                                    />
                                   </Menu.Content>
                                 </Menu.Portal>
                               </Menu.Root>

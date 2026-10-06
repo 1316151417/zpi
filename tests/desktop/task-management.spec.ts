@@ -94,6 +94,7 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     expect(iconOffset.y).toBeLessThan(1);
     await openMenu(page);
     await expect(page.getByRole("menuitem")).toHaveCount(5);
+    await expect(page.getByRole("separator")).toHaveCSS("border-top-style", "dashed");
     await expect(page.getByRole("menuitem", { name: /^归档任务/ })).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByLabel("任务菜单")).toHaveCSS("-webkit-app-region", "no-drag");
     await page.screenshot({ path: "test-results/task-menu.png" });
