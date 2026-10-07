@@ -1,8 +1,8 @@
-# ZPI
+# zpi
 
 **极简的编码客户端。** 参考 ZCode 的界面，结合 Pi Coding Agent 的极简内核，并把同样的减法理念用到客户端：界面干净、清爽，只保留最核心、最常用的功能，让日常编码保持高效。
 
-## 为什么选择 ZPI
+## 为什么选择 zpi
 
 - 功能简单，操作直接，没有遥测。
 - 以节省 token 和时间为目标，具体对比证据后续补充。
@@ -22,7 +22,7 @@
 
 ## 安装与使用
 
-前往 [Releases](https://github.com/1316151417/ZPI/releases)，下载与你的系统和架构对应的安装包。
+前往 [Releases](https://github.com/1316151417/zpi/releases)，下载与你的系统和架构对应的安装包。
 
 启动后，在「设置 → 模型」添加提供商和 API Key、通过「OpenAI（ChatGPT）」登录授权，或配置自定义模型；然后选择项目、选择模型，开始对话。不选择项目也可以直接工作。
 
@@ -37,8 +37,8 @@ ChatGPT 在线目录缺少 GPT-6.1 Sol、GPT-6 Astra 或 GPT-6 Luna 时，会补
 使用 Node.js 24 和 npm。当前桌面构建与本地打包在 macOS Apple Silicon 上验证；编译终端模块需要 Xcode Command Line Tools。
 
 ```sh
-git clone https://github.com/1316151417/ZPI.git
-cd ZPI
+git clone https://github.com/1316151417/zpi.git
+cd zpi
 npm install --ignore-scripts
 npm run install:electron
 npm run install:terminal
