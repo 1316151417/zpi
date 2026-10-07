@@ -14,7 +14,7 @@ import type {
 import { openAICompletionsCompatKeys } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
-import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { modelFailure, retryModelStream } from "../utils/model-retry.ts";
 import { reasoningParameterKeys, reasoningParameters } from "../utils/reasoning.ts";
 import {
   assertSupportedOptions,
@@ -40,6 +40,7 @@ const commonOptions = [
   "timeoutMs",
   "maxRetries",
   "maxRetryDelayMs",
+  "onRetry",
   "onPayload",
   "onResponse",
   "samplingParams",
@@ -128,9 +129,9 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
   if (model.api !== "openai-completions") throw new Error(`Unsupported API: ${model.api}`);
   assertSupportedOptions(model.compat ?? {}, openAICompletionsCompatKeys, "compat");
   const events = createAssistantMessageEventStream();
-  const output = emptyAssistant(model);
+  let output = emptyAssistant(model);
   const completeCalls = new Set<ToolCall>();
-  void consume().catch((error: unknown) => {
+  void retryModelStream(consume, events, options).catch((error: unknown) => {
     output.content = output.content.filter((block) => block.type !== "toolCall" || completeCalls.has(block));
     output.stopReason = options.signal?.aborted ? "aborted" : "error";
     let message = error instanceof Error ? error.message : String(error);
@@ -144,10 +145,15 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
         if (secret.startsWith("Bearer ")) message = message.split(secret.slice(7)).join("[redacted]");
       }
     output.errorMessage = message;
+    output.errorDetails = modelFailure(error, options.signal);
     events.push({ type: "error", reason: output.stopReason, error: output });
   });
   return events;
-  async function consume(): Promise<void> {
+  async function consume(
+    events: Pick<import("../types.ts").AssistantMessageEventStream, "push">,
+  ): Promise<void> {
+    output = emptyAssistant(model);
+    completeCalls.clear();
     if (
       !model.input.includes("image") &&
       context.messages.some(
@@ -210,17 +216,9 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
     if (!isJsonObject(payload) || payload.stream !== true)
       throw new Error("Payload must be a streaming request object");
     output.contextBreakdown = measureContextBreakdown(payload);
-    const { data: chunks, response } = await retryProviderRequest(
-      () =>
-        client.chat.completions
-          .create(payload as unknown as ChatCompletionCreateParamsStreaming, { signal: options.signal })
-          .withResponse(),
-      {
-        maxRetries: options.maxRetries ?? 2,
-        maxRetryDelayMs: options.maxRetryDelayMs,
-        signal: options.signal,
-      },
-    );
+    const { data: chunks, response } = await client.chat.completions
+      .create(payload as unknown as ChatCompletionCreateParamsStreaming, { signal: options.signal })
+      .withResponse();
     await options.onResponse?.(
       { status: response.status, headers: Object.fromEntries(response.headers) },
       model,

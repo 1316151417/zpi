@@ -7,7 +7,10 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it("failure after persisting a run start records an error end and releases the running state", async () => {
-  const f = await fixture((_, response) => done(response));
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
   const id = f.host.createSession(f.a.id).id;
   const markUsed = vi
     .spyOn(f.host.attachments, "markUsed")
@@ -94,7 +97,10 @@ it("archive discards pending messages, rejects later delivery and restores the o
 });
 
 it("damaged tasks are listed for deletion, cannot restore, and deletion removes all task-owned storage", async () => {
-  const f = await fixture((_, response) => done(response));
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
   const id = f.host.createSession(f.a.id).id;
   await f.host.close();
   const file = join(f.dir, "agent", "sessions", f.a.id, `${id}.jsonl`);

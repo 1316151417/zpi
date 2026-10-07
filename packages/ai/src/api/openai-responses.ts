@@ -7,7 +7,7 @@ import type {
 import type { Model, SimpleStreamOptions, ThinkingContent, ToolCall, TranscriptContext } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
-import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { modelFailure, retryModelStream } from "../utils/model-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
 import {
   assertSupportedOptions,
@@ -104,6 +104,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       "timeoutMs",
       "maxRetries",
       "maxRetryDelayMs",
+      "onRetry",
       "onPayload",
       "onResponse",
       "samplingParams",
@@ -115,9 +116,9 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
   if (model.api !== "openai-responses") throw new Error(`Unsupported API: ${model.api}`);
   if (options.apiKey === undefined) throw new Error("API key must be configured");
   const events = createAssistantMessageEventStream();
-  const output = emptyAssistant(model);
+  let output = emptyAssistant(model);
   const complete = new Set<ToolCall>();
-  void consume().catch((error: unknown) => {
+  void retryModelStream(consume, events, options).catch((error: unknown) => {
     output.content = output.content.filter((block) => block.type !== "toolCall" || complete.has(block));
     output.stopReason = options.signal?.aborted ? "aborted" : "error";
     let message = error instanceof Error ? error.message : String(error);
@@ -128,10 +129,15 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     ])
       if (secret) message = message.split(secret).join("[redacted]");
     output.errorMessage = message;
+    output.errorDetails = modelFailure(error, options.signal);
     events.push({ type: "error", reason: output.stopReason, error: output });
   });
   return events;
-  async function consume() {
+  async function consume(
+    events: Pick<import("../types.ts").AssistantMessageEventStream, "push">,
+  ): Promise<void> {
+    output = emptyAssistant(model);
+    complete.clear();
     if (
       !model.input.includes("image") &&
       context.messages.some(
@@ -240,17 +246,9 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       payload.store = false;
     }
     output.contextBreakdown = measureContextBreakdown(payload);
-    const { data: chunks, response } = await retryProviderRequest(
-      () =>
-        client.responses
-          .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
-          .withResponse(),
-      {
-        maxRetries: options.maxRetries ?? 2,
-        maxRetryDelayMs: options.maxRetryDelayMs,
-        signal: options.signal,
-      },
-    );
+    const { data: chunks, response } = await client.responses
+      .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
+      .withResponse();
     await options.onResponse?.(
       { status: response.status, headers: Object.fromEntries(response.headers) },
       model,
@@ -398,10 +396,15 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
           itemDone(event.item);
           break;
         case "error":
-          throw new Error(`OpenAI Responses: ${event.code ?? "error"}: ${event.message}`);
+          throw Object.assign(new Error(`OpenAI Responses: ${event.code ?? "error"}: ${event.message}`), {
+            code: event.code,
+          });
         case "response.failed":
-          throw new Error(
-            `OpenAI Responses: ${event.response.error?.code ?? "failed"}: ${event.response.error?.message ?? "Request failed"}`,
+          throw Object.assign(
+            new Error(
+              `OpenAI Responses: ${event.response.error?.code ?? "failed"}: ${event.response.error?.message ?? "Request failed"}`,
+            ),
+            { code: event.response.error?.code },
           );
         case "response.incomplete":
         case "response.completed": {

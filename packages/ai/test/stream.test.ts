@@ -41,7 +41,10 @@ describe("OpenAI streaming contract", () => {
     ]);
   });
   it("explicit reasoning effort overrides the model default", async () => {
-    const s = await server((_, res) => done(res));
+    const s = await server((_, res) => {
+      send(res, chunk({ content: "ok" }));
+      done(res);
+    });
     const model = {
       ...fakeModel(s.url),
       defaultThinkingLevel: "high",

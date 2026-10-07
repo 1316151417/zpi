@@ -4,6 +4,30 @@ import { fakeModel } from "../../../tests/fake-server.ts";
 import { emptySession, progressSummary, reduceSession } from "../src/reducer.ts";
 import type { DesktopEvent, SessionView } from "../src/types.ts";
 
+it("keeps retry state in live snapshots, resets only the failed message and clears retries on settlement", () => {
+  let view = emptySession("s");
+  let seq = 0;
+  const apply = (event: DesktopEvent) => {
+    view = reduceSession(view, { sessionId: "s", runId: "r", seq: ++seq, event });
+  };
+  apply({ type: "started", text: "hi", startedAt: 1, modelLabel: "fake" });
+  for (const messageId of ["earlier", "failed"]) {
+    apply({ type: "block_start", messageId, contentIndex: 0, kind: "text" });
+    apply({ type: "block_delta", messageId, contentIndex: 0, delta: messageId });
+  }
+  const status = { attempt: 3, maxRetries: 10, retryDelayMs: 120_000, errorStatus: 429 };
+  apply({ type: "model_retry", status });
+  expect(view.runs[0]).toMatchObject({ status: "running", apiRetry: status });
+  expect(structuredClone(view).runs[0].apiRetry).toEqual(status);
+  apply({ type: "message_reset", messageId: "failed" });
+  expect(view.runs[0].orderedBlocks).toMatchObject([{ messageId: "earlier", text: "earlier" }]);
+  expect(view.runs[0].finalAnswerBlockIds).toEqual(["earlier:0"]);
+  apply({ type: "settled", status: "aborted", endedAt: 100 });
+  expect(view.runs[0].apiRetry).toBeNull();
+  apply({ type: "model_retry", status });
+  expect(view.runs[0].apiRetry).toBeNull();
+});
+
 it("authoritative final replaces streamed content, tool updates replace snapshots, errors stay visible", () => {
   let view = emptySession("s");
   let seq = 0;

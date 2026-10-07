@@ -408,6 +408,34 @@ small {
     background-position: 0% 0;
   }
 }
+.chat-loading-slot {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+}
+.chat-loading-spinner {
+  color: var(--color-text-subtle);
+  animation: chat-loading-spin 1s linear infinite;
+}
+@keyframes chat-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.api-retry-status {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0 4px;
+  font-size: var(--ui-font-size);
+}
+.api-retry-label,
+[data-theme="dark"] .api-retry-label {
+  --thinking-gradient-strong: var(--color-text-subtle);
+  color: transparent;
+  font-weight: 500;
+}
 .tool-failure {
   color: var(--color-error);
 }

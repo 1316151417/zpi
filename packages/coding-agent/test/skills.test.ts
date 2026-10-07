@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, test } from "vitest";
-import { done } from "../../../tests/fake-server.ts";
+import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { buildMentionMarkdown, FileResourceLoader, parseInput, SkillCatalog } from "../src/index.ts";
 import { fixture as resourceFixture, skill as writeSkill } from "./helpers/resource-fixture.ts";
 
@@ -71,7 +71,10 @@ it.each(["name: other", "name: React Best Practices", "name: 123", `name: ${"a".
   },
 );
 it("instructions are ordered, skills are metadata-only, project overrides user, bad YAML is diagnosed", async () => {
-  const f = await resourceFixture((_, r) => done(r));
+  const f = await resourceFixture((_, r) => {
+    send(r, chunk({ content: "ok" }));
+    done(r);
+  });
   await writeFile(join(f.agentDir, "AGENTS.md"), "USER RULE");
   await writeFile(join(f.dir, "AGENTS.md"), "ANCESTOR RULE");
   await writeFile(join(f.cwd, "AGENTS.md"), "PROJECT RULE");
@@ -120,7 +123,10 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
 });
 
 it("explicit skills expand only at input start and invalid skills never reach the provider", async () => {
-  const f = await resourceFixture((_, r) => done(r));
+  const f = await resourceFixture((_, r) => {
+    send(r, chunk({ content: "ok" }));
+    done(r);
+  });
   await writeSkill(join(f.cwd, ".ZPI", "skills"), "review", "Review", "BODY ON DEMAND");
   await f.session.submit("$review check sources");
   expect(JSON.stringify(f.server.requests[0])).toContain("BODY ON DEMAND");
@@ -135,7 +141,10 @@ it("explicit skills expand only at input start and invalid skills never reach th
 });
 
 it("unknown dollar-prefixed text is sent unchanged without expanding a skill", async () => {
-  const f = await resourceFixture((_, r) => done(r));
+  const f = await resourceFixture((_, r) => {
+    send(r, chunk({ content: "ok" }));
+    done(r);
+  });
   await writeSkill(join(f.cwd, ".ZPI", "skills"), "review", "Review", "BODY ON DEMAND");
   const text = "  $100 is the price\n$review is mentioned later  ";
   await f.session.submit(text);

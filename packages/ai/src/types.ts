@@ -120,9 +120,21 @@ export interface AssistantMessage {
   contextBreakdown?: ContextBreakdownItem[];
   stopReason: StopReason;
   errorMessage?: string;
+  errorDetails?: ModelFailure;
   rawStopReason?: string;
   endTurn?: boolean;
   timestamp: number;
+}
+export interface ModelFailure {
+  retryable: boolean;
+  status?: number;
+  retryAfterMs?: number;
+}
+export interface ModelRetryStatus {
+  attempt: number;
+  maxRetries: number;
+  retryDelayMs: number;
+  errorStatus: number | null;
 }
 export interface ToolResultMessage {
   role: "toolResult";
@@ -152,6 +164,7 @@ export interface StreamOptions {
   timeoutMs?: number;
   maxRetries?: number;
   maxRetryDelayMs?: number;
+  onRetry?: (status: ModelRetryStatus | null) => void;
   samplingParams?: Record<string, unknown>;
   onPayload?: (payload: unknown, model: Model) => unknown | undefined | Promise<unknown | undefined>;
   onResponse?: (
@@ -170,6 +183,7 @@ export type StreamFunction<TApi extends Api = Api, TOptions extends StreamOption
 ) => AssistantMessageEventStream;
 export type AssistantMessageEvent =
   | { type: "start"; partial: AssistantMessage }
+  | { type: "reset"; partial: AssistantMessage }
   | {
       type: "text_start" | "thinking_start" | "toolcall_start";
       contentIndex: number;

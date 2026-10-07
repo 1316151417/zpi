@@ -21,6 +21,7 @@ export {
   usageAnchor,
 } from "./utils/estimate.ts";
 export { AssistantMessageEventStream, createAssistantMessageEventStream } from "./utils/event-stream.ts";
+export { modelFailure } from "./utils/model-retry.ts";
 export {
   canControlThinking,
   defaultThinkingLevel,

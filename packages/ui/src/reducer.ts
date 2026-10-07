@@ -58,6 +58,14 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.modelLabel = event.modelLabel;
   } else if (event.type === "notice") {
     run.notice = event.text;
+  } else if (event.type === "model_retry") {
+    run.apiRetry = run.status === "running" ? event.status : null;
+  } else if (event.type === "message_reset") {
+    const removed = new Set(
+      run.orderedBlocks.filter((b) => b.messageId === event.messageId).map((b) => b.id),
+    );
+    run.orderedBlocks = run.orderedBlocks.filter((b) => !removed.has(b.id));
+    run.finalAnswerBlockIds = run.finalAnswerBlockIds.filter((id) => !removed.has(id));
   } else if (event.type === "block_end") {
     const id = blockId(event.messageId, event.contentIndex);
     const block = run.orderedBlocks.find((b) => b.id === id);
@@ -68,6 +76,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         ...(block.startedAt !== undefined ? { endedAt: event.timestamp } : {}),
       });
   } else if (event.type === "settled") {
+    run.apiRetry = null;
     run.status = event.status;
     run.endedAt = event.endedAt;
     run.error = event.error;

@@ -1,6 +1,13 @@
 import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "ZPI-agent";
 import { Agent } from "ZPI-agent";
-import type { ContextUsageAnchor, ImageContent, Model, SimpleStreamOptions, TranscriptContext } from "ZPI-ai";
+import type {
+  ContextUsageAnchor,
+  ImageContent,
+  Model,
+  ModelRetryStatus,
+  SimpleStreamOptions,
+  TranscriptContext,
+} from "ZPI-ai";
 import {
   assertSupportedOptions,
   createAssistantMessageEventStream,
@@ -47,6 +54,7 @@ export type AgentSessionEvent =
   | { type: "entry_appended"; entry: SessionEntry }
   | { type: "session_info_changed"; name: string }
   | { type: "thinking_level_changed"; thinkingLevel: ThinkingLevel }
+  | { type: "model_retry"; status: ModelRetryStatus | null }
   | { type: "command_result"; message: string };
 export class AgentSession {
   private agent: Agent;
@@ -67,6 +75,7 @@ export class AgentSession {
   private compactController?: AbortController;
   private usageAnchor?: ContextUsageAnchor;
   private autoCompactionAttempted = false;
+  private streamRecoveryRetries = 0;
   constructor(
     model: Model,
     runtime: ModelRuntime,
@@ -312,19 +321,35 @@ export class AgentSession {
     });
   }
   private streamWithCompaction(model: Model, context: TranscriptContext, options: SimpleStreamOptions = {}) {
-    options = { ...options, sessionId: this.sessionId };
+    options = {
+      ...options,
+      sessionId: this.sessionId,
+      onRetry: (status) => this.notify({ type: "model_retry", status }),
+    };
     const output = createAssistantMessageEventStream();
     void (async () => {
       let request = context;
+      let messageStarted = false;
       for (;;) {
         const response = this.runtime.streamSimple(model, request, options);
         let started = false;
         let emitted = false;
+        let recover = false;
         for await (const event of response) {
           // Hold the empty start so a rejected overflowing request never creates a ghost reply.
           if (event.type === "start") {
             started = true;
             continue;
+          }
+          if (
+            event.type === "error" &&
+            emitted &&
+            !options.signal?.aborted &&
+            event.error.errorDetails?.retryable &&
+            this.streamRecoveryRetries < 10
+          ) {
+            recover = true;
+            break;
           }
           if (
             event.type === "error" &&
@@ -334,16 +359,43 @@ export class AgentSession {
             isContextOverflow(event.error.errorMessage ?? "")
           )
             break;
-          if (started && !emitted)
+          if (started && !messageStarted) {
             output.push({
               type: "start",
               partial:
                 event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial,
             });
+            messageStarted = true;
+          }
           emitted = true;
           output.push(event);
         }
         const result = await response.result();
+        if (recover) {
+          // ZCode 从最后一个安全锚点恢复，不能把断流前的正文/思考与新回复拼接。
+          // ZPI 的工具在完整模型消息后执行；只保留完整调用，执行一次后带结果继续。
+          const recovered = emptyAssistant(model);
+          recovered.content = result.content.filter((c) => c.type === "toolCall");
+          this.streamRecoveryRetries++;
+          options.onRetry?.({
+            attempt: this.streamRecoveryRetries,
+            maxRetries: 10,
+            retryDelayMs: 0,
+            errorStatus: result.errorDetails?.status ?? null,
+          });
+          output.push({ type: "reset", partial: recovered });
+          if (recovered.content.length) {
+            for (const [contentIndex, toolCall] of recovered.content.entries()) {
+              if (toolCall.type !== "toolCall") continue;
+              output.push({ type: "toolcall_start", contentIndex, partial: recovered });
+              output.push({ type: "toolcall_end", contentIndex, toolCall, partial: recovered });
+            }
+            recovered.stopReason = "toolUse";
+            output.end(recovered);
+            return;
+          }
+          continue;
+        }
         if (emitted) {
           this.usageAnchor = usageAnchor(request.messages, result) ?? this.usageAnchor;
           return;
@@ -361,6 +413,7 @@ export class AgentSession {
       const result = emptyAssistant(model);
       result.stopReason = options.signal?.aborted ? "aborted" : "error";
       result.errorMessage = error instanceof Error ? error.message : String(error);
+      options.onRetry?.(null);
       output.end(result);
     });
     return output;
@@ -433,6 +486,7 @@ export class AgentSession {
     this.active = true;
     this.abortRequested = false;
     this.autoCompactionAttempted = false;
+    this.streamRecoveryRetries = 0;
     this.running = Promise.resolve()
       .then(async () => {
         await this.refreshInstructions();
@@ -443,6 +497,7 @@ export class AgentSession {
         this.state.messages = this.manager.buildSessionContext().messages;
       })
       .finally(() => {
+        this.notify({ type: "model_retry", status: null });
         this.active = false;
         this.notify({ type: "agent_settled" });
       });

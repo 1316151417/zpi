@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "ZPI-agent";
-import type { Message, ToolCall, ToolResultMessage } from "ZPI-ai";
+import type { Message, ModelRetryStatus, ToolCall, ToolResultMessage } from "ZPI-ai";
 import type { ContextUsage, ImageAttachment, ResourceDiagnostic } from "ZPI-coding-agent";
 import type { FileLocation } from "./link-target.ts";
 export interface SessionControls {
@@ -69,6 +69,7 @@ export interface RunView {
   error?: string;
   modelLabel?: string;
   notice?: string;
+  apiRetry?: ModelRetryStatus | null;
 }
 export interface SessionView {
   forkOrigin?: { sessionId: string; runId: string };
@@ -94,6 +95,8 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
+  | { type: "model_retry"; status: ModelRetryStatus | null }
+  | { type: "message_reset"; messageId: string }
   | { type: "history_reset"; view: SessionView }
   | { type: "queue_changed"; queue: InputQueue }
   | { type: "session_changed"; title: string }

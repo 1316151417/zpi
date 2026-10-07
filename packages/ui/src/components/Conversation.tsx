@@ -10,6 +10,7 @@ import {
   GitBranch,
   ImagePlus,
   Info,
+  Loader,
   type LucideIcon,
   Pencil,
   Plus,
@@ -545,6 +546,27 @@ export const RunGroup = memo(function RunGroup({
       {run.notice && (
         <div className="run-notice" role="status">
           {run.notice}
+        </div>
+      )}
+      {run.status === "running" && (
+        <div
+          className="chat-loading-slot"
+          role="status"
+          aria-label={run.apiRetry?.attempt && run.apiRetry.attempt >= 3 ? undefined : "加载中"}
+        >
+          {run.apiRetry && run.apiRetry.attempt >= 3 ? (
+            <span
+              className="api-retry-status"
+              title={`重新连接中... ${run.apiRetry.attempt}/${run.apiRetry.maxRetries}${run.apiRetry.errorStatus == null ? "" : ` · HTTP ${run.apiRetry.errorStatus}`}`}
+              data-testid="api-retry-status"
+            >
+              <span className="thinking-label-streaming api-retry-label">
+                重新连接中... {run.apiRetry.attempt}/{run.apiRetry.maxRetries}
+              </span>
+            </span>
+          ) : (
+            <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
+          )}
         </div>
       )}
       {run.error && (

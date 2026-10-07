@@ -100,7 +100,11 @@ it("custom CEL mappings reach both Chat Completions and Responses through the sa
             ? `data: ${JSON.stringify(chunk({ content: "ok" }, "stop"))}\n\ndata: [DONE]\n\n`
             : `data: ${JSON.stringify({
                 type: "response.completed",
-                response: { status: "completed", output: [] },
+                response: {
+                  status: "completed",
+                  output: [],
+                  usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 },
+                },
               })}\n\n`;
         return new Response(text, { headers: { "content-type": "text/event-stream" } });
       },

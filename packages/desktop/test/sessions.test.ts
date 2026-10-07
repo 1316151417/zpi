@@ -73,12 +73,15 @@ it("same-project and cross-project sessions stream concurrently; busy, stale can
 
 it("failure and storage error affect only their session; closing aborts all", async () => {
   const first = deferred();
-  const f = await fixture((body, response) => {
+  const f = await fixture(async (body, response) => {
     const ms = body.messages as unknown as { role: string; content: string }[];
     const t = ms.find((m) => m.role === "user")?.content;
     send(response, chunk({ content: "live" }));
-    if (t === "fail") response.destroy();
-    else first.resolve();
+    if (t === "fail") {
+      // 先让正文到达客户端，验证断流恢复上限，而不是请求建立前的指数退避。
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      response.destroy();
+    } else first.resolve();
   });
   const a = f.host.createSession(f.a.id),
     b = f.host.createSession(f.a.id);
@@ -93,7 +96,10 @@ it("failure and storage error affect only their session; closing aborts all", as
 });
 
 it("credential values never leave settings reader or metadata and hidden projects retain history", async () => {
-  const f = await fixture((_, r) => done(r));
+  const f = await fixture((_, r) => {
+    send(r, chunk({ content: "ok" }));
+    done(r);
+  });
   const session = f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: session.id, text: "hello" });
   await Promise.all([...f.host.activeRuns.values()].map((r) => r.done));

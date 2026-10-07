@@ -32,12 +32,14 @@ function fileChangeSummary(details: unknown): FileChangeSummary | undefined {
 }
 
 export function projectEvent(event: AgentSessionEvent, messageId: string): DesktopEvent | undefined {
+  if (event.type === "model_retry") return event;
   if (event.type === "command_result") return { type: "notice", text: event.message };
   if (event.type === "message_start") return { type: "message_start", messageId, role: event.message.role };
   if (event.type === "message_end")
     return { type: "message_end", messageId, message: visibleMessage(event.message), timestamp: Date.now() };
   if (event.type === "message_update") {
     const e = event.assistantMessageEvent;
+    if (e.type === "reset") return { type: "message_reset", messageId };
     if (e.type === "text_start" || e.type === "thinking_start" || e.type === "toolcall_start")
       return {
         type: "block_start",

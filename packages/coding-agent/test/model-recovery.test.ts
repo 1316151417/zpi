@@ -1,0 +1,177 @@
+import type { AssistantMessage, ModelRetryStatus, TranscriptContext } from "ZPI-ai";
+import { createAssistantMessageEventStream, emptyAssistant } from "ZPI-ai";
+import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { expect, it } from "vitest";
+import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
+import { directory } from "./helpers/session-fixture.ts";
+
+it("commits complete tool calls from a failed stream once and continues with their results", async () => {
+  const cwd = await directory();
+  const runtime = await ModelRuntime.create();
+  let calls = 0,
+    writes = 0;
+  runtime.registerProvider("fake", {
+    models: [fakeConfig("")],
+    streamSimple(model, context, options) {
+      const events = createAssistantMessageEventStream();
+      const output = emptyAssistant(model);
+      options?.onRetry?.(null);
+      if (++calls === 1) {
+        const toolCall = {
+          type: "toolCall" as const,
+          id: "complete-write",
+          name: "write",
+          arguments: { path: "once.txt", content: "complete" },
+        };
+        output.content = [{ type: "text", text: "discarded tail" }, toolCall];
+        output.stopReason = "error";
+        output.errorMessage = "connection reset";
+        output.errorDetails = { retryable: true };
+        events.push({ type: "start", partial: output });
+        events.push({ type: "text_delta", contentIndex: 0, delta: "discarded tail", partial: output });
+        events.push({ type: "toolcall_end", contentIndex: 1, toolCall, partial: output });
+      } else {
+        expect(context.messages.filter((m) => m.role === "toolResult")).toHaveLength(1);
+        expect(JSON.stringify(context)).not.toContain("discarded tail");
+        output.content = [{ type: "text", text: "finished" }];
+        events.push({ type: "start", partial: output });
+      }
+      events.end(output);
+      return events;
+    },
+  });
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir: join(cwd, "agent"),
+    userSkillPaths: [],
+    modelRuntime: runtime,
+  });
+  session.subscribe((event) => {
+    if (event.type === "tool_execution_start" && event.toolName === "write") writes++;
+  });
+  await session.prompt("write once");
+  expect(calls).toBe(2);
+  expect(writes).toBe(1);
+  expect(await readFile(join(cwd, "once.txt"), "utf8")).toBe("complete");
+  expect(session.messages.at(-1)).toMatchObject({ content: [{ text: "finished" }] });
+  session.dispose();
+});
+
+it("recovers text and reasoning from the prior tool result without replaying writes or persisting failed tails", async () => {
+  const cwd = await directory();
+  const contexts: TranscriptContext[] = [];
+  const runtime = await ModelRuntime.create();
+  runtime.registerProvider("fake", {
+    models: [fakeConfig("")],
+    streamSimple(model, context, options) {
+      contexts.push(structuredClone(context));
+      const events = createAssistantMessageEventStream();
+      const output = emptyAssistant(model);
+      const n = contexts.length;
+      if (n === 1) {
+        output.content = [
+          {
+            type: "toolCall",
+            id: "write-once",
+            name: "write",
+            arguments: { path: "once.txt", content: "once" },
+          },
+        ];
+        output.stopReason = "toolUse";
+      } else if (n < 5) {
+        output.content = [
+          { type: "thinking", thinking: "discarded thought" },
+          { type: "text", text: "discarded tail" },
+        ];
+        output.stopReason = "error";
+        output.errorMessage = "connection reset";
+        output.errorDetails = { retryable: true };
+      } else {
+        options?.onRetry?.(null);
+        output.content = [{ type: "text", text: "recovered answer" }];
+      }
+      events.push({ type: "start", partial: output });
+      if (n > 1 && n < 5)
+        events.push({ type: "text_delta", contentIndex: 1, delta: "discarded tail", partial: output });
+      events.end(output);
+      return events;
+    },
+  });
+  const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir: join(cwd, "agent"),
+    userSkillPaths: [],
+    modelRuntime: runtime,
+    sessionManager: manager,
+  });
+  const retry: (ModelRetryStatus | null)[] = [];
+  let writes = 0,
+    resets = 0,
+    starts = 0;
+  session.subscribe((event) => {
+    if (event.type === "model_retry") retry.push(event.status);
+    if (event.type === "tool_execution_start" && event.toolName === "write") writes++;
+    if (event.type === "message_start" && event.message.role === "assistant") starts++;
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "reset") resets++;
+  });
+  await session.prompt("write then respond");
+  expect(writes).toBe(1);
+  expect(resets).toBe(3);
+  expect(starts).toBe(2);
+  expect(retry.filter(Boolean).map((s) => s?.attempt)).toEqual([1, 2, 3]);
+  expect(retry.at(-1)).toBeNull();
+  expect(await readFile(join(cwd, "once.txt"), "utf8")).toBe("once");
+  for (const context of contexts.slice(1)) {
+    expect(context.messages.filter((m) => m.role === "toolResult")).toHaveLength(1);
+    expect(JSON.stringify(context)).not.toContain("discarded");
+  }
+  expect(JSON.stringify(manager.getEntries())).not.toContain("discarded");
+  expect(session.messages.at(-1)).toMatchObject({
+    stopReason: "stop",
+    content: [{ text: "recovered answer" }],
+  });
+  session.dispose();
+});
+
+it("bounds partial stream recovery at ten and preserves the final failure", async () => {
+  const cwd = await directory();
+  const runtime = await ModelRuntime.create();
+  let calls = 0;
+  runtime.registerProvider("fake", {
+    models: [fakeConfig("")],
+    streamSimple() {
+      calls++;
+      const events = createAssistantMessageEventStream();
+      const output: AssistantMessage = {
+        ...emptyAssistant(fakeModel("")),
+        content: [{ type: "text", text: "last partial" }],
+        stopReason: "error",
+        errorMessage: "connection reset",
+        errorDetails: { retryable: true },
+      };
+      events.push({ type: "start", partial: output });
+      events.push({ type: "text_delta", contentIndex: 0, delta: "last partial", partial: output });
+      events.end(output);
+      return events;
+    },
+  });
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir: join(cwd, "agent"),
+    userSkillPaths: [],
+    modelRuntime: runtime,
+  });
+  await session.prompt("recover");
+  expect(calls).toBe(11);
+  expect(session.isIdle).toBe(true);
+  expect(session.messages.at(-1)).toMatchObject({
+    stopReason: "error",
+    errorMessage: "connection reset",
+    content: [{ text: "last partial" }],
+  });
+  expect(session.messages.filter((m) => m.role === "assistant")).toHaveLength(1);
+  session.dispose();
+});
