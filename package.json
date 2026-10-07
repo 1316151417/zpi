@@ -1,6 +1,6 @@
 {
   "name": "ZPI",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -20,7 +20,7 @@
     "package:mac:preview": "npm run build && electron-builder --mac dmg -c.productName=\"ZPI Preview\" -c.appId=local.ZPI.desktop.preview -c.extraMetadata.productName=\"ZPI Preview\"",
     "example:coding": "tsx examples/coding-session.ts",
     "install:electron": "node node_modules/electron/install.js",
-    "install:terminal": "electron-rebuild -f -w node-pty"
+    "install:terminal": "electron-rebuild -f -w node-pty && node scripts/prepare-terminal.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
