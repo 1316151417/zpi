@@ -372,6 +372,7 @@ export const RunGroup = memo(function RunGroup({
     if (!onEdit) setEditing(false);
   }, [onEdit]);
   const { process, answer, defaultOpen } = runPresentation(run);
+  const items = processItems(process, run.status === "running");
   const open = defaultOpen || expanded;
   return (
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
@@ -460,9 +461,9 @@ export const RunGroup = memo(function RunGroup({
           if (!defaultOpen) onToggle(run.runId, !expanded);
         }}
       />
-      {open && process.length > 0 && (
+      {open && items.length > 0 && (
         <div className="process" data-testid="process">
-          {processItems(process, run.status === "running").map((item) =>
+          {items.map((item) =>
             item.kind !== "block" ? (
               <ToolGroup
                 key={item.id}
@@ -517,7 +518,9 @@ export const RunGroup = memo(function RunGroup({
               </span>
             </span>
           ) : (
-            <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
+            <div className="chat-loading-icon">
+              <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
+            </div>
           )}
         </div>
       )}

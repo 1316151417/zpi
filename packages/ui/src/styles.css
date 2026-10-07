@@ -414,9 +414,16 @@ small {
   }
 }
 .chat-loading-slot {
+  /* ZCode ConversationTurnGroup gives the loading slot its own gap-5. */
+  margin-top: 20px;
   min-height: 20px;
+}
+.chat-loading-icon {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
 }
 .chat-loading-spinner {
   color: var(--color-text-subtle);
