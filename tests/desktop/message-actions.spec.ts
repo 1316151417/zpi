@@ -17,6 +17,87 @@ async function selectText(locator: Locator) {
   });
 }
 
+test("scrolling then opening a conversation reference dismisses the old text selection", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-selection-dismiss-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const server = await fakeServer((_, response, index) => {
+    send(
+      response,
+      chunk({
+        content:
+          index === 0
+            ? Array.from({ length: 60 }, (_, i) => `Paragraph ${i + 1}: selected conversation text`).join(
+                "\n\n",
+              )
+            : "Reference received",
+      }),
+    );
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    const composer = page.locator(".composer-container").getByLabel("消息", { exact: true });
+    await composer.fill("first message");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run").first()).toHaveAttribute("data-status", "completed");
+    const paragraph = page.getByTestId("run").first().locator(".answer p").first();
+    const add = page.getByRole("button", { name: "添加到当前任务", exact: true });
+    await paragraph.scrollIntoViewIfNeeded();
+    await paragraph.click();
+    await selectText(paragraph);
+    await expect(add).toBeVisible();
+    await add.click();
+    await expect(composer).toBeFocused();
+    await composer.fill("explain the reference");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run")).toHaveCount(2);
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+
+    await paragraph.scrollIntoViewIfNeeded();
+    await paragraph.click();
+    await selectText(paragraph);
+    await expect(add).toBeVisible();
+    await page.locator(".conversation").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(add).toHaveCount(0);
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toContain("Paragraph 1");
+    const reference = page.getByTestId("run").last().getByRole("button", { name: "1 条对话引用" });
+    await reference.click();
+    await expect(page.getByRole("dialog", { name: "引用内容" })).toContainText("Paragraph 1");
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true);
+    await expect(add).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.mouse.move(0, 0);
+
+    // Focus changes without a pointer event also retire the previous selection.
+    await paragraph.scrollIntoViewIfNeeded();
+    await paragraph.click();
+    await selectText(paragraph);
+    await expect(add).toBeVisible();
+    await composer.focus();
+    await expect(add).toHaveCount(0);
+    expect(await page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true);
+
+    await paragraph.scrollIntoViewIfNeeded();
+    await paragraph.click();
+    await selectText(paragraph);
+    await expect(add).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(add).toHaveCount(0);
+    await page.keyboard.press("Shift");
+    await expect(add).toHaveCount(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("selections inside or crossing Markdown file and web links can be added to the current task", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-link-selection-"));
   const project = join(dir, "project");

@@ -116,6 +116,27 @@ export function ConversationSelectionMenu({
     close();
     const root = rootRef.current;
     if (!root || !onAdd) return;
+    const element = (node: Node) => (node instanceof Element ? node : node.parentElement);
+    // 正文链接用按钮拦截原生跳转，但其文字仍属于消息选区，不能按操作控件排除。
+    const excluded =
+      "button:not([data-conversation-inline-link]),input,textarea,[role=button]:not([data-conversation-inline-link]),[role=dialog],[contenteditable=true],[data-conversation-selection-tooltip]";
+    const dismiss = () => {
+      close();
+      const selected = window.getSelection();
+      if (selected?.rangeCount && root.contains(selected.getRangeAt(0).commonAncestorContainer))
+        selected.removeAllRanges();
+    };
+    const leaveSelection = (event: Event) => {
+      const target = event.target instanceof Node ? element(event.target) : null;
+      if (target?.closest("[data-conversation-selection-tooltip]")) return;
+      if (
+        !target ||
+        !root.contains(target) ||
+        !target.closest("[data-conversation-selectable]") ||
+        target.closest(excluded)
+      )
+        dismiss();
+    };
     const inspect = () => {
       const selected = window.getSelection();
       if (!selected || selected.isCollapsed || selected.rangeCount !== 1) {
@@ -123,13 +144,9 @@ export function ConversationSelectionMenu({
         return;
       }
       const range = selected.getRangeAt(0);
-      const element = (node: Node) => (node instanceof Element ? node : node.parentElement);
       const start = element(range.startContainer),
         end = element(range.endContainer);
       const region = start?.closest<HTMLElement>("[data-conversation-selectable]");
-      // 正文链接用按钮拦截原生跳转，但其文字仍属于消息选区，不能按操作控件排除。
-      const excluded =
-        "button:not([data-conversation-inline-link]),input,textarea,[role=button]:not([data-conversation-inline-link]),[role=dialog],[contenteditable=true],[data-conversation-selection-tooltip]";
       if (
         !region ||
         region !== end?.closest("[data-conversation-selectable]") ||
@@ -141,8 +158,16 @@ export function ConversationSelectionMenu({
         return;
       }
       const text = selected.toString().trim(),
-        rect = range.getBoundingClientRect();
-      if (!text || (!rect.width && !rect.height)) {
+        rect = range.getBoundingClientRect(),
+        viewport = root.getBoundingClientRect();
+      if (
+        !text ||
+        (!rect.width && !rect.height) ||
+        rect.bottom <= Math.max(0, viewport.top) ||
+        rect.top >= Math.min(window.innerHeight, viewport.bottom) ||
+        rect.right <= Math.max(0, viewport.left) ||
+        rect.left >= Math.min(window.innerWidth, viewport.right)
+      ) {
         close();
         return;
       }
@@ -167,28 +192,49 @@ export function ConversationSelectionMenu({
         },
       });
     };
-    const schedule = () => {
+    const schedule = (event: Event) => {
+      const target = event.target instanceof Node ? element(event.target) : null;
+      if (!target?.closest("[data-conversation-selectable]") || target.closest(excluded)) {
+        close();
+        return;
+      }
       cancelAnimationFrame(frame.current);
       frame.current = requestAnimationFrame(inspect);
     };
-    const key = (event: KeyboardEvent) => (event.key === "Escape" ? close() : schedule());
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+      else if (
+        (event.shiftKey &&
+          /^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown)$/.test(event.key)) ||
+        ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a")
+      ) {
+        cancelAnimationFrame(frame.current);
+        frame.current = requestAnimationFrame(inspect);
+      }
+    };
     const changed = () => {
       if (window.getSelection()?.isCollapsed) close();
     };
     root.addEventListener("mouseup", schedule);
     root.addEventListener("touchend", schedule);
     root.addEventListener("scroll", close, true);
+    document.addEventListener("pointerdown", leaveSelection, true);
+    document.addEventListener("focusin", leaveSelection);
     document.addEventListener("keyup", key);
     document.addEventListener("selectionchange", changed);
     window.addEventListener("resize", close);
+    window.addEventListener("blur", dismiss);
     return () => {
       cancelAnimationFrame(frame.current);
       root.removeEventListener("mouseup", schedule);
       root.removeEventListener("touchend", schedule);
       root.removeEventListener("scroll", close, true);
+      document.removeEventListener("pointerdown", leaveSelection, true);
+      document.removeEventListener("focusin", leaveSelection);
       document.removeEventListener("keyup", key);
       document.removeEventListener("selectionchange", changed);
       window.removeEventListener("resize", close);
+      window.removeEventListener("blur", dismiss);
     };
   }, [rootRef, scopeKey, onAdd, close]);
   const state = snapshot?.scopeKey === scopeKey ? snapshot.selection : undefined;
@@ -224,6 +270,7 @@ export function ConversationSelectionMenu({
               type="button"
               data-conversation-selection-action="add-to-task"
               onClick={() => {
+                window.getSelection()?.removeAllRanges();
                 onAdd({
                   id: crypto.randomUUID(),
                   text: state.text,
