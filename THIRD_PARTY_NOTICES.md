@@ -797,3 +797,5 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Conversation column widths, turn padding, composer dock insets, footer action spacing and the shared turn hover scope follow ZCode `v4/conversationLayout.ts`, `v4/ConversationTurnGroup.tsx`, `v4/ConversationTimeline.tsx`, `v4/ConversationRowView.tsx` and `components/ai-elements/message.tsx` from commit 872ad960de7ec172591f7e1952f7849229f94521. Adapted to ZPI's existing copy, fork and local session controls. Existing ZCode Apache-2.0 and Lucide ISC attributions apply.

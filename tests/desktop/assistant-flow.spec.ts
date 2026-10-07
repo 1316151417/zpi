@@ -83,7 +83,7 @@ test("assistant prose stays in order with reasoning and tools, then only the las
     await expect(run.getByTestId("progress")).toHaveAttribute("aria-expanded", "false");
     await expect(run.getByTestId("process")).toHaveCount(0);
     await expect(run.locator(".assistant-message-row > .answer")).toHaveText(/^最终结论\s+项目说明已验证。$/);
-    await expect(run.locator(".assistant-message-row > .answer")).toHaveCSS("margin-top", "20px");
+    await expect(run.locator(".assistant-message-row")).toHaveCSS("margin-top", "20px");
     await run.locator(".assistant-message-row").hover();
     await run.locator(".assistant-message-actions").getByLabel("复制", { exact: true }).click();
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(

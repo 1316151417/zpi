@@ -1838,6 +1838,8 @@
 
 /* ZCode ConversationTimeline: responsive 29dvh top spacer, then greeting and dock. */
 .task-body {
+  container-type: inline-size;
+  container-name: conversation;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1867,6 +1869,8 @@
   scrollbar-gutter: auto;
 }
 .draft-main .conversation-inner {
+  width: 100%;
+  max-width: none;
   padding: 0;
 }
 .draft-main .empty-chat {
@@ -1874,6 +1878,8 @@
   padding: 0 16px;
 }
 .draft-main .composer-container {
+  width: 100%;
+  max-width: none;
   flex-shrink: 0;
   padding: 12px 16px 0;
 }
@@ -1897,10 +1903,6 @@
   pointer-events: none;
   font-size: 30px;
 }
-.conversation-inner {
-  max-width: 1024px;
-}
-
 /* Adapted from ZCode ProviderTemplatePicker / ProviderModelMetadataDialog. */
 .provider-logo {
   object-fit: contain;

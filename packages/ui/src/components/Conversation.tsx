@@ -376,222 +376,224 @@ export const RunGroup = memo(function RunGroup({
   const open = defaultOpen || expanded;
   return (
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
-      <div className="user-message-row">
-        {editing && onEdit && sessionId ? (
-          <UserMessageEditor
-            run={run}
-            sessionId={sessionId}
-            context={context}
-            onEdit={onEdit}
-            onCancel={cancelEdit}
-          />
-        ) : (
-          <>
-            <div className="message-images">
-              <SelectionReferenceChip references={parsedUser.selections} />
-              {context &&
-                sessionId &&
-                run.attachments?.map((image) => (
-                  <ImagePreview
-                    key={image.id}
-                    sessionId={sessionId}
-                    image={image}
-                    read={context.readAttachment}
-                  />
-                ))}
-            </div>
-            <div className="user-message">
-              <div
-                className="user-message-text"
-                data-find-key={`${run.runId}:user`}
-                data-conversation-selectable="user"
-                data-selection-key={`${sessionId}:${run.runId}:user`}
-              >
-                {(() => {
-                  const parts: ReactNode[] = [];
-                  let previous = 0;
-                  const mentions = displayReferences(parsedUser.text);
-                  for (const mention of mentions) {
-                    parts.push(parsedUser.text.slice(previous, mention.start));
-                    parts.push(
-                      <Reference
-                        key={mention.start}
-                        kind={mention.kind}
-                        path={mention.path}
-                        label={mention.label}
-                        onOpen={onFile}
-                        onAction={onFileAction}
-                      />,
-                    );
-                    previous = mention.end;
-                  }
-                  parts.push(parsedUser.text.slice(previous));
-                  for (const path of run.fileReferences ?? [])
-                    if (!mentions.some((m) => m.path === path))
+      <div className="assistant-turn">
+        <div className="user-message-row">
+          {editing && onEdit && sessionId ? (
+            <UserMessageEditor
+              run={run}
+              sessionId={sessionId}
+              context={context}
+              onEdit={onEdit}
+              onCancel={cancelEdit}
+            />
+          ) : (
+            <>
+              <div className="message-images">
+                <SelectionReferenceChip references={parsedUser.selections} />
+                {context &&
+                  sessionId &&
+                  run.attachments?.map((image) => (
+                    <ImagePreview
+                      key={image.id}
+                      sessionId={sessionId}
+                      image={image}
+                      read={context.readAttachment}
+                    />
+                  ))}
+              </div>
+              <div className="user-message">
+                <div
+                  className="user-message-text"
+                  data-find-key={`${run.runId}:user`}
+                  data-conversation-selectable="user"
+                  data-selection-key={`${sessionId}:${run.runId}:user`}
+                >
+                  {(() => {
+                    const parts: ReactNode[] = [];
+                    let previous = 0;
+                    const mentions = displayReferences(parsedUser.text);
+                    for (const mention of mentions) {
+                      parts.push(parsedUser.text.slice(previous, mention.start));
                       parts.push(
                         <Reference
-                          key={path}
-                          kind="file"
-                          path={path}
-                          label={path.split("/").at(-1) ?? path}
+                          key={mention.start}
+                          kind={mention.kind}
+                          path={mention.path}
+                          label={mention.label}
                           onOpen={onFile}
                           onAction={onFileAction}
                         />,
                       );
-                  return parts;
-                })()}
+                      previous = mention.end;
+                    }
+                    parts.push(parsedUser.text.slice(previous));
+                    for (const path of run.fileReferences ?? [])
+                      if (!mentions.some((m) => m.path === path))
+                        parts.push(
+                          <Reference
+                            key={path}
+                            kind="file"
+                            path={path}
+                            label={path.split("/").at(-1) ?? path}
+                            onOpen={onFile}
+                            onAction={onFileAction}
+                          />,
+                        );
+                    return parts;
+                  })()}
+                </div>
               </div>
-            </div>
-            <div className="message-actions user-message-actions">
-              <CopyMessage text={run.userMessage} onCopy={onCopy} />
-              {onEdit && (
-                <MessageAction label="编辑" onClick={() => setEditing(true)}>
-                  <Pencil size={14} />
-                </MessageAction>
-              )}
-            </div>
-          </>
+              <div className="message-actions user-message-actions">
+                <CopyMessage text={run.userMessage} onCopy={onCopy} />
+                {onEdit && (
+                  <MessageAction label="编辑" onClick={() => setEditing(true)}>
+                    <Pencil size={14} />
+                  </MessageAction>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        <WorkProgress
+          run={run}
+          expanded={open}
+          defaultOpen={defaultOpen}
+          toggle={() => {
+            if (!defaultOpen) onToggle(run.runId, !expanded);
+          }}
+        />
+        {open && items.length > 0 && (
+          <div className="process" data-testid="process">
+            {items.map((item) =>
+              item.kind !== "block" ? (
+                <ToolGroup
+                  key={item.id}
+                  group={item}
+                  blocks={blocks}
+                  toggle={(id) => onBlockToggle(id, !(blocks[id] ?? false))}
+                  workspace={workspace}
+                  onCopy={onCopy}
+                  onFile={onFile}
+                  onChanges={onChanges ? openToolChange : undefined}
+                  onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
+                />
+              ) : (
+                <ProcessBlock
+                  workspace={workspace}
+                  key={item.id}
+                  onImage={onImage}
+                  onDownloadImage={context?.downloadImage}
+                  block={item.block}
+                  expanded={blocks[item.id] ?? false}
+                  toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
+                  onLink={onLink}
+                  onCopy={onCopy}
+                  onFile={onFile}
+                  onFileAction={onFileAction}
+                  onChanges={onChanges ? openToolChange : undefined}
+                  onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
+                />
+              ),
+            )}
+          </div>
         )}
-      </div>
-      <WorkProgress
-        run={run}
-        expanded={open}
-        defaultOpen={defaultOpen}
-        toggle={() => {
-          if (!defaultOpen) onToggle(run.runId, !expanded);
-        }}
-      />
-      {open && items.length > 0 && (
-        <div className="process" data-testid="process">
-          {items.map((item) =>
-            item.kind !== "block" ? (
-              <ToolGroup
-                key={item.id}
-                group={item}
-                blocks={blocks}
-                toggle={(id) => onBlockToggle(id, !(blocks[id] ?? false))}
-                workspace={workspace}
-                onCopy={onCopy}
-                onFile={onFile}
-                onChanges={onChanges ? openToolChange : undefined}
-                onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
-              />
+        {run.notice && (
+          <div className="run-notice" role="status">
+            {run.notice}
+          </div>
+        )}
+        {run.status === "running" && (
+          <div
+            className="chat-loading-slot"
+            role="status"
+            aria-label={run.apiRetry?.attempt && run.apiRetry.attempt >= 3 ? undefined : "加载中"}
+          >
+            {run.apiRetry && run.apiRetry.attempt >= 3 ? (
+              <span
+                className="api-retry-status"
+                title={`重新连接中... ${run.apiRetry.attempt}/${run.apiRetry.maxRetries}${run.apiRetry.errorStatus == null ? "" : ` · HTTP ${run.apiRetry.errorStatus}`}`}
+                data-testid="api-retry-status"
+              >
+                <span className="thinking-label-streaming api-retry-label">
+                  重新连接中... {run.apiRetry.attempt}/{run.apiRetry.maxRetries}
+                </span>
+              </span>
             ) : (
-              <ProcessBlock
+              <div className="chat-loading-icon">
+                <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
+              </div>
+            )}
+          </div>
+        )}
+        {run.error && (
+          <div role="alert" className="run-error">
+            {run.error}
+          </div>
+        )}
+        {run.status === "aborted" && <div className="run-notice">运行已停止，保留已收到的内容。</div>}
+        {run.status === "interrupted" && (
+          <div className="run-notice">应用退出时运行尚未结束，工具未重新执行。</div>
+        )}
+        <div className="assistant-message-row">
+          {answer && (
+            <div
+              className="answer"
+              data-find-key={`${run.runId}:answer`}
+              data-conversation-selectable="assistant"
+              data-selection-key={`${sessionId}:${run.runId}:answer`}
+            >
+              <Markdown
                 workspace={workspace}
-                key={item.id}
                 onImage={onImage}
                 onDownloadImage={context?.downloadImage}
-                block={item.block}
-                expanded={blocks[item.id] ?? false}
-                toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
+                text={answer.text}
+                streaming={Boolean(answer.streaming)}
                 onLink={onLink}
                 onCopy={onCopy}
                 onFile={onFile}
                 onFileAction={onFileAction}
-                onChanges={onChanges ? openToolChange : undefined}
-                onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
               />
-            ),
+            </div>
           )}
-        </div>
-      )}
-      {run.notice && (
-        <div className="run-notice" role="status">
-          {run.notice}
-        </div>
-      )}
-      {run.status === "running" && (
-        <div
-          className="chat-loading-slot"
-          role="status"
-          aria-label={run.apiRetry?.attempt && run.apiRetry.attempt >= 3 ? undefined : "加载中"}
-        >
-          {run.apiRetry && run.apiRetry.attempt >= 3 ? (
-            <span
-              className="api-retry-status"
-              title={`重新连接中... ${run.apiRetry.attempt}/${run.apiRetry.maxRetries}${run.apiRetry.errorStatus == null ? "" : ` · HTTP ${run.apiRetry.errorStatus}`}`}
-              data-testid="api-retry-status"
-            >
-              <span className="thinking-label-streaming api-retry-label">
-                重新连接中... {run.apiRetry.attempt}/{run.apiRetry.maxRetries}
-              </span>
-            </span>
-          ) : (
-            <div className="chat-loading-icon">
-              <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
+          <ChangedFiles
+            run={run}
+            cwd={workspace?.cwd}
+            onChanges={onChanges}
+            onFile={onFile}
+            onFileAction={onFileAction}
+          />
+          {answer && (
+            <div className="message-actions assistant-message-actions">
+              <CopyMessage
+                text={run.orderedBlocks
+                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                  .join("\n\n")}
+                onCopy={onCopy}
+              />
+              {onFork && (
+                <MessageAction
+                  label="分叉"
+                  disabled={forking}
+                  onClick={() => {
+                    setForking(true);
+                    setActionError("");
+                    void onFork(run.runId)
+                      .catch((error) => setActionError(String(error)))
+                      .finally(() => setForking(false));
+                  }}
+                >
+                  <TrendingUpDown size={14} />
+                </MessageAction>
+              )}
+              <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
+            </div>
+          )}
+          {actionError && (
+            <div className="run-error" role="alert">
+              {actionError}
             </div>
           )}
         </div>
-      )}
-      {run.error && (
-        <div role="alert" className="run-error">
-          {run.error}
-        </div>
-      )}
-      {run.status === "aborted" && <div className="run-notice">运行已停止，保留已收到的内容。</div>}
-      {run.status === "interrupted" && (
-        <div className="run-notice">应用退出时运行尚未结束，工具未重新执行。</div>
-      )}
-      <div className="assistant-message-row">
-        {answer && (
-          <div
-            className="answer"
-            data-find-key={`${run.runId}:answer`}
-            data-conversation-selectable="assistant"
-            data-selection-key={`${sessionId}:${run.runId}:answer`}
-          >
-            <Markdown
-              workspace={workspace}
-              onImage={onImage}
-              onDownloadImage={context?.downloadImage}
-              text={answer.text}
-              streaming={Boolean(answer.streaming)}
-              onLink={onLink}
-              onCopy={onCopy}
-              onFile={onFile}
-              onFileAction={onFileAction}
-            />
-          </div>
-        )}
-        <ChangedFiles
-          run={run}
-          cwd={workspace?.cwd}
-          onChanges={onChanges}
-          onFile={onFile}
-          onFileAction={onFileAction}
-        />
-        {answer && (
-          <div className="message-actions assistant-message-actions">
-            <CopyMessage
-              text={run.orderedBlocks
-                .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                .join("\n\n")}
-              onCopy={onCopy}
-            />
-            {onFork && (
-              <MessageAction
-                label="分叉"
-                disabled={forking}
-                onClick={() => {
-                  setForking(true);
-                  setActionError("");
-                  void onFork(run.runId)
-                    .catch((error) => setActionError(String(error)))
-                    .finally(() => setForking(false));
-                }}
-              >
-                <TrendingUpDown size={14} />
-              </MessageAction>
-            )}
-            <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
-          </div>
-        )}
-        {actionError && (
-          <div className="run-error" role="alert">
-            {actionError}
-          </div>
-        )}
       </div>
     </article>
   );
