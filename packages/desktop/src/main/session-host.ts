@@ -49,7 +49,7 @@ import { SessionInputQueue } from "./input-queue.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import { atomicJson, resolveModel, type SettingsStore } from "./storage.ts";
-import { searchFiles, validatedFile } from "./workspace-files.ts";
+import { searchFiles, validatedReference } from "./workspace-files.ts";
 
 interface SessionConfiguration {
   template: PromptTemplate;
@@ -742,7 +742,10 @@ export class SessionHost {
   }
   async referencedFile(id: string, path: string) {
     const cwd = this.workspaceInfo(id).cwd;
-    return validatedFile(cwd, isAbsolute(path) ? relative(await realpath(cwd), await realpath(path)) : path);
+    return validatedReference(
+      cwd,
+      isAbsolute(path) ? relative(await realpath(cwd), await realpath(path)) : path,
+    );
   }
   async searchFiles(id: string, query: string) {
     this.searches.get(id)?.abort();
@@ -1382,9 +1385,12 @@ export class SessionHost {
     this.record(id);
     const draft = this.drafts.get(id),
       warnings: string[] = [];
-    for (const path of new Set([...draft.fileReferences, ...parseMentions(draft.text).map((m) => m.path)])) {
+    const mentions = parseMentions(draft.text);
+    for (const path of new Set([...draft.fileReferences, ...mentions.map((m) => m.path)])) {
       try {
-        if (!(await stat(path)).isFile()) throw new Error("not a file");
+        if (mentions.some((mention) => mention.path === path && mention.kind === "skill")) {
+          if (!(await stat(path)).isFile()) throw new Error("not a file");
+        } else await this.referencedFile(id, path);
       } catch {
         warnings.push(`引用已失效，原文已保留：${path}`);
       }

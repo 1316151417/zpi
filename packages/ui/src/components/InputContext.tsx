@@ -68,7 +68,7 @@ export interface ComposerContext {
   searchFiles(
     sessionId: string,
     query: string,
-  ): Promise<{ path: string; name: string; absolutePath: string }[]>;
+  ): Promise<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>;
   importImage(sessionId: string, file: File): Promise<ImageAttachment>;
   pickImages(sessionId: string): Promise<ImageAttachment[]>;
   removeAttachment(sessionId: string, id: string): Promise<void>;

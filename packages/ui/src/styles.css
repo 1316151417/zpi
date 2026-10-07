@@ -31,6 +31,21 @@
 * {
   box-sizing: border-box;
 }
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+html {
+  overscroll-behavior: none;
+}
+#root {
+  height: 100dvh;
+}
 body {
   margin: 0;
   font-size: var(--text-body);
@@ -87,7 +102,9 @@ small {
   color: var(--color-text-muted);
 }
 .shell {
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
 }
 .sidebar {
@@ -175,6 +192,7 @@ small {
 .main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -282,6 +300,7 @@ small {
   z-index: 0;
   height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 .conversation-inner {
@@ -1295,16 +1314,7 @@ small {
   max-height: min(224px, 40vh);
   padding: 3px 4px;
   overflow: auto;
-}
-.command-panel h3 {
-  height: 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  margin: 0;
-  font-size: var(--text-body);
-  color: var(--color-text-subtle);
-  font-weight: 600;
+  overscroll-behavior: contain;
 }
 .command-panel button {
   text-align: left;
@@ -1320,7 +1330,16 @@ small {
 }
 .command-panel strong {
   font-weight: 500;
-  flex-shrink: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.command-panel .file-option {
+  gap: 4px;
+}
+.command-panel :where(.file-option) > span {
+  min-width: 0;
 }
 .command-panel button[aria-selected="true"] {
   background: var(--color-active);
@@ -1793,6 +1812,7 @@ small {
   min-height: 40px;
   max-height: 160px;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 0;
   border: 0;
   outline: none;

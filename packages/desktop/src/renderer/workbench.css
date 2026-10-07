@@ -1848,6 +1848,7 @@
 .draft-main .task-body {
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 .draft-main .task-body::before {

@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   buildSelectionPrompt,
   type ConversationSelection,
@@ -53,6 +53,7 @@ import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageAc
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
+import { SuggestionOptions } from "./SuggestionOptions.tsx";
 import { ToolBlock } from "./ToolBlock.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import { processItems } from "./tool-presentation.ts";
@@ -1023,29 +1024,40 @@ export function ChatComposer({
     query: string;
     explicit?: boolean;
   }>();
-  const [fileMatches, setFileMatches] = useState<{ path: string; name: string; absolutePath: string }[]>([]);
+  const [fileMatches, setFileMatches] = useState<Awaited<ReturnType<ComposerContext["searchFiles"]>>>([]);
   const [fileError, setFileError] = useState("");
+  const [fileLoading, setFileLoading] = useState(false);
   useEffect(() => {
     let active = true;
     setFileMatches([]);
     setFileError("");
+    setFileLoading(Boolean(fileQuery && context));
     if (fileQuery && context)
       void context
         .searchFiles(sessionId, fileQuery.query)
         .then((files) => {
-          if (active) setFileMatches(files);
+          if (active) {
+            setFileMatches(files);
+            setFileLoading(false);
+          }
         })
         .catch((e) => {
-          if (active) setFileError(String(e));
+          if (active) {
+            setFileError(String(e));
+            setFileLoading(false);
+          }
         });
     return () => {
       active = false;
     };
   }, [sessionId, fileQuery?.query, fileQuery?.explicit, context]);
-  const chooseFile = (file: { path: string; name: string; absolutePath: string }) => {
+  const chooseFile = (file: (typeof fileMatches)[number]) => {
     const range = fileQuery;
     if (!range) return;
-    const markdown = buildMentionMarkdown(file.name, file.absolutePath);
+    const markdown = buildMentionMarkdown(
+      file.name,
+      file.absolutePath + (file.type === "directory" ? "/" : ""),
+    );
     const start = range.start,
       end = range.end;
     updateValue(sessionId, (old) => ({
@@ -1081,15 +1093,19 @@ export function ChatComposer({
   };
   const currentSession = useRef(sessionId);
   const [highlighted, setHighlighted] = useState(0);
-  const matches = inputQuery
-    ? suggestions.filter(
-        (suggestion) =>
-          (inputQuery.trigger === "$"
-            ? suggestion.group === "Skill"
-            : suggestion.group === "命令" && ["init", "compact"].includes(suggestion.name)) &&
-          suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
-      )
-    : [];
+  const matches = useMemo(
+    () =>
+      inputQuery
+        ? suggestions.filter(
+            (suggestion) =>
+              (inputQuery.trigger === "$"
+                ? suggestion.group === "Skill"
+                : suggestion.group === "命令" && ["init", "compact"].includes(suggestion.name)) &&
+              suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
+          )
+        : [],
+    [inputQuery, suggestions],
+  );
   const menuOpen = Boolean(inputQuery);
   const insert = (suggestion: InputSuggestion) => {
     if (!inputQuery) return;
@@ -1358,25 +1374,28 @@ export function ChatComposer({
               }
             }}
           >
-            <div className="command-options">
-              <h3>文件</h3>
+            <SuggestionOptions selectedIndex={highlighted} options={fileMatches}>
               {fileError && <p role="alert">{fileError}</p>}
+              {fileLoading && <p role="status">正在搜索…</p>}
               {fileMatches.map((file, i) => (
                 <button
                   type="button"
                   role="option"
                   aria-selected={i === highlighted}
+                  className="file-option"
                   key={file.path}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => chooseFile(file)}
                 >
-                  <FileIcon path={file.path} />
+                  <FileIcon path={file.path + (file.type === "directory" ? "/" : "")} />
                   <strong>{file.name}</strong>
-                  {file.path !== file.name && <span>{file.path}</span>}
+                  {file.path.includes("/") && (
+                    <span>{file.path.slice(0, file.path.lastIndexOf("/") + 1)}</span>
+                  )}
                 </button>
               ))}
-              {!fileMatches.length && !fileError && <p>暂无匹配文件</p>}
-            </div>
+              {!fileMatches.length && !fileError && !fileLoading && <p>暂无匹配文件</p>}
+            </SuggestionOptions>
             {!fileQuery.query && (
               <div className="command-hint">
                 <Info size={16} aria-hidden="true" />
@@ -1387,12 +1406,11 @@ export function ChatComposer({
         )}
         {menuOpen && !fileQuery && (
           <div className="command-panel">
-            <div
-              className="command-options"
-              role="listbox"
-              aria-label={inputQuery?.trigger === "$" ? "技能" : "指令"}
+            <SuggestionOptions
+              selectedIndex={highlighted}
+              options={matches}
+              label={inputQuery?.trigger === "$" ? "技能" : "指令"}
             >
-              <h3>{inputQuery?.trigger === "$" ? "技能" : "指令"}</h3>
               {!matches.length && <p>暂无匹配{inputQuery?.trigger === "$" ? "技能" : "指令"}</p>}
               {matches.map((suggestion, index) => (
                 <button
@@ -1415,7 +1433,7 @@ export function ChatComposer({
                   <span>{suggestion.description}</span>
                 </button>
               ))}
-            </div>
+            </SuggestionOptions>
             {!inputQuery?.query && (
               <div className="command-hint">
                 <Info size={16} aria-hidden="true" />

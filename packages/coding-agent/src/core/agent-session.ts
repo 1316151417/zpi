@@ -39,8 +39,11 @@ export interface InputContext {
   fileReferences?: string[];
 }
 function withReferences(text: string, references?: string[]): string {
+  const instructions = references?.some((path) => path.endsWith("/"))
+    ? "Referenced project files and folders (use bash to list folders and read to inspect files when needed)"
+    : "Referenced project files (read with the read tool when needed)";
   return references?.length
-    ? `${text}\n\nReferenced project files (read with the read tool when needed):\n${references.map((p) => `- ${JSON.stringify(p)}`).join("\n")}`
+    ? `${text}\n\n${instructions}:\n${references.map((p) => `- ${JSON.stringify(p)}`).join("\n")}`
     : text;
 }
 function validateInputContext(input: ParsedInput, context: InputContext): void {

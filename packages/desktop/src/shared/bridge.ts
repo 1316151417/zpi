@@ -225,7 +225,7 @@ export interface DesktopBridge {
   searchFiles(
     sessionId: string,
     query: string,
-  ): Promise<Result<{ path: string; name: string; absolutePath: string }[]>>;
+  ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
   getWorkspaceInfo(sessionId: string | null): Promise<Result<WorkspaceInfo>>;
   downloadImage(src: string): Promise<Result<void>>;
   readFilePreview(sessionId: string, path: string, location?: FileLocation): Promise<Result<FilePreview>>;

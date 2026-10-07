@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { expect, test } from "vitest";
-import { searchFiles, validatedFile } from "../src/main/workspace-files.ts";
-import { fixture } from "./helpers/context-fixture.ts";
+import { searchFiles, validatedReference } from "../src/main/workspace-files.ts";
+import { fixture, run } from "./helpers/context-fixture.ts";
 
 test("bounded search obeys gitignore, cwd scope and realpath; symlink escapes and cross-project paths fail", async () => {
   const f = await fixture();
@@ -22,18 +22,69 @@ test("bounded search obeys gitignore, cwd scope and realpath; symlink escapes an
     {
       path: "sub/a 中文.ts",
       name: "a 中文.ts",
+      type: "file",
       absolutePath: await realpath(join(f.workspace, "sub/a 中文.ts")),
     },
   ]);
   expect((await searchFiles(f.workspace, "ignored")).length).toBe(0);
-  await expect(validatedFile(f.workspace, "escape.txt")).rejects.toThrow("不在");
-  await expect(validatedFile(f.workspace, "../outside.txt")).rejects.toThrow("不在");
-  await expect(validatedFile(f.workspace, "/etc/hosts")).rejects.toThrow("相对路径");
+  await expect(validatedReference(f.workspace, "escape.txt")).rejects.toThrow("不在");
+  await expect(validatedReference(f.workspace, "../outside.txt")).rejects.toThrow("不在");
+  await expect(validatedReference(f.workspace, "/etc/hosts")).rejects.toThrow("相对路径");
   await promisify(execFile)("git", ["init"], { cwd: f.workspace });
   expect((await searchFiles(f.workspace, "ignored")).length).toBe(0);
-  expect(await validatedFile(f.workspace, "sub/a 中文.ts")).toBe(
+  expect(await validatedReference(f.workspace, "sub/a 中文.ts")).toBe(
     await realpath(join(f.workspace, "sub", "a 中文.ts")),
   );
+});
+
+test.each([false, true])(
+  "file search includes directories, empty folders and fuzzy matches (git: %s)",
+  async (git) => {
+    const f = await fixture();
+    if (git) await promisify(execFile)("git", ["init"], { cwd: f.workspace });
+    await mkdir(join(f.workspace, "skills", "know-base-update", "references"), { recursive: true });
+    await mkdir(join(f.workspace, "empty-folder"));
+    await mkdir(join(f.workspace, "ignored-folder"));
+    await writeFile(join(f.workspace, ".gitignore"), "ignored-folder/\n");
+    await writeFile(join(f.workspace, "skills", "know-base-update", "SKILL.md"), "skill");
+    await writeFile(join(f.workspace, "update.py"), "update");
+    await symlink(f.dir, join(f.workspace, "escape-folder"));
+    expect(await searchFiles(f.workspace, "update")).toMatchObject([
+      { name: "update.py", type: "file" },
+      { name: "know-base-update", type: "directory" },
+      { name: "references", type: "directory" },
+      { name: "SKILL.md", type: "file" },
+    ]);
+    expect(await searchFiles(f.workspace, "kbupd")).toContainEqual({
+      name: "know-base-update",
+      path: "skills/know-base-update",
+      absolutePath: await realpath(join(f.workspace, "skills", "know-base-update")),
+      type: "directory",
+    });
+    expect(await searchFiles(f.workspace, "empty-folder")).toMatchObject([{ type: "directory" }]);
+    expect(await searchFiles(f.workspace, "ignored-folder")).toEqual([]);
+    expect(await searchFiles(f.workspace, "escape-folder")).toEqual([]);
+  },
+);
+
+test("directory references submit as paths and restore without invalid-file warnings", async () => {
+  const f = await fixture();
+  const folder = join(f.workspace, "资料 (draft)");
+  await mkdir(folder);
+  const text = `[资料 (draft)](<${folder}/>)`;
+  f.host.saveDraft(f.session.id, {
+    text,
+    fileReferences: [],
+    selection: [text.length, text.length],
+    revision: 1,
+  });
+  expect((await f.host.getDraft(f.session.id)).warnings).toEqual([]);
+  await run(f, text, { fileReferences: [`${folder}/`] });
+  expect(JSON.stringify(f.server.requests[0])).toContain(`${folder}/`);
+  expect(JSON.stringify(f.server.requests[0])).toContain("use bash to list folders");
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].userMessage).toBe(text);
+  await symlink(f.dir, join(f.workspace, "escape-folder"));
+  await expect(f.host.referencedFile(f.session.id, "escape-folder/")).rejects.toThrow("不在");
 });
 
 test("preview locations stay bounded across symlinks and decoded paths, with clear missing-file errors", async () => {

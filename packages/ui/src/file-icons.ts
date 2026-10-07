@@ -96,6 +96,7 @@ export function normalizePath(path: string): string {
 
 export function resolveIconName(filePath: string): string {
   const normalizedPath = normalizePath(filePath);
+  if (normalizedPath.endsWith("/")) return "folder";
   const lastSlash = normalizedPath.lastIndexOf("/");
   const leaf = lastSlash === -1 ? normalizedPath : normalizedPath.slice(lastSlash + 1);
   const normalizedLeaf = leaf.toLowerCase();
