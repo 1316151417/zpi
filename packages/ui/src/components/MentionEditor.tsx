@@ -81,6 +81,19 @@ function setSelection(root: HTMLElement, start: number, end: number) {
   range.setEnd(...b);
   window.getSelection()?.removeAllRanges();
   window.getSelection()?.addRange(range);
+  // Programmatic selection changes do not reveal the caret like native typing does.
+  // Scroll only the editor, keeping the surrounding conversation in place.
+  const caretRange = range.cloneRange();
+  caretRange.collapse(false);
+  let caret = caretRange.getBoundingClientRect();
+  // Chromium gives a collapsed range after a final newline no rectangle.
+  if (!caret.height && end === text(root).length)
+    caret = root.querySelector("br[data-editor-tail]")?.getBoundingClientRect() ?? caret;
+  const viewport = root.getBoundingClientRect();
+  if (caret.height) {
+    if (caret.top < viewport.top) root.scrollTop += caret.top - viewport.top;
+    else if (caret.bottom > viewport.bottom) root.scrollTop += caret.bottom - viewport.bottom;
+  }
 }
 export const MentionEditor = forwardRef<
   MentionEditorHandle,

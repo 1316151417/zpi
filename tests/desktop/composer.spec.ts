@@ -62,6 +62,68 @@ test("Shift+Enter moves the caret to a visible empty line and preserves repeated
   }
 });
 
+test("Shift+Enter keeps the caret visible in a long pasted draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-newline-scroll-"));
+  const server = await fakeServer((_, res) => {
+    send(res, chunk({ content: "reply" }));
+    done(res);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    const cwd = join(dir, "workspace");
+    await mkdir(cwd);
+    const id = seedHistory(dir, cwd, 1).id;
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await select(page, id);
+    const editor = page.getByLabel("消息", { exact: true });
+    const pasted = Array.from({ length: 40 }, (_, i) => `console output ${i}`).join("\n");
+    await editor.focus();
+    await editor.evaluate((el, pasted) => {
+      const data = new DataTransfer();
+      data.setData("text/plain", pasted);
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    }, pasted);
+    await expect(editor).toHaveText(pasted);
+    for (let i = 0; i < 3; i++) {
+      // Reproduce an editor scrolled away from its caret before inserting a newline.
+      await editor.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await editor.press("Shift+Enter");
+      await expect(editor).toBeFocused();
+      await expect
+        .poll(() =>
+          editor.evaluate((el) => {
+            const selected = window.getSelection();
+            if (!selected?.rangeCount || !selected.isCollapsed || !el.contains(selected.focusNode))
+              return false;
+            const tail = el.querySelector("br[data-editor-tail]");
+            // A collapsed range after a final newline has no rect; the tail renders its empty line.
+            if (
+              !tail ||
+              selected.focusNode?.nextSibling !== tail ||
+              selected.focusOffset !== selected.focusNode.textContent?.length
+            )
+              return false;
+            const caret = tail.getBoundingClientRect();
+            const viewport = el.getBoundingClientRect();
+            return caret.height > 0 && caret.top >= viewport.top && caret.bottom <= viewport.bottom;
+          }),
+        )
+        .toBe(true);
+    }
+    await editor.pressSequentially("last line");
+    await editor.press("Meta+A");
+    expect(await clipboardText(page)).toBe(`${pasted}\n\n\nlast line`);
+    expect(server.requests).toHaveLength(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("empty prefix suggestions allow Enter to send while matching suggestions still insert references", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-prefix-input-"));
   const server = await fakeServer((_, res) => {
