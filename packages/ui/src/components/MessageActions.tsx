@@ -23,19 +23,25 @@ export function ActionHint({
   description,
   shortcut,
   side = "bottom",
+  className,
 }: {
   label: string;
   children: ReactNode;
   description?: string;
   shortcut?: string;
   side?: "top" | "bottom";
+  className?: string;
 }) {
   return (
     <Tooltip.Provider delayDuration={0}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content side={side} sideOffset={2} className="message-action-tooltip">
+          <Tooltip.Content
+            side={side}
+            sideOffset={2}
+            className={`message-action-tooltip${className ? ` ${className}` : ""}`}
+          >
             <span>
               {label}
               {shortcut && <kbd>{shortcut}</kbd>}

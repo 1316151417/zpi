@@ -1677,9 +1677,11 @@ export function ChatComposer({
               </ActionHint>
             )}
             {busy && !hasDraft ? (
-              <button className="send stop" aria-label="停止" title="停止生成" onClick={onStop}>
-                <Square size={16} fill="currentColor" />
-              </button>
+              <ActionHint label="停止生成" shortcut="Esc" side="top" className="composer-stop-tooltip">
+                <button type="button" className="send stop" aria-label="停止" onClick={onStop}>
+                  <Square size={16} fill="currentColor" />
+                </button>
+              </ActionHint>
             ) : showSendButton || busy ? (
               <button
                 className="send"

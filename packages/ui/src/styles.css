@@ -661,17 +661,23 @@ small {
   place-items: center;
   flex-shrink: 0;
 }
-.send:hover:not(:disabled),
+.send:not(.stop):hover:not(:disabled),
 .primary:hover:not(:disabled) {
   background: var(--color-primary);
   filter: brightness(0.96);
 }
 .stop {
   background: var(--color-secondary);
-  color: var(--color-text);
-  border-radius: var(--radius-nested);
-  width: 28px;
-  height: 28px;
+  color: var(--color-foreground);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 150ms;
+}
+.stop:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--color-secondary) 80%, transparent);
+}
+.stop:active:not(:disabled) {
+  transform: none;
 }
 .empty-chat {
   text-align: center;
@@ -2586,6 +2592,32 @@ button.inline-mention,
 .message-action-tooltip small {
   color: var(--color-text-subtle);
   font-size: inherit;
+}
+/* ZCode ConversationComposer secondary icon-md button and ControlHintTooltip. */
+.composer-stop-tooltip {
+  padding: 4px 4px 4px 10px;
+  background: var(--color-tooltip);
+  color: var(--color-tooltip-foreground);
+  font-weight: 500;
+  max-width: min(448px, calc(100vw - 16px));
+}
+.composer-stop-tooltip > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+}
+.composer-stop-tooltip kbd {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 16px;
+  margin-left: 0;
+  background: var(--color-tooltip-tag);
+  color: var(--color-tooltip-tag-foreground);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
 }
 .assistant-message-row > .answer:empty {
   display: none;
