@@ -361,7 +361,9 @@ export function focusComposer(sessionId: string): void {
   requestAnimationFrame(() => {
     if (
       useStore.getState().selected !== sessionId ||
-      document.querySelector('dialog[open], [role="dialog"], [role="menu"], .settings-screen')
+      document.querySelector(
+        'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
+      )
     )
       return;
     document.querySelector<HTMLElement>(".composer-container .mention-editor[contenteditable=true]")?.focus();
@@ -428,10 +430,7 @@ export function addConversationSelection(
       selections: appendSelection(draft.selections ?? [], reference),
       error: undefined,
     });
-    if (sessionId === useStore.getState().selected)
-      document
-        .querySelector<HTMLElement>(".composer-container .mention-editor[contenteditable=true]")
-        ?.focus();
+    focusComposer(sessionId);
   } catch (error) {
     drafts.set(sessionId, { ...draft, error: error instanceof Error ? error.message : String(error) });
   }

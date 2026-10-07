@@ -6,6 +6,53 @@ import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
+test("a pending model selection preserves focus in an opened context panel", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-selection-focus-"));
+  const server = await fakeServer((_, response) => done(response));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await app.evaluate(({ ipcMain }) => {
+      const internal = ipcMain as unknown as {
+        _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
+      };
+      const original = internal._invokeHandlers.get("ZPI:call");
+      if (!original) throw new Error("Missing IPC handler");
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      (globalThis as unknown as { releaseSelection: () => void }).releaseSelection = release;
+      ipcMain.removeHandler("ZPI:call");
+      ipcMain.handle("ZPI:call", async (event, method, args) => {
+        if (method === "setSessionSelection") await gate;
+        return original(event, method, args);
+      });
+    });
+    const model = page.getByLabel("模型选择", { exact: true });
+    await model.click();
+    await page.getByRole("menuitem", { name: "fake", exact: true }).click();
+    await expect(model).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await page.getByLabel("添加上下文", { exact: true }).click();
+    const panel = page.getByRole("listbox", { name: "添加上下文", exact: true });
+    await expect(panel).toBeFocused();
+    await app.evaluate(() => (globalThis as unknown as { releaseSelection: () => void }).releaseSelection());
+    await expect(model).toBeEnabled();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+    await expect(panel).toBeFocused();
+    await panel.press("Escape");
+    await expect(panel).toHaveCount(0);
+    expect(server.requests).toHaveLength(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("running Zhipu selection switches to DeepSeek for an immediate queued message and safe retry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-switch-"));
   const project = join(dir, "project");

@@ -1147,11 +1147,9 @@ export function ChatComposer({
       });
   };
   const chooseFileOption = () => {
-    if (fileQuery?.explicit && highlighted === 0) chooseAttachment();
-    else {
-      const file = fileMatches[highlighted - (fileQuery?.explicit ? 1 : 0)];
-      if (file) chooseFile(file);
-    }
+    const option = fileOptions[highlighted] ?? fileOptions[0];
+    if (option) chooseFile(option);
+    else if (option === null) chooseAttachment();
   };
   const currentSession = useRef(sessionId);
   const [highlighted, setHighlighted] = useState(0);
@@ -1424,22 +1422,17 @@ export function ChatComposer({
             ref={filePanel}
             onKeyDown={(e) => {
               if (!fileQuery.explicit || e.nativeEvent.isComposing || e.keyCode === 229) return;
+              if (!["Escape", "ArrowDown", "ArrowUp", "Enter", "Tab", " "].includes(e.key)) return;
+              e.preventDefault();
+              e.stopPropagation();
               if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
                 setFileQuery(undefined);
                 addButton.current?.focus();
               } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                e.stopPropagation();
                 setHighlighted(
                   (n) => (n + (e.key === "ArrowDown" ? 1 : -1) + fileOptions.length) % fileOptions.length,
                 );
-              } else if (e.key === "Enter" || e.key === "Tab" || e.key === " ") {
-                e.preventDefault();
-                e.stopPropagation();
-                chooseFileOption();
-              }
+              } else chooseFileOption();
             }}
           >
             <SuggestionOptions selectedIndex={highlighted} options={fileOptions}>
@@ -1633,45 +1626,29 @@ export function ChatComposer({
             composing.current = false;
           }}
           onKeyDown={(e) => {
-            if (!composing.current && !e.nativeEvent.isComposing && e.keyCode !== 229 && fileQuery) {
+            const isComposing = composing.current || e.nativeEvent.isComposing || e.keyCode === 229;
+            if (!isComposing && (fileQuery || inputQuery)) {
+              const options = fileQuery ? fileOptions : matches;
               if (e.key === "Escape") {
                 e.preventDefault();
                 setFileQuery(undefined);
-                return;
-              }
-              if (fileMatches.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                e.preventDefault();
-                setHighlighted(
-                  (n) =>
-                    (n + (e.key === "ArrowDown" ? 1 : -1) + fileMatches.length) %
-                    Math.max(fileMatches.length, 1),
-                );
-                return;
-              }
-              if (fileMatches.length && ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab")) {
-                e.preventDefault();
-                const file = fileMatches[highlighted] ?? fileMatches[0];
-                if (file) chooseFile(file);
-                return;
-              }
-            }
-            if (!composing.current && !e.nativeEvent.isComposing && e.keyCode !== 229 && menuOpen) {
-              if (e.key === "Escape") {
-                e.preventDefault();
                 setInputQuery(undefined);
                 return;
               }
-              if (matches.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              if (options.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                 e.preventDefault();
                 setHighlighted(
-                  (current) => (current + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length,
+                  (n) => (n + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length,
                 );
                 return;
               }
-              if (matches.length && ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab")) {
+              if (options.length && ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab")) {
                 e.preventDefault();
-                const suggestion = matches[highlighted] ?? matches[0];
-                if (suggestion) insert(suggestion);
+                if (fileQuery) chooseFileOption();
+                else {
+                  const suggestion = matches[highlighted] ?? matches[0];
+                  if (suggestion) insert(suggestion);
+                }
                 return;
               }
             }
@@ -1681,9 +1658,7 @@ export function ChatComposer({
               !e.ctrlKey &&
               !e.altKey &&
               !e.metaKey &&
-              !composing.current &&
-              !e.nativeEvent.isComposing &&
-              e.keyCode !== 229 &&
+              !isComposing &&
               (draft.length === 0 || recalled.current?.text === draft) &&
               !value.attachments.length &&
               !value.fileReferences.length &&
@@ -1709,13 +1684,7 @@ export function ChatComposer({
               textarea.current?.setSelectionRange(text.length, text.length);
               return;
             }
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !composing.current &&
-              !e.nativeEvent.isComposing &&
-              e.keyCode !== 229
-            ) {
+            if (e.key === "Enter" && !e.shiftKey && !isComposing) {
               e.preventDefault();
               void submit();
             }
