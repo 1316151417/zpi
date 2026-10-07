@@ -444,12 +444,8 @@ small {
 }
 .process-text.answer {
   margin: 0;
-}
-.run-group > .answer {
-  margin-top: 20px;
-}
-.run-group > .answer:empty {
-  display: none;
+  width: 100%;
+  color: var(--color-text);
 }
 .answer pre {
   white-space: pre;
@@ -2619,11 +2615,8 @@ button.inline-mention,
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
 }
-.assistant-message-row > .answer:empty {
-  display: none;
-}
 .assistant-message-row > .answer {
-  margin-top: 12px;
+  margin-top: 20px;
 }
 .user-message-editor {
   width: 100%;

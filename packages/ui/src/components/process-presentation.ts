@@ -1,5 +1,24 @@
-// Adapted from ZCode lib/workDuration.ts and ai-elements/reasoning.tsx (Apache-2.0).
+// Adapted from ZCode lib/workDuration.ts, ai-elements/reasoning.tsx and
+// v4/conversationTurnWorkSegments.ts (Apache-2.0).
 // See THIRD_PARTY_NOTICES.md for provenance.
+import type { RunView } from "../types.ts";
+
+export function runPresentation(run: RunView) {
+  const visible = run.orderedBlocks.filter((block) => block.type !== "thinking" || block.text.trim());
+  const tail = visible.at(-1);
+  // ZCode 运行中把正文和思考、工具按原序放在工作区；终态只把末段正文移到折叠区外。
+  // 不能按 finalAnswerBlockIds 提前抽走全部正文，否则工具开始后正文会跳位，早期段落也会外露。
+  const answer =
+    run.status !== "running" && tail?.type === "text" && run.finalAnswerBlockIds.includes(tail.id)
+      ? tail
+      : undefined;
+  return {
+    process: visible.filter((block) => block !== answer),
+    answer,
+    defaultOpen: run.status !== "completed" || (!answer && visible.length > 0),
+  };
+}
+
 export function workDuration(durationMs: number): string {
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
   const parts = [

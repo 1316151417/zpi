@@ -53,7 +53,7 @@ import {
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
 import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
-import { reasoningSummary, workDuration } from "./process-presentation.ts";
+import { reasoningSummary, runPresentation, workDuration } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
@@ -338,10 +338,12 @@ function ProcessBlock({
 const WorkProgress = memo(function WorkProgress({
   run,
   expanded,
+  defaultOpen,
   toggle,
 }: {
   run: RunView;
   expanded: boolean;
+  defaultOpen: boolean;
   toggle: () => void;
 }) {
   const [now, setNow] = useState(Date.now);
@@ -354,7 +356,7 @@ const WorkProgress = memo(function WorkProgress({
     <div className="progress-heading">
       <button className="progress" aria-expanded={expanded} onClick={toggle} data-testid="progress">
         <span>{progressSummary(run, now)}</span>
-        <ChevronRight size={16} aria-hidden="true" className={expanded ? "rotated" : ""} />
+        {!defaultOpen && <ChevronRight size={16} aria-hidden="true" className={expanded ? "rotated" : ""} />}
       </button>
     </div>
   );
@@ -407,7 +409,8 @@ export const RunGroup = memo(function RunGroup({
   useEffect(() => {
     if (!onEdit) setEditing(false);
   }, [onEdit]);
-  const process = run.orderedBlocks.filter((b) => !run.finalAnswerBlockIds.includes(b.id));
+  const { process, answer, defaultOpen } = runPresentation(run);
+  const open = defaultOpen || expanded;
   return (
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
       <div className="user-message-row">
@@ -487,8 +490,15 @@ export const RunGroup = memo(function RunGroup({
           </>
         )}
       </div>
-      <WorkProgress run={run} expanded={expanded} toggle={() => onToggle(run.runId, !expanded)} />
-      {expanded && (
+      <WorkProgress
+        run={run}
+        expanded={open}
+        defaultOpen={defaultOpen}
+        toggle={() => {
+          if (!defaultOpen) onToggle(run.runId, !expanded);
+        }}
+      />
+      {open && process.length > 0 && (
         <div className="process" data-testid="process">
           {process.map((b) => (
             <ProcessBlock
@@ -522,29 +532,26 @@ export const RunGroup = memo(function RunGroup({
         <div className="run-notice">应用退出时运行尚未结束，工具未重新执行。</div>
       )}
       <div className="assistant-message-row">
-        <div
-          className="answer"
-          data-find-key={`${run.runId}:answer`}
-          data-conversation-selectable="assistant"
-          data-selection-key={`${sessionId}:${run.runId}:answer`}
-        >
-          {run.orderedBlocks
-            .filter((b) => run.finalAnswerBlockIds.includes(b.id) && b.type === "text")
-            .map((b) => (
-              <Markdown
-                workspace={workspace}
-                key={b.id}
-                onImage={onImage}
-                onDownloadImage={context?.downloadImage}
-                text={b.type === "text" ? b.text : ""}
-                streaming={run.status === "running"}
-                onLink={onLink}
-                onCopy={onCopy}
-                onFile={onFile}
-                onFileAction={onFileAction}
-              />
-            ))}
-        </div>
+        {answer && (
+          <div
+            className="answer"
+            data-find-key={`${run.runId}:answer`}
+            data-conversation-selectable="assistant"
+            data-selection-key={`${sessionId}:${run.runId}:answer`}
+          >
+            <Markdown
+              workspace={workspace}
+              onImage={onImage}
+              onDownloadImage={context?.downloadImage}
+              text={answer.text}
+              streaming={Boolean(answer.streaming)}
+              onLink={onLink}
+              onCopy={onCopy}
+              onFile={onFile}
+              onFileAction={onFileAction}
+            />
+          </div>
+        )}
         <ChangedFiles
           run={run}
           cwd={workspace?.cwd}
@@ -552,7 +559,7 @@ export const RunGroup = memo(function RunGroup({
           onFile={onFile}
           onFileAction={onFileAction}
         />
-        {run.status !== "running" && run.finalAnswerBlockIds.length > 0 && (
+        {answer && (
           <div className="message-actions assistant-message-actions">
             <CopyMessage
               text={run.orderedBlocks
@@ -575,16 +582,7 @@ export const RunGroup = memo(function RunGroup({
                 <TrendingUpDown size={14} />
               </MessageAction>
             )}
-            <span className="message-time">
-              {messageTime(
-                run.orderedBlocks
-                  .filter(
-                    (block): block is Extract<ViewBlock, { type: "text" | "thinking" }> =>
-                      block.type === "text" && run.finalAnswerBlockIds.includes(block.id),
-                  )
-                  .at(-1)?.startedAt ?? run.startedAt,
-              )}
-            </span>
+            <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
           </div>
         )}
         {actionError && (
@@ -648,12 +646,6 @@ export function Conversation({
         const key = `run:${view.sessionId}:${run.runId}`;
         const wasRunning = lifecycle.current.get(key);
         if (wasRunning && run.status !== "running") next[run.runId] = false;
-        else if (
-          next[run.runId] === undefined &&
-          run.status === "running" &&
-          run.orderedBlocks.some((b) => b.type === "thinking" && b.streaming)
-        )
-          next[run.runId] = true;
         lifecycle.current.set(key, run.status === "running");
       }
       return Object.keys(next).length === Object.keys(current).length &&
@@ -883,11 +875,9 @@ export function Conversation({
                   expanded={Boolean(
                     expanded[run.runId] ||
                       (findQuery &&
-                        run.orderedBlocks.some(
+                        runPresentation(run).process.some(
                           (block) =>
-                            block.type === "text" &&
-                            !run.finalAnswerBlockIds.includes(block.id) &&
-                            normalizeFindQuery(block.text).includes(findQuery),
+                            block.type === "text" && normalizeFindQuery(block.text).includes(findQuery),
                         )),
                   )}
                   onToggle={toggle}
