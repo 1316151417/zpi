@@ -23,6 +23,11 @@ function fileChangeSummary(details: unknown): FileChangeSummary | undefined {
   }
   return {
     path: change.path as string,
+    ...(typeof change.patch === "string" && Buffer.byteLength(change.patch) <= 64 * 1024
+      ? { patch: change.patch }
+      : typeof change.patch === "string" || typeof change.patchFile === "string"
+        ? { patchAvailable: true }
+        : {}),
     ...counts,
     ...(typeof change.additions === "number" ? { additions: change.additions } : {}),
     ...(typeof change.deletions === "number" ? { deletions: change.deletions } : {}),

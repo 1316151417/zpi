@@ -265,8 +265,15 @@ export function App() {
     [selected],
   );
   const openChanges = useCallback(
-    (runId: string, path?: string) => {
-      if (selected) showChanges(selected, runId, path);
+    (runId: string, path?: string, toolCallId?: string) => {
+      if (selected) showChanges(selected, runId, path, toolCallId);
+    },
+    [selected],
+  );
+  const loadToolPatch = useCallback(
+    (runId: string, toolCallId: string) => {
+      if (!selected) return Promise.reject(new Error("任务未选中"));
+      return window.ZPI.readPatch(selected, runId, `operation:${toolCallId}`).then(unwrap);
     },
     [selected],
   );
@@ -681,6 +688,7 @@ export function App() {
               onLink={openLink}
               context={inputContext}
               onChanges={openChanges}
+              onLoadToolPatch={loadToolPatch}
               onFileAction={fileAction}
               onCopy={copyCode}
               onFile={openFile}

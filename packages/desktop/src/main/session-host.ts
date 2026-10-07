@@ -42,7 +42,7 @@ import { AttachmentStore } from "./attachments.ts";
 import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { ErrorLog } from "./error-log.ts";
-import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "./file-changes.ts";
+import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot } from "./file-changes.ts";
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
 import { SessionInputQueue } from "./input-queue.ts";
@@ -863,6 +863,21 @@ export class SessionHost {
     );
   }
   async readPatch(id: string, runId: string | null, key: string): Promise<string> {
+    if (key.startsWith("operation:")) {
+      // 工具卡片要看本次操作的快照，不能误用同文件整轮累计 diff。
+      const change = this.recordedChanges(id, runId).find((entry) => `operation:${entry.toolCallId}` === key);
+      if (!change) throw new Error("not_found: 修改记录不存在");
+      if (change.patch) return change.patch;
+      if (change.patchFile)
+        return (
+          await readFileSnapshot(
+            change.patchFile,
+            join(this.dir, "agent", "tool-output", id),
+            8 * 1024 * 1024,
+          )
+        ).toString("utf8");
+      return change.reason ?? "";
+    }
     const change = (await this.allChanges(id, runId)).find((entry) => entry.id === key);
     if (!change) throw new Error("not_found: 修改记录不存在");
     return change.patch ?? change.reason ?? "";

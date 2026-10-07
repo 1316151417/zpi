@@ -11,14 +11,10 @@ import {
   ImagePlus,
   Info,
   Loader,
-  type LucideIcon,
   Pencil,
   Plus,
-  Search,
   Square,
-  SquareTerminal,
   TrendingUpDown,
-  Wrench,
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -57,7 +53,9 @@ import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageAc
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
-import { ToolFailure } from "./ToolFailure.tsx";
+import { ToolBlock } from "./ToolBlock.tsx";
+import { ToolGroup } from "./ToolGroup.tsx";
+import { processItems } from "./tool-presentation.ts";
 import { useTextFind } from "./use-text-find.ts";
 
 export interface MessageEditInput {
@@ -157,26 +155,6 @@ function UserMessageEditor({
     </section>
   );
 }
-const processTools: Record<string, { icon: LucideIcon; label: string }> = {
-  read: { icon: Search, label: "读取" },
-  bash: { icon: SquareTerminal, label: "终端" },
-  write: { icon: Pencil, label: "写入" },
-  edit: { icon: Pencil, label: "编辑" },
-};
-
-function toolCommand(block: Extract<ViewBlock, { type: "tool" }>): string {
-  try {
-    const args: unknown = JSON.parse(block.argsText);
-    if (args && typeof args === "object") {
-      const value = args as Record<string, unknown>;
-      if (block.name === "bash" && typeof value.command === "string") return value.command;
-      if (typeof value.path === "string") return value.path;
-    }
-  } catch {
-    /* Partial arguments are not a command yet. */
-  }
-  return block.status === "preparing" ? "正在准备参数…" : block.name;
-}
 function ProcessBlock({
   block,
   expanded,
@@ -188,9 +166,13 @@ function ProcessBlock({
   onFileAction,
   onImage,
   onDownloadImage,
+  onChanges,
+  onLoadPatch,
 }: {
   onImage?: (path: string, location?: FileLocation) => Promise<string>;
   onDownloadImage?: (src: string) => Promise<void>;
+  onChanges?: (path: string, toolCallId: string) => void;
+  onLoadPatch?: (toolCallId: string) => Promise<string>;
   block: ViewBlock;
   onFile?: (path: string, location?: FileLocation) => void;
   onFileAction?: FileActionHandler;
@@ -200,7 +182,6 @@ function ProcessBlock({
   onLink: (url: string, options?: WebOpenOptions) => void;
   onCopy?: (text: string) => Promise<void>;
 }) {
-  const output = useRef<HTMLPreElement>(null);
   const summary = useRef<HTMLSpanElement>(null);
   const streaming = block.type === "thinking" && Boolean(block.streaming);
   const streamingLabel = streaming && !expanded;
@@ -208,7 +189,6 @@ function ProcessBlock({
   const thinkingSummary = block.type === "thinking" && streamingLabel ? reasoningSummary(block.text) : "";
   const [summaryOverflowing, setSummaryOverflowing] = useState(false);
   const [reasoningNow, setReasoningNow] = useState(Date.now);
-  const following = useRef(true);
   useLayoutEffect(() => {
     const viewport = summary.current;
     if (!viewport || !thinkingSummary) return;
@@ -228,73 +208,19 @@ function ProcessBlock({
     const timer = setInterval(() => setReasoningNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [streaming, expanded]);
-  useEffect(() => {
-    if (following.current && output.current) output.current.scrollTop = output.current.scrollHeight;
-  }, [block, expanded]);
-  if (block.type === "tool") {
-    const command = toolCommand(block);
-    const lines = command.split(/\r?\n/);
-    const { icon: Icon, label } = processTools[block.name] ?? { icon: Wrench, label: block.name || "工具" };
+  if (block.type === "tool")
     return (
-      <div className="tool-block" data-testid="tool-block" data-tool-name={block.name}>
-        <div className="tool-summary-row">
-          <button
-            className="block-toggle tool-title"
-            aria-expanded={expanded}
-            onClick={toggle}
-            title={`${block.name} · ${command}`}
-          >
-            <Icon size={16} aria-hidden="true" className="process-icon" />
-            <strong>{label}</strong>
-            {(!expanded || block.name !== "bash") && (
-              <span className="block-summary">
-                {lines[0]}
-                {lines.length > 1 ? " …" : ""}
-              </span>
-            )}
-            <ChevronRight
-              size={16}
-              aria-hidden="true"
-              className={`process-chevron ${expanded ? "rotated" : ""}`}
-            />
-          </button>
-          {block.status === "error" && <ToolFailure text={block.output || "工具执行失败"} onCopy={onCopy} />}
-        </div>
-        {expanded && (
-          <div className="tool-details">
-            <div className="tool-command-line">
-              {block.name === "bash" && (
-                <span className="tool-prompt" aria-hidden="true">
-                  $
-                </span>
-              )}
-              <pre
-                className="tool-command"
-                data-conversation-selectable="tool"
-                data-selection-key={`${block.id}:args`}
-              >
-                {block.name === "bash" ? command : block.argsText}
-              </pre>
-            </div>
-            {block.output && (
-              <pre
-                ref={output}
-                className="tool-output"
-                data-conversation-selectable="tool"
-                data-selection-key={block.id}
-                onScroll={() => {
-                  const el = output.current;
-                  if (el) following.current = el.scrollHeight - el.clientHeight - el.scrollTop < 24;
-                }}
-              >
-                {block.output}
-              </pre>
-            )}
-          </div>
-        )}
-      </div>
+      <ToolBlock
+        block={block}
+        expanded={expanded}
+        toggle={toggle}
+        workspace={workspace}
+        onCopy={onCopy}
+        onFile={onFile}
+        onChanges={onChanges}
+        onLoadPatch={onLoadPatch}
+      />
     );
-  }
   if (block.type === "thinking") {
     const duration =
       block.startedAt !== undefined && (streaming || block.endedAt !== undefined)
@@ -397,6 +323,7 @@ export const RunGroup = memo(function RunGroup({
   onBlockToggle,
   context,
   onChanges,
+  onLoadToolPatch,
   onFileAction,
   onCopy,
   onFile,
@@ -409,7 +336,8 @@ export const RunGroup = memo(function RunGroup({
   run: RunView;
   sessionId?: string;
   context?: ComposerContext;
-  onChanges?: (runId: string, path?: string) => void;
+  onChanges?: (runId: string, path?: string, toolCallId?: string) => void;
+  onLoadToolPatch?: (runId: string, toolCallId: string) => Promise<string>;
   onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
@@ -420,6 +348,14 @@ export const RunGroup = memo(function RunGroup({
   blocks: Record<string, boolean>;
   onBlockToggle: (blockId: string, value: boolean) => void;
 }) {
+  const openToolChange = useCallback(
+    (path: string, toolCallId: string) => onChanges?.(run.runId, path, toolCallId),
+    [onChanges, run.runId],
+  );
+  const loadToolPatch = useCallback(
+    (toolCallId: string) => onLoadToolPatch?.(run.runId, toolCallId) ?? Promise.resolve(""),
+    [onLoadToolPatch, run.runId],
+  );
   const onImage = useCallback(
     (path: string, location?: FileLocation) =>
       context?.readImage && sessionId
@@ -526,21 +462,37 @@ export const RunGroup = memo(function RunGroup({
       />
       {open && process.length > 0 && (
         <div className="process" data-testid="process">
-          {process.map((b) => (
-            <ProcessBlock
-              workspace={workspace}
-              key={b.id}
-              onImage={onImage}
-              onDownloadImage={context?.downloadImage}
-              block={b}
-              expanded={blocks[b.id] ?? false}
-              toggle={() => onBlockToggle(b.id, !(blocks[b.id] ?? false))}
-              onLink={onLink}
-              onCopy={onCopy}
-              onFile={onFile}
-              onFileAction={onFileAction}
-            />
-          ))}
+          {processItems(process, run.status === "running").map((item) =>
+            item.kind !== "block" ? (
+              <ToolGroup
+                key={item.id}
+                group={item}
+                blocks={blocks}
+                toggle={(id) => onBlockToggle(id, !(blocks[id] ?? false))}
+                workspace={workspace}
+                onCopy={onCopy}
+                onFile={onFile}
+                onChanges={onChanges ? openToolChange : undefined}
+                onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
+              />
+            ) : (
+              <ProcessBlock
+                workspace={workspace}
+                key={item.id}
+                onImage={onImage}
+                onDownloadImage={context?.downloadImage}
+                block={item.block}
+                expanded={blocks[item.id] ?? false}
+                toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
+                onLink={onLink}
+                onCopy={onCopy}
+                onFile={onFile}
+                onFileAction={onFileAction}
+                onChanges={onChanges ? openToolChange : undefined}
+                onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
+              />
+            ),
+          )}
         </div>
       )}
       {run.notice && (
@@ -647,6 +599,7 @@ export function Conversation({
   workspace,
   context,
   onChanges,
+  onLoadToolPatch,
   onFileAction,
   onCopy,
   onFile,
@@ -677,7 +630,8 @@ export function Conversation({
   workspace?: LinkContext;
   onLink: (url: string, options?: WebOpenOptions) => void;
   context?: ComposerContext;
-  onChanges?: (runId: string, path?: string) => void;
+  onChanges?: (runId: string, path?: string, toolCallId?: string) => void;
+  onLoadToolPatch?: (runId: string, toolCallId: string) => Promise<string>;
   onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
@@ -915,6 +869,7 @@ export function Conversation({
                   onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}
                   onFork={onFork}
                   onChanges={onChanges}
+                  onLoadToolPatch={onLoadToolPatch}
                   onFileAction={onFileAction}
                   onCopy={onCopy}
                   onFile={onFile}

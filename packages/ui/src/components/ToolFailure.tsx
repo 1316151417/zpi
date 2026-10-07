@@ -1,28 +1,23 @@
 // Error tooltip presentation follows ZCode ToolCallBlocks/ToolLayout.tsx (Apache-2.0).
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function ToolFailure({ text, onCopy }: { text: string; onCopy?: (text: string) => Promise<void> }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(timer);
-  }, [copied]);
+  const resetCopy = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(resetCopy.current), []);
   return (
     <Tooltip.Provider delayDuration={0}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
-          <button type="button" className="tool-failure" aria-label="工具执行失败">
-            失败
-          </button>
+          <span className="tool-failure">执行失败</span>
         </Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Content
             side="top"
-            align="end"
+            align="start"
             sideOffset={4}
             collisionPadding={12}
             className="tool-error-tooltip"
@@ -34,17 +29,21 @@ export function ToolFailure({ text, onCopy }: { text: string; onCopy?: (text: st
               disabled={!onCopy}
               aria-label={copied ? "已复制错误" : "复制错误详情"}
               title={copied ? "已复制" : "复制错误详情"}
-              onClick={async () => {
+              onClick={async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 try {
                   await onCopy?.(text);
                   setCopied(true);
                   setError(false);
+                  clearTimeout(resetCopy.current);
+                  resetCopy.current = setTimeout(() => setCopied(false), 1500);
                 } catch {
                   setError(true);
                 }
               }}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? <Check size={12} /> : <Copy size={12} />}
             </button>
             {error && <small role="alert">复制失败，请重试</small>}
           </Tooltip.Content>

@@ -8,6 +8,7 @@ export function ChangesPane({
   sessionId,
   runId,
   path,
+  toolCallId,
   visible,
   findRequest,
   onFindStateChange,
@@ -17,6 +18,7 @@ export function ChangesPane({
   sessionId: string;
   runId: string | null;
   path?: string;
+  toolCallId?: string;
   visible: boolean;
 }) {
   const [entries, setEntries] = useState<DiffItem[]>([]),
@@ -28,8 +30,15 @@ export function ChangesPane({
     let active = true;
     setLoading(true);
     setError("");
-    void window.ZPI.getChanges(sessionId, runId)
-      .then(unwrap)
+    const changes =
+      toolCallId && path
+        ? window.ZPI.readPatch(sessionId, runId, `operation:${toolCallId}`)
+            .then(unwrap)
+            .then((patch): DiffItem[] => [
+              { id: `operation:${toolCallId}`, path, status: "modified", area: "工具变更", patch },
+            ])
+        : window.ZPI.getChanges(sessionId, runId).then(unwrap);
+    void changes
       .then((value) => {
         if (active) setEntries(value);
       })
@@ -42,7 +51,7 @@ export function ChangesPane({
     return () => {
       active = false;
     };
-  }, [sessionId, runId, revision, visible]);
+  }, [sessionId, runId, revision, visible, toolCallId, path]);
   useEffect(() => {
     if (!visible) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -75,7 +84,8 @@ export function ChangesPane({
     <div className="changes-pane">
       <div className="pane-subheading">
         <span>
-          {runId ? "本轮变更" : "任务变更"} · {new Set(entries.map((entry) => entry.path)).size} 个文件
+          {toolCallId ? "工具变更" : runId ? "本轮变更" : "任务变更"} ·{" "}
+          {new Set(entries.map((entry) => entry.path)).size} 个文件
         </span>
         <button aria-label="刷新变更" disabled={loading} onClick={() => setRevision((n) => n + 1)}>
           <RefreshCw size={14} />

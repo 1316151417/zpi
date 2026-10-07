@@ -26,6 +26,8 @@ export interface InputSuggestion {
 export type RunStatus = "running" | "completed" | "aborted" | "error" | "interrupted";
 export interface FileChangeSummary {
   path: string;
+  patch?: string;
+  patchAvailable?: boolean;
   additions?: number;
   deletions?: number;
   failed?: boolean;

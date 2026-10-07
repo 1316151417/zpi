@@ -224,6 +224,7 @@ export function RightPane({
                 sessionId={tab.sessionId}
                 runId={tab.runId}
                 path={tab.path}
+                toolCallId={tab.toolCallId}
                 visible={state.open && tab.id === active}
               />
             ) : tab.type === "terminal" ? (

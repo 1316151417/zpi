@@ -9,6 +9,7 @@ export type PaneTab =
       sessionId: string;
       runId: string | null;
       path?: string;
+      toolCallId?: string;
       title: string;
     }
   | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string }
@@ -120,9 +121,17 @@ function showTab(tab: PaneTab) {
   // 异步打开时冻结来源任务；迟到结果只更新来源任务，不能展开或激活当前任务的侧栏。
   if (tab.sessionId === useStore.getState().selected) restorePane();
 }
-export function openChanges(sessionId: string, runId: string | null, path?: string) {
-  const id = `changes:${sessionId}:${runId ?? "task"}`;
-  showTab({ id, type: "changes", sessionId, runId, path, title: "变更" });
+export function openChanges(sessionId: string, runId: string | null, path?: string, toolCallId?: string) {
+  const id = `changes:${sessionId}:${runId ?? "task"}${toolCallId ? `:operation:${toolCallId}` : ""}`;
+  showTab({
+    id,
+    type: "changes",
+    sessionId,
+    runId,
+    path,
+    toolCallId,
+    title: toolCallId && path ? (path.split(/[\\/]/).at(-1) ?? "变更") : "变更",
+  });
 }
 export async function openTerminal(sessionId: string) {
   const cwd = unwrap(await window.ZPI.getWorkspaceInfo(sessionId)).cwd;

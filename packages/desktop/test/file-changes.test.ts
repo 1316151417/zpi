@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "../src/main/file-changes.ts";
+import { projectEvent } from "../src/main/projection.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture, run } from "./helpers/context-fixture.ts";
 
@@ -45,6 +46,17 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   const runId = f.host.getSessionSnapshot(f.session.id).view.runs[0].runId;
   expect((await f.host.getChanges(f.session.id, runId))[0].patch).toBe(entries[0].patch);
   expect(await f.host.readPatch(f.session.id, null, entries[0].id)).toBe(entries[0].patch);
+  const first = await f.host.readPatch(f.session.id, runId, "operation:write-0");
+  const second = await f.host.readPatch(f.session.id, runId, "operation:write-1");
+  expect(first).toContain("-original");
+  expect(first).toContain("+intermediate");
+  expect(first).not.toContain("+final");
+  expect(second).toContain("-intermediate");
+  expect(second).toContain("+final");
+  expect(second).not.toContain("-original");
+  await expect(f.host.readPatch(f.session.id, runId, "operation:missing")).rejects.toThrow("not_found");
+  const otherSession = f.host.createSession(null);
+  await expect(f.host.readPatch(otherSession.id, null, "operation:write-0")).rejects.toThrow("not_found");
   f.host.saveDraft(f.session.id, { text: "未发送草稿", fileReferences: [], selection: [3, 3], revision: 1 });
   await f.host.archiveSession(f.session.id);
   expect(f.host.listRecentSessions().some((record) => record.id === f.session.id)).toBe(false);
@@ -55,6 +67,32 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   expect(reopened.listRecentSessions().some((record) => record.id === f.session.id)).toBe(false);
   expect((await reopened.getDraft(f.session.id)).text).toBe("未发送草稿");
   expect((await reopened.getChanges(f.session.id, null))[0].patch).toBe(entries[0].patch);
+  expect(await reopened.readPatch(f.session.id, runId, "operation:write-1")).toBe(second);
+});
+
+test("tool projection includes small inline patches and defers larger UTF-8 payloads", () => {
+  const project = (patch: string) =>
+    projectEvent(
+      {
+        type: "tool_execution_end",
+        toolCallId: "write",
+        toolName: "write",
+        isError: false,
+        result: {
+          content: [{ type: "text", text: "done" }],
+          details: {
+            fileChange: { path: "a.txt", patch, additions: 1, deletions: 1 },
+          },
+        },
+      },
+      "message",
+    );
+  const small = "--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-before\n+after\n";
+  expect(project(small)).toMatchObject({ fileChange: { patch: small, additions: 1, deletions: 1 } });
+  const big = `@@ -0,0 +1 @@\n+${"内容".repeat(12_000)}`;
+  const projected = project(big);
+  expect(projected).toMatchObject({ fileChange: { patchAvailable: true, additions: 1, deletions: 1 } });
+  expect(projected && "fileChange" in projected && projected.fileChange?.patch).toBeUndefined();
 });
 
 test("file snapshots reject sibling directories and symlink escapes while retaining valid changes", async () => {

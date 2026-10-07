@@ -130,6 +130,20 @@ it("isolates task and run changes even within the same workspace", async () => {
   expect(usePane.getState().active).toBe(bActive);
 });
 
+it("keeps individual operation previews distinct from cumulative changes and repeated tool IDs in other runs", () => {
+  openChanges("A", "first", "/shared/a.ts", "edit");
+  const first = usePane.getState().active;
+  openChanges("A", "first", "/shared/a.ts", "edit");
+  expect(visiblePaneTabs("A")).toHaveLength(1);
+  openChanges("A", "second", "/shared/a.ts", "edit");
+  expect(usePane.getState().active).not.toBe(first);
+  openChanges("A", "first", "/shared/a.ts");
+  expect(visiblePaneTabs("A")).toHaveLength(3);
+  expect(visiblePaneTabs("A")[0]).toMatchObject({ title: "a.ts", runId: "first", toolCallId: "edit" });
+  select("B");
+  expect(visiblePaneTabs("B")).toEqual([]);
+});
+
 it("routes delayed browser, HTML and terminal opens to their source task without stealing focus", async () => {
   const browserResult = Promise.withResolvers<Result<BrowserState>>();
   const fileResult = Promise.withResolvers<Result<FilePreview>>();

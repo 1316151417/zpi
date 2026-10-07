@@ -695,3 +695,105 @@ The composer stop button hover colors and the top-positioned shortcut hint follo
 Task find bar geometry, labels, Lucide Search/ArrowUp/ArrowDown/MessageCircle/FileDiff/X assets, keyboard navigation, scope switching, history loading, stable selection and highlight colors follow ZCode `quickpick/TaskFindDialog.tsx`, `conversationFindSearch.ts`, `taskFindNavigationState.ts`, `v4/useConversationTimelineFind.ts`, `conversationFindIndex.ts`, `conversationFindHighlightDom.ts`, `GitPane/fileChangeFindSearch.ts` and theme-zai tokens. Adapted to ZPI's message rendering, local history paging and existing diff/IPC components. The existing ZCode Apache-2.0, Lucide ISC and @pierre/diffs attributions above apply.
 
 Model retry defaults, failure classification, Retry-After parsing, exponential backoff and jitter, pre-output stream buffering, bounded partial-output recovery, and the retry/loading slot follow ZCode `retry-policy.ts`, `runner-retry.ts`, `failure-classifier.ts`, `failure-provider-business-codes.ts`, `stream-retry-boundary.ts`, `streaming-recovery.ts`, `ConversationTurnGroup.tsx`, `chat-input-toolbar/display.tsx`, `chat-loading.tsx` and `styles.css`. The loading indicator uses the same Lucide Loader asset; retry text reuses the existing four-second gradient animation with the secondary text peak. Adapted to ZPI's four-tool execution loop and existing session/IPC projection. Existing ZCode Apache-2.0 and Lucide ISC attributions apply.
+
+Tool summaries, phase grouping, file chips, per-operation patch previews, terminal output following/freezing, scroll fades, failure tooltips, 300ms collapsibles, queued summary transitions and flipping diff counts adapt ZCode `ToolCallBlocks/{ToolLayout,ToolSummaryRow,QueuedSummaryContent}.tsx`, `renderers/{read,execute,ExecuteOutput,explore,execute-group,edit,EditInlineDiffContent}.tsx`, `v4/conversationAssistantWorkItems.ts`, `lib/{exploreToolCall,patchDiffPreview}.ts`, and `components/ui/{collapsible,scroll-fade-viewport,lightweight-diff-preview,flip-metric-value}` at commit 872ad96. Adapted to ZPI’s four-tool runtime and existing file/patch IPC. The 1,146 Material SVG assets are byte-identical to the reference set. Existing ZCode Apache-2.0, Lucide ISC, and Material MIT attributions above apply.
+
+# Radix Collapsible
+
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+# Motion
+
+The MIT License (MIT)
+
+Copyright (c) 2024 [Motion](https://motion.dev) B.V.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+# Framer Motion
+
+The MIT License (MIT)
+
+Copyright (c) 2018 Framer B.V.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+# Shiki
+
+MIT License
+
+Copyright (c) 2021 Pine Wu
+Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

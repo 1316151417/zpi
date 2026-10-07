@@ -217,7 +217,7 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     await expect(page.getByTestId("run")).toHaveCount(2);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     await page.getByTestId("progress").last().click();
-    await page.getByLabel("工具执行失败").hover();
+    await page.locator(".tool-failure").hover();
     const errorText = page.locator(".tool-error-tooltip > .tool-error-content");
     await expect(errorText).toContainText("missing.txt");
     const fullError = await errorText.innerText();
