@@ -1,5 +1,5 @@
 import type { Model, ModelDiscoveryResult, OpenAICompletionsCompat, ProviderPresetId } from "ZPI-ai";
-import type { DiscoveredSkill, ImageAttachment, SkillList } from "ZPI-coding-agent";
+import type { Attachment, DiscoveredSkill, SkillList } from "ZPI-coding-agent";
 import type {
   DesktopEventEnvelope,
   FileAction,
@@ -229,9 +229,9 @@ export interface DesktopBridge {
   getWorkspaceInfo(sessionId: string | null): Promise<Result<WorkspaceInfo>>;
   downloadImage(src: string): Promise<Result<void>>;
   readFilePreview(sessionId: string, path: string, location?: FileLocation): Promise<Result<FilePreview>>;
-  importImage(sessionId: string, name: string, bytes: Uint8Array): Promise<Result<ImageAttachment>>;
-  pickImages(sessionId: string): Promise<Result<ImageAttachment[]>>;
-  readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: ImageAttachment; data: string }>>;
+  pickAttachments(sessionId: string): Promise<Result<Attachment[]>>;
+  importAttachment(sessionId: string, file: File): Promise<Result<Attachment>>;
+  readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: Attachment; data: string }>>;
   removeAttachment(sessionId: string, id: string): Promise<Result<void>>;
   getChanges(sessionId: string, runId: string | null): Promise<Result<DiffItem[]>>;
   readPatch(sessionId: string, runId: string | null, id: string): Promise<Result<string>>;
@@ -319,8 +319,8 @@ export const methods = [
   "getWorkspaceInfo",
   "readFilePreview",
   "downloadImage",
-  "importImage",
-  "pickImages",
+  "pickAttachments",
+  "importAttachment",
   "readAttachment",
   "removeAttachment",
   "getChanges",

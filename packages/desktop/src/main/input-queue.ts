@@ -84,7 +84,7 @@ export class SessionInputQueue {
           item.attachments.some((image) => prepared.attachments.some((incoming) => incoming.id === image.id)),
         )
       )
-        throw new Error("invalid_input: 图片已属于待发送消息");
+        throw new Error("invalid_input: 附件已属于待发送消息");
       const item: QueuedInput = { ...prepared, id: randomUUID(), state: "queued" };
       await this.runtime.retain(id, item, true);
       try {

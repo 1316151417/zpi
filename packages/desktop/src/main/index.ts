@@ -1,8 +1,8 @@
 import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "ZPI-ai";
-import { imageLimits, listCommands } from "ZPI-coding-agent";
-import { readFile, stat } from "node:fs/promises";
+import { listCommands } from "ZPI-coding-agent";
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
@@ -274,8 +274,8 @@ async function launch(): Promise<void> {
         getWorkspaceInfo: 1,
         readFilePreview: 3,
         downloadImage: 1,
-        importImage: 3,
-        pickImages: 1,
+        pickAttachments: 1,
+        importAttachment: 2,
         readAttachment: 2,
         removeAttachment: 2,
         getChanges: 2,
@@ -438,29 +438,34 @@ async function launch(): Promise<void> {
         case "readFilePreview":
           value = await readFilePreview(host.workspaceInfo(string(0)).cwd, string(1), args[2]);
           break;
-        case "importImage": {
-          if (!(args[2] instanceof Uint8Array)) throw new Error("invalid_input: 图片必须为二进制数据");
-          value = await host.importImage(string(0), string(1), args[2]);
+        case "importAttachment": {
+          const id = string(0);
+          if (typeof args[1] === "string") value = await host.importFile(id, string(1));
+          else {
+            const file = object(1, ["name", "bytes"]);
+            if (typeof file.name !== "string" || !(file.bytes instanceof Uint8Array))
+              throw new Error("invalid_input: 附件参数无效");
+            value = await host.importAttachment(id, file.name, file.bytes);
+          }
           break;
         }
-        case "pickImages": {
+        case "pickAttachments": {
           const id = string(0);
           host.workspaceInfo(id);
           const paths = testMode
-            ? (JSON.parse(process.env.ZPI_TEST_IMAGE_FILES ?? "[]") as string[])
+            ? (JSON.parse(
+                process.env.ZPI_TEST_ATTACHMENT_FILES ?? process.env.ZPI_TEST_IMAGE_FILES ?? "[]",
+              ) as string[])
             : (
                 await dialog.showOpenDialog(window, {
                   properties: ["openFile", "multiSelections"],
-                  filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }],
                 })
               ).filePaths;
-          if (paths.length > 8) throw new Error("invalid_input: 每条消息最多 8 张图片");
+          if (paths.length > 8) throw new Error("invalid_input: 每条消息最多 8 个附件");
           const imported = [];
           try {
             for (const path of paths) {
-              if ((await stat(path)).size > imageLimits.sourceBytes)
-                throw new Error("invalid_input: 图片单张上限为 10 MiB");
-              imported.push(await host.importImage(id, basename(path), await readFile(path)));
+              imported.push(await host.importFile(id, path));
             }
           } catch (e) {
             for (const item of imported) await host.removeAttachment(id, item.id);

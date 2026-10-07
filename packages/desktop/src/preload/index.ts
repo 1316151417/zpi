@@ -1,5 +1,5 @@
 import type { DesktopEventEnvelope } from "ZPI-ui";
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("ZPI:call", method, args);
@@ -58,8 +58,13 @@ const bridge: DesktopBridge = {
   getWorkspaceInfo: (id) => call("getWorkspaceInfo", id),
   downloadImage: (src) => call("downloadImage", src),
   readFilePreview: (id, path, location) => call("readFilePreview", id, path, location),
-  importImage: (id, name, bytes) => call("importImage", id, name, bytes),
-  pickImages: (id) => call("pickImages", id),
+  pickAttachments: (id) => call("pickAttachments", id),
+  importAttachment: async (id, file) => {
+    const path = webUtils.getPathForFile(file);
+    if (path) return call("importAttachment", id, path);
+    if (file.size > 20 * 1024 * 1024) throw new Error("附件导入参数无效（最多 20 MiB）");
+    return call("importAttachment", id, { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+  },
   readAttachment: (id, image) => call("readAttachment", id, image),
   removeAttachment: (id, image) => call("removeAttachment", id, image),
   getChanges: (id, run) => call("getChanges", id, run),

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { AttachmentStore } from "../src/main/attachments.ts";
@@ -78,4 +78,95 @@ test("opaque image ownership, actual image_url, raw visible references, restart 
   expect((await f.host.readAttachment(f.session.id, image.id)).data).toBeTruthy();
   await restarted.deleteSession(f.session.id);
   expect(existsSync(join(f.dir, "agent", "attachments", f.session.id))).toBe(false);
+});
+
+test("file attachments work with text-only models, include bounded text and preserve binary files by path", async () => {
+  const f = await fixture();
+  await f.host.setSessionSelection(f.session.id, { provider: "p", modelId: "plain", reasoning: "none" });
+  const textPath = join(f.dir, "outside-workspace.txt");
+  const pdfPath = join(f.dir, "document.pdf");
+  await writeFile(textPath, "attachment content\n".repeat(3000));
+  await writeFile(pdfPath, "%PDF-1.7\n\0binary payload");
+  const text = await f.host.importFile(f.session.id, textPath);
+  const pdf = await f.host.importFile(f.session.id, pdfPath);
+  expect(text).toMatchObject({
+    name: "outside-workspace.txt",
+    path: await realpath(textPath),
+    mimeType: "text/plain",
+  });
+  expect(pdf).toMatchObject({
+    name: "document.pdf",
+    path: await realpath(pdfPath),
+    mimeType: "application/pdf",
+  });
+  const other = f.host.createSession(null);
+  await expect(f.host.readAttachment(other.id, pdf.id)).rejects.toThrow("不属于");
+  await run(f, "Read the attachments", { attachments: [text.id, pdf.id] });
+  const body = JSON.stringify(f.server.requests[0]);
+  expect(body).toContain("attachment content");
+  expect(body).toContain("Showing lines 1-2000");
+  expect(body).toContain(await realpath(pdfPath));
+  expect(body).not.toContain("binary payload");
+  expect(body).not.toContain("image_url");
+  expect(body).not.toContain("base64");
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].attachments).toHaveLength(2);
+  await f.host.deleteSession(f.session.id);
+  expect(await readFile(pdfPath, "utf8")).toContain("%PDF");
+  expect(await readFile(textPath, "utf8")).toContain("attachment content");
+});
+
+test("file picker imports are bounded by attachment count, validate files and never remove originals", async () => {
+  const f = await fixture();
+  await expect(f.host.importFile(f.session.id, f.workspace)).rejects.toThrow("文件");
+  await expect(f.host.importFile(f.session.id, join(f.dir, "missing.txt"))).rejects.toThrow("ENOENT");
+  for (let i = 0; i < 8; i++) {
+    const path = join(f.dir, `file-${i}.json`);
+    await writeFile(path, "{}");
+    await f.host.importFile(f.session.id, path);
+  }
+  const path = join(f.dir, "ninth.csv");
+  await writeFile(path, "a,b");
+  await expect(f.host.importFile(f.session.id, path)).rejects.toThrow("8");
+  await f.host.attachments.cleanUnsent();
+  expect(await readFile(join(f.dir, "file-0.json"), "utf8")).toBe("{}");
+});
+
+test("pasted files survive restart and copies, clean up their own cache and do not inject disguised binary text", async () => {
+  const f = await fixture();
+  const text = await f.host.importAttachment(f.session.id, "pasted.txt", Buffer.from("pasted file content"));
+  const binary = await f.host.importAttachment(f.session.id, "binary.txt", Buffer.from("\0binary payload"));
+  const unsent = await f.host.importAttachment(f.session.id, "unsent.txt", Buffer.from("unsent"));
+  const cached = (await f.host.readAttachment(f.session.id, text.id)).metadata;
+  if (!("path" in cached)) throw Error("Expected file attachment");
+  await run(f, "Inspect files", { attachments: [text.id, binary.id] });
+  expect(JSON.stringify(f.server.requests[0])).toContain("pasted file content");
+  expect(JSON.stringify(f.server.requests[0])).not.toContain("binary payload");
+  const root = join(f.dir, "agent", "attachments");
+  const store = new AttachmentStore(root);
+  await store.cleanUnsent();
+  expect(existsSync(join(root, f.session.id, `${unsent.id}.file`))).toBe(false);
+  expect(existsSync(cached.path)).toBe(true);
+  await store.copyTo(f.session.id, "fork", [text.id, binary.id]);
+  await store.deleteSession(f.session.id);
+  const reopened = new AttachmentStore(root);
+  const copied = (await reopened.read("fork", text.id)).metadata;
+  if (!("path" in copied)) throw Error("Expected file attachment");
+  expect(copied.path).toBe(join(root, "fork", `${text.id}.file`));
+  expect(await readFile(copied.path, "utf8")).toBe("pasted file content");
+  expect((await reopened.load("fork", [text.id])).fileContext).toContain("pasted file content");
+  await reopened.deleteSession("fork");
+  expect(existsSync(copied.path)).toBe(false);
+});
+
+test("large native text attachments use bounded previews while the original remains readable", async () => {
+  const f = await fixture();
+  const path = join(f.dir, "large.log");
+  await writeFile(path, `${"中文 log\n".repeat(40_000)}last line`);
+  const file = await f.host.importFile(f.session.id, path);
+  const loaded = await f.host.attachments.load(f.session.id, [file.id]);
+  expect(loaded.fileContext).toContain("中文 log");
+  expect(loaded.fileContext).toContain("Partial attachment preview");
+  expect(loaded.fileContext).not.toContain("last line");
+  expect(Buffer.byteLength(loaded.fileContext)).toBeLessThan(55 * 1024);
+  expect(await readFile(path, "utf8")).toContain("last line");
 });

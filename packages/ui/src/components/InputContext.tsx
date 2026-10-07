@@ -1,16 +1,17 @@
-import type { ImageAttachment } from "ZPI-coding-agent";
+import { type Attachment, type ImageAttachment, isImageAttachment } from "ZPI-coding-agent/input";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ConversationSelection } from "../conversation-selections.ts";
 import type { FileLocation } from "../link-target.ts";
 import { EditorHistory } from "./editor-history.ts";
+import { FileIcon } from "./Reference.tsx";
 export interface ComposerDraft {
   selections?: ConversationSelection[];
   selection?: [number, number];
   warnings?: string[];
   text: string;
   fileReferences: string[];
-  attachments: ImageAttachment[];
+  attachments: Attachment[];
   pending: number;
   error?: string;
 }
@@ -69,12 +70,48 @@ export interface ComposerContext {
     sessionId: string,
     query: string,
   ): Promise<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>;
-  importImage(sessionId: string, file: File): Promise<ImageAttachment>;
-  pickImages(sessionId: string): Promise<ImageAttachment[]>;
+  pickAttachments(sessionId: string): Promise<Attachment[]>;
+  importAttachment(sessionId: string, file: File): Promise<Attachment>;
   removeAttachment(sessionId: string, id: string): Promise<void>;
   readAttachment(sessionId: string, id: string): Promise<string>;
   readImage?(sessionId: string, path: string, location?: FileLocation): Promise<string>;
   downloadImage?(src: string): Promise<void>;
+}
+export function AttachmentPreview({
+  image,
+  ...props
+}: {
+  sessionId: string;
+  image: Attachment;
+  read: ComposerContext["readAttachment"];
+  remove?: () => void;
+}) {
+  if (isImageAttachment(image)) return <ImagePreview image={image} {...props} />;
+  const dot = image.name.lastIndexOf(".");
+  const type = (
+    dot > 0 ? image.name.slice(dot + 1) : (image.mimeType.split("/").at(-1) ?? image.mimeType)
+  ).toUpperCase();
+  return (
+    <div className="file-attachment" title={image.path}>
+      <span className="file-attachment-icon">
+        <FileIcon path={image.name} />
+      </span>
+      <span className="file-attachment-info">
+        <strong title={image.name}>{image.name}</strong>
+        <small>{type}</small>
+      </span>
+      {props.remove && (
+        <button
+          type="button"
+          aria-label={`移除 ${image.name}`}
+          className="chip-remove"
+          onClick={props.remove}
+        >
+          <X size={10} />
+        </button>
+      )}
+    </div>
+  );
 }
 export function ImagePreview({
   sessionId,

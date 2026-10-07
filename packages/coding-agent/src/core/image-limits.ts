@@ -13,3 +13,14 @@ export interface ImageAttachment {
   size: number;
   warning?: string;
 }
+export interface FileAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  path: string;
+}
+export type Attachment = ImageAttachment | FileAttachment;
+export function isImageAttachment(attachment: Attachment): attachment is ImageAttachment {
+  return "width" in attachment;
+}

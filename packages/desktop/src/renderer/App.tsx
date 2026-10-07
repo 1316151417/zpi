@@ -68,9 +68,8 @@ const inputContext: ComposerContext = {
   readImage: readMarkdownImage,
   downloadImage: (src) => window.ZPI.downloadImage(src).then(unwrap),
   searchFiles: (id, q) => window.ZPI.searchFiles(id, q).then(unwrap),
-  importImage: async (id, file) =>
-    unwrap(await window.ZPI.importImage(id, file.name, new Uint8Array(await file.arrayBuffer()))),
-  pickImages: (id) => window.ZPI.pickImages(id).then(unwrap),
+  pickAttachments: (id) => window.ZPI.pickAttachments(id).then(unwrap),
+  importAttachment: (id, file) => window.ZPI.importAttachment(id, file).then(unwrap),
   removeAttachment: (id, image) => window.ZPI.removeAttachment(id, image).then(unwrap),
   readAttachment: async (id, image) => {
     const result = unwrap(await window.ZPI.readAttachment(id, image));

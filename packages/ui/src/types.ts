@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "ZPI-agent";
 import type { Message, ModelRetryStatus, ToolCall, ToolResultMessage } from "ZPI-ai";
-import type { ContextUsage, ImageAttachment, ResourceDiagnostic } from "ZPI-coding-agent";
+import type { Attachment, ContextUsage, ResourceDiagnostic } from "ZPI-coding-agent";
 import type { FileLocation } from "./link-target.ts";
 export interface SessionControls {
   selection: {
@@ -63,7 +63,7 @@ export interface RunView {
   status: RunStatus;
   userMessage: string;
   fileReferences?: string[];
-  attachments?: ImageAttachment[];
+  attachments?: Attachment[];
   orderedBlocks: ViewBlock[];
   finalAnswerBlockIds: string[];
   startedAt: number;
@@ -86,7 +86,7 @@ export interface QueuedInput {
   id: string;
   text: string;
   fileReferences: string[];
-  attachments: ImageAttachment[];
+  attachments: Attachment[];
   selection: NonNullable<SessionControls["selection"]>;
   state: "queued" | "dispatching";
 }
@@ -109,7 +109,7 @@ export type DesktopEvent =
       type: "started";
       text: string;
       fileReferences?: string[];
-      attachments?: ImageAttachment[];
+      attachments?: Attachment[];
       startedAt: number;
       modelLabel: string;
     }

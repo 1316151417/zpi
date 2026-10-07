@@ -762,6 +762,16 @@ export class SessionHost {
     if (this.deleting.has(id) || this.closing) throw new Error("busy: 会话正在删除或关闭");
     return this.attachments.import(id, name, bytes);
   }
+  async importFile(id: string, path: string) {
+    this.record(id);
+    if (this.deleting.has(id) || this.closing) throw new Error("busy: 会话正在删除或关闭");
+    return this.attachments.importFile(id, path);
+  }
+  async importAttachment(id: string, name: string, bytes: Uint8Array) {
+    this.record(id);
+    if (this.deleting.has(id) || this.closing) throw new Error("busy: 会话正在删除或关闭");
+    return this.attachments.importBytes(id, name, bytes);
+  }
   async readAttachment(id: string, attachment: string) {
     this.record(id);
     return this.attachments.read(id, attachment);
@@ -979,7 +989,7 @@ export class SessionHost {
         loader.listSkills().skills.map((skill) => skill.name),
       );
     }
-    if ((references.length || loaded.images.length) && parsed.kind === "compact")
+    if ((references.length || loaded.metadata.length) && parsed.kind === "compact")
       throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
     return { references, loaded, parsed };
   }
@@ -1268,8 +1278,13 @@ export class SessionHost {
       run.session = session;
       const inputContext = { images: loaded.images, fileReferences: references };
       const prepared = await session.prepareInput(text, inputContext);
+      if (prepared.kind === "prompt" && loaded.fileContext)
+        prepared.text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
       if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
-      this.titleFromInput(id, text.trim() || (loaded.images.length ? "图片消息" : references[0]));
+      this.titleFromInput(
+        id,
+        text.trim() || (loaded.images.length ? "图片消息" : (loaded.metadata[0]?.name ?? references[0])),
+      );
       this.settings.rememberSelection(this.getControls(id).selection ?? selection);
       const startedAt = Date.now();
       const modelLabel = `${config.name} / ${model.name}`;

@@ -50,10 +50,10 @@ import { ConversationSelectionMenu, SelectionReferenceChip } from "./Conversatio
 import { DraftGreeting } from "./DraftGreeting.tsx";
 import { FileRewindConflictDialog } from "./FileRewindConflictDialog.tsx";
 import {
+  AttachmentPreview,
   type ComposerContext,
   type ComposerDraft,
   ComposerDraftStore,
-  ImagePreview,
 } from "./InputContext.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
@@ -402,7 +402,7 @@ export const RunGroup = memo(function RunGroup({
                 {context &&
                   sessionId &&
                   run.attachments?.map((image) => (
-                    <ImagePreview
+                    <AttachmentPreview
                       key={image.id}
                       sessionId={sessionId}
                       image={image}
@@ -1005,7 +1005,7 @@ export function ChatComposer({
   const submitLock = useRef(false);
   const composing = useRef(false);
   const textarea = useRef<MentionEditorHandle>(null);
-  const root = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLFieldSetElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const filePanel = useRef<HTMLDivElement>(null);
   const filePanelId = useId();
@@ -1116,7 +1116,7 @@ export function ChatComposer({
     textarea.current?.focus();
     textarea.current?.setSelectionRange(start + markdown.length + 1, start + markdown.length + 1);
   };
-  const addImages = async (operation: () => Promise<import("ZPI-coding-agent").ImageAttachment[]>) => {
+  const addAttachments = async (operation: () => Promise<import("ZPI-coding-agent").Attachment[]>) => {
     const id = sessionId;
     updateValue(id, (old) => ({ ...old, pending: old.pending + 1, error: undefined }));
     try {
@@ -1128,7 +1128,7 @@ export function ChatComposer({
       }
       if (old.attachments.length + images.length > imageLimits.count) {
         await Promise.all(images.map((image) => context?.removeAttachment(id, image.id)));
-        throw new Error("每条消息最多 8 张图片");
+        throw new Error("每条消息最多 8 个附件");
       }
       updateValue(id, (old) => ({ ...old, attachments: [...old.attachments, ...images] }));
     } catch (e) {
@@ -1137,12 +1137,24 @@ export function ChatComposer({
       updateValue(id, (old) => ({ ...old, pending: Math.max(0, old.pending - 1) }));
     }
   };
+  const importFiles = async (files: File[]) => {
+    const imported: import("ZPI-coding-agent").Attachment[] = [];
+    if (!context) return imported;
+    const id = sessionId;
+    try {
+      for (const file of files) imported.push(await context.importAttachment(id, file));
+      return imported;
+    } catch (error) {
+      await Promise.all(imported.map((attachment) => context.removeAttachment(id, attachment.id)));
+      throw error;
+    }
+  };
   const chooseAttachment = () => {
     setFileQuery(undefined);
     setInputQuery(undefined);
     const id = sessionId;
     if (context)
-      void addImages(() => context.pickImages(id)).finally(() => {
+      void addAttachments(() => context.pickAttachments(id)).finally(() => {
         if (currentSession.current === id) textarea.current?.focus();
       });
   };
@@ -1371,7 +1383,26 @@ export function ChatComposer({
           onError={(error) => updateValue(sessionId, (old) => ({ ...old, error: String(error) }))}
         />
       )}
-      <div className="composer" ref={root}>
+      <fieldset
+        className="composer"
+        ref={root}
+        aria-label="输入消息"
+        onDragOver={(event) => {
+          if (context && event.dataTransfer.types.includes("Files")) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (!context || editing) return;
+          const files = Array.from(event.dataTransfer.files);
+          if (!files.length) return;
+          event.preventDefault();
+          setFileQuery(undefined);
+          setInputQuery(undefined);
+          const id = sessionId;
+          void addAttachments(() => importFiles(files)).finally(() => {
+            if (currentSession.current === id) textarea.current?.focus();
+          });
+        }}
+      >
         <div className="input-context">
           <SelectionReferenceChip
             references={value.selections ?? []}
@@ -1380,7 +1411,7 @@ export function ChatComposer({
 
           {context &&
             value.attachments.map((image) => (
-              <ImagePreview
+              <AttachmentPreview
                 key={image.id}
                 sessionId={sessionId}
                 image={image}
@@ -1399,7 +1430,7 @@ export function ChatComposer({
               />
             ))}
         </div>
-        {value.pending > 0 && <small role="status">正在处理图片…</small>}
+        {value.pending > 0 && <small role="status">正在处理附件…</small>}
         {value.error && (
           <div className="run-error" role="alert">
             {value.error}
@@ -1560,7 +1591,7 @@ export function ChatComposer({
           onPaste={(e) => {
             if (!context) return;
             const images = Array.from(e.clipboardData.items)
-              .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+              .filter((item) => item.kind === "file")
               .map((item) => item.getAsFile())
               .filter((f): f is File => Boolean(f));
             if (!images.length) return;
@@ -1572,19 +1603,7 @@ export function ChatComposer({
               updateDraft(draft.slice(0, start) + text + draft.slice(end));
               textarea.current?.setSelectionRange(start + text.length, start + text.length);
             }
-            void addImages(async () => {
-              const imported: import("ZPI-coding-agent").ImageAttachment[] = [];
-              try {
-                for (const file of images) {
-                  if (file.size > imageLimits.sourceBytes) throw new Error("图片单张上限为 10 MiB");
-                  imported.push(await context.importImage(sessionId, file));
-                }
-                return imported;
-              } catch (error) {
-                await Promise.all(imported.map((image) => context.removeAttachment(sessionId, image.id)));
-                throw error;
-              }
-            });
+            void addAttachments(() => importFiles(images));
           }}
           onChange={(text, caret) => {
             if (text !== recalled.current?.text) recalled.current = null;
@@ -1768,7 +1787,7 @@ export function ChatComposer({
             ) : null}
           </div>
         </div>
-      </div>
+      </fieldset>
       {queueConfirmation && (
         <dialog
           className="queue-confirmation"

@@ -161,7 +161,7 @@ test("add panel imports multiple attachments and retains the draft when the pick
       ipcMain.removeHandler("ZPI:call");
       ipcMain.handle("ZPI:call", async (event, method, args) => {
         const result = await original(event, method, args);
-        if (method === "pickImages") await gate;
+        if (method === "pickAttachments") await gate;
         return result;
       });
     });
@@ -204,6 +204,114 @@ test("add panel imports multiple attachments and retains the draft when the pick
     await expect(editor).toBeFocused();
     await expect(page.locator(".composer .image-chip")).toHaveCount(1);
     expect(server.requests).toHaveLength(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("mixed file attachments work through picker, paste and drop, and file mentions share the text line", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-files-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  await writeFile(join(project, "bubble.html"), "<p>Bubble</p>");
+  const image = join(project, "feishu-auth-qr.png");
+  await sharp({ create: { width: 3, height: 2, channels: 3, background: "white" } })
+    .png()
+    .toFile(image);
+  const files = [image, join(dir, "notes.txt"), join(dir, "document.pdf"), join(dir, "report.docx")];
+  await writeFile(files[1], "native attachment content");
+  await writeFile(files[2], "%PDF-1.7\n\0binary PDF payload");
+  await writeFile(files[3], "PK\0binary office payload");
+  const droppedPath = join(dir, "dropped.csv");
+  await writeFile(droppedPath, "dropped attachment content");
+  const server = await fakeServer((_, response) => done(response));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, images: files, url: server.url });
+    const page = await app.firstWindow();
+    const editor = page.getByLabel("消息", { exact: true });
+    await page.getByRole("button", { name: "添加上下文", exact: true }).click();
+    await page.getByRole("option", { name: "附件", exact: true }).click();
+    await expect(page.locator(".composer .image-chip")).toHaveCount(1);
+    await expect(page.locator(".composer .file-attachment")).toHaveCount(3);
+    await expect(page.locator(".composer .file-attachment-info small")).toHaveText(["TXT", "PDF", "DOCX"]);
+    await expect(editor).toBeFocused();
+    expect((await page.locator(".composer .image-chip").boundingBox())?.height).toBe(48);
+    expect((await page.locator(".composer .file-attachment").first().boundingBox())?.height).toBe(48);
+    await page.getByRole("button", { name: "移除 document.pdf", exact: true }).click();
+    await expect(page.locator(".composer .file-attachment")).toHaveCount(2);
+    await editor.fill("@bubble");
+    await page.getByRole("option", { name: "bubble.html", exact: true }).click();
+    await page.keyboard.type("的颠三倒四");
+    await page.getByRole("button", { name: "添加上下文", exact: true }).click();
+    await page.getByRole("option", { name: "feishu-auth-qr.png", exact: true }).click();
+    await page.keyboard.type("都是");
+    await expect(editor).toHaveText("bubble.html 的颠三倒四feishu-auth-qr.png 都是");
+    const linePositions = await editor.evaluate((el) => {
+      const positions: { text: string; top: number; bottom: number }[] = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.textContent?.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const bounds = range.getBoundingClientRect();
+        positions.push({ text: node.textContent, top: bounds.top, bottom: bounds.bottom });
+      }
+      return positions;
+    });
+    expect(linePositions).toHaveLength(4);
+    expect(
+      Math.max(...linePositions.map((p) => p.top)) - Math.min(...linePositions.map((p) => p.top)),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.max(...linePositions.map((p) => p.bottom)) - Math.min(...linePositions.map((p) => p.bottom)),
+    ).toBeLessThanOrEqual(1);
+    await editor.evaluate((el) => {
+      const data = new DataTransfer();
+      data.items.add(new File(["pasted attachment content"], "pasted.md", { type: "text/markdown" }));
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await expect(page.locator(".composer .file-attachment")).toHaveCount(3);
+    await page.evaluate(() => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.hidden = true;
+      input.dataset.testDroppedFile = "true";
+      document.body.append(input);
+    });
+    await page.locator("[data-test-dropped-file]").setInputFiles(droppedPath);
+    await page.locator(".composer").evaluate((el) => {
+      const input = document.querySelector<HTMLInputElement>("[data-test-dropped-file]");
+      const file = input?.files?.[0];
+      if (!file) throw Error("Expected native file");
+      const data = new DataTransfer();
+      data.items.add(file);
+      el.dispatchEvent(new DragEvent("drop", { dataTransfer: data, bubbles: true, cancelable: true }));
+      input?.remove();
+    });
+    await expect(page.locator(".composer .file-attachment")).toHaveCount(4);
+    await expect(editor).toBeFocused();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.locator(".composer").screenshot({ path: "test-results/desktop-composer-files-light.png" });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.locator(".composer").screenshot({ path: "test-results/desktop-composer-files-dark.png" });
+    await page.emulateMedia({ colorScheme: "light" });
+    // The fixture uses a text-only model; ordinary files must still send successfully.
+    await page.getByRole("button", { name: "移除 feishu-auth-qr.png", exact: true }).click();
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.locator(".user-message-row .file-attachment")).toHaveCount(4);
+    await expect(page.locator(".composer .file-attachment")).toHaveCount(0);
+    await expect.poll(() => server.requests.length).toBe(1);
+    const body = JSON.stringify(server.requests[0]);
+    expect(body).toContain("native attachment content");
+    expect(body).toContain("pasted attachment content");
+    expect(body).toContain("dropped attachment content");
+    expect(body).toContain(await realpath(droppedPath));
+    expect(body).toContain(await realpath(files[3]));
+    expect(body).not.toContain("binary office payload");
   } finally {
     await app?.close();
     await server.close();

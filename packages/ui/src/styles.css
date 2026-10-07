@@ -999,6 +999,7 @@ small {
 }
 .composer {
   position: relative;
+  min-width: 0;
   max-width: 1024px;
   margin: auto;
   border: 1px solid var(--color-border);
@@ -1584,7 +1585,7 @@ small {
 .input-context {
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   display: flex;
 }
 .input-context:empty {
@@ -1593,6 +1594,18 @@ small {
 .image-chip {
   display: inline-flex;
   position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.image-chip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  pointer-events: none;
 }
 .image-chip > button:first-child {
   border-radius: var(--radius-nested);
@@ -1601,17 +1614,74 @@ small {
 }
 .image-chip img {
   object-fit: cover;
-  width: 58px;
+  width: 48px;
   height: 48px;
 }
-.chip-remove {
-  background: var(--color-surface-muted);
+.file-attachment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 24px 6px 6px;
   border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+.file-attachment:hover {
+  background: var(--color-active);
+}
+.file-attachment-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--color-background);
+}
+.file-attachment-info {
+  min-width: 0;
+  max-width: 160px;
+}
+.file-attachment-info strong,
+.file-attachment-info small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-attachment-info strong {
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 20px;
+}
+.file-attachment-info small {
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+  line-height: 16px;
+}
+.chip-remove {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border: 0;
   border-radius: 50%;
   padding: 2px;
   position: absolute;
-  top: -3px;
-  right: -3px;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+}
+.image-chip:hover .chip-remove,
+.file-attachment:hover .chip-remove,
+.chip-remove:focus-visible {
+  opacity: 1;
 }
 .image-lightbox {
   z-index: 150;
@@ -1849,6 +1919,8 @@ small {
 }
 .mention-editor .inline-mention {
   user-select: all;
+  /* 与 ZCode prompt mention 一致：共用 20px 行盒顶部，避免图标合成基线抬高文件名。 */
+  vertical-align: top;
 }
 .inline-mention.file {
   color: var(--color-file-reference);
