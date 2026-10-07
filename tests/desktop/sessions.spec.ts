@@ -137,6 +137,7 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     await expect(page.getByRole("menuitem", { name: "远程连接", exact: true })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "打开文件夹", exact: true }).click();
     await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("工作项目");
+    await expect(page.getByLabel("消息", { exact: true })).toBeFocused();
     const projectId = await selectedProject();
     expect(projectId).toBeTruthy();
     await page.getByLabel("选择项目", { exact: true }).click();
@@ -170,6 +171,7 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     await editor().fill("");
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("工作项目");
+    await expect(editor()).toBeFocused();
     await editor().press("ArrowUp");
     await expect(editor()).toHaveText("项目第二条消息");
     expect(await selectedProject()).toBe(projectId);
@@ -177,11 +179,13 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     await page.getByLabel("选择项目", { exact: true }).click();
     await page.getByRole("menuitem", { name: "不在项目中工作", exact: true }).click();
     await expect(page.getByLabel("消息", { exact: true })).toHaveText("非项目草稿");
+    await expect(editor()).toBeFocused();
     expect(await selectedProject()).toBeNull();
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.locator(".answer")).toHaveText("ok");
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("选择项目");
+    await expect(editor()).toBeFocused();
     expect(await selectedProject()).toBeNull();
     await editor().press("ArrowUp");
     await expect(editor()).toHaveText("非项目草稿");
@@ -193,6 +197,10 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     await page.getByLabel("搜索项目", { exact: true }).fill("工作");
     await page.getByRole("menuitem", { name: "工作项目", exact: true }).click();
     await expect(page.getByLabel("消息", { exact: true })).toHaveText("项目待发送草稿");
+    await expect(editor()).toBeFocused();
+    await page.getByLabel("选择项目", { exact: true }).click();
+    await page.getByRole("menuitem", { name: "工作项目", exact: true }).click();
+    await expect(editor()).toBeFocused();
     await app.close();
     app = await launchDesktop({ dir, url: server.url, packaged: false, project });
     page = await app.firstWindow();

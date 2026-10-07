@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Folder, FolderPlus, MessageCircle, Search, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { newSession, refresh, report, unwrap, useStore } from "./store.ts";
 
 export function DraftProjectPicker({ projectId }: { projectId: string | null }) {
@@ -8,6 +8,7 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
   const project = projects.find((item) => item.id === projectId);
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState(false);
+  const skipCloseFocus = useRef(false);
   const change = async (id: string | null) => {
     setPending(true);
     try {
@@ -17,6 +18,10 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
     } finally {
       setPending(false);
     }
+  };
+  const selectProject = (id: string | null) => {
+    skipCloseFocus.current = true;
+    void change(id);
   };
   const openFolder = async () => {
     setPending(true);
@@ -58,7 +63,16 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
           </Menu.Trigger>
         </div>
         <Menu.Portal>
-          <Menu.Content className="draft-project-menu" align="start" side="top" sideOffset={4}>
+          <Menu.Content
+            className="draft-project-menu"
+            align="start"
+            side="top"
+            sideOffset={4}
+            onCloseAutoFocus={(event) => {
+              if (skipCloseFocus.current) event.preventDefault();
+              skipCloseFocus.current = false;
+            }}
+          >
             <div className="draft-project-search">
               <Search size={16} />
               <input
@@ -79,7 +93,7 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
                     key={item.id}
                     title={item.path}
                     className="draft-project-option"
-                    onSelect={() => void change(item.id)}
+                    onSelect={() => selectProject(item.id)}
                   >
                     <Folder size={16} />
                     <span>{item.name}</span>
@@ -94,7 +108,7 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
                 <FolderPlus size={16} />
                 <span>打开文件夹</span>
               </Menu.Item>
-              <Menu.Item className="draft-project-option" onSelect={() => void change(null)}>
+              <Menu.Item className="draft-project-option" onSelect={() => selectProject(null)}>
                 <MessageCircle size={16} />
                 <span>不在项目中工作</span>
                 {projectId === null && <Check size={16} />}

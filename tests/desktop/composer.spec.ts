@@ -1,12 +1,215 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { clipboardText, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
+
+test("add panel shares the composer width, lists files and preserves the insertion selection", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-add-"));
+  const project = join(dir, "workspace");
+  await mkdir(join(project, "src"), { recursive: true });
+  await writeFile(join(project, "src", "main.ts"), "export const main = 1;");
+  await writeFile(join(project, "README.md"), "Project");
+  const server = await fakeServer((_, response) => done(response));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    const editor = page.getByLabel("消息", { exact: true });
+    const add = page.getByRole("button", { name: "添加上下文", exact: true });
+    const panel = page.getByRole("listbox", { name: "添加上下文", exact: true });
+    await editor.fill("前尾");
+    await editor.evaluate((el) => {
+      const range = document.createRange();
+      range.setStart(el.firstChild as Node, 1);
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+    });
+    await add.click();
+    await expect(panel).toBeFocused();
+    await expect(add).toHaveAttribute("aria-expanded", "true");
+    await expect(panel.locator(".composer-add-heading")).toHaveText(["添加", "文件"]);
+    await expect(panel.getByRole("option")).toHaveCount(4);
+    await expect(panel.getByRole("option", { name: "附件", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(panel.locator(".composer-add-hint code")).toHaveText(["@", "/", "$"]);
+    await expect(panel.locator(".composer-add-hint")).toContainText("输入内容以搜索文件");
+    const composerBounds = await page.locator(".composer").boundingBox();
+    const panelBounds = await panel.boundingBox();
+    if (!composerBounds || !panelBounds) throw new Error("Composer and add panel must be visible");
+    expect(panelBounds.x).toBe(composerBounds.x);
+    expect(panelBounds.width).toBe(composerBounds.width);
+    expect(composerBounds.y - panelBounds.y - panelBounds.height).toBe(4);
+    const clip = {
+      x: panelBounds.x,
+      y: panelBounds.y,
+      width: panelBounds.width,
+      height: composerBounds.y + composerBounds.height - panelBounds.y,
+    };
+    await page.screenshot({ path: "test-results/desktop-composer-add-light.png", clip });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({ path: "test-results/desktop-composer-add-dark.png", clip });
+    await page.emulateMedia({ colorScheme: "light" });
+    await panel.press("ArrowUp");
+    await expect(panel.getByRole("option", { name: "src", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await panel.press("ArrowDown");
+    await expect(panel.getByRole("option", { name: "附件", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await panel.getByRole("option", { name: "main.ts src/", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveText("前main.ts 尾");
+    await expect(editor.locator(".inline-mention.file")).toHaveAttribute(
+      "data-markdown",
+      `[main.ts](${await realpath(join(project, "src", "main.ts"))})`,
+    );
+    await page.keyboard.type("X");
+    await expect(editor).toHaveText("前main.ts X尾");
+    await add.click();
+    await panel.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(add).toBeFocused();
+    await add.press("Enter");
+    await expect(panel).toBeVisible();
+    await add.click();
+    await expect(panel).toHaveCount(0);
+    await expect(editor).toBeFocused();
+    await add.click();
+    await editor.click();
+    await expect(panel).toHaveCount(0);
+    await editor.fill("@main");
+    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toBeVisible();
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await page.getByRole("option", { name: "main.ts src/", exact: true }).click();
+    await expect(editor).toBeFocused();
+    await page.keyboard.type("Y");
+    await expect(editor).toHaveText("main.ts Y");
+    await editor.fill("@main");
+    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toBeVisible();
+    await add.click();
+    await expect(panel).toBeVisible();
+    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toHaveCount(0);
+    await page.locator(".topbar-title").click();
+    await expect(panel).toHaveCount(0);
+    for (let i = 0; i < 12; i++) await writeFile(join(project, `file-${i}.txt`), "file");
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setBounds({ width: 740, height: 560 });
+    });
+    await add.click();
+    await expect(panel.getByRole("option")).toHaveCount(11);
+    await panel.press("ArrowUp");
+    await expect(panel.getByRole("option").last()).toBeInViewport();
+    expect(await panel.locator(".command-options").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    expect((await panel.boundingBox())?.y).toBeGreaterThanOrEqual(0);
+    await expect(panel.locator(".composer-add-hint")).toBeInViewport();
+    await panel.press("ArrowDown");
+    await expect(panel.getByRole("option", { name: "附件", exact: true })).toBeInViewport();
+    await panel.press("Escape");
+    await add.click();
+    await expect(panel.getByRole("option")).toHaveCount(11);
+    await expect(panel.locator(".composer-add-heading").first()).toBeInViewport();
+    await page.screenshot({ path: "test-results/desktop-composer-add-small.png" });
+    expect(server.requests).toHaveLength(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("add panel imports multiple attachments and retains the draft when the picker fails or is cancelled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-attachments-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const images = [join(dir, "first.png"), join(dir, "second.png")];
+  for (const image of images)
+    await sharp({ create: { width: 2, height: 2, channels: 3, background: "white" } })
+      .png()
+      .toFile(image);
+  const server = await fakeServer((_, response) => done(response));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, images, url: server.url });
+    const page = await app.firstWindow();
+    const editor = page.getByLabel("消息", { exact: true });
+    const add = page.getByRole("button", { name: "添加上下文", exact: true });
+    const panel = page.getByRole("listbox", { name: "添加上下文", exact: true });
+    await app.evaluate(({ ipcMain }) => {
+      const internal = ipcMain as unknown as {
+        _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
+      };
+      const original = internal._invokeHandlers.get("ZPI:call");
+      if (!original) throw Error("handler");
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      (globalThis as unknown as { releasePicker: () => void }).releasePicker = release;
+      ipcMain.removeHandler("ZPI:call");
+      ipcMain.handle("ZPI:call", async (event, method, args) => {
+        const result = await original(event, method, args);
+        if (method === "pickImages") await gate;
+        return result;
+      });
+    });
+    await editor.fill("保留草稿");
+    await add.click();
+    await expect(panel).toContainText("暂无匹配文件");
+    await panel.press("Enter");
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator(".composer [role=status]")).toHaveCount(1);
+    // A native picker takes focus away while it is open.
+    await page.getByLabel("模型选择", { exact: true }).focus();
+    await expect(editor).not.toBeFocused();
+    await app.evaluate(() => (globalThis as unknown as { releasePicker: () => void }).releasePicker());
+    await expect(page.locator(".composer .image-chip")).toHaveCount(2);
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveText("保留草稿");
+    await page.keyboard.type("X");
+    await expect(editor).toHaveText("保留草稿X");
+    await page.getByRole("button", { name: "移除 first.png", exact: true }).click();
+    await expect(page.locator(".composer .image-chip")).toHaveCount(1);
+    await app.evaluate(() => {
+      process.env.ZPI_TEST_IMAGE_FILES = "[]";
+    });
+    await add.click();
+    await panel.getByRole("option", { name: "附件", exact: true }).click();
+    await expect(page.locator(".composer .image-chip")).toHaveCount(1);
+    await expect(page.locator(".composer [role=status]")).toHaveCount(0);
+    await expect(editor).toBeFocused();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await app.evaluate(
+      (_, path) => {
+        process.env.ZPI_TEST_IMAGE_FILES = JSON.stringify([path]);
+      },
+      join(dir, "missing.png"),
+    );
+    await add.click();
+    await panel.press(" ");
+    await expect(page.getByRole("alert")).toContainText("ENOENT");
+    await expect(editor).toHaveText("保留草稿X");
+    await expect(editor).toBeFocused();
+    await expect(page.locator(".composer .image-chip")).toHaveCount(1);
+    expect(server.requests).toHaveLength(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("Shift+Enter moves the caret to a visible empty line and preserves repeated line breaks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-newline-"));
@@ -361,8 +564,7 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
       if (!settings.ok) throw Error(settings.error.message);
       await window.ZPI.updatePreferences(settings.value.interface);
     });
-    await page.getByLabel("添加附件", { exact: true }).click();
-    await page.getByRole("menuitem", { name: "插入文件引用" }).click();
+    await page.getByLabel("添加上下文", { exact: true }).click();
     // Native menus/window focus can clear the document selection while the editor is blurred.
     await page.evaluate(() => window.getSelection()?.removeAllRanges());
     await page.locator(".command-panel").press("Escape");
@@ -527,15 +729,15 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await page.getByRole("option", { name: /main.txt/ }).click();
     await expect(editor.locator(".inline-mention.file")).toHaveText("main.txt");
     await editor.fill("");
-    await page.getByLabel("添加附件", { exact: true }).click();
-    await page.getByRole("menuitem", { name: "插入文件引用" }).click();
+    await page.getByLabel("添加上下文", { exact: true }).click();
     await expect(page.locator(".command-panel input")).toHaveCount(0);
-    await expect(page.getByRole("option")).toHaveCount(2);
+    await expect(page.getByRole("option")).toHaveCount(3);
     await page.screenshot({ path: "test-results/desktop-composer-files-light.png" });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({ path: "test-results/desktop-composer-files-dark.png" });
     await page.emulateMedia({ colorScheme: "light" });
-    await expect(page.getByRole("listbox")).toHaveAttribute("aria-label", "引用文件");
+    await expect(page.getByRole("listbox")).toHaveAttribute("aria-label", "添加上下文");
+    await page.locator(".command-panel").press("ArrowDown");
     await page.locator(".command-panel").press("Enter");
     await expect(editor.locator(".inline-mention.file")).toHaveText("main.txt");
     await expect(editor.locator(".inline-mention.file")).toHaveAttribute(

@@ -154,8 +154,8 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await page.keyboard.press("Escape");
     await expect(page.getByRole("region", { name: "设置", exact: true })).toHaveCount(0);
     await expect(run).toHaveAttribute("data-status", "running");
-    await page.getByLabel("添加附件", { exact: true }).click();
-    await page.getByRole("menuitem", { name: "添加图片…", exact: true }).click();
+    await page.getByLabel("添加上下文", { exact: true }).click();
+    await page.getByRole("option", { name: "附件", exact: true }).click();
     await page.getByRole("button", { name: "预览 image.png", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "图片预览", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -249,6 +249,72 @@ test("archived and damaged groups, counted delete confirmation and batch deletio
     await expect(page.getByRole("dialog")).toContainText("永久删除 1 个任务");
     await page.getByRole("button", { name: "确认删除", exact: true }).click();
     await expect(page.locator(".archived-row")).toHaveCount(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("every new-task entry focuses the composer when creating or reusing a draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-new-task-focus-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const server = await fakeServer((_, response) => done(response));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    const selected = () => page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+    await expect(editor(page)).toBeFocused();
+    const unassigned = await selected();
+    const globalNew = page.locator(".sidebar-global").getByLabel("新建任务", { exact: true });
+    await globalNew.click();
+    await expect(editor(page)).toBeFocused();
+    expect(await selected()).toBe(unassigned);
+    await page.keyboard.type("前尾");
+    await page.keyboard.press("ArrowLeft");
+    await globalNew.click();
+    await expect(editor(page)).toBeFocused();
+    await page.keyboard.type("X");
+    await expect(editor(page)).toHaveText("前X尾");
+    await page.getByLabel("添加项目", { exact: true }).first().click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("project");
+    await expect(editor(page)).toBeFocused();
+    const projectDraft = await selected();
+    expect(projectDraft).not.toBe(unassigned);
+    await page.locator(".project-title").hover();
+    await page.getByLabel("新建任务 project", { exact: true }).click();
+    await expect(editor(page)).toBeFocused();
+    expect(await selected()).toBe(projectDraft);
+    const taskHeader = page.locator(".sidebar-heading").filter({ hasText: /^任务$/ });
+    await taskHeader.hover();
+    await taskHeader.getByLabel("新建任务", { exact: true }).click();
+    await expect(editor(page)).toBeFocused();
+    expect(await selected()).toBe(unassigned);
+    await taskHeader.hover();
+    await taskHeader.getByLabel("新建任务", { exact: true }).click();
+    await expect(editor(page)).toBeFocused();
+    await page.getByLabel("收起侧边栏", { exact: true }).click();
+    await page.getByRole("button", { name: "新建任务", exact: true }).click();
+    await expect(editor(page)).toBeFocused();
+    expect(await selected()).toBe(unassigned);
+    await page.getByLabel("展开侧边栏", { exact: true }).click();
+    await page.getByLabel("选择项目", { exact: true }).click();
+    await page.getByRole("menuitem", { name: "project", exact: true }).click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("project");
+    await expect(editor(page)).toBeFocused();
+    await page.locator(".draft-project-chip").hover();
+    const detach = page.getByLabel("取消选择当前项目", { exact: true });
+    await expect(detach).toBeEnabled();
+    await expect(detach).toHaveCSS("pointer-events", "auto");
+    await detach.click({ timeout: 3000 });
+    await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("选择项目");
+    await expect(editor(page)).toBeFocused();
+    expect(await selected()).toBe(unassigned);
+    await page.keyboard.type("Y");
+    await expect(editor(page)).toHaveText("前XY尾");
+    expect(server.requests).toHaveLength(0);
   } finally {
     await app?.close();
     await server.close();

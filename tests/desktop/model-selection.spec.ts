@@ -91,6 +91,7 @@ test("running Zhipu selection switches to DeepSeek for an immediate queued messa
       await page.getByRole("menuitem", { name: model, exact: true }).hover();
       await page.getByRole("menuitem", { name: "关闭", exact: true }).click();
       await expect(page.getByLabel("模型选择", { exact: true })).toContainText(model);
+      await expect(page.getByLabel("消息", { exact: true })).toBeFocused();
     };
     await choose("glm-fixture");
     const editor = page.getByLabel("消息", { exact: true });
@@ -100,8 +101,8 @@ test("running Zhipu selection switches to DeepSeek for an immediate queued messa
     await choose("deepseek-fixture");
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
     expect(deepseekCalls).toBe(0);
-    await editor.fill("切换后继续");
-    await editor.press("Enter");
+    await page.keyboard.type("切换后继续");
+    await page.keyboard.press("Enter");
     await expect(page.getByTestId("queue-item")).toHaveCount(1);
     expect(deepseekCalls).toBe(0);
     await page.getByRole("button", { name: "立即", exact: true }).click();

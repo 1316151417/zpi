@@ -190,8 +190,8 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     }
     await page.emulateMedia({ colorScheme: "light" });
     await writeFile(join(project, "existing.txt"), "external old\n");
-    await page.getByLabel("添加附件", { exact: true }).click();
-    await page.getByRole("menuitem", { name: "添加图片…", exact: true }).click();
+    await page.getByLabel("添加上下文", { exact: true }).click();
+    await page.getByRole("option", { name: "附件", exact: true }).click();
     await expect(page.locator(".composer .image-chip img")).toHaveCount(1);
     await page.getByRole("button", { name: "预览 selected.png" }).click();
     await expect(page.getByRole("dialog", { name: "图片预览" })).toBeVisible();

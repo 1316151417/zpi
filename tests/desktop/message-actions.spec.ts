@@ -272,8 +272,13 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect(run.locator(".answer")).toContainText("reply 2");
     const composer = page.locator(".composer-container").getByLabel("消息", { exact: true });
     await composer.fill("explain");
-    await composer.press("Home");
-    await composer.press("ArrowRight");
+    await composer.evaluate((element) => {
+      const range = document.createRange();
+      range.setStart(element.firstChild as Node, 1);
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+    });
     await composer.evaluate((element) => element.blur());
     await selectText(run.locator(".answer p"));
     const add = page.getByRole("button", { name: "添加到当前任务", exact: true });
@@ -348,6 +353,7 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect(page.getByTestId("run").first().locator(".user-message-text")).toHaveText(
       "edited user input",
     );
+    await expect(page.getByLabel("消息", { exact: true })).toBeFocused();
     const sessions = await page.evaluate(() => window.ZPI.listRecentSessions());
     expect(sessions.ok && sessions.value.filter((session) => !session.draft).length).toBe(2);
     const snapshot = await page.evaluate((id) => window.ZPI.getSessionSnapshot(id), parent);

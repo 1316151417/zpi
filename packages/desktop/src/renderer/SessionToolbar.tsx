@@ -4,7 +4,7 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
-import { accept, refresh, report, unwrap, useStore } from "./store.ts";
+import { accept, focusComposer, refresh, report, unwrap, useStore } from "./store.ts";
 export function SessionToolbar({
   view,
   open,
@@ -22,6 +22,7 @@ export function SessionToolbar({
   const provider = settings?.providers.find((p) => p.id === chosen?.provider);
   const configured = provider?.models.find((m) => m.id === chosen?.modelId);
   const mainMenu = useRef<HTMLDivElement>(null);
+  const focusAfterSelect = useRef<string>(undefined);
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const menuBoundary = toolbar?.closest("main");
   const [active, setActive] = useState<string>();
@@ -33,7 +34,10 @@ export function SessionToolbar({
       .then(async (snapshot) => {
         accept(snapshot);
         await refresh();
-        onOpenChange(false);
+        if (mainMenu.current) {
+          focusAfterSelect.current = view.sessionId;
+          onOpenChange(false);
+        } else focusComposer(view.sessionId);
       })
       .catch(report)
       .finally(() => setUpdating(false));
@@ -166,6 +170,14 @@ export function SessionToolbar({
             align="end"
             collisionBoundary={menuBoundary}
             collisionPadding={8}
+            onCloseAutoFocus={(event) => {
+              const sessionId = focusAfterSelect.current;
+              if (sessionId) {
+                event.preventDefault();
+                focusAfterSelect.current = undefined;
+                focusComposer(sessionId);
+              }
+            }}
           >
             {settings?.providers
               .filter((p) => p.enabled !== false && p.models.some((m) => m.enabled !== false))

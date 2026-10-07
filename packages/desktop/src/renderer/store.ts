@@ -357,6 +357,16 @@ export async function loadEarlier(id: string): Promise<void> {
   }
 }
 const openingDrafts = new Map<string, Promise<void>>();
+export function focusComposer(sessionId: string): void {
+  requestAnimationFrame(() => {
+    if (
+      useStore.getState().selected !== sessionId ||
+      document.querySelector('dialog[open], [role="dialog"], [role="menu"], .settings-screen')
+    )
+      return;
+    document.querySelector<HTMLElement>(".composer-container .mention-editor[contenteditable=true]")?.focus();
+  });
+}
 export async function newSession(
   projectId: string | null = useStore.getState().sessions.get(useStore.getState().selected ?? "")
     ?.projectId ?? null,
@@ -371,6 +381,7 @@ export async function newSession(
     const record = draft ?? unwrap(await window.ZPI.createSession(projectId));
     if (!draft) await refresh();
     await selectSession(record.id);
+    focusComposer(record.id);
   })();
   openingDrafts.set(key, open);
   try {

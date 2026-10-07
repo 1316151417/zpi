@@ -1,16 +1,14 @@
 import { buildMentionMarkdown, imageLimits, parseMentions } from "ZPI-coding-agent/input";
-import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   ArrowDown,
   ArrowUp,
   Brain,
   ChevronRight,
   FileClock,
-  FileCode2,
   GitBranch,
-  ImagePlus,
   Info,
   Loader,
+  Paperclip,
   Pencil,
   Plus,
   Square,
@@ -18,7 +16,17 @@ import {
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   buildSelectionPrompt,
   type ConversationSelection,
@@ -998,6 +1006,9 @@ export function ChatComposer({
   const composing = useRef(false);
   const textarea = useRef<MentionEditorHandle>(null);
   const root = useRef<HTMLDivElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const filePanel = useRef<HTMLDivElement>(null);
+  const filePanelId = useId();
   useEffect(() => {
     if (onCancel) {
       const frame = requestAnimationFrame(() => textarea.current?.focus());
@@ -1027,6 +1038,41 @@ export function ChatComposer({
   const [fileMatches, setFileMatches] = useState<Awaited<ReturnType<ComposerContext["searchFiles"]>>>([]);
   const [fileError, setFileError] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
+  const fileOptions = useMemo(
+    () => (fileQuery?.explicit ? [null, ...fileMatches] : fileMatches),
+    [fileQuery?.explicit, fileMatches],
+  );
+  useLayoutEffect(() => {
+    if (!fileQuery?.explicit) return;
+    const panel = filePanel.current;
+    const composer = root.current;
+    if (!panel || !composer) return;
+    const clippingContainers: HTMLElement[] = [];
+    for (let container = composer.parentElement; container; container = container.parentElement)
+      if (["hidden", "clip", "auto", "scroll"].includes(getComputedStyle(container).overflowY))
+        clippingContainers.push(container);
+    const fit = () => {
+      const top = Math.max(
+        8,
+        ...clippingContainers.map((container) => container.getBoundingClientRect().top + container.clientTop),
+      );
+      const footerHeight = panel.querySelector(".composer-add-hint")?.getBoundingClientRect().height ?? 0;
+      panel.style.setProperty(
+        "--composer-add-list-height",
+        `${Math.max(0, composer.getBoundingClientRect().top - top - footerHeight - 6)}px`,
+      );
+    };
+    fit();
+    panel.focus();
+    const observer = new ResizeObserver(fit);
+    observer.observe(composer);
+    for (const container of clippingContainers) observer.observe(container);
+    window.addEventListener("resize", fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [fileQuery?.explicit]);
   useEffect(() => {
     let active = true;
     setFileMatches([]);
@@ -1091,6 +1137,22 @@ export function ChatComposer({
       updateValue(id, (old) => ({ ...old, pending: Math.max(0, old.pending - 1) }));
     }
   };
+  const chooseAttachment = () => {
+    setFileQuery(undefined);
+    setInputQuery(undefined);
+    const id = sessionId;
+    if (context)
+      void addImages(() => context.pickImages(id)).finally(() => {
+        if (currentSession.current === id) textarea.current?.focus();
+      });
+  };
+  const chooseFileOption = () => {
+    if (fileQuery?.explicit && highlighted === 0) chooseAttachment();
+    else {
+      const file = fileMatches[highlighted - (fileQuery?.explicit ? 1 : 0)];
+      if (file) chooseFile(file);
+    }
+  };
   const currentSession = useRef(sessionId);
   const [highlighted, setHighlighted] = useState(0);
   const matches = useMemo(
@@ -1151,14 +1213,21 @@ export function ChatComposer({
   );
   useEffect(() => {
     const close = (e: PointerEvent) => {
-      if (e.target instanceof Node && !root.current?.contains(e.target)) {
+      if (!(e.target instanceof Node)) return;
+      if (!root.current?.contains(e.target)) {
         setInputQuery(undefined);
+        setFileQuery(undefined);
+      } else if (
+        fileQuery?.explicit &&
+        !filePanel.current?.contains(e.target) &&
+        !addButton.current?.contains(e.target)
+      ) {
         setFileQuery(undefined);
       }
     };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
-  }, []);
+  }, [fileQuery?.explicit]);
   const hasDraft = Boolean(
     draft.trim() ||
       value.attachments.length ||
@@ -1347,41 +1416,57 @@ export function ChatComposer({
         )}
         {fileQuery && (
           <div
-            className="command-panel"
+            id={filePanelId}
+            className={`command-panel${fileQuery.explicit ? " composer-add-panel" : ""}`}
             role="listbox"
-            aria-label="引用文件"
+            aria-label={fileQuery.explicit ? "添加上下文" : "引用文件"}
             tabIndex={-1}
-            ref={(element) => {
-              if (fileQuery.explicit) element?.focus();
-            }}
+            ref={filePanel}
             onKeyDown={(e) => {
               if (!fileQuery.explicit || e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === "Escape") {
                 e.preventDefault();
+                e.stopPropagation();
                 setFileQuery(undefined);
-                textarea.current?.focus();
+                addButton.current?.focus();
               } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
+                e.stopPropagation();
                 setHighlighted(
-                  (n) =>
-                    (n + (e.key === "ArrowDown" ? 1 : -1) + fileMatches.length) %
-                    Math.max(fileMatches.length, 1),
+                  (n) => (n + (e.key === "ArrowDown" ? 1 : -1) + fileOptions.length) % fileOptions.length,
                 );
               } else if (e.key === "Enter" || e.key === "Tab" || e.key === " ") {
                 e.preventDefault();
-                const file = fileMatches[highlighted] ?? fileMatches[0];
-                if (file) chooseFile(file);
+                e.stopPropagation();
+                chooseFileOption();
               }
             }}
           >
-            <SuggestionOptions selectedIndex={highlighted} options={fileMatches}>
+            <SuggestionOptions selectedIndex={highlighted} options={fileOptions}>
+              {fileQuery.explicit && (
+                <>
+                  <div className="composer-add-heading">添加</div>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={highlighted === 0}
+                    className="composer-attachment-option"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={chooseAttachment}
+                  >
+                    <Paperclip size={16} aria-hidden="true" />
+                    <strong>附件</strong>
+                  </button>
+                  <div className="composer-add-heading">文件</div>
+                </>
+              )}
               {fileError && <p role="alert">{fileError}</p>}
               {fileLoading && <p role="status">正在搜索…</p>}
               {fileMatches.map((file, i) => (
                 <button
                   type="button"
                   role="option"
-                  aria-selected={i === highlighted}
+                  aria-selected={i + (fileQuery.explicit ? 1 : 0) === highlighted}
                   className="file-option"
                   key={file.path}
                   onMouseDown={(e) => e.preventDefault()}
@@ -1396,12 +1481,29 @@ export function ChatComposer({
               ))}
               {!fileMatches.length && !fileError && !fileLoading && <p>暂无匹配文件</p>}
             </SuggestionOptions>
-            {!fileQuery.query && (
+            {fileQuery.explicit ? (
+              <div className="composer-add-hint">
+                {[
+                  ["@", "添加上下文"],
+                  ["/", "选择能力"],
+                  ["$", "选择技能"],
+                ].map(([key, label]) => (
+                  <span key={key}>
+                    <code>{key}</code>
+                    {label}
+                  </span>
+                ))}
+                <span>
+                  <Info size={16} aria-hidden="true" />
+                  输入内容以搜索文件
+                </span>
+              </div>
+            ) : !fileQuery.query ? (
               <div className="command-hint">
                 <Info size={16} aria-hidden="true" />
                 在输入框中输入 @ 搜索文件
               </div>
-            )}
+            ) : null}
           </div>
         )}
         {menuOpen && !fileQuery && (
@@ -1620,55 +1722,34 @@ export function ChatComposer({
           }}
         />
         <div className="composer-footer">
-          <Menu.Root key={sessionId} modal={false}>
-            <Menu.Trigger asChild>
-              <button
-                type="button"
-                className="composer-plus"
-                aria-label="添加附件"
-                disabled={editing || !context}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <Plus size={16} />
-              </button>
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Content
-                className="composer-add-menu"
-                side="top"
-                align="start"
-                sideOffset={8}
-                onCloseAutoFocus={(event) => event.preventDefault()}
-              >
-                <Menu.Item
-                  onSelect={() => {
-                    setFileQuery({
-                      start: textarea.current?.selectionStart ?? draft.length,
-                      end: textarea.current?.selectionEnd ?? draft.length,
-                      query: "",
-                      explicit: true,
-                    });
-                    setInputQuery(undefined);
-                    setHighlighted(0);
-                  }}
-                >
-                  <FileCode2 size={16} />
-                  插入文件引用
-                </Menu.Item>
-                <Menu.Item
-                  onSelect={() => {
-                    setFileQuery(undefined);
-                    setInputQuery(undefined);
-                    if (context) void addImages(() => context.pickImages(sessionId));
-                    textarea.current?.focus();
-                  }}
-                >
-                  <ImagePlus size={16} />
-                  添加图片…
-                </Menu.Item>
-              </Menu.Content>
-            </Menu.Portal>
-          </Menu.Root>
+          <button
+            ref={addButton}
+            type="button"
+            className="composer-plus"
+            aria-label="添加上下文"
+            aria-haspopup="listbox"
+            aria-expanded={Boolean(fileQuery?.explicit)}
+            aria-controls={fileQuery?.explicit ? filePanelId : undefined}
+            disabled={editing || !context}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (fileQuery?.explicit) {
+                setFileQuery(undefined);
+                textarea.current?.focus();
+              } else {
+                setFileQuery({
+                  start: textarea.current?.selectionStart ?? draft.length,
+                  end: textarea.current?.selectionEnd ?? draft.length,
+                  query: "",
+                  explicit: true,
+                });
+                setInputQuery(undefined);
+                setHighlighted(0);
+              }
+            }}
+          >
+            <Plus size={16} aria-hidden="true" />
+          </button>
           <div className="composer-actions">
             {toolbar}
             {onCancel && (

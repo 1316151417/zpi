@@ -1489,6 +1489,12 @@ small {
   display: grid;
   place-items: center;
 }
+.composer-plus[aria-expanded="true"] {
+  background: var(--color-active);
+}
+.composer-plus:active:not(:disabled) {
+  transform: none;
+}
 .model-trigger {
   align-items: center;
   gap: 4px;
@@ -2802,29 +2808,62 @@ button.inline-mention,
 .tool-error-copy:active:not(:disabled) {
   transform: none;
 }
-.composer-add-menu {
-  min-width: 180px;
-  max-width: calc(100vw - 24px);
-  padding: 4px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-popover);
-  z-index: var(--layer-popover);
+.composer-add-panel {
+  bottom: calc(100% + 5px);
+  border-radius: var(--radius-dialog);
 }
-.composer-add-menu [role="menuitem"] {
+.composer-add-panel .command-options {
+  max-height: min(384px, var(--composer-add-list-height, 40vh));
+}
+.composer-add-heading {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-body);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+.composer-add-panel :where(button) {
+  border-radius: 12px;
+}
+.composer-add-panel button:active:not(:disabled) {
+  transform: none;
+}
+.composer-add-panel .composer-attachment-option {
+  gap: 12px;
+}
+.composer-add-panel :where(p) {
+  min-height: 40px;
+  padding: 8px 20px;
+  color: var(--color-text-subtlest);
+}
+.composer-add-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 16px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+}
+.composer-add-hint > span {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-nested);
-  outline: none;
-  cursor: pointer;
-  font-size: var(--text-body);
+  gap: 6px;
 }
-.composer-add-menu [data-highlighted] {
-  background: var(--color-active);
+.composer-add-hint :where(code) {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--color-tooltip-tag);
+  color: var(--color-text);
+  font-family: var(--font-code);
 }
 .message-web-link {
   color: var(--color-file-link);
