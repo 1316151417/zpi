@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
-import { runPresentation } from "../src/components/process-presentation.ts";
+import {
+  reasoningDuration,
+  reasoningSummary,
+  runPresentation,
+} from "../src/components/process-presentation.ts";
 import type { RunView, ViewBlock } from "../src/types.ts";
 
 const text = (id: string, type: "thinking" | "text", value = id): ViewBlock => ({
@@ -26,6 +30,25 @@ const run = (blocks: ViewBlock[], overrides: Partial<RunView> = {}): RunView => 
   finalAnswerBlockIds: blocks.filter((block) => block.type === "text").map((block) => block.id),
   startedAt: 0,
   ...overrides,
+});
+
+it.each([
+  ["首行\n末行\n\n", "末行"],
+  ["首行\r\n末行\r\n \r\n", "末行"],
+  ["首行\r末行", "末行"],
+  [" \n\t", ""],
+])("uses ZCode's last nonempty streaming line for %j", (value, expected) => {
+  expect(reasoningSummary(value)).toBe(expected);
+});
+
+it.each([
+  [undefined, "持续了几秒"],
+  [0, "持续了 1 秒"],
+  [1000, "持续了 1 秒"],
+  [1001, "持续了 2 秒"],
+  [61_100, "持续了 62 秒"],
+])("formats ZCode's reasoning duration for %j ms", (value, expected) => {
+  expect(reasoningDuration(value)).toBe(expected);
 });
 
 it("keeps all running prose in the work stream, including snapshots with no streaming reasoning", () => {

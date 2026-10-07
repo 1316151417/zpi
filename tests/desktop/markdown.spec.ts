@@ -239,7 +239,9 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
       .toBe("16px");
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe("dark");
     await restarted.getByTestId("progress").first().click();
-    await expect(restarted.getByTestId("thinking-block").locator(".reasoning-duration")).toHaveCount(0);
+    await expect(restarted.getByTestId("thinking-block").locator(".reasoning-duration")).toHaveText(
+      "持续了几秒",
+    );
   } finally {
     reasoning.resolve();
     first.resolve();

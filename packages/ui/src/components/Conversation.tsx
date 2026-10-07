@@ -53,7 +53,7 @@ import {
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
 import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
-import { reasoningSummary, runPresentation, workDuration } from "./process-presentation.ts";
+import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
@@ -201,12 +201,32 @@ function ProcessBlock({
 }) {
   const output = useRef<HTMLPreElement>(null);
   const summary = useRef<HTMLSpanElement>(null);
-  const streamingSummary =
-    block.type === "thinking" && block.streaming && !expanded ? reasoningSummary(block.text) : "";
+  const streaming = block.type === "thinking" && Boolean(block.streaming);
+  const streamingLabel = streaming && !expanded;
+  // 对齐 ZCode ReasoningTrigger：末行预览只属于运行态，完成态显示耗时。
+  const thinkingSummary = block.type === "thinking" && streamingLabel ? reasoningSummary(block.text) : "";
+  const [summaryOverflowing, setSummaryOverflowing] = useState(false);
+  const [reasoningNow, setReasoningNow] = useState(Date.now);
   const following = useRef(true);
   useLayoutEffect(() => {
-    if (summary.current) summary.current.scrollLeft = summary.current.scrollWidth;
-  }, [streamingSummary]);
+    const viewport = summary.current;
+    if (!viewport || !thinkingSummary) return;
+    const sync = () => {
+      setSummaryOverflowing(viewport.scrollWidth > viewport.clientWidth + 1);
+      viewport.scrollLeft = viewport.scrollWidth;
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [thinkingSummary]);
+  useEffect(() => {
+    // 收起时耗时不可见，和 ZCode 一样只在展开流式思考时每秒更新。
+    if (!streaming || !expanded) return;
+    setReasoningNow(Date.now());
+    const timer = setInterval(() => setReasoningNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [streaming, expanded]);
   useEffect(() => {
     if (following.current && output.current) output.current.scrollTop = output.current.scrollHeight;
   }, [block, expanded]);
@@ -276,22 +296,27 @@ function ProcessBlock({
   }
   if (block.type === "thinking") {
     const duration =
-      !block.streaming && block.startedAt !== undefined && block.endedAt !== undefined
-        ? workDuration(block.endedAt - block.startedAt)
-        : "";
+      block.startedAt !== undefined && (streaming || block.endedAt !== undefined)
+        ? reasoningDuration((block.endedAt ?? reasoningNow) - block.startedAt)
+        : reasoningDuration();
     return (
       <div className="process-thinking" data-testid="thinking-block">
         <button className="block-toggle" aria-expanded={expanded} onClick={toggle}>
           <Brain size={16} aria-hidden="true" className="process-icon" />
-          <strong>{block.streaming ? "正在思考" : "思考"}</strong>
-          {(streamingSummary || duration) && <span className="process-separator">·</span>}
-          {streamingSummary ? (
-            <span ref={summary} className="block-summary thinking-summary">
-              {streamingSummary}
+          <strong className={streamingLabel ? "thinking-label-streaming" : undefined}>
+            {streamingLabel ? "正在思考" : "思考"}
+          </strong>
+          {(thinkingSummary || !streamingLabel) && <span className="process-separator">·</span>}
+          {thinkingSummary && (
+            <span
+              ref={summary}
+              className="block-summary thinking-summary"
+              data-overflowing={summaryOverflowing}
+            >
+              {thinkingSummary}
             </span>
-          ) : duration ? (
-            <span className="reasoning-duration">{duration}</span>
-          ) : null}
+          )}
+          {!streamingLabel && <span className="reasoning-duration">{duration}</span>}
           <ChevronRight
             size={16}
             aria-hidden="true"

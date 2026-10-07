@@ -348,6 +348,7 @@ small {
 .reasoning-duration,
 .process-separator {
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .process-chevron {
   opacity: 0;
@@ -364,8 +365,48 @@ small {
   transform: rotate(90deg);
 }
 .thinking-summary {
+  flex: 1;
+  color: var(--color-process-subtle);
   text-overflow: clip;
   scrollbar-width: none;
+}
+.thinking-summary[data-overflowing="true"] {
+  mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+}
+.thinking-label-streaming {
+  --thinking-gradient-strong: #0d0d0d;
+  --thinking-gradient-soft: rgba(13, 13, 13, 0.22);
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    var(--thinking-gradient-strong) 0%,
+    var(--thinking-gradient-strong) 34%,
+    var(--thinking-gradient-soft) 50%,
+    var(--thinking-gradient-strong) 66%,
+    var(--thinking-gradient-strong) 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinking-gradient-flow 4s linear infinite;
+  will-change: background-position;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+[data-theme="dark"] .thinking-label-streaming {
+  --thinking-gradient-strong: #ffffff;
+  --thinking-gradient-soft: rgba(255, 255, 255, 0.22);
+}
+@keyframes thinking-gradient-flow {
+  0% {
+    background-position: 100% 0;
+  }
+  50%,
+  100% {
+    background-position: 0% 0;
+  }
 }
 .tool-failure {
   color: var(--color-error);

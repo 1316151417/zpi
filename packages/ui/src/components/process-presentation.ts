@@ -41,3 +41,8 @@ export function reasoningSummary(text: string): string {
   }
   return "";
 }
+
+export function reasoningDuration(durationMs?: number): string {
+  // ZCode 思考耗时始终向上取整为秒；历史缺少耗时时仍显示完整状态文案。
+  return durationMs === undefined ? "持续了几秒" : `持续了 ${Math.max(1, Math.ceil(durationMs / 1000))} 秒`;
+}
