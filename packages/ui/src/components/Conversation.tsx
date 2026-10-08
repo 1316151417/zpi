@@ -52,6 +52,7 @@ import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePa
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
 import { DraftGreeting } from "./DraftGreeting.tsx";
 import { FileRewindConflictDialog } from "./FileRewindConflictDialog.tsx";
+import { fileMentionQuery } from "./file-mention-query.ts";
 import {
   AttachmentPreview,
   type ComposerContext,
@@ -1644,12 +1645,7 @@ export function ChatComposer({
               selection: [caret, caret],
             }));
             const prefix = text.slice(0, caret);
-            const mention = /(?:^|\s)@([^\s@]*)$/.exec(prefix);
-            setFileQuery(
-              mention && context
-                ? { start: caret - mention[1].length - 1, end: caret, query: mention[1] }
-                : undefined,
-            );
+            setFileQuery(context ? fileMentionQuery(prefix) : undefined);
             const command = /(?:^|\s)([/$¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
             setInputQuery(
               command

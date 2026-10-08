@@ -31,8 +31,26 @@ test("folder mentions share ZCode file search, parent paths, icons, keyboard scr
     let page = await app.firstWindow();
     await select(page, id);
     let editor = page.getByLabel("消息", { exact: true });
-    await editor.fill("@update");
     const panel = page.getByRole("listbox", { name: "引用文件" });
+    for (const prefix of ["帮我看看", "参考：", "看看，", "\n"]) {
+      await editor.fill(prefix);
+      await editor.press("End");
+      await editor.press("@");
+      await expect(panel).toBeVisible();
+      await editor.press("Escape");
+      await expect(panel).toHaveCount(0);
+      await expect(editor).toHaveText(`${prefix}@`);
+    }
+    for (const text of ["name@example.com", "联系邮箱@example.com", "用户@例子.公司"]) {
+      await editor.fill(text);
+      await expect(panel).toHaveCount(0);
+    }
+    await editor.fill("帮我看看@know-base-update");
+    await expect(panel.getByRole("option", { name: "know-base-update skills/", exact: true })).toBeVisible();
+    await editor.press("Tab");
+    await expect(editor).toHaveText("帮我看看know-base-update ");
+    await expect(editor.locator(".inline-mention.file")).toHaveText("know-base-update");
+    await editor.fill("@update");
     await expect(panel.getByRole("option")).toHaveCount(43);
     await expect(panel.locator("h3")).toHaveCount(0);
     const option = panel.getByRole("option", { name: "know-base-update skills/", exact: true });
