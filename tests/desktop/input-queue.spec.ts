@@ -81,6 +81,9 @@ test("queued messages reorder, edit, delete, send immediately and persist throug
     await expect(rows).toHaveCount(0);
     await expect(page.getByTestId("run")).toHaveCount(4);
     await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "aborted");
+    await expect(page.getByTestId("run").nth(1).getByTestId("progress")).toContainText("已停止");
+    await expect(page.getByTestId("run").nth(1).locator(".answer")).toHaveText("reply");
+    await expect(page.getByTestId("run").nth(1).locator(".run-notice")).toHaveCount(0);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     expect(server.requests).toHaveLength(3);
     await editor.fill("阻塞二");
@@ -96,6 +99,8 @@ test("queued messages reorder, edit, delete, send immediately and persist throug
     await expect(rows).toHaveCount(1);
     await page.getByLabel("停止", { exact: true }).click();
     await expect(page.locator(".queue-paused")).toContainText("由于你中断了当前响应，队列已暂停");
+    await expect(page.getByTestId("run").last().getByTestId("progress")).toContainText("已停止");
+    await expect(page.getByTestId("run").last().locator(".run-notice")).toHaveCount(0);
     await app.close();
     app = await launchDesktop({ dir, url: server.url });
     page = await app.firstWindow();
@@ -104,6 +109,7 @@ test("queued messages reorder, edit, delete, send immediately and persist throug
     await select(page, b);
     await expect(editor).toHaveText("另一任务的草稿");
     await select(page, a);
+    await expect(page.getByTestId("run").locator(".run-notice")).toHaveCount(0);
     await page.getByRole("button", { name: "继续按顺序自动发送队列中的内容", exact: true }).click();
     await expect(page.getByTestId("queue-item")).toHaveCount(0);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");

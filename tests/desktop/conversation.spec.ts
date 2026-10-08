@@ -5,6 +5,32 @@ import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { seedHistory } from "../history-fixture.ts";
+
+test("interrupted history keeps its status and content without an extra notice", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-interrupted-notice-"));
+  const cwd = join(dir, "workspace");
+  await mkdir(cwd);
+  seedHistory(dir, cwd, 1, { interrupted: true });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    const run = page.getByTestId("run");
+    await expect(run).toHaveAttribute("data-status", "interrupted");
+    await expect(run.getByTestId("progress")).toContainText("已中断");
+    await expect(run.locator(".answer")).toContainText("最终回复 0");
+    await expect(run.getByTestId("thinking-block")).toHaveCount(1);
+    await expect(run.locator(".run-notice")).toHaveCount(0);
+    await page.reload();
+    await expect(run).toHaveAttribute("data-status", "interrupted");
+    await expect(run.locator(".answer")).toContainText("最终回复 0");
+    await expect(run.locator(".run-notice")).toHaveCount(0);
+  } finally {
+    await app?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("streaming tools, manual expansion, default collapse, IME, safe renderer and restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-e2e-"));

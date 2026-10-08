@@ -269,11 +269,7 @@ function ProcessBlock({
             data-conversation-selectable="reasoning"
             data-selection-key={block.id}
           >
-            {block.text.trim()
-              ? block.text
-              : block.streaming
-                ? "等待模型返回思考摘要…"
-                : "模型未返回可展示的思考摘要。"}
+            {block.text}
           </pre>
         )}
       </div>
@@ -560,10 +556,6 @@ export const RunGroup = memo(function RunGroup({
           <div role="alert" className="run-error">
             {run.error}
           </div>
-        )}
-        {run.status === "aborted" && <div className="run-notice">运行已停止，保留已收到的内容。</div>}
-        {run.status === "interrupted" && (
-          <div className="run-notice">应用退出时运行尚未结束，工具未重新执行。</div>
         )}
         <div className="assistant-message-row">
           {answer && (
