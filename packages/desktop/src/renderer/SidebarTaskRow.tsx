@@ -1,6 +1,5 @@
 import { ActionHint, TaskTitleOverflowText } from "ZPI-ui";
 import { Archive, LoaderIcon, Pin } from "lucide-react";
-import { useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
 
@@ -23,36 +22,30 @@ export function SidebarTaskRow({
   onPin(): void;
   onArchive(): void;
 }) {
-  const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
-  const [touch] = useState(() => matchMedia("(hover: none)").matches);
-  const interacting = hover || focus;
   const indicator =
     r.status === "error" ? "error" : r.unreadAt !== undefined ? "unread" : r.running ? "running" : "none";
-  const showPin = interacting || (r.pinnedAt != null && indicator === "none");
-  const actions =
-    interacting || touch ? (
-      <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control">
-        <span className="task-row-actions">
-          <button
-            className="row-action task-archive"
-            aria-label={`归档任务 ${r.title}`}
-            disabled={r.running || Boolean(r.diagnostic)}
-            onClick={(event) => {
-              event.stopPropagation();
-              onArchive();
-            }}
-          >
-            <Archive size={14} />
-          </button>
-        </span>
-      </ActionHint>
-    ) : null;
-  const time = !interacting ? (
+  const actions = (
+    <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control">
+      <span className="task-row-actions">
+        <button
+          className="row-action task-archive"
+          aria-label={`归档任务 ${r.title}`}
+          disabled={r.running || Boolean(r.diagnostic)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onArchive();
+          }}
+        >
+          <Archive size={14} />
+        </button>
+      </span>
+    </ActionHint>
+  );
+  const time = (
     <span className="task-row-time" data-task-row-metadata="true">
       {formatTaskRelativeTime(r.updatedAt)}
     </span>
-  ) : null;
+  );
   return (
     // biome-ignore lint/a11y/useSemanticElements: Composite task row contains independent pin and archive buttons.
     <div
@@ -60,6 +53,8 @@ export function SidebarTaskRow({
       role="button"
       tabIndex={0}
       onClick={onSelect}
+      // Pointer clicks select the task without retaining the keyboard controls after hover ends.
+      onMouseDown={(event) => event.preventDefault()}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
@@ -70,15 +65,10 @@ export function SidebarTaskRow({
       data-session-id={r.id}
       data-task-item-key={r.id}
       data-status={r.status ?? "idle"}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onFocusCapture={() => setFocus(true)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocus(false);
-      }}
+      data-indicator={indicator}
     >
       <span className="task-leading-slot">
-        <span className="task-indicator" aria-hidden="true" style={{ opacity: showPin ? 0 : 1 }}>
+        <span className="task-indicator" aria-hidden="true">
           {indicator === "error" ? (
             <span data-error-indicator="true" className="task-error-dot" />
           ) : indicator === "unread" ? (
@@ -100,12 +90,9 @@ export function SidebarTaskRow({
           }
         >
           <button
-            style={{ opacity: showPin ? 1 : 0, pointerEvents: showPin ? "auto" : "none" }}
-            tabIndex={showPin ? 0 : -1}
             className={`row-action task-pin ${r.pinnedAt != null ? "pinned" : ""}`}
             aria-label={`${r.pinnedAt != null ? "取消置顶" : "置顶"}任务 ${r.title}`}
             disabled={r.pinnedAt == null && pinLimitReached}
-            onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
               event.stopPropagation();
               onPin();

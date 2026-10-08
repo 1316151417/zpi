@@ -6,6 +6,7 @@ import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
+import { seedHistory } from "../history-fixture.ts";
 
 test("sidebar headings match ZCode hover states and dimensions; project menu only removes its entry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-actions-"));
@@ -457,6 +458,58 @@ test("sidebar section handles reorder with keyboard and pointer and preserve ord
     await expect.poll(order).toEqual(["projects", "tasks"]);
     await page.reload();
     await expect.poll(order).toEqual(["projects", "tasks"]);
+  } finally {
+    await app?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("task controls follow native hover even when React misses mouseleave, and retain keyboard access", async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-task-hover-")));
+  const workspace = join(dir, "workspace");
+  await mkdir(workspace);
+  seedHistory(dir, workspace, 1);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    const row = page.getByTestId("session-row");
+    const archive = row.locator(".task-archive");
+    const time = row.locator(".task-row-time");
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.hover();
+    await expect(time).toBeVisible();
+    await expect(archive).toBeHidden();
+    await row.hover();
+    await expect(archive).toBeVisible();
+    await expect(time).toBeHidden();
+    // Reproduce a lost React leave notification without changing native pointer hit testing.
+    await row.evaluate((element) => {
+      element.addEventListener("mouseout", (event) => event.stopPropagation(), { once: true });
+    });
+    await editor.hover();
+    await expect.poll(() => row.evaluate((element) => element.matches(":hover"))).toBe(false);
+    await expect(archive).toBeHidden();
+    await expect(time).toBeVisible();
+
+    await row.locator(".session-name").click();
+    await expect(page.getByTestId("run")).toHaveCount(1);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await editor.hover();
+    await expect(archive).toBeHidden();
+    await expect(time).toBeVisible();
+    await editor.focus();
+    await page.keyboard.press("Shift+Tab");
+    // Enter keyboard modality before focusing the composite row.
+    await row.focus();
+    await expect(archive).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect(row.locator(".task-pin")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(archive).toBeFocused();
+    await editor.focus();
+    await expect(archive).toBeHidden();
+    await expect(time).toBeVisible();
   } finally {
     await app?.close();
     await rm(dir, { recursive: true, force: true });

@@ -731,11 +731,15 @@
   inset: 0;
   background: transparent;
   transition: opacity 150ms ease;
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
-.sidebar .task-pin.pinned,
+.sidebar .session-row[data-indicator="none"] .task-pin.pinned,
 .session-row:hover .task-pin,
 .session-row:focus-within .task-pin {
+  opacity: 1;
+  visibility: visible;
   pointer-events: auto;
 }
 .session-row:hover .task-indicator,
@@ -769,12 +773,6 @@
   }
   .task-unread-dot {
     background: oklch(74.6% 0.16 232.661);
-  }
-}
-@media (hover: none) {
-  .sidebar .session-row:not(:hover):not(:focus-within) .task-pin:not(.pinned) {
-    opacity: 0;
-    pointer-events: none;
   }
 }
 .sidebar .task-archive {
@@ -3129,8 +3127,22 @@
   color: var(--color-text-subtle);
   white-space: nowrap;
 }
-.task-row-actions {
+/* Derive interaction from the DOM so task reordering cannot retain stale hover state. */
+.session-row .task-row-actions {
+  display: none;
+}
+.session-row:is(:hover, :focus-within) .task-row-actions {
   display: inline-flex;
+}
+.session-row:is(:hover, :focus-within) .task-row-time {
+  display: none;
+}
+@media (hover: none) {
+  .session-row .task-row-actions {
+    display: inline-flex;
+  }
+}
+.task-row-actions {
   flex-shrink: 0;
   align-items: center;
 }
