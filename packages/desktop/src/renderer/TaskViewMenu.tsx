@@ -15,7 +15,7 @@ export function TaskViewMenu({
 }) {
   const label = viewOnly ? "切换视图" : "筛选和排序";
   const projectView = value.organizeBy === "project";
-  const viewLabel = projectView ? "按项目" : "时间线";
+  const viewLabel = projectView ? "项目" : "时间线";
   const option = (id: string, label: string, icon: ReactNode) => (
     <Menu.RadioItem className="parity-menu-radio" value={id}>
       {icon}
