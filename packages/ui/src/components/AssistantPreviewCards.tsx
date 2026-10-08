@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, Copy, ExternalLink, Globe } from "lucide-react";
+import { ChevronDown, ExternalLink, Globe } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LinkContext } from "../link-target.ts";
 import type { AssistantPreviewCard } from "../preview/assistant-preview-cards.ts";
@@ -10,6 +10,7 @@ import {
   previewInputKey,
 } from "../preview/preview-lifecycle.ts";
 import type { RunView, SessionView } from "../types.ts";
+import { OpenFileButton } from "./OpenFileButton.tsx";
 import { FileIcon } from "./Reference.tsx";
 
 const subtitles: Record<string, string> = {
@@ -163,52 +164,35 @@ function PreviewOpenButton({
   sessionId: string;
   services: PreviewServices;
 }) {
-  const [apps, setApps] = useState<Awaited<ReturnType<PreviewServices["listOpenApps"]>>>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const perform = (promise: Promise<void>) => {
     setError("");
-    void promise.catch((error) => setError(String(error)));
+    void promise.catch((error) => setError(error instanceof Error ? error.message : String(error)));
   };
   return (
     <div className="preview-open-control">
-      <Menu.Root
-        onOpenChange={(open) => {
-          if (!open || card.type === "website" || loaded || loading) return;
-          setLoading(true);
-          void services
-            .listOpenApps()
-            .then(
-              (apps) => {
-                setApps(apps);
-                setLoaded(true);
-              },
-              () => {},
-            )
-            .finally(() => setLoading(false));
-        }}
-      >
-        <div className="preview-open-split">
-          <button
-            className="preview-open-primary"
-            onClick={() =>
-              perform(
-                card.type === "website"
-                  ? services.openWebsite(sessionId, card.url)
-                  : services.openFile(sessionId, card.path),
-              )
-            }
-          >
-            打开
-          </button>
-          <Menu.Trigger className="preview-open-trigger" aria-label="选择打开方式" title="选择打开方式">
-            <ChevronDown size={14} />
-          </Menu.Trigger>
-        </div>
-        <Menu.Portal>
-          <Menu.Content className="parity-menu preview-open-menu" align="end" side="top" sideOffset={2}>
-            {card.type === "website" ? (
+      {card.type !== "website" ? (
+        <OpenFileButton
+          path={card.path}
+          onOpen={(path) => perform(services.openFile(sessionId, path))}
+          onAction={(path, action) => services.fileAction(sessionId, path, action)}
+          onError={setError}
+        />
+      ) : (
+        <Menu.Root>
+          <div className="preview-open-split">
+            <button
+              className="preview-open-primary"
+              onClick={() => perform(services.openWebsite(sessionId, card.url))}
+            >
+              打开
+            </button>
+            <Menu.Trigger className="preview-open-trigger" aria-label="选择打开方式" title="选择打开方式">
+              <ChevronDown size={14} />
+            </Menu.Trigger>
+          </div>
+          <Menu.Portal>
+            <Menu.Content className="parity-menu preview-open-menu" align="end" side="top" sideOffset={2}>
               <Menu.Item
                 className="parity-menu-item"
                 onSelect={() =>
@@ -224,51 +208,10 @@ function PreviewOpenButton({
                 <ExternalLink size={16} />
                 <span>在浏览器中打开</span>
               </Menu.Item>
-            ) : (
-              <>
-                {apps.length ? (
-                  apps.map((app) => (
-                    <Menu.Item
-                      key={app.id}
-                      className="parity-menu-item"
-                      onSelect={() => {
-                        try {
-                          localStorage.setItem("ZPI.lastSelectedEditorId", app.id);
-                        } catch {
-                          /* Optional preference. */
-                        }
-                        perform(services.openWith(sessionId, card.path, app.id));
-                      }}
-                    >
-                      <img src={app.iconDataUrl} width={16} height={16} alt="" />
-                      <span>{app.name}</span>
-                    </Menu.Item>
-                  ))
-                ) : (
-                  <Menu.Item className="parity-menu-item" disabled>
-                    {loading ? "加载中..." : "未找到可用 App"}
-                  </Menu.Item>
-                )}
-                <Menu.Separator className="parity-menu-separator" />
-                <Menu.Item
-                  className="parity-menu-item"
-                  onSelect={() => perform(services.fileAction(sessionId, card.path, "copy-absolute"))}
-                >
-                  <Copy size={16} />
-                  复制绝对路径
-                </Menu.Item>
-                <Menu.Item
-                  className="parity-menu-item"
-                  onSelect={() => perform(services.fileAction(sessionId, card.path, "copy-relative"))}
-                >
-                  <Copy size={16} />
-                  复制相对路径
-                </Menu.Item>
-              </>
-            )}
-          </Menu.Content>
-        </Menu.Portal>
-      </Menu.Root>
+            </Menu.Content>
+          </Menu.Portal>
+        </Menu.Root>
+      )}
       {error && (
         <span className="preview-open-error" role="alert">
           {error}

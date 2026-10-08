@@ -1,4 +1,4 @@
-import type { RunStatus } from "../types.ts";
+import type { FileAction, RunStatus } from "../types.ts";
 import {
   type AssistantPreviewCard,
   type AssistantPreviewCardFileStatService,
@@ -14,17 +14,11 @@ export interface PreviewInput {
   home?: string;
 }
 export interface PreviewServices {
-  listOpenApps(): Promise<Array<{ id: string; name: string; iconDataUrl: string }>>;
-  openWith(sessionId: string, path: string, appId: string): Promise<void>;
   load(input: PreviewInput): Promise<AssistantPreviewCard[]>;
   openFile(sessionId: string, path: string): Promise<void>;
   openWebsite(sessionId: string, url: string): Promise<void>;
   openExternal(sessionId: string, url: string, localPath?: string): Promise<void>;
-  fileAction(
-    sessionId: string,
-    path: string,
-    action: "open" | "copy-absolute" | "copy-relative",
-  ): Promise<void>;
+  fileAction(sessionId: string, path: string, action: FileAction): Promise<void>;
 }
 export function previewInputKey(input: PreviewInput): string {
   return JSON.stringify([input.sessionId, input.runId, input.cwd, input.home ?? "", input.text]);

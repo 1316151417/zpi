@@ -30,7 +30,6 @@ import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { ErrorLog } from "./error-log.ts";
 import { performFileAction } from "./file-actions.ts";
-import { listFileOpenApps, openFileWith } from "./file-open-apps.ts";
 import { readFilePreview } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { PaneServices } from "./pane-services.ts";
@@ -276,8 +275,6 @@ async function launch(): Promise<void> {
         getWorkspaceInfo: 1,
         readFilePreview: 3,
         checkPreviewFiles: 2,
-        listFileOpenApps: 0,
-        openFileWith: 3,
         downloadImage: 1,
         pickAttachments: 1,
         importAttachment: 2,
@@ -439,12 +436,6 @@ async function launch(): Promise<void> {
           break;
         case "getWorkspaceInfo":
           value = host.workspaceInfo(sessionContext());
-          break;
-        case "listFileOpenApps":
-          value = await listFileOpenApps();
-          break;
-        case "openFileWith":
-          await openFileWith(host.workspaceInfo(string(0)).cwd, string(1), string(2));
           break;
         case "checkPreviewFiles":
           value = await checkPreviewFiles(host.workspaceInfo(string(0)).cwd, args[1]);

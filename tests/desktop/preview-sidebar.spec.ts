@@ -144,8 +144,25 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
     await md.getByRole("button", { name: "打开", exact: true }).click();
     await expect(page.locator(".file-markdown-preview")).toContainText("真实 Markdown 预览");
     await page.getByLabel("收起右侧栏", { exact: true }).click();
+    const menu = page.getByRole("menu");
+    const fileMenuItems = ["Finder", "使用默认程序打开", "复制绝对路径", "复制相对路径"];
+    await page.locator(".changed-files-summary").click();
+    await page.getByRole("button", { name: "打开菜单 报告.md", exact: true }).click();
+    await expect(menu.getByRole("menuitem")).toHaveText(fileMenuItems);
+    const changedMenuClass = await menu.getAttribute("class");
+    await page.keyboard.press("Escape");
     await md.getByLabel("选择打开方式").click();
-    await expect(page.getByRole("menuitem", { name: "Finder", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem")).toHaveText(fileMenuItems);
+    await expect(menu).toHaveAttribute("class", changedMenuClass ?? "");
+    await expect(menu.getByRole("separator")).toHaveCount(1);
+    await expect
+      .poll(() =>
+        menu
+          .getByRole("menuitem", { name: "Finder", exact: true })
+          .locator("img")
+          .evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBeGreaterThan(0);
     await page.screenshot({ path: "test-results/preview-open-menu.png" });
     await page.getByRole("menuitem", { name: "复制相对路径" }).click();
     await expect(page.getByRole("menu")).toHaveCount(0);
@@ -154,6 +171,27 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
     await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect.poll(calls).toContain(`reveal:${join(project, "报告.md")}`);
+    await md.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "复制绝对路径", exact: true }).click();
+    await expect
+      .poll(() => app?.evaluate(({ clipboard }) => clipboard.readText()))
+      .toBe(join(project, "报告.md"));
+    await md.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
+    await expect.poll(calls).toContain(join(project, "报告.md"));
+    await expect(page.locator(".right-pane")).toBeHidden();
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async (path) => {
+        (globalThis as typeof globalThis & { previewCalls: string[] }).previewCalls.push(path);
+        return path.endsWith("报告.md") ? "没有可用的默认应用程序" : "";
+      };
+    });
+    await md.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
+    await expect(md.getByRole("alert")).toContainText("没有可用的默认应用程序");
+    await md.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
+    await expect(md.getByRole("alert")).toHaveCount(0);
     const html = cards.filter({ hasText: "网站 · HTML" });
     await html.getByRole("button", { name: "打开", exact: true }).click();
     await expect

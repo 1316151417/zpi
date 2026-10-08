@@ -26,8 +26,7 @@ import messages from ${JSON.stringify(messagesFile)};
 const intl={formatMessage:({id},values={})=>(messages[id]??id).replace(/\\{(\\w+)\\}/g,(_,k)=>values[k]??k)};
 Date.now=()=>${now};
 const noop=()=>{};
-const apps=[{id:"finder",name:"Finder",iconDataUrl:"/file-actions/finder.png"}];
-const services={listOpenApps:async()=>apps,load:async()=>[],openWith:async()=>{},openFile:async()=>{},openWebsite:async()=>{},openExternal:async()=>{},fileAction:async()=>{}};
+const services={load:async()=>[],openFile:async()=>{},openWebsite:async()=>{},openExternal:async()=>{},fileAction:async()=>{}};
 const cards=[
  {id:"web",type:"website",title:"动态页面",subtitleId:"chat.previewCards.website",url:"http://localhost:5173/preview"},
  {id:"md",type:"markdown",kind:"markdown",title:"项目实施报告.md",subtitleId:"chat.previewCards.markdown",path:"/workspace/项目实施报告.md"},
