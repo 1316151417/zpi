@@ -28,28 +28,84 @@ function getBashShellConfig(shell: string): ShellConfig {
     : { shell, args: ["-c"] };
 }
 
-function findExecutableOnPath(executable: string): string | null {
-  if (process.platform === "win32") {
-    // Windows: Use 'where' and verify file exists (where can return non-existent paths)
+/**
+ * Spawned WSL launchers and WindowsApps aliases block forever when the backing
+ * app is missing or broken (no error, no output). Before committing to one as
+ * the session shell, probe it once with a hard deadline so a broken setup fails
+ * with guidance instead of hanging every command.
+ */
+const launcherBashProbes = new Map<string, boolean>();
+function isLauncherBashPath(path: string): boolean {
+  return isLegacyWslBashPath(path) || path.includes("\\WindowsApps\\");
+}
+function isLauncherBashUsable(shell: string): boolean {
+  let usable = launcherBashProbes.get(shell);
+  if (usable === undefined) {
     try {
-      const result = spawnSync("where", [executable], {
-        encoding: "utf-8",
-        timeout: 5000,
-        windowsHide: true,
-      });
-      if (result.status === 0 && result.stdout) {
-        const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
-        if (firstMatch && existsSync(firstMatch)) {
-          return firstMatch;
-        }
-      }
+      usable =
+        spawnSync(shell, ["-c", "echo ok"], {
+          encoding: "utf-8",
+          timeout: 4000,
+          windowsHide: true,
+        }).status === 0;
     } catch {
-      // Ignore errors
+      usable = false;
     }
-    return null;
+    launcherBashProbes.set(shell, usable);
   }
+  return usable;
+}
 
-  // Unix: Use 'which' and trust its output (handles Termux and special filesystems)
+/** Bash.exe next to a git.exe installation, whatever the install directory. */
+function findGitBash(): string | null {
+  try {
+    const result = spawnSync("where", ["git.exe"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      windowsHide: true,
+    });
+    if (result.status !== 0 || !result.stdout) return null;
+    for (const entry of result.stdout.trim().split(/\r?\n/)) {
+      // Git for Windows layouts: <root>\cmd\git.exe, <root>\bin\git.exe or <root>\mingw64\bin\git.exe.
+      const git = entry.trim();
+      const root = git.replace(/[\\/](?:cmd|bin|mingw64[\\/]bin)[\\/]git\.exe$/i, "");
+      if (root === git) continue;
+      const bash = `${root}\\bin\\bash.exe`;
+      if (existsSync(bash)) return bash;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
+ * All bash.exe entries on PATH. The System32 WSL launcher and the WindowsApps
+ * execution alias both exist on nearly every machine while real Git installs
+ * live elsewhere, so callers must rank matches themselves.
+ */
+function findBashEntriesOnPath(): string[] {
+  try {
+    const result = spawnSync("where", ["bash.exe"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      windowsHide: true,
+    });
+    if (result.status === 0 && result.stdout) {
+      return result.stdout
+        .trim()
+        .split(/\r?\n/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry && existsSync(entry));
+    }
+  } catch {
+    // Ignore errors
+  }
+  return [];
+}
+
+/** Unix: use 'which' and trust its output (handles Termux and special filesystems). */
+function findUnixExecutableOnPath(executable: string): string | null {
   try {
     const result = spawnSync("which", [executable], { encoding: "utf-8", timeout: 5000 });
     if (result.status === 0 && result.stdout) {
@@ -98,8 +154,17 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
       }
     }
 
-    // 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
-    const bashOnPath = findExecutableOnPath("bash.exe");
+    // 3. Derive bash from the git.exe installation for custom install directories.
+    const gitBash = findGitBash();
+    if (gitBash) {
+      return getBashShellConfig(gitBash);
+    }
+
+    // 4. Fallback: bash.exe on PATH, preferring a real bash over WSL launchers.
+    const entries = findBashEntriesOnPath();
+    const bashOnPath =
+      entries.find((entry) => !isLauncherBashPath(entry)) ??
+      entries.find((entry) => isLauncherBashUsable(entry));
     if (bashOnPath) {
       return getBashShellConfig(bashOnPath);
     }
@@ -118,7 +183,7 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
     return getBashShellConfig("/bin/bash");
   }
 
-  const bashOnPath = findExecutableOnPath("bash");
+  const bashOnPath = findUnixExecutableOnPath("bash");
   if (bashOnPath) {
     return getBashShellConfig(bashOnPath);
   }
