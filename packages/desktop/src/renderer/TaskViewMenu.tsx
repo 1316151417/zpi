@@ -1,6 +1,6 @@
 import { ActionHint } from "ZPI-ui";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronDown, Clock3, Folder, ListFilter, MessageCirclePlus } from "lucide-react";
+import { Check, Clock3, Folder, ListFilter, MessageCirclePlus } from "lucide-react";
 import type { ReactNode } from "react";
 import type { TaskPreferences } from "./sidebar-task-model.ts";
 import { TaskUpdatedIcon } from "./task-view-icons.ts";
@@ -34,7 +34,6 @@ export function TaskViewMenu({
         <>
           {projectView ? <Folder size={12} /> : <Clock3 size={12} />}
           <span>{viewLabel}</span>
-          <ChevronDown size={12} className="task-view-selector-chevron" />
         </>
       ) : (
         <ListFilter size={14} />
@@ -43,7 +42,13 @@ export function TaskViewMenu({
   );
   return (
     <Menu.Root>
-      {viewOnly ? trigger : <ActionHint label={label}>{trigger}</ActionHint>}
+      {viewOnly ? (
+        trigger
+      ) : (
+        <ActionHint label={label} appearance="control">
+          {trigger}
+        </ActionHint>
+      )}
       <Menu.Portal>
         <Menu.Content
           className="parity-menu task-view-menu"

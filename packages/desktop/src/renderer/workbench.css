@@ -3059,7 +3059,7 @@
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 6px 0 8px;
+  padding: 0 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   background: var(--color-bg);
@@ -3078,9 +3078,6 @@
 }
 .task-view-selector svg {
   flex-shrink: 0;
-}
-.task-view-selector-chevron {
-  color: var(--color-text-subtle);
 }
 .sidebar .task-view-trigger,
 .sidebar .task-group-toggle {

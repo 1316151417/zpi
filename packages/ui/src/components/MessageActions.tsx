@@ -22,7 +22,8 @@ export function ActionHint({
   children,
   description,
   shortcut,
-  side = "bottom",
+  side,
+  appearance = "message",
   className,
 }: {
   label: string;
@@ -30,6 +31,7 @@ export function ActionHint({
   description?: string;
   shortcut?: string;
   side?: "top" | "bottom";
+  appearance?: "message" | "control";
   className?: string;
 }) {
   return (
@@ -38,9 +40,10 @@ export function ActionHint({
         <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Content
-            side={side}
+            side={side ?? (appearance === "control" ? "top" : "bottom")}
+            align="center"
             sideOffset={2}
-            className={`message-action-tooltip${className ? ` ${className}` : ""}`}
+            className={`message-action-tooltip${appearance === "control" ? " control-hint-tooltip" : ""}${className ? ` ${className}` : ""}`}
           >
             <span>
               {label}

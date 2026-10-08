@@ -1,4 +1,4 @@
-import { TaskTitleOverflowText } from "ZPI-ui";
+import { ActionHint, TaskTitleOverflowText } from "ZPI-ui";
 import { Archive, LoaderIcon, Pin } from "lucide-react";
 import { useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
@@ -32,20 +32,21 @@ export function SidebarTaskRow({
   const showPin = interacting || (r.pinnedAt != null && indicator === "none");
   const actions =
     interacting || touch ? (
-      <span className="task-row-actions">
-        <button
-          className="row-action task-archive"
-          aria-label={`归档任务 ${r.title}`}
-          title={r.running ? "请先停止运行" : "归档"}
-          disabled={r.running || Boolean(r.diagnostic)}
-          onClick={(event) => {
-            event.stopPropagation();
-            onArchive();
-          }}
-        >
-          <Archive size={12} />
-        </button>
-      </span>
+      <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control">
+        <span className="task-row-actions">
+          <button
+            className="row-action task-archive"
+            aria-label={`归档任务 ${r.title}`}
+            disabled={r.running || Boolean(r.diagnostic)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onArchive();
+            }}
+          >
+            <Archive size={14} />
+          </button>
+        </span>
+      </ActionHint>
     ) : null;
   const time = !interacting ? (
     <span className="task-row-time" data-task-row-metadata="true">
@@ -88,27 +89,31 @@ export function SidebarTaskRow({
             <span className="task-idle-dot" />
           ) : null}
         </span>
-        <button
-          style={{ opacity: showPin ? 1 : 0, pointerEvents: showPin ? "auto" : "none" }}
-          tabIndex={showPin ? 0 : -1}
-          className={`row-action task-pin ${r.pinnedAt != null ? "pinned" : ""}`}
-          aria-label={`${r.pinnedAt != null ? "取消置顶" : "置顶"}任务 ${r.title}`}
-          title={
+        <ActionHint
+          appearance="control"
+          label={
             r.pinnedAt != null
-              ? "取消置顶"
+              ? "取消置顶任务"
               : pinLimitReached
                 ? "最多置顶 5 个任务，请先取消其他任务的置顶"
-                : "置顶"
+                : "置顶任务"
           }
-          disabled={r.pinnedAt == null && pinLimitReached}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onPin();
-          }}
         >
-          <Pin size={16} />
-        </button>
+          <button
+            style={{ opacity: showPin ? 1 : 0, pointerEvents: showPin ? "auto" : "none" }}
+            tabIndex={showPin ? 0 : -1}
+            className={`row-action task-pin ${r.pinnedAt != null ? "pinned" : ""}`}
+            aria-label={`${r.pinnedAt != null ? "取消置顶" : "置顶"}任务 ${r.title}`}
+            disabled={r.pinnedAt == null && pinLimitReached}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onPin();
+            }}
+          >
+            <Pin size={16} />
+          </button>
+        </ActionHint>
       </span>
       {variant === "timeline" ? (
         <div className="timeline-row-body">

@@ -402,7 +402,7 @@ export function App() {
                   <div className="sidebar-task-toolbar-main">
                     <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} viewOnly />
                     {taskPreferences.organizeBy === "project" && state.projects.length > 0 && (
-                      <ActionHint label={toggleProjectGroupsLabel}>
+                      <ActionHint label={toggleProjectGroupsLabel} appearance="control">
                         <button
                           className="task-group-toggle"
                           aria-label={toggleProjectGroupsLabel}
