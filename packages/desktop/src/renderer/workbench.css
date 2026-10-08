@@ -140,6 +140,19 @@
   right: 8px;
   z-index: 30;
 }
+/* Windows 的系统窗口按钮覆盖右上角，开关与顶栏内容让出该区域。 */
+.shell:not(.mac-desktop) {
+  --caption-inset: calc(100vw - env(titlebar-area-width, calc(100vw - 154px)));
+}
+.shell:not(.mac-desktop) .right-sidebar-toggle {
+  right: calc(var(--caption-inset) + 8px);
+}
+.shell:not(.mac-desktop):not(.pane-open) .topbar {
+  padding-right: calc(var(--caption-inset) + 44px);
+}
+.shell:not(.mac-desktop) .pane-header {
+  padding-right: calc(var(--caption-inset) + 44px);
+}
 .right-sidebar-toggle[aria-expanded="true"] {
   background: var(--color-active);
   color: var(--color-foreground);
