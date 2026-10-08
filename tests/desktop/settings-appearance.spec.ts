@@ -5,6 +5,47 @@ import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
+import { seedHistory } from "../history-fixture.ts";
+
+test("settings hide pinned task controls and restore the task sidebar on return", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-pinned-"));
+  const session = seedHistory(dir, dir, 1);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    const row = page.locator(`.sidebar [data-session-id="${session.id}"]`);
+    await row.hover();
+    await row.getByLabel("置顶任务 历史标题", { exact: true }).click();
+    const pin = row.getByLabel("取消置顶任务 历史标题", { exact: true });
+    await expect(pin).toBeVisible();
+    await row.getByRole("button", { name: "历史标题", exact: true }).click();
+    await expect(page.locator(".topbar-title")).toHaveText("历史标题");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const settings = page.getByRole("region", { name: "设置", exact: true });
+    for (const name of ["常规", "界面设置", "系统提示词", "工具", "技能", "模型", "已归档任务"]) {
+      const tab = settings.getByRole("button", { name, exact: true });
+      await tab.click();
+      await expect(tab).toHaveAttribute("aria-pressed", "true");
+      await expect(pin).toBeHidden();
+      await expect(page.locator(".sidebar")).toBeHidden();
+      await expect(page.locator(".topbar")).toBeHidden();
+      await expect(page.locator(".sidebar-resizer")).toBeHidden();
+    }
+    await settings.getByLabel("关闭设置").click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.locator(".topbar-title")).toHaveText("历史标题");
+    await expect(page.locator(".sidebar-resizer")).toBeVisible();
+    await expect(pin).toBeVisible();
+    await pin.click();
+    await expect(page.locator(".pinned-tasks")).toHaveCount(0);
+    await row.hover();
+    await expect(row.getByLabel("置顶任务 历史标题", { exact: true })).toBeVisible();
+  } finally {
+    await app?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("settings use ZCode typography and keep titlebar dragging separate from controls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-appearance-"));

@@ -871,7 +871,7 @@
 .shell.show-settings > main,
 .shell.show-settings > .sidebar-resizer,
 .shell.show-settings > .right-pane {
-  visibility: hidden;
+  display: none;
 }
 .settings-screen {
   position: absolute;
