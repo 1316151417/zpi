@@ -48,16 +48,16 @@ export function ToolGroup({
         title={preview ? (file?.path ?? command) : undefined}
         primary={
           preview ? (
-            <span className="tool-group-active">
-              <span className="tool-active-label">
-                {latest.name === "read"
-                  ? "正在读取"
-                  : latest.name === "bash"
-                    ? "正在执行"
-                    : toolLabel(latest)}
+            latest.name === "bash" ? (
+              <span className="tool-active-label">正在执行</span>
+            ) : (
+              <span className="tool-group-active">
+                <span className="tool-active-label">
+                  {latest.name === "read" ? "正在读取" : toolLabel(latest)}
+                </span>
+                {file && <ToolFileChip block={latest} {...options} />}
               </span>
-              {file && <ToolFileChip block={latest} {...options} />}
-            </span>
+            )
           ) : (
             <span className="tool-group-counts">{summary}</span>
           )

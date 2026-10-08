@@ -13,6 +13,113 @@ const call = (id: string, name: string, args: Record<string, unknown>, index = 0
   function: { name, arguments: JSON.stringify(args) },
 });
 
+test("long grouped commands keep the running label separate while rolling and at narrow widths", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-tool-summary-spacing-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  await writeFile(join(project, "a.ts"), "export const a = 1;\n");
+  const finish = deferred();
+  const path = "trusteeship-performance-model/src/main/java/com/ke/".repeat(8);
+  const exploreCommand = `git log --since="2025-09-01" --pretty=format:"%an" -- ${path}; while [ ! -f explore-release ]; do sleep 0.05; done`;
+  const executeCommand = `printf '%s' '${path}'; while [ ! -f execute-release ]; do sleep 0.05; done`;
+  const server = await fakeServer(async (_, response, index) => {
+    if (index === 0) {
+      send(response, chunk({ tool_calls: [call("read", "read", { path: "a.ts" })] }));
+    } else if (index === 1) {
+      send(response, chunk({ tool_calls: [call("explore", "bash", { command: exploreCommand })] }));
+    } else if (index === 2) {
+      send(response, chunk({ reasoning_content: "查阅完成，执行命令。" }));
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            call("execute-first", "bash", { command: "printf first" }),
+            call("execute-long", "bash", { command: executeCommand }, 1),
+          ],
+        }),
+      );
+    } else {
+      await finish.promise;
+      send(response, chunk({ content: "完成。" }));
+      done(response);
+      return;
+    }
+    done(response, "tool_calls");
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("检查长命令摘要间距");
+    await page.getByLabel("发送", { exact: true }).click();
+    for (const [kind, command] of [
+      ["explore", exploreCommand],
+      ["execute", executeCommand],
+    ] as const) {
+      const group = page.locator(`[data-tool-group="${kind}"]`);
+      const summary = group.locator(":scope > .tool-layout > .tool-summary-row");
+      await expect(summary.locator(".tool-command-summary").last()).toHaveText(command);
+      // Sample rendered geometry throughout the rolling transition and hold.
+      const gaps = await summary.evaluate(async (el, command) => {
+        const gaps: number[] = [];
+        const start = performance.now();
+        while (performance.now() - start < 900) {
+          for (const code of el.querySelectorAll(".tool-command-summary")) {
+            if (code.textContent !== command) continue;
+            const label =
+              code.previousElementSibling?.querySelector(".tool-active-label") ?? code.previousElementSibling;
+            if (label) gaps.push(code.getBoundingClientRect().left - label.getBoundingClientRect().right);
+          }
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        return gaps;
+      }, command);
+      expect(gaps.length).toBeGreaterThan(0);
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(7);
+      for (const reducedMotion of ["no-preference", "reduce"] as const) {
+        await page.emulateMedia({ reducedMotion });
+        for (const width of [700, 350]) {
+          await page.locator(".conversation").evaluate((el, width) => {
+            (el as HTMLElement).style.width = `${width}px`;
+          }, width);
+          const label = summary.locator(".tool-active-label");
+          const code = summary.locator(".tool-command-summary");
+          await expect(label).toHaveText("正在执行");
+          await expect(code).toHaveText(command);
+          const labelBox = await label.boundingBox();
+          const commandBox = await code.boundingBox();
+          expect(labelBox).not.toBeNull();
+          expect(commandBox).not.toBeNull();
+          if (!labelBox || !commandBox) throw new Error("Missing running label or command");
+          expect(commandBox.x - (labelBox.x + labelBox.width)).toBeGreaterThanOrEqual(7);
+          expect(await code.evaluate((el) => el.scrollWidth)).toBeGreaterThan(commandBox.width);
+          expect(await summary.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+        }
+      }
+      await page.screenshot({ path: `test-results/tool-summary-${kind}-long-command.png` });
+      await summary.click();
+      await expect(summary).not.toContainText("正在执行");
+      await summary.click();
+      await expect(summary.locator(".tool-active-label")).toHaveText("正在执行");
+      await page.locator(".conversation").evaluate((el) => {
+        (el as HTMLElement).style.width = "";
+      });
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await writeFile(join(project, `${kind}-release`), "");
+    }
+    finish.resolve();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+  } finally {
+    finish.resolve();
+    await writeFile(join(project, "explore-release"), "");
+    await writeFile(join(project, "execute-release"), "");
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("ZCode tool summaries group by phase, preserve expansion and open per-operation diffs", async () => {
   test.setTimeout(60_000);
   const dir = await mkdtemp(join(tmpdir(), "ZPI-tool-presentation-"));
