@@ -1384,8 +1384,14 @@ export class SessionHost {
             runId: run.runId,
             ordinal: run.ordinal,
           });
-        if (e.type === "command_result")
-          manager.appendCustomEntry("ZPI.notice", { runId: run.runId, text: e.message });
+        if (e.type === "compaction")
+          manager.appendCustomEntry("ZPI.compaction", {
+            runId: run.runId,
+            id: e.id,
+            status: e.status,
+            origin: e.origin,
+            ...(e.error ? { error: e.error } : {}),
+          });
         if (e.type === "entry_appended" && e.entry.type === "compaction")
           this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
         // Match restoreView and HistoryIndex: internal system declarations have no visible ordinal.
@@ -1551,7 +1557,10 @@ export class SessionHost {
     const last = run.hasAssistant
       ? run.session?.messages.filter((m) => m.role === "assistant").at(-1)
       : undefined;
-    if (message) status = "error";
+    if (run.aborted) {
+      status = "aborted";
+      message = undefined;
+    } else if (message) status = "error";
     else if (last?.stopReason === "error") {
       status = "error";
       message = last.errorMessage;

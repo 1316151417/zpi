@@ -9,6 +9,8 @@ export function sessionViewBytes(view: SessionView): number {
   let chars = view.title.length;
   for (const run of view.runs) {
     chars += run.userMessage.length + (run.error?.length ?? 0) + (run.notice?.length ?? 0);
+    for (const marker of run.compactions ?? [])
+      chars += marker.id.length + (marker.afterBlockId?.length ?? 0) + (marker.error?.length ?? 0);
     for (const block of run.orderedBlocks)
       chars += block.type === "tool" ? block.output.length + block.argsText.length : block.text.length;
   }
@@ -56,6 +58,20 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.attachments = event.attachments ?? [];
     run.startedAt = event.startedAt;
     run.modelLabel = event.modelLabel;
+    if (/^\/compact(?:\s|$)/.test(event.text.trimStart())) run.kind = "compact";
+  } else if (event.type === "compaction") {
+    const markers = [...(run.compactions ?? [])];
+    const index = markers.findIndex((marker) => marker.id === event.id);
+    const marker = {
+      id: event.id,
+      status: event.status,
+      origin: event.origin,
+      error: event.error,
+      afterBlockId: index < 0 ? run.orderedBlocks.at(-1)?.id : markers[index].afterBlockId,
+    };
+    if (index < 0) markers.push(marker);
+    else markers[index] = marker;
+    run.compactions = markers;
   } else if (event.type === "notice") {
     run.notice = event.text;
   } else if (event.type === "model_retry") {
@@ -80,6 +96,11 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.status = event.status;
     run.endedAt = event.endedAt;
     run.error = event.error;
+    run.compactions = run.compactions?.map((marker) =>
+      marker.status === "running"
+        ? { ...marker, status: event.status === "completed" ? "interrupted" : event.status }
+        : marker,
+    );
     run.orderedBlocks = run.orderedBlocks.map((block) =>
       block.type !== "tool" && block.streaming
         ? { ...block, streaming: false, ...(block.startedAt !== undefined ? { endedAt: event.endedAt } : {}) }
@@ -253,7 +274,9 @@ export function mergeHistory(older: SessionView, newer: SessionView): SessionVie
     else {
       const blocks = new Map(runs[index].orderedBlocks.map((b) => [b.id, b]));
       for (const block of run.orderedBlocks) blocks.set(block.id, block);
-      runs[index] = { ...run, orderedBlocks: [...blocks.values()] };
+      const compactions = new Map(runs[index].compactions?.map((marker) => [marker.id, marker]));
+      for (const marker of run.compactions ?? []) compactions.set(marker.id, marker);
+      runs[index] = { ...run, orderedBlocks: [...blocks.values()], compactions: [...compactions.values()] };
     }
   }
   return { ...newer, runs };

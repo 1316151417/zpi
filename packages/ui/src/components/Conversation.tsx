@@ -38,6 +38,7 @@ import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.t
 import type { PreviewServices } from "../preview/preview-lifecycle.ts";
 import { progressSummary } from "../reducer.ts";
 import type {
+  CompactionView,
   FileActionHandler,
   FileRewindConflict,
   InputQueue,
@@ -48,6 +49,7 @@ import type {
 } from "../types.ts";
 import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCards.tsx";
 import { ChangedFiles } from "./ChangedFiles.tsx";
+import { CompactionDivider } from "./CompactionDivider.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
 import { DraftGreeting } from "./DraftGreeting.tsx";
@@ -69,7 +71,7 @@ import { SuggestionOptions } from "./SuggestionOptions.tsx";
 import { filterSkillSuggestions } from "./skill-suggestions.ts";
 import { ToolBlock } from "./ToolBlock.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
-import { processItems } from "./tool-presentation.ts";
+import { type ProcessItem, processItems } from "./tool-presentation.ts";
 import { useTextFind } from "./use-text-find.ts";
 
 export interface MessageEditInput {
@@ -397,8 +399,30 @@ export const RunGroup = memo(function RunGroup({
         autoOpen={previewAutoOpen}
       />
     ) : null;
-  const items = processItems(process, run.status === "running");
+  const markers = run.compactions ?? [];
+  const compacting = markers.some((marker) => marker.status === "running");
+  const items: (ProcessItem | { kind: "compaction"; id: string; marker: CompactionView })[] = [];
+  let offset = 0;
+  for (const marker of markers) {
+    const index = marker.afterBlockId ? process.findIndex((block) => block.id === marker.afterBlockId) : -1;
+    const boundary = Math.max(offset, index + 1);
+    items.push(...processItems(process.slice(offset, boundary), false));
+    items.push({ kind: "compaction", id: marker.id, marker });
+    offset = boundary;
+  }
+  items.push(...processItems(process.slice(offset), run.status === "running" && !compacting));
   const open = defaultOpen || expanded;
+  if (run.kind === "compact")
+    return (
+      <div className="compaction-run" data-run-id={run.runId}>
+        {(markers.length
+          ? markers
+          : [{ id: run.runId, status: run.status, origin: "manual" as const, error: run.error }]
+        ).map((marker) => (
+          <CompactionDivider key={marker.id} marker={marker} />
+        ))}
+      </div>
+    );
   return (
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
       <div className="assistant-turn">
@@ -490,7 +514,9 @@ export const RunGroup = memo(function RunGroup({
         {open && items.length > 0 && (
           <div className="process" data-testid="process">
             {items.map((item) =>
-              item.kind !== "block" ? (
+              item.kind === "compaction" ? (
+                <CompactionDivider key={item.id} marker={item.marker} />
+              ) : item.kind !== "block" ? (
                 <ToolGroup
                   key={item.id}
                   group={item}
@@ -525,12 +551,13 @@ export const RunGroup = memo(function RunGroup({
             )}
           </div>
         )}
+        {!open && markers.map((marker) => <CompactionDivider key={marker.id} marker={marker} />)}
         {run.notice && (
           <div className="run-notice" role="status">
             {run.notice}
           </div>
         )}
-        {run.status === "running" && (
+        {run.status === "running" && !compacting && (
           <div
             className="chat-loading-slot"
             role="status"
@@ -1613,7 +1640,7 @@ export function ChatComposer({
           }
           value={draft}
           disabled={editing}
-          placeholder={busy ? "继续输入以排队后续修改" : undefined}
+          placeholder={busy ? "继续输入以排队后续修改" : sentMessages.length ? "提出后续修改要求" : undefined}
           onPaste={(e) => {
             if (!context) return;
             const images = Array.from(e.clipboardData.items)

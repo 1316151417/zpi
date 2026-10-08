@@ -18,6 +18,7 @@ import {
   restoreUsageAnchor,
   usageAnchor,
 } from "ZPI-ai";
+import { randomUUID } from "node:crypto";
 import type { ParsedInput } from "./commands.ts";
 import { parseInput } from "./commands.ts";
 import {
@@ -58,6 +59,13 @@ export type AgentSessionEvent =
   | { type: "session_info_changed"; name: string }
   | { type: "thinking_level_changed"; thinkingLevel: ThinkingLevel }
   | { type: "model_retry"; status: ModelRetryStatus | null }
+  | {
+      type: "compaction";
+      id: string;
+      status: "running" | "completed" | "aborted" | "error" | "noop";
+      origin: "manual" | "auto";
+      error?: string;
+    }
   | { type: "command_result"; message: string };
 export class AgentSession {
   private agent: Agent;
@@ -219,7 +227,7 @@ export class AgentSession {
         kind: "prompt",
         text: `Inspect this project (${this.manager.getCwd()}) and create or edit ONLY its root AGENTS.md. If it exists, read it first and use precise edits to preserve existing rules; do not overwrite it wholesale. Derive concise instructions from the actual project. Never modify the user-level AGENTS.md. Additional requirements: ${parsed.args || "none"}`,
       };
-    if (parsed.kind === "compact") this.compactionBoundary();
+    if (parsed.kind === "compact" && !this.alreadyCompacted()) this.compactionBoundary();
     return parsed;
   }
   async submit(text: string): Promise<void> {
@@ -273,7 +281,35 @@ export class AgentSession {
     if (!boundary) throw new Error("invalid_input: 至少需要两个完整对话回合才能压缩，最近一个回合会保留");
     return boundary;
   }
+  private alreadyCompacted(): boolean {
+    const entries = this.manager.getEntries();
+    const last = entries.findLastIndex((entry) => entry.type === "compaction");
+    return last >= 0 && !entries.slice(last + 1).some((entry) => entry.type === "message");
+  }
   private async summarize(
+    manual: boolean,
+    instructions: string,
+    signal?: AbortSignal,
+    force = false,
+  ): Promise<void> {
+    const id = randomUUID();
+    const origin = manual ? "manual" : "auto";
+    this.notify({ type: "compaction", id, status: "running", origin });
+    try {
+      await this.summarizeContext(manual, instructions, signal, force);
+      this.notify({ type: "compaction", id, status: "completed", origin });
+    } catch (error) {
+      this.notify({
+        type: "compaction",
+        id,
+        status: signal?.aborted ? "aborted" : "error",
+        origin,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+  private async summarizeContext(
     manual: boolean,
     instructions: string,
     signal?: AbortSignal,
@@ -424,6 +460,11 @@ export class AgentSession {
   compact(instructions = ""): Promise<void> {
     try {
       this.idleCheck();
+      if (this.alreadyCompacted()) {
+        this.notify({ type: "compaction", id: randomUUID(), status: "noop", origin: "manual" });
+        this.notify({ type: "command_result", message: "上下文已是最新，无需压缩" });
+        return Promise.resolve();
+      }
       this.compactionBoundary();
     } catch (error) {
       return Promise.reject(error);

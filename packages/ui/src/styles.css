@@ -310,7 +310,8 @@ small {
   margin: auto;
   padding: 0;
 }
-.run-group {
+.run-group,
+.compaction-run {
   padding: 56px 16px 20px;
 }
 .user-message {
@@ -845,7 +846,8 @@ small {
 /* ZCode conversationLayout and ConversationTurnGroup share one responsive column
    with the composer dock, with 20px after the final action row. */
 @container conversation (min-width: 448px) {
-  .run-group {
+  .run-group,
+  .compaction-run {
     padding-inline: 24px;
   }
 }
@@ -3354,6 +3356,40 @@ button.inline-mention,
   color: var(--color-foreground);
 }
 
+.compaction-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-body);
+}
+.compaction-line {
+  height: 1px;
+  min-width: 32px;
+  flex: 1;
+  background: color-mix(in oklab, var(--color-border) 50%, transparent);
+}
+.compaction-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  line-height: 20px;
+}
+.compaction-label > svg {
+  flex-shrink: 0;
+}
+.compaction-label > span {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.compaction-label .thinking-label-streaming {
+  font-weight: 500;
+}
 .fork-notice {
   display: flex;
   align-items: center;

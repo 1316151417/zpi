@@ -24,6 +24,13 @@ export interface InputSuggestion {
   group: "命令" | "Skill";
 }
 export type RunStatus = "running" | "completed" | "aborted" | "error" | "interrupted";
+export interface CompactionView {
+  id: string;
+  status: RunStatus | "noop";
+  origin: "manual" | "auto";
+  afterBlockId?: string;
+  error?: string;
+}
 export interface FileChangeSummary {
   path: string;
   patch?: string;
@@ -71,6 +78,8 @@ export interface RunView {
   error?: string;
   modelLabel?: string;
   notice?: string;
+  kind?: "compact";
+  compactions?: CompactionView[];
   apiRetry?: ModelRetryStatus | null;
 }
 export interface SessionView {
@@ -97,6 +106,7 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
+  | ({ type: "compaction" } & Omit<CompactionView, "afterBlockId">)
   | { type: "model_retry"; status: ModelRetryStatus | null }
   | { type: "message_reset"; messageId: string }
   | { type: "history_reset"; view: SessionView }

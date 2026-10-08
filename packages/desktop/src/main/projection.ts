@@ -38,7 +38,7 @@ function fileChangeSummary(details: unknown): FileChangeSummary | undefined {
 
 export function projectEvent(event: AgentSessionEvent, messageId: string): DesktopEvent | undefined {
   if (event.type === "model_retry") return event;
-  if (event.type === "command_result") return { type: "notice", text: event.message };
+  if (event.type === "compaction") return event;
   if (event.type === "message_start") return { type: "message_start", messageId, role: event.message.role };
   if (event.type === "message_end")
     return { type: "message_end", messageId, message: visibleMessage(event.message), timestamp: Date.now() };
@@ -103,12 +103,37 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
   for (const e of entries) {
     if (
       e.type === "custom" &&
+      e.customType === "ZPI.compaction" &&
+      isJsonObject(e.data) &&
+      e.data.runId === runId &&
+      typeof e.data.id === "string" &&
+      ["running", "completed", "aborted", "error", "noop"].includes(String(e.data.status)) &&
+      (e.data.origin === "manual" || e.data.origin === "auto")
+    )
+      apply({
+        type: "compaction",
+        id: e.data.id,
+        status: e.data.status as "running" | "completed" | "aborted" | "error" | "noop",
+        origin: e.data.origin,
+        ...(typeof e.data.error === "string" ? { error: e.data.error } : {}),
+      });
+    if (
+      e.type === "custom" &&
       e.customType === "ZPI.notice" &&
       isJsonObject(e.data) &&
       typeof e.data.text === "string" &&
       e.data.runId === runId
-    )
-      apply({ type: "notice", text: e.data.text });
+    ) {
+      if (/^(上下文已压缩|上下文接近容量|自动压缩失败)/.test(e.data.text)) {
+        if (!view.runs.find((run) => run.runId === runId)?.compactions?.length)
+          apply({
+            type: "compaction",
+            id: e.id,
+            status: e.data.text.startsWith("自动压缩失败") ? "error" : "completed",
+            origin: view.runs.find((run) => run.runId === runId)?.kind === "compact" ? "manual" : "auto",
+          });
+      } else apply({ type: "notice", text: e.data.text });
+    }
     if (
       e.type === "custom" &&
       e.customType === "ZPI.run" &&

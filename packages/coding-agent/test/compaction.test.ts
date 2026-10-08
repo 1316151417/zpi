@@ -204,7 +204,16 @@ it("compaction keeps full history, pairs tools, invalidates usage and survives r
   await f.session.prompt("recent task");
   const before = f.manager.getEntries().filter((e) => e.type === "message").length;
   expect(f.session.getContextUsage().inputTokens).toBe(120);
+  const compactions: unknown[] = [];
+  f.session.subscribe((event) => {
+    if (event.type === "compaction") compactions.push(event);
+  });
   await f.session.compact("keep decisions");
+  expect(compactions).toMatchObject([
+    { type: "compaction", status: "running", origin: "manual" },
+    { type: "compaction", status: "completed", origin: "manual" },
+  ]);
+  expect(compactions[0]).toHaveProperty("id", (compactions[1] as { id: string }).id);
   expect(f.manager.getEntries().filter((e) => e.type === "message")).toHaveLength(before);
   expect(f.session.getContextUsage().inputTokens).toBeNull();
   expect(f.session.messages.some((m) => m.role === "user" && m.content === "old task")).toBe(false);
@@ -213,6 +222,10 @@ it("compaction keeps full history, pairs tools, invalidates usage and survives r
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("keep decisions");
   const reopened = SessionManager.open(f.manager.getSessionFile() as string);
   expect(reopened.buildSessionContext()).toEqual(f.manager.buildSessionContext());
+  const requestCount = f.server.requests.length;
+  await f.session.submit("/compact");
+  expect(compactions.at(-1)).toMatchObject({ status: "noop", origin: "manual" });
+  expect(f.server.requests).toHaveLength(requestCount);
   await f.session.prompt("after compact");
   expect(f.session.getContextUsage().inputTokens).toBe(120);
 });

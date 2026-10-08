@@ -36,12 +36,15 @@ test("context indicator hides after compaction and returns when the next respons
     await expect(indicator).toBeVisible();
     await page.getByLabel("消息", { exact: true }).fill("/compact");
     await page.getByLabel("发送", { exact: true }).click();
-    await expect(
-      page.getByText("上下文已压缩；完整历史保留，下一次请求使用摘要和最近回合。", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByTestId("compaction-divider")).toHaveText("上下文已压缩");
     await expect(indicator).toHaveCount(0);
     await page.reload();
-    await expect(page.getByTestId("run")).toHaveCount(3);
+    await expect(page.getByTestId("run")).toHaveCount(2);
+    await expect(indicator).toHaveCount(0);
+    await page.getByLabel("消息", { exact: true }).fill("/compact");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("compaction-divider")).toHaveCount(2);
+    await expect(page.getByTestId("compaction-divider").last()).toHaveText("上下文已是最新，无需压缩");
     await expect(indicator).toHaveCount(0);
     await page.getByLabel("消息", { exact: true }).fill("after compaction");
     await page.getByLabel("发送", { exact: true }).click();
