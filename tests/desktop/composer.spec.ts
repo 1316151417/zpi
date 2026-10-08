@@ -826,7 +826,7 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await expect(page.getByRole("listbox", { name: "指令", exact: true }).getByRole("option")).toHaveCount(2);
     await expect(page.getByRole("option")).toHaveText([/init/, /compact/]);
     await editor.fill("$");
-    await page.getByRole("option", { name: /\$review/ }).click();
+    await page.getByRole("option", { name: /^review 用户/ }).click();
     await expect(editor.locator(".inline-mention.skill")).toHaveText("review");
     await expect(editor.locator(".inline-mention.skill")).toHaveAttribute(
       "data-markdown",

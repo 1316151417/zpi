@@ -220,7 +220,7 @@ export async function refreshSuggestions(id: string): Promise<void> {
     ...commands.map((c) => ({ ...c, insert: `/${c.name} `, group: "命令" as const })),
     ...catalog.skills.map((s) => ({
       name: s.name,
-      description: s.description,
+      description: `${s.source === "project" ? "工作区" : s.source === "user" ? "用户" : "附加"} · ${s.description}`,
       insert: `${buildMentionMarkdown(`$${s.name}`, s.path)} `,
       group: "Skill" as const,
     })),

@@ -13,6 +13,7 @@ import {
   Plus,
   Square,
   TrendingUpDown,
+  WandSparkles,
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -62,6 +63,7 @@ import { reasoningDuration, reasoningSummary, runPresentation } from "./process-
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
+import { filterSkillSuggestions } from "./skill-suggestions.ts";
 import { ToolBlock } from "./ToolBlock.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import { processItems } from "./tool-presentation.ts";
@@ -1168,13 +1170,14 @@ export function ChatComposer({
   const matches = useMemo(
     () =>
       inputQuery
-        ? suggestions.filter(
-            (suggestion) =>
-              (inputQuery.trigger === "$"
-                ? suggestion.group === "Skill"
-                : suggestion.group === "命令" && ["init", "compact"].includes(suggestion.name)) &&
-              suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
-          )
+        ? inputQuery.trigger === "$"
+          ? filterSkillSuggestions(suggestions, inputQuery.query)
+          : suggestions.filter(
+              (suggestion) =>
+                suggestion.group === "命令" &&
+                ["init", "compact"].includes(suggestion.name) &&
+                suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
+            )
         : [],
     [inputQuery, suggestions],
   );
@@ -1531,7 +1534,7 @@ export function ChatComposer({
           </div>
         )}
         {menuOpen && !fileQuery && (
-          <div className="command-panel">
+          <div className={`command-panel${inputQuery?.trigger === "$" ? " skill-panel" : ""}`}>
             <SuggestionOptions
               selectedIndex={highlighted}
               options={matches}
@@ -1547,13 +1550,17 @@ export function ChatComposer({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => insert(suggestion)}
                 >
-                  <span
-                    className={`reference-menu-icon ${inputQuery?.trigger === "$" ? "skill" : "command"}`}
-                    style={referenceStyle(inputQuery?.trigger === "$" ? "skill" : "command", suggestion.name)}
-                    aria-hidden="true"
-                  />
+                  {inputQuery?.trigger === "$" ? (
+                    <WandSparkles size={14} className="skill-option-icon" aria-hidden="true" />
+                  ) : (
+                    <span
+                      className="reference-menu-icon command"
+                      style={referenceStyle("command", suggestion.name)}
+                      aria-hidden="true"
+                    />
+                  )}
                   <strong>
-                    {inputQuery?.trigger}
+                    {inputQuery?.trigger === "/" ? "/" : ""}
                     {suggestion.name}
                   </strong>
                   <span>{suggestion.description}</span>
@@ -1625,13 +1632,13 @@ export function ChatComposer({
                 ? { start: caret - mention[1].length - 1, end: caret, query: mention[1] }
                 : undefined,
             );
-            const command = /(?:^|\s)([/$])([^\s/$]*)$/.exec(prefix);
+            const command = /(?:^|\s)([/$¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
             setInputQuery(
               command
                 ? {
                     start: caret - command[2].length - 1,
                     end: caret,
-                    trigger: command[1] as "/" | "$",
+                    trigger: command[1] === "/" ? "/" : "$",
                     query: command[2],
                   }
                 : undefined,
