@@ -3111,9 +3111,6 @@
   gap: 4px;
   margin: 0 0 8px;
 }
-.sidebar .project-title {
-  color: var(--color-foreground);
-}
 .sidebar .session-name {
   flex: 1;
   min-width: 0;
@@ -3224,6 +3221,10 @@
   padding-left: 34px;
   cursor: pointer;
 }
+.project-task-list > .task-show-more {
+  font-size: 16px;
+  line-height: 24px;
+}
 .task-show-more-global {
   padding-bottom: 16px;
 }
@@ -3231,7 +3232,7 @@
   padding: 0;
   color: var(--color-text-subtlest);
   font-size: var(--ui-font-size);
-  line-height: 21px;
+  line-height: 1.5;
 }
 .sidebar .task-show-more button:hover {
   color: var(--color-text-subtle);
