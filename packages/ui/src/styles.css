@@ -70,13 +70,14 @@ select:disabled {
   cursor: default;
   opacity: 0.45;
 }
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+/* ZCode suppresses focus rings. Clear ring layers separately to preserve the
+   ordinary elevation shadows of focused menus and dialogs. */
+*:focus,
+*:focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-inset-ring-shadow: 0 0 #0000 !important;
 }
 button:hover:not(:disabled) {
   background-color: var(--color-active);
@@ -2052,10 +2053,6 @@ button.inline-mention,
 .changed-files[open] > .changed-files-summary {
   border-radius: var(--radius-panel) var(--radius-panel) 0 0;
 }
-.changed-files-summary:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--color-focus);
-}
 .changed-files-heading {
   display: flex;
   align-items: center;
@@ -2133,13 +2130,6 @@ button.inline-mention,
   content: "";
   position: absolute;
   inset: 0;
-}
-.changed-file-card:focus-visible {
-  outline: none;
-}
-.changed-file-card:focus-visible::after {
-  outline: 2px solid var(--color-focus);
-  outline-offset: -2px;
 }
 .changed-file-card:active:not(:disabled),
 .changed-file-actions button:active:not(:disabled) {
@@ -2219,9 +2209,6 @@ button.inline-mention,
   width: 20px;
   padding: 0;
   color: var(--color-text-subtlest);
-}
-.changed-file-open button:focus-visible {
-  outline-offset: -3px;
 }
 .changed-file-menu {
   display: flex;
@@ -2393,10 +2380,6 @@ button.inline-mention,
 .markdown-action:disabled {
   opacity: 0.5;
   cursor: default;
-}
-.markdown-action:focus-visible {
-  outline: 2px solid var(--color-file-link);
-  outline-offset: 2px;
 }
 .markdown-code {
   background: var(--color-surface);
@@ -2846,10 +2829,6 @@ button.inline-mention,
 }
 .tool-title {
   cursor: pointer;
-}
-.tool-title:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-focus);
 }
 .tool-title:hover .process-chevron,
 .tool-title[aria-expanded="true"] .process-chevron {

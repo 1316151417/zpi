@@ -1104,10 +1104,6 @@
 .settings-switch input:checked + span::after {
   transform: translateX(14px);
 }
-.settings-switch input:focus-visible + span {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 3px;
-}
 .settings-switch input:disabled {
   cursor: not-allowed;
 }
@@ -3057,6 +3053,34 @@
   align-items: center;
   flex-shrink: 0;
   gap: 4px;
+}
+.sidebar .task-view-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg);
+  color: var(--color-foreground);
+  font-size: var(--text-small);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
+}
+.sidebar .task-view-selector:hover,
+.sidebar .task-view-selector[aria-expanded="true"] {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+.task-view-selector svg {
+  flex-shrink: 0;
+}
+.task-view-selector-chevron {
+  color: var(--color-text-subtle);
 }
 .sidebar .task-view-trigger,
 .sidebar .task-group-toggle {

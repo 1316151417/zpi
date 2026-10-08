@@ -400,7 +400,7 @@ export function App() {
               <div className="sidebar-sections">
                 <div className="sidebar-task-toolbar">
                   <div className="sidebar-task-toolbar-main">
-                    <span>项目</span>
+                    <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} viewOnly />
                     {taskPreferences.organizeBy === "project" && state.projects.length > 0 && (
                       <ActionHint label={toggleProjectGroupsLabel}>
                         <button

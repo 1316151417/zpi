@@ -103,3 +103,17 @@ flowchart LR
 - “收起全部” applies only when the projects section and every visible project are expanded. It collapses that section and all its project groups. Otherwise “展开全部” opens the section and every visible project. Leave tasks, pinned items, and non-visible project preferences untouched.
 - The existing interface preferences remain authoritative. One `updatePreferences` IPC call writes `projectsCollapsed` and `collapsedProjectIds` together; Main persists, the returned settings replace the existing renderer settings, and the existing visible-project effect resets pagination for collapsed groups. No extra state or delayed synchronization.
 - Acceptance: all-expanded → collapse all; partially collapsed → expand all; section collapsed → expand all; no projects/timeline → hidden; tasks/pinned unchanged; settings restored on restart. This follow-up uses static checks only as requested; prior screenshots/test results predate this addition.
+
+## Trial: current-view dropdown capsule
+
+- Baseline saved in commit `223b4b1` before this trial. Replace only the plain toolbar label with a 28px rounded capsule: Folder + “按项目” + ChevronDown, or Clock3 + “时间线” + ChevronDown.
+- Clicking the capsule opens the existing radio-menu UI with only the two view choices, aligned to its left edge. Reuse `TaskViewMenu` and the existing `taskPreferences` owner; keep sort selection intact. The right filter/sort menu retains its current contents.
+- Keep the expand/collapse control beside the capsule, subject to its existing project-view visibility rules. Keyboard behavior and dismissal use the existing Radix menu. No new persistence or IPC path.
+- This trial remains uncommitted for user review. Per request, do not run tests, builds or visual comparisons; previous evidence describes the saved baseline, not this new capsule.
+
+## Follow-up: capsule tooltip and focus appearance
+
+- Remove the capsule's hover tooltip while retaining its accessible name and normal menu behavior. Keep the icon-only filter button's existing tooltip.
+- Reference `styles.css:115–134` globally suppresses focus outlines/shadows. ZPI's former 2px global focus-visible outline and local focus rings explain the persistent gray halo after menu focus restoration.
+- Remove those outline/shadow rings, including the changed-file pseudo-element and settings-switch sibling rings. Clear Tailwind focus-ring layers without deleting ordinary menu/dialog elevation shadows. Preserve DOM focus, keyboard navigation, highlighted menu items and normal input border states; do not blur controls or use delayed focus changes.
+- Continue the user's requested implementation-only workflow: no tests/build/visual rerun for this follow-up.
