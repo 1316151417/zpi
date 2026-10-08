@@ -1,6 +1,6 @@
 {
   "name": "ZPI-ui",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "private": true,
   "type": "module",
   "exports": {
@@ -33,7 +33,7 @@
     "rehype-sanitize": "6.0.0",
     "shiki": "4.5.0",
     "streamdown": "2.7.0",
-    "ZPI-agent": "0.1.54",
-    "ZPI-coding-agent": "0.1.54"
+    "ZPI-agent": "0.1.55",
+    "ZPI-coding-agent": "0.1.55"
   }
 }

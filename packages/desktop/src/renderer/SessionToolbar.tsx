@@ -58,7 +58,7 @@ export function SessionToolbar({
     new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(number);
   return (
     <div ref={setToolbar} className="session-toolbar">
-      {settings?.interface.showContextUsage && hasResponse && (
+      {settings?.interface.showContextUsage && hasResponse && usage?.inputTokens != null && (
         <Tooltip.Provider delayDuration={0}>
           <Tooltip.Root>
             <Tooltip.Trigger asChild>

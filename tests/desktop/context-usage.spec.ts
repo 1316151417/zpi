@@ -6,6 +6,58 @@ import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
+test("context indicator hides after compaction and returns when the next response reports usage", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-context-compaction-"));
+  const next = deferred();
+  const server = await fakeServer(async (body, response) => {
+    const messages = body.messages as unknown as { role: string; content: string }[];
+    const user = messages.findLast((message) => message.role === "user")?.content;
+    send(response, chunk({ content: "response" }));
+    if (user === "after compaction") await next.promise;
+    send(response, {
+      ...chunk({}),
+      choices: [],
+      usage: { prompt_tokens: 2048, completion_tokens: 8, total_tokens: 2056 },
+    });
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const indicator = page.getByRole("button", { name: "上下文占用", exact: true });
+    await expect(indicator).toHaveCount(0);
+    for (const [index, message] of ["first", "second"].entries()) {
+      await page.getByLabel("消息", { exact: true }).fill(message);
+      await page.getByLabel("发送", { exact: true }).click();
+      await expect(page.getByTestId("run")).toHaveCount(index + 1);
+      await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    }
+    await expect(indicator).toBeVisible();
+    await page.getByLabel("消息", { exact: true }).fill("/compact");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(
+      page.getByText("上下文已压缩；完整历史保留，下一次请求使用摘要和最近回合。", { exact: true }),
+    ).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("run")).toHaveCount(3);
+    await expect(indicator).toHaveCount(0);
+    await page.getByLabel("消息", { exact: true }).fill("after compaction");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await expect(indicator).toHaveCount(0);
+    next.resolve();
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(indicator).toBeVisible();
+  } finally {
+    next.resolve();
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("context indicator appears after the first response and keeps measured usage across model switches and restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-context-indicator-"));
   const first = deferred();
