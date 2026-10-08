@@ -387,9 +387,15 @@ export function App() {
         onToggleLeft={() => updatePrefs({ sidebarCollapsed: !collapsed })}
         onToggleRight={() => setPaneOpen(!paneOpen)}
       />
+      {/* 进入/退出设置时通过 key 重挂载：tooltip 无法在被 display:none 隐藏的触发器上收到关闭事件。 */}
       {useMemo(
         () => (
-          <aside className="sidebar" hidden={collapsed} style={{ width }}>
+          <aside
+            className="sidebar"
+            key={settingsOpen ? "settings" : "workspace"}
+            hidden={collapsed}
+            style={{ width }}
+          >
             <div className="sidebar-global">
               <button aria-label="新建任务" onClick={() => task(() => newSession())}>
                 <MessageCirclePlus size={16} />
@@ -618,7 +624,17 @@ export function App() {
             </div>
           </aside>
         ),
-        [collapsed, width, records, state.projects, selected, prefs, taskPreferences, projectLimits],
+        [
+          settingsOpen,
+          collapsed,
+          width,
+          records,
+          state.projects,
+          selected,
+          prefs,
+          taskPreferences,
+          projectLimits,
+        ],
       )}
       {!collapsed && (
         <hr

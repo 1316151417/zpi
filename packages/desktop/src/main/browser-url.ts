@@ -6,7 +6,8 @@ export function browserUrl(input: string): string {
   try {
     let address = input.trim();
     if (!address) throw invalid();
-    if (address.startsWith("/")) return pathToFileURL(address).href;
+    // Absolute filesystem paths: POSIX "/…" plus Windows drives "C:\…" and UNC "\\…".
+    if (/^(?:[a-z]:[\\/]|\\\\|\/)/i.test(address)) return pathToFileURL(address).href;
     // Accept the missing-colon spelling from pasted local preview links.
     address = address.replace(/^file\/{3}/i, "file:///");
     if (

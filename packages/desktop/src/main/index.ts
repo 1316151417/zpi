@@ -10,6 +10,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Menu,
   Notification,
   nativeTheme,
   net,
@@ -150,6 +151,8 @@ async function launch(): Promise<void> {
   );
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
+  // 非 macOS 的默认菜单直接显示在窗口顶栏，与 ZCode 的无菜单界面不符，整体移除。
+  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
   const window = new BrowserWindow({
     show: !hiddenTestMode,
     focusable: !hiddenTestMode,
