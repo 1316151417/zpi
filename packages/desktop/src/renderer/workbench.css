@@ -551,6 +551,8 @@
   min-height: 0;
   overflow: auto;
   padding-top: 12px;
+  /* ZCode's task sections use px-2 inside the sidebar. */
+  margin-inline: -4px;
 }
 .sidebar .projects,
 .sidebar .recent-sessions {
@@ -3106,8 +3108,14 @@
 .sidebar .project {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 0 0 8px;
+  gap: 8px;
+  margin: 0;
+}
+.sidebar .project + .project {
+  margin-top: 8px;
+}
+.sidebar .projects:has(.project) {
+  padding-bottom: 16px;
 }
 .sidebar .session-name {
   flex: 1;
@@ -3263,6 +3271,14 @@
 }
 .task-list-empty {
   padding: 8px 12px;
+  font-family: var(--font-body);
   font-size: var(--ui-font-size);
+  font-weight: 400;
+  line-height: 1.5;
   color: var(--color-text-subtle);
+}
+/* ZCode TaskList: px-8.5 py-2 text-ui-base text-foreground-subtlest. */
+.task-list-empty-project {
+  padding-inline: 34px;
+  color: var(--color-text-subtlest);
 }

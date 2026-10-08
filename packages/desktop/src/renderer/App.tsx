@@ -42,7 +42,7 @@ import { RightPane } from "./RightPane.tsx";
 import { SessionToolbar } from "./SessionToolbar.tsx";
 import { SettingsPage } from "./SettingsPage.tsx";
 import { SidebarSections } from "./SidebarSections.tsx";
-import { SidebarTaskList } from "./SidebarTaskList.tsx";
+import { SidebarTaskEmpty, SidebarTaskList } from "./SidebarTaskList.tsx";
 import { SidebarTaskRow } from "./SidebarTaskRow.tsx";
 import {
   compareTasks,
@@ -548,9 +548,13 @@ export function App() {
                                       data-project-id={p.id}
                                       data-task-limit={limit}
                                     >
-                                      <div className="task-list-rows">
-                                        {page.items.map((record) => renderRow(record))}
-                                      </div>
+                                      {page.items.length ? (
+                                        <div className="task-list-rows">
+                                          {page.items.map((record) => renderRow(record))}
+                                        </div>
+                                      ) : (
+                                        <SidebarTaskEmpty project />
+                                      )}
                                       {page.hasMore && (
                                         <div className="task-show-more">
                                           <button

@@ -1,6 +1,21 @@
 import { type ReactNode, useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { groupTimelineTasks, type TaskSortBy, taskPage } from "./sidebar-task-model.ts";
+
+export function SidebarTaskEmpty({
+  project = false,
+  timeline = false,
+}: {
+  project?: boolean;
+  timeline?: boolean;
+}) {
+  return (
+    <div className={`task-list-empty${project ? " task-list-empty-project" : ""}`}>
+      {project || timeline ? "暂无任务" : "还没有任务"}
+    </div>
+  );
+}
+
 export function SidebarTaskList({
   tasks,
   sortBy,
@@ -14,7 +29,7 @@ export function SidebarTaskList({
 }) {
   const [limit, setLimit] = useState(20);
   const page = taskPage(tasks, limit);
-  if (!tasks.length) return <div className="task-list-empty">暂无任务</div>;
+  if (!tasks.length) return <SidebarTaskEmpty timeline={timeline} />;
   return (
     <div className={timeline ? "timeline-tasks" : "recent-sessions"} data-task-limit={limit}>
       {timeline ? (
