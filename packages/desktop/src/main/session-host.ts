@@ -241,7 +241,15 @@ export class SessionHost {
         } catch (error) {
           this.errors.write("session.history", error, { sessionId: id });
           const diagnostic = `storage: ${String(error)}`;
-          this.records.set(id, { id, projectId, title: "无法读取的会话", updatedAt: 0, diagnostic });
+          this.records.set(id, {
+            id,
+            projectId,
+            title: "无法读取的会话",
+            createdAt: 0,
+            updatedAt: 0,
+            running: false,
+            diagnostic,
+          });
           this.blocked.set(id, diagnostic);
           continue;
         }
@@ -272,7 +280,8 @@ export class SessionHost {
         const status = data
           ? ((data.phase === "start" ? "interrupted" : data.status) as RunStatus)
           : undefined;
-        const updatedAt = Date.parse(latest?.timestamp ?? index.data.header.timestamp);
+        const createdAt = Date.parse(index.data.header.timestamp);
+        const updatedAt = index.data.lastActivityAt ?? createdAt;
         const attention = state["ZPI.attention"];
         const unreadAt =
           attention?.type === "custom" &&
@@ -288,7 +297,9 @@ export class SessionHost {
           projectId,
           title,
           status,
+          createdAt,
           updatedAt,
+          running: false,
           pinnedAt,
           archivedAt,
           unreadAt,
@@ -488,7 +499,9 @@ export class SessionHost {
       projectId,
       title: "新对话",
       draft: true,
-      updatedAt: Date.now(),
+      createdAt: Date.parse(index.data.header.timestamp),
+      updatedAt: Date.parse(index.data.header.timestamp),
+      running: false,
       pinnedAt: null,
       cwd,
     };
@@ -957,7 +970,30 @@ export class SessionHost {
     if (!view && event.type !== "session_changed") throw new Error("Missing session view");
     const seq = (this.sequences.get(id) ?? view?.seq ?? 0) + 1;
     this.sequences.set(id, seq);
-    const envelope = { sessionId: id, runId, seq, event };
+    const record = this.record(id);
+    const activity = !["session_changed", "controls_changed", "queue_changed", "history_reset"].includes(
+      event.type,
+    );
+    const activityAt = activity
+      ? event.type === "started"
+        ? event.startedAt
+        : event.type === "settled"
+          ? event.endedAt
+          : Date.now()
+      : undefined;
+    if (activityAt !== undefined) {
+      record.updatedAt = activityAt;
+      record.activitySeq = seq;
+    }
+    if (event.type === "started") record.running = true;
+    if (event.type === "settled") record.running = false;
+    const envelope = {
+      sessionId: id,
+      runId,
+      seq,
+      event,
+      ...(activityAt !== undefined ? { activityAt } : {}),
+    };
     if (view) this.views.set(id, reduceSession(view, envelope));
     for (const listener of this.listeners) {
       try {
@@ -1315,7 +1351,6 @@ export class SessionHost {
       });
       started = true;
       record.status = "running";
-      record.updatedAt = startedAt;
       this.emit(id, run.runId, {
         type: "started",
         text,
@@ -1545,7 +1580,6 @@ export class SessionHost {
     this.activeRuns.delete(id);
     const record = this.record(id);
     record.status = status;
-    record.updatedAt = endedAt;
     this.emit(id, run.runId, {
       type: "settled",
       status,

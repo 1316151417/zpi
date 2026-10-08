@@ -70,6 +70,7 @@ beforeEach(() => {
           title: id,
           cwd: id === "C" ? "/other" : "/shared",
           projectId: null,
+          createdAt: 0,
           updatedAt: 0,
         },
       ]),

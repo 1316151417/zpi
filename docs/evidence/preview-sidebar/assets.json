@@ -1,0 +1,9 @@
+{
+  "referenceSha": "872ad960de7ec172591f7e1952f7849229f94521",
+  "source": "packages/desktop/src/renderer/public/material-icons",
+  "built": "packages/desktop/dist/renderer/material-icons",
+  "archive": "/Users/jiezhou/.codex/worktrees/c453/zpi/release/mac-arm64/ZPI.app/Contents/Resources/app.asar",
+  "svgCount": 1146,
+  "allByteIdentical": true,
+  "manifestSha256": "68b814aff0f2a16a16a7ee56010e225954d51abf7b6feac531709133d8a10200"
+}

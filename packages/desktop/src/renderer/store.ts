@@ -18,6 +18,7 @@ import type {
   SessionRecord,
 } from "../shared/bridge.ts";
 import { logRendererError } from "./error-log.ts";
+import { previewLoader } from "./preview-loader.ts";
 
 declare global {
   interface Window {
@@ -141,14 +142,28 @@ const snapshotRequests = new Map<string, Promise<void>>();
 const pendingSnapshots = new Map<string, DesktopEventEnvelope[]>();
 let queue: DesktopEventEnvelope[] = [];
 let frame = 0;
-function reduceSessionRecord(record: SessionRecord, event: DesktopEvent): SessionRecord {
+function reduceSessionRecord(
+  record: SessionRecord,
+  event: DesktopEvent,
+  envelope?: DesktopEventEnvelope,
+): SessionRecord {
+  if (envelope?.activityAt !== undefined) {
+    if ((record.activitySeq ?? 0) > envelope.seq) return record;
+    record = { ...record, updatedAt: envelope.activityAt, activitySeq: envelope.seq };
+  }
   switch (event.type) {
     case "session_changed":
       return { ...record, title: event.title };
     case "started":
-      return { ...record, draft: false, status: "running", updatedAt: event.startedAt };
+      return { ...record, draft: false, status: "running", running: true, updatedAt: event.startedAt };
     case "settled":
-      return { ...record, status: event.status, updatedAt: event.endedAt, unreadAt: event.unreadAt };
+      return {
+        ...record,
+        status: event.status,
+        running: false,
+        updatedAt: event.endedAt,
+        unreadAt: event.unreadAt,
+      };
     default:
       return record;
   }
@@ -168,7 +183,7 @@ function apply(events: DesktopEventEnvelope[]): void {
     if (view) views.set(e.sessionId, reduceSession(view, e));
     const record = records.get(e.sessionId);
     if (record) {
-      const next = reduceSessionRecord(record, e.event);
+      const next = reduceSessionRecord(record, e.event, e);
       if (next !== record) {
         recordsChanged = true;
         records.set(e.sessionId, next);
@@ -190,6 +205,7 @@ export function subscribeEvents(): () => void {
   };
   document.addEventListener("visibilitychange", visibility);
   const off = window.ZPI.onEvent((e) => {
+    if (e.event.type === "history_reset") previewLoader.clear(e.sessionId);
     queue.push(e);
     if (!frame)
       frame = requestAnimationFrame(() => {
@@ -235,7 +251,23 @@ export async function refresh(): Promise<void> {
   ]);
   useStore.setState({
     projects,
-    sessions: new Map(records.map((r) => [r.id, r])),
+    sessions: new Map(
+      records.map((record) => {
+        const current = useStore.getState().sessions.get(record.id);
+        return [
+          record.id,
+          current && (current.activitySeq ?? 0) > (record.activitySeq ?? 0)
+            ? {
+                ...record,
+                updatedAt: current.updatedAt,
+                activitySeq: current.activitySeq,
+                status: current.status,
+                running: current.running,
+              }
+            : record,
+        ];
+      }),
+    ),
     settings,
   });
 }
@@ -307,7 +339,7 @@ export async function selectSession(id: string): Promise<void> {
       views.set(id, view);
       historyCursors.set(id, cursor);
       let record = snapshot.session;
-      for (const e of buffered) if (e.seq > snapshot.seq) record = reduceSessionRecord(record, e.event);
+      for (const e of buffered) if (e.seq > snapshot.seq) record = reduceSessionRecord(record, e.event, e);
       sessions.set(id, record);
       useStore.setState({ views, sessions, historyCursors });
       trimViews(id);
@@ -436,6 +468,7 @@ export function addConversationSelection(
   }
 }
 export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnapshot): void {
+  previewLoader.clear(snapshot.session.id);
   const state = useStore.getState();
   const views = new Map(state.views),
     sessions = new Map(state.sessions),

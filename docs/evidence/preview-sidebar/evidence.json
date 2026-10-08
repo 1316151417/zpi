@@ -1,0 +1,3214 @@
+{
+  "reference": "/Users/jiezhou/VSCodeProjects/ZCode",
+  "sha": "872ad960de7ec172591f7e1952f7849229f94521",
+  "clock": 1791432000000,
+  "viewport": [1200, 800],
+  "sidebar": 280,
+  "font": 14,
+  "zoom": 1,
+  "method": "Original reference card/task/dropdown components; injected deterministic services and state. Project/timeline shells use source class lists. Not a full ZCode application screenshot.",
+  "evidence": [
+    {
+      "mode": "cards",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 280,
+          "y": 113,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 195,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 277,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 359,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 441,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "cards",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 280,
+          "y": 113,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 195,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 277,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 359,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        },
+        {
+          "x": 280,
+          "y": 441,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "cards",
+      "theme": "light",
+      "changedPixels": 1,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "open-menu",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 882,
+          "y": 216,
+          "width": 20,
+          "height": 28,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(13, 13, 13, 0.05)"
+        },
+        {
+          "x": 726,
+          "y": 97,
+          "width": 176,
+          "height": 117.25,
+          "font": "16px / 24px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 153.125,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 185.875,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "open-menu",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 882,
+          "y": 216,
+          "width": 20,
+          "height": 28,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(13, 13, 13, 0.05)"
+        },
+        {
+          "x": 726,
+          "y": 97,
+          "width": 176,
+          "height": 117.25,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.269 0 0 / 0.4)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 153.125,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 185.875,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "open-menu",
+      "theme": "light",
+      "changedPixels": 3,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "sort-menu",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 336,
+          "y": 80,
+          "width": 24,
+          "height": 24,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(13, 13, 13, 0.05)"
+        },
+        {
+          "x": 168,
+          "y": 106,
+          "width": 192,
+          "height": 229,
+          "font": "16px / 24px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgb(255, 255, 255)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 341,
+          "y": 85,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2 5h20\"></path><path d=\"M6 12h12\"></path><path d=\"M9 19h6\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 189.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6h4\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"m9 12 2 2 4-4\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 305.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"M8 12h8\"></path><path d=\"M12 8v8\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "sort-menu",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 336,
+          "y": 80,
+          "width": 24,
+          "height": 24,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(13, 13, 13, 0.05)"
+        },
+        {
+          "x": 168,
+          "y": 106,
+          "width": 192,
+          "height": 229,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgb(255, 255, 255)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 341,
+          "y": 85,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2 5h20\"></path><path d=\"M6 12h12\"></path><path d=\"M9 19h6\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 189.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6h4\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"m9 12 2 2 4-4\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 305.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"M8 12h8\"></path><path d=\"M12 8v8\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "sort-menu",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "projects",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 225,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 89,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "projects",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 225,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 89,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 124,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 158,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 192,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 226,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 260,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "projects",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "tasks",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "timeline",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 412,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "timeline",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 412,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 123,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 184,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 245,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 343,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 441,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "timeline",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-hover",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-hover",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-hover",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-focus",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-focus",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-focus",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-touch",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 338,
+          "y": 90,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 158,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 192,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 226,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-touch",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 90,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 158,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 192,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 226,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.269 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-touch",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-narrow",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 180,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "tasks-narrow",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 180,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-narrow",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-page",
+      "theme": "light",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 715,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "tasks-page",
+      "theme": "light",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 715,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.269 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 258,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 292,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 326,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 360,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 394,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 428,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 462,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 496,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 530,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 564,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 598,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 632,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 666,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 700,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 734,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.269 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-page",
+      "theme": "light",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "cards",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 280,
+          "y": 113,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 195,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 277,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 359,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 441,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "cards",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 280,
+          "y": 113,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 195,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 277,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 359,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        },
+        {
+          "x": 280,
+          "y": 441,
+          "width": 640,
+          "height": 70,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "cards",
+      "theme": "dark",
+      "changedPixels": 1,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "open-menu",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 882,
+          "y": 216,
+          "width": 20,
+          "height": 28,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(255, 255, 255, 0.05)"
+        },
+        {
+          "x": 726,
+          "y": 97,
+          "width": 176,
+          "height": 117.25,
+          "font": "16px / 24px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 153.125,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 185.875,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "open-menu",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 882,
+          "y": 216,
+          "width": 20,
+          "height": 28,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(255, 255, 255, 0.05)"
+        },
+        {
+          "x": 726,
+          "y": 97,
+          "width": 176,
+          "height": 117.25,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 303,
+          "y": 136,
+          "width": 24,
+          "height": 24,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 141,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 223,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 305,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 387,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 885,
+          "y": 469,
+          "width": 14,
+          "height": 14,
+          "color": "oklab(0.87 0 0 / 0.3)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"m6 9 6 6 6-6\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 153.125,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        },
+        {
+          "x": 739,
+          "y": 185.875,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "open-menu",
+      "theme": "dark",
+      "changedPixels": 3,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "sort-menu",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 336,
+          "y": 80,
+          "width": 24,
+          "height": 24,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(255, 255, 255, 0.05)"
+        },
+        {
+          "x": 168,
+          "y": 106,
+          "width": 192,
+          "height": 229,
+          "font": "16px / 24px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgb(43, 43, 43)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 341,
+          "y": 85,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2 5h20\"></path><path d=\"M6 12h12\"></path><path d=\"M9 19h6\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 189.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6h4\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"m9 12 2 2 4-4\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 305.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"M8 12h8\"></path><path d=\"M12 8v8\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "sort-menu",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 336,
+          "y": 80,
+          "width": 24,
+          "height": 24,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(255, 255, 255, 0.05)"
+        },
+        {
+          "x": 168,
+          "y": 106,
+          "width": 192,
+          "height": 229,
+          "font": "14px / 22.75px ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgb(43, 43, 43)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 341,
+          "y": 85,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2 5h20\"></path><path d=\"M6 12h12\"></path><path d=\"M9 19h6\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 154.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 189.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 6v6h4\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"m9 12 2 2 4-4\"></path>"
+        },
+        {
+          "x": 331,
+          "y": 270.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 6 9 17l-5-5\"></path>"
+        },
+        {
+          "x": 181,
+          "y": 305.5,
+          "width": 16,
+          "height": 16,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"></path><path d=\"M8 12h8\"></path><path d=\"M12 8v8\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "sort-menu",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "projects",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 225,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 89,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "projects",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 225,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 89,
+          "width": 14,
+          "height": 14,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 124,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 158,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 192,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 226,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 260,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "projects",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "tasks",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "timeline",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 412,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "timeline",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 412,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 123,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 184,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 245,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 343,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 441,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "timeline",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-hover",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-hover",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-hover",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-focus",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-focus",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-focus",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-touch",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 338,
+          "y": 90,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 158,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 192,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 226,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 0)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-touch",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 90,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 124,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 158,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 192,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 338,
+          "y": 226,
+          "width": 12,
+          "height": 12,
+          "color": "oklch(0.87 0 none)",
+          "strokeWidth": "1.5px",
+          "paths": "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"></rect><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"></path><path d=\"M10 12h4\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-touch",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-narrow",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 180,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "tasks-narrow",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 180,
+          "height": 168,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-narrow",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    },
+    {
+      "mode": "tasks-page",
+      "theme": "dark",
+      "app": "ref",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 715,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 0)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": []
+    },
+    {
+      "mode": "tasks-page",
+      "theme": "dark",
+      "app": "zpi",
+      "measurements": [
+        {
+          "x": 80,
+          "y": 80,
+          "width": 280,
+          "height": 715,
+          "font": "14px / 21px ui-sans-serif, system-ui, sans-serif",
+          "color": "oklch(0.87 0 none)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ],
+      "parts": [
+        {
+          "x": 90,
+          "y": 88,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 122,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 156,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 190,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 258,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 292,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 326,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 360,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 394,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 428,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 462,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 496,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 530,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 564,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 598,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 632,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 666,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 700,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        },
+        {
+          "x": 90,
+          "y": 734,
+          "width": 16,
+          "height": 16,
+          "color": "oklab(0.87 0 0 / 0.6)",
+          "strokeWidth": "1.5px",
+          "paths": "<path d=\"M12 17v5\"></path><path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"></path>"
+        }
+      ]
+    },
+    {
+      "mode": "tasks-page",
+      "theme": "dark",
+      "changedPixels": 0,
+      "totalPixels": 3840000
+    }
+  ]
+}

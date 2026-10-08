@@ -1,6 +1,7 @@
 import type { DesktopEventEnvelope } from "ZPI-ui";
 import { afterEach, expect, it, vi } from "vitest";
 import { deferred } from "../../../tests/fake-server.ts";
+import type { SessionRecord } from "../src/shared/bridge.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -18,13 +19,22 @@ async function setup() {
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
   let emit!: (event: DesktopEventEnvelope) => void;
   let beforeQuit!: () => Promise<void>;
-  const session = { id: "session", title: "Task", projectId: null, updatedAt: 0 };
+  const session: SessionRecord = {
+    id: "session",
+    title: "Task",
+    projectId: null,
+    createdAt: 0,
+    updatedAt: 0,
+  };
   const snapshot = {
     session,
     view: { sessionId: session.id, title: session.title, seq: 0, runs: [] },
     seq: 0,
   };
   const bridge = {
+    listProjects: vi.fn(async () => ({ ok: true, value: [] })),
+    listRecentSessions: vi.fn(async () => ({ ok: true, value: [session] })),
+    getSettings: vi.fn(async () => ({ ok: true, value: {} })),
     activateSession: vi.fn(async () => ({ ok: true, value: { unreadAt: null } })),
     getDraft: vi.fn(async () => ({
       ok: true,
@@ -66,6 +76,50 @@ async function setup() {
     },
   };
 }
+
+it("late list snapshots preserve newer activity and running facts while applying metadata", async () => {
+  const f = await setup();
+  const gate = deferred();
+  f.bridge.listRecentSessions.mockImplementationOnce(async () => {
+    await gate.promise;
+    return {
+      ok: true,
+      value: [{ ...f.session, title: "renamed", pinnedAt: 500, updatedAt: 10, activitySeq: 1 }],
+    };
+  });
+  const refreshing = f.store.refresh();
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 2,
+    activityAt: 20,
+    event: { type: "started", text: "hello", startedAt: 20, modelLabel: "model" },
+  });
+  f.frame();
+  gate.resolve();
+  await refreshing;
+  expect(f.store.useStore.getState().sessions.get(f.session.id)).toMatchObject({
+    title: "renamed",
+    pinnedAt: 500,
+    updatedAt: 20,
+    activitySeq: 2,
+    running: true,
+  });
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 1,
+    activityAt: 10,
+    event: { type: "settled", status: "completed", endedAt: 10 },
+  });
+  f.frame();
+  expect(f.store.useStore.getState().sessions.get(f.session.id)).toMatchObject({
+    updatedAt: 20,
+    activitySeq: 2,
+    running: true,
+  });
+  f.unsubscribe();
+});
 
 it("snapshot failure replays both buffered and pending-frame events and allows a later retry", async () => {
   const f = await setup();

@@ -142,6 +142,8 @@ export type DesktopEvent =
       fileChange?: FileChangeSummary;
     };
 export interface DesktopEventEnvelope {
+  /** Host event time for conversation activity; metadata envelopes omit it. */
+  activityAt?: number;
   sessionId: string;
   runId: string;
   seq: number;

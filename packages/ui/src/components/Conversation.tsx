@@ -35,6 +35,7 @@ import {
 } from "../conversation-selections.ts";
 import { type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
 import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.ts";
+import type { PreviewServices } from "../preview/preview-lifecycle.ts";
 import { progressSummary } from "../reducer.ts";
 import type {
   FileActionHandler,
@@ -45,6 +46,7 @@ import type {
   SessionView,
   ViewBlock,
 } from "../types.ts";
+import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCards.tsx";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
@@ -326,6 +328,8 @@ const WorkProgress = memo(function WorkProgress({
 });
 export const RunGroup = memo(function RunGroup({
   run,
+  previewServices,
+  previewAutoOpen,
   onLink,
   workspace,
   expanded,
@@ -345,6 +349,8 @@ export const RunGroup = memo(function RunGroup({
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
   run: RunView;
+  previewServices?: PreviewServices;
+  previewAutoOpen?: ReturnType<typeof usePreviewAutoOpen>;
   sessionId?: string;
   context?: ComposerContext;
   onChanges?: (runId: string, path?: string, toolCallId?: string) => void;
@@ -383,6 +389,17 @@ export const RunGroup = memo(function RunGroup({
     if (!onEdit) setEditing(false);
   }, [onEdit]);
   const { process, answer, defaultOpen } = runPresentation(run);
+  const latestText = run.orderedBlocks.findLast((block) => block.type === "text");
+  const previews =
+    previewServices && sessionId && workspace && latestText && run.status !== "running" ? (
+      <AssistantTurnPreviews
+        run={run}
+        sessionId={sessionId}
+        workspace={workspace}
+        services={previewServices}
+        autoOpen={previewAutoOpen}
+      />
+    ) : null;
   const items = processItems(process, run.status === "running");
   const open = defaultOpen || expanded;
   return (
@@ -489,21 +506,24 @@ export const RunGroup = memo(function RunGroup({
                   onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
                 />
               ) : (
-                <ProcessBlock
-                  workspace={workspace}
-                  key={item.id}
-                  onImage={onImage}
-                  onDownloadImage={context?.downloadImage}
-                  block={item.block}
-                  expanded={blocks[item.id] ?? false}
-                  toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
-                  onLink={onLink}
-                  onCopy={onCopy}
-                  onFile={onFile}
-                  onFileAction={onFileAction}
-                  onChanges={onChanges ? openToolChange : undefined}
-                  onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
-                />
+                <Fragment key={item.id}>
+                  <ProcessBlock
+                    workspace={workspace}
+                    key={item.id}
+                    onImage={onImage}
+                    onDownloadImage={context?.downloadImage}
+                    block={item.block}
+                    expanded={blocks[item.id] ?? false}
+                    toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
+                    onLink={onLink}
+                    onCopy={onCopy}
+                    onFile={onFile}
+                    onFileAction={onFileAction}
+                    onChanges={onChanges ? openToolChange : undefined}
+                    onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
+                  />
+                  {item.id === latestText?.id && previews}
+                </Fragment>
               ),
             )}
           </div>
@@ -566,6 +586,7 @@ export const RunGroup = memo(function RunGroup({
               />
             </div>
           )}
+          {answer && previews}
           <ChangedFiles
             run={run}
             cwd={workspace?.cwd}
@@ -611,6 +632,7 @@ export const RunGroup = memo(function RunGroup({
 });
 export function Conversation({
   view,
+  previewServices,
   onLink,
   workspace,
   context,
@@ -643,6 +665,7 @@ export function Conversation({
   onLoadEarlier?: () => Promise<void>;
   historyCursor?: number | null;
   view: SessionView;
+  previewServices?: PreviewServices;
   workspace?: LinkContext;
   onLink: (url: string, options?: WebOpenOptions) => void;
   context?: ComposerContext;
@@ -652,6 +675,7 @@ export function Conversation({
   onCopy?: (text: string) => Promise<void>;
   onFile?: (path: string, location?: FileLocation) => void;
 }) {
+  const previewAutoOpen = usePreviewAutoOpen(view);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [blocks, setBlocks] = useState<Record<string, boolean>>({});
   const lifecycle = useRef(new Map<string, boolean>());
@@ -880,6 +904,8 @@ export function Conversation({
                   workspace={workspace}
                   key={run.runId}
                   run={run}
+                  previewServices={previewServices}
+                  previewAutoOpen={previewAutoOpen}
                   sessionId={view.sessionId}
                   context={context}
                   onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}

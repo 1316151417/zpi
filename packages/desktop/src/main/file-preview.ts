@@ -1,6 +1,7 @@
 import { open, stat } from "node:fs/promises";
 import { extname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MEDIA_PREVIEW_FORMATS } from "../../../ui/src/preview/media-preview.ts";
 import type { FilePreview } from "../shared/bridge.ts";
 import { resolveLocalFilePath, validateFileLocation } from "./local-file-path.ts";
 
@@ -13,16 +14,6 @@ const imageTypes: Record<string, string> = {
   svg: "image/svg+xml",
   bmp: "image/bmp",
   avif: "image/avif",
-};
-const mediaTypes: Record<string, string> = {
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-  ogg: "audio/ogg",
-  m4a: "audio/mp4",
-  flac: "audio/flac",
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
 };
 
 export async function readFilePreview(cwd: string, target: string, input?: unknown): Promise<FilePreview> {
@@ -46,10 +37,11 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
     const stat = await file.stat();
     if (!stat.isFile()) throw new Error("invalid_input: 无法预览文件夹");
     const extension = extname(path).slice(1).toLowerCase();
-    const mime = imageTypes[extension] ?? mediaTypes[extension];
+    const mediaType = MEDIA_PREVIEW_FORMATS.find((format) => format.extension === `.${extension}`)?.mediaType;
+    const mime = imageTypes[extension] ?? mediaType;
     const kind = imageTypes[extension]
       ? "image"
-      : mediaTypes[extension]
+      : mediaType
         ? "media"
         : extension === "xlsx" || extension === "docx"
           ? extension

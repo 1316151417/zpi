@@ -160,6 +160,10 @@ export async function openFile(sessionId: string, path: string, location?: FileL
     await openBrowser(location?.fileUrl ?? preview.path, sessionId);
     return;
   }
+  if (/\.pptx$/i.test(preview.path)) {
+    unwrap(await window.ZPI.fileAction(sessionId, preview.path, "open"));
+    return;
+  }
   const id = `file:${sessionId}:${preview.path}`;
   showTab({
     id,

@@ -40,7 +40,7 @@ interface RunBoundary {
   auxiliary?: boolean;
 }
 interface IndexData {
-  version: 6;
+  version: 7;
   size: number;
   modified: number;
   header: SessionHeader;
@@ -51,6 +51,7 @@ interface IndexData {
   fileChanges: Span[];
   cacheRead: number;
   cacheInput: number;
+  lastActivityAt?: number;
   diagnostic?: string;
 }
 /** Derived byte offsets only. JSONL remains authoritative and model restoration remains independent. */
@@ -68,7 +69,7 @@ export class HistoryIndex {
     const index = new HistoryIndex(path),
       stat = statSync(path);
     index.data = {
-      version: 6,
+      version: 7,
       size: stat.size,
       modified: stat.mtimeMs,
       header: normalizeSessionRecord(JSON.parse(readFileSync(path, "utf8"))) as SessionHeader,
@@ -87,7 +88,7 @@ export class HistoryIndex {
     try {
       const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
       if (
-        cached.version === 6 &&
+        cached.version === 7 &&
         cached.size === stat.size &&
         cached.modified === stat.mtimeMs &&
         cached.header &&
@@ -101,7 +102,7 @@ export class HistoryIndex {
       /* Missing/stale derived index is rebuilt with a bounded streaming scan. */
     }
     this.data = {
-      version: 6,
+      version: 7,
       size: 0,
       modified: 0,
       header: undefined as unknown as SessionHeader,
@@ -172,6 +173,13 @@ export class HistoryIndex {
     end = start + Buffer.byteLength(JSON.stringify(entry)) + 1,
   ): void {
     const d = this.data;
+    // JSONL is authoritative on restart; filesystem mtime and session metadata are not activity.
+    if (entry.type === "message" || (entry.type === "custom" && entry.customType === "ZPI.run")) {
+      const data = entry.type === "custom" && isJsonObject(entry.data) ? entry.data : undefined;
+      const at = data?.phase === "end" ? data.endedAt : data?.phase === "start" ? data.startedAt : undefined;
+      const timestamp = typeof at === "number" && Number.isFinite(at) ? at : Date.parse(entry.timestamp);
+      if (Number.isFinite(timestamp)) d.lastActivityAt = Math.max(d.lastActivityAt ?? 0, timestamp);
+    }
     if (entryFileChange(entry)) d.fileChanges.push({ start, end });
     d.parentId = entry.id;
     d.size = end;

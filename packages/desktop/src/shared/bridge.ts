@@ -31,6 +31,10 @@ export interface SessionRecord {
   diagnostic?: string;
   title: string;
   status?: RunStatus;
+  /** Runtime evidence supplied by SessionHost, never restored from persisted status. */
+  running?: boolean;
+  activitySeq?: number;
+  createdAt: number;
   updatedAt: number;
 }
 export interface SettingsInput {
@@ -162,6 +166,11 @@ export interface TextDraft {
   selection: [number, number];
   revision: number;
 }
+export interface FileOpenApp {
+  id: string;
+  name: string;
+  iconDataUrl: string;
+}
 export type FilePreview = { location?: FileLocation } & (
   | { path: string; kind: "text"; text: string; truncated: boolean }
   | { path: string; kind: "image" | "media" | "xlsx" | "docx"; bytes: Uint8Array; mime?: string }
@@ -228,6 +237,12 @@ export interface DesktopBridge {
   ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
   getWorkspaceInfo(sessionId: string | null): Promise<Result<WorkspaceInfo>>;
   downloadImage(src: string): Promise<Result<void>>;
+  listFileOpenApps(): Promise<Result<FileOpenApp[]>>;
+  openFileWith(sessionId: string, path: string, appId: string): Promise<Result<void>>;
+  checkPreviewFiles(
+    sessionId: string,
+    paths: string[],
+  ): Promise<Result<Array<{ path: string; exists: boolean }>>>;
   readFilePreview(sessionId: string, path: string, location?: FileLocation): Promise<Result<FilePreview>>;
   pickAttachments(sessionId: string): Promise<Result<Attachment[]>>;
   importAttachment(sessionId: string, file: File): Promise<Result<Attachment>>;
@@ -318,6 +333,9 @@ export const methods = [
   "searchFiles",
   "getWorkspaceInfo",
   "readFilePreview",
+  "checkPreviewFiles",
+  "listFileOpenApps",
+  "openFileWith",
   "downloadImage",
   "pickAttachments",
   "importAttachment",

@@ -65,18 +65,54 @@ function parameters(source: string): Record<string, string> | null {
   }
   return values;
 }
-export function extractFileCitations(text: string): Citation[] {
-  const citations: Citation[] = [];
+export function extractFileCitationDirectives(text: string) {
+  const citations: Array<{ start: number; end: number; path?: string; artifactKind?: string }> = [];
   let consumed = 0;
   for (const match of text.matchAll(starts)) {
     if (match.index < consumed) continue;
     const { end } = closingBrace(text, match.index + match[0].length);
     if (end < 0) continue;
     consumed = end + 1;
-    const path = parameters(text.slice(match.index + match[0].length, end))?.path?.trim();
-    if (path) citations.push({ start: match.index, end: end + 1, path });
+    const values = parameters(text.slice(match.index + match[0].length, end));
+    citations.push({
+      start: match.index,
+      end: end + 1,
+      path: values?.path?.trim() || undefined,
+      artifactKind: values?.artifact_kind,
+    });
   }
   return citations;
+}
+export function extractFileCitations(text: string): Citation[] {
+  return extractFileCitationDirectives(text).flatMap((citation) =>
+    citation.path ? [{ ...citation, path: citation.path }] : [],
+  );
+}
+export function resolveFileCitationPreviewKind({
+  path,
+  artifactKind,
+}: {
+  path: string;
+  artifactKind?: string;
+}) {
+  const extension = path.trim().toLowerCase().split(".").at(-1) ?? "";
+  const kind =
+    extension === "docx" || extension === "xlsx" || extension === "pptx" || extension === "pdf"
+      ? extension
+      : ["mp4", "mov", "webm", "m4v"].includes(extension)
+        ? "video"
+        : ["mp3", "wav", "m4a", "ogg", "opus", "flac", "weba"].includes(extension)
+          ? "audio"
+          : null;
+  if (artifactKind === undefined) return kind;
+  const kinds: Record<string, string> = {
+    document: "docx",
+    workbook: "xlsx",
+    presentation: "pptx",
+    audio: "audio",
+    video: "video",
+  };
+  return kinds[artifactKind.trim().toLowerCase()] === kind ? kind : null;
 }
 
 function codeRanges(content: string): Array<[number, number]> {
