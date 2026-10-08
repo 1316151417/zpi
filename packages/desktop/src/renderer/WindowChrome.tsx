@@ -1,3 +1,4 @@
+import { ActionHint } from "ZPI-ui";
 import {
   MessageCirclePlus,
   PanelLeftClose,
@@ -30,39 +31,38 @@ export function WindowChrome({
       <div className="sidebar-drag-space" aria-hidden="true" hidden={hidden || leftCollapsed} />
       <div className="desktop-top-controls" hidden={hidden}>
         <div className="desktop-top-actions">
-          <button
-            className="window-chrome-button"
-            data-testid="left-sidebar-toggle"
-            aria-label={leftCollapsed ? "展开侧边栏" : "收起侧边栏"}
-            aria-expanded={!leftCollapsed}
-            title={leftCollapsed ? "展开侧边栏" : "收起侧边栏"}
-            onClick={onToggleLeft}
-          >
-            <LeftIcon size={16} aria-hidden="true" />
-          </button>
-          {leftCollapsed && (
+          <ActionHint label="切换侧边栏" appearance="control" side="bottom">
             <button
               className="window-chrome-button"
-              aria-label="新建任务"
-              title="新建任务"
-              onClick={onNewTask}
+              data-testid="left-sidebar-toggle"
+              aria-label={leftCollapsed ? "展开侧边栏" : "收起侧边栏"}
+              aria-expanded={!leftCollapsed}
+              onClick={onToggleLeft}
             >
-              <MessageCirclePlus size={16} />
+              <LeftIcon size={16} aria-hidden="true" />
             </button>
+          </ActionHint>
+          {leftCollapsed && (
+            <ActionHint label="新建任务" appearance="control" side="bottom">
+              <button className="window-chrome-button" aria-label="新建任务" onClick={onNewTask}>
+                <MessageCirclePlus size={16} />
+              </button>
+            </ActionHint>
           )}
         </div>
       </div>
-      <button
-        className="window-chrome-button right-sidebar-toggle"
-        data-testid="right-sidebar-toggle"
-        hidden={hidden}
-        aria-label={rightOpen ? "收起右侧栏" : "展开右侧栏"}
-        aria-expanded={rightOpen}
-        title={rightOpen ? "收起右侧栏" : "展开右侧栏"}
-        onClick={onToggleRight}
-      >
-        <RightIcon size={16} aria-hidden="true" />
-      </button>
+      <ActionHint label="切换面板" appearance="control" side="bottom">
+        <button
+          className="window-chrome-button right-sidebar-toggle"
+          data-testid="right-sidebar-toggle"
+          hidden={hidden}
+          aria-label={rightOpen ? "收起右侧栏" : "展开右侧栏"}
+          aria-expanded={rightOpen}
+          onClick={onToggleRight}
+        >
+          <RightIcon size={16} aria-hidden="true" />
+        </button>
+      </ActionHint>
     </>
   );
 }

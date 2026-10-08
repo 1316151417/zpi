@@ -1,4 +1,4 @@
-import type { SessionView } from "ZPI-ui";
+import { ActionHint, type SessionView } from "ZPI-ui";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
@@ -140,28 +140,29 @@ export function SessionToolbar({
         </Tooltip.Provider>
       )}
       <Menu.Root open={open} onOpenChange={onOpenChange}>
-        <Menu.Trigger
-          className="model-trigger"
-          aria-label="模型选择"
-          title={
+        <ActionHint
+          appearance="control"
+          label={
             chosen
-              ? `${provider?.name ?? chosen.provider} · ${chosen.modelId} · ${modelReasoningLabel(configured, chosen.reasoning)}\n${useStore.getState().sessions.get(view.sessionId)?.cwd ?? ""}`
-              : "选择模型与思考程度"
+              ? `${provider?.name?.trim() || chosen.provider}/${configured?.name || chosen.modelId}`
+              : "模型选择"
           }
-          disabled={updating}
+          open={open ? false : undefined}
         >
-          <span className="model-label">
-            {chosen && configured && controls?.selectionValid
-              ? configured.name || configured.id
-              : chosen
-                ? "重新选择模型"
-                : "模型选择"}
-          </span>
-          {chosen && configured && controls?.selectionValid && chosen.reasoning !== "none" && (
-            <span className="model-reasoning">{modelReasoningLabel(configured, chosen.reasoning)}</span>
-          )}
-          <ChevronDown size={14} />
-        </Menu.Trigger>
+          <Menu.Trigger className="model-trigger" aria-label="模型选择" disabled={updating}>
+            <span className="model-label">
+              {chosen && configured && controls?.selectionValid
+                ? configured.name || configured.id
+                : chosen
+                  ? "重新选择模型"
+                  : "模型选择"}
+            </span>
+            {chosen && configured && controls?.selectionValid && chosen.reasoning !== "none" && (
+              <span className="model-reasoning">{modelReasoningLabel(configured, chosen.reasoning)}</span>
+            )}
+            <ChevronDown size={14} />
+          </Menu.Trigger>
+        </ActionHint>
         <Menu.Portal>
           <Menu.Content
             ref={mainMenu}

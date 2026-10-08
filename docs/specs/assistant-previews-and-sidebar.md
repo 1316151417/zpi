@@ -126,3 +126,23 @@ flowchart LR
 - Apply to “置顶任务”, “取消置顶任务”, “归档任务”, “筛选和排序”, “展开全部”, and “收起全部” in pinned, project, task and timeline rows. Remove native `title` hints to prevent duplicate/system tooltips. Retain ZPI's existing disabled-state reasons and guards; wrap the archive trigger as in the source so its disabled reason remains hoverable. Archive uses the same 14px Lucide asset as the source.
 - State owner / event order: pointer enters or keyboard focuses trigger → Radix opens the hint → Portal positions it; leave, blur, Escape or activation → Radix closes it. No application state, IPC or timer is added. Existing task and preference handlers remain authoritative.
 - Acceptance mapping: source control dimensions/colors → shared control appearance; source top placement/dismissal → existing Radix tooltip; source row/toolbar labels → their actual buttons; source icons → existing Lucide assets. Inspect the scoped diff; continue the user's implementation-only workflow without tests/builds or a new visual comparison. Prior evidence does not validate this follow-up.
+
+## Follow-up: workbench hint audit
+
+Use the same reference SHA and shared control appearance, without keyboard-shortcut badges. Preserve triggers, icons, focus restoration and actual actions; `asChild` must not introduce layout wrappers. Tooltip visibility is owned by Radix; existing composer/menu state may suppress a hint while its panel is open. No IPC or application-state duplication.
+
+| ZCode source / behavior | ZPI mapping / acceptance |
+| --- | --- |
+| `ChatPromptActionMenu`: add hint, top | Composer plus: source label, disappear when the add panel opens; file/attachment selection unchanged |
+| `ModelConfigSelect` / `modelTriggerDisplay`: full model label, top | Combined model/reasoning selector: provider/model display name from existing selection, no cwd or shortcut; selection and composer focus restoration unchanged |
+| `ConversationComposer`: send/enqueue/stop, top | Actual send mode labels; remove stop shortcut badge and its obsolete special padding |
+| `WorkspaceSidebarFooter`: settings, top | Footer settings trigger, including collapsed sidebar |
+| `SettingsPage` / provider `Navigation`: navigation hints, right | Return to workspace, settings categories and provider list; retain sortable refs/listeners |
+| `ProviderTemplatePicker` / `InlineEditableProviderCard`: card and switch hints, top | Provider cards show their names; switch says “启用供应商” / “禁用供应商” according to its real state |
+| `DesktopTopOverlayActionButton`: sidebar toggle/new task, bottom | Window chrome: “切换侧边栏” / “新建任务” |
+| `WorkspaceSidePaneToggleButton`: panel toggle, bottom | Right toggle: “切换面板”; retain expanded-state accessible name |
+| `WorkspaceSidebar` / `WorkspaceSidebarItem`: add project, more, new task, top | Section and project actions; replace native titles with the shared hint |
+| `ConversationQueuePanel`: drag/edit/remove, top | Queue actions keep sortable refs/listeners, text-only “立即” stays without a hint |
+| `EmbeddedBrowserPaneParts`: back/forward/reload, top | Browser actions get source labels; retain ZPI's stop-loading capability with its actual action label |
+
+The reference's main new-task text button, task-header more trigger and side-pane add-tab/close triggers have no control hint: do not blanket-wrap every button; remove ZPI's native task-menu/add-tab titles to match that absence. Keep rich context usage, file-path/title and settings-specific information separate from simple action hints. ZPI has a combined model/reasoning selector and a browser stop action; do not copy unrelated ZCode platform or selector architecture just to add hints. Update the existing stop-hover assertions for the requested absence of shortcut badges and shared padding. Run static checks only, following the user's existing no-test request; this audit is not a new pixel-comparison result.

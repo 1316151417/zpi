@@ -5,7 +5,7 @@ import {
   providerPresets,
   usesChatGPTAuth,
 } from "ZPI-ai";
-import { SortableList } from "ZPI-ui";
+import { ActionHint, SortableList } from "ZPI-ui";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
@@ -297,22 +297,20 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     >
       <aside className="settings-sidebar">
         <div className="settings-sidebar-drag-space" aria-hidden="true" />
-        <button ref={back} className="settings-back" aria-label="关闭设置" title="返回任务" onClick={onClose}>
-          <ArrowLeft size={16} />
-          <span>返回任务</span>
-        </button>
+        <ActionHint appearance="control" label="返回工作区" side="right">
+          <button ref={back} className="settings-back" aria-label="关闭设置" onClick={onClose}>
+            <ArrowLeft size={16} />
+            <span>返回任务</span>
+          </button>
+        </ActionHint>
         <nav className="settings-tabs" aria-label="设置分类">
           {sections.map(([id, label, Icon]) => (
-            <button
-              key={id}
-              title={label}
-              aria-label={label}
-              aria-pressed={tab === id}
-              onClick={() => setTab(id)}
-            >
-              <Icon size={16} />
-              <span>{label}</span>
-            </button>
+            <ActionHint appearance="control" label={label} side="right" key={id}>
+              <button aria-label={label} aria-pressed={tab === id} onClick={() => setTab(id)}>
+                <Icon size={16} />
+                <span>{label}</span>
+              </button>
+            </ActionHint>
           ))}
         </nav>
       </aside>
@@ -487,27 +485,28 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                             provider,
                             { setNodeRef, style, attributes, listeners, isDragging },
                           ) => (
-                            <button
-                              ref={setNodeRef}
-                              style={style}
-                              {...attributes}
-                              {...listeners}
-                              data-sortable-select
-                              data-provider-id={provider.id}
-                              className={`sortable-provider ${provider.id === selected && !picker ? "selected" : ""}${isDragging ? " dragging" : ""}`}
-                              disabled={saving || discovering}
-                              title={provider.name}
-                              aria-label={provider.name}
-                              onClick={() => select(provider)}
-                            >
-                              <ProviderLogo preset={provider.preset} size={16} />
-                              <span>{provider.name}</span>
-                              <i
-                                className={`provider-status ${provider.enabled === false ? "disabled" : "enabled"}`}
-                                title={provider.enabled === false ? "已关闭" : "已启用"}
-                                aria-hidden="true"
-                              />
-                            </button>
+                            <ActionHint appearance="control" label={provider.name} side="right">
+                              <button
+                                ref={setNodeRef}
+                                style={style}
+                                {...attributes}
+                                {...listeners}
+                                data-sortable-select
+                                data-provider-id={provider.id}
+                                className={`sortable-provider ${provider.id === selected && !picker ? "selected" : ""}${isDragging ? " dragging" : ""}`}
+                                disabled={saving || discovering}
+                                aria-label={provider.name}
+                                onClick={() => select(provider)}
+                              >
+                                <ProviderLogo preset={provider.preset} size={16} />
+                                <span>{provider.name}</span>
+                                <i
+                                  className={`provider-status ${provider.enabled === false ? "disabled" : "enabled"}`}
+                                  title={provider.enabled === false ? "已关闭" : "已启用"}
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </ActionHint>
                           )}
                         />
                       </div>
@@ -525,17 +524,21 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           </header>
                           <h3>预置与自定义供应商</h3>
                           <div className="provider-template-grid">
-                            <button onClick={() => select()}>
-                              <Package size={24} />
-                              <span className="provider-template-label">自定义提供商</span>
-                              <ChevronRight size={16} />
-                            </button>
-                            {providerPresets.map((item) => (
-                              <button key={item.id} onClick={() => selectPreset(item.id)}>
-                                <ProviderLogo preset={item.id} size={32} />
-                                <span className="provider-template-label">{item.name}</span>
+                            <ActionHint appearance="control" label="自定义提供商">
+                              <button onClick={() => select()}>
+                                <Package size={24} />
+                                <span className="provider-template-label">自定义提供商</span>
                                 <ChevronRight size={16} />
                               </button>
+                            </ActionHint>
+                            {providerPresets.map((item) => (
+                              <ActionHint appearance="control" label={item.name} key={item.id}>
+                                <button onClick={() => selectPreset(item.id)}>
+                                  <ProviderLogo preset={item.id} size={32} />
+                                  <span className="provider-template-label">{item.name}</span>
+                                  <ChevronRight size={16} />
+                                </button>
+                              </ActionHint>
                             ))}
                           </div>
                         </section>
@@ -569,21 +572,23 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               <h2>{name || "新提供商"}</h2>
                             )}
                             <div className="provider-heading-actions">
-                              <label className="settings-switch provider-enabled-switch">
-                                <input
-                                  type="checkbox"
-                                  role="switch"
-                                  aria-label={`启用供应商 ${name || "新提供商"}`}
-                                  aria-checked={enabled}
-                                  checked={enabled}
-                                  disabled={saving || discovering || !keyReady}
-                                  onChange={(event) => {
-                                    if (selected) void save(models, event.target.checked);
-                                    else setEnabled(event.target.checked);
-                                  }}
-                                />
-                                <span />
-                              </label>
+                              <ActionHint appearance="control" label={enabled ? "禁用供应商" : "启用供应商"}>
+                                <label className="settings-switch provider-enabled-switch">
+                                  <input
+                                    type="checkbox"
+                                    role="switch"
+                                    aria-label={`启用供应商 ${name || "新提供商"}`}
+                                    aria-checked={enabled}
+                                    checked={enabled}
+                                    disabled={saving || discovering || !keyReady}
+                                    onChange={(event) => {
+                                      if (selected) void save(models, event.target.checked);
+                                      else setEnabled(event.target.checked);
+                                    }}
+                                  />
+                                  <span />
+                                </label>
+                              </ActionHint>
                               {selected && (
                                 <Menu.Root>
                                   <Menu.Trigger

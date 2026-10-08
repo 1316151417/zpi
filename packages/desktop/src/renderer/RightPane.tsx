@@ -145,7 +145,7 @@ export function RightPane({
           {tabs.length > 0 && (
             <Dropdown.Root>
               <Dropdown.Trigger asChild>
-                <button className="pane-add-tab" aria-label="新增侧栏标签" title="新增标签">
+                <button className="pane-add-tab" aria-label="新增侧栏标签">
                   <Plus size={16} />
                 </button>
               </Dropdown.Trigger>

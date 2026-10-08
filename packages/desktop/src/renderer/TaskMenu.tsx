@@ -12,7 +12,7 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
   const task = (work: () => Promise<unknown>) => void work().catch(report);
   return (
     <Menu.Root>
-      <Menu.Trigger className="task-more" aria-label="任务菜单" title="任务菜单">
+      <Menu.Trigger className="task-more" aria-label="任务菜单">
         <MoreHorizontal size={16} />
       </Menu.Trigger>
       <Menu.Portal>

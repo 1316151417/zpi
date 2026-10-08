@@ -13,6 +13,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ArrowUpFromLine, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
 import type { InputQueue, QueuedInput } from "../types.ts";
+import { ActionHint } from "./MessageActions.tsx";
 
 export interface QueueActions {
   remove(itemId: string): Promise<void>;
@@ -76,18 +77,19 @@ const QueueRow = memo(function QueueRow({
         zIndex: isDragging ? 10 : undefined,
       }}
     >
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        className="queue-drag"
-        title="拖拽排序"
-        aria-label="拖拽排序"
-        disabled={locked}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical size={16} />
-      </button>
+      <ActionHint label="拖拽排序" appearance="control">
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          className="queue-drag"
+          aria-label="拖拽排序"
+          disabled={locked}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={16} />
+        </button>
+      </ActionHint>
       <span className={`queue-text${compact ? " compact" : ""}`} title={item.text}>
         {compact ? "/compact" : displayText(item)}
       </span>
@@ -101,27 +103,29 @@ const QueueRow = memo(function QueueRow({
         立即
       </button>
       {!compact && (
+        <ActionHint label="编辑" appearance="control">
+          <button
+            type="button"
+            className="queue-icon"
+            aria-label="编辑"
+            disabled={locked}
+            onClick={() => action(item.id, () => actions.edit(item.id))}
+          >
+            <Pencil size={16} />
+          </button>
+        </ActionHint>
+      )}
+      <ActionHint label="移除待发送消息" appearance="control">
         <button
           type="button"
           className="queue-icon"
-          title="编辑"
-          aria-label="编辑"
+          aria-label="移除待发送消息"
           disabled={locked}
-          onClick={() => action(item.id, () => actions.edit(item.id))}
+          onClick={() => action(item.id, () => actions.remove(item.id))}
         >
-          <Pencil size={16} />
+          <Trash2 size={16} />
         </button>
-      )}
-      <button
-        type="button"
-        className="queue-icon"
-        title="移除待发送消息"
-        aria-label="移除待发送消息"
-        disabled={locked}
-        onClick={() => action(item.id, () => actions.remove(item.id))}
-      >
-        <Trash2 size={16} />
-      </button>
+      </ActionHint>
     </li>
   );
 });

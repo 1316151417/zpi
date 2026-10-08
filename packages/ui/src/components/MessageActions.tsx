@@ -24,19 +24,21 @@ export function ActionHint({
   shortcut,
   side,
   appearance = "message",
+  open,
   className,
 }: {
   label: string;
   children: ReactNode;
   description?: string;
   shortcut?: string;
-  side?: "top" | "bottom";
+  side?: "top" | "bottom" | "left" | "right";
   appearance?: "message" | "control";
+  open?: boolean;
   className?: string;
 }) {
   return (
     <Tooltip.Provider delayDuration={0}>
-      <Tooltip.Root>
+      <Tooltip.Root open={open}>
         <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Content

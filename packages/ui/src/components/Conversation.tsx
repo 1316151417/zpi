@@ -1735,38 +1735,40 @@ export function ChatComposer({
           }}
         />
         <div className="composer-footer">
-          <button
-            ref={addButton}
-            type="button"
-            className="composer-plus"
-            aria-label="添加上下文"
-            aria-haspopup="listbox"
-            aria-expanded={Boolean(fileQuery?.explicit)}
-            aria-controls={fileQuery?.explicit ? filePanelId : undefined}
-            disabled={editing || !context}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              if (fileQuery?.explicit) {
-                setFileQuery(undefined);
-                textarea.current?.focus();
-              } else {
-                setFileQuery({
-                  start: textarea.current?.selectionStart ?? draft.length,
-                  end: textarea.current?.selectionEnd ?? draft.length,
-                  query: "",
-                  explicit: true,
-                });
-                setInputQuery(undefined);
-                setHighlighted(0);
-              }
-            }}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </button>
+          <ActionHint label="添加上下文" appearance="control" open={fileQuery?.explicit ? false : undefined}>
+            <button
+              ref={addButton}
+              type="button"
+              className="composer-plus"
+              aria-label="添加上下文"
+              aria-haspopup="listbox"
+              aria-expanded={Boolean(fileQuery?.explicit)}
+              aria-controls={fileQuery?.explicit ? filePanelId : undefined}
+              disabled={editing || !context}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (fileQuery?.explicit) {
+                  setFileQuery(undefined);
+                  textarea.current?.focus();
+                } else {
+                  setFileQuery({
+                    start: textarea.current?.selectionStart ?? draft.length,
+                    end: textarea.current?.selectionEnd ?? draft.length,
+                    query: "",
+                    explicit: true,
+                  });
+                  setInputQuery(undefined);
+                  setHighlighted(0);
+                }
+              }}
+            >
+              <Plus size={16} aria-hidden="true" />
+            </button>
+          </ActionHint>
           <div className="composer-actions">
             {toolbar}
             {onCancel && (
-              <MessageAction label="取消" shortcut="Esc" disabled={submitting} onClick={onCancel}>
+              <MessageAction label="取消" disabled={submitting} onClick={onCancel}>
                 <X size={16} />
               </MessageAction>
             )}
@@ -1786,29 +1788,30 @@ export function ChatComposer({
               </ActionHint>
             )}
             {busy && !hasDraft ? (
-              <ActionHint label="停止生成" shortcut="Esc" side="top" className="composer-stop-tooltip">
+              <ActionHint label="停止生成" appearance="control">
                 <button type="button" className="send stop" aria-label="停止" onClick={onStop}>
                   <Square size={16} fill="currentColor" />
                 </button>
               </ActionHint>
             ) : showSendButton || busy ? (
-              <button
-                className="send"
-                aria-label={busy ? "加入队列" : "发送"}
-                title={busy ? "加入队列" : "发送"}
-                disabled={
-                  submitting ||
-                  editing ||
-                  value.pending > 0 ||
-                  (!draft.trim() &&
-                    !value.attachments.length &&
-                    !value.fileReferences.length &&
-                    !value.selections?.length)
-                }
-                onClick={() => void submit()}
-              >
-                <ArrowUp size={16} />
-              </button>
+              <ActionHint label={busy ? "加入队列" : "发送"} appearance="control">
+                <button
+                  className="send"
+                  aria-label={busy ? "加入队列" : "发送"}
+                  disabled={
+                    submitting ||
+                    editing ||
+                    value.pending > 0 ||
+                    (!draft.trim() &&
+                      !value.attachments.length &&
+                      !value.fileReferences.length &&
+                      !value.selections?.length)
+                  }
+                  onClick={() => void submit()}
+                >
+                  <ArrowUp size={16} />
+                </button>
+              </ActionHint>
             ) : null}
           </div>
         </div>

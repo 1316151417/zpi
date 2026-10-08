@@ -443,14 +443,15 @@ export function App() {
                       open: !prefs?.projectsCollapsed,
                       onToggle: () => updatePrefs({ projectsCollapsed: !prefs?.projectsCollapsed }),
                       action: (
-                        <button
-                          aria-label="添加项目"
-                          title="添加项目"
-                          className="muted-icon"
-                          onClick={() => void addProject()}
-                        >
-                          <Plus size={14} aria-hidden="true" />
-                        </button>
+                        <ActionHint label="添加项目" appearance="control">
+                          <button
+                            aria-label="添加项目"
+                            className="muted-icon"
+                            onClick={() => void addProject()}
+                          >
+                            <Plus size={14} aria-hidden="true" />
+                          </button>
+                        </ActionHint>
                       ),
                       children: (
                         <div className="projects" hidden={prefs?.projectsCollapsed}>
@@ -488,13 +489,14 @@ export function App() {
                                   {p.name}
                                 </button>
                                 <Menu.Root>
-                                  <Menu.Trigger
-                                    className="project-row-action"
-                                    aria-label={`项目操作 ${p.name}`}
-                                    title="更多"
-                                  >
-                                    <Ellipsis size={14} />
-                                  </Menu.Trigger>
+                                  <ActionHint label="更多" appearance="control">
+                                    <Menu.Trigger
+                                      className="project-row-action"
+                                      aria-label={`项目操作 ${p.name}`}
+                                    >
+                                      <Ellipsis size={14} />
+                                    </Menu.Trigger>
+                                  </ActionHint>
                                   <Menu.Portal>
                                     <Menu.Content
                                       className="project-action-menu"
@@ -522,14 +524,15 @@ export function App() {
                                     </Menu.Content>
                                   </Menu.Portal>
                                 </Menu.Root>
-                                <button
-                                  aria-label={`新建任务 ${p.name}`}
-                                  title="新建任务"
-                                  className="project-row-action"
-                                  onClick={() => task(() => newSession(p.id))}
-                                >
-                                  <MessageCirclePlus size={14} />
-                                </button>
+                                <ActionHint label="新建任务" appearance="control">
+                                  <button
+                                    aria-label={`新建任务 ${p.name}`}
+                                    className="project-row-action"
+                                    onClick={() => task(() => newSession(p.id))}
+                                  >
+                                    <MessageCirclePlus size={14} />
+                                  </button>
+                                </ActionHint>
                               </div>
                               {!prefs?.projectsCollapsed &&
                                 !prefs?.collapsedProjectIds.includes(p.id) &&
@@ -578,14 +581,15 @@ export function App() {
                       open: !prefs?.tasksCollapsed,
                       onToggle: () => updatePrefs({ tasksCollapsed: !prefs?.tasksCollapsed }),
                       action: (
-                        <button
-                          aria-label="新建任务"
-                          title="新建任务"
-                          className="muted-icon"
-                          onClick={() => task(() => newSession(null))}
-                        >
-                          <MessageCirclePlus size={14} aria-hidden="true" />
-                        </button>
+                        <ActionHint label="新建任务" appearance="control">
+                          <button
+                            aria-label="新建任务"
+                            className="muted-icon"
+                            onClick={() => task(() => newSession(null))}
+                          >
+                            <MessageCirclePlus size={14} aria-hidden="true" />
+                          </button>
+                        </ActionHint>
                       ),
                       children: !prefs?.tasksCollapsed && (
                         <SidebarTaskList
@@ -601,10 +605,12 @@ export function App() {
               </div>
             )}
             <div className="sidebar-footer">
-              <button aria-label="设置" title="设置" onClick={() => setSettingsOpen(true)}>
-                <Settings size={16} />
-                {!collapsed && "设置"}
-              </button>
+              <ActionHint label="设置" appearance="control">
+                <button aria-label="设置" onClick={() => setSettingsOpen(true)}>
+                  <Settings size={16} />
+                  {!collapsed && "设置"}
+                </button>
+              </ActionHint>
             </div>
           </aside>
         ),

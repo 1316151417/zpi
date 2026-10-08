@@ -1,3 +1,4 @@
+import { ActionHint } from "ZPI-ui";
 import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { BrowserState } from "../shared/bridge.ts";
@@ -88,23 +89,24 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
   return (
     <div className="browser-pane">
       <div className="browser-toolbar">
-        <button aria-label="浏览器后退" title="后退" disabled={!state.back} onClick={() => action("back")}>
-          <ArrowLeft size={15} />
-        </button>
-        <button
-          aria-label="浏览器前进"
-          title="前进"
-          disabled={!state.forward}
-          onClick={() => action("forward")}
-        >
-          <ArrowRight size={15} />
-        </button>
-        <button
-          aria-label={state.loading ? "停止加载" : "刷新页面"}
-          onClick={() => action(state.loading ? "stop" : "reload")}
-        >
-          {state.loading ? <X size={15} /> : <RotateCw size={15} />}
-        </button>
+        <ActionHint label="后退" appearance="control">
+          <button aria-label="浏览器后退" disabled={!state.back} onClick={() => action("back")}>
+            <ArrowLeft size={15} />
+          </button>
+        </ActionHint>
+        <ActionHint label="前进" appearance="control">
+          <button aria-label="浏览器前进" disabled={!state.forward} onClick={() => action("forward")}>
+            <ArrowRight size={15} />
+          </button>
+        </ActionHint>
+        <ActionHint label={state.loading ? "停止加载" : "刷新"} appearance="control">
+          <button
+            aria-label={state.loading ? "停止加载" : "刷新页面"}
+            onClick={() => action(state.loading ? "stop" : "reload")}
+          >
+            {state.loading ? <X size={15} /> : <RotateCw size={15} />}
+          </button>
+        </ActionHint>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -126,14 +128,15 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
             onChange={(event) => setAddress(event.target.value)}
           />
         </form>
-        <button
-          aria-label="在外部浏览器打开"
-          title="在外部浏览器打开"
-          disabled={!state.url}
-          onClick={() => paneTask(window.ZPI.openExternal(state.url).then(unwrap))}
-        >
-          <ExternalLink size={14} />
-        </button>
+        <ActionHint label="在默认浏览器中打开" appearance="control">
+          <button
+            aria-label="在外部浏览器打开"
+            disabled={!state.url}
+            onClick={() => paneTask(window.ZPI.openExternal(state.url).then(unwrap))}
+          >
+            <ExternalLink size={14} />
+          </button>
+        </ActionHint>
       </div>
       {state.error && (
         <p className="run-error" role="alert">

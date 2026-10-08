@@ -3145,6 +3145,12 @@ button.inline-mention,
 .control-hint-tooltip[data-side="bottom"] {
   --control-hint-slide-y: -8px;
 }
+.control-hint-tooltip[data-side="left"] {
+  --control-hint-slide-x: 8px;
+}
+.control-hint-tooltip[data-side="right"] {
+  --control-hint-slide-x: -8px;
+}
 .control-hint-tooltip[data-state="delayed-open"],
 .control-hint-tooltip[data-state="open"],
 .control-hint-tooltip[data-open]:not([data-open="false"]) {
@@ -3157,7 +3163,8 @@ button.inline-mention,
 @keyframes control-hint-in {
   from {
     opacity: 0;
-    transform: translate3d(0, var(--control-hint-slide-y, 0), 0) scale3d(0.95, 0.95, 0.95);
+    transform: translate3d(var(--control-hint-slide-x, 0), var(--control-hint-slide-y, 0), 0)
+      scale3d(0.95, 0.95, 0.95);
   }
 }
 @keyframes control-hint-out {
@@ -3165,32 +3172,6 @@ button.inline-mention,
     opacity: 0;
     transform: scale3d(0.95, 0.95, 0.95);
   }
-}
-/* ZCode ConversationComposer secondary icon-md button and ControlHintTooltip. */
-.composer-stop-tooltip {
-  padding: 4px 4px 4px 10px;
-  background: var(--color-tooltip);
-  color: var(--color-tooltip-foreground);
-  font-weight: 500;
-  max-width: min(448px, calc(100vw - 16px));
-}
-.composer-stop-tooltip > span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: pre-line;
-  overflow-wrap: break-word;
-}
-.composer-stop-tooltip kbd {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  height: 16px;
-  margin-left: 0;
-  background: var(--color-tooltip-tag);
-  color: var(--color-tooltip-tag-foreground);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
 }
 .assistant-message-row {
   display: flex;

@@ -8,7 +8,7 @@ import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
-test("stop hover matches ZCode in both themes, with the Esc hint above and working stop controls", async () => {
+test("stop hover matches ZCode in both themes, without a shortcut badge and working stop controls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-stop-hover-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "正在生成" }));
@@ -23,11 +23,11 @@ test("stop hover matches ZCode in both themes, with the Esc hint above and worki
     await select(page, id);
     const editor = page.getByLabel("消息", { exact: true });
     const stop = page.getByLabel("停止", { exact: true });
-    const tooltip = page.locator(".composer-stop-tooltip");
+    const tooltip = page.locator(".control-hint-tooltip").filter({ hasText: "停止生成" });
     // ZCode: secondary/80 on hover; ControlHintTooltip at top, offset 2.
-    for (const [theme, background, hintBackground, hintColor, tagColor] of [
-      ["light", "rgb(230, 230, 230)", "rgb(240, 240, 240)", "rgb(13, 13, 13)", "rgb(92, 92, 92)"],
-      ["dark", "rgb(54, 54, 54)", "rgb(43, 43, 43)", "rgb(248, 248, 248)", "rgb(173, 173, 173)"],
+    for (const [theme, background, hintBackground, hintColor] of [
+      ["light", "rgb(230, 230, 230)", "rgb(240, 240, 240)", "rgb(13, 13, 13)"],
+      ["dark", "rgb(54, 54, 54)", "rgb(43, 43, 43)", "rgb(248, 248, 248)"],
     ] as const) {
       await page.evaluate((theme) => window.ZPI.updatePreferences({ theme }), theme);
       await editor.fill(`检查停止按钮 ${theme}`);
@@ -52,12 +52,10 @@ test("stop hover matches ZCode in both themes, with the Esc hint above and worki
       await expect(tooltip).toHaveCSS("background-color", hintBackground);
       await expect(tooltip).toHaveCSS("color", hintColor);
       await expect(tooltip).toHaveCSS("border-radius", "8px");
-      await expect(tooltip).toHaveCSS("padding", "4px 4px 4px 10px");
+      await expect(tooltip).toHaveCSS("padding", "4px 10px");
       await expect(tooltip).toHaveCSS("font-size", "12px");
-      await expect(tooltip).toHaveCSS("font-weight", "500");
-      await expect(tooltip.locator("kbd").first()).toHaveText("Esc");
-      await expect(tooltip.locator("kbd").first()).toHaveCSS("height", "16px");
-      await expect(tooltip.locator("kbd").first()).toHaveCSS("color", tagColor);
+      await expect(tooltip.locator(":scope > span").first()).toHaveCSS("font-weight", "500");
+      await expect(tooltip.locator("kbd")).toHaveCount(0);
       const buttonBounds = await stop.boundingBox();
       const hintBounds = await tooltip.boundingBox();
       if (!buttonBounds || !hintBounds) throw new Error("stop control bounds");

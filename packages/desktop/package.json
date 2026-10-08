@@ -1,6 +1,6 @@
 {
   "name": "ZPI-desktop",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -17,10 +17,10 @@
     "node-pty": "1.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "ZPI-agent": "0.1.50",
-    "ZPI-ai": "0.1.50",
-    "ZPI-coding-agent": "0.1.50",
-    "ZPI-ui": "0.1.50",
+    "ZPI-agent": "0.1.51",
+    "ZPI-ai": "0.1.51",
+    "ZPI-coding-agent": "0.1.51",
+    "ZPI-ui": "0.1.51",
     "zustand": "5.0.15"
   }
 }
