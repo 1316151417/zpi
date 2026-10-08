@@ -60,8 +60,12 @@ npm run check                # 类型、格式与静态检查
 npm run test:unit            # 内核及主进程测试
 npm run package:mac          # 构建正式版 macOS DMG，输出到 release/
 npm run package:mac:preview  # 构建 ZPI Preview DMG，输出到 release/
-npm run test:desktop         # 运行桌面主流程测试（先打包正式版）
+npm run test:desktop         # 构建并在隐藏窗口中运行桌面测试
 ```
+
+桌面测试默认隐藏窗口、不抢焦点，并静默系统通知和音频；界面仍正常渲染，支持自动交互、截图和失败 trace。
+需要观察窗口时运行 `ZPI_TEST_SHOW_WINDOW=1 npm run test:desktop`。打包历史测试需要先运行
+`npm run package:mac`，或通过 `ZPI_TEST_PACKAGED_APP` 指定包含当前测试模式的应用包。
 
 ## Agent SDK
 

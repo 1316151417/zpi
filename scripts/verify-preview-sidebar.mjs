@@ -270,7 +270,14 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const port = server.address().port;
 await writeFile(
   join(output, "electron.cjs"),
-  `const {app,BrowserWindow}=require('electron');app.whenReady().then(()=>{const w=new BrowserWindow({width:1200,height:800,useContentSize:true,webPreferences:{sandbox:true}});w.loadURL('http://127.0.0.1:${port}/');});`,
+  `const {app,BrowserWindow}=require('electron');
+const hidden=process.env.ZPI_TEST_SHOW_WINDOW!=="1";
+if(hidden&&process.platform==="darwin") app.setActivationPolicy("accessory");
+app.whenReady().then(()=>{
+  const w=new BrowserWindow({width:1200,height:800,useContentSize:true,show:!hidden,focusable:!hidden,
+    webPreferences:{sandbox:true,backgroundThrottling:!hidden}});
+  w.loadURL('http://127.0.0.1:${port}/');
+});`,
 );
 const app = await electron.launch({
   args: [join(output, "electron.cjs")],

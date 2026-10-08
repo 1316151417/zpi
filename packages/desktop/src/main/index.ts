@@ -10,6 +10,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Notification,
   nativeTheme,
   net,
   safeStorage,
@@ -45,6 +46,13 @@ const dir = fileURLToPath(new URL(".", import.meta.url));
 // UI copy is supplied by React and remains Chinese.
 if (process.platform === "darwin") app.commandLine.appendSwitch("lang", "en-US");
 const testMode = process.env.ZPI_TEST_MODE === "1";
+const hiddenTestMode = testMode && process.env.ZPI_TEST_SHOW_WINDOW !== "1";
+if (hiddenTestMode) {
+  // Keep automation off the user's desktop while retaining real renderer/IPC behavior.
+  if (process.platform === "darwin") app.setActivationPolicy("accessory");
+  app.commandLine.appendSwitch("mute-audio");
+  Notification.prototype.show = () => {};
+}
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });
 let ending = false;
@@ -143,6 +151,8 @@ async function launch(): Promise<void> {
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
   const window = new BrowserWindow({
+    show: !hiddenTestMode,
+    focusable: !hiddenTestMode,
     width: Math.min(1200, display.width),
     height: Math.min(800, display.height),
     minWidth: 740,
@@ -161,6 +171,7 @@ async function launch(): Promise<void> {
         }
       : {}),
     webPreferences: {
+      backgroundThrottling: !hiddenTestMode,
       preload: join(dir, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
@@ -772,6 +783,7 @@ async function launch(): Promise<void> {
     }
   });
   app.on("second-instance", () => {
+    if (hiddenTestMode) return;
     if (window.isMinimized()) window.restore();
     window.focus();
   });

@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 // Exercise real Electron -> preload -> renderer delivery, intercepting only OS display.
 declare global {
-  var notificationTest: { focused: boolean; shown: Notification[] };
+  var notificationTest: { focused: boolean; shown: Notification[]; presentation: string[] };
 }
 
 test("ZCode notification settings, disabled sound state and independent preferences survive restarts", async () => {
@@ -76,7 +76,7 @@ test("live task completion, failure and interruption notify once, and clicking r
     const page = await app.firstWindow();
     await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
     await app.evaluate(({ BrowserWindow, Notification }) => {
-      globalThis.notificationTest = { focused: true, shown: [] };
+      globalThis.notificationTest = { focused: true, shown: [], presentation: [] };
       Notification.isSupported = () => true;
       Notification.prototype.show = function () {
         globalThis.notificationTest.shown.push(this);
@@ -133,12 +133,38 @@ test("live task completion, failure and interruption notify once, and clicking r
       )
       .toBe(1);
 
-    // A real notification click goes through main and preload while the settings page is open.
+    // Keep native presentation intercepted; unit tests cover the actual restoration calls.
+    // The click still goes through main and preload while the settings page is open.
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await app.evaluate(({ BrowserWindow }) => {
+    await app.evaluate(({ app, BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
-      window.minimize();
-      window.hide();
+      let minimized = true;
+      let visible = false;
+      window.isMinimized = () => minimized;
+      window.isVisible = () => visible;
+      window.restore = () => {
+        globalThis.notificationTest.presentation.push("restore");
+        minimized = false;
+      };
+      window.show = () => {
+        globalThis.notificationTest.presentation.push("window.show");
+        visible = true;
+      };
+      window.focus = () => {
+        globalThis.notificationTest.presentation.push("window.focus");
+      };
+      if (process.platform === "darwin") {
+        if (app.dock)
+          app.dock.show = async () => {
+            globalThis.notificationTest.presentation.push("dock.show");
+          };
+        app.show = () => {
+          globalThis.notificationTest.presentation.push("app.show");
+        };
+        app.focus = () => {
+          globalThis.notificationTest.presentation.push("app.focus");
+        };
+      }
       globalThis.notificationTest.shown[0].emit("click");
     });
     await expect(page.getByRole("region", { name: "设置", exact: true })).toHaveCount(0);
@@ -151,6 +177,12 @@ test("live task completion, failure and interruption notify once, and clicking r
         return { minimized: window.isMinimized(), visible: window.isVisible() };
       }),
     ).toEqual({ minimized: false, visible: true });
+    expect(await app.evaluate(() => globalThis.notificationTest.presentation)).toEqual([
+      "restore",
+      "window.show",
+      ...(process.platform === "darwin" ? ["dock.show", "app.show", "app.focus"] : []),
+      "window.focus",
+    ]);
 
     const interrupted = await start("手动停止");
     await expect.poll(() => responses.has(2)).toBe(true);
