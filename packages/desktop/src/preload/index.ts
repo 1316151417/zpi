@@ -15,6 +15,8 @@ ipcRenderer.on("ZPI:prepare-quit", async (_event, request: number) => {
 const bridge: DesktopBridge = {
   logError: (error) => ipcRenderer.send("ZPI:error", error),
   platform: process.platform,
+  workspacePanelRadius:
+    Number(process.argv.find((arg) => arg.startsWith("--zpi-panel-radius="))?.split("=")[1]) || 6,
   onBeforeQuit(listener) {
     beforeQuit = listener;
     return () => {

@@ -376,7 +376,11 @@ export function App() {
     <div
       className={`shell ${window.ZPI.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""}`}
       style={
-        { "--left-sidebar-width": `${width}px`, "--right-pane-width": `${paneWidth}px` } as CSSProperties
+        {
+          "--left-sidebar-width": `${width}px`,
+          "--right-pane-width": `${paneWidth}px`,
+          "--workspace-panel-radius": `${window.ZPI.workspacePanelRadius}px`,
+        } as CSSProperties
       }
     >
       <WindowChrome

@@ -194,6 +194,7 @@ export interface PaneBounds {
 export interface DesktopBridge {
   logError(error: { source: string; message: string; stack?: string }): void;
   readonly platform: string;
+  readonly workspacePanelRadius: number;
   onBeforeQuit(listener: () => Promise<void>): () => void;
   onTaskNotificationClick(listener: (sessionId: string) => void): () => void;
   onTaskNotificationSound(listener: () => void): () => void;

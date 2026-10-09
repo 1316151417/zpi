@@ -20,6 +20,10 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1440, 900));
     await page.emulateMedia({ colorScheme: "light" });
     await page.getByLabel("新建任务", { exact: true }).first().click();
+    await expect(page.locator(".composer-stack.with-header")).toHaveCSS(
+      "box-shadow",
+      "rgba(0, 0, 0, 0.05) 0px 20px 25px -5px, rgba(0, 0, 0, 0.05) 0px 8px 10px -6px",
+    );
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     const main = page.locator(".shell > main");
@@ -28,6 +32,13 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     const rightHandle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
     const launcher = page.locator(".pane-empty-launcher");
     const mac = await app.evaluate(() => process.platform === "darwin");
+    const panelRadius = await app.evaluate(() =>
+      process.platform === "win32"
+        ? 5
+        : process.platform === "darwin" && Number.parseInt(process.getSystemVersion(), 10) < 26
+          ? 6
+          : 12,
+    );
     if (mac) {
       // Electron's getter normalizes the transparent native background to RGB.
       expect(
@@ -58,7 +69,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await expect(page.locator(".sidebar")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     for (const panel of [main, frame]) {
       await expect(panel).toHaveCSS("background-color", "rgb(248, 248, 248)");
-      await expect(panel).toHaveCSS("border-radius", "12px");
+      await expect(panel).toHaveCSS("border-radius", `${panelRadius}px`);
       await expect(panel).toHaveCSS("overflow", "hidden");
       const box = await bounds(panel);
       expect(box?.y).toBe(4);

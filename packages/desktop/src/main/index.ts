@@ -162,6 +162,13 @@ async function launch(): Promise<void> {
   const display = screen.getPrimaryDisplay().workAreaSize;
   // 非 macOS 的默认菜单直接显示在窗口顶栏，与 ZCode 的无菜单界面不符，整体移除。
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);
+  // Match ZCode's inset panels to the native window corners (Tahoe uses larger corners).
+  const workspacePanelRadius =
+    process.platform === "win32"
+      ? 5
+      : process.platform === "darwin" && Number.parseInt(process.getSystemVersion(), 10) < 26
+        ? 6
+        : 12;
   const window = new BrowserWindow({
     show: !hiddenTestMode,
     focusable: !hiddenTestMode,
@@ -185,6 +192,7 @@ async function launch(): Promise<void> {
         }
       : {}),
     webPreferences: {
+      additionalArguments: [`--zpi-panel-radius=${workspacePanelRadius}`],
       backgroundThrottling: !hiddenTestMode,
       preload: join(dir, "../preload/index.cjs"),
       contextIsolation: true,
