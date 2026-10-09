@@ -70,8 +70,22 @@ test("stop hover matches ZCode in both themes, without a shortcut badge and work
         },
       });
       await page.screenshot({ path: `test-results/stop-hint-${theme}.png` });
-      await editor.hover();
+      const editorBounds = await editor.boundingBox();
+      if (!editorBounds) throw new Error("message editor bounds");
+      // Leave the controls vertically so the path does not hover the model picker.
+      // Continued movement lets Radix close its hover grace area.
+      await page.mouse.move(
+        buttonBounds.x + buttonBounds.width / 2,
+        editorBounds.y + editorBounds.height / 2,
+        { steps: 12 },
+      );
+      await page.mouse.move(
+        editorBounds.x + editorBounds.width / 2,
+        editorBounds.y + editorBounds.height / 2,
+        { steps: 12 },
+      );
       await expect(tooltip).toHaveCount(0);
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
       await expect(stop).toHaveCSS("background-color", background);
       if (theme === "light") await stop.click();
       else await editor.press("Escape");

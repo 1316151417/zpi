@@ -157,7 +157,8 @@ test("context indicator appears after the first response and keeps measured usag
     await indicator().hover();
     await expectUnclippedTooltip();
     await page.screenshot({ path: "test-results/context-indicator-narrow-panel.png" });
-    await page.mouse.move(0, 0);
+    // Radix's hover grace area closes on movement after pointerleave.
+    await page.mouse.move(0, 0, { steps: 12 });
     await expect(tooltip()).toBeHidden();
     await indicator().focus();
     await expectUnclippedTooltip();

@@ -98,6 +98,10 @@ adapter, not a byte-identical transport implementation.
 - Focused Playwright: six tests passed across automatic/manual compaction,
   compaction cancellation/failure/reload, context usage reset and provider/agent
   reconnect/recovery/backoff cancellation/quota/exhaustion.
-- Expanded Playwright runs still fail two mouse-leave assertions in the unchanged
-  context tooltip and stop-button tooltip interactions. Their tooltip behavior was
-  not modified by this core change.
+- Initial expanded Playwright runs failed two tooltip mouse-leave assertions:
+  single-jump pointer movement left Radix's hover grace area waiting for another
+  movement event. Tests now use continuous movement; the stop test also avoids
+  hovering the model picker along its return path and checks all hints are closed
+  before Escape. Application tooltip behavior remains unchanged.
+- Expanded Playwright recheck: all eight tests passed in `compaction.spec.ts`,
+  `context-usage.spec.ts`, `model-retry.spec.ts` and `stop-button.spec.ts`.
