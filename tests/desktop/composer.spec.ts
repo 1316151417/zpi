@@ -289,10 +289,31 @@ test("mixed file attachments work through picker, paste and drop, and file menti
       if (!file) throw Error("Expected native file");
       const data = new DataTransfer();
       data.items.add(file);
+      el.dispatchEvent(new DragEvent("dragenter", { dataTransfer: data, bubbles: true, cancelable: true }));
+    });
+    await expect(page.locator(".composer-drop-overlay")).toHaveText("松开以添加附件");
+    await expect(page.locator(".composer-drop-overlay")).toHaveCSS("backdrop-filter", "blur(8px)");
+    await page.locator(".composer").hover();
+    await expect(page.locator(".composer")).toHaveCSS("border-color", "rgb(0, 0, 0)");
+    // Entering a child must not clear the feedback when leaving the parent boundary event.
+    await editor.evaluate((el) => {
+      const data = new DataTransfer();
+      data.items.add(new File(["test"], "test.txt"));
+      el.dispatchEvent(new DragEvent("dragenter", { dataTransfer: data, bubbles: true }));
+      el.dispatchEvent(new DragEvent("dragleave", { dataTransfer: data, bubbles: true }));
+    });
+    await expect(page.locator(".composer-drop-overlay")).toBeVisible();
+    await page.locator(".composer").evaluate((el) => {
+      const input = document.querySelector<HTMLInputElement>("[data-test-dropped-file]");
+      const file = input?.files?.[0];
+      if (!file) throw Error("Expected native file");
+      const data = new DataTransfer();
+      data.items.add(file);
       el.dispatchEvent(new DragEvent("drop", { dataTransfer: data, bubbles: true, cancelable: true }));
       input?.remove();
     });
     await expect(page.locator(".composer .file-attachment")).toHaveCount(4);
+    await expect(page.locator(".composer-drop-overlay")).toBeHidden();
     await expect(editor).toBeFocused();
     await expect(page.getByRole("alert")).toHaveCount(0);
     await page.locator(".composer").screenshot({ path: "test-results/desktop-composer-files-light.png" });

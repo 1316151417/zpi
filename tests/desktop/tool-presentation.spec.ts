@@ -60,6 +60,8 @@ test("long grouped commands keep the running label separate while rolling and at
       const group = page.locator(`[data-tool-group="${kind}"]`);
       const summary = group.locator(":scope > .tool-layout > .tool-summary-row");
       await expect(summary.locator(".tool-command-summary").last()).toHaveText(command);
+      await expect(group.locator("..")).toHaveAttribute("data-stream-entrance", "true");
+      await expect(group.locator("..")).toHaveCSS("animation-duration", "0.9s");
       // Sample rendered geometry throughout the rolling transition and hold.
       const gaps = await summary.evaluate(async (el, command) => {
         const gaps: number[] = [];
@@ -110,6 +112,13 @@ test("long grouped commands keep the running label separate while rolling and at
     }
     finish.resolve();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await page.locator(".session-row").first().click();
+    if (!(await page.locator('[data-tool-group="explore"]').isVisible())) {
+      await page.getByTestId("progress").click();
+    }
+    await expect(page.locator(".tool-group")).toHaveCount(2);
+    await expect(page.locator('.process [data-stream-entrance="true"]')).toHaveCount(0);
   } finally {
     finish.resolve();
     await writeFile(join(project, "explore-release"), "");

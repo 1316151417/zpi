@@ -8,6 +8,7 @@ import { modelDefaults, reasoningModel, toPreset } from "../shared/config.ts";
 import { ModelConfigAdvanced } from "./ModelConfigAdvanced.tsx";
 import { ReasoningLevelEditor } from "./ReasoningLevelEditor.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
+import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 
 export interface ModelDraft extends ModelSettings {
   reasoningConfig: ReasoningConfig;
@@ -47,7 +48,7 @@ export function ModelConfigDialog({
   recommended,
   chatgpt = false,
   api = "openai-completions",
-  onClose,
+  onClose: onClosed,
   onSave,
 }: {
   api?: ProviderApi;
@@ -57,6 +58,7 @@ export function ModelConfigDialog({
   onClose: () => void;
   onSave: (value: ModelDraft) => Promise<void>;
 }) {
+  const [open, onClose] = useDialogDismiss(onClosed);
   const content = useRef<HTMLDivElement>(null);
   const [model, setModel] = useState(initial),
     [error, setError] = useState(""),
@@ -102,7 +104,7 @@ export function ModelConfigDialog({
   };
   return (
     <Dialog.Root
-      open
+      open={open}
       onOpenChange={(open) => {
         if (!open && !saving) onClose();
       }}

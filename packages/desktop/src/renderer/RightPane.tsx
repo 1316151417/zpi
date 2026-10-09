@@ -39,7 +39,13 @@ export function RightPane({
     active?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [state.active]);
   return (
-    <aside className="right-pane" hidden={!state.open} style={{ width }} aria-label="右侧栏">
+    <aside
+      className="right-pane"
+      hidden={!state.open}
+      inert={!state.open}
+      style={{ width }}
+      aria-label="右侧栏"
+    >
       <hr
         className="right-resizer"
         aria-label="右侧栏宽度"

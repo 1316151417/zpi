@@ -52,7 +52,7 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
         .evaluate((el) => el.getBoundingClientRect().height),
     ).toBe(32);
     await dialog.locator(".model-config-advanced").evaluate(async (el) => {
-      await Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished) ?? []);
+      await Promise.allSettled(el.getAnimations({ subtree: true }).map((animation) => animation.finished));
     });
     await page.screenshot({ path: "test-results/zcode-reasoning-editor-light.png" });
     await page.emulateMedia({ colorScheme: "dark" });

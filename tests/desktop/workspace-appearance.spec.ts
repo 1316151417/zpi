@@ -32,6 +32,24 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     const rightHandle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
     const launcher = page.locator(".pane-empty-launcher");
     const mac = await app.evaluate(() => process.platform === "darwin");
+    await expect
+      .poll(() =>
+        page
+          .locator(".sidebar")
+          .evaluate(
+            (el) =>
+              el.getBoundingClientRect().width -
+              Number.parseFloat(getComputedStyle(el).getPropertyValue("--sidebar-content-width")),
+          ),
+      )
+      .toBe(0);
+    const newTask = page.locator(".sidebar-global > button");
+    const newTaskBounds = await bounds(newTask);
+    expect(newTaskBounds.x).toBe(8);
+    expect(newTaskBounds.y).toBe(mac ? 60 : 56);
+    await expect(page.locator(".sidebar")).toHaveCSS("transition-duration", "0.2s, 0.2s, 0.2s");
+    await expect(page.locator(".right-pane")).toHaveCSS("transition-duration", "0.2s, 0.2s");
+    await expect(page.locator(".composer")).toHaveCSS("transition-duration", "0.15s, 0.15s");
     const panelRadius = await app.evaluate(() =>
       process.platform === "win32"
         ? 5

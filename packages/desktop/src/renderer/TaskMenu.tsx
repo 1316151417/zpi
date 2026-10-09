@@ -16,7 +16,7 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
         <MoreHorizontal size={16} />
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Content className="selection-menu task-menu" align="start" sideOffset={6}>
+        <Menu.Content className="selection-menu task-menu" align="start" sideOffset={2}>
           <Menu.Item
             className="menu-item"
             disabled={!pinned && pins >= taskPinLimit}
@@ -27,11 +27,11 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
               })
             }
           >
-            {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+            {pinned ? <PinOff size={16} /> : <Pin size={16} />}
             {pinned ? "取消置顶" : "置顶"}
           </Menu.Item>
           <Menu.Item className="menu-item" onSelect={onRename}>
-            <Pencil size={14} />
+            <Pencil size={16} />
             重命名任务
           </Menu.Item>
           <Menu.Item
@@ -40,7 +40,7 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             title={running ? "请先停止运行" : undefined}
             onSelect={() => task(() => archiveSession(record.id))}
           >
-            <Archive size={14} />
+            <Archive size={16} />
             归档任务
             {running && <small>请先停止运行</small>}
           </Menu.Item>

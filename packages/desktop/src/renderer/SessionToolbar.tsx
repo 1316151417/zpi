@@ -22,6 +22,8 @@ export function SessionToolbar({
   const provider = settings?.providers.find((p) => p.id === chosen?.provider);
   const configured = provider?.models.find((m) => m.id === chosen?.modelId);
   const mainMenu = useRef<HTMLDivElement>(null);
+  const menuOpen = useRef(open);
+  menuOpen.current = open;
   const focusAfterSelect = useRef<string>(undefined);
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const menuBoundary = toolbar?.closest("main");
@@ -139,7 +141,13 @@ export function SessionToolbar({
           </Tooltip.Root>
         </Tooltip.Provider>
       )}
-      <Menu.Root open={open} onOpenChange={onOpenChange}>
+      <Menu.Root
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) setActive(undefined);
+          onOpenChange(next);
+        }}
+      >
         <ActionHint
           appearance="control"
           label={
@@ -171,7 +179,19 @@ export function SessionToolbar({
             align="end"
             collisionBoundary={menuBoundary}
             collisionPadding={8}
+            onInteractOutside={(event) => {
+              // The closing layer is still mounted during its 100ms exit. A trigger
+              // click belongs to Root's toggle, rather than the old layer's dismiss.
+              if (event.target instanceof Element && event.target.closest(".model-trigger")) {
+                event.preventDefault();
+              }
+            }}
             onCloseAutoFocus={(event) => {
+              if (menuOpen.current) {
+                event.preventDefault();
+                focusAfterSelect.current = undefined;
+                return;
+              }
               const sessionId = focusAfterSelect.current;
               if (sessionId) {
                 event.preventDefault();
@@ -193,15 +213,19 @@ export function SessionToolbar({
                       return (
                         <Menu.Sub
                           key={id}
-                          open={active === id}
+                          open={open && active === id}
                           onOpenChange={(value) =>
-                            setActive((current) => (value ? id : current === id ? undefined : current))
+                            setActive((current) =>
+                              value && menuOpen.current ? id : current === id ? undefined : current,
+                            )
                           }
                         >
                           <Menu.SubTrigger
                             className="menu-item"
                             disabled={updating}
-                            onFocus={() => setActive(id)}
+                            onFocus={() => {
+                              if (menuOpen.current) setActive(id);
+                            }}
                             onClick={() => select(p.id, m.id, defaultPreset(m))}
                           >
                             <span>{m.name || m.id}</span>

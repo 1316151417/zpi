@@ -1,3 +1,7 @@
+# ZCode visual interactions
+
+Workspace sidebar spacing, input drag feedback, menu/dialog surfaces and motion, and live tool entrances in packages/desktop/src/renderer and packages/ui/src follow ZCode packages/ui/src/{WorkspaceSidebar,ToolCallBlocks}.tsx, prompt-editor/ChatPromptEditor.tsx, components/ui/{button,dialog,dropdown-menu,popover}.tsx and styles.css. Adapted to ZPI’s four-tool interface and existing React/Radix components under the Apache-2.0 license reproduced below. No new artwork is included.
+
 # Model protocol selector
 
 The model connection form layout, protocol labels, field spacing, input/select sizing, credential visibility control and empty model state in packages/desktop/src/renderer/{SettingsPage,ProviderApiFormatSelect}.tsx and workbench.css follow ZCode packages/ui/src/settings/model-provider-section/{InlineEditableProviderCard,ProviderApiFormatSelect,ProviderCardSections,ApiKeyInput}.tsx and components/ui/{input,select}.tsx, under the Apache-2.0 license already reproduced below. Existing ZPI provider logos and Lucide icons remain in use.

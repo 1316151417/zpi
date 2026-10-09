@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FileClock,
   GitBranch,
+  Hand,
   Info,
   Loader,
   Paperclip,
@@ -67,6 +68,7 @@ import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageAc
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
+import { StreamEntrance } from "./StreamEntrance.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
 import { filterSkillSuggestions } from "./skill-suggestions.ts";
 import { ToolBlock } from "./ToolBlock.tsx";
@@ -517,34 +519,44 @@ export const RunGroup = memo(function RunGroup({
               item.kind === "compaction" ? (
                 <CompactionDivider key={item.id} marker={item.marker} />
               ) : item.kind !== "block" ? (
-                <ToolGroup
+                <StreamEntrance
                   key={item.id}
-                  group={item}
-                  blocks={blocks}
-                  toggle={(id) => onBlockToggle(id, !(blocks[id] ?? false))}
-                  workspace={workspace}
-                  onCopy={onCopy}
-                  onFile={onFile}
-                  onChanges={onChanges ? openToolChange : undefined}
-                  onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
-                />
-              ) : (
-                <Fragment key={item.id}>
-                  <ProcessBlock
+                  id={`${sessionId}:${run.runId}:${item.id}`}
+                  active={run.status === "running"}
+                >
+                  <ToolGroup
+                    group={item}
+                    blocks={blocks}
+                    toggle={(id) => onBlockToggle(id, !(blocks[id] ?? false))}
                     workspace={workspace}
-                    key={item.id}
-                    onImage={onImage}
-                    onDownloadImage={context?.downloadImage}
-                    block={item.block}
-                    expanded={blocks[item.id] ?? false}
-                    toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
-                    onLink={onLink}
                     onCopy={onCopy}
                     onFile={onFile}
-                    onFileAction={onFileAction}
                     onChanges={onChanges ? openToolChange : undefined}
                     onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
                   />
+                </StreamEntrance>
+              ) : (
+                <Fragment key={item.id}>
+                  <StreamEntrance
+                    id={`${sessionId}:${run.runId}:${item.id}`}
+                    active={run.status === "running" && item.block.type === "tool"}
+                  >
+                    <ProcessBlock
+                      workspace={workspace}
+                      key={item.id}
+                      onImage={onImage}
+                      onDownloadImage={context?.downloadImage}
+                      block={item.block}
+                      expanded={blocks[item.id] ?? false}
+                      toggle={() => onBlockToggle(item.id, !(blocks[item.id] ?? false))}
+                      onLink={onLink}
+                      onCopy={onCopy}
+                      onFile={onFile}
+                      onFileAction={onFileAction}
+                      onChanges={onChanges ? openToolChange : undefined}
+                      onLoadPatch={onLoadToolPatch ? loadToolPatch : undefined}
+                    />
+                  </StreamEntrance>
                   {item.id === latestText?.id && previews}
                 </Fragment>
               ),
@@ -560,6 +572,7 @@ export const RunGroup = memo(function RunGroup({
         {run.status === "running" && !compacting && (
           <div
             className="chat-loading-slot"
+            data-stream-entrance="true"
             role="status"
             aria-label={run.apiRetry?.attempt ? undefined : "加载中"}
           >
@@ -1049,6 +1062,12 @@ export function ChatComposer({
   const recalled = useRef<{ index: number; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [draggingFiles, setDraggingFiles] = useState(false);
+  const dragDepth = useRef(0);
+  useEffect(() => {
+    setDraggingFiles(false);
+    dragDepth.current = 0;
+  }, [sessionId]);
   const [queueConfirmation, setQueueConfirmation] = useState(false);
   const submitLock = useRef(false);
   const composing = useRef(false);
@@ -1433,13 +1452,25 @@ export function ChatComposer({
         />
       )}
       <fieldset
-        className="composer"
+        className={`composer${draggingFiles ? " dragging-files" : ""}`}
         ref={root}
         aria-label="输入消息"
+        onDragEnter={(event) => {
+          if (!context || editing || !event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          dragDepth.current += 1;
+          setDraggingFiles(true);
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (!dragDepth.current) setDraggingFiles(false);
+        }}
         onDragOver={(event) => {
           if (context && event.dataTransfer.types.includes("Files")) event.preventDefault();
         }}
         onDrop={(event) => {
+          dragDepth.current = 0;
+          setDraggingFiles(false);
           if (!context || editing) return;
           const files = Array.from(event.dataTransfer.files);
           if (!files.length) return;
@@ -1452,6 +1483,14 @@ export function ChatComposer({
           });
         }}
       >
+        {draggingFiles && (
+          <div className="composer-drop-overlay" role="status">
+            <div>
+              <Hand size={16} aria-hidden="true" />
+              <span>松开以添加附件</span>
+            </div>
+          </div>
+        )}
         <div className="input-context">
           <SelectionReferenceChip
             references={value.selections ?? []}

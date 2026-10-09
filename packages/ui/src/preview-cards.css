@@ -247,26 +247,32 @@
   background: var(--preview-hover);
   color: var(--color-foreground);
 }
-.parity-menu {
+:is(.parity-menu, [role="menu"], .settings-select-menu) {
   transform-origin: var(--radix-dropdown-menu-content-transform-origin);
 }
-.parity-menu[data-state="open"] {
+:is(.parity-menu, [role="menu"], .settings-select-menu)[data-state="open"] {
   animation: parity-menu-enter 100ms ease;
 }
-.parity-menu[data-state="closed"] {
+:is(.parity-menu, [role="menu"], .settings-select-menu)[data-state="closed"] {
   animation: parity-menu-exit 100ms ease;
   overflow: hidden;
 }
-.parity-menu[data-side="bottom"] {
-  --menu-slide: -8px;
+:is(.parity-menu, [role="menu"], .settings-select-menu)[data-side="bottom"] {
+  --menu-slide-y: -8px;
 }
-.parity-menu[data-side="top"] {
-  --menu-slide: 8px;
+:is(.parity-menu, [role="menu"], .settings-select-menu)[data-side="top"] {
+  --menu-slide-y: 8px;
+}
+:is(.parity-menu, [role="menu"], .settings-select-menu)[data-side="left"] {
+  --menu-slide-x: 8px;
+}
+:is(.parity-menu, [role="menu"], .settings-select-menu)[data-side="right"] {
+  --menu-slide-x: -8px;
 }
 @keyframes parity-menu-enter {
   from {
     opacity: 0;
-    transform: translateY(var(--menu-slide, 0px)) scale(0.95);
+    transform: translate(var(--menu-slide-x, 0px), var(--menu-slide-y, 0px)) scale(0.95);
   }
   to {
     opacity: 1;
