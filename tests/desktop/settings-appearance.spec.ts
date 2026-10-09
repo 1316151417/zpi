@@ -7,6 +7,51 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { seedHistory } from "../history-fixture.ts";
 
+for (const timeline of [false, true]) {
+  test(`settings preserve ${timeline ? "timeline" : "project"} task pagination and scroll while closing hints`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-sidebar-state-"));
+    for (let index = 0; index < 25; index++) seedHistory(dir, dir, 1);
+    const app = await launchDesktop({ dir, url: "" });
+    try {
+      const page = await app.firstWindow();
+      if (timeline) {
+        await page.getByLabel("筛选和排序", { exact: true }).click();
+        await page.getByRole("menuitemradio", { name: "时间线", exact: true }).click();
+        await expect(page.getByRole("menu")).toHaveCount(0);
+        await expect(page.getByLabel("筛选和排序", { exact: true })).toBeFocused();
+      }
+      const list = page.locator(timeline ? ".timeline-tasks" : ".recent-sessions");
+      await expect(list.getByTestId("session-row")).toHaveCount(20);
+      await list.getByRole("button", { name: "显示更多", exact: true }).click();
+      await expect(list.getByTestId("session-row")).toHaveCount(25);
+      const settingsButton = page.getByRole("button", { name: "设置", exact: true });
+      await settingsButton.focus();
+      const scroll = await page.locator(".sidebar-sections").evaluate((element) => {
+        element.scrollTop = 200;
+        return element.scrollTop;
+      });
+      expect(scroll).toBeGreaterThan(0);
+      const hint = page.getByRole("tooltip").filter({ hasText: /^设置$/ });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await settingsButton.hover();
+        await expect(hint).toBeVisible();
+        await settingsButton.click();
+        const settings = page.getByRole("region", { name: "设置", exact: true });
+        await expect(settings).toBeVisible();
+        await expect(hint).toHaveCount(0);
+        await settings.getByLabel("关闭设置").click();
+        await expect(list.getByTestId("session-row")).toHaveCount(25);
+        await expect
+          .poll(() => page.locator(".sidebar-sections").evaluate((element) => element.scrollTop))
+          .toBe(scroll);
+      }
+    } finally {
+      await app.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
+
 test("settings hide pinned task controls and restore the task sidebar on return", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-pinned-"));
   const session = seedHistory(dir, dir, 1);
