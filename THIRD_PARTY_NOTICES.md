@@ -1,6 +1,6 @@
 # Model protocol selector
 
-The model connection form layout and protocol labels in packages/desktop/src/renderer/ProviderApiFormatSelect.tsx follow ZCode packages/ui/src/settings/model-provider-section/{ProviderApiFormatSelect,ProviderCardSections}.tsx, under the Apache-2.0 license already reproduced below. Existing ZPI provider logos remain in use.
+The model connection form layout, protocol labels, field spacing, input/select sizing, credential visibility control and empty model state in packages/desktop/src/renderer/{SettingsPage,ProviderApiFormatSelect}.tsx and workbench.css follow ZCode packages/ui/src/settings/model-provider-section/{InlineEditableProviderCard,ProviderApiFormatSelect,ProviderCardSections,ApiKeyInput}.tsx and components/ui/{input,select}.tsx, under the Apache-2.0 license already reproduced below. Existing ZPI provider logos and Lucide icons remain in use.
 
 # ChatGPT provider icon
 

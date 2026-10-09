@@ -74,9 +74,9 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     await chatgptTemplate.click();
     await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("Base URL", { exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("API 格式", { exact: true })).toHaveValue(
-      "OpenAI Responses · ChatGPT 套餐授权",
-    );
+    const apiFormat = page.getByRole("combobox", { name: "API 格式", exact: true });
+    await expect(apiFormat).toContainText("OpenAI Responses");
+    await expect(apiFormat).toBeDisabled();
     await expect(page.getByRole("button", { name: "保存提供商", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
     await expect(page.getByRole("button", { name: "取消登录", exact: true })).toBeVisible();

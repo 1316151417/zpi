@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Info,
   Monitor,
   Moon,
   MoreHorizontal,
@@ -588,7 +589,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           </div>
                         </section>
                       ) : (
-                        <>
+                        <div className="provider-details">
                           <header className="provider-detail-heading">
                             <ProviderLogo preset={preset} size={20} />
                             {renaming ? (
@@ -686,189 +687,204 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               )}
                             </div>
                           </header>
-                          {!preset && (
-                            <div className="provider-connection-fields">
+                          <div className="provider-connection-fields">
+                            {!preset && (
+                              <>
+                                <label>
+                                  <span>提供商名称</span>
+                                  <input
+                                    aria-label="提供商名称"
+                                    disabled={saving || discovering}
+                                    value={name}
+                                    onChange={(event) => setName(event.target.value)}
+                                  />
+                                </label>
+                                <label>
+                                  <span>Base URL</span>
+                                  <input
+                                    aria-label="Base URL"
+                                    placeholder={
+                                      api === "anthropic-messages"
+                                        ? "http://127.0.0.1:8000"
+                                        : "http://127.0.0.1:8000/v1"
+                                    }
+                                    disabled={saving || discovering}
+                                    value={url}
+                                    onChange={(event) => setUrl(event.target.value)}
+                                  />
+                                </label>
+                              </>
+                            )}
+                            {preset && !chatgpt && (
                               <label>
-                                提供商名称
-                                <input
-                                  aria-label="提供商名称"
-                                  disabled={saving || discovering}
-                                  value={name}
-                                  onChange={(event) => setName(event.target.value)}
-                                />
+                                <span>Base URL</span>
+                                <input aria-label="Base URL" readOnly value={url} />
                               </label>
+                            )}
+                            <div className="provider-api-field">
+                              <label htmlFor="provider-api-format">API 格式</label>
+                              <ProviderApiFormatSelect
+                                value={api}
+                                preset={preset}
+                                disabled={chatgpt || saving || discovering || !keyReady}
+                                onChange={changeApi}
+                              />
+                            </div>
+                            {chatgpt ? (
+                              <ChatGPTConnection
+                                key={selected ?? "new-chatgpt"}
+                                provider={original}
+                                onBusy={setSaving}
+                                onError={setError}
+                                onNotice={setNotice}
+                                onSettings={(value, providerId) => {
+                                  useStore.setState({ settings: value });
+                                  select(value.providers.find((provider) => provider.id === providerId));
+                                  void refresh();
+                                }}
+                              />
+                            ) : (
                               <label>
-                                Base URL
-                                <input
-                                  aria-label="Base URL"
-                                  placeholder={
-                                    api === "anthropic-messages"
-                                      ? "http://127.0.0.1:8000"
-                                      : "http://127.0.0.1:8000/v1"
-                                  }
-                                  disabled={saving || discovering}
-                                  value={url}
-                                  onChange={(event) => setUrl(event.target.value)}
-                                />
-                              </label>
-                            </div>
-                          )}
-                          {preset && !chatgpt && (
-                            <label>
-                              Base URL
-                              <input aria-label="Base URL" readOnly value={url} />
-                            </label>
-                          )}
-                          <div className="provider-api-field">
-                            <label htmlFor="provider-api-format">API 格式</label>
-                            <ProviderApiFormatSelect
-                              value={api}
-                              preset={preset}
-                              disabled={chatgpt || saving || discovering || !keyReady}
-                              onChange={changeApi}
-                            />
-                          </div>
-                          {chatgpt ? (
-                            <ChatGPTConnection
-                              key={selected ?? "new-chatgpt"}
-                              provider={original}
-                              onBusy={setSaving}
-                              onError={setError}
-                              onNotice={setNotice}
-                              onSettings={(value, providerId) => {
-                                useStore.setState({ settings: value });
-                                select(value.providers.find((provider) => provider.id === providerId));
-                                void refresh();
-                              }}
-                            />
-                          ) : (
-                            <label>
-                              API Key
-                              <span className="credential-input">
-                                <input
-                                  aria-label="API key"
-                                  type={keyVisible ? "text" : "password"}
-                                  autoComplete="off"
-                                  value={key}
-                                  onChange={(event) => setKey(event.target.value)}
-                                  disabled={!keyReady || saving || discovering}
-                                  placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
-                                />
-                                <button
-                                  type="button"
-                                  aria-label={keyVisible ? "隐藏 API key" : "显示 API key"}
-                                  onClick={() => setKeyVisible(!keyVisible)}
-                                >
-                                  {keyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                              </span>
-                            </label>
-                          )}
-                          <div className="model-list-heading">
-                            <h3>模型列表</h3>
-                            <div className="model-list-actions">
-                              <button
-                                className="secondary"
-                                disabled={saving || discovering}
-                                onClick={() =>
-                                  setEditing({ index: models.length, draft: draftModel(newModel(api)) })
-                                }
-                              >
-                                <Plus size={14} />
-                                新增模型
-                              </button>
-                            </div>
-                          </div>
-                          <div className="provider-model-list">
-                            <SortableList
-                              items={models.filter((model) => model.id)}
-                              disabled={saving || discovering || !keyReady || Boolean(editing)}
-                              onReorder={(next) => {
-                                setModels(next);
-                                if (selected)
-                                  void save(next).then((saved) => {
-                                    if (!saved) setModels(models);
-                                  });
-                              }}
-                              renderItem={(
-                                model,
-                                { setNodeRef, style, attributes, listeners, isDragging },
-                              ) => {
-                                const index = models.indexOf(model);
-                                return (
-                                  // biome-ignore lint/a11y/useSemanticElements: The sortable row contains independent edit, delete and switch controls.
-                                  <div
-                                    ref={setNodeRef}
-                                    style={style}
-                                    {...attributes}
-                                    {...listeners}
-                                    data-model-id={model.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    aria-label={`拖拽排序模型 ${model.id}`}
-                                    className={`provider-model-row sortable-model${isDragging ? " dragging" : ""}`}
+                                <span>API Key</span>
+                                <span className="credential-input">
+                                  <input
+                                    aria-label="API key"
+                                    type={keyVisible ? "text" : "password"}
+                                    autoComplete="off"
+                                    value={key}
+                                    onChange={(event) => setKey(event.target.value)}
+                                    disabled={!keyReady || saving || discovering}
+                                    placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
+                                  />
+                                  <button
+                                    type="button"
+                                    aria-label={keyVisible ? "隐藏 API key" : "显示 API key"}
+                                    onClick={() => setKeyVisible(!keyVisible)}
                                   >
-                                    <div className="model-row-summary">
-                                      <span className="model-row-name" title={model.name || model.id}>
-                                        {model.name || model.id}
-                                      </span>
-                                      {model.availability === "unverified" && (
-                                        <span
-                                          className="model-context-badge"
-                                          title="账号目录尚未返回该模型，调用取决于账号权限。"
-                                        >
-                                          预置 · 待验证
-                                        </span>
-                                      )}
-                                      <span
-                                        className="model-context-badge"
-                                        title={`上下文窗口 ${model.contextWindow ?? modelDefaults.contextWindow}`}
-                                      >
-                                        {contextLabel(model.contextWindow ?? modelDefaults.contextWindow)}
-                                      </span>
-                                      {model.input?.includes("image") && (
-                                        <span className="model-vision-badge">视觉</span>
-                                      )}
-                                    </div>
-                                    <button
-                                      disabled={saving || discovering}
-                                      aria-label={`编辑模型 ${model.id}`}
-                                      title="编辑模型配置"
-                                      onClick={() => setEditing({ index, draft: model })}
-                                    >
-                                      <Pencil size={14} />
-                                    </button>
-                                    <button
-                                      disabled={saving || discovering}
-                                      aria-label={`删除模型 ${model.id}`}
-                                      title="删除模型"
-                                      onClick={() => setModels(models.filter((_, item) => item !== index))}
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                    <label className="settings-switch model-enabled-switch">
-                                      <input
-                                        type="checkbox"
-                                        role="switch"
-                                        aria-label={`启用模型 ${model.id}`}
-                                        aria-checked={model.enabled !== false}
-                                        checked={model.enabled !== false}
-                                        disabled={saving || discovering || !keyReady}
-                                        onChange={(event) => {
-                                          const next = models.map((item, at) =>
-                                            at === index ? { ...item, enabled: event.target.checked } : item,
-                                          );
-                                          if (selected) void save(next);
-                                          else setModels(next);
-                                        }}
-                                      />
-                                      <span />
-                                    </label>
-                                  </div>
-                                );
-                              }}
-                            />
+                                    {keyVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                                  </button>
+                                </span>
+                              </label>
+                            )}
                           </div>
+                          <section className="provider-models" aria-label="模型列表">
+                            <div className="model-list-heading">
+                              <h3>模型列表</h3>
+                              <div className="model-list-actions">
+                                <button
+                                  className="secondary"
+                                  disabled={saving || discovering}
+                                  onClick={() =>
+                                    setEditing({ index: models.length, draft: draftModel(newModel(api)) })
+                                  }
+                                >
+                                  <Plus size={14} />
+                                  新增模型
+                                </button>
+                              </div>
+                            </div>
+                            {models.some((model) => model.id) ? (
+                              <div className="provider-model-list">
+                                <SortableList
+                                  items={models.filter((model) => model.id)}
+                                  disabled={saving || discovering || !keyReady || Boolean(editing)}
+                                  onReorder={(next) => {
+                                    setModels(next);
+                                    if (selected)
+                                      void save(next).then((saved) => {
+                                        if (!saved) setModels(models);
+                                      });
+                                  }}
+                                  renderItem={(
+                                    model,
+                                    { setNodeRef, style, attributes, listeners, isDragging },
+                                  ) => {
+                                    const index = models.indexOf(model);
+                                    return (
+                                      // biome-ignore lint/a11y/useSemanticElements: The sortable row contains independent edit, delete and switch controls.
+                                      <div
+                                        ref={setNodeRef}
+                                        style={style}
+                                        {...attributes}
+                                        {...listeners}
+                                        data-model-id={model.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={`拖拽排序模型 ${model.id}`}
+                                        className={`provider-model-row sortable-model${isDragging ? " dragging" : ""}`}
+                                      >
+                                        <div className="model-row-summary">
+                                          <span className="model-row-name" title={model.name || model.id}>
+                                            {model.name || model.id}
+                                          </span>
+                                          {model.availability === "unverified" && (
+                                            <span
+                                              className="model-context-badge"
+                                              title="账号目录尚未返回该模型，调用取决于账号权限。"
+                                            >
+                                              预置 · 待验证
+                                            </span>
+                                          )}
+                                          <span
+                                            className="model-context-badge"
+                                            title={`上下文窗口 ${model.contextWindow ?? modelDefaults.contextWindow}`}
+                                          >
+                                            {contextLabel(model.contextWindow ?? modelDefaults.contextWindow)}
+                                          </span>
+                                          {model.input?.includes("image") && (
+                                            <span className="model-vision-badge">视觉</span>
+                                          )}
+                                        </div>
+                                        <button
+                                          disabled={saving || discovering}
+                                          aria-label={`编辑模型 ${model.id}`}
+                                          title="编辑模型配置"
+                                          onClick={() => setEditing({ index, draft: model })}
+                                        >
+                                          <Pencil size={14} />
+                                        </button>
+                                        <button
+                                          disabled={saving || discovering}
+                                          aria-label={`删除模型 ${model.id}`}
+                                          title="删除模型"
+                                          onClick={() =>
+                                            setModels(models.filter((_, item) => item !== index))
+                                          }
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                        <label className="settings-switch model-enabled-switch">
+                                          <input
+                                            type="checkbox"
+                                            role="switch"
+                                            aria-label={`启用模型 ${model.id}`}
+                                            aria-checked={model.enabled !== false}
+                                            checked={model.enabled !== false}
+                                            disabled={saving || discovering || !keyReady}
+                                            onChange={(event) => {
+                                              const next = models.map((item, at) =>
+                                                at === index
+                                                  ? { ...item, enabled: event.target.checked }
+                                                  : item,
+                                              );
+                                              if (selected) void save(next);
+                                              else setModels(next);
+                                            }}
+                                          />
+                                          <span />
+                                        </label>
+                                      </div>
+                                    );
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="provider-model-empty">
+                                <Info size={16} aria-hidden="true" />
+                                暂无模型，点击“新增模型”添加。
+                              </div>
+                            )}
+                          </section>
                           <div className="provider-footer">
                             {error && (
                               <div className="run-error" role="alert">
@@ -895,7 +911,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               </button>
                             </div>
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
