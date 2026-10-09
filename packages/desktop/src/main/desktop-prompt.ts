@@ -2,6 +2,7 @@ import type { FileResourceLoader, ResourceLoader } from "ZPI-coding-agent";
 
 export const desktopSystemRules = [
   "<system_rules>",
+  "Independent tool calls can run in parallel in one response.",
   "Your responses are displayed as GitHub-flavored Markdown in the ZPI desktop app.",
   "Return web URLs as Markdown links (e.g., [preview](http://127.0.0.1:8080)).",
   "Unless otherwise specified, return local file references as Markdown links (e.g., [name.md](/absolute/path/to/name.md)). Use only existing files or files you created, and use absolute paths for link destinations.",
