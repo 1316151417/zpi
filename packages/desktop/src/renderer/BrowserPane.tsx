@@ -26,6 +26,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
   useEffect(() => {
     const element = root.current;
     if (!element || !visible || !state.url) return;
+    const panel = element.closest(".right-pane-frame");
     let frame = 0,
       last = "",
       disposed = false;
@@ -34,6 +35,11 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       frame = requestAnimationFrame(() => {
         if (disposed) return;
         const rect = element.getBoundingClientRect();
+        const clip = panel?.getBoundingClientRect();
+        const left = Math.max(0, rect.left, clip ? clip.left + 1 : 0);
+        const top = Math.max(0, rect.top, clip ? clip.top + 1 : 0);
+        const right = Math.min(window.innerWidth, rect.right, clip ? clip.right - 1 : window.innerWidth);
+        const bottom = Math.min(window.innerHeight, rect.bottom, clip ? clip.bottom - 1 : window.innerHeight);
         // Native child views cover DOM overlays, but unrelated menus need not hide the page.
         const hidden =
           document.querySelector('[role="dialog"], dialog[open], .settings-screen') !== null ||
@@ -49,13 +55,13 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
             );
           });
         const bounds =
-          hidden || rect.width < 1 || rect.height < 1
+          hidden || right - left < 1 || bottom - top < 1
             ? null
             : {
-                x: Math.max(0, rect.x),
-                y: Math.max(0, rect.y),
-                width: Math.min(rect.width, window.innerWidth - rect.x),
-                height: Math.min(rect.height, window.innerHeight - rect.y),
+                x: left,
+                y: top,
+                width: right - left,
+                height: bottom - top,
               };
         const serialized = JSON.stringify(bounds);
         if (serialized !== last) {
@@ -66,6 +72,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
     };
     const resize = new ResizeObserver(update);
     resize.observe(element);
+    if (panel) resize.observe(panel);
     const overlay = new MutationObserver(update);
     overlay.observe(document.body, {
       childList: true,

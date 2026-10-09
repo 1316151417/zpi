@@ -99,9 +99,6 @@
   background: var(--color-bg);
   overflow: hidden;
 }
-.shell.pane-open > .workspace-surface > main {
-  margin-right: 0;
-}
 .sidebar-drag-space {
   position: absolute;
   top: 0;
@@ -185,24 +182,39 @@
   color: var(--color-foreground);
 }
 .right-pane {
+  width: var(--right-pane-width);
   position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
   min-height: 0;
-  margin: 4px;
+  margin: 4px 4px 4px 0;
   border-radius: var(--workspace-panel-radius);
   transition:
     opacity 200ms ease-out,
     display 200ms allow-discrete;
 }
+.right-pane[data-animating] {
+  transition:
+    width 200ms ease-out,
+    opacity 200ms ease-out,
+    margin-right 200ms ease-out,
+    display 200ms allow-discrete;
+}
+.right-pane[data-resizing] {
+  transition: none;
+}
 .workspace-surface > .right-pane[hidden] {
+  width: 0;
   opacity: 0;
+  margin-right: 0;
 }
 @starting-style {
   .workspace-surface > .right-pane:not([hidden]) {
+    width: 0;
     opacity: 0;
+    margin-right: 0;
   }
 }
 .right-pane-frame {
@@ -215,7 +227,17 @@
   border: 1px solid var(--color-border);
   border-radius: var(--workspace-panel-radius);
   background: var(--color-bg);
+}
+.right-pane-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   container-type: inline-size;
+}
+.right-pane[data-animating]:not([data-resizing]) .right-pane-content {
+  width: calc(var(--right-pane-width) - 2px);
 }
 .right-resizer {
   position: absolute;
@@ -567,9 +589,6 @@
     gap: 0;
   }
 
-  .shell.pane-open > .workspace-surface > main {
-    margin-right: 4px;
-  }
   .right-pane {
     position: fixed;
     right: 0;
@@ -578,6 +597,9 @@
     z-index: 20;
     box-shadow: -8px 0 28px #0002;
     max-width: calc(100vw - 76px);
+  }
+  .right-pane-content {
+    max-width: calc(100vw - 78px);
   }
 }
 @container (max-width: 180px) {

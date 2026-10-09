@@ -169,6 +169,36 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(0);
     await page.getByRole("region", { name: "设置", exact: true }).getByLabel("关闭设置").click();
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
+    // Native views do not obey CSS overflow: reopening must clip them to the moving frame.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
+    await expect(page.locator(".right-pane")).toBeHidden();
+    const movingFrame = await page.evaluate(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="right-sidebar-toggle"]')?.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const panel = document.querySelector(".right-pane");
+      for (const animation of panel?.getAnimations() ?? []) {
+        animation.pause();
+        animation.currentTime = 100;
+      }
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      const clip = document.querySelector(".right-pane-frame")?.getBoundingClientRect();
+      if (!clip) throw Error("Missing browser clip frame");
+      return { left: clip.left, right: clip.right, width: clip.width };
+    });
+    const movingBrowser = (await inspect())?.bounds?.[0];
+    await page.evaluate(() => {
+      for (const animation of document.querySelector(".right-pane")?.getAnimations() ?? []) animation.play();
+    });
+    expect(movingBrowser).toBeDefined();
+    expect(movingBrowser?.x).toBeGreaterThanOrEqual(Math.floor(movingFrame.left));
+    expect((movingBrowser?.x ?? 0) + (movingBrowser?.width ?? 0)).toBeLessThanOrEqual(
+      Math.ceil(movingFrame.right),
+    );
+    expect(movingBrowser?.width).toBeLessThanOrEqual(movingFrame.width);
+    await expect(page.locator(".right-pane")).not.toHaveAttribute("data-animating", "true");
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 640));
     await expect
       .poll(async () => {

@@ -866,7 +866,6 @@ export function App() {
           )}
         </main>
         <RightPane
-          width={paneWidth}
           available={viewport - width}
           sessionId={selected}
           findRequest={find.open && find.scope === "changes" ? find.request : undefined}

@@ -25,6 +25,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
       "rgba(0, 0, 0, 0.05) 0px 20px 25px -5px, rgba(0, 0, 0, 0.05) 0px 8px 10px -6px",
     );
     await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await expect(page.locator(".right-pane")).not.toHaveAttribute("data-animating", "true");
     const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     const main = page.locator(".workspace-surface > main");
     const frame = page.locator(".right-pane-frame");
@@ -48,7 +49,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     expect(newTaskBounds.x).toBe(8);
     expect(newTaskBounds.y).toBe(mac ? 60 : 56);
     await expect(page.locator(".sidebar")).toHaveCSS("transition-duration", "0.2s, 0.2s, 0.2s");
-    await expect(page.locator(".right-pane")).toHaveCSS("transition-duration", "0.2s, 0.2s");
+    await expect(page.locator(".right-pane")).toHaveCSS("transition-duration", /^0\.2s(?:, 0\.2s)*$/);
     await expect(page.locator(".composer")).toHaveCSS("transition-duration", "0.15s, 0.15s");
     const panelRadius = await app.evaluate(() =>
       process.platform === "win32"

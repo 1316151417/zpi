@@ -1,6 +1,6 @@
 # ZCode visual interactions
 
-Workspace sidebar spacing, input drag feedback, menu/dialog surfaces and motion, and live tool entrances in packages/desktop/src/renderer and packages/ui/src follow ZCode packages/ui/src/{WorkspaceSidebar,ToolCallBlocks}.tsx, prompt-editor/ChatPromptEditor.tsx, components/ui/{button,dialog,dropdown-menu,popover}.tsx and styles.css. Adapted to ZPI’s four-tool interface and existing React/Radix components under the Apache-2.0 license reproduced below. No new artwork is included.
+Workspace sidebar spacing, input drag feedback, menu/dialog surfaces and motion, side-pane toggle animation and content width locking, and live tool entrances in packages/desktop/src/renderer and packages/ui/src follow ZCode packages/ui/src/{WorkspaceSidebar,ToolCallBlocks}.tsx, app-shell/{useAnimatedResizablePanel.ts,AnimatedSidePanePanel.tsx}, prompt-editor/ChatPromptEditor.tsx, components/ui/{button,dialog,dropdown-menu,popover}.tsx and styles.css. Adapted to ZPI’s four-tool interface and existing React/Radix components under the Apache-2.0 license reproduced below. No new artwork is included.
 
 # Model protocol selector
 
