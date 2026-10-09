@@ -165,20 +165,27 @@ function PreviewOpenButton({
   services: PreviewServices;
 }) {
   const [error, setError] = useState("");
+  const path = card.type === "website" ? card.filePath : card.path;
   const perform = (promise: Promise<void>) => {
     setError("");
     void promise.catch((error) => setError(error instanceof Error ? error.message : String(error)));
   };
   return (
     <div className="preview-open-control">
-      {card.type !== "website" ? (
+      {path ? (
         <OpenFileButton
-          path={card.path}
-          onOpen={(path) => perform(services.openFile(sessionId, path))}
+          path={path}
+          onOpen={(path) =>
+            perform(
+              card.type === "website"
+                ? services.openWebsite(sessionId, card.url)
+                : services.openFile(sessionId, path),
+            )
+          }
           onAction={(path, action) => services.fileAction(sessionId, path, action)}
           onError={setError}
         />
-      ) : (
+      ) : card.type === "website" ? (
         <Menu.Root>
           <div className="preview-open-split">
             <button
@@ -211,7 +218,7 @@ function PreviewOpenButton({
             </Menu.Content>
           </Menu.Portal>
         </Menu.Root>
-      )}
+      ) : null}
       {error && (
         <span className="preview-open-error" role="alert">
           {error}

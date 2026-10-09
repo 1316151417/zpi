@@ -203,9 +203,34 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
       .toBe(true);
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await html.getByLabel("选择打开方式").click();
-    await page.getByRole("menuitem", { name: "在浏览器中打开" }).click();
+    await expect(menu.getByRole("menuitem")).toHaveText(fileMenuItems);
+    await expect(menu).toHaveAttribute("class", changedMenuClass ?? "");
+    await expect(menu.getByRole("separator")).toHaveCount(1);
+    await page.screenshot({ path: "test-results/html-preview-open-menu.png" });
+    await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect.poll(calls).toContain(`reveal:${join(project, "页面 demo.html")}`);
+    await html.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "复制绝对路径", exact: true }).click();
+    await expect
+      .poll(() => app?.evaluate(({ clipboard }) => clipboard.readText()))
+      .toBe(join(project, "页面 demo.html"));
+    await html.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
+    await expect.poll(() => app?.evaluate(({ clipboard }) => clipboard.readText())).toBe("页面 demo.html");
+    await html.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect.poll(calls).toContain(join(project, "页面 demo.html"));
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async () => "没有可用的默认应用程序";
+    });
+    await html.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "使用默认程序打开", exact: true }).click();
+    await expect(html.getByRole("alert")).toContainText("没有可用的默认应用程序");
+    await html.getByLabel("选择打开方式").click();
+    await menu.getByRole("menuitem", { name: "复制相对路径", exact: true }).click();
+    await expect(html.getByRole("alert")).toHaveCount(0);
     await editor.fill("讨论");
     await editor.press("Enter");
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
