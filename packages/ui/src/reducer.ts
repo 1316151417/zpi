@@ -76,6 +76,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.notice = event.text;
   } else if (event.type === "model_retry") {
     run.apiRetry = run.status === "running" ? event.status : null;
+    if (run.apiRetry) run.error = undefined;
   } else if (event.type === "message_reset") {
     const removed = new Set(
       run.orderedBlocks.filter((b) => b.messageId === event.messageId).map((b) => b.id),
@@ -229,7 +230,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         }
       }
       run.finalAnswerBlockIds = hasTools ? [] : finalIds;
-      if (m.errorMessage) run.error = m.errorMessage;
+      run.error = m.errorMessage;
     }
     if (m.role === "toolResult") {
       const b = tool(m.toolCallId);

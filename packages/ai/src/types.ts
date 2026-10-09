@@ -154,6 +154,7 @@ export interface Context {
 declare const transcriptBrand: unique symbol;
 export type TranscriptContext = { messages: Message[]; readonly [transcriptBrand]: true };
 export interface StreamOptions {
+  cacheRetention?: "none" | "short" | "long";
   signal?: AbortSignal;
   sessionId?: string;
   apiKey?: string;

@@ -12,18 +12,12 @@ export {
 export { streamSimple } from "./stream.ts";
 export type * from "./types.ts";
 export { openAICompletionsCompatKeys } from "./types.ts";
-export type { ContextUsageAnchor } from "./utils/estimate.ts";
-export {
-  contextChars,
-  estimateContextTokens,
-  messageChars,
-  restoreUsageAnchor,
-  usageAnchor,
-} from "./utils/estimate.ts";
 export { AssistantMessageEventStream, createAssistantMessageEventStream } from "./utils/event-stream.ts";
 export { modelFailure } from "./utils/model-retry.ts";
+export { isContextOverflow as isContextOverflowMessage, isRecoverableLength } from "./utils/overflow.ts";
 export {
   canControlThinking,
+  clampThinkingLevel,
   defaultThinkingLevel,
   editableReasoningConfig,
   reasoningParameters,
@@ -31,8 +25,10 @@ export {
   validateReasoningConfig,
   validateThinkingMap,
 } from "./utils/reasoning.ts";
+export * from "./utils/retry.ts";
 export {
   assertSupportedOptions,
+  contentText,
   emptyAssistant,
   getCurrentSystemPrompt,
   getCurrentTools,

@@ -51,23 +51,26 @@ export function thinkingChoices(model: ReasoningModel): ("off" | ThinkingLevel)[
   return thinkingLevels.filter((level) => choices.includes(level));
 }
 export function defaultThinkingLevel(model: ReasoningModel): "off" | ThinkingLevel {
-  const choices = thinkingChoices(model);
-  if (model.reasoningConfig) {
-    return (
-      (model.defaultThinkingLevel && choices.includes(model.defaultThinkingLevel)
-        ? model.defaultThinkingLevel
-        : choices.at(-1)) ?? "off"
-    );
+  return clampThinkingLevel(model, model.defaultThinkingLevel ?? "medium");
+}
+/** Pi chooses the next supported strength, then searches downwards. */
+export function clampThinkingLevel(
+  model: ReasoningModel,
+  level: "off" | ThinkingLevel,
+): "off" | ThinkingLevel {
+  const choices =
+    model.reasoningConfig && model.reasoning
+      ? model.reasoningConfig.levels
+      : thinkingLevels.filter((choice) => canControlThinking(model, choice));
+  if (choices.includes(level)) return level;
+  const requestedIndex = (thinkingLevels as readonly string[]).indexOf(level);
+  if (requestedIndex !== -1) {
+    for (let i = requestedIndex; i < thinkingLevels.length; i++)
+      if (choices.includes(thinkingLevels[i])) return thinkingLevels[i];
+    for (let i = requestedIndex - 1; i >= 0; i--)
+      if (choices.includes(thinkingLevels[i])) return thinkingLevels[i];
   }
-  return (
-    (model.defaultThinkingLevel && choices.includes(model.defaultThinkingLevel)
-      ? model.defaultThinkingLevel
-      : undefined) ??
-    choices.find((level) => level === "medium") ??
-    choices.find((level) => level === "high") ??
-    choices[0] ??
-    "off"
-  );
+  return choices[0] ?? "off";
 }
 export function validateThinkingMap(map: unknown): void {
   if (!isJsonObject(map)) throw new Error("Invalid thinkingLevelMap");

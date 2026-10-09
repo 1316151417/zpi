@@ -86,6 +86,7 @@ async function run(
           afterToolCall: _____,
           toolExecution: ______,
           streamingToolExecution: _______,
+          prepareNextTurnWithContext: ________,
           ...options
         } = config;
         const apiKey = (await getApiKey?.(config.model.provider)) ?? config.apiKey;
@@ -171,6 +172,15 @@ async function run(
       await emit({ type: "turn_end", message: assistant, toolResults: results });
       if (!calls.length || signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason))
         break;
+      const next = await config.prepareNextTurnWithContext?.(
+        { message: assistant, toolResults: results, context, newMessages: fresh },
+        signal,
+      );
+      if (next?.context) {
+        context.messages = next.context.messages;
+        context.tools = next.context.tools;
+      }
+      if (signal?.aborted) break;
       await emit({ type: "turn_start" });
     }
   } finally {

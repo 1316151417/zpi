@@ -1,6 +1,6 @@
 import type { AssistantMessage, ModelRetryStatus, TranscriptContext } from "ZPI-ai";
 import { createAssistantMessageEventStream, emptyAssistant } from "ZPI-ai";
-import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
+import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } from "ZPI-coding-agent";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -27,7 +27,7 @@ it("pairs an unexecuted write with a synthetic failure during streaming recovery
         };
         output.content = [{ type: "text", text: "discarded tail" }, toolCall];
         output.stopReason = "error";
-        output.errorMessage = "connection reset";
+        output.errorMessage = "network error: connection reset";
         output.errorDetails = { retryable: true };
         events.push({ type: "start", partial: output });
         events.push({ type: "text_delta", contentIndex: 0, delta: "discarded tail", partial: output });
@@ -51,6 +51,7 @@ it("pairs an unexecuted write with a synthetic failure during streaming recovery
     agentDir: join(cwd, "agent"),
     userSkillPaths: [],
     modelRuntime: runtime,
+    settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
   });
   session.subscribe((event) => {
     if (event.type === "tool_execution_start" && event.toolName === "write") writes++;
@@ -63,7 +64,7 @@ it("pairs an unexecuted write with a synthetic failure during streaming recovery
   session.dispose();
 });
 
-it("recovers text and reasoning from the prior tool result without replaying writes or persisting failed tails", async () => {
+it("recovers text and reasoning from the prior tool result without replaying writes, retaining failed tails only in history", async () => {
   const cwd = await directory();
   const contexts: TranscriptContext[] = [];
   const runtime = await ModelRuntime.create();
@@ -90,7 +91,7 @@ it("recovers text and reasoning from the prior tool result without replaying wri
           { type: "text", text: "discarded tail" },
         ];
         output.stopReason = "error";
-        output.errorMessage = "connection reset";
+        output.errorMessage = "network error: connection reset";
         output.errorDetails = { retryable: true };
       } else {
         options?.onRetry?.(null);
@@ -109,6 +110,7 @@ it("recovers text and reasoning from the prior tool result without replaying wri
     agentDir: join(cwd, "agent"),
     userSkillPaths: [],
     modelRuntime: runtime,
+    settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
     sessionManager: manager,
   });
   const retry: (ModelRetryStatus | null)[] = [];
@@ -123,8 +125,8 @@ it("recovers text and reasoning from the prior tool result without replaying wri
   });
   await session.prompt("write then respond");
   expect(writes).toBe(1);
-  expect(resets).toBe(3);
-  expect(starts).toBe(2);
+  expect(resets).toBe(0);
+  expect(starts).toBe(5);
   expect(retry.filter(Boolean).map((s) => s?.attempt)).toEqual([1, 2, 3]);
   expect(retry.at(-1)).toBeNull();
   expect(await readFile(join(cwd, "once.txt"), "utf8")).toBe("once");
@@ -132,7 +134,17 @@ it("recovers text and reasoning from the prior tool result without replaying wri
     expect(context.messages.filter((m) => m.role === "toolResult")).toHaveLength(1);
     expect(JSON.stringify(context)).not.toContain("discarded");
   }
-  expect(JSON.stringify(manager.getEntries())).not.toContain("discarded");
+  expect(
+    manager
+      .getEntries()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          entry.message.role === "assistant" &&
+          entry.message.stopReason === "error",
+      ),
+  ).toHaveLength(3);
+  expect(JSON.stringify(manager.getEntries())).toContain("discarded");
   expect(session.messages.at(-1)).toMatchObject({
     stopReason: "stop",
     content: [{ text: "recovered answer" }],
@@ -140,7 +152,7 @@ it("recovers text and reasoning from the prior tool result without replaying wri
   session.dispose();
 });
 
-it("bounds partial stream recovery at ten and preserves the final failure", async () => {
+it("bounds partial stream recovery at Pi three retries and preserves the final failure", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   let calls = 0;
@@ -153,7 +165,7 @@ it("bounds partial stream recovery at ten and preserves the final failure", asyn
         ...emptyAssistant(fakeModel("")),
         content: [{ type: "text", text: "last partial" }],
         stopReason: "error",
-        errorMessage: "connection reset",
+        errorMessage: "network error: connection reset",
         errorDetails: { retryable: true },
       };
       events.push({ type: "start", partial: output });
@@ -167,13 +179,14 @@ it("bounds partial stream recovery at ten and preserves the final failure", asyn
     agentDir: join(cwd, "agent"),
     userSkillPaths: [],
     modelRuntime: runtime,
+    settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
   });
   await session.prompt("recover");
-  expect(calls).toBe(11);
+  expect(calls).toBe(4);
   expect(session.isIdle).toBe(true);
   expect(session.messages.at(-1)).toMatchObject({
     stopReason: "error",
-    errorMessage: "connection reset",
+    errorMessage: "network error: connection reset",
     content: [{ text: "last partial" }],
   });
   expect(session.messages.filter((m) => m.role === "assistant")).toHaveLength(1);

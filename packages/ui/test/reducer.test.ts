@@ -114,3 +114,38 @@ it("authoritative final replaces streamed content, tool updates replace snapshot
   });
   expect(same).toBe(view);
 });
+
+it("clears transient errors on retry and successful continuation while retaining partial history", () => {
+  let view = emptySession("s");
+  let seq = 0;
+  const apply = (event: import("../src/types.ts").DesktopEvent) => {
+    view = reduceSession(view, { sessionId: "s", runId: "r", seq: ++seq, event });
+  };
+  apply({ type: "started", text: "retry", startedAt: 1, modelLabel: "fake" });
+  const failed = {
+    ...emptyAssistant(fakeModel("")),
+    content: [{ type: "text" as const, text: "partial" }],
+    stopReason: "error" as const,
+    errorMessage: "503 busy",
+  };
+  apply({ type: "message_end", messageId: "r:1", message: failed });
+  expect(view.runs[0].error).toBe("503 busy");
+  apply({ type: "model_retry", status: { attempt: 1, maxRetries: 3, retryDelayMs: 2000, errorStatus: 503 } });
+  expect(view.runs[0].error).toBeUndefined();
+  apply({
+    type: "message_end",
+    messageId: "r:2",
+    message: {
+      ...failed,
+      stopReason: "stop",
+      errorMessage: undefined,
+      content: [{ type: "text", text: "recovered" }],
+    },
+  });
+  expect(view.runs[0].orderedBlocks.map((block) => block.type !== "tool" && block.text)).toEqual([
+    "partial",
+    "recovered",
+  ]);
+  expect(view.runs[0].finalAnswerBlockIds).toEqual(["r:2:0"]);
+  expect(view.runs[0].error).toBeUndefined();
+});

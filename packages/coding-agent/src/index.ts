@@ -22,6 +22,8 @@ export type { SessionContext, SessionEntry, SessionHeader } from "./core/session
 export { SessionManager } from "./core/session-manager.ts";
 export type { ContextUsage } from "./core/session-state.ts";
 export { contextUsage, supportedThinkingLevels } from "./core/session-state.ts";
+export type { ProviderRetrySettings, RetrySettings, Settings } from "./core/settings-manager.ts";
+export { SettingsManager } from "./core/settings-manager.ts";
 export { projectStreamedToolJournal } from "./core/streaming-tool-journal.ts";
 export * from "./core/system-prompt.ts";
 export * from "./core/tools/file-change.ts";

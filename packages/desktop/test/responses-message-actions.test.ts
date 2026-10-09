@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -21,6 +21,8 @@ const sse = (events: unknown[]) =>
 async function fixture(holdText?: string) {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-responses-message-actions-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(join(dir, "agent"));
+  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 10 } }));
   const codec = {
     isEncryptionAvailable: () => true,
     encryptString: (text: string) => Buffer.from(text),

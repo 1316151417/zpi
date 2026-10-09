@@ -60,6 +60,15 @@ export interface AgentContext {
   messages: AgentMessage[];
   tools?: AgentTool[];
 }
+export interface PrepareNextTurnContext {
+  message: AssistantMessage;
+  toolResults: ToolResultMessage[];
+  context: AgentContext;
+  newMessages: AgentMessage[];
+}
+export interface AgentLoopTurnUpdate {
+  context?: AgentContext;
+}
 export interface BeforeToolCallContext {
   assistantMessage: AssistantMessage;
   toolCall: ToolCall;
@@ -94,6 +103,10 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
   ) => Promise<AfterToolCallResult | undefined>;
   toolExecution?: ToolExecutionMode;
   streamingToolExecution?: "off" | "readOnly";
+  prepareNextTurnWithContext?: (
+    turn: PrepareNextTurnContext,
+    signal?: AbortSignal,
+  ) => Promise<AgentLoopTurnUpdate | undefined>;
 }
 export type AgentEvent =
   | { type: "agent_start" }
@@ -149,6 +162,7 @@ export interface AgentOptions
     | "onResponse"
     | "toolExecution"
     | "streamingToolExecution"
+    | "prepareNextTurnWithContext"
   > {
   initialState?: AgentInitialState;
   streamFn: StreamFn;

@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "ZPI-agent";
-import type { JsonValue, Message, SystemMessage } from "ZPI-ai";
+import type { JsonValue, Message, SystemMessage, Usage } from "ZPI-ai";
 import { assertSupportedOptions, getCurrentTools } from "ZPI-ai";
 import { randomUUID } from "node:crypto";
 import {
@@ -42,7 +42,15 @@ export type SessionEntry = EntryBase &
     | { type: "thinking_level_change"; thinkingLevel: ThinkingLevel }
     | { type: "session_info"; name: string }
     | { type: "custom"; customType: string; data?: JsonValue }
-    | { type: "compaction"; summary: string; firstKeptEntryId: string }
+    | {
+        type: "compaction";
+        summary: string;
+        firstKeptEntryId: string;
+        tokensBefore?: number;
+        details?: { readFiles: string[]; modifiedFiles: string[] };
+        usage?: Usage;
+        systemMessage?: SystemMessage;
+      }
     // Read-only legacy entry. It is never projected into the active context.
     | { type: "goal_change"; goal: JsonValue }
   );
@@ -146,10 +154,10 @@ export class SessionManager {
     return this.header.cwd;
   }
   getEntries(): SessionEntry[] {
-    return structuredClone(this.entries);
+    return this.entries.slice();
   }
   getLastEntry(): SessionEntry | undefined {
-    return structuredClone(this.entries.at(-1));
+    return this.entries.at(-1);
   }
   /** Atomically replace a transcript after a stable fork or conversation rewind. */
   replaceEntries(source: SessionEntry[]): void {
@@ -185,59 +193,7 @@ export class SessionManager {
     this.entries = entries;
   }
   buildSessionContext(): SessionContext {
-    const context: SessionContext = {
-      messages: [],
-      thinkingLevel: "off",
-      model: null,
-      lastThinkingLevel: "medium",
-    };
-    for (const e of this.entries) {
-      if (e.type === "message") {
-        const message = structuredClone(e.message);
-        // Ignore obsolete instructions in memory; never migrate the historical JSONL.
-        if (message.role === "system" && message.sections) delete message.sections["ZPI.goal"];
-        context.messages.push(message);
-      } else if (e.type === "model_change") context.model = { provider: e.provider, modelId: e.modelId };
-      else if (e.type === "thinking_level_change") {
-        context.thinkingLevel = e.thinkingLevel;
-        if (e.thinkingLevel !== "off") context.lastThinkingLevel = e.thinkingLevel;
-      } else if (e.type === "compaction") {
-        const keepIndex = this.entries.findIndex((entry) => entry.id === e.firstKeptEntryId);
-        if (keepIndex < 0) throw new Error("Invalid compaction boundary");
-        const index = this.entries.indexOf(e);
-        const current = context.messages;
-        const system: SystemMessage = {
-          role: "system",
-          content: "",
-          sections: {},
-          toolsAdded: getCurrentTools(current),
-          timestamp: Date.parse(e.timestamp),
-        };
-        for (const message of current) {
-          if (message.role !== "system") continue;
-          const content =
-            typeof message.content === "string"
-              ? message.content
-              : message.content.map((c) => c.text).join("\n");
-          if (content) system.content += `${content}\n\n`;
-          Object.assign(system.sections ?? {}, message.sections);
-        }
-        context.messages = [
-          system,
-          {
-            role: "user",
-            content: `Summary of earlier conversation:\n${e.summary}`,
-            timestamp: Date.parse(e.timestamp),
-          },
-          ...this.entries
-            .slice(keepIndex, index)
-            .flatMap((row) =>
-              row.type === "message" && row.message.role !== "system" ? [structuredClone(row.message)] : [],
-            ),
-        ];
-      }
-    }
-    return context;
+    return buildSessionContext(this.entries);
   }
   appendMessage(message: Message): string {
     validateMessage(message);
@@ -255,16 +211,26 @@ export class SessionManager {
   appendCustomEntry(customType: string, data?: JsonValue): string {
     return this.append({ type: "custom", customType, data });
   }
-  appendCompaction(summary: string, firstKeptEntryId: string): string {
-    if (
-      !summary.trim() ||
-      !this.entries.some(
-        (e) =>
-          e.id === firstKeptEntryId && e.type === "message" && ["user", "assistant"].includes(e.message.role),
-      )
-    )
+  appendCompaction(
+    summary: string,
+    firstKeptEntryId: string,
+    tokensBefore?: number,
+    details?: { readFiles: string[]; modifiedFiles: string[] },
+    usage?: Usage,
+  ): string {
+    if (!summary.trim() || !this.entries.some((e) => e.id === firstKeptEntryId))
       throw new Error("Invalid compaction boundary or summary");
-    return this.append({ type: "compaction", summary, firstKeptEntryId });
+    const current = this.buildSessionContext().messages;
+    const systemMessage = collapseSystemMessages(current, Date.now());
+    return this.append({
+      type: "compaction",
+      summary,
+      firstKeptEntryId,
+      tokensBefore,
+      details,
+      usage,
+      systemMessage,
+    });
   }
   private append(
     fields:
@@ -294,9 +260,82 @@ export class SessionManager {
       this.storageError = new Error(`storage: ${e instanceof Error ? e.message : String(e)}`);
       throw this.storageError;
     }
-    const saved = JSON.parse(line) as SessionEntry;
+    const saved = entry;
     this.entries.push(saved);
     for (const listener of this.appendListeners) listener(structuredClone(saved));
     return entry.id;
   }
+}
+
+export type CompactionEntry = Extract<SessionEntry, { type: "compaction" }>;
+/** Entries are append-only. Like Pi, context projection shares immutable message records. */
+export function sessionEntryToContextMessages(entry: SessionEntry): Message[] {
+  if (entry.type !== "message") return [];
+  const message = entry.message;
+  if (message.role === "system" && message.sections && "ZPI.goal" in message.sections) {
+    const { "ZPI.goal": _, ...sections } = message.sections;
+    return [{ ...message, sections }];
+  }
+  return [message];
+}
+function collapseSystemMessages(messages: Message[], timestamp: number): SystemMessage {
+  const system: SystemMessage = {
+    role: "system",
+    content: "",
+    sections: {},
+    toolsAdded: getCurrentTools(messages),
+    timestamp,
+  };
+  for (const message of messages) {
+    if (message.role !== "system") continue;
+    const content =
+      typeof message.content === "string" ? message.content : message.content.map((c) => c.text).join("\n");
+    if (content) system.content += `${content}\n\n`;
+    Object.assign(system.sections ?? {}, message.sections);
+  }
+  return system;
+}
+export function buildSessionContext(entries: SessionEntry[]): SessionContext {
+  const context: SessionContext = {
+    messages: [],
+    thinkingLevel: "off",
+    model: null,
+    lastThinkingLevel: "medium",
+  };
+  let compactionIndex = -1;
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry.type === "compaction") compactionIndex = i;
+    if (entry.type === "model_change") context.model = { provider: entry.provider, modelId: entry.modelId };
+    else if (entry.type === "message" && entry.message.role === "assistant")
+      context.model = { provider: entry.message.provider, modelId: entry.message.model };
+    else if (entry.type === "thinking_level_change") {
+      context.thinkingLevel = entry.thinkingLevel;
+      if (entry.thinkingLevel !== "off") context.lastThinkingLevel = entry.thinkingLevel;
+    }
+  }
+  const compaction = entries[compactionIndex];
+  if (compaction?.type !== "compaction") {
+    context.messages = entries.flatMap(sessionEntryToContextMessages);
+    return context;
+  }
+  const keepIndex = entries.findIndex((e) => e.id === compaction.firstKeptEntryId);
+  if (keepIndex < 0) throw new Error("Invalid compaction boundary");
+  const timestamp = Date.parse(compaction.timestamp);
+  const system =
+    compaction.systemMessage ??
+    collapseSystemMessages(
+      entries.slice(0, compactionIndex).flatMap(sessionEntryToContextMessages),
+      timestamp,
+    );
+  context.messages = [
+    system,
+    { role: "user", content: `Summary of earlier conversation:\n${compaction.summary}`, timestamp },
+    ...entries
+      .slice(keepIndex, compactionIndex)
+      .flatMap(sessionEntryToContextMessages)
+      .filter((m) => m.role !== "system"),
+    ...entries.slice(compactionIndex + 1).flatMap(sessionEntryToContextMessages),
+  ];
+  return context;
 }

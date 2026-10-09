@@ -57,15 +57,16 @@ const usage = Type.Object({
   totalTokens: Type.Number(),
   cost: Type.Intersect([rates, Type.Object({ total: Type.Number() })]),
 });
+const systemMessage = Type.Object({
+  role: Type.Literal("system"),
+  content: Type.Union([Type.String(), Type.Array(text)]),
+  timestamp: Type.Number(),
+  sections: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]))),
+  toolsAdded: Type.Optional(Type.Array(tool)),
+  toolsRemoved: Type.Optional(Type.Array(Type.Object({ name: Type.String() }))),
+});
 const message = Type.Union([
-  Type.Object({
-    role: Type.Literal("system"),
-    content: Type.Union([Type.String(), Type.Array(text)]),
-    timestamp: Type.Number(),
-    sections: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]))),
-    toolsAdded: Type.Optional(Type.Array(tool)),
-    toolsRemoved: Type.Optional(Type.Array(Type.Object({ name: Type.String() }))),
-  }),
+  systemMessage,
   Type.Object({
     role: Type.Literal("user"),
     content: Type.Union([Type.String(), Type.Array(Type.Union([text, image]))]),
@@ -121,6 +122,12 @@ const entry = Type.Intersect([
       type: Type.Literal("compaction"),
       summary: Type.String(),
       firstKeptEntryId: Type.String(),
+      tokensBefore: Type.Optional(Type.Number()),
+      details: Type.Optional(
+        Type.Object({ readFiles: Type.Array(Type.String()), modifiedFiles: Type.Array(Type.String()) }),
+      ),
+      usage: Type.Optional(usage),
+      systemMessage: Type.Optional(systemMessage),
     }),
     // Legacy read compatibility only; replay ignores this entry.
     Type.Object({

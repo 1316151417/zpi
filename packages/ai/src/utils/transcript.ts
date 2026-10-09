@@ -15,6 +15,17 @@ export function normalizeContext(context: Context): TranscriptContext {
       : [];
   return { messages: [...head, ...context.messages] } as TranscriptContext;
 }
+export function contentText(
+  content: string | readonly { type: string; text?: string }[],
+  separator = "\n",
+): string {
+  return typeof content === "string"
+    ? content
+    : content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text ?? "")
+        .join(separator);
+}
 export function getCurrentSystemPrompt(messages: readonly { role: string }[]): string {
   const parts: string[] = [];
   const sections = new Map<string, string>();

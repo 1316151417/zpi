@@ -561,9 +561,9 @@ export const RunGroup = memo(function RunGroup({
           <div
             className="chat-loading-slot"
             role="status"
-            aria-label={run.apiRetry?.attempt && run.apiRetry.attempt >= 3 ? undefined : "加载中"}
+            aria-label={run.apiRetry?.attempt ? undefined : "加载中"}
           >
-            {run.apiRetry && run.apiRetry.attempt >= 3 ? (
+            {run.apiRetry && run.apiRetry.attempt > 0 ? (
               <span
                 className="api-retry-status"
                 title={`重新连接中... ${run.apiRetry.attempt}/${run.apiRetry.maxRetries}${run.apiRetry.errorStatus == null ? "" : ` · HTTP ${run.apiRetry.errorStatus}`}`}
@@ -580,7 +580,7 @@ export const RunGroup = memo(function RunGroup({
             )}
           </div>
         )}
-        {run.error && (
+        {run.error && run.status !== "running" && (
           <div role="alert" className="run-error">
             {run.error}
           </div>

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
@@ -8,11 +8,13 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("automatic overflow compaction uses the same divider and stays visible after the work is collapsed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-auto-compaction-divider-"));
+  await mkdir(join(dir, "agent"));
+  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   const release = deferred();
   let recovered = false;
   const server = await fakeServer(async (body, response) => {
     const messages = body.messages as unknown as { role: string; content: string }[];
-    if (JSON.stringify(messages).includes("Return only the summary")) {
+    if (JSON.stringify(messages).includes("ONLY output the structured summary")) {
       await release.promise;
       send(response, chunk({ content: "Earlier work summary" }));
       recovered = true;
@@ -59,12 +61,22 @@ test("automatic overflow compaction uses the same divider and stays visible afte
 for (const outcome of ["completed", "error", "aborted"] as const) {
   test(`manual compaction is a timeline divider, persists ${outcome} and preserves chat history`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "ZPI-compaction-divider-"));
+    await mkdir(join(dir, "agent"));
+    await writeFile(
+      join(dir, "agent/settings.json"),
+      JSON.stringify({ compaction: { keepRecentTokens: 0 } }),
+    );
     const release = deferred();
     const server = await fakeServer(async (body, response) => {
-      const compacting = JSON.stringify(body.messages).includes("Return only the summary");
+      const compacting = JSON.stringify(body.messages).includes("ONLY output the structured summary");
       if (compacting) {
         await release.promise;
-        if (outcome !== "error") send(response, chunk({ content: "Earlier work summary" }));
+        if (outcome === "error") {
+          response.writeHead(400, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: { message: "Synthetic summary failure" } }));
+          return;
+        }
+        send(response, chunk({ content: "Earlier work summary" }));
       } else {
         send(response, chunk({ content: "完整回复" }));
         send(response, {
@@ -133,11 +145,11 @@ for (const outcome of ["completed", "error", "aborted"] as const) {
         outcome === "completed" ? ["first", "second", "queued follow-up"] : ["first", "second"],
       );
       const summaryRequests = server.requests.filter((body) =>
-        JSON.stringify(body.messages).includes("Return only the summary"),
+        JSON.stringify(body.messages).includes("ONLY output the structured summary"),
       );
       expect(summaryRequests.length).toBeGreaterThan(0);
       if (outcome === "completed") {
-        expect(summaryRequests).toHaveLength(1);
+        expect(summaryRequests).toHaveLength(2);
         const request = JSON.stringify(server.requests.at(-1)?.messages);
         expect(request).toContain("Earlier work summary");
         expect(request).not.toContain('"content":"first"');

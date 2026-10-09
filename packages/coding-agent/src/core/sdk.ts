@@ -1,6 +1,6 @@
 import type { AgentTool, ThinkingLevel } from "ZPI-agent";
 import type { Model } from "ZPI-ai";
-import { assertSupportedOptions, defaultThinkingLevel } from "ZPI-ai";
+import { assertSupportedOptions, clampThinkingLevel } from "ZPI-ai";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { AgentSession } from "./agent-session.ts";
@@ -8,6 +8,7 @@ import type { CompactionOptions } from "./compaction.ts";
 import { ModelRuntime } from "./model-runtime.ts";
 import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
+import { SettingsManager } from "./settings-manager.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools } from "./tools/index.ts";
 import type { ResourceLoader, ToolDefinition } from "./types.ts";
@@ -26,6 +27,7 @@ export interface CreateAgentSessionOptions {
   additionalSkillPaths?: string[];
   userSkillPaths?: string[];
   compaction?: CompactionOptions;
+  settingsManager?: SettingsManager;
   promptTemplate?: () => PromptTemplate;
   projectName?: string | (() => string);
 }
@@ -52,6 +54,7 @@ export async function createAgentSession(
       "additionalSkillPaths",
       "userSkillPaths",
       "compaction",
+      "settingsManager",
       "promptTemplate",
       "projectName",
     ],
@@ -59,13 +62,10 @@ export async function createAgentSession(
   );
   if (options.noTools !== undefined && options.noTools !== "all" && options.noTools !== "builtin")
     throw new Error("Invalid noTools");
-  if (options.compaction) {
-    assertSupportedOptions(options.compaction, ["reserveTokens", "keepRecentTokens"], "compaction");
-    for (const value of Object.values(options.compaction))
-      if (!Number.isSafeInteger(value) || value < 1) throw new Error("Invalid compaction token budget");
-  }
   const cwd = resolve(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
   const agentDir = options.agentDir ?? join(homedir(), ".ZPI", "agent");
+  const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
+  if (options.compaction) settingsManager.applyOverrides({ compaction: options.compaction });
   const runtime = options.modelRuntime ?? (await ModelRuntime.create());
   const manager = options.sessionManager ?? SessionManager.create(cwd, join(agentDir, "sessions"));
   const restored = manager.buildSessionContext();
@@ -171,17 +171,24 @@ export async function createAgentSession(
       tools: session?.state.tools ?? active,
       loader,
     });
-  const thinking =
+  const hasThinkingEntry = manager.getEntries().some((entry) => entry.type === "thinking_level_change");
+  const hasExistingSession = restored.messages.length > 0;
+  const thinking = clampThinkingLevel(
+    model,
     options.thinkingLevel ??
-    (model.defaultThinkingLevel &&
-    !manager.getEntries().some((entry) => entry.type === "thinking_level_change")
-      ? defaultThinkingLevel(model)
-      : restored.thinkingLevel);
+      (hasExistingSession
+        ? hasThinkingEntry
+          ? restored.thinkingLevel
+          : (settingsManager.getDefaultThinkingLevel() ?? "medium")
+        : (settingsManager.getModelThinkingLevel(model.provider, model.id) ??
+          settingsManager.getDefaultThinkingLevel() ??
+          "medium")),
+  );
   if (thinking !== restored.thinkingLevel) manager.appendThinkingLevelChange(thinking);
   session = new AgentSession(model, runtime, manager, all, active, buildPrompt(), thinking, {
     loader,
     buildPrompt,
-    compaction: options.compaction,
+    settingsManager,
   });
   return { session };
 }

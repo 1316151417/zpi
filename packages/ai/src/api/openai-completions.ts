@@ -13,8 +13,10 @@ import type {
 } from "../types.ts";
 import { openAICompletionsCompatKeys } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
+import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
-import { modelFailure, retryModelStream } from "../utils/model-retry.ts";
+import { modelFailure } from "../utils/model-retry.ts";
+import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameterKeys, reasoningParameters } from "../utils/reasoning.ts";
 import {
   assertSupportedOptions,
@@ -32,6 +34,7 @@ export interface OpenAICompletionsOptions extends StreamOptions {
 const commonOptions = [
   "signal",
   "sessionId",
+  "cacheRetention",
   "apiKey",
   "fetch",
   "headers",
@@ -131,10 +134,13 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
   const events = createAssistantMessageEventStream();
   let output = emptyAssistant(model);
   const completeCalls = new Set<ToolCall>();
-  void retryModelStream(consume, events, options).catch((error: unknown) => {
+  void consume(events).catch((error: unknown) => {
     output.content = output.content.filter((block) => block.type !== "toolCall" || completeCalls.has(block));
     output.stopReason = options.signal?.aborted ? "aborted" : "error";
-    let message = error instanceof Error ? error.message : String(error);
+    let message = formatProviderError(normalizeProviderError(error));
+    const body = error !== null && typeof error === "object" && "error" in error ? error.error : undefined;
+    const metadata = isJsonObject(body) && isJsonObject(body.metadata) ? body.metadata.raw : undefined;
+    if (metadata && !message.includes(String(metadata))) message += `\n${metadata}`;
     for (const secret of [
       options.apiKey,
       ...Object.values(model.headers ?? {}),
@@ -216,9 +222,13 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
     if (!isJsonObject(payload) || payload.stream !== true)
       throw new Error("Payload must be a streaming request object");
     output.contextBreakdown = measureContextBreakdown(payload);
-    const { data: chunks, response } = await client.chat.completions
-      .create(payload as unknown as ChatCompletionCreateParamsStreaming, { signal: options.signal })
-      .withResponse();
+    const { data: chunks, response } = await retryProviderRequest(
+      () =>
+        client.chat.completions
+          .create(payload as unknown as ChatCompletionCreateParamsStreaming, { signal: options.signal })
+          .withResponse(),
+      { ...options, maxRetries: options.maxRetries ?? 2 },
+    );
     await options.onResponse?.(
       { status: response.status, headers: Object.fromEntries(response.headers) },
       model,

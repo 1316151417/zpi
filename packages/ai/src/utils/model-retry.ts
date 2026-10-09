@@ -1,7 +1,6 @@
-// Adapted from ZCode retry-policy.ts, runner-retry.ts, failure-classifier.ts and
-// stream-retry-boundary.ts (Apache-2.0). See THIRD_PARTY_NOTICES.md.
-import type { AssistantMessageEvent, ModelFailure, StreamOptions } from "../types.ts";
-import type { AssistantMessageEventStream } from "./event-stream.ts";
+// Structured error details adapted from ZCode failure-classifier.ts (Apache-2.0).
+// Retry decisions use Pi utils/retry.ts. See THIRD_PARTY_NOTICES.md.
+import type { ModelFailure } from "../types.ts";
 
 const TERMINAL_CODES = new Set([
   "1005",
@@ -141,104 +140,4 @@ export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure
     ...(status !== undefined ? { status } : {}),
     ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
   };
-}
-
-export function modelRetryDelay(attempt: number, retryAfterMs?: number, maxDelayMs = 60_000): number {
-  const exponential = 2_000 * 2 ** Math.max(0, attempt - 1);
-  if (
-    retryAfterMs !== undefined &&
-    Number.isFinite(retryAfterMs) &&
-    retryAfterMs >= 0 &&
-    (retryAfterMs <= 300_000 || retryAfterMs < exponential)
-  )
-    return retryAfterMs;
-  return Math.round(Math.min(exponential, Math.max(0, maxDelayMs)) * (0.5 + Math.random() * 0.5));
-}
-
-export function sleepForModelRetry(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const abort = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", abort);
-      reject(new DOMException("Request aborted", "AbortError"));
-    };
-    const timer = setTimeout(
-      () => {
-        signal?.removeEventListener("abort", abort);
-        resolve();
-      },
-      Math.max(0, ms),
-    );
-    if (signal?.aborted) abort();
-    else signal?.addEventListener("abort", abort, { once: true });
-  });
-}
-
-/** Retry the whole stream before its first visible token or complete tool call. */
-export async function retryModelStream(
-  consume: (sink: Pick<AssistantMessageEventStream, "push">) => Promise<void>,
-  events: AssistantMessageEventStream,
-  options: StreamOptions,
-): Promise<void> {
-  const maxRetries =
-    options.maxRetries !== undefined && Number.isFinite(options.maxRetries)
-      ? Math.max(0, Math.floor(options.maxRetries))
-      : 10;
-  let committed = false;
-  let emptyRetries = 0;
-  try {
-    for (let attempt = 0; ; attempt++) {
-      const prelude: AssistantMessageEvent[] = [];
-      try {
-        options.signal?.throwIfAborted();
-        await consume({
-          push(event) {
-            if (
-              event.type === "done" &&
-              !committed &&
-              !event.message.content.some(
-                (c) => c.type === "toolCall" || (c.type === "text" && c.text.length > 0),
-              ) &&
-              event.message.usage.totalTokens === 0
-            ) {
-              const canRetry = emptyRetries < 1 && attempt < maxRetries;
-              emptyRetries++;
-              throw Object.assign(
-                new Error("Model returned no text, no tool calls, and no usage before completing the turn."),
-                { isRetryable: canRetry },
-              );
-            }
-            const boundary =
-              event.type === "done" ||
-              event.type === "toolcall_end" ||
-              ((event.type === "text_delta" || event.type === "thinking_delta") && event.delta.length > 0);
-            if (!committed && !boundary) {
-              prelude.push(event);
-              return;
-            }
-            if (!committed) {
-              committed = true;
-              options.onRetry?.(null);
-              for (const buffered of prelude) events.push(buffered);
-            }
-            events.push(event);
-          },
-        });
-        return;
-      } catch (error) {
-        const failure = modelFailure(error, options.signal);
-        if (committed || !failure.retryable || attempt >= maxRetries) throw error;
-        const retryDelayMs = modelRetryDelay(attempt + 1, failure.retryAfterMs, options.maxRetryDelayMs);
-        options.onRetry?.({
-          attempt: attempt + 1,
-          maxRetries,
-          retryDelayMs,
-          errorStatus: failure.status ?? null,
-        });
-        await sleepForModelRetry(retryDelayMs, options.signal);
-      }
-    }
-  } finally {
-    options.onRetry?.(null);
-  }
 }

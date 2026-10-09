@@ -7,6 +7,7 @@ import {
   ModelRuntime,
   projectStreamedToolJournal,
   SessionManager,
+  SettingsManager,
 } from "ZPI-coding-agent";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -163,6 +164,7 @@ for (const recovery of [false, true]) {
       userSkillPaths: [],
       modelRuntime: runtime,
       sessionManager: manager,
+      settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
     });
     const closed = deferred(),
       ended = deferred(),
@@ -206,7 +208,7 @@ for (const recovery of [false, true]) {
       if (recovery) {
         send({ type: "response.output_item.done", item: write });
         await writeClosed.promise;
-        controller.error(Object.assign(new Error("connection reset"), { code: "ECONNRESET" }));
+        controller.error(Object.assign(new Error("network error: connection reset"), { code: "ECONNRESET" }));
       } else {
         send(terminal([call]));
         controller.close();

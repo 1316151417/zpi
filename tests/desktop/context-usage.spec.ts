@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
@@ -8,6 +8,8 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("context indicator hides after compaction and returns when the next response reports usage", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-context-compaction-"));
+  await mkdir(join(dir, "agent"));
+  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   const next = deferred();
   const server = await fakeServer(async (body, response) => {
     const messages = body.messages as unknown as { role: string; content: string }[];

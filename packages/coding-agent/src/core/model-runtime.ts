@@ -38,6 +38,9 @@ export class ModelRuntime {
   constructor(requestFetch?: typeof fetch) {
     this.requestFetch = requestFetch;
   }
+  get fetch(): typeof fetch {
+    return this.requestFetch ?? globalThis.fetch;
+  }
   static async create(options: { fetch?: typeof fetch } = {}): Promise<ModelRuntime> {
     return new ModelRuntime(options.fetch);
   }

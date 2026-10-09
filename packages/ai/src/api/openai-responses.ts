@@ -6,8 +6,10 @@ import type {
 } from "openai/resources/responses/responses";
 import type { Model, SimpleStreamOptions, ThinkingContent, ToolCall, TranscriptContext } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
+import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
-import { modelFailure, retryModelStream } from "../utils/model-retry.ts";
+import { modelFailure } from "../utils/model-retry.ts";
+import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
 import {
   assertSupportedOptions,
@@ -96,6 +98,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     [
       "signal",
       "sessionId",
+      "cacheRetention",
       "apiKey",
       "fetch",
       "headers",
@@ -118,10 +121,13 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
   const events = createAssistantMessageEventStream();
   let output = emptyAssistant(model);
   const complete = new Set<ToolCall>();
-  void retryModelStream(consume, events, options).catch((error: unknown) => {
+  void consume(events).catch((error: unknown) => {
     output.content = output.content.filter((block) => block.type !== "toolCall" || complete.has(block));
     output.stopReason = options.signal?.aborted ? "aborted" : "error";
-    let message = error instanceof Error ? error.message : String(error);
+    let message = formatProviderError(
+      normalizeProviderError(error),
+      `${model.provider === "openai" ? "OpenAI" : model.provider} API error`,
+    );
     for (const secret of [
       options.apiKey,
       ...Object.values(model.headers ?? {}),
@@ -183,7 +189,9 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       instructions: getCurrentSystemPrompt(context.messages),
       store: false,
       stream: true,
-      ...(options.sessionId ? { prompt_cache_key: options.sessionId.slice(0, 64) } : {}),
+      ...(options.sessionId && options.cacheRetention !== "none"
+        ? { prompt_cache_key: options.sessionId.slice(0, 64) }
+        : {}),
       include: ["reasoning.encrypted_content"],
       ...(tools.length
         ? {
@@ -246,9 +254,13 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       payload.store = false;
     }
     output.contextBreakdown = measureContextBreakdown(payload);
-    const { data: chunks, response } = await client.responses
-      .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
-      .withResponse();
+    const { data: chunks, response } = await retryProviderRequest(
+      () =>
+        client.responses
+          .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
+          .withResponse(),
+      { ...options, maxRetries: options.maxRetries ?? 2 },
+    );
     await options.onResponse?.(
       { status: response.status, headers: Object.fromEntries(response.headers) },
       model,

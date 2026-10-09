@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -7,6 +7,8 @@ import { SettingsStore } from "../src/main/storage.ts";
 
 it("continues one persisted task across both protocols with all four tools, title generation and compaction", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-protocol-switch-"));
+  await mkdir(join(dir, "agent"));
+  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 10 } }));
   const codec = {
     isEncryptionAvailable: () => true,
     encryptString: (value: string) => Buffer.from(value),
@@ -164,7 +166,8 @@ it("continues one persisted task across both protocols with all four tools, titl
     expect(JSON.stringify(reverse)).not.toContain("|fc_");
     await host.setSessionSelection(task.id, { provider: "oauth", modelId: "oauth", reasoning: "none" });
     await run("/compact");
-    expect(requests.at(-1)?.headers.get("session_id")).toBe(`${sessionId}:compact`);
+    expect(requests.at(-1)?.headers.get("session_id")).not.toBe(sessionId);
+    expect(requests.at(-1)?.body).not.toHaveProperty("prompt_cache_key");
     await run("continue after compaction");
     expect(requests.at(-1)?.headers.get("session_id")).toBe(sessionId);
     expect(requests.at(-1)?.body.prompt_cache_key).toBe(sessionId);

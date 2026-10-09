@@ -1,39 +1,32 @@
 import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "ZPI-agent";
 import { Agent } from "ZPI-agent";
-import type {
-  ContextUsageAnchor,
-  ImageContent,
-  Model,
-  ModelRetryStatus,
-  SimpleStreamOptions,
-  TranscriptContext,
-} from "ZPI-ai";
+import type { ImageContent, Model, ModelRetryStatus, SimpleStreamOptions, TranscriptContext } from "ZPI-ai";
 import {
   assertSupportedOptions,
   createAssistantMessageEventStream,
   emptyAssistant,
-  estimateContextTokens,
-  messageChars,
-  normalizeContext,
-  restoreUsageAnchor,
-  usageAnchor,
+  isContextOverflowMessage,
+  isRecoverableLength,
+  isRetryableAssistantError,
+  retryDelayMs,
 } from "ZPI-ai";
 import { randomUUID } from "node:crypto";
 import type { ParsedInput } from "./commands.ts";
 import { parseInput } from "./commands.ts";
 import {
-  type CompactionOptions,
-  compactionBoundary,
-  fileLists,
-  isContextOverflow,
-  serializeConversation,
-  summaryPrompt,
+  calculateContextTokens,
+  compact as compactContext,
+  estimateContextTokens,
+  prepareCompaction,
+  shouldCompact,
 } from "./compaction.ts";
+import { withHttpIdleTimeout } from "./http-idle-timeout.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { LoadedSkill, SkillList } from "./resources.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 import type { ContextUsage } from "./session-state.ts";
 import { contextUsage } from "./session-state.ts";
+import { SettingsManager } from "./settings-manager.ts";
 import { StreamingToolJournal } from "./streaming-tool-journal.ts";
 import type { ResourceDiagnostic, ResourceLoader } from "./types.ts";
 export interface InputContext {
@@ -54,7 +47,7 @@ function validateInputContext(input: ParsedInput, context: InputContext): void {
 }
 export type AgentSessionEvent =
   | Exclude<AgentEvent, { type: "agent_end" }>
-  | { type: "agent_end"; messages: AgentState["messages"]; willRetry: false }
+  | { type: "agent_end"; messages: AgentState["messages"]; willRetry: boolean }
   | { type: "agent_settled" }
   | { type: "entry_appended"; entry: SessionEntry }
   | { type: "session_info_changed"; name: string }
@@ -82,12 +75,13 @@ export class AgentSession {
   private resources?: {
     loader: ResourceLoader;
     buildPrompt: () => string;
-    compaction?: CompactionOptions;
+    settingsManager?: SettingsManager;
   };
   private compactController?: AbortController;
-  private usageAnchor?: ContextUsageAnchor;
-  private autoCompactionAttempted = false;
-  private streamRecoveryRetries = 0;
+  readonly settingsManager: SettingsManager;
+  private overflowRecoveryAttempted = false;
+  private retryAttempt = 0;
+  private recoveredCalls = new WeakSet<object>();
   constructor(
     model: Model,
     runtime: ModelRuntime,
@@ -99,12 +93,13 @@ export class AgentSession {
     resources?: {
       loader: ResourceLoader;
       buildPrompt: () => string;
-      compaction?: CompactionOptions;
+      settingsManager?: SettingsManager;
     },
   ) {
     this.manager = manager;
     this.runtime = runtime;
     this.resources = resources;
+    this.settingsManager = resources?.settingsManager ?? SettingsManager.inMemory();
     this.allTools = new Map(allTools.map((t) => [t.name, t]));
     const restored = manager.buildSessionContext();
     if (!restored.messages.some((m) => m.role === "system"))
@@ -138,32 +133,35 @@ export class AgentSession {
         messages: manager.buildSessionContext().messages,
         tools: activeTools,
       },
-      streamFn: (m, c, o) => this.streamWithCompaction(m, c, o),
-      transformContext: async (_messages, signal) => {
-        const messages = this.manager.buildSessionContext().messages;
-        const threshold = Math.max(
-          1,
-          this.model.contextWindow - (this.resources?.compaction?.reserveTokens ?? 16384),
-        );
-        if (!this.autoCompactionAttempted && estimateContextTokens(messages, this.usageAnchor) > threshold) {
-          this.autoCompactionAttempted = true;
-          try {
-            await this.summarize(false, "", signal);
-            return this.manager.buildSessionContext().messages;
-          } catch (error) {
-            if (signal?.aborted) throw error;
-            this.notify({ type: "command_result", message: "自动压缩失败，保留原上下文。" });
-          }
+      streamFn: (m, c, o) => this.streamWithRecovery(m, c, o),
+      prepareNextTurnWithContext: async (turn, signal) => {
+        const settings = this.settingsManager.getCompactionSettings(this.model);
+        if (
+          this.model.contextWindow > 0 &&
+          shouldCompact(this.estimateTokens(turn.context.messages), this.model.contextWindow, settings)
+        ) {
+          if (await this.tryAutoCompact(signal))
+            return { context: { ...turn.context, messages: this.manager.buildSessionContext().messages } };
         }
-        return messages;
+        return undefined;
       },
       toolExecution: "parallel",
     });
-    this.usageAnchor = restoreUsageAnchor(this.agent.state.messages);
     const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
     this.agent.subscribe((event) => {
       try {
         streamingTools.observe(event);
+        if (
+          event.type === "message_end" &&
+          event.message.role === "assistant" &&
+          !this.recoveredCalls.has(event.message)
+        ) {
+          if (!["error", "length"].includes(event.message.stopReason)) this.overflowRecoveryAttempted = false;
+          if (event.message.stopReason !== "error" && this.retryAttempt > 0) {
+            this.notify({ type: "model_retry", status: null });
+            this.retryAttempt = 0;
+          }
+        }
         if (event.type === "message_end") {
           this.manager.appendMessage(event.message);
           this.notifyLastEntry();
@@ -173,7 +171,15 @@ export class AgentSession {
         this.agent.abort();
         throw this.fault;
       }
-      this.notify(event.type === "agent_end" ? { ...event, willRetry: false } : event);
+      const last = event.type === "agent_end" ? event.messages.at(-1) : undefined;
+      this.notify(
+        event.type === "agent_end"
+          ? {
+              ...event,
+              willRetry: last?.role === "assistant" && this.canRetry(last),
+            }
+          : event,
+      );
     });
   }
   get state(): AgentState {
@@ -204,7 +210,10 @@ export class AgentSession {
     return this.resources?.loader.listSkills?.() ?? { skills: [], diagnostics: [] };
   }
   getResourceDiagnostics(): ResourceDiagnostic[] {
-    return this.resources?.loader.getDiagnostics?.() ?? [];
+    return [
+      ...(this.resources?.loader.getDiagnostics?.() ?? []),
+      ...this.settingsManager.getErrors().map(({ path, error }) => ({ path, message: error.message })),
+    ];
   }
   async loadSkill(name: string): Promise<LoadedSkill> {
     if (!this.resources?.loader.loadSkill) throw new Error(`Skill not found: ${name}`);
@@ -262,44 +271,142 @@ export class AgentSession {
 
     if (this.resources) this.syncSection("ZPI.instructions", this.resources.buildPrompt());
   }
-  private compactionBoundary(manual = true, force = false) {
-    const keep = this.resources?.compaction?.keepRecentTokens ?? 20000;
-    const boundary = compactionBoundary(
-      this.manager,
-      force
-        ? Math.min(
-            keep,
-            Math.max(
-              1,
-              Math.floor(
-                this.manager
-                  .buildSessionContext()
-                  .messages.reduce((n, m) => n + (m.role === "system" ? 0 : messageChars(m)), 0) / 8,
-              ),
-            ),
-          )
-        : keep,
-      manual,
+  private compactionBoundary() {
+    const preparation = prepareCompaction(
+      this.manager.getEntries(),
+      this.settingsManager.getCompactionSettings(this.model),
     );
-    if (!boundary) throw new Error("invalid_input: 至少需要两个完整对话回合才能压缩，最近一个回合会保留");
-    return boundary;
+    if (!preparation) throw new Error("invalid_input: 没有可压缩的完整对话内容");
+    return preparation;
+  }
+  private estimateTokens(messages: AgentState["messages"]): number {
+    const estimate = estimateContextTokens(messages);
+    const boundary = this.manager.getEntries().findLast((entry) => entry.type === "compaction");
+    const source = estimate.lastUsageIndex === null ? undefined : messages[estimate.lastUsageIndex];
+    if (boundary && source?.role === "assistant" && source.timestamp <= Date.parse(boundary.timestamp))
+      return 0;
+    return estimate.tokens;
+  }
+  private async tryAutoCompact(signal?: AbortSignal): Promise<boolean> {
+    if (!prepareCompaction(this.manager.getEntries(), this.settingsManager.getCompactionSettings(this.model)))
+      return false;
+    try {
+      await this.summarize(false, "", signal);
+      return true;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      return false;
+    }
+  }
+  private async checkCompaction(signal?: AbortSignal, includeAborted = false): Promise<boolean> {
+    const message = this.messages.findLast((message) => message.role === "assistant");
+    const settings = this.settingsManager.getCompactionSettings(this.model);
+    if (
+      !settings.enabled ||
+      !message ||
+      message.role !== "assistant" ||
+      (!includeAborted && message.stopReason === "aborted")
+    )
+      return false;
+    const boundary = this.manager.getEntries().findLast((entry) => entry.type === "compaction");
+    if (boundary && message.timestamp <= Date.parse(boundary.timestamp)) return false;
+    const sameModel = message.provider === this.model.provider && message.model === this.model.id;
+    const overflow =
+      sameModel &&
+      (isContextOverflowMessage(message, this.model.contextWindow) ||
+        isRecoverableLength(message, this.model.maxTokens));
+    if (overflow) {
+      const retry = message.stopReason !== "stop";
+      if (retry && this.overflowRecoveryAttempted) return false;
+      if (retry) {
+        this.overflowRecoveryAttempted = true;
+        this.dropFailedAssistant();
+      }
+      if (!(await this.tryAutoCompact(signal))) return false;
+      this.state.messages = this.manager.buildSessionContext().messages;
+      if (retry) this.dropFailedAssistant();
+      return retry;
+    }
+    const direct = message.stopReason === "error" ? 0 : calculateContextTokens(message.usage);
+    const tokens = direct || this.estimateTokens(this.messages);
+    if (shouldCompact(tokens, this.model.contextWindow, settings) && (await this.tryAutoCompact(signal)))
+      this.state.messages = this.manager.buildSessionContext().messages;
+    return false;
+  }
+  private dropFailedAssistant(): void {
+    const last = this.messages.at(-1);
+    if (last?.role === "assistant" && ["error", "length"].includes(last.stopReason))
+      this.state.messages = this.messages.slice(0, -1);
+  }
+  private async waitForRetry(
+    message: Extract<AgentState["messages"][number], { role: "assistant" }>,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    if (!this.canRetry(message)) return false;
+    const settings = this.settingsManager.getRetrySettings();
+    this.dropFailedAssistant();
+    this.retryAttempt++;
+    const delay = retryDelayMs(settings, this.retryAttempt);
+    this.notify({
+      type: "model_retry",
+      status: {
+        attempt: this.retryAttempt,
+        maxRetries: settings.maxRetries,
+        retryDelayMs: delay,
+        errorStatus: message.errorDetails?.status ?? null,
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        reject(new DOMException("Request aborted", "AbortError"));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      }, delay);
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    });
+    return true;
+  }
+  private canRetry(message: Extract<AgentState["messages"][number], { role: "assistant" }>): boolean {
+    const settings = this.settingsManager.getRetrySettings();
+    return (
+      !this.abortRequested &&
+      !(
+        !settings.enabled ||
+        this.retryAttempt >= settings.maxRetries ||
+        isContextOverflowMessage(message, this.model.contextWindow) ||
+        !isRetryableAssistantError(message)
+      )
+    );
+  }
+  private requestOptions(options: SimpleStreamOptions): SimpleStreamOptions {
+    const provider = this.settingsManager.getProviderRetrySettings();
+    const idle = this.settingsManager.getHttpIdleTimeoutMs();
+    const requestFetch = options.fetch ?? this.runtime.fetch;
+    return {
+      ...provider,
+      ...options,
+      timeoutMs: options.timeoutMs ?? provider.timeoutMs ?? (idle === 0 ? 2147483647 : idle),
+      maxRetries: options.maxRetries ?? provider.maxRetries,
+      maxRetryDelayMs: options.maxRetryDelayMs ?? provider.maxRetryDelayMs,
+      fetch: withHttpIdleTimeout(requestFetch, idle),
+    };
   }
   private alreadyCompacted(): boolean {
     const entries = this.manager.getEntries();
     const last = entries.findLastIndex((entry) => entry.type === "compaction");
     return last >= 0 && !entries.slice(last + 1).some((entry) => entry.type === "message");
   }
-  private async summarize(
-    manual: boolean,
-    instructions: string,
-    signal?: AbortSignal,
-    force = false,
-  ): Promise<void> {
+  private async summarize(manual: boolean, instructions: string, signal?: AbortSignal): Promise<void> {
     const id = randomUUID();
     const origin = manual ? "manual" : "auto";
     this.notify({ type: "compaction", id, status: "running", origin });
     try {
-      await this.summarizeContext(manual, instructions, signal, force);
+      await this.summarizeContext(manual, instructions, signal);
       this.notify({ type: "compaction", id, status: "completed", origin });
     } catch (error) {
       this.notify({
@@ -312,49 +419,39 @@ export class AgentSession {
       throw error;
     }
   }
-  private async summarizeContext(
-    manual: boolean,
-    instructions: string,
-    signal?: AbortSignal,
-    force = false,
-  ): Promise<void> {
+  private async summarizeContext(manual: boolean, instructions: string, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    const { older, firstKeptEntryId, entries } = this.compactionBoundary(manual, force);
-    const response = this.runtime.streamSimple(
+    const preparation = this.compactionBoundary();
+    const result = await compactContext(
+      preparation,
       this.model,
-      normalizeContext({
-        messages: [
-          { role: "system", content: summaryPrompt, timestamp: Date.now() },
-          {
-            role: "user",
-            content: `Additional instructions: ${instructions || "none"}\nConversation:\n${serializeConversation(older)}`,
-            timestamp: Date.now(),
-          },
-        ],
-      }),
+      undefined,
+      undefined,
+      instructions || undefined,
+      signal,
+      this.thinkingLevel,
+      (model, context, options) =>
+        this.runtime.streamSimple(model, context, this.requestOptions(options ?? {})),
+      this.settingsManager.getRetrySettings(),
       {
-        signal,
-        sessionId: `${this.sessionId}:compact`,
-        maxTokens: Math.min(this.model.maxTokens, this.resources?.compaction?.reserveTokens ?? 16384),
-        reasoning: this.thinkingLevel,
+        onRetryScheduled: (attempt, maxRetries, retryDelayMs) =>
+          this.notify({
+            type: "model_retry",
+            status: { attempt, maxRetries, retryDelayMs, errorStatus: null },
+          }),
+        onRetryFinished: () => this.notify({ type: "model_retry", status: null }),
       },
+      randomUUID(),
     );
-    for await (const _event of response) {
-      /* Independent summary stream, never a chat reply. */
-    }
-    const result = await response.result();
     signal?.throwIfAborted();
-    if (result.stopReason !== "stop")
-      throw new Error(result.errorMessage ?? `provider: 压缩失败 (${result.stopReason})`);
-    const summary = result.content
-      .filter((c) => c.type === "text")
-      .map((c) => c.text)
-      .join("\n")
-      .trim();
-    if (!summary) throw new Error("provider: 压缩返回空摘要");
-    this.manager.appendCompaction(summary + fileLists(entries), firstKeptEntryId);
+    this.manager.appendCompaction(
+      result.summary,
+      result.firstKeptEntryId,
+      result.tokensBefore,
+      result.details as { readFiles: string[]; modifiedFiles: string[] },
+      result.usage,
+    );
     this.notifyLastEntry();
-    this.usageAnchor = undefined;
     this.notify({
       type: "command_result",
       message: manual
@@ -362,100 +459,46 @@ export class AgentSession {
         : "上下文接近容量，已自动压缩。",
     });
   }
-  private streamWithCompaction(model: Model, context: TranscriptContext, options: SimpleStreamOptions = {}) {
-    options = {
-      ...options,
-      sessionId: this.sessionId,
-      onRetry: (status) => this.notify({ type: "model_retry", status }),
-    };
+  private streamWithRecovery(model: Model, context: TranscriptContext, options: SimpleStreamOptions = {}) {
     const output = createAssistantMessageEventStream();
+    let partial = emptyAssistant(model);
     void (async () => {
-      let request = context;
-      let messageStarted = false;
-      for (;;) {
-        const response = this.runtime.streamSimple(model, request, options);
-        let started = false;
-        let emitted = false;
-        let recover = false;
-        for await (const event of response) {
-          // Hold the empty start so a rejected overflowing request never creates a ghost reply.
-          if (event.type === "start") {
-            started = true;
-            continue;
-          }
-          if (
-            event.type === "error" &&
-            emitted &&
-            !options.signal?.aborted &&
-            event.error.errorDetails?.retryable &&
-            this.streamRecoveryRetries < 10
-          ) {
-            recover = true;
-            break;
-          }
-          if (
-            event.type === "error" &&
-            !emitted &&
-            !this.autoCompactionAttempted &&
-            !options.signal?.aborted &&
-            isContextOverflow(event.error.errorMessage ?? "")
-          )
-            break;
-          if (started && !messageStarted) {
-            output.push({
-              type: "start",
-              partial:
-                event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial,
-            });
-            messageStarted = true;
-          }
-          emitted = true;
+      const response = this.runtime.streamSimple(
+        model,
+        context,
+        this.requestOptions({ ...options, sessionId: this.sessionId }),
+      );
+      let started = false;
+      for await (const event of response) {
+        partial =
+          event.type === "error" ? event.error : event.type === "done" ? event.message : event.partial;
+        if (event.type === "start") {
+          started = true;
           output.push(event);
-        }
-        const result = await response.result();
-        if (recover) {
-          // ZCode 从最后一个安全锚点恢复，不能把断流前的正文/思考与新回复拼接。
-          // ZPI 的工具在完整模型消息后执行；只保留完整调用，执行一次后带结果继续。
-          const recovered = emptyAssistant(model);
-          recovered.content = result.content.filter((c) => c.type === "toolCall");
-          this.streamRecoveryRetries++;
-          options.onRetry?.({
-            attempt: this.streamRecoveryRetries,
-            maxRetries: 10,
-            retryDelayMs: 0,
-            errorStatus: result.errorDetails?.status ?? null,
-          });
-          output.push({ type: "reset", partial: recovered });
-          if (recovered.content.length) {
-            for (const [contentIndex, toolCall] of recovered.content.entries()) {
-              if (toolCall.type !== "toolCall") continue;
-              output.push({ type: "toolcall_start", contentIndex, partial: recovered });
-              output.push({ type: "toolcall_end", contentIndex, toolCall, partial: recovered });
-            }
-            recovered.stopReason = "toolUse";
-            output.end(recovered);
-            return;
-          }
           continue;
         }
-        if (emitted) {
-          this.usageAnchor = usageAnchor(request.messages, result) ?? this.usageAnchor;
+        if (
+          event.type === "error" &&
+          event.error.content.some((block) => block.type === "toolCall") &&
+          (await this.waitForRetry(event.error, options.signal))
+        ) {
+          // Preserve the existing streamed-read recovery: drain completed calls once,
+          // discard partial prose and continue with their paired results.
+          const recovered = emptyAssistant(model);
+          recovered.content = event.error.content.filter((block) => block.type === "toolCall");
+          recovered.stopReason = "toolUse";
+          this.recoveredCalls.add(recovered);
+          if (!started) output.push({ type: "start", partial: recovered });
+          output.push({ type: "reset", partial: recovered });
+          output.end(recovered);
           return;
         }
-        this.autoCompactionAttempted = true;
-        try {
-          await this.summarize(false, "", options.signal, true);
-        } catch {
-          output.end(result);
-          return;
-        }
-        request = normalizeContext({ messages: this.manager.buildSessionContext().messages });
+        output.push(event);
       }
     })().catch((error: unknown) => {
-      const result = emptyAssistant(model);
+      const result = partial;
       result.stopReason = options.signal?.aborted ? "aborted" : "error";
       result.errorMessage = error instanceof Error ? error.message : String(error);
-      options.onRetry?.(null);
       output.end(result);
     });
     return output;
@@ -532,18 +575,32 @@ export class AgentSession {
     }
     this.active = true;
     this.abortRequested = false;
-    this.autoCompactionAttempted = false;
-    this.streamRecoveryRetries = 0;
+    this.overflowRecoveryAttempted = false;
+    this.retryAttempt = 0;
+    this.compactController = new AbortController();
     this.running = Promise.resolve()
       .then(async () => {
         await this.refreshInstructions();
         if (this.abortRequested) return;
-        const run = this.agent.prompt(text, options.images);
-        if (this.abortRequested) this.agent.abort();
-        await run;
-        this.state.messages = this.manager.buildSessionContext().messages;
+        const signal = this.compactController?.signal;
+        await this.checkCompaction(signal, true);
+        if (signal?.aborted) return;
+        await this.agent.prompt(text, options.images);
+        while (!signal?.aborted) {
+          const last = this.messages.findLast((message) => message.role === "assistant");
+          if (last?.role === "assistant" && (await this.waitForRetry(last, signal))) {
+            await this.agent.continue();
+            continue;
+          }
+          if (!(await this.checkCompaction(signal))) break;
+          await this.agent.continue();
+        }
+      })
+      .catch((error) => {
+        if (!this.abortRequested) throw error;
       })
       .finally(() => {
+        this.compactController = undefined;
         this.notify({ type: "model_retry", status: null });
         this.active = false;
         this.notify({ type: "agent_settled" });
@@ -598,7 +655,6 @@ export class AgentSession {
       this.notifyLastEntry();
     }
     this.state.model = model;
-    this.usageAnchor = undefined;
   }
   setThinkingLevel(thinkingLevel: ThinkingLevel): void {
     this.idleCheck();

@@ -23,7 +23,7 @@ it("custom levels preserve their order and map independently of provider effort 
   const model = { ...fakeModel(""), reasoningConfig: config };
   validateReasoningConfig(config);
   expect(thinkingChoices(model)).toEqual(config.levels);
-  expect(defaultThinkingLevel(model)).toBe("thorough");
+  expect(defaultThinkingLevel(model)).toBe("disabled");
   expect(canControlThinking(model, "balanced")).toBe(true);
   expect(canControlThinking(model, "xhigh")).toBe(false);
   expect(reasoningParameters(model, "disabled")).toEqual({ thinking: { type: "disabled" } });
@@ -31,7 +31,7 @@ it("custom levels preserve their order and map independently of provider effort 
     thinking: { type: "enabled" },
     reasoning_effort: "low",
   });
-  expect(reasoningParameters(model)).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "high" });
+  expect(reasoningParameters(model)).toEqual({ thinking: { type: "disabled" } });
   expect(() => reasoningParameters(model, "xhigh")).toThrow("Unsupported reasoning level");
   expect(defaultThinkingLevel({ ...model, defaultThinkingLevel: "balanced" })).toBe("balanced");
 });

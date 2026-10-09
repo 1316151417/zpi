@@ -1,7 +1,7 @@
 import type { ImageContent, Message, UserMessage } from "ZPI-ai";
 import { assertSupportedOptions, getCurrentSystemPrompt, toToolDeclaration } from "ZPI-ai";
 import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.ts";
-import type { AgentEvent, AgentMessage, AgentOptions, AgentState } from "./types.ts";
+import type { AgentEvent, AgentMessage, AgentOptions, AgentState, PrepareNextTurnContext } from "./types.ts";
 export class Agent {
   readonly state: AgentState;
   private options: AgentOptions;
@@ -27,6 +27,7 @@ export class Agent {
         "onResponse",
         "toolExecution",
         "streamingToolExecution",
+        "prepareNextTurnWithContext",
       ],
       "Agent",
     );
@@ -131,6 +132,14 @@ export class Agent {
             ["system", "user", "assistant", "toolResult"].includes(m.role),
           ) as Message[]),
       reasoning: this.state.thinkingLevel,
+      prepareNextTurnWithContext: this.options.prepareNextTurnWithContext
+        ? async (turn: PrepareNextTurnContext, signal?: AbortSignal) => {
+            const next = await this.options.prepareNextTurnWithContext?.(turn, signal);
+            if (next?.context)
+              this.state.messages.splice(0, this.state.messages.length, ...next.context.messages);
+            return next;
+          }
+        : undefined,
     };
     const emit = async (event: AgentEvent): Promise<void> => {
       if (event.type === "message_start" && event.message.role === "assistant") this.partial = event.message;

@@ -1,92 +1,95 @@
-import type { ModelRetryStatus } from "ZPI-ai";
-import { createAssistantMessageEventStream, emptyAssistant, normalizeContext, streamSimple } from "ZPI-ai";
+import {
+  emptyAssistant,
+  isRetryableAssistantError,
+  normalizeContext,
+  retryAssistantCall,
+  retryDelayMs,
+  streamSimple,
+} from "ZPI-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { chunk, fakeModel } from "../../../tests/fake-server.ts";
-import {
-  modelFailure,
-  modelRetryDelay,
-  retryModelStream,
-  sleepForModelRetry,
-} from "../src/utils/model-retry.ts";
+import { modelFailure } from "../src/utils/model-retry.ts";
 
+const policy = { enabled: true, maxRetries: 3, baseDelayMs: 2000 };
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-const httpError = (status: number, code?: string, headers: Record<string, string> = {}) =>
-  Object.assign(new Error("provider unavailable"), {
-    status,
-    error: { code },
-    headers: new Headers(headers),
-  });
-
-it("retries an empty completion once and fails if the second completion is also empty", async () => {
-  vi.useFakeTimers();
-  const output = emptyAssistant(fakeModel(""));
-  const consume = vi.fn(async (sink: { push: (event: import("ZPI-ai").AssistantMessageEvent) => void }) => {
-    sink.push({ type: "done", reason: "stop", message: output });
-  });
-  const run = retryModelStream(consume, createAssistantMessageEventStream(), {});
-  const failed = expect(run).rejects.toThrow("no text, no tool calls, and no usage");
-  await vi.runAllTimersAsync();
-  await failed;
-  expect(consume).toHaveBeenCalledTimes(2);
+const failed = (errorMessage: string) => ({
+  ...emptyAssistant(fakeModel("")),
+  stopReason: "error" as const,
+  errorMessage,
 });
 
-it("uses ZCode backoff, jitter, server delays and terminal business codes", () => {
-  vi.spyOn(Math, "random").mockReturnValue(0.5);
-  expect([1, 2, 3, 4, 5, 6, 10].map((n) => modelRetryDelay(n))).toEqual([
-    1500, 3000, 6000, 12000, 24000, 45000, 45000,
+it("uses Pi deterministic agent backoff and excludes subscription/billing limits", () => {
+  expect([1, 2, 3, 4, 5, 6, 10].map((n) => retryDelayMs(policy, n))).toEqual([
+    2000, 4000, 8000, 16000, 32000, 60000, 60000,
   ]);
-  expect(modelRetryDelay(1, 120_000)).toBe(120_000);
-  expect(modelRetryDelay(1, 300_001)).toBe(1500);
-  expect(modelRetryDelay(10, 400_000)).toBe(400_000);
-  expect(modelFailure(httpError(429, undefined, { "retry-after-ms": "120000", "retry-after": "1" }))).toEqual(
-    { retryable: true, status: 429, retryAfterMs: 120_000 },
-  );
+  expect(retryDelayMs({ ...policy, maxAgentDelayMs: 3000 }, 3)).toBe(3000);
+  for (const text of [
+    "503 server error",
+    "terminated",
+    "fetch failed",
+    "Stream ended without terminal event",
+    "Server requested 120s retry delay",
+  ])
+    expect(isRetryableAssistantError(failed(text))).toBe(true);
+  for (const text of [
+    "429 insufficient_quota",
+    "429 billing limit",
+    "GoUsageLimitError",
+    "401 unauthorized",
+    "Monthly usage limit reached",
+  ])
+    expect(isRetryableAssistantError(failed(text))).toBe(false);
   expect(
-    modelFailure(httpError(429, undefined, { "x-should-retry": "false", "retry-after": "120" })),
-  ).toEqual({ retryable: true, status: 429 });
-  for (const code of ["insufficient_quota", "1308", "3010", "1261"])
-    expect(modelFailure(httpError(429, code)).retryable).toBe(false);
-  for (const status of [400, 401, 403, 404, 422])
-    expect(modelFailure(httpError(status)).retryable).toBe(false);
-  for (const status of [408, 429, 500, 503, 529])
-    expect(modelFailure(httpError(status)).retryable).toBe(true);
-  expect(modelFailure({ cause: { code: "ECONNRESET" } }).retryable).toBe(true);
-  expect(
-    modelFailure({ error: { type: "api_error", message: "500 Internal network error" } }).retryable,
-  ).toBe(true);
-  expect(modelFailure({ cause: { code: "CERT_HAS_EXPIRED" } }).retryable).toBe(false);
+    modelFailure(
+      Object.assign(new Error("busy"), { status: 429, headers: new Headers({ "retry-after-ms": "120000" }) }),
+    ),
+  ).toMatchObject({ status: 429, retryAfterMs: 120000 });
 });
 
-it("makes eleven attempts, publishes retry counts, and aborts long server waits immediately", async () => {
+it("makes four agent attempts, reports 2/4/8 second waits, and leaves empty success alone", async () => {
   vi.useFakeTimers();
-  const events = createAssistantMessageEventStream();
-  const states: (ModelRetryStatus | null)[] = [];
-  const consume = vi.fn().mockRejectedValue(httpError(429, undefined, { "retry-after": "0" }));
-  const run = retryModelStream(consume, events, { onRetry: (s) => states.push(s) });
-  const failed = expect(run).rejects.toThrow("provider unavailable");
+  const produce = vi.fn(async () => failed("503 busy"));
+  const delays: number[] = [];
+  const run = retryAssistantCall(produce, policy, undefined, {
+    onRetryScheduled: (_attempt, _max, delay) => {
+      delays.push(delay);
+    },
+  });
   await vi.runAllTimersAsync();
-  await failed;
-  expect(consume).toHaveBeenCalledTimes(11);
-  expect(states.filter((s) => s !== null).map((s) => s.attempt)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  expect(states.at(-1)).toBeNull();
+  expect((await run).stopReason).toBe("error");
+  expect(produce).toHaveBeenCalledTimes(4);
+  expect(delays).toEqual([2000, 4000, 8000]);
+  const empty = { ...emptyAssistant(fakeModel("")), stopReason: "stop" as const };
+  const success = vi.fn(async () => empty);
+  expect(await retryAssistantCall(success, policy, undefined)).toBe(empty);
+  expect(success).toHaveBeenCalledTimes(1);
+});
+
+it("cancels an agent backoff immediately and never retries terminal failures", async () => {
+  vi.useFakeTimers();
   const controller = new AbortController();
-  const waiting = sleepForModelRetry(120_000, controller.signal);
-  const stopped = expect(waiting).rejects.toMatchObject({ name: "AbortError" });
-  controller.abort();
-  await stopped;
-  expect(vi.getTimerCount()).toBe(0);
+  const produce = vi.fn(async () => failed("terminated"));
+  const run = retryAssistantCall(produce, policy, controller.signal, {
+    onRetryScheduled: () => {
+      controller.abort();
+    },
+  });
+  expect((await run).stopReason).toBe("aborted");
+  expect(produce).toHaveBeenCalledTimes(1);
+  const terminal = vi.fn(async () => failed("429 insufficient_quota"));
+  await retryAssistantCall(terminal, policy, undefined);
+  expect(terminal).toHaveBeenCalledTimes(1);
 });
 
 it.each(["openai-completions", "openai-responses"] as const)(
-  "retries HTTP failures through %s without duplicating a reply",
+  "uses two provider retries by default through %s",
   async (api) => {
-    const states: (ModelRetryStatus | null)[] = [];
     let attempts = 0;
     const fetcher = vi.fn(async () => {
-      if (++attempts <= 3)
+      if (++attempts <= 2)
         return new Response('{"error":{"message":"busy"}}', {
           status: 429,
           headers: { "content-type": "application/json", "retry-after": "0" },
@@ -108,49 +111,33 @@ it.each(["openai-completions", "openai-responses"] as const)(
     const stream = streamSimple(
       { ...fakeModel("http://local/v1"), api },
       normalizeContext({ messages: [] }),
-      { apiKey: "local", fetch: fetcher, onRetry: (s) => states.push(s) },
+      { apiKey: "local", fetch: fetcher },
     );
     const types: string[] = [];
     for await (const event of stream) types.push(event.type);
     expect((await stream.result()).content).toEqual([{ type: "text", text: "recovered" }]);
     expect(types.filter((type) => type === "start")).toHaveLength(1);
-    expect(fetcher).toHaveBeenCalledTimes(4);
-    expect(states.filter(Boolean)).toMatchObject([
-      { attempt: 1, maxRetries: 10 },
-      { attempt: 2 },
-      { attempt: 3 },
-    ]);
+    expect(fetcher).toHaveBeenCalledTimes(3);
   },
 );
 
-it("discards incomplete tool preludes before retry but never replays a visible token", async () => {
-  const events = createAssistantMessageEventStream();
-  const output = emptyAssistant(fakeModel(""));
-  let attempt = 0;
-  await retryModelStream(
-    async (sink) => {
-      sink.push({ type: "start", partial: output });
-      if (++attempt === 1) {
-        sink.push({ type: "toolcall_delta", contentIndex: 0, delta: "partial", partial: output });
-        throw httpError(503, undefined, { "retry-after": "0" });
-      }
-      sink.push({ type: "text_delta", contentIndex: 0, delta: "final", partial: output });
-      sink.push({
-        type: "done",
-        reason: "stop",
-        message: { ...output, content: [{ type: "text", text: "final" }] },
-      });
-    },
-    events,
-    {},
-  ).then(() => {});
-  const seen: string[] = [];
-  for await (const event of events) seen.push(event.type);
-  expect(seen).toEqual(["start", "text_delta", "done"]);
-  const partial = vi.fn(async (sink: { push: (event: import("ZPI-ai").AssistantMessageEvent) => void }) => {
-    sink.push({ type: "text_delta", contentIndex: 0, delta: "visible", partial: output });
-    throw httpError(503);
-  });
-  await expect(retryModelStream(partial, createAssistantMessageEventStream(), {})).rejects.toThrow();
-  expect(partial).toHaveBeenCalledTimes(1);
-});
+it.each(["openai-completions", "openai-responses"] as const)(
+  "preserves quota error codes from %s parsed bodies for Pi retry classification",
+  async (api) => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response('{"error":{"message":"Rate limit reached for requests","code":"insufficient_quota"}}', {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "0" },
+        }),
+    );
+    const result = await streamSimple(
+      { ...fakeModel("http://local/v1"), api },
+      normalizeContext({ messages: [] }),
+      { apiKey: "local", fetch: fetcher },
+    ).result();
+    expect(result.errorMessage).toContain("insufficient_quota");
+    expect(isRetryableAssistantError(result)).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  },
+);
