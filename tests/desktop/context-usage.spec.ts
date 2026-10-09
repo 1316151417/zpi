@@ -124,7 +124,7 @@ test("context indicator appears after the first response and keeps measured usag
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     const rightHandle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
     for (let i = 0; i < 9; i++) await rightHandle.press("ArrowLeft");
-    const panel = page.locator(".shell > main");
+    const panel = page.locator(".workspace-surface > main");
     await expect.poll(async () => (await panel.boundingBox())?.width).toBeLessThan(400);
     const expectUnclippedTooltip = async () => {
       await expect(tooltip()).toBeVisible();

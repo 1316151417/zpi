@@ -7,6 +7,61 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { seedHistory } from "../history-fixture.ts";
 
+test("settings replace the workspace on the first frame without changing its layout or state", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-first-frame-"));
+  const session = seedHistory(dir, dir, 1);
+  const app = await launchDesktop({ dir, url: "" });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.locator(`[data-session-id="${session.id}"] .session-name`).click();
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await expect(page.locator(".right-pane")).toHaveCSS("opacity", "1");
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      const firstFrame = await page.evaluate(async () => {
+        const panels = [".sidebar", ".main", ".right-pane"].map((selector) => {
+          const node = document.querySelector<HTMLElement>(selector);
+          if (!node) throw Error(`Missing ${selector}`);
+          return node;
+        });
+        const before = panels.map((node) => node.getBoundingClientRect().toJSON());
+        const button = document.querySelector<HTMLButtonElement>(".sidebar-footer button");
+        if (!button) throw Error("Missing settings button");
+        button.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        return {
+          settingsPresent: Boolean(document.querySelector(".settings-screen")),
+          before,
+          after: panels.map((node) => node.getBoundingClientRect().toJSON()),
+          panels: panels.map((node) => {
+            let painted = true;
+            for (let parent: HTMLElement | null = node; parent; parent = parent.parentElement) {
+              const style = getComputedStyle(parent);
+              if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0)
+                painted = false;
+            }
+            return { painted, inert: Boolean(node.closest("[inert]")) };
+          }),
+        };
+      });
+      expect(firstFrame.settingsPresent).toBe(true);
+      expect(firstFrame.panels).toEqual(Array(3).fill({ painted: false, inert: true }));
+      expect(firstFrame.after).toEqual(firstFrame.before);
+      await page.screenshot({ path: `test-results/settings-first-frame-${theme}.png` });
+      await page.locator(".mention-editor").evaluate((node: HTMLElement) => node.focus());
+      await expect(page.getByLabel("关闭设置", { exact: true })).toBeFocused();
+      await page.getByLabel("关闭设置", { exact: true }).click();
+      await expect(page.locator(".topbar-title")).toHaveText("历史标题");
+      await expect(page.locator(".right-pane")).toBeVisible();
+      await expect(page.getByRole("button", { name: "设置", exact: true })).toBeVisible();
+    }
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 for (const timeline of [false, true]) {
   test(`settings preserve ${timeline ? "timeline" : "project"} task pagination and scroll while closing hints`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-sidebar-state-"));
@@ -72,10 +127,10 @@ test("settings hide pinned task controls and restore the task sidebar on return"
       const tab = settings.getByRole("button", { name, exact: true });
       await tab.click();
       await expect(tab).toHaveAttribute("aria-pressed", "true");
-      await expect(pin).toBeHidden();
-      await expect(page.locator(".sidebar")).toBeHidden();
-      await expect(page.locator(".topbar")).toBeHidden();
-      await expect(page.locator(".sidebar-resizer")).toBeHidden();
+      await expect(page.getByRole("button", { name: "取消置顶任务 历史标题", exact: true })).toHaveCount(0);
+      await expect(page.locator(".workspace-surface")).toHaveCSS("opacity", "0");
+      await expect(page.locator(".workspace-surface")).toHaveAttribute("inert", "");
+      await expect(pin).toHaveCount(1);
     }
     await settings.getByLabel("关闭设置").click();
     await expect(settings).toHaveCount(0);

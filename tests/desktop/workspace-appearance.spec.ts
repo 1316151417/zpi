@@ -26,7 +26,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     );
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-    const main = page.locator(".shell > main");
+    const main = page.locator(".workspace-surface > main");
     const frame = page.locator(".right-pane-frame");
     const leftHandle = page.getByRole("separator", { name: "侧边栏宽度", exact: true });
     const rightHandle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
