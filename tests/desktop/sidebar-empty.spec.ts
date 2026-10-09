@@ -32,6 +32,12 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
         fontSize: size,
       });
       await page.reload();
+      await expect(page.locator(".sidebar")).toHaveCSS(
+        "width",
+        await page
+          .locator(".sidebar")
+          .evaluate((el) => getComputedStyle(el).getPropertyValue("--sidebar-content-width")),
+      );
       await expect(projectEmpty).toHaveText("暂无任务");
       await expect(taskEmpty).toHaveText("还没有任务");
       for (const empty of [projectEmpty, taskEmpty]) {
@@ -74,6 +80,10 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
           subtle: color("--color-text-subtle"),
           projectTextX: textRect(projectEmpty).x,
           taskTextX: textRect(taskEmpty).x,
+          headingTextX: taskHeading.querySelector("span")?.getBoundingClientRect().x,
+          folderX: projectTitle.querySelector("svg")?.getBoundingClientRect().x,
+          contentWidth: document.querySelector(".sidebar-sections")?.getBoundingClientRect().width,
+          sidebarWidth: document.querySelector(".sidebar")?.getBoundingClientRect().width,
           projectGap: projectEmpty.getBoundingClientRect().top - projectTitle.getBoundingClientRect().bottom,
           sectionGap: taskHeading.getBoundingClientRect().top - projectEmpty.getBoundingClientRect().bottom,
           taskGap: taskEmpty.getBoundingClientRect().top - taskHeading.getBoundingClientRect().bottom,
@@ -85,6 +95,9 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
       expect(metrics.taskColor).toBe(metrics.subtle);
       expect(metrics.projectTextX).toBe(42);
       expect(metrics.taskTextX).toBe(20);
+      expect(metrics.headingTextX).toBe(18);
+      expect(metrics.folderX).toBe(19);
+      expect(metrics.contentWidth).toBe(metrics.sidebarWidth);
       expect(metrics.projectGap).toBe(8);
       expect(metrics.sectionGap).toBe(16);
       expect(metrics.taskGap).toBe(0);
@@ -107,6 +120,10 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
     await expect(projectEmpty).toHaveCount(0);
     await expect(taskEmpty).toBeVisible();
     const row = page.locator(".projects .session-row");
+    const rowBounds = await row.boundingBox();
+    const sidebarBounds = await page.locator(".sidebar").boundingBox();
+    expect(rowBounds?.x).toBe(8);
+    expect((sidebarBounds?.width ?? 0) - (rowBounds?.x ?? 0) - (rowBounds?.width ?? 0)).toBe(8);
     await row.hover();
     await row.getByLabel("归档任务 项目任务", { exact: true }).click();
     await expect(projectEmpty).toBeVisible();

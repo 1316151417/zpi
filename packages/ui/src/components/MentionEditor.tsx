@@ -51,6 +51,11 @@ function selection(root: HTMLElement): [number, number] {
   const end = offset(root, selected?.focusNode ?? null, selected?.focusOffset ?? 0);
   return [Math.min(start, end), Math.max(start, end)];
 }
+function resetCaret(root: HTMLElement | null) {
+  for (const animation of root?.getAnimations() ?? [])
+    if (animation instanceof CSSAnimation && animation.animationName === "composer-caret")
+      animation.currentTime = 0;
+}
 function setSelection(root: HTMLElement, start: number, end: number) {
   const find = (target: number): [Node, number] => {
     let used = 0,
@@ -155,6 +160,7 @@ export const MentionEditor = forwardRef<
     useEffect(() => {
       const changed = () => {
         const element = root.current;
+        if (element && document.activeElement === element) resetCaret(element);
         // IME can move its caret before the canonical text changes. Persist only a matching pair.
         if (!element || composing.current || document.activeElement !== element || text(element) !== value)
           return;
@@ -294,6 +300,7 @@ export const MentionEditor = forwardRef<
         aria-disabled={disabled}
         suppressContentEditableWarning
         onFocus={() => {
+          resetCaret(root.current);
           if (root.current && pendingCaret.current) {
             setSelection(root.current, ...pendingCaret.current);
             pendingCaret.current = null;
@@ -315,11 +322,13 @@ export const MentionEditor = forwardRef<
           if (path) onFile?.(path);
         }}
         onInput={(event) => {
+          resetCaret(root.current);
           if (compositionCommit.current && !(event.nativeEvent as InputEvent).isComposing)
             commitComposition();
           else change();
         }}
         onKeyDown={(event) => {
+          resetCaret(root.current);
           if (disabled) {
             event.preventDefault();
             return;
@@ -378,6 +387,7 @@ export const MentionEditor = forwardRef<
         }}
         onCompositionStart={(event) => {
           commitComposition();
+          root.current?.setAttribute("data-composing", "true");
           if (root.current) last.current = { text: text(root.current), selection: selection(root.current) };
           composing.current = true;
           onCompositionStart(event);
@@ -389,6 +399,7 @@ export const MentionEditor = forwardRef<
             compositionFrame.current = null;
             compositionCommit.current = null;
             composing.current = false;
+            root.current?.removeAttribute("data-composing");
             onCompositionEnd(event);
             change();
             finishComposition((version) => version + 1);
@@ -397,6 +408,7 @@ export const MentionEditor = forwardRef<
           compositionFrame.current = requestAnimationFrame(commit);
         }}
         onPaste={(event) => {
+          resetCaret(root.current);
           if (disabled) {
             event.preventDefault();
             return;
@@ -416,6 +428,7 @@ export const MentionEditor = forwardRef<
           event.clipboardData.setData("text/plain", value.slice(start, end));
         }}
         onCut={(event) => {
+          resetCaret(root.current);
           if (disabled) {
             event.preventDefault();
             return;

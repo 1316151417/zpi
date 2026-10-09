@@ -601,9 +601,8 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding-top: 12px;
+  padding: 12px 8px 0;
   /* ZCode's task sections use px-2 inside the sidebar. */
-  margin-inline: -4px;
 }
 .sidebar .projects,
 .sidebar .recent-sessions {
@@ -3124,7 +3123,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px 0 10px;
+  padding: 0 4px 0 2px;
   height: 28px;
   margin-bottom: 12px;
   color: var(--color-text-subtle);

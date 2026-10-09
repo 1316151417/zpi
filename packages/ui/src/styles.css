@@ -1971,6 +1971,34 @@ small {
   color: var(--color-text-subtlest);
   pointer-events: none;
 }
+/* Animate the native caret, preserving selection, scrolling and IME positioning. */
+@supports (caret-animation: manual) {
+  .mention-editor:focus[contenteditable="true"] {
+    caret-animation: manual;
+    animation: composer-caret 1s ease-in-out infinite;
+  }
+  .mention-editor:focus[data-composing="true"] {
+    animation: none;
+    caret-color: currentColor;
+  }
+}
+@keyframes composer-caret {
+  0%,
+  15%,
+  100% {
+    caret-color: currentColor;
+  }
+  50%,
+  65% {
+    caret-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mention-editor:focus[contenteditable="true"] {
+    animation: none;
+    caret-color: currentColor;
+  }
+}
 .inline-mention {
   display: inline-flex;
   align-items: center;
