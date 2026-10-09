@@ -3295,3 +3295,20 @@
   padding-inline: 34px;
   color: var(--color-text-subtlest);
 }
+
+.provider-api-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.provider-api-field .settings-select-trigger {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+}
+.provider-api-field .settings-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

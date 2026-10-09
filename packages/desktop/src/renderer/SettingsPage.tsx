@@ -1,7 +1,10 @@
 import {
   getProviderPreset,
+  type ProviderApi,
   type ProviderPresetId,
   presetModels,
+  providerApi,
+  providerBaseUrl,
   providerPresets,
   usesChatGPTAuth,
 } from "ZPI-ai";
@@ -34,6 +37,7 @@ import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../sha
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
+import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
@@ -59,16 +63,19 @@ import {
 
 const recommendedModels = (provider?: ProviderRecord) =>
   new Map<string, ModelSettings>([
-    ...presetModels(provider?.preset ?? "").map((model) => [model.id, model] as const),
+    ...presetModels(provider?.preset ?? "", provider?.api ?? "openai-completions").map(
+      (model) => [model.id, model] as const,
+    ),
     ...(provider?.models ?? [])
       .filter((model) => model.useRecommendedConfig && model.metadataSource)
       .map((model) => [model.id, model] as const),
   ]);
 const contextLabel = (value: number) =>
   new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-const newModel = () => ({
+const newModel = (api: ProviderApi) => ({
   id: "",
   ...modelDefaults,
+  ...(api === "anthropic-messages" ? { compat: { supportsEagerToolInputStreaming: true } } : {}),
   input: ["text"] as ModelSettings["input"],
   useRecommendedConfig: false,
 });
@@ -126,6 +133,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState<{ index: number; draft: ModelDraft }>();
   const [preset, setPreset] = useState<ProviderPresetId | undefined>(original?.preset);
   const chatgpt = usesChatGPTAuth(preset);
+  const [api, setApi] = useState<ProviderApi>(
+    original ? providerApi(original.preset, original.api ?? "openai-completions") : "anthropic-messages",
+  );
   const [picker, setPicker] = useState(!settings?.providers.length);
   const [discovering, setDiscovering] = useState(false);
   const discoveryRevision = useRef(0);
@@ -155,6 +165,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     setDiscovering(false);
     setSelected(p?.id);
     setPreset(p?.preset);
+    setApi(p ? providerApi(p.preset, p.api ?? "openai-completions") : "anthropic-messages");
     setPicker(false);
     setEditing(undefined);
     recommended.current = recommendedModels(p);
@@ -207,6 +218,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     try {
       const result = unwrap(
         await window.ZPI.discoverModels({
+          api,
           ...(preset ? { preset } : { baseUrl: url }),
           ...(selected ? { providerId: selected } : {}),
           ...(!chatgpt ? { apiKey: key } : {}),
@@ -228,12 +240,43 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     select();
     setPreset(id);
     setName(descriptor.name);
-    setUrl(descriptor.baseUrl);
-    const catalog = presetModels(id);
+    const nextApi = providerApi(id);
+    setApi(nextApi);
+    setUrl(providerBaseUrl(id, nextApi));
+    const catalog = presetModels(id, nextApi);
     recommended.current = new Map(catalog.map((model) => [model.id, model]));
     setModels(
       catalog.map((model) => draftModel({ ...model, useRecommendedConfig: true, metadataSource: "catalog" })),
     );
+  };
+  const changeApi = (nextApi: ProviderApi) => {
+    discoveryRevision.current++;
+    setDiscovering(false);
+    setApi(nextApi);
+    if (preset) setUrl(providerBaseUrl(preset, nextApi));
+    const defaults = new Map(presetModels(preset ?? "", nextApi).map((model) => [model.id, model]));
+    recommended.current = defaults;
+    setModels((current) =>
+      current.map((model) => {
+        const known = defaults.get(model.id);
+        const next = {
+          ...model,
+          ...(known && model.useRecommendedConfig !== false ? known : {}),
+          compat: known?.compat ?? newModel(nextApi).compat,
+        };
+        delete (next as ModelSettings).reasoningConfig;
+        if (nextApi === "anthropic-messages" && model.useRecommendedConfig !== false)
+          delete next.samplingParams;
+        delete next.defaultThinkingLevel;
+        if (known?.defaultThinkingLevel) next.defaultThinkingLevel = known.defaultThinkingLevel;
+        if (known?.thinkingLevelMap) next.thinkingLevelMap = known.thinkingLevelMap;
+        else delete next.thinkingLevelMap;
+        return draftModel(next);
+      }),
+    );
+    setEditing(undefined);
+    setError("");
+    setNotice("已切换协议并更新推理参数映射，保存后生效。");
   };
   const updateAppearance = (input: Partial<InterfacePreferences>) => {
     void window.ZPI.updatePreferences(input)
@@ -251,6 +294,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         const result = unwrap(
           await window.ZPI.discoverModels({
             preset,
+            api,
             apiKey: key,
           }),
         );
@@ -262,6 +306,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         await window.ZPI.saveProvider({
           ...(selected ? { id: selected } : {}),
           ...(preset ? { preset } : {}),
+          api,
           name: nextName,
           enabled: nextEnabled,
           baseUrl: url,
@@ -656,7 +701,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 Base URL
                                 <input
                                   aria-label="Base URL"
-                                  placeholder="http://127.0.0.1:8000/v1"
+                                  placeholder={
+                                    api === "anthropic-messages"
+                                      ? "http://127.0.0.1:8000"
+                                      : "http://127.0.0.1:8000/v1"
+                                  }
                                   disabled={saving || discovering}
                                   value={url}
                                   onChange={(event) => setUrl(event.target.value)}
@@ -670,18 +719,15 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               <input aria-label="Base URL" readOnly value={url} />
                             </label>
                           )}
-                          <label>
-                            API 格式
-                            <input
-                              readOnly
-                              aria-label="API 格式"
-                              value={
-                                chatgpt
-                                  ? "OpenAI Responses · ChatGPT 套餐授权"
-                                  : "OpenAI Chat Completions (/v1/chat/completions)"
-                              }
+                          <div className="provider-api-field">
+                            <label htmlFor="provider-api-format">API 格式</label>
+                            <ProviderApiFormatSelect
+                              value={api}
+                              preset={preset}
+                              disabled={chatgpt || saving || discovering || !keyReady}
+                              onChange={changeApi}
                             />
-                          </label>
+                          </div>
                           {chatgpt ? (
                             <ChatGPTConnection
                               key={selected ?? "new-chatgpt"}
@@ -725,7 +771,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 className="secondary"
                                 disabled={saving || discovering}
                                 onClick={() =>
-                                  setEditing({ index: models.length, draft: draftModel(newModel()) })
+                                  setEditing({ index: models.length, draft: draftModel(newModel(api)) })
                                 }
                               >
                                 <Plus size={14} />
@@ -926,6 +972,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                       key={`${selected ?? preset ?? "new"}:${editing.index}`}
                       initial={editing.draft}
                       chatgpt={chatgpt}
+                      api={api}
                       recommended={recommended.current.get(editing.draft.id)}
                       onClose={() => setEditing(undefined)}
                       onSave={async (model) => {

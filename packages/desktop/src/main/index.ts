@@ -220,7 +220,10 @@ async function launch(): Promise<void> {
   );
   for (const id of discovered) {
     const original = settings.snapshot(id);
-    void fetchProviderModels({ preset: original.preset, apiKey: original.apiKey }, requestFetch)
+    void fetchProviderModels(
+      { preset: original.preset, api: original.api, apiKey: original.apiKey },
+      requestFetch,
+    )
       .then(async (result) => {
         if (result.source !== "remote" || ending) return;
         if (!settings.get().providers.some((provider) => provider.id === id)) return;
@@ -699,7 +702,7 @@ async function launch(): Promise<void> {
           value = await chatgptAuth.disconnect(string(0));
           break;
         case "discoverModels": {
-          const input = object(0, ["preset", "providerId", "baseUrl", "apiKey"]);
+          const input = object(0, ["preset", "providerId", "baseUrl", "apiKey", "api"]);
           if (Object.values(input).some((value) => typeof value !== "string"))
             throw new Error("invalid_input: 模型发现参数无效");
           const saved =
@@ -710,6 +713,7 @@ async function launch(): Promise<void> {
           value = await fetchProviderModels(
             {
               preset,
+              api: input.api ?? saved?.api,
               baseUrl: input.baseUrl ?? saved?.baseUrl,
               apiKey: usesChatGPTAuth(preset as string | undefined)
                 ? saved
@@ -724,7 +728,7 @@ async function launch(): Promise<void> {
           break;
         }
         case "saveProvider": {
-          const input = object(0, ["id", "name", "baseUrl", "models", "apiKey", "preset", "enabled"]);
+          const input = object(0, ["id", "name", "baseUrl", "models", "apiKey", "preset", "enabled", "api"]);
           if (!usesChatGPTAuth(input.preset as string | undefined) && typeof input.apiKey !== "string")
             throw new Error("invalid_input: 保存时必须提供实际 API key，可为空字符串");
           value = settings.saveProvider(input as unknown as ProviderInput);

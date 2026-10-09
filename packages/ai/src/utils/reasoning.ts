@@ -9,11 +9,13 @@ export const reasoningParameterKeys = [
   "enable_thinking",
   "thinking_budget",
   "reasoning_budget",
+  "output_config",
 ] as const;
 type ReasoningModel = Pick<
   Model,
   "reasoning" | "compat" | "thinkingLevelMap" | "defaultThinkingLevel" | "reasoningConfig"
->;
+> &
+  Partial<Pick<Model, "api">>;
 export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 // A provider may map several levels to the same request. Offer that control once,
@@ -92,6 +94,8 @@ export function canControlThinking(model: ReasoningModel, level: "off" | Thinkin
   if (model.reasoningConfig) return model.reasoningConfig.levels.includes(level);
   if (!(thinkingLevels as readonly string[]).includes(level)) return false;
   const mapping = model.thinkingLevelMap?.[level];
+  if (model.api === "anthropic-messages")
+    return mapping !== null && (!["xhigh", "max"].includes(level) || mapping !== undefined);
   return (
     mapping !== null &&
     (isJsonObject(mapping) ||
@@ -113,6 +117,22 @@ export function reasoningParameters(
   if (model.thinkingLevelMap) validateThinkingMap(model.thinkingLevelMap);
   const mapping = model.thinkingLevelMap?.[level];
   if (mapping === null) throw new Error(`Unsupported reasoning level: ${level}`);
+  if (model.api === "anthropic-messages") {
+    if (level === "off") return { thinking: { type: "disabled" } };
+    if (
+      isJsonObject(mapping) &&
+      (mapping.output_config !== undefined ||
+        (isJsonObject(mapping.thinking) &&
+          (mapping.thinking.type === "adaptive" || typeof mapping.thinking.budget_tokens === "number")))
+    )
+      return structuredClone(mapping);
+    if (model.compat?.forceAdaptiveThinking) {
+      const effort = typeof mapping === "string" ? mapping : level === "minimal" ? "low" : level;
+      return { thinking: { type: "adaptive" }, output_config: { effort } };
+    }
+    const budget = { minimal: 1024, low: 2048, medium: 8192, high: 16384 }[level as "high"] ?? 16384;
+    return { thinking: { type: "enabled", budget_tokens: budget } };
+  }
   if (isJsonObject(mapping)) return structuredClone(mapping);
   if (model.compat?.thinkingFormat) {
     const thinking: JsonObject =

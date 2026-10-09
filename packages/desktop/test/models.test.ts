@@ -1,5 +1,4 @@
-import { fetchProviderModels, normalizeContext } from "ZPI-ai";
-import { streamSimple } from "ZPI-ai/api/openai-completions";
+import { fetchProviderModels, normalizeContext, presetModels, providerBaseUrl, streamSimple } from "ZPI-ai";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -224,8 +223,8 @@ it("environment discovery persists private preset credentials; models normalize 
   if (!resolved) throw new Error("Missing discovered model");
   expect(reasoningParameters(resolved, "off")).toEqual({ thinking: { type: "disabled" } });
   expect(reasoningParameters(resolved, "high")).toEqual({
-    thinking: { type: "enabled" },
-    reasoning_effort: "high",
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
   });
   const fallback = await fetchProviderModels(
     { preset: "minimax-api", apiKey: "private-key" },
@@ -250,6 +249,13 @@ it("environment discovery persists private preset credentials; models normalize 
   await host.init();
   cleanup.push(() => host.close());
   for (const provider of settings.get().providers) {
+    if (!provider.preset) throw new Error("Missing preset");
+    settings.saveProvider({
+      ...settings.snapshot(provider.id),
+      api: "openai-completions",
+      baseUrl: providerBaseUrl(provider.preset, "openai-completions"),
+      models: presetModels(provider.preset),
+    });
     const model = provider.models[0];
     const task = host.createSession(null);
     await host.setSessionSelection(task.id, {
@@ -292,7 +298,7 @@ it("environment discovery persists private preset credentials; models normalize 
   expect(afterDeletion.snapshot("env-deepseek").models).toEqual([]);
 });
 
-it("preset models are selectable and use their declared thinking wire formats in a real local stream", async () => {
+it("OpenAI preset models are selectable and use their declared thinking wire formats in a real local stream", async () => {
   const settings = new SettingsStore(await directory(), codec);
   settings.discoverEnvironment({
     DEEPSEEK_API_KEY: "test",
@@ -305,7 +311,15 @@ it("preset models are selectable and use their declared thinking wire formats in
     done(response);
   });
   cleanup.push(server.close);
-  for (const provider of settings.get().providers) {
+  for (const imported of settings.get().providers) {
+    if (!imported.preset) throw new Error("Missing preset");
+    settings.saveProvider({
+      ...settings.snapshot(imported.id),
+      api: "openai-completions",
+      baseUrl: providerBaseUrl(imported.preset, "openai-completions"),
+      models: presetModels(imported.preset),
+    });
+    const provider = settings.snapshot(imported.id);
     expect(provider.models.every((model) => availablePresets(model).length > 0)).toBe(true);
     const model = settings.getModel({ provider: provider.id, modelId: provider.models[0].id });
     if (!model) throw new Error("Missing preset model");

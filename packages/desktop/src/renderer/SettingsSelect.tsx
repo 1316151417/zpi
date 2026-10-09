@@ -8,15 +8,17 @@ export function SettingsSelect<T extends string>({
   value,
   options,
   onChange,
+  disabled,
 }: {
   label: string;
   id?: string;
   value: T;
   options: readonly { value: T; label: string; icon?: ReactNode }[];
+  disabled?: boolean;
   onChange(value: T): void;
 }) {
   return (
-    <Select.Root value={value} onValueChange={(value) => onChange(value as T)}>
+    <Select.Root disabled={disabled} value={value} onValueChange={(value) => onChange(value as T)}>
       <Select.Trigger id={id} className="settings-select-trigger" aria-label={label}>
         <Select.Value />
         <Select.Icon asChild>

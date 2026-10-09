@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
-it("continues one persisted task across both protocols with all four tools, title generation and compaction", async () => {
+it("continues one persisted task across all three protocols with all four tools, title generation and compaction", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-protocol-switch-"));
   await mkdir(join(dir, "agent"));
   await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 10 } }));
@@ -29,13 +29,56 @@ it("continues one persisted task across both protocols with all four tools, titl
   const fetcher = (async (url, init) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     const isResponse = String(url).endsWith("/responses");
-    const isTitle = String(body.instructions ?? JSON.stringify(body.messages)).includes("ZPI_SESSION_TITLE:");
+    const isAnthropic = new URL(String(url)).pathname.endsWith("/messages");
+    const isTitle = String(body.instructions ?? JSON.stringify(body.system ?? body.messages)).includes(
+      "ZPI_SESSION_TITLE:",
+    );
     const text = isTitle
       ? '{"session_title":"协议切换测试"}'
       : isResponse
         ? "response answer"
         : "completion answer";
     if (!isTitle) requests.push({ url: String(url), body, headers: new Headers(init?.headers) });
+    if (isAnthropic) {
+      const history = body.messages as { content: { type?: string; tool_use_id?: string }[] | string }[];
+      const results = history
+        .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+        .filter((item) => item.type === "tool_result" && item.tool_use_id?.startsWith("call_anthropic_"));
+      const operation = isTitle || !body.tools ? undefined : operations[results.length];
+      const events = [
+        {
+          type: "message_start",
+          message: { id: "msg_anthropic", model: "anthropic", usage: { input_tokens: 12, output_tokens: 0 } },
+        },
+        {
+          type: "content_block_start",
+          index: 0,
+          content_block: operation
+            ? { type: "tool_use", id: `call_anthropic_${results.length}`, name: operation.name, input: {} }
+            : { type: "text", text: isTitle ? text : "anthropic answer" },
+        },
+        ...(operation
+          ? [
+              {
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "input_json_delta", partial_json: JSON.stringify(operation.arguments) },
+              },
+            ]
+          : []),
+        { type: "content_block_stop", index: 0 },
+        {
+          type: "message_delta",
+          delta: { stop_reason: operation ? "tool_use" : "end_turn" },
+          usage: { output_tokens: 5 },
+        },
+        { type: "message_stop" },
+      ];
+      return new Response(
+        events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    }
     if (!isResponse)
       return sse([
         {
@@ -94,6 +137,14 @@ it("continues one persisted task across both protocols with all four tools, titl
     models: [{ id: "chat", reasoning: false }],
   });
   settings.saveProvider({
+    id: "anthropic",
+    name: "Anthropic",
+    api: "anthropic-messages",
+    baseUrl: "https://local.example/anthropic",
+    apiKey: "anthropic-key",
+    models: [{ id: "anthropic", reasoning: false }],
+  });
+  settings.saveProvider({
     id: "oauth",
     preset: "openai-chatgpt",
     name: "ChatGPT",
@@ -118,7 +169,10 @@ it("continues one persisted task across both protocols with all four tools, titl
     const run = async (text: string) => {
       await host.startRun({ sessionId: task.id, text });
       await host.activeRuns.get(task.id)?.done;
-      expect(host.getSessionSnapshot(task.id).view.runs.at(-1)?.status).toBe("completed");
+      expect(
+        host.getSessionSnapshot(task.id).view.runs.at(-1)?.status,
+        JSON.stringify(host.getSessionSnapshot(task.id).view.runs.at(-1)),
+      ).toBe("completed");
     };
     await host.setSessionSelection(task.id, { provider: "chat", modelId: "chat", reasoning: "none" });
     await run("first completion turn");
@@ -136,8 +190,23 @@ it("continues one persisted task across both protocols with all four tools, titl
     }
     expect(JSON.stringify(responseCalls[0].body.input)).toContain("completion answer");
     expect(JSON.stringify(responseCalls.at(-1)?.body.input)).toContain("after");
+    await host.setSessionSelection(task.id, {
+      provider: "anthropic",
+      modelId: "anthropic",
+      reasoning: "none",
+    });
+    await run("continue using Anthropic and all four tools");
+    const anthropicCalls = requests.filter((request) => new URL(request.url).pathname.endsWith("/messages"));
+    expect(anthropicCalls).toHaveLength(5);
+    expect(anthropicCalls[0].headers.get("x-api-key")).toBe("anthropic-key");
+    expect(JSON.stringify(anthropicCalls[0].body.messages)).toContain("response answer");
+    expect(JSON.stringify(anthropicCalls.at(-1)?.body.messages)).toContain("after");
+    expect(anthropicCalls[0].body.tools).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "read", eager_input_streaming: true })]),
+    );
+    expect(await readFile(join(dir, "note.txt"), "utf8")).toBe("after\n");
     const measured = host.getSessionSnapshot(task.id).controls.usage;
-    expect(measured.inputTokens).toBe(10);
+    expect(measured.inputTokens).toBe(12);
     await host.close();
     host = new SessionHost(
       dir,
@@ -161,7 +230,16 @@ it("continues one persisted task across both protocols with all four tools, titl
     }[];
     expect(
       reverse.filter((message) => message.role === "tool").map((message) => message.tool_call_id),
-    ).toEqual(["call_response_0", "call_response_1", "call_response_2", "call_response_3"]);
+    ).toEqual([
+      "call_response_0",
+      "call_response_1",
+      "call_response_2",
+      "call_response_3",
+      "call_anthropic_0",
+      "call_anthropic_1",
+      "call_anthropic_2",
+      "call_anthropic_3",
+    ]);
     expect(JSON.stringify(reverse)).toContain("response answer");
     expect(JSON.stringify(reverse)).not.toContain("|fc_");
     await host.setSessionSelection(task.id, { provider: "oauth", modelId: "oauth", reasoning: "none" });

@@ -5,6 +5,7 @@ import type {
   JsonValue,
   Message,
   Model,
+  SystemMessage,
   Tool,
   TranscriptContext,
 } from "../types.ts";
@@ -56,6 +57,7 @@ export function toToolDeclaration(tool: Tool): Tool {
     name: tool.name,
     description: tool.description,
     parameters: JSON.parse(JSON.stringify(tool.parameters)),
+    ...(tool.constrainedSampling ? { constrainedSampling: { ...tool.constrainedSampling } } : {}),
   };
 }
 export function emptyAssistant(model: Model): AssistantMessage {
@@ -99,4 +101,94 @@ export function isJsonObject(value: unknown): value is JsonObject {
 export function assertSupportedOptions(value: object, allowed: readonly string[], label: string): void {
   for (const key of Object.keys(value))
     if (!allowed.includes(key)) throw new Error(`${label}: unsupported option ${key}`);
+}
+
+export type TranscriptMessages = readonly { role: string }[];
+
+function isSystemMessage(message: { role: string }): message is SystemMessage {
+  return message.role === "system";
+}
+
+/** Return the leading system message, if the transcript starts with one. */
+export function getInitialSystemMessage(messages: TranscriptMessages): SystemMessage | undefined {
+  const first = messages[0];
+  return first && isSystemMessage(first) ? first : undefined;
+}
+
+/**
+ * Replay every system message into one leading system message holding the current
+ * prompt and tools. Later `content` is appended to the base prompt, `sections` are
+ * patched by name, and tools are resolved with {@link getCurrentTools}.
+ */
+export function getCurrentSystemMessage(messages: TranscriptMessages): SystemMessage | undefined {
+  const content: string[] = [];
+  const sections = new Map<string, string>();
+  let timestamp: number | undefined;
+  for (const message of messages) {
+    if (!isSystemMessage(message)) continue;
+    timestamp ??= message.timestamp;
+    const text = contentText(message.content);
+    if (text.length > 0) content.push(text);
+    for (const [name, value] of Object.entries(message.sections ?? {})) {
+      if (value === null) sections.delete(name);
+      else sections.set(name, value);
+    }
+  }
+  const tools = getCurrentTools(messages);
+  if (timestamp === undefined && tools.length === 0) return undefined;
+  return {
+    role: "system",
+    content: content.join("\n\n"),
+    ...(sections.size > 0 ? { sections: Object.fromEntries(sections) } : {}),
+    ...(tools.length > 0 ? { toolsAdded: tools } : {}),
+    timestamp: timestamp ?? 0,
+  };
+}
+
+/**
+ * Rebuild the transcript for APIs without mid-conversation system messages: the replayed
+ * system message leads, and every later system message is dropped.
+ */
+export function collapseSystemMessages(context: TranscriptContext): TranscriptContext {
+  const head = getCurrentSystemMessage(context.messages);
+  const messages = context.messages.filter((message) => message.role !== "system");
+  return { messages: head ? [head, ...messages] : messages } as TranscriptContext;
+}
+
+/** Keep later system messages in place when the model accepts them; otherwise collapse them. */
+export function resolveTranscript(
+  context: TranscriptContext,
+  supportsMidConvoSystemMessages: boolean | undefined,
+): TranscriptContext {
+  return supportsMidConvoSystemMessages ? context : collapseSystemMessages(context);
+}
+
+export function getDeclaredTools(messages: TranscriptMessages): Tool[] {
+  const definitions = new Map<string, Tool>();
+  for (const message of messages) {
+    if (!isSystemMessage(message)) continue;
+    for (const tool of message.toolsAdded ?? []) definitions.set(tool.name, tool);
+  }
+  return [...definitions.values()];
+}
+
+/**
+ * Whether a tool name was declared twice with different definitions. Transports that
+ * reference tools by name (Anthropic `tool_addition`/`tool_removal`) cannot express that.
+ */
+export function hasToolRedefinitions(messages: TranscriptMessages): boolean {
+  const declared = new Map<string, Tool>();
+  for (const message of messages) {
+    if (!isSystemMessage(message)) continue;
+    for (const tool of message.toolsAdded ?? []) {
+      const previous = declared.get(tool.name);
+      if (
+        previous !== undefined &&
+        JSON.stringify(toToolDeclaration(previous)) !== JSON.stringify(toToolDeclaration(tool))
+      )
+        return true;
+      declared.set(tool.name, tool);
+    }
+  }
+  return false;
 }

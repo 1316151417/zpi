@@ -1,5 +1,6 @@
 import type { Model } from "ZPI-ai";
 import {
+  anthropicMessagesCompatKeys,
   assertSupportedOptions,
   canControlThinking,
   discoverProviderCredentials,
@@ -8,6 +9,8 @@ import {
   openAICompletionsCompatKeys,
   presetModels,
   providerApi,
+  providerApis,
+  providerBaseUrl,
   usesChatGPTAuth,
   validateReasoningConfig,
   validateThinkingMap,
@@ -83,7 +86,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
   return {
     id: input.id,
     name: input.name?.trim() || input.id,
-    api: providerApi(provider.preset),
+    api: providerApi(provider.preset, provider.api ?? "openai-completions"),
     ...(usesChatGPTAuth(provider.preset) ? { auth: "chatgpt" as const } : {}),
     provider: provider.id,
     baseUrl: provider.baseUrl,
@@ -313,7 +316,7 @@ export class SettingsStore {
     if (!isJsonObject(input)) throw new Error("configuration: 提供商配置必须为对象");
     assertSupportedOptions(
       input,
-      ["id", "name", "baseUrl", "models", "apiKey", "preset", "enabled"],
+      ["id", "name", "baseUrl", "models", "apiKey", "preset", "enabled", "api"],
       "provider settings",
     );
     if (typeof input.name !== "string" || typeof input.baseUrl !== "string")
@@ -321,6 +324,7 @@ export class SettingsStore {
     const id = input.id ?? randomUUID();
     const provider = {
       id,
+      ...(input.api !== undefined ? { api: input.api } : {}),
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
       ...(input.preset ? { preset: input.preset } : {}),
       name: input.name.trim(),
@@ -443,8 +447,9 @@ export class SettingsStore {
         id,
         preset: preset.id,
         name: preset.name,
-        baseUrl: preset.baseUrl,
-        models: presetModels(preset.id).map((model) => ({
+        baseUrl: providerBaseUrl(preset.id),
+        api: providerApi(preset.id),
+        models: presetModels(preset.id, providerApi(preset.id)).map((model) => ({
           ...model,
           useRecommendedConfig: true,
           metadataSource: "catalog",
@@ -656,8 +661,18 @@ export class SettingsStore {
   }
   private validateProvider(p: ProviderData): void {
     if (!isJsonObject(p)) throw new Error("configuration: 无效提供商");
-    assertSupportedOptions(p, ["id", "name", "baseUrl", "models", "preset", "enabled"], "provider record");
-    if (p.preset && (!getProviderPreset(p.preset) || p.baseUrl !== getProviderPreset(p.preset)?.baseUrl))
+    assertSupportedOptions(
+      p,
+      ["id", "name", "baseUrl", "models", "preset", "enabled", "api"],
+      "provider record",
+    );
+    if (p.api !== undefined && !providerApis(p.preset).includes(p.api))
+      throw new Error("configuration: 不支持的 API 格式");
+    if (
+      p.preset &&
+      (!getProviderPreset(p.preset) ||
+        p.baseUrl !== providerBaseUrl(p.preset, providerApi(p.preset, p.api ?? "openai-completions")))
+    )
       throw new Error("configuration: 预置提供商的地址不匹配");
     if (
       typeof p.id !== "string" ||
@@ -732,7 +747,11 @@ export class SettingsStore {
         throw new Error("configuration: 输入类型仅支持文本、图片、视频和 PDF");
       if (m.compat !== undefined) {
         if (!isJsonObject(m.compat)) throw new Error("configuration: compat 必须为对象");
-        assertSupportedOptions(m.compat, openAICompletionsCompatKeys, "compat");
+        assertSupportedOptions(
+          m.compat,
+          [...openAICompletionsCompatKeys, ...anthropicMessagesCompatKeys],
+          "compat",
+        );
         if (
           m.compat.structuredOutput !== undefined &&
           !["prompt", "json_object", "json_schema"].includes(m.compat.structuredOutput as string)
@@ -746,7 +765,23 @@ export class SettingsStore {
                 ? !["max_tokens", "max_completion_tokens"].includes(String(v))
                 : k === "structuredOutput"
                   ? !["prompt", "json_object", "json_schema"].includes(String(v))
-                  : typeof v !== "boolean"
+                  : k === "sessionAffinityFormat"
+                    ? v !== "openrouter"
+                    : k === "allowedFallbackModels"
+                      ? !Array.isArray(v) ||
+                        v.some(
+                          (fallback) =>
+                            !isJsonObject(fallback) ||
+                            typeof fallback.provider !== "string" ||
+                            typeof fallback.model !== "string" ||
+                            !isJsonObject(fallback.cost) ||
+                            ["input", "output", "cacheRead", "cacheWrite"].some(
+                              (field) =>
+                                typeof (fallback.cost as Record<string, unknown>)[field] !== "number" ||
+                                (fallback.cost as Record<string, number>)[field] < 0,
+                            ),
+                        )
+                      : typeof v !== "boolean"
           )
             throw new Error("configuration: 无效 compat");
       }

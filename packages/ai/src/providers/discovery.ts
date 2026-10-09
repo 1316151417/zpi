@@ -1,9 +1,11 @@
+import type { ProviderApi } from "../types.ts";
 import { isJsonObject } from "../utils/transcript.ts";
 import type { DiscoveredModel, ProviderPresetId } from "./registry.ts";
-import { getProviderPreset, presetModels, usesChatGPTAuth } from "./registry.ts";
+import { getProviderPreset, presetModels, providerApis, usesChatGPTAuth } from "./registry.ts";
 
 export interface ModelDiscoveryInput {
   preset?: ProviderPresetId;
+  api?: ProviderApi;
   baseUrl?: string;
   apiKey: string;
 }
@@ -97,7 +99,7 @@ function normalizeModel(
     }
   }
   const effort = isJsonObject(item.effort) ? item.effort.supported_levels : undefined;
-  if (Array.isArray(effort) && input.preset === "deepseek") {
+  if (Array.isArray(effort) && input.preset === "deepseek" && input.api !== "anthropic-messages") {
     model.reasoning = true;
     model.compat = { ...model.compat, thinkingFormat: "deepseek", supportsReasoningEffort: true };
     model.thinkingLevelMap = Object.fromEntries(
@@ -115,6 +117,8 @@ export async function fetchProviderModels(
   input: ModelDiscoveryInput,
   fetcher: typeof fetch = fetch,
 ): Promise<ModelDiscoveryResult> {
+  if (input.api !== undefined && !providerApis(input.preset).includes(input.api))
+    throw new Error("configuration: 不支持的 API 格式");
   const preset = input.preset ? getProviderPreset(input.preset) : undefined;
   if (input.preset && !preset) throw new Error("configuration: 未知预置提供商");
   const baseUrl = preset?.baseUrl ?? input.baseUrl;
@@ -122,7 +126,7 @@ export async function fetchProviderModels(
   const url = new URL(`${baseUrl.replace(/\/$/, "")}/models`);
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash)
     throw new Error("configuration: 无效 API 地址");
-  const catalog = presetModels(input.preset ?? "");
+  const catalog = presetModels(input.preset ?? "", input.api);
   const modelsById = new Map(catalog.map((model) => [model.id.toLowerCase(), model]));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -130,7 +134,11 @@ export async function fetchProviderModels(
     const response = await fetcher(url, {
       headers: {
         Accept: "application/json",
-        ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
+        ...(input.apiKey
+          ? preset?.family === "mimo"
+            ? { "api-key": input.apiKey }
+            : { Authorization: `Bearer ${input.apiKey}` }
+          : {}),
       },
       signal: controller.signal,
       cache: "no-store",

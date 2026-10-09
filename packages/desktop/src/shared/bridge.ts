@@ -1,4 +1,4 @@
-import type { Model, ModelDiscoveryResult, OpenAICompletionsCompat, ProviderPresetId } from "ZPI-ai";
+import type { Model, ModelCompat, ModelDiscoveryResult, ProviderApi, ProviderPresetId } from "ZPI-ai";
 import type { Attachment, DiscoveredSkill, SkillList } from "ZPI-coding-agent";
 import type {
   DesktopEventEnvelope,
@@ -46,7 +46,7 @@ export interface SettingsInput {
   reasoning: boolean;
   contextWindow: number;
   maxTokens: number;
-  compat?: OpenAICompletionsCompat;
+  compat?: ModelCompat;
 }
 export interface ModelSettings {
   enabled?: boolean;
@@ -58,7 +58,7 @@ export interface ModelSettings {
   reasoning?: boolean;
   contextWindow?: number;
   maxTokens?: number;
-  compat?: OpenAICompletionsCompat;
+  compat?: ModelCompat;
   thinkingLevelMap?: Model["thinkingLevelMap"];
   reasoningConfig?: Model["reasoningConfig"];
   defaultThinkingLevel?: Model["defaultThinkingLevel"];
@@ -66,6 +66,7 @@ export interface ModelSettings {
   samplingParams?: Model["samplingParams"];
 }
 export interface ProviderInput {
+  api?: ProviderApi;
   enabled?: boolean;
   preset?: ProviderPresetId;
   id?: string;
@@ -284,6 +285,7 @@ export interface DesktopBridge {
   disconnectChatGPT(providerId: string): Promise<Result<{ settings: PublicSettings; warning?: string }>>;
   onSettings(listener: (settings: PublicSettings) => void): () => void;
   discoverModels(input: {
+    api?: ProviderApi;
     preset?: ProviderPresetId;
     providerId?: string;
     baseUrl?: string;

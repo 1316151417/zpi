@@ -84,7 +84,7 @@ it("cancels an agent backoff immediately and never retries terminal failures", a
   expect(terminal).toHaveBeenCalledTimes(1);
 });
 
-it.each(["openai-completions", "openai-responses"] as const)(
+it.each(["openai-completions", "openai-responses", "anthropic-messages"] as const)(
   "uses two provider retries by default through %s",
   async (api) => {
     let attempts = 0;
@@ -97,16 +97,35 @@ it.each(["openai-completions", "openai-responses"] as const)(
       const data =
         api === "openai-completions"
           ? [chunk({ content: "recovered" }), chunk({}, "stop")]
-          : [
-              { type: "response.output_text.delta", item_id: "m", content_index: 0, delta: "recovered" },
-              {
-                type: "response.completed",
-                response: { id: "r", status: "completed", output: [], usage: null },
-              },
-            ];
-      return new Response(data.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
-        headers: { "content-type": "text/event-stream" },
-      });
+          : api === "anthropic-messages"
+            ? [
+                {
+                  type: "message_start",
+                  message: { id: "a", model: "fake", usage: { input_tokens: 1, output_tokens: 0 } },
+                },
+                { type: "content_block_start", index: 0, content_block: { type: "text", text: "recovered" } },
+                { type: "content_block_stop", index: 0 },
+                { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+                { type: "message_stop" },
+              ]
+            : [
+                { type: "response.output_text.delta", item_id: "m", content_index: 0, delta: "recovered" },
+                {
+                  type: "response.completed",
+                  response: { id: "r", status: "completed", output: [], usage: null },
+                },
+              ];
+      return new Response(
+        data
+          .map(
+            (event) =>
+              `${api === "anthropic-messages" && "type" in event ? `event: ${event.type}\n` : ""}data: ${JSON.stringify(event)}\n\n`,
+          )
+          .join(""),
+        {
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
     });
     const stream = streamSimple(
       { ...fakeModel("http://local/v1"), api },
@@ -121,7 +140,7 @@ it.each(["openai-completions", "openai-responses"] as const)(
   },
 );
 
-it.each(["openai-completions", "openai-responses"] as const)(
+it.each(["openai-completions", "openai-responses", "anthropic-messages"] as const)(
   "preserves quota error codes from %s parsed bodies for Pi retry classification",
   async (api) => {
     const fetcher = vi.fn(

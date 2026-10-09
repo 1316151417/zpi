@@ -1,4 +1,4 @@
-import type { Model, OpenAICompletionsCompat } from "../types.ts";
+import type { Model, ModelCompat, ProviderApi } from "../types.ts";
 import catalog from "./catalog.json" with { type: "json" };
 
 export interface DiscoveredModel {
@@ -8,7 +8,7 @@ export interface DiscoveredModel {
   reasoning?: boolean;
   contextWindow?: number;
   maxTokens?: number;
-  compat?: OpenAICompletionsCompat;
+  compat?: ModelCompat;
   thinkingLevelMap?: Model["thinkingLevelMap"];
   defaultThinkingLevel?: Model["defaultThinkingLevel"];
   availability?: "listed" | "unverified";
@@ -85,15 +85,52 @@ export type ProviderPresetId = (typeof providerPresets)[number]["id"];
 export function getProviderPreset(id: string) {
   return providerPresets.find((preset) => preset.id === id);
 }
-export function presetModels(id: string): DiscoveredModel[] {
+export function presetModels(id: string, api: ProviderApi = "openai-completions"): DiscoveredModel[] {
   const preset = getProviderPreset(id);
-  return preset?.catalog ? (structuredClone(catalog[preset.catalog]) as DiscoveredModel[]) : [];
+  const models = preset?.catalog ? (structuredClone(catalog[preset.catalog]) as DiscoveredModel[]) : [];
+  if (api !== "anthropic-messages") return models;
+  return models.map((model) => {
+    const compat: ModelCompat = {
+      supportsEagerToolInputStreaming: false,
+      supportsLongCacheRetention: false,
+      allowEmptySignature: true,
+      ...(preset?.family === "deepseek" ||
+      preset?.family === "minimax" ||
+      model.compat?.supportsReasoningEffort
+        ? { forceAdaptiveThinking: true }
+        : {}),
+    };
+    const result = { ...model, compat };
+    delete result.samplingParams;
+    return result;
+  });
 }
 export function usesChatGPTAuth(preset?: string): boolean {
   return preset === "openai-chatgpt";
 }
-export function providerApi(preset?: string): Model["api"] {
-  return usesChatGPTAuth(preset) ? "openai-responses" : "openai-completions";
+const anthropicBaseUrls: Record<string, string> = {
+  deepseek: "https://api.deepseek.com/anthropic",
+  "zhipu-coding": "https://open.bigmodel.cn/api/anthropic",
+  "zhipu-api": "https://open.bigmodel.cn/api/anthropic",
+  "minimax-coding": "https://api.minimax.cn/anthropic",
+  "minimax-api": "https://api.minimax.cn/anthropic",
+  "mimo-coding": "https://token-plan-cn.xiaomimimo.com/anthropic",
+  "mimo-api": "https://api.xiaomimimo.com/anthropic",
+};
+export function providerApis(preset?: string): readonly ProviderApi[] {
+  return usesChatGPTAuth(preset)
+    ? ["openai-responses"]
+    : preset
+      ? ["anthropic-messages", "openai-completions"]
+      : ["anthropic-messages", "openai-completions", "openai-responses"];
+}
+export function providerApi(preset?: string, api?: ProviderApi): ProviderApi {
+  return usesChatGPTAuth(preset) ? "openai-responses" : (api ?? "anthropic-messages");
+}
+export function providerBaseUrl(preset: string, api = providerApi(preset)): string {
+  const descriptor = getProviderPreset(preset);
+  if (!descriptor || !providerApis(preset).includes(api)) throw new Error("configuration: 不支持的预置协议");
+  return api === "anthropic-messages" ? anthropicBaseUrls[preset] : descriptor.baseUrl;
 }
 export function discoverProviderCredentials(env: Record<string, string | undefined>) {
   return providerPresets.flatMap((preset) => {

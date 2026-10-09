@@ -1,4 +1,4 @@
-import type { ReasoningConfig } from "ZPI-ai";
+import type { ProviderApi, ReasoningConfig } from "ZPI-ai";
 import { editableReasoningConfig, validateReasoningConfig } from "ZPI-ai";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Check, CircleHelp, LoaderCircle, LockKeyhole, X } from "lucide-react";
@@ -46,9 +46,11 @@ export function ModelConfigDialog({
   initial,
   recommended,
   chatgpt = false,
+  api = "openai-completions",
   onClose,
   onSave,
 }: {
+  api?: ProviderApi;
   initial: ModelDraft;
   recommended?: ModelSettings;
   chatgpt?: boolean;
@@ -62,11 +64,22 @@ export function ModelConfigDialog({
     [invalidMapping, setInvalidMapping] = useState(false),
     [validationAttempt, setValidationAttempt] = useState(0);
   const edit = (field: keyof ModelDraft, value: unknown) =>
-    setModel((current) => ({
-      ...current,
-      [field]: value,
-      ...(field !== "id" && field !== "name" ? { useRecommendedConfig: false } : {}),
-    }));
+    setModel((current) => {
+      const next = {
+        ...current,
+        [field]: value,
+        ...(field !== "id" && field !== "name" ? { useRecommendedConfig: false } : {}),
+      };
+      if (
+        api === "anthropic-messages" &&
+        field === "compat" &&
+        current.compat?.forceAdaptiveThinking !== next.compat?.forceAdaptiveThinking
+      )
+        next.reasoningConfig = editableReasoningConfig(
+          reasoningModel({ ...next, reasoningConfig: undefined }, api),
+        );
+      return next;
+    });
   const save = async () => {
     setSaving(true);
     setError("");
@@ -311,7 +324,47 @@ export function ModelConfigDialog({
                 )}
                 <details className="model-transport-options">
                   <summary>请求参数</summary>
-                  {!chatgpt && (
+                  {api === "anthropic-messages" && (
+                    <div className="model-option-chips">
+                      {(
+                        [
+                          ["forceAdaptiveThinking", "自适应思考"],
+                          ["supportsEagerToolInputStreaming", "工具参数即时流式返回"],
+                          ["allowEmptySignature", "允许空 thinking 签名"],
+                          ["supportsLongCacheRetention", "1 小时缓存"],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <button
+                          key={field}
+                          type="button"
+                          className="model-option-chip"
+                          aria-pressed={
+                            model.compat?.[field] ??
+                            (field === "supportsEagerToolInputStreaming" ||
+                              field === "supportsLongCacheRetention")
+                          }
+                          onClick={() =>
+                            edit("compat", {
+                              ...model.compat,
+                              [field]: !(
+                                model.compat?.[field] ??
+                                (field === "supportsEagerToolInputStreaming" ||
+                                  field === "supportsLongCacheRetention")
+                              ),
+                            })
+                          }
+                        >
+                          <span className="model-option-check">
+                            {(model.compat?.[field] ??
+                              (field === "supportsEagerToolInputStreaming" ||
+                                field === "supportsLongCacheRetention")) && <Check size={12} />}
+                          </span>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!chatgpt && api !== "anthropic-messages" && (
                     <>
                       <label htmlFor="model-output-field">
                         输出上限字段

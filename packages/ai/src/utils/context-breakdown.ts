@@ -9,11 +9,26 @@ export function measureContextBreakdown(payload: JsonObject): ContextBreakdownIt
       : [];
   const instructions =
     typeof payload.instructions === "string" ? [{ role: "developer", content: payload.instructions }] : [];
-  for (const value of [...instructions, ...rows]) {
+  const system = payload.system ? [{ role: "system", content: payload.system }] : [];
+  const textContent = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+      .map((block) => {
+        if (!block || typeof block !== "object") return "";
+        if (block.type === "text") return block.text ?? "";
+        if (block.type === "thinking") return block.thinking ?? "";
+        if (block.type === "tool_use") return JSON.stringify(block.input ?? {});
+        if (block.type === "tool_result") return textContent(block.content);
+        return "";
+      })
+      .join("");
+  };
+  for (const value of [...system, ...instructions, ...rows]) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const message = value as JsonObject;
     if (message.role === "system" || message.role === "developer") {
-      let text = typeof message.content === "string" ? message.content : "";
+      let text = textContent(message.content);
       for (const [tag, source] of [
         ["tools", "system_tools"],
         ["skills", "skills"],
@@ -25,12 +40,7 @@ export function measureContextBreakdown(payload: JsonObject): ContextBreakdownIt
       }
       counts.system_prompt += text.length;
     } else {
-      if (typeof message.content === "string") counts.messages += message.content.length;
-      else if (Array.isArray(message.content))
-        for (const part of message.content) {
-          if (part && typeof part === "object" && !Array.isArray(part) && typeof part.text === "string")
-            counts.messages += part.text.length;
-        }
+      counts.messages += textContent(message.content).length;
       if (message.tool_calls) counts.messages += JSON.stringify(message.tool_calls).length;
       if (message.type === "function_call") counts.messages += String(message.arguments ?? "").length;
       if (message.type === "function_call_output") counts.messages += String(message.output ?? "").length;

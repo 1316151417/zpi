@@ -1,8 +1,14 @@
+# Model protocol selector
+
+The model connection form layout and protocol labels in packages/desktop/src/renderer/ProviderApiFormatSelect.tsx follow ZCode packages/ui/src/settings/model-provider-section/{ProviderApiFormatSelect,ProviderCardSections}.tsx, under the Apache-2.0 license already reproduced below. Existing ZPI provider logos remain in use.
+
 # ChatGPT provider icon
 
 The ChatGPT provider image in packages/desktop/src/renderer/assets/providers/chatgpt.png is the user-supplied OpenAI ChatGPT application icon, provided through icon-chatgpt.png. The ChatGPT name and icon belong to OpenAI; the asset is used to identify the provider.
 
 # Pi implementation
+
+Anthropic Messages transport in packages/ai/src/api/anthropic-messages.ts and its JSON repair, Unicode, thinking-budget, cost, strict-schema and transcript helpers are adapted from Pi commit cd34e17ff039502f3664d8363b3c0a23f93a2ca3. The corresponding SSE, eager-tool-input, managed-effort and cache-cost regression tests use the same reference. Adaptations connect ZPI's event, reasoning-editor, usage and retry interfaces; no telemetry or orchestration modules are included. The MIT license below applies.
 
 Parallel tool scheduling and ordered preparation in packages/agent/src/{agent-loop,tool-execution}.ts follow Pi commit cd34e17ff039502f3664d8363b3c0a23f93a2ca3, packages/agent/src/agent-loop.ts. Adapted to ZPI's transcript and event interfaces. The MIT license below applies.
 

@@ -1,7 +1,11 @@
 import type { Message, Model, ToolCall } from "../types.ts";
 
 /** Replay a portable local transcript; provider signatures only belong to their original model. */
-export function transformMessages(messages: readonly Message[], model: Model): Message[] {
+export function transformMessages(
+  messages: readonly Message[],
+  model: Model,
+  normalizeId?: (id: string) => string,
+): Message[] {
   const ids = new Map<string, string>();
   const used = new Set<string>();
   const result: Message[] = [];
@@ -43,10 +47,13 @@ export function transformMessages(messages: readonly Message[], model: Model): M
             : [];
       if (block.type === "text") return [same ? block : { type: "text", text: block.text }];
       const [originalCallId, itemId] = block.id.split("|");
-      const base = originalCallId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 56) || "call";
+      const base =
+        (normalizeId
+          ? normalizeId(originalCallId)
+          : originalCallId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 56)) || "call";
       let callId = base;
       let suffix = 0;
-      while (used.has(callId)) callId = `${base}_${++suffix}`;
+      while (used.has(callId)) callId = `${base.slice(0, 56)}_${++suffix}`;
       used.add(callId);
       const id = same && model.api === "openai-responses" && itemId ? `${callId}|${itemId}` : callId;
       ids.set(block.id, id);

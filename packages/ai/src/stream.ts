@@ -1,6 +1,7 @@
+import { streamSimple as anthropic } from "./api/anthropic-messages.ts";
 import { streamSimple as completions } from "./api/openai-completions.ts";
 import { streamSimple as responses } from "./api/openai-responses.ts";
-import type { Model, SimpleStreamOptions, TranscriptContext } from "./types.ts";
+import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "./types.ts";
 import { createAssistantMessageEventStream } from "./utils/event-stream.ts";
 import { emptyAssistant } from "./utils/transcript.ts";
 
@@ -11,12 +12,14 @@ export function streamSimple(
   options: SimpleStreamOptions & { getApiKey?: () => Promise<string> } = {},
 ) {
   const { getApiKey, ...requestOptions } = options;
-  const adapter =
-    model.api === "openai-completions"
-      ? completions
-      : model.api === "openai-responses"
-        ? responses
-        : undefined;
+  const adapter: StreamFunction<Model["api"], SimpleStreamOptions> | undefined =
+    model.api === "anthropic-messages"
+      ? (anthropic as StreamFunction<Model["api"], SimpleStreamOptions>)
+      : model.api === "openai-completions"
+        ? completions
+        : model.api === "openai-responses"
+          ? responses
+          : undefined;
   if (!adapter) throw new Error(`Unsupported API: ${model.api}`);
   if (!getApiKey) return adapter(model, context, requestOptions);
   const events = createAssistantMessageEventStream();
