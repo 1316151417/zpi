@@ -1,4 +1,4 @@
-import type { AgentToolResult, AgentToolUpdateCallback, ToolExecutionMode } from "ZPI-agent";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "ZPI-agent";
 import type { JsonValue, Model } from "ZPI-ai";
 import type { Static, TSchema } from "typebox";
 import type { LoadedSkill, SkillList } from "./resources.ts";
@@ -37,7 +37,8 @@ export interface ExtensionToolContext {
   isIdle(): boolean;
   getSystemPrompt(): string;
 }
-export interface ToolDefinition<TParameters extends TSchema = TSchema, TDetails = JsonValue | undefined> {
+export interface ToolDefinition<TParameters extends TSchema = TSchema, TDetails = JsonValue | undefined>
+  extends Pick<AgentTool, "executionMode" | "metadata" | "permission" | "requiresUserInteraction"> {
   name: string;
   label: string;
   description: string;
@@ -45,7 +46,6 @@ export interface ToolDefinition<TParameters extends TSchema = TSchema, TDetails 
   promptSnippet?: string;
   promptGuidelines?: string[];
   prepareArguments?: (args: unknown) => Static<TParameters>;
-  executionMode?: ToolExecutionMode;
   execute(
     toolCallId: string,
     params: Static<TParameters>,

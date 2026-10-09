@@ -21,6 +21,7 @@ import {
   normalizeSessionRecord,
   validateMessage,
 } from "./record-validation.ts";
+import { recoverStreamedToolJournal } from "./streaming-tool-journal.ts";
 export interface SessionHeader {
   type: "session";
   version: 1;
@@ -132,6 +133,7 @@ export class SessionManager {
     m.header = { ...h, cwd: cwdOverride ?? h.cwd };
     m.file = path;
     m.entries = parsed as SessionEntry[];
+    recoverStreamedToolJournal(m);
     return m;
   }
   getSessionId(): string {

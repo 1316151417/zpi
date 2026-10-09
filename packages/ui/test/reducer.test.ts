@@ -4,6 +4,35 @@ import { fakeModel } from "../../../tests/fake-server.ts";
 import { emptySession, progressSummary, reduceSession } from "../src/reducer.ts";
 import type { DesktopEvent, SessionView } from "../src/types.ts";
 
+it("retains a tool error completed during model streaming when the final assistant replaces its blocks", () => {
+  let view = emptySession("s");
+  let seq = 0;
+  const apply = (event: DesktopEvent) => {
+    view = reduceSession(view, { sessionId: "s", runId: "r", seq: ++seq, event });
+  };
+  const call = { type: "toolCall" as const, id: "read", name: "read", arguments: { path: "missing" } };
+  apply({ type: "started", text: "read", startedAt: 1, modelLabel: "fake" });
+  apply({ type: "block_start", messageId: "m", contentIndex: 0, kind: "tool", toolCall: call });
+  apply({ type: "tool_start", toolCallId: call.id, name: call.name, argsText: "{}" });
+  apply({
+    type: "tool_end",
+    toolCallId: call.id,
+    output: "missing file",
+    isError: true,
+    hasFileChange: false,
+  });
+  apply({
+    type: "message_end",
+    messageId: "m",
+    message: { ...emptyAssistant(fakeModel("")), content: [call] },
+  });
+  expect(view.runs[0].orderedBlocks[0]).toMatchObject({
+    status: "error",
+    isError: true,
+    output: "missing file",
+  });
+});
+
 it("keeps retry state in live snapshots, resets only the failed message and clears retries on settlement", () => {
   let view = emptySession("s");
   let seq = 0;

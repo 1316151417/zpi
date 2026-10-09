@@ -1,7 +1,7 @@
 import type { Message } from "ZPI-ai";
 import { isJsonObject } from "ZPI-ai";
 import type { AgentSessionEvent, Attachment, SessionEntry } from "ZPI-coding-agent";
-import { patchLineCounts } from "ZPI-coding-agent";
+import { patchLineCounts, projectStreamedToolJournal } from "ZPI-coding-agent";
 import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView } from "ZPI-ui";
 import { emptySession, reduceSession, resultText } from "ZPI-ui/projection";
 
@@ -100,7 +100,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
   const apply = (event: DesktopEvent) => {
     view = reduceSession(view, { sessionId, runId, seq: ++seq, event });
   };
-  for (const e of entries) {
+  for (const e of projectStreamedToolJournal(entries)) {
     if (
       e.type === "custom" &&
       e.customType === "ZPI.compaction" &&

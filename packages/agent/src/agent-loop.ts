@@ -1,20 +1,9 @@
-import type { ToolCall, ToolResultMessage } from "ZPI-ai";
-import { emptyAssistant, getCurrentTools, isJsonValue, normalizeContext, toToolDeclaration } from "ZPI-ai";
-import { Check } from "typebox/value";
-import type {
-  AgentContext,
-  AgentEventSink,
-  AgentLoopConfig,
-  AgentMessage,
-  AgentToolResult,
-  StreamFn,
-} from "./types.ts";
+import type { ToolResultMessage } from "ZPI-ai";
+import { emptyAssistant, getCurrentTools, normalizeContext, toToolDeclaration } from "ZPI-ai";
+import { createStreamingToolCoordinator } from "./streaming-tool-coordinator.ts";
+import { createToolExecutor } from "./tool-execution.ts";
+import type { AgentContext, AgentEventSink, AgentLoopConfig, AgentMessage, StreamFn } from "./types.ts";
 
-const failure = (error: unknown): AgentToolResult => ({
-  content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-  details: undefined,
-  isError: true,
-});
 function declareTools(context: AgentContext): AgentMessage[] {
   const old = getCurrentTools(context.messages);
   const next = (context.tools ?? []).map(toToolDeclaration);
@@ -79,6 +68,9 @@ async function run(
     while (true) {
       let assistant = emptyAssistant(config.model);
       let started = false;
+      let coordinator = createStreamingToolCoordinator(context, config, emit, signal);
+      let streamed = new Map<string, ToolResultMessage>();
+      let recovering = false;
       try {
         if (signal?.aborted) throw new Error("Run aborted");
         const transformed = config.transformContext
@@ -93,6 +85,7 @@ async function run(
           beforeToolCall: ____,
           afterToolCall: _____,
           toolExecution: ______,
+          streamingToolExecution: _______,
           ...options
         } = config;
         const apiKey = (await getApiKey?.(config.model.provider)) ?? config.apiKey;
@@ -107,140 +100,64 @@ async function run(
           else {
             assistant = event.partial;
             await emit({ type: "message_update", message: assistant, assistantMessageEvent: event });
+            if (event.type === "reset") {
+              const closed = assistant.content.filter((c) => c.type === "toolCall");
+              streamed = await coordinator.interrupt(closed);
+              recovering = closed.length > 0;
+              if (!recovering) coordinator = createStreamingToolCoordinator(context, config, emit, signal);
+            } else if (event.type === "toolcall_end" && !recovering) {
+              coordinator.accept(event.toolCall, assistant);
+            }
           }
         }
         assistant = await events.result();
       } catch (error) {
-        if (listenerError) throw listenerError;
+        if (listenerError) {
+          await coordinator.abandon();
+          throw listenerError;
+        }
         assistant.stopReason = signal?.aborted ? "aborted" : "error";
         assistant.errorMessage = error instanceof Error ? error.message : String(error);
       }
-      if (!started) await emit({ type: "message_start", message: assistant });
-      context.messages.push(assistant);
-      fresh.push(assistant);
-      await emit({ type: "message_end", message: assistant });
       const calls = assistant.content.filter((c) => c.type === "toolCall");
+      try {
+        if (!recovering) {
+          streamed =
+            signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason)
+              ? await coordinator.interrupt(calls)
+              : await coordinator.drain(calls);
+        }
+        if (listenerError) throw listenerError;
+        if (!started) await emit({ type: "message_start", message: assistant });
+        context.messages.push(assistant);
+        fresh.push(assistant);
+        await emit({ type: "message_end", message: assistant });
+      } catch (error) {
+        await coordinator.abandon();
+        throw error;
+      }
       const results: ToolResultMessage[] = [];
       if (calls.length) {
-        // Preparation is ordered, even for a parallel batch.
-        const prepare = async (call: ToolCall) => {
-          const tool = context.tools?.find((t) => t.name === call.name);
-          let args: unknown = call.arguments;
-          let error: AgentToolResult | undefined;
-          try {
-            if (signal?.aborted || assistant.stopReason === "aborted")
-              throw new Error("Tool cancelled before execution; effects unknown");
-            if (assistant.stopReason === "error")
-              throw new Error("Tool not executed: provider response failed");
-            if (assistant.stopReason === "length")
-              throw new Error("Tool not executed: output length limit may have truncated arguments");
-            if (!tool) throw new Error(`Unknown tool: ${call.name}`);
-            args = tool.prepareArguments ? tool.prepareArguments(args) : args;
-            if (!Check(tool.parameters, args)) throw new Error(`Invalid arguments for tool ${call.name}`);
-            const blocked = await config.beforeToolCall?.(
-              { assistantMessage: assistant, toolCall: call, args, context },
-              signal,
-            );
-            if (blocked?.block) throw new Error(blocked.reason ?? "Tool blocked by hook");
-          } catch (e) {
-            error = failure(e);
-          }
-          return { call, tool, args, error };
-        };
-        const execute = async (prepared: Awaited<ReturnType<typeof prepare>>): Promise<ToolResultMessage> => {
-          const { call, tool, args } = prepared;
-          let result = prepared.error;
-          let alive = true;
-          let updateError: unknown;
-          let updates = Promise.resolve();
-          await emit({ type: "tool_execution_start", toolCallId: call.id, toolName: call.name, args });
-          try {
-            if (!result) {
-              if (signal?.aborted) throw new Error("Tool cancelled before execution");
-              result = await tool?.execute(call.id, args, signal, (partialResult) => {
-                if (!alive) return;
-                updates = updates
-                  .then(() =>
-                    emit({
-                      type: "tool_execution_update",
-                      toolCallId: call.id,
-                      toolName: call.name,
-                      args,
-                      partialResult,
-                    }),
-                  )
-                  .catch((e) => {
-                    updateError ??= e;
-                  });
-              });
-              if (!result) throw new Error("Tool returned no result");
-            }
-          } catch (e) {
-            result = failure(e);
-          } finally {
-            alive = false;
-            await updates;
-          }
-          if (!result) result = failure("Tool returned no result");
-          if (signal?.aborted)
-            result = {
-              ...result,
-              isError: true,
-              content: [
-                ...result.content,
-                { type: "text", text: "Tool cancelled; side effects may have occurred." },
-              ],
-            };
-          try {
-            const replacement = await config.afterToolCall?.(
-              {
-                assistantMessage: assistant,
-                toolCall: call,
-                args,
-                context,
-                result,
-                isError: result.isError ?? false,
-              },
-              signal,
-            );
-            if (replacement) result = { ...result, ...replacement };
-            // Reject circular/non-JSON tool details before recording or IPC.
-            if (result.details !== undefined && !isJsonValue(result.details))
-              throw new Error("Tool details must be JSON serializable");
-          } catch (e) {
-            result = failure(e);
-          }
-          if (updateError) throw updateError;
-          await emit({
-            type: "tool_execution_end",
-            toolCallId: call.id,
-            toolName: call.name,
-            result,
-            isError: result.isError ?? false,
-          });
-          return {
-            role: "toolResult",
-            toolCallId: call.id,
-            toolName: call.name,
-            content: result.content,
-            details: result.details,
-            isError: result.isError ?? false,
-            timestamp: Date.now(),
-          };
-        };
+        const executor = createToolExecutor(context, assistant, config, emit, signal);
         const sequential =
           config.toolExecution === "sequential" ||
           calls.some((c) => context.tools?.find((t) => t.name === c.name)?.executionMode === "sequential");
         if (sequential) {
-          for (const c of calls) {
-            const r = await execute(await prepare(c));
-            results.push(r);
-            await add(r);
+          for (const call of calls) {
+            const result = streamed.get(call.id) ?? (await (await executor.schedule(call))());
+            results.push(result);
+            await add(result);
+            if (signal?.aborted && !streamed.size) break;
           }
         } else {
-          const prepared = [];
-          for (const c of calls) prepared.push(await prepare(c));
-          const outcomes = await Promise.allSettled(prepared.map(execute));
+          // Pi prepares every call in declaration order before launching the batch.
+          const scheduled: (() => Promise<ToolResultMessage>)[] = [];
+          for (const call of calls) {
+            const result = streamed.get(call.id);
+            scheduled.push(result ? async () => result : await executor.schedule(call));
+            if (signal?.aborted && !streamed.size) break;
+          }
+          const outcomes = await Promise.allSettled(scheduled.map((execute) => execute()));
           for (const outcome of outcomes) {
             if (outcome.status === "fulfilled") {
               results.push(outcome.value);

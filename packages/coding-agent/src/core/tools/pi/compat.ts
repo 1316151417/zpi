@@ -1,4 +1,4 @@
-import type { AgentToolResult, AgentToolUpdateCallback, ThinkingLevel } from "ZPI-agent";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback, ThinkingLevel } from "ZPI-agent";
 import type { Model } from "ZPI-ai";
 import type { Static, TSchema } from "typebox";
 import type { SessionManager } from "../../session-manager.ts";
@@ -9,7 +9,8 @@ export interface ExtensionContext {
   thinkingLevel?: ThinkingLevel;
   sessionManager: SessionManager;
 }
-export interface ToolDefinition<T extends TSchema, D = unknown> {
+export interface ToolDefinition<T extends TSchema, D = unknown>
+  extends Pick<AgentTool, "executionMode" | "metadata" | "permission" | "requiresUserInteraction"> {
   name: string;
   label: string;
   description: string;

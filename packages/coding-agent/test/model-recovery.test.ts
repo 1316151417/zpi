@@ -1,13 +1,13 @@
 import type { AssistantMessage, ModelRetryStatus, TranscriptContext } from "ZPI-ai";
 import { createAssistantMessageEventStream, emptyAssistant } from "ZPI-ai";
 import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 
-it("commits complete tool calls from a failed stream once and continues with their results", async () => {
+it("pairs an unexecuted write with a synthetic failure during streaming recovery, as in ZCode", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   let calls = 0,
@@ -34,6 +34,10 @@ it("commits complete tool calls from a failed stream once and continues with the
         events.push({ type: "toolcall_end", contentIndex: 1, toolCall, partial: output });
       } else {
         expect(context.messages.filter((m) => m.role === "toolResult")).toHaveLength(1);
+        expect(context.messages.find((m) => m.role === "toolResult")).toMatchObject({
+          isError: true,
+          details: { type: "stream_recovery_interrupted_tool", reason: "not_executed" },
+        });
         expect(JSON.stringify(context)).not.toContain("discarded tail");
         output.content = [{ type: "text", text: "finished" }];
         events.push({ type: "start", partial: output });
@@ -54,7 +58,7 @@ it("commits complete tool calls from a failed stream once and continues with the
   await session.prompt("write once");
   expect(calls).toBe(2);
   expect(writes).toBe(1);
-  expect(await readFile(join(cwd, "once.txt"), "utf8")).toBe("complete");
+  await expect(access(join(cwd, "once.txt"))).rejects.toMatchObject({ code: "ENOENT" });
   expect(session.messages.at(-1)).toMatchObject({ content: [{ text: "finished" }] });
   session.dispose();
 });

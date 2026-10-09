@@ -89,6 +89,14 @@ export function createReadToolDefinition(
   const ops = options?.operations ?? defaultReadOperations;
   return {
     name: "read",
+    metadata: {
+      readOnly: true,
+      concurrentSafe: true,
+      destructive: false,
+      needsApproval: false,
+      requiresUserInteraction: false,
+      sideEffectScope: "none",
+    },
     label: "read",
     description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     promptSnippet: readToolSystemPromptContribution.snippet,

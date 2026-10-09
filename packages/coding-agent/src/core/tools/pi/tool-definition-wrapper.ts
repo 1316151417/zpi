@@ -14,6 +14,10 @@ export function wrapToolDefinition<T extends TSchema, D>(
     promptSnippet: definition.promptSnippet,
     promptGuidelines: definition.promptGuidelines,
     prepareArguments: definition.prepareArguments,
+    executionMode: definition.executionMode,
+    metadata: definition.metadata,
+    permission: definition.permission,
+    requiresUserInteraction: definition.requiresUserInteraction,
     execute: async (id, params, signal, update) => {
       const result = await definition.execute(
         id,

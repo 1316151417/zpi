@@ -207,6 +207,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
             argsText: JSON.stringify(c.arguments, null, 2),
             status: previous?.type === "tool" ? previous.status : "preparing",
             output: previous?.type === "tool" ? previous.output : "",
+            isError: previous?.type === "tool" ? previous.isError : undefined,
             hasFileChange: previous?.type === "tool" ? previous.hasFileChange : undefined,
             fileChange: previous?.type === "tool" ? previous.fileChange : undefined,
           });

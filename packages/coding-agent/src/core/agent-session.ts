@@ -34,6 +34,7 @@ import type { LoadedSkill, SkillList } from "./resources.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 import type { ContextUsage } from "./session-state.ts";
 import { contextUsage } from "./session-state.ts";
+import { StreamingToolJournal } from "./streaming-tool-journal.ts";
 import type { ResourceDiagnostic, ResourceLoader } from "./types.ts";
 export interface InputContext {
   images?: ImageContent[];
@@ -156,19 +157,21 @@ export class AgentSession {
         }
         return messages;
       },
-      toolExecution: "sequential",
+      toolExecution: "parallel",
     });
     this.usageAnchor = restoreUsageAnchor(this.agent.state.messages);
+    const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
     this.agent.subscribe((event) => {
-      if (event.type === "message_end") {
-        try {
+      try {
+        streamingTools.observe(event);
+        if (event.type === "message_end") {
           this.manager.appendMessage(event.message);
           this.notifyLastEntry();
-        } catch (e) {
-          this.fault = e instanceof Error ? e : new Error(String(e));
-          this.agent.abort();
-          throw this.fault;
         }
+      } catch (e) {
+        this.fault = e instanceof Error ? e : new Error(String(e));
+        this.agent.abort();
+        throw this.fault;
       }
       this.notify(event.type === "agent_end" ? { ...event, willRetry: false } : event);
     });

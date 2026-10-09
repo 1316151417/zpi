@@ -26,6 +26,7 @@ export class Agent {
         "onPayload",
         "onResponse",
         "toolExecution",
+        "streamingToolExecution",
       ],
       "Agent",
     );
@@ -133,6 +134,7 @@ export class Agent {
     };
     const emit = async (event: AgentEvent): Promise<void> => {
       if (event.type === "message_start" && event.message.role === "assistant") this.partial = event.message;
+      if (event.type === "message_update") this.partial = event.message;
       if (event.type === "message_end") {
         this.state.messages.push(event.message);
         this.partial = undefined;
@@ -140,7 +142,13 @@ export class Agent {
       }
       if (event.type === "tool_execution_start") this.pending.add(event.toolCallId);
       if (event.type === "tool_execution_end") this.pending.delete(event.toolCallId);
-      for (const listener of this.listeners) await listener(event);
+      try {
+        for (const listener of this.listeners) await listener(event);
+      } catch (error) {
+        // A streamed tool can fail its sink while the provider is still generating.
+        this.controller?.abort();
+        throw error;
+      }
     };
     const context = { messages: [...this.state.messages], tools: [...this.state.tools] };
     // Defer entry so running is installed before any callback can observe it.

@@ -76,16 +76,21 @@ describe("Agent execution lifecycle", () => {
     ]);
     expect(agent.state.isStreaming).toBe(false);
   });
-  it("before/after hooks and thrown tools become error results", async () => {
+  it("blocked calls become error results without running the after hook, as in Pi", async () => {
+    let after = 0;
     const { agent, inputs } = make({
       beforeToolCall: async () => ({ block: true, reason: "denied" }),
-      afterToolCall: async () => ({ details: { blocked: true } }),
+      afterToolCall: async () => {
+        after++;
+        return undefined;
+      },
     });
     await agent.prompt("go");
     expect(inputs[1].find((m) => m.role === "toolResult")).toMatchObject({
       isError: true,
-      details: { blocked: true },
+      content: [{ type: "text", text: "denied" }],
     });
+    expect(after).toBe(0);
   });
   it("busy and independent instances", async () => {
     const gate = deferred();

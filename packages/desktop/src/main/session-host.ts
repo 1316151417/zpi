@@ -605,7 +605,15 @@ export class SessionHost {
         throw new Error(`storage: ${String(e)}`);
       }
       const index = this.indexes.get(id);
-      if (index) m.subscribeEntries((entry) => index.ingest(entry));
+      if (index) {
+        // Opening an interrupted stream can append recovered tool pairs before
+        // the live subscription is installed. Keep byte offsets authoritative.
+        const entries = m.getEntries();
+        const parent = entries.findIndex((entry) => entry.id === index.data.parentId);
+        for (const entry of entries.slice(parent + 1)) index.ingest(entry);
+        index.flush();
+        m.subscribeEntries((entry) => index.ingest(entry));
+      }
       this.managers.set(id, m);
     }
     return m;

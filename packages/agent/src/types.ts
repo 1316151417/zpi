@@ -19,6 +19,14 @@ export interface CustomAgentMessages {}
 export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
 export type ThinkingLevel = "off" | import("ZPI-ai").ThinkingLevel;
 export type ToolExecutionMode = "sequential" | "parallel";
+export interface ToolExecutionMetadata {
+  readOnly?: boolean;
+  concurrentSafe?: boolean;
+  destructive?: boolean;
+  needsApproval?: boolean;
+  requiresUserInteraction?: boolean;
+  sideEffectScope?: "none" | "workspace" | "git" | "network" | "system" | "session" | "userInteraction";
+}
 export type StreamFn = (
   model: Model,
   context: TranscriptContext,
@@ -37,6 +45,9 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = Jso
   promptSnippet?: string;
   promptGuidelines?: string[];
   executionMode?: ToolExecutionMode;
+  metadata?: ToolExecutionMetadata;
+  permission?: { sideEffectScope?: ToolExecutionMetadata["sideEffectScope"] };
+  requiresUserInteraction?: boolean;
   prepareArguments?: (args: unknown) => Static<TParameters>;
   execute(
     toolCallId: string,
@@ -82,6 +93,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
     signal?: AbortSignal,
   ) => Promise<AfterToolCallResult | undefined>;
   toolExecution?: ToolExecutionMode;
+  streamingToolExecution?: "off" | "readOnly";
 }
 export type AgentEvent =
   | { type: "agent_start" }
@@ -90,7 +102,13 @@ export type AgentEvent =
   | { type: "turn_end"; message: AgentMessage; toolResults: ToolResultMessage[] }
   | { type: "message_start" | "message_end"; message: AgentMessage }
   | { type: "message_update"; message: AgentMessage; assistantMessageEvent: AssistantMessageEvent }
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
+  | {
+      type: "tool_execution_start";
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+      executionTiming?: "during_stream";
+    }
   | {
       type: "tool_execution_update";
       toolCallId: string;
@@ -130,6 +148,7 @@ export interface AgentOptions
     | "onPayload"
     | "onResponse"
     | "toolExecution"
+    | "streamingToolExecution"
   > {
   initialState?: AgentInitialState;
   streamFn: StreamFn;

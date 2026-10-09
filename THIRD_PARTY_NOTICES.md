@@ -4,6 +4,8 @@ The ChatGPT provider image in packages/desktop/src/renderer/assets/providers/cha
 
 # Pi implementation
 
+Parallel tool scheduling and ordered preparation in packages/agent/src/{agent-loop,tool-execution}.ts follow Pi commit cd34e17ff039502f3664d8363b3c0a23f93a2ca3, packages/agent/src/agent-loop.ts. Adapted to ZPI's transcript and event interfaces. The MIT license below applies.
+
 The system prompt and adapted tool modules in packages/coding-agent/src/core/tools/pi originate from Pi commit c20cb09772bf4e2590a316cb54514cef76df4293.
 
 Assistant history replay rules in packages/ai/src/api/openai-completions.ts also follow that Pi commit's src/api/transform-messages.ts and src/api/openai-completions.ts: exclude errored/aborted and empty assistant messages from requests, convert non-redacted thinking to text across models, and preserve valid tool calls/results. Adapted to ZPI's existing supported Chat Completions fields; stored history is unchanged.
@@ -382,6 +384,8 @@ specific language governing permissions and limitations under the License.
 
 
 # ZCode desktop presentation
+
+Read-only execution during model streaming, safety admission, result reuse, 250 ms cancellation drain, durable pending/result journaling and interrupted-call recovery in packages/agent/src/streaming-tool-coordinator.ts and packages/coding-agent/src/core/streaming-tool-journal.ts follow ZCode commit 872ad960de7ec172591f7e1952f7849229f94521, apps/zcode-cli/packages/core/src/runtime/methods/{streaming-tool-coordinator,streaming-tool-synthetic-result,tool-part-persistence}.ts. Adapted to ZPI's four-tool runtime, append-only JSONL and existing transcript/retry events. The Apache-2.0 license below applies.
 
 Task notifications follow ZCode commit 872ad960de7ec172591f7e1952f7849229f94521: desktopNotifications.ts, taskNotificationOrchestrator.ts, taskNotificationPreferences.ts, taskNotificationSound.ts, settingsPageHelpers.tsx and zh-CN notification labels. The original task-notification-pop.mp3 is copied into packages/desktop/src/renderer/assets/notification-sounds. Notification delivery, preference persistence and task navigation are adapted to ZPI's live run events and Electron bridge. Apache-2.0 attribution and license below apply.
 
