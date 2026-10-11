@@ -1,42 +1,116 @@
 # ZPI
 
-**极简的编码客户端。** 参考 ZCode 的界面，结合 Pi Coding Agent 的极简内核，并把同样的减法理念用到客户端：界面干净、清爽，只保留最核心、最常用的功能，让日常编码保持高效。
+**给 Agent 更少的工具，给你更多的模型选择。**
 
-## 为什么选择 ZPI
+ZPI 是一个极简的 AI 编码桌面客户端：参考 ZCode 的界面，采用 Pi 风格的 Agent 内核，把「做减法」同时用在工具、界面和工作流上。读代码、改文件、跑命令、看结果——不必先搭建一套复杂的 Agent 平台。
 
-- 功能简单，操作直接，没有遥测。
-- 以节省 token 和时间为目标，具体对比证据后续补充。
-- 代码与功能边界小，易于维护、自定义，也方便在此基础上实现自己的个性化需求。
+[下载安装](https://github.com/1316151417/zpi/releases) · [项目介绍](http://101.200.240.206) · [GitHub](https://github.com/1316151417/zpi)
 
-取舍也很明确：内核只保留 `read`、`write`、`edit`、`bash` 四个工具，不支持子 Agent、MCP、后台任务等高级能力。
+## 理念：极简不是少做事，而是少干扰
 
-## 核心能力
+### 四个基础工具，覆盖日常编码
 
-- **模型自由切换**：预置提供商和自定义模型，支持环境变量初始化、手动获取模型列表、启用开关与排序。运行中也能切换；当前执行继续使用旧配置，新消息使用新选择的提供商、模型和思考程度。
-- **编码与变更对比**：读写文件、精确编辑、执行命令，查看本轮或整个任务的文件差异。
-- **浏览器、终端与文件预览**：在右侧工作区打开页面、终端和文件，保留聊天空间。
-- **项目与任务**：选择项目或直接工作，任务置顶、会话恢复、草稿保留。
-- **任务内搜索**：按 Ctrl + F 或 ⌘F 查找消息和文件变更，显示命中数并高亮定位；Enter / ↓ 跳到下一项，Shift + Enter / ↑ 跳到上一项，Esc 关闭。搜索会自动加载更早的历史，并支持跨文件跳转。
-- **任务通知**：应用不在前台时，任务完成、中断或失败会发送系统通知；点击返回对应任务。在「设置 → 常规」可关闭通知或单独关闭提示音。
-- **上下文与消息**：`@` 引用文件、`$` 选择技能、`/init` 初始化项目指令、`/compact` 压缩上下文；运行中可排队消息、立即发送、编辑或删除。
+Agent 内核只保留四个工具：
 
-## 安装与使用
+| 工具 | 用途 |
+| --- | --- |
+| `read` | 阅读文件和图片，按需加载上下文 |
+| `write` | 创建或完整写入文件 |
+| `edit` | 精确替换文件中的内容 |
+| `bash` | 执行命令、搜索代码、运行脚本和测试 |
 
-前往 [Releases](https://github.com/1316151417/zpi/releases)，下载与你的系统和架构对应的安装包。
+不再为搜索、目录浏览、网络请求等操作不断增加专用工具。已有的命令行和脚本生态，就是 Agent 可以使用的能力。
 
-启动后，在「设置 → 模型」添加提供商和 API Key、通过「OpenAI（ChatGPT）」登录授权，或配置自定义模型；然后选择项目、选择模型，开始对话。不选择项目也可以直接工作。
+**不内置 MCP、专用 REPL、Browser Use、子 Agent 或后台任务编排。** 当任务需要浏览器自动化时，Agent 可以自行编写浏览器控制脚本，再通过 `bash` 执行；前提是本机具备相应运行环境和依赖。不必为此再引入一组常驻工具。
 
-支持 DeepSeek、智谱、MiniMax、MiMo 的预置配置，以及 OpenAI ChatGPT 套餐授权。ChatGPT 登录后自动获取当前账号可用模型，支持手动刷新；凭据通过系统加密保存，令牌在请求前自动续期。ChatGPT 使用 Responses API，本地保存完整对话和工具结果，同一任务可与 Chat Completions 模型双向切换；跨模型切换保留文本与工具历史，专有推理签名仅用于原模型。环境变量中的 API Key 只用于初始化尚不存在的提供商；已有配置不会被自动发现覆盖，模型列表仅在首次初始化或手动刷新时获取。
+这里的「不内置」不是封锁能力：你仍然可以让 Agent 使用已安装的命令行程序。客户端的网页预览也只是供人查看结果，不是暴露给 Agent 的浏览器控制工具。
 
-ChatGPT 在线目录缺少 GPT-6.1 Sol、GPT-6 Astra 或 GPT-6 Luna 时，会补充预置配置并标记「待验证」；实际调用仍取决于账号权限，在线目录明确隐藏的型号不会被补充。三个模型默认使用「中」档；Sol、Astra 支持低、中、高、极高、最高，Luna 另外支持关闭。国内模型的默认配置只显示其支持的档位，相同请求参数的映射合并为一个选项。
+### 界面做减法，模型不做绑定
 
-在「编辑模型配置 → 高级配置」可点击修改推理等级，通过 `+` 新增、删除或拖动排序，也可按 Alt + 左右方向键排序。推理参数映射采用与 ZCode 相同的 CEL 表达式，以 `reasoningLevel` 为变量返回 JSON 请求参数；保存时会验证每个等级。配置的等级用于聊天选择、排队消息和任务恢复，由 `zpi-ai` 统一映射到供应商请求。自定义模型默认使用列表最后一级，预置 GPT 模型保留「中」档默认值。
+- **只保留高频工作流**：项目、对话、变更、终端、预览。减少配置负担和界面噪声。
+- **模型由你选择**：按任务、成本和使用习惯选择提供商，不把整个工作流锁在一个模型上。
+- **没有遥测**：会话和配置保存在本机；模型请求仍会把所需上下文发送给你选择的提供商。
+- **代码保持小而清晰**：方便理解、维护和按自己的习惯修改。节省 token 和时间是设计目标，不是未经验证的性能承诺。
 
-## 开发与调试
+## 重要特性
 
-命名约定：产品展示和自然语言文案使用 **ZPI**；npm 包、隐藏目录（`.zpi`）、应用 ID、IPC、存储键和前端技术前缀使用小写 `zpi`；环境变量和全大写常量使用 `ZPI_*`。应用显示名及其对应的 `ZPI.app`、`ZPI Preview` 数据目录保留品牌大小写。OpenAI 对接是明确例外：ChatGPT 授权参数 `agent_name_hint` 和 Responses 工具命名空间保留大写 `ZPI`，不要随内部技术命名修改。
+### 1. 多模型接入，同一任务自由切换
 
-使用 Node.js 24 和 npm。当前桌面构建与本地打包在 macOS Apple Silicon 上验证；编译终端模块需要 Xcode Command Line Tools。
+预置 **OpenAI（ChatGPT）、DeepSeek、智谱、MiniMax、MiMo**，并区分适用的套餐与按量 API 配置。你也可以自定义提供商的地址、API Key、模型 ID 和能力参数，对接兼容接口的国产模型、其他服务或本地模型服务。
+
+支持三种 API 格式：**OpenAI Chat Completions、OpenAI Responses、Anthropic Messages**。是否可用仍取决于服务端的协议和工具调用兼容性，不是任意模型都能无配置接入。
+
+- 自动初始化预置提供商，手动获取或刷新模型列表。
+- 启用、禁用和排序提供商与模型，只显示你常用的选项。
+- 按模型选择思考程度，也可在高级配置中自定义推理等级及 CEL 请求参数映射。
+- 执行过程中也能更改选择：**当前执行继续使用原配置，后续消息使用新配置**。
+- 同一任务可在 ChatGPT Responses 与 Chat Completions 模型之间双向切换，保留文本与工具历史；供应商专有的推理签名只用于对应模型。
+
+### 2. ChatGPT 套餐授权，不用复制网页会话凭据
+
+在「设置 → 模型」选择 **OpenAI（ChatGPT）**，通过浏览器完成 OAuth 登录与套餐访问授权。ZPI 使用授权令牌调用 Responses API，而不是要求你粘贴 ChatGPT 网页 Cookie。
+
+- 登录后获取当前账号的模型目录，支持手动刷新。
+- 请求前自动续期令牌；系统加密可用时，凭据加密保存在本机。
+- 系统加密不可用时，凭据只保留在当前应用内存，不以明文落盘。
+- 完整对话和工具结果保存在本机，便于恢复任务和跨模型续聊。
+
+> 这是 ChatGPT 套餐授权接入，不等同于普通 OpenAI API Key。可用模型、额度及访问资格由账号和 OpenAI 决定；目录中的「待验证」预置模型不代表账号一定有权限。任何第三方客户端都无法承诺「绝不封号」，请遵守提供商条款。
+
+### 3. 从环境变量发现配置，已有设置不被覆盖
+
+如果你已经在开发环境配置了 API Key，ZPI 会在启动时识别以下变量，初始化尚未添加的预置提供商：
+
+| 提供商 | 可识别的环境变量（同一行按顺序取首个有效值） |
+| --- | --- |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| 智谱 Coding Plan | `ZHIPU_API_KEY` / `ZHIPU_CODING_API_KEY` / `ZAI_CODING_CN_API_KEY` |
+| 智谱 API | `ZHIPU_PAYGO_API_KEY` / `ZHIPU_STANDARD_API_KEY` |
+| MiniMax Coding Plan | `MINIMAX_API_KEY` |
+| MiniMax API | `MINIMAX_PAYGO_API_KEY` |
+| MiMo Token Plan | `MIMO_API_KEY` / `XIAOMI_TOKEN_PLAN_CN_API_KEY` |
+| MiMo API | `MIMO_PAYGO_API_KEY` / `XIAOMI_API_KEY` |
+
+已有提供商不会被自动发现覆盖，模型目录只在首次初始化或手动刷新时获取。自动发现针对上面的预置变量，不会根据任意环境变量猜测自定义服务。
+
+macOS/Linux 启动时会尝试读取登录 Shell 环境，方便从桌面打开应用时也能发现配置；Windows 使用进程环境。若删除自动导入的提供商但仍保留对应环境变量，下次启动会再次导入。
+
+### 4. 辅助对话：追问，不必打断主任务
+
+主任务正在工作，你想问「这段代码为什么这样改？」或「还有没有另一种方案？」——可以在右侧打开辅助对话。
+
+- 创建时继承主任务已有的稳定上下文，不需要重新解释背景。
+- 拥有独立的消息记录、模型选择和运行状态，不把追问写回主任务。
+- 可以独立停止或关闭，不中断主任务的执行。
+- 不是自动委派的子 Agent，也不会自动接着做主任务。
+
+**辅助对话与主任务共享工作目录，不是文件隔离或只读沙箱。** 提示词要求只有用户明确请求时才修改工作区；若需要隔离代码改动，请使用独立任务的 Git 工作树。
+
+### 5. 编码、检查和查看结果，都在一个工作区
+
+- **文件变更**：查看本轮或整个任务的差异；支持消息编辑、重试、任务分叉和带冲突检查的文件回退。
+- **右侧面板**：终端、文件和网页预览，不用离开对话查结果；支持 Markdown、HTML、PDF、Office 文档及媒体的相应预览或打开方式。PPTX 使用系统默认程序打开。
+- **项目与任务**：任务置顶、归档、恢复和草稿保留；按项目或时间线浏览，按创建或更新时间排序。
+- **Git 工作树**：为新任务创建独立分支和工作目录，避免直接改动原项目工作区。
+- **任务内搜索**：`⌘F` / `Ctrl+F` 搜索消息与文件变更，高亮定位并加载更早历史。
+- **上下文管理**：`@` 引用文件、`$` 选择技能；`/init` 建立项目指令，`/compact` 压缩上下文，另有自动压缩与超限恢复。
+- **消息排队**：执行时继续补充需求，支持调整、编辑、删除或立即发送排队消息。
+- **任务通知**：应用不在前台时，完成、中断或失败可发送系统通知；通知和提示音均可关闭。
+
+技能和项目指令是按需读取的文本，不是一套新的工具平台。支持项目 `AGENTS.md` 及用户/项目级 `.agents`、`.zpi` 资源目录。桌面端另有可选的结构化用户提问能力，默认关闭；四个基础工具仍是内核边界。
+
+## 开始使用
+
+1. 前往 [Releases](https://github.com/1316151417/zpi/releases)，查看当前发布的安装包。
+2. 启动 ZPI，在「设置 → 模型」登录 ChatGPT、填写预置提供商 API Key，或添加自定义模型。已有环境变量可自动初始化预置配置。
+3. 选择项目和模型，描述你想完成的工作。也可以不选择项目直接对话。
+4. 查看变更与预览，必要时打开辅助对话，或切换模型继续任务。
+
+当前桌面构建和本地打包主要在 **macOS Apple Silicon** 上验证。仓库提供 macOS DMG 与 Windows NSIS 打包命令；具体可下载平台以 Releases 为准。
+
+## 本地开发
+
+使用 **Node.js 24 和 npm**。macOS 原生终端模块需要 Xcode Command Line Tools。
 
 ```sh
 git clone https://github.com/1316151417/zpi.git
@@ -47,32 +121,34 @@ npm run install:terminal
 npm run dev
 ```
 
-`npm run dev` 以 ZPI Preview 身份启动 Electron 客户端和 Vite 开发服务器，与打包的 Preview 共用数据目录和钥匙串身份；正式版使用独立的 ZPI 目录。开发版与 Preview 应轮流运行。界面修改通过 HMR 更新，内核、主进程及 preload 修改会自动重启客户端；Ctrl+C 结束开发进程。升级 Electron 后重新运行 `npm run install:terminal`。
-
-异常日志保存在应用数据目录的 `agent/logs/error.log`，与 `agent/sessions` 同级。macOS 开发版和 Preview 版均为 `~/Library/Application Support/ZPI Preview/agent/logs/error.log`，正式版为 `~/Library/Application Support/ZPI/agent/logs/error.log`。每行是一个 JSON 记录，包含时间、来源、错误消息、可用堆栈和相关会话/运行 ID；达到 5 MB 后轮换为 `error.log.1`，保留一份旧日志。日志仅存本机，不记录 IPC 参数、完整请求或聊天内容，并屏蔽常见凭据格式；日志写入失败不影响原有错误处理。
-
-模型配置位于同一数据目录的 `settings.json`，加密凭据位于 `credentials.enc`。删除环境变量自动导入的提供商后，只要启动进程仍带有对应 API Key，下一次启动就会再次导入。注释 shell 配置中的 `export` 不会清除已有终端的变量；应在启动终端中执行 `unset MINIMAX_API_KEY MINIMAX_PAYGO_API_KEY`，或关闭旧终端后打开新终端，再删除该提供商并重启。
-
-临时历史会话修复（0.2.3 命名变更）：先退出 ZPI、ZPI Preview 和开发客户端，再运行 `npm run repair:sessions`，默认检查正式版与 Preview 的应用数据目录。脚本将旧会话格式、内部记录和系统段落键改为小写 `zpi`，按默认值补齐缺失的能力配置，保留已有配置和消息正文；修改前在数据目录旁备份原始会话与索引，修改后移除旧索引，重启应用时自动重建。已修复的数据重复运行不会写入或新建备份。可用 `npm run repair:sessions -- --dry-run` 预览，或用 `npm run repair:sessions -- "/path/to/app-data"` 指定数据目录（包含 `agent/sessions`，不是项目目录）。此命令、`scripts/repair-sessions.ts` 及其测试仅短期保留，迁移完成后可一并删除。
-
-调试界面可在 Electron 的 View 菜单打开 Toggle Developer Tools。调试主进程可使用 VS Code 的「ZPI: Electron main」配置；也可用 `ZPI_DEV_DEBUG=1 npm run dev` 开放本机 DevTools 调试端口。
-
-常用命令：
-
 ```sh
-npm run check                # 类型、格式与静态检查
-npm run test:unit            # 内核及主进程测试
-npm run package:mac          # 构建正式版 macOS DMG，输出到 release/
-npm run package:mac:preview  # 构建 ZPI Preview DMG，输出到 release/
-npm run test:desktop         # 构建并在隐藏窗口中运行桌面测试
+npm run check                # TypeScript 与 Biome 检查
+npm run test:unit            # 单元测试
+npm run test:desktop         # 构建并运行桌面测试
+npm run build               # 构建桌面应用
+npm run package:mac          # 正式版 macOS DMG
+npm run package:mac:preview  # ZPI Preview DMG
+npm run package:win          # Windows NSIS 安装包
 ```
 
-桌面测试默认隐藏窗口、不抢焦点，并静默系统通知和音频；界面仍正常渲染，支持自动交互、截图和失败 trace。
-需要观察窗口时运行 `ZPI_TEST_SHOW_WINDOW=1 npm run test:desktop`。打包历史测试需要先运行
-`npm run package:mac`，或通过 `ZPI_TEST_PACKAGED_APP` 指定包含当前测试模式的应用包。
+开发客户端以 **ZPI Preview** 身份运行，与打包的 Preview 共用数据目录；正式版使用独立目录。升级 Electron 后需重新运行 `npm run install:terminal`。
 
-## Agent SDK
+架构保持分层：
 
-客户端内核同时提供一个小型 `zpi-coding-agent` SDK，方便在脚本中复用模型、四个工具和会话能力。调用示例见 [examples/coding-session.ts](examples/coding-session.ts)，可运行 `npm run example:coding`。
+```text
+packages/ai            模型协议、流式响应、认证与历史兼容
+packages/agent         Agent 执行循环
+packages/coding-agent  四个工具、会话、上下文、资源与 SDK
+packages/ui            共享 React 组件与 Markdown 渲染
+packages/desktop       Electron 主进程、preload 与桌面界面
+```
 
-第三方代码和素材的来源、许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+调试、数据位置和历史迁移说明见 [开发指南](docs/development.md)。介绍页源码位于 [docs/site/index.html](docs/site/index.html)，部署方式见 [部署说明](docs/deployment.md)。
+
+## 小型 Agent SDK
+
+`zpi-coding-agent` 可在脚本中复用模型、四个工具与会话能力。它是桌面内核的小型配套能力，不是另一套复杂框架。
+
+查看 [调用示例](examples/coding-session.ts)，或运行 `npm run example:coding`。
+
+第三方代码与素材的来源、许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
