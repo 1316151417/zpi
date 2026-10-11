@@ -32,6 +32,10 @@ it("uses Pi deterministic agent backoff and excludes subscription/billing limits
     "fetch failed",
     "Stream ended without terminal event",
     "Server requested 120s retry delay",
+    "net::ERR_CONNECTION_CLOSED",
+    "net::ERR_CONNECTION_RESET",
+    "net::ERR_NETWORK_CHANGED",
+    "net::ERR_HTTP2_PROTOCOL_ERROR",
   ])
     expect(isRetryableAssistantError(failed(text))).toBe(true);
   for (const text of [
@@ -40,6 +44,7 @@ it("uses Pi deterministic agent backoff and excludes subscription/billing limits
     "GoUsageLimitError",
     "401 unauthorized",
     "Monthly usage limit reached",
+    "net::ERR_CERT_AUTHORITY_INVALID",
   ])
     expect(isRetryableAssistantError(failed(text))).toBe(false);
   expect(
