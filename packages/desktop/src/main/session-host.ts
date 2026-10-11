@@ -30,6 +30,7 @@ import type {
   DiffItem,
   EditUserInput,
   EditUserResult,
+  PluginCapabilities,
   ProjectRecord,
   PromptPreview,
   RunInput,
@@ -39,7 +40,7 @@ import type {
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import { AttachmentStore } from "./attachments.ts";
-import { desktopSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
+import { pluginSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { ErrorLog } from "./error-log.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot } from "./file-changes.ts";
@@ -49,9 +50,11 @@ import { SessionInputQueue } from "./input-queue.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import { atomicJson, resolveModel, type SettingsStore } from "./storage.ts";
+import { UserQuestions } from "./user-questions.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
+import { createWorktree, gitEnvironment } from "./worktrees.ts";
 
-interface SessionConfiguration {
+interface SessionConfiguration extends PluginCapabilities {
   template: PromptTemplate;
   disabledSkillPaths: string[];
 }
@@ -74,6 +77,13 @@ function validateRunInputText(input: RunInput): void {
 }
 
 export class SessionHost {
+  readonly questions = new UserQuestions((id, question) => {
+    const record = this.records.get(id);
+    if (record)
+      record.pendingQuestion = question ? { id: question.id, autoResolution: question.autoResolution } : null;
+    const run = this.activeRuns.get(id);
+    if (run) this.emit(id, run.runId, { type: "question_changed", question });
+  });
   readonly sessions = new Map<string, AgentSession>();
   readonly activeRuns = new Map<string, ActiveRun>();
   private runtimes = new Map<string, ModelRuntime>();
@@ -103,6 +113,7 @@ export class SessionHost {
   private configurations = new Map<string, SessionConfiguration>();
   private searches = new Map<string, AbortController>();
   private errors: ErrorLog;
+  private worktreeRoot: string;
   constructor(
     dir: string,
     settings: SettingsStore,
@@ -111,7 +122,10 @@ export class SessionHost {
     requestFetch?: typeof fetch,
     userSkillPaths?: string[],
     errors = new ErrorLog(dir),
+    privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
   ) {
+    this.questions.setAutoResolutionEnabled(settings.get().interface.askUserQuestionAutoResolutionEnabled);
+    this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
     this.errors = errors;
     this.drafts = new DraftStore(join(dir, "drafts"));
@@ -283,6 +297,9 @@ export class SessionHost {
         const createdAt = Date.parse(index.data.header.timestamp);
         const updatedAt = index.data.lastActivityAt ?? createdAt;
         const attention = state["ZPI.attention"];
+        const environment = state["ZPI.environment"];
+        const environmentData =
+          environment?.type === "custom" && isJsonObject(environment.data) ? environment.data : undefined;
         const unreadAt =
           attention?.type === "custom" &&
           isJsonObject(attention.data) &&
@@ -303,6 +320,17 @@ export class SessionHost {
           pinnedAt,
           archivedAt,
           unreadAt,
+          cwd:
+            environmentData?.worktree || typeof environmentData?.parentSessionId === "string"
+              ? index.data.header.cwd
+              : undefined,
+          newWorktree: environmentData?.newWorktree === true,
+          ...(isJsonObject(environmentData?.worktree)
+            ? { worktree: environmentData.worktree as unknown as NonNullable<SessionRecord["worktree"]> }
+            : {}),
+          ...(typeof environmentData?.parentSessionId === "string"
+            ? { parentSessionId: environmentData.parentSessionId }
+            : {}),
           draft:
             meta?.type === "custom" &&
             isJsonObject(meta.data) &&
@@ -329,12 +357,10 @@ export class SessionHost {
       .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0))
       .slice(taskPinLimit);
     for (const record of excessPins) this.setSessionPinned(record.id, false);
-    // Migrate existing sessions before a user can change global defaults.
+    // Validate saved configuration before exposing restored sessions.
     for (const id of this.records.keys()) {
       try {
         this.configuration(id);
-        if (!this.indexes.get(id)?.data.state["ZPI.title"])
-          this.meta(id, { type: "custom", customType: "ZPI.title", data: { state: "legacy" } });
       } catch (error) {
         if (!this.blocked.has(id)) this.errors.write("session.restore", error, { sessionId: id });
         this.blocked.set(id, `storage: ${String(error)}`);
@@ -342,9 +368,11 @@ export class SessionHost {
     }
   }
   private defaultConfiguration(): SessionConfiguration {
+    const settings = this.settings.get();
     return {
-      template: structuredClone(this.settings.getTemplate()),
-      disabledSkillPaths: [...this.settings.get().disabledSkillPaths],
+      template: this.settings.getTemplate(),
+      disabledSkillPaths: settings.disabledSkillPaths,
+      ...settings.capabilities,
     };
   }
   private configuration(id: string): SessionConfiguration {
@@ -353,23 +381,18 @@ export class SessionHost {
     if (cached) return cached;
     if (this.record(id).draft) return this.defaultConfiguration();
     const entry = this.indexes.get(id)?.data.state["ZPI.configuration"];
-    let config: SessionConfiguration;
-    if (entry?.type === "custom") {
-      config = entry.data as unknown as SessionConfiguration;
-      validateTemplate(config.template);
-      if (
-        !Array.isArray(config.disabledSkillPaths) ||
-        config.disabledSkillPaths.some((p) => typeof p !== "string")
+    if (entry?.type !== "custom" || !isJsonObject(entry.data))
+      throw new Error("Invalid session configuration");
+    const config = entry.data as unknown as SessionConfiguration;
+    validateTemplate(config.template);
+    if (
+      !Array.isArray(config.disabledSkillPaths) ||
+      config.disabledSkillPaths.some((p) => typeof p !== "string") ||
+      [config.askUserQuestion, config.toolBatching, config.fileLinks].some(
+        (value) => typeof value !== "boolean",
       )
-        throw new Error("Invalid session configuration");
-    } else {
-      config = this.defaultConfiguration();
-      this.indexes.get(id)?.append({
-        type: "custom",
-        customType: "ZPI.configuration",
-        data: config as unknown as import("ZPI-ai").JsonObject,
-      });
-    }
+    )
+      throw new Error("Invalid session configuration");
     const snapshot = structuredClone(config);
     if (snapshot.template.id === piTemplate.id) snapshot.template = structuredClone(piTemplate);
     this.configurations.set(id, snapshot);
@@ -423,22 +446,27 @@ export class SessionHost {
   private path(record: SessionRecord): string {
     return join(this.dir, "agent", "sessions", record.projectId ?? "_unassigned", `${record.id}.jsonl`);
   }
+  sessionPath(id: string): string {
+    return this.path(this.record(id));
+  }
   listSessions(projectId: string): SessionRecord[] {
     this.project(projectId);
     return structuredClone(
       [...this.records.values()]
-        .filter((r) => r.projectId === projectId && r.archivedAt == null)
+        .filter((r) => r.projectId === projectId && r.archivedAt == null && !r.parentSessionId)
         .sort((a, b) => b.updatedAt - a.updatedAt),
     );
   }
   private cwd(record: SessionRecord): string {
     if (record.diagnostic) throw new Error(`storage: ${record.diagnostic}`);
-    return record.projectId === null ? this.defaultWorkspace : this.project(record.projectId).path;
+    return (
+      record.cwd ?? (record.projectId === null ? this.defaultWorkspace : this.project(record.projectId).path)
+    );
   }
   listRecentSessions(): SessionRecord[] {
     return structuredClone(
       [...this.records.values()]
-        .filter((r) => r.archivedAt == null)
+        .filter((r) => r.archivedAt == null && !r.parentSessionId)
         .sort((a, b) => {
           if (a.pinnedAt != null && b.pinnedAt != null) return a.pinnedAt - b.pinnedAt;
           if (a.pinnedAt != null) return -1;
@@ -457,7 +485,7 @@ export class SessionHost {
   listArchivedSessions() {
     return structuredClone(
       [...this.records.values()]
-        .filter((r) => r.archivedAt != null || r.diagnostic || this.blocked.has(r.id))
+        .filter((r) => !r.parentSessionId && (r.archivedAt != null || r.diagnostic || this.blocked.has(r.id)))
         .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
         .map((r) => ({
           ...r,
@@ -469,9 +497,12 @@ export class SessionHost {
         })),
     );
   }
-  createSession(projectId: string | null): SessionRecord {
+  createSession(
+    projectId: string | null,
+    options: { cwd?: string; parentSessionId?: string } = {},
+  ): SessionRecord {
     if (this.closing) throw new Error("busy: 应用正在关闭");
-    const cwd = projectId === null ? this.defaultWorkspace : this.project(projectId).path;
+    const cwd = options.cwd ?? (projectId === null ? this.defaultWorkspace : this.project(projectId).path);
     if (projectId === null) mkdirSync(cwd, { recursive: true });
     if (!statSync(cwd).isDirectory()) throw new Error("configuration: 工作目录不可用");
     const manager = SessionManager.create(
@@ -485,6 +516,8 @@ export class SessionHost {
       manager.appendSessionInfo("新对话");
       manager.appendCustomEntry("ZPI.title", { state: "new" });
       manager.appendCustomEntry("ZPI.session_meta", { projectId, pinnedAt: null, draft: true });
+      if (options.parentSessionId)
+        manager.appendCustomEntry("ZPI.environment", { parentSessionId: options.parentSessionId });
       const selected = this.settings.get().lastSelection;
       if (selected && this.settings.isSelectionValid(selected)) {
         manager.appendModelChange(selected.provider, selected.modelId);
@@ -504,11 +537,123 @@ export class SessionHost {
       running: false,
       pinnedAt: null,
       cwd,
+      ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
     };
     this.records.set(record.id, record);
     this.managers.set(record.id, manager);
     index.flush();
     return structuredClone(record);
+  }
+  async getGitEnvironment(id: string) {
+    return gitEnvironment(this.cwd(this.record(id)));
+  }
+  async setNewWorktree(id: string, enabled: boolean): Promise<SessionRecord> {
+    const record = this.record(id);
+    if (typeof enabled !== "boolean") throw new Error("invalid_input: 无效工作树设置");
+    if (!record.draft || record.worktree || record.parentSessionId || this.activeRuns.has(id))
+      throw new Error("busy: 只能在首次发送前设置工作树");
+    if (!record.projectId || !(await this.getGitEnvironment(id)))
+      throw new Error("configuration: 新工作树需要已有提交的 Git 项目");
+    if (!record.draft || this.activeRuns.has(id)) throw new Error("busy: 会话已开始");
+    this.meta(id, { type: "custom", customType: "ZPI.environment", data: { newWorktree: enabled } });
+    record.newWorktree = enabled;
+    return structuredClone(record);
+  }
+  async createSideChat(id: string): Promise<SessionRecord> {
+    const parent = this.record(id);
+    if (parent.newWorktree && !parent.worktree) throw new Error("busy: 工作树尚未创建，请稍后打开辅助对话");
+    if (
+      parent.draft ||
+      parent.parentSessionId ||
+      parent.archivedAt != null ||
+      this.closing ||
+      this.deleting.has(id)
+    )
+      throw new Error("busy: 此会话无法创建辅助对话");
+    const entries = this.manager(id).getEntries();
+    const active = this.activeRuns.get(id);
+    const userIndex = active
+      ? entries.findIndex(
+          (entry) =>
+            entry.type === "custom" &&
+            entry.customType === "ZPI.run" &&
+            isJsonObject(entry.data) &&
+            entry.data.runId === active.runId &&
+            entry.data.phase === "start",
+        )
+      : -1;
+    const activeUser =
+      userIndex < 0
+        ? -1
+        : entries.findIndex(
+            (entry, index) => index > userIndex && entry.type === "message" && entry.message.role === "user",
+          );
+    const stable = userIndex < 0 ? entries : entries.slice(0, activeUser >= 0 ? activeUser + 1 : userIndex);
+    const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
+    try {
+      const manager = this.manager(child.id);
+      // Keep provider history and compaction boundaries, without projecting inherited messages into the pane.
+      const transcript = stable.filter(
+        (entry) =>
+          entry.type === "message" ||
+          entry.type === "compaction" ||
+          entry.type === "model_change" ||
+          entry.type === "thinking_level_change",
+      );
+      manager.replaceEntries(
+        await copyFileChangeSnapshots(
+          transcript,
+          join(this.dir, "agent", "tool-output", id),
+          join(this.dir, "agent", "tool-output", child.id),
+        ),
+      );
+      manager.appendMessage({
+        role: "user",
+        timestamp: Date.now(),
+        content:
+          "The preceding conversation was inherited from the parent task for reference only. Do not continue the parent's active work automatically; answer only new questions sent in this side chat. Modify the workspace only when the user explicitly asks you to do so in this side chat.",
+      });
+      const title = "辅助对话";
+      manager.appendSessionInfo(title);
+      manager.appendCustomEntry("ZPI.session_meta", {
+        projectId: parent.projectId,
+        pinnedAt: null,
+        draft: false,
+      });
+      manager.appendCustomEntry("ZPI.title", { state: "manual" });
+      manager.appendCustomEntry("ZPI.environment", { parentSessionId: id });
+      manager.appendCustomEntry("ZPI.configuration", JSON.parse(JSON.stringify(this.configuration(id))));
+      const inherited = manager.buildSessionContext();
+      if (inherited.model) {
+        const model = this.settings.getModel(inherited.model);
+        manager.appendCustomEntry("ZPI.selection", {
+          ...inherited.model,
+          reasoning: toPreset(inherited.thinkingLevel, model),
+        });
+      }
+      this.managers.delete(child.id);
+      const index = new HistoryIndex(this.path(child));
+      await index.load();
+      this.indexes.set(child.id, index);
+      index.flush();
+      Object.assign(this.record(child.id), { title, draft: false });
+      return structuredClone(this.record(child.id));
+    } catch (error) {
+      await this.deleteSession(child.id);
+      throw error;
+    }
+  }
+  async closeSideChat(id: string): Promise<void> {
+    if (!this.record(id).parentSessionId) throw new Error("invalid_input: 不是辅助对话");
+    const run = this.activeRuns.get(id);
+    if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+    await this.inputQueue.archive(id, () => {});
+    this.sessions.get(id)?.dispose();
+    this.sessions.delete(id);
+    this.runtimes.delete(id);
+    this.managers.delete(id);
+    this.views.delete(id);
+    this.drafts.delete(id);
   }
   activateSession(id: string): SessionRecord {
     const record = this.record(id);
@@ -553,6 +698,8 @@ export class SessionHost {
   async archiveSession(id: string): Promise<void> {
     const record = this.record(id);
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
+    for (const child of this.records.values())
+      if (child.parentSessionId === id) await this.closeSideChat(child.id);
     await this.inputQueue.archive(id, () => {
       const previous = this.indexes.get(id)?.data.state["ZPI.session_meta"];
       const archivedAt = Date.now();
@@ -641,7 +788,14 @@ export class SessionHost {
       typeof origin.data.runId === "string"
         ? { sessionId: origin.data.parentSessionId, runId: origin.data.runId }
         : undefined;
-    view = { ...view, title: record.title, controls, queue: this.inputQueue.get(id), forkOrigin };
+    view = {
+      ...view,
+      title: record.title,
+      controls,
+      queue: this.inputQueue.get(id),
+      forkOrigin,
+      question: this.questions.get(id),
+    };
     this.views.delete(id);
     this.views.set(id, view);
     this.trimCaches(id);
@@ -805,21 +959,28 @@ export class SessionHost {
     const info = this.workspaceInfo(null);
     const loader = this.resourceLoader(null);
     await loader.reload();
+    const capabilities = this.settings.get().capabilities;
     const options = {
       cwd: info.cwd,
       projectName: "ZPI",
       template: this.settings.getTemplate(),
-      tools: createCodingTools(info.cwd),
+      tools: [
+        ...createCodingTools(info.cwd),
+        ...(capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
+      ],
     };
     return {
       ...info,
       basePrompt: buildSystemPrompt({ ...options, loader }),
-      systemRules: desktopSystemRules,
-      prompt: buildSystemPrompt({ ...options, loader: withDesktopSystemRules(loader) }),
+      systemRules: pluginSystemRules(capabilities),
+      prompt: buildSystemPrompt({ ...options, loader: withDesktopSystemRules(loader, capabilities) }),
     };
   }
   listTools() {
-    return createCodingTools(this.defaultWorkspace).map((t) => ({
+    return [
+      ...createCodingTools(this.defaultWorkspace),
+      ...(this.settings.get().capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
+    ].map((t) => ({
       name: t.name,
       description: t.description,
       parameters: t.parameters,
@@ -951,6 +1112,11 @@ export class SessionHost {
     this.deleting.add(id);
     this.titleJobs.get(id)?.controller.abort();
     try {
+      for (const child of [...this.records.values()])
+        if (child.parentSessionId === id) {
+          await this.closeSideChat(child.id);
+          await this.deleteSession(child.id);
+        }
       await this.inputQueue.delete(id);
       await this.attachments.deleteSession(id);
       await rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true });
@@ -979,9 +1145,13 @@ export class SessionHost {
     const seq = (this.sequences.get(id) ?? view?.seq ?? 0) + 1;
     this.sequences.set(id, seq);
     const record = this.record(id);
-    const activity = !["session_changed", "controls_changed", "queue_changed", "history_reset"].includes(
-      event.type,
-    );
+    const activity = ![
+      "session_changed",
+      "controls_changed",
+      "queue_changed",
+      "history_reset",
+      "question_changed",
+    ].includes(event.type);
     const activityAt = activity
       ? event.type === "started"
         ? event.startedAt
@@ -1024,15 +1194,7 @@ export class SessionHost {
       throw new Error("invalid_input: 文件引用列表无效");
     for (const path of references) await this.referencedFile(id, path);
     const loaded = await this.attachments.load(id, input.attachments ?? []);
-    let parsed = parseInput(text);
-    if (text.trimStart().startsWith("$")) {
-      const loader = this.resourceLoader(id);
-      await loader.reload();
-      parsed = parseInput(
-        text,
-        loader.listSkills().skills.map((skill) => skill.name),
-      );
-    }
+    const parsed = parseInput(text);
     if ((references.length || loaded.metadata.length) && parsed.kind === "compact")
       throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
     return { references, loaded, parsed };
@@ -1055,6 +1217,7 @@ export class SessionHost {
   }
   async forkSession(id: string, runId: string): Promise<SessionRecord> {
     const parent = this.record(id);
+    if (parent.parentSessionId) throw new Error("invalid_input: 辅助对话不支持分叉");
     if (this.closing || this.deleting.has(id) || this.updating.has(id)) throw new Error("busy: 任务正在更新");
     const entries = this.manager(id).getEntries();
     const start = this.runStart(entries, runId);
@@ -1070,7 +1233,7 @@ export class SessionHost {
     const prefix = entries.slice(0, end + 1);
     const turn = restoreView(id, parent.title, entries.slice(start, end + 1)).runs[0];
     if (!turn?.finalAnswerBlockIds.length) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
-    const child = this.createSession(parent.projectId);
+    const child = this.createSession(parent.projectId, { cwd: this.cwd(parent) });
     try {
       const transcript = prefix.filter(
         (entry) =>
@@ -1119,6 +1282,9 @@ export class SessionHost {
         title: `Fork of ${parent.title}`.slice(0, 200),
         draft: false,
         status: turn.status,
+        ...(parent.worktree
+          ? { worktree: structuredClone(parent.worktree), newWorktree: parent.newWorktree }
+          : {}),
       });
       return structuredClone(this.record(child.id));
     } catch (error) {
@@ -1128,6 +1294,7 @@ export class SessionHost {
   }
   async editUserMessage(id: string, runId: string, input: EditUserInput): Promise<EditUserResult> {
     const record = this.record(id);
+    if (record.parentSessionId) throw new Error("invalid_input: 辅助对话不支持编辑历史");
     if (this.closing || this.deleting.has(id) || this.updating.has(id) || record.archivedAt != null)
       throw new Error("busy: 任务正在关闭或更新");
     const entries = this.manager(id).getEntries();
@@ -1175,11 +1342,6 @@ export class SessionHost {
       )
         throw new Error("configuration: 当前模型不支持图片，请选择图片模型或移除附件");
       if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
-      if (parsed.kind === "skill") {
-        const loader = this.resourceLoader(id);
-        await loader.reload();
-        await loader.loadSkill(parsed.name);
-      }
       const job = this.titleJobs.get(id);
       job?.controller.abort();
       await job?.done;
@@ -1277,6 +1439,7 @@ export class SessionHost {
       ordinal: 0,
     };
     this.activeRuns.set(id, run);
+    const needsWorktree = Boolean(record.newWorktree && !record.worktree);
     let started = false;
     try {
       const manager = this.manager(id);
@@ -1295,128 +1458,164 @@ export class SessionHost {
           "configuration: 当前模型不支持图片，请选择图片模型或移除附件；有效历史中的图片也需要图片模型",
         );
       this.getSessionSnapshot(id);
-      if (record.draft) this.configurations.set(id, structuredClone(this.defaultConfiguration()));
-      const runtime = this.runtimes.get(id) ?? (await ModelRuntime.create({ fetch: this.requestFetch }));
-      this.configure(runtime, selected.provider, config);
-      this.runtimes.set(id, runtime);
-      const model = runtime.getModel(selected.provider, selected.modelId);
-      if (!model) throw new Error("configuration: 模型不存在");
-      let session = this.sessions.get(id);
-      if (!session) {
-        session = (
-          await createAgentSession({
-            cwd: this.cwd(record),
-            agentDir: join(this.dir, "agent"),
-            resourceLoader: withDesktopSystemRules(this.resourceLoader(id)),
-            promptTemplate: () => this.configuration(id).template,
-            projectName: () => this.workspaceInfo(id).projectName,
-            modelRuntime: runtime,
-            model,
-            sessionManager: manager,
-          })
-        ).session;
-        this.sessions.set(id, session);
-      } else await session.setModel(model);
-      if (session.state.thinkingLevel !== toThinking(selection.reasoning, model))
-        session.setThinkingLevel(toThinking(selection.reasoning, model));
-      run.session = session;
-      const inputContext = { images: loaded.images, fileReferences: references };
-      const prepared = await session.prepareInput(text, inputContext);
-      if (prepared.kind === "prompt" && loaded.fileContext)
-        prepared.text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
-      if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
-      this.titleFromInput(
-        id,
-        text.trim() || (loaded.images.length ? "图片消息" : (loaded.metadata[0]?.name ?? references[0])),
-      );
-      this.settings.rememberSelection(this.getControls(id).selection ?? selection);
-      const startedAt = Date.now();
-      const modelLabel = `${config.name} / ${model.name}`;
-      if (record.draft)
-        manager.appendCustomEntry(
-          "ZPI.configuration",
-          this.configuration(id) as unknown as import("ZPI-ai").JsonObject,
+      if (record.draft) this.configurations.set(id, this.defaultConfiguration());
+      const configuration = this.configuration(id);
+      const accept = async (model: import("ZPI-ai").Model) => {
+        if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
+        this.titleFromInput(
+          id,
+          text.trim() || (loaded.images.length ? "图片消息" : (loaded.metadata[0]?.name ?? references[0])),
         );
-      manager.appendCustomEntry("ZPI.run", {
-        phase: "start",
-        runId: run.runId,
-        text,
-        fileReferences: references,
-        attachments: loaded.metadata,
-        startedAt,
-        modelLabel,
-        agentBoundaries: true,
-        ...(queueItemId ? { queueItemId } : {}),
-        modelConfig: {
-          baseUrl: config.baseUrl,
-          provider: selected.provider,
-          modelId: model.id,
-          contextWindow: model.contextWindow,
-          maxTokens: model.maxTokens,
-          reasoning: model.reasoning,
-          supportsImages: model.input.includes("image"),
-        },
-      });
-      started = true;
-      record.status = "running";
-      this.emit(id, run.runId, {
-        type: "started",
-        text,
-        fileReferences: references,
-        attachments: loaded.metadata,
-        startedAt,
-        modelLabel,
-      });
-      await this.attachments.markUsed(id, input.attachments === undefined ? [] : input.attachments);
-      if (record.draft) {
-        const prior = this.indexes.get(id)?.data.state["ZPI.session_meta"];
-        manager.appendCustomEntry("ZPI.session_meta", {
-          ...(prior?.type === "custom" && isJsonObject(prior.data) ? prior.data : {}),
-          projectId: record.projectId,
-          pinnedAt: record.pinnedAt ?? null,
-          draft: false,
+        this.settings.rememberSelection(this.getControls(id).selection ?? selection);
+        const startedAt = Date.now();
+        const modelLabel = `${config.name} / ${model.name}`;
+        if (record.draft)
+          manager.appendCustomEntry(
+            "ZPI.configuration",
+            configuration as unknown as import("ZPI-ai").JsonObject,
+          );
+        manager.appendCustomEntry("ZPI.run", {
+          phase: "start",
+          runId: run.runId,
+          text,
+          fileReferences: references,
+          attachments: loaded.metadata,
+          startedAt,
+          modelLabel,
+          agentBoundaries: true,
+          ...(queueItemId ? { queueItemId } : {}),
+          modelConfig: {
+            baseUrl: config.baseUrl,
+            provider: selected.provider,
+            modelId: model.id,
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
+            reasoning: model.reasoning,
+            supportsImages: model.input.includes("image"),
+          },
         });
-        record.draft = false;
-      }
-      this.startTitle(
-        id,
-        text || (references.length ? references.join("\n") : ""),
-        loaded.images,
-        config,
-        model,
-      );
-      const unsubscribe = session.subscribe((e) => {
-        if (e.type === "agent_start" || e.type === "agent_end")
-          manager.appendCustomEntry("ZPI.agent_call", {
-            phase: e.type === "agent_start" ? "start" : "end",
-            runId: run.runId,
-            ordinal: run.ordinal,
+        started = true;
+        await this.attachments.markUsed(id, input.attachments ?? []);
+        if (record.draft) {
+          const prior = this.indexes.get(id)?.data.state["ZPI.session_meta"];
+          manager.appendCustomEntry("ZPI.session_meta", {
+            ...(prior?.type === "custom" && isJsonObject(prior.data) ? prior.data : {}),
+            projectId: record.projectId,
+            pinnedAt: record.pinnedAt ?? null,
+            draft: false,
           });
-        if (e.type === "compaction")
-          manager.appendCustomEntry("ZPI.compaction", {
-            runId: run.runId,
-            id: e.id,
-            status: e.status,
-            origin: e.origin,
-            ...(e.error ? { error: e.error } : {}),
-          });
-        if (e.type === "entry_appended" && e.entry.type === "compaction")
-          this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
-        // Match restoreView and HistoryIndex: internal system declarations have no visible ordinal.
-        if (e.type === "message_start" && e.message.role !== "system") {
-          run.ordinal++;
-          if (e.message.role === "assistant") run.hasAssistant = true;
+          record.draft = false;
         }
-        const projected = projectEvent(e, `${run.runId}:${run.ordinal}`);
-        if (projected) this.emit(id, run.runId, projected);
-      });
-      void session
-        .executeInput(prepared, inputContext)
-        .then(
-          () => this.settle(id, run),
-          (error) => this.settle(id, run, error),
-        )
-        .finally(unsubscribe);
+        record.status = "running";
+        this.emit(id, run.runId, {
+          type: "started",
+          text,
+          fileReferences: references,
+          attachments: loaded.metadata,
+          startedAt,
+          modelLabel,
+        });
+      };
+      const initialize = async () => {
+        if (needsWorktree) {
+          if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
+          const worktree = await createWorktree(this.cwd(record), this.worktreeRoot, (message) =>
+            this.emit(id, run.runId, { type: "run_preparation", message }),
+          );
+          manager.setCwd(worktree.path);
+          Object.assign(record, { cwd: worktree.path, worktree });
+          await this.indexes.get(id)?.load();
+          this.meta(id, {
+            type: "custom",
+            customType: "ZPI.environment",
+            data: { newWorktree: true, worktree },
+          });
+          this.emit(id, run.runId, {
+            type: "environment_changed",
+            cwd: worktree.path,
+            newWorktree: true,
+            worktree,
+          });
+          this.emit(id, run.runId, { type: "run_preparation", message: null });
+        }
+        if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
+        const runtime = this.runtimes.get(id) ?? (await ModelRuntime.create({ fetch: this.requestFetch }));
+        this.configure(runtime, selected.provider, config);
+        this.runtimes.set(id, runtime);
+        const model = runtime.getModel(selected.provider, selected.modelId);
+        if (!model) throw new Error("configuration: 模型不存在");
+        let session = this.sessions.get(id);
+        if (!session) {
+          session = (
+            await createAgentSession({
+              cwd: this.cwd(record),
+              agentDir: join(this.dir, "agent"),
+              resourceLoader: withDesktopSystemRules(this.resourceLoader(id), configuration),
+              promptTemplate: () => configuration.template,
+              projectName: () => this.workspaceInfo(id).projectName,
+              modelRuntime: runtime,
+              model,
+              sessionManager: manager,
+              customTools: configuration.askUserQuestion ? [this.questions.tool(id)] : [],
+            })
+          ).session;
+          this.sessions.set(id, session);
+        } else await session.setModel(model);
+        if (session.state.thinkingLevel !== toThinking(selection.reasoning, model))
+          session.setThinkingLevel(toThinking(selection.reasoning, model));
+        run.session = session;
+        const inputContext = { images: loaded.images, fileReferences: references };
+        const prepared = await session.prepareInput(text, inputContext);
+        if (prepared.kind === "prompt" && loaded.fileContext)
+          prepared.text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
+        if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
+        if (!started) await accept(model);
+        this.startTitle(
+          id,
+          text || (references.length ? references.join("\n") : ""),
+          loaded.images,
+          config,
+          model,
+        );
+        const unsubscribe = session.subscribe((e) => {
+          if (e.type === "agent_start" || e.type === "agent_end")
+            manager.appendCustomEntry("ZPI.agent_call", {
+              phase: e.type === "agent_start" ? "start" : "end",
+              runId: run.runId,
+              ordinal: run.ordinal,
+            });
+          if (e.type === "compaction")
+            manager.appendCustomEntry("ZPI.compaction", {
+              runId: run.runId,
+              id: e.id,
+              status: e.status,
+              origin: e.origin,
+              ...(e.error ? { error: e.error } : {}),
+            });
+          if (e.type === "entry_appended" && e.entry.type === "compaction")
+            this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
+          // Match restoreView and HistoryIndex: internal system declarations have no visible ordinal.
+          if (e.type === "message_start" && e.message.role !== "system") {
+            run.ordinal++;
+            if (e.message.role === "assistant") run.hasAssistant = true;
+          }
+          const projected = projectEvent(e, `${run.runId}:${run.ordinal}`);
+          if (projected) this.emit(id, run.runId, projected);
+        });
+        void session
+          .executeInput(prepared, inputContext)
+          .then(
+            () => this.settle(id, run),
+            (error) => this.settle(id, run, error),
+          )
+          .finally(unsubscribe);
+      };
+      if (needsWorktree) {
+        await accept(configuredModel);
+        this.emit(id, run.runId, { type: "run_preparation", message: "正在创建工作树…" });
+        // Acknowledge accepted input before Git checkout so the composer can clear immediately.
+        void initialize().catch((error) => this.settle(id, run, error));
+      } else await initialize();
       return { runId: run.runId };
     } catch (error) {
       if (started) {

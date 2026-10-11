@@ -13,6 +13,13 @@ ipcRenderer.on("ZPI:prepare-quit", async (_event, request: number) => {
   }
 });
 const bridge: DesktopBridge = {
+  setCapabilityEnabled: (name, enabled) => call("setCapabilityEnabled", name, enabled),
+  respondToQuestion: (id, requestId, response) => call("respondToQuestion", id, requestId, response),
+  snoozeQuestion: (id, requestId) => call("snoozeQuestion", id, requestId),
+  closeSideChat: (id) => call("closeSideChat", id),
+  createSideChat: (id) => call("createSideChat", id),
+  getGitEnvironment: (id) => call("getGitEnvironment", id),
+  setNewWorktree: (id, enabled) => call("setNewWorktree", id, enabled),
   logError: (error) => ipcRenderer.send("ZPI:error", error),
   platform: process.platform,
   workspacePanelRadius:
@@ -55,6 +62,7 @@ const bridge: DesktopBridge = {
   saveDraft: (id, draft) => call("saveDraft", id, draft),
   getHistoryPage: (id, before) => call("getHistoryPage", id, before),
   copyText: (text) => call("copyText", text),
+  copySessionPath: (id) => call("copySessionPath", id),
   fileAction: (id, path, action, location) => call("fileAction", id, path, action, location),
   searchFiles: (id, q) => call("searchFiles", id, q),
   getWorkspaceInfo: (id) => call("getWorkspaceInfo", id),

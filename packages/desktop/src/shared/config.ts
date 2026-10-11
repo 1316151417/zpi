@@ -1,6 +1,11 @@
 import type { ThinkingLevel } from "ZPI-agent";
 import { anthropicMessagesCompatKeys, defaultThinkingLevel, thinkingChoices } from "ZPI-ai";
-import type { InterfacePreferences, ModelSettings, ReasoningPreset } from "./bridge.ts";
+import type { InterfacePreferences, ModelSettings, PluginCapabilities, ReasoningPreset } from "./bridge.ts";
+export const defaultCapabilities: PluginCapabilities = {
+  askUserQuestion: false,
+  toolBatching: true,
+  fileLinks: true,
+};
 export const modelDefaults = {
   contextWindow: 1000000,
   maxTokens: 128000,
@@ -52,6 +57,7 @@ export const reasoningLabels: Record<string, string> = {
   max: "最高",
 } as const;
 export const defaultPreferences: InterfacePreferences = {
+  askUserQuestionAutoResolutionEnabled: true,
   theme: "system",
   fontSize: 14,
   showContextUsage: false,

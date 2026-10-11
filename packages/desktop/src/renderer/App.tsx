@@ -1,7 +1,6 @@
 import {
   ActionHint,
   ChatComposer,
-  type ComposerContext,
   Conversation,
   type FileAction,
   type FileLocation,
@@ -25,17 +24,20 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import { useShallow } from "zustand/react/shallow";
 import type { InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
+import { inputContext } from "./composer-context.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
-import { readMarkdownImage } from "./markdown-image.ts";
 import {
+  canOpenSideChat,
   listenPanes,
+  openSideChat,
   openWebLink,
   paneTask,
   setPaneOpen,
   openChanges as showChanges,
   openFile as showFile,
   usePane,
+  useSideChatBlocked,
 } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { RightPane } from "./RightPane.tsx";
@@ -58,6 +60,7 @@ import {
   initialize,
   loadEarlier,
   newSession,
+  queueActions,
   refresh,
   report,
   resetSession,
@@ -65,29 +68,18 @@ import {
   subscribeEvents,
   unwrap,
   useStore,
-  withdrawQueuedInput,
 } from "./store.ts";
 import { TaskMenu } from "./TaskMenu.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
+import { UserQuestionCard } from "./UserQuestionCard.tsx";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
 import { useTaskFind } from "./use-task-find.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { WindowChrome } from "./WindowChrome.tsx";
+import { WorktreeSettings } from "./WorktreeSettings.tsx";
 
-const inputContext: ComposerContext = {
-  readImage: readMarkdownImage,
-  downloadImage: (src) => window.ZPI.downloadImage(src).then(unwrap),
-  searchFiles: (id, q) => window.ZPI.searchFiles(id, q).then(unwrap),
-  pickAttachments: (id) => window.ZPI.pickAttachments(id).then(unwrap),
-  importAttachment: (id, file) => window.ZPI.importAttachment(id, file).then(unwrap),
-  removeAttachment: (id, image) => window.ZPI.removeAttachment(id, image).then(unwrap),
-  readAttachment: async (id, image) => {
-    const result = unwrap(await window.ZPI.readAttachment(id, image));
-    return `data:${result.metadata.mimeType};base64,${result.data}`;
-  },
-};
 interface ActionDialog {
   title: string;
   value?: string;
@@ -183,6 +175,7 @@ export function App() {
 
   const paneOpen = usePane((s) => s.open),
     paneRatio = usePane((s) => s.ratio);
+  const sideChatBlocked = useSideChatBlocked(state.selected);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [action, setAction] = useState<ActionDialog>();
@@ -277,7 +270,7 @@ export function App() {
   const view = selected ? views.get(selected) : undefined;
   const find = useTaskFind(selected, Boolean(view) && !settingsOpen && !action);
   const records = useMemo(
-    () => [...state.sessions.values()].filter((record) => !record.draft),
+    () => [...state.sessions.values()].filter((record) => !record.draft && !record.parentSessionId),
     [state.sessions],
   );
   const record = selected ? state.sessions.get(selected) : undefined;
@@ -292,10 +285,21 @@ export function App() {
   ];
   const activeRun = view?.runs.find((r) => r.status === "running");
   const stop = useCallback(() => {
+    const focusedSideId =
+      document.activeElement?.closest<HTMLElement>("[data-side-chat-session]")?.dataset.sideChatSession;
+    if (focusedSideId) {
+      const sideRun = useStore
+        .getState()
+        .views.get(focusedSideId)
+        ?.runs.find((run) => run.status === "running");
+      if (sideRun)
+        paneTask(window.ZPI.abortRun({ sessionId: focusedSideId, runId: sideRun.runId }).then(unwrap));
+      return;
+    }
     if (selected && activeRun)
       void window.ZPI.abortRun({ sessionId: selected, runId: activeRun.runId }).then(unwrap).catch(report);
   }, [selected, activeRun?.runId]);
-  useStopOnEscape(activeRun ? stop : undefined);
+  useStopOnEscape(stop);
   const copyCode = useCallback((text: string) => window.ZPI.copyText(text).then(unwrap), []);
   const openFile = useCallback(
     (path: string, location?: FileLocation) => {
@@ -352,6 +356,15 @@ export function App() {
   const toggleProjectGroupsLabel = allProjectGroupsExpanded ? "收起全部" : "展开全部";
   const tasks = unpinned.filter((r) => r.projectId === null || !projectIds.has(r.projectId));
   const pinnedCount = pinned.length;
+  const renameTask = (record: SessionRecord) =>
+    setAction({
+      title: "重命名任务",
+      value: record.title,
+      onConfirm: async (name) => {
+        unwrap(await window.ZPI.renameSession(record.id, name));
+        await refresh();
+      },
+    });
   const renderRow = (r: SessionRecord, variant: "default" | "timeline" = "default") => (
     <SidebarTaskRow
       key={r.id}
@@ -694,21 +707,7 @@ export function App() {
               <Folder size={16} />
               <span>{taskTitle}</span>
             </div>
-            {record && !record.draft && !record.diagnostic && (
-              <TaskMenu
-                record={record}
-                onRename={() =>
-                  setAction({
-                    title: "重命名任务",
-                    value: record.title,
-                    onConfirm: async (name) => {
-                      unwrap(await window.ZPI.renameSession(record.id, name));
-                      await refresh();
-                    },
-                  })
-                }
-              />
-            )}
+            {record && !record.draft && <TaskMenu record={record} onRename={() => renameTask(record)} />}
             <div className="topbar-drag-space" aria-hidden="true" />
           </header>
           {state.error && (
@@ -770,7 +769,13 @@ export function App() {
                     );
                   })().catch(report);
                 }}
-                onAddSelection={addSelection}
+                onAddSelection={view.question ? undefined : addSelection}
+                onSideChat={
+                  canOpenSideChat(record) && !view.question
+                    ? (reference) => paneTask(openSideChat(view.sessionId, reference))
+                    : undefined
+                }
+                sideChatDisabled={sideChatBlocked}
                 onEdit={async (runId, input) => {
                   const result = unwrap(await window.ZPI.editUserMessage(view.sessionId, runId, input));
                   if ("conflicts" in result) return result;
@@ -794,6 +799,13 @@ export function App() {
                 onFile={openFile}
               />
               <div className="composer-container">
+                {view.question && (
+                  <UserQuestionCard
+                    key={view.question.id}
+                    sessionId={view.sessionId}
+                    request={view.question}
+                  />
+                )}
                 {Boolean(diagnostics.length) && (
                   <details className="resource-diagnostics">
                     <summary>资源加载诊断（{diagnostics.length}）</summary>
@@ -804,59 +816,81 @@ export function App() {
                     ))}
                   </details>
                 )}
-                <ChatComposer
-                  sessionId={view.sessionId}
-                  draftStorage={drafts}
-                  historyScope={record?.cwd}
-                  sentMessages={view.runs.map((run) => run.userMessage)}
-                  header={record?.draft ? <DraftProjectPicker projectId={record.projectId} /> : undefined}
-                  onFile={openFile}
-                  context={inputContext}
-                  busy={Boolean(activeRun)}
-                  queue={view.queue}
-                  queueActions={{
-                    edit: (itemId) => withdrawQueuedInput(view.sessionId, itemId),
-                    remove: (itemId) => window.ZPI.removeQueuedInput(view.sessionId, itemId).then(unwrap),
-                    sendNow: (itemId) => window.ZPI.sendQueuedNow(view.sessionId, itemId).then(unwrap),
-                    move: (itemId, beforeId) =>
-                      window.ZPI.moveQueuedInput(view.sessionId, itemId, beforeId).then(unwrap),
-                    resume: () => window.ZPI.resumeInputQueue(view.sessionId).then(unwrap),
-                  }}
-                  showSendButton={prefs?.showSendButton ?? false}
-                  toolbar={
-                    <SessionToolbar
-                      view={view}
-                      open={modelOpen}
-                      onOpenChange={setModelOpen}
-                      onSettings={() => setSettingsOpen(true)}
-                    />
-                  }
-                  suggestions={state.activeSuggestions ?? []}
-                  onSubmit={async (text, input) => {
-                    try {
-                      const result = await window.ZPI.submitInput({
-                        sessionId: view.sessionId,
-                        text,
-                        ...input,
-                      });
-                      if (
-                        !result.ok &&
-                        result.error.code === "configuration" &&
-                        !view.controls?.selectionValid
-                      ) {
-                        setModelOpen(true);
-                        throw new Error("selection_required");
-                      }
-                      if (unwrap(result).confirmationRequired) return "confirmationRequired";
-                      useStore.setState({ error: undefined });
-                      void refresh().catch(report);
-                    } catch (e) {
-                      if (!(e instanceof Error && e.message === "selection_required")) report(e);
-                      throw e;
+                {!view.question && (
+                  <ChatComposer
+                    sessionId={view.sessionId}
+                    draftStorage={drafts}
+                    historyScope={record?.cwd}
+                    sentMessages={view.runs.map((run) => run.userMessage)}
+                    header={
+                      record?.draft ? (
+                        <div className="draft-composer-header">
+                          <DraftProjectPicker projectId={record.projectId} />
+                          <WorktreeSettings record={record} />
+                        </div>
+                      ) : undefined
                     }
-                  }}
-                  onStop={stop}
-                />
+                    onFile={openFile}
+                    context={inputContext}
+                    busy={Boolean(activeRun)}
+                    queue={view.queue}
+                    queueActions={queueActions(view.sessionId)}
+                    showSendButton={prefs?.showSendButton ?? false}
+                    toolbar={
+                      <SessionToolbar
+                        view={view}
+                        open={modelOpen}
+                        onOpenChange={setModelOpen}
+                        onSettings={() => setSettingsOpen(true)}
+                      />
+                    }
+                    onCommand={
+                      canOpenSideChat(record) ? () => paneTask(openSideChat(view.sessionId)) : undefined
+                    }
+                    suggestions={state.activeSuggestions ?? []}
+                    onSubmit={async (text, input) => {
+                      try {
+                        const side = /^\/(?:side|btw)(?:\s|$)/.exec(text.trimStart());
+                        if (
+                          side &&
+                          record &&
+                          !record.draft &&
+                          !record.parentSessionId &&
+                          !input.attachments.length &&
+                          !input.fileReferences.length &&
+                          !text.includes("# userselect:")
+                        ) {
+                          await openSideChat(
+                            view.sessionId,
+                            undefined,
+                            text.trimStart().slice(side[0].length).trim(),
+                          );
+                          return;
+                        }
+                        const result = await window.ZPI.submitInput({
+                          sessionId: view.sessionId,
+                          text,
+                          ...input,
+                        });
+                        if (
+                          !result.ok &&
+                          result.error.code === "configuration" &&
+                          !view.controls?.selectionValid
+                        ) {
+                          setModelOpen(true);
+                          throw new Error("selection_required");
+                        }
+                        if (unwrap(result).confirmationRequired) return "confirmationRequired";
+                        useStore.setState({ error: undefined });
+                        void refresh().catch(report);
+                      } catch (e) {
+                        if (!(e instanceof Error && e.message === "selection_required")) report(e);
+                        throw e;
+                      }
+                    }}
+                    onStop={stop}
+                  />
+                )}
               </div>
             </div>
           ) : (
@@ -866,6 +900,7 @@ export function App() {
           )}
         </main>
         <RightPane
+          onSettings={() => setSettingsOpen(true)}
           available={viewport - width}
           sessionId={selected}
           findRequest={find.open && find.scope === "changes" ? find.request : undefined}

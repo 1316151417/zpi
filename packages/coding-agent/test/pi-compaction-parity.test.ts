@@ -188,7 +188,7 @@ it("history queries share records but not their array, and project only the late
   manager.appendMessage({
     role: "system",
     content: "instructions",
-    sections: { "ZPI.goal": "legacy", keep: "kept" },
+    sections: { keep: "kept" },
     timestamp: 1,
   });
   const discarded = manager.appendMessage({ role: "user", content: "old payload", timestamp: 2 });
@@ -207,8 +207,7 @@ it("history queries share records but not their array, and project only the late
   const keptEntry = manager.getEntries().find((entry) => entry.id === last);
   expect(keptEntry?.type).toBe("message");
   if (keptEntry?.type === "message") expect(context.at(-1)).toBe(keptEntry.message);
-  expect(JSON.stringify(context)).not.toContain("legacy");
-  expect(JSON.stringify(manager.getEntries()[0])).toContain("legacy");
+  expect(JSON.stringify(context)).toContain("kept");
   expect(manager.getEntries().some((entry) => entry.id === discarded)).toBe(true);
 });
 

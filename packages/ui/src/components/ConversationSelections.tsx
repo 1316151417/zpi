@@ -100,10 +100,16 @@ export function ConversationSelectionMenu({
   rootRef,
   scopeKey,
   onAdd,
+  onSideChat,
+  sideChatDisabled,
+  sideChatDisabledTitle = "请先处理辅助对话中的待处理请求。",
 }: {
   rootRef: RefObject<HTMLElement | null>;
   scopeKey: string;
   onAdd?: (reference: ConversationSelection) => void;
+  onSideChat?: (reference: ConversationSelection) => void;
+  sideChatDisabled?: boolean;
+  sideChatDisabledTitle?: string;
 }) {
   const [snapshot, setSnapshot] = useState<{ scopeKey: string; selection: SelectionState }>();
   const menu = useRef<HTMLDivElement>(null);
@@ -284,6 +290,31 @@ export function ConversationSelectionMenu({
             >
               添加到当前任务
             </button>
+          )}
+          {onSideChat && state.text.length <= 8000 && (
+            <>
+              <div className="conversation-selection-divider" aria-hidden="true" />
+              <button
+                type="button"
+                data-conversation-selection-action="ask-in-side-chat"
+                disabled={sideChatDisabled}
+                title={sideChatDisabled ? sideChatDisabledTitle : undefined}
+                onClick={() => {
+                  window.getSelection()?.removeAllRanges();
+                  onSideChat({
+                    id: crypto.randomUUID(),
+                    text: state.text,
+                    sourceKey: state.sourceKey,
+                    contentType: state.contentType,
+                    path: state.path,
+                    sourceTitle: state.sourceTitle,
+                  });
+                  close();
+                }}
+              >
+                在辅助对话中提问
+              </button>
+            </>
           )}
         </div>,
         document.body,

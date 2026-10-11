@@ -221,19 +221,8 @@ export class AgentSession {
   }
   async prepareInput(text: string, context: InputContext = {}): Promise<ParsedInput> {
     this.idleCheck();
-    await this.resources?.loader.reload?.();
-    const parsed = parseInput(
-      text,
-      this.listSkills().skills.map((skill) => skill.name),
-    );
+    const parsed = parseInput(text);
     validateInputContext(parsed, context);
-    if (parsed.kind === "skill") {
-      const skill = await this.loadSkill(parsed.name);
-      return {
-        kind: "prompt",
-        text: `Use Skill ${skill.name} from ${skill.path}. Resolve relative paths against ${skill.baseDir}.\n\n${skill.body}\n\nUser task:\n${parsed.task || "Follow this skill's instructions."}`,
-      };
-    }
     if (parsed.kind === "init")
       return {
         kind: "prompt",

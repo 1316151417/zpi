@@ -41,6 +41,11 @@ export interface FileChangeSummary {
   reason?: string;
 }
 export type FileAction = "open" | "reveal" | "copy-absolute" | "copy-relative";
+export interface WorktreeInfo {
+  branch: string;
+  path: string;
+  sourceCwd: string;
+}
 export type FileActionHandler = (path: string, action: FileAction, location?: FileLocation) => Promise<void>;
 export type ViewBlock =
   | {
@@ -64,6 +69,7 @@ export type ViewBlock =
       isError?: boolean;
       hasFileChange?: boolean;
       fileChange?: FileChangeSummary;
+      questionAnswers?: UserQuestionResponse;
     };
 export interface RunView {
   runId: string;
@@ -81,8 +87,10 @@ export interface RunView {
   kind?: "compact";
   compactions?: CompactionView[];
   apiRetry?: ModelRetryStatus | null;
+  preparation?: string | null;
 }
 export interface SessionView {
+  question?: UserQuestionRequest | null;
   forkOrigin?: { sessionId: string; runId: string };
   sessionId: string;
   title: string;
@@ -106,6 +114,9 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
+  | { type: "run_preparation"; message: string | null }
+  | { type: "environment_changed"; cwd: string; newWorktree: boolean; worktree: WorktreeInfo }
+  | { type: "question_changed"; question: UserQuestionRequest | null }
   | ({ type: "compaction" } & Omit<CompactionView, "afterBlockId">)
   | { type: "model_retry"; status: ModelRetryStatus | null }
   | { type: "message_reset"; messageId: string }
@@ -150,6 +161,7 @@ export type DesktopEvent =
       isError?: boolean;
       hasFileChange?: boolean;
       fileChange?: FileChangeSummary;
+      questionAnswers?: UserQuestionResponse;
     };
 export interface DesktopEventEnvelope {
   /** Host event time for conversation activity; metadata envelopes omit it. */
@@ -166,4 +178,21 @@ export interface FileRewindConflict {
   path: string;
   reason: string;
   ignored?: boolean;
+}
+export interface UserQuestion {
+  question: string;
+  header: string;
+  options: { label: string; description: string; preview?: string }[];
+  multiSelect: boolean;
+}
+export interface UserQuestionRequest {
+  id: string;
+  questions: UserQuestion[];
+  autoResolution?:
+    | { phase: "hiddenGrace" | "visibleCountdown"; startedAt: number; visibleAt: number; deadlineAt: number }
+    | { phase: "snoozed"; startedAt: number; snoozedAt: number };
+}
+export interface UserQuestionResponse {
+  answers: Record<string, string>;
+  annotations?: Record<string, { preview?: string; notes?: string }>;
 }

@@ -65,6 +65,25 @@ export async function withdrawQueuedInput(id: string, itemId: string) {
   draftRevisions.set(id, draft.revision);
   return { ...draft, attachments: item.attachments, pending: 0 };
 }
+export function queueActions(id: string) {
+  return {
+    edit: (itemId: string) => withdrawQueuedInput(id, itemId),
+    remove: (itemId: string) => window.ZPI.removeQueuedInput(id, itemId).then(unwrap),
+    sendNow: (itemId: string) => window.ZPI.sendQueuedNow(id, itemId).then(unwrap),
+    move: (itemId: string, beforeId: string | null) =>
+      window.ZPI.moveQueuedInput(id, itemId, beforeId).then(unwrap),
+    resume: () => window.ZPI.resumeInputQueue(id).then(unwrap),
+  };
+}
+export type QuestionDraft = {
+  requestId: string;
+  index: number;
+  answers: { selected: string[]; custom: string }[];
+};
+export const questionDrafts = new Map<string, QuestionDraft>();
+function retainQuestionDraft(id: string, requestId?: string) {
+  if (questionDrafts.get(id)?.requestId !== requestId) questionDrafts.delete(id);
+}
 drafts.subscribe((id) => {
   const draft = drafts.get(id);
   if (!draft || !draftLoaded.has(id)) return;
@@ -111,13 +130,14 @@ function saveDraft(id: string): Promise<void> {
 async function flushDrafts(): Promise<void> {
   while (draftSaving.size) await Promise.all([...draftSaving].map(saveDraft));
 }
-async function loadDraft(id: string): Promise<void> {
+export async function loadDraft(id: string): Promise<void> {
   if (draftLoaded.has(id)) return;
   const draft = unwrap(await window.ZPI.getDraft(id));
   draftRevisions.set(id, draft.revision);
   if (!drafts.has(id)) drafts.set(id, { ...draft, attachments: [], pending: 0 });
   draftLoaded.add(id);
 }
+export const retainedSessionViews = new Set<string>();
 function trimViews(keep?: string): void {
   const state = useStore.getState(),
     views = new Map(state.views);
@@ -126,6 +146,8 @@ function trimViews(keep?: string): void {
     if (views.size <= 8 && size <= 64 * 1024 * 1024) break;
     if (
       id === keep ||
+      id === state.selected ||
+      retainedSessionViews.has(id) ||
       state.sessions.get(id)?.status === "running" ||
       draftSaving.has(id) ||
       drafts.submitting.has(id)
@@ -140,6 +162,34 @@ function trimViews(keep?: string): void {
 const loadedSessions = new Set<string>();
 const snapshotRequests = new Map<string, Promise<void>>();
 const pendingSnapshots = new Map<string, DesktopEventEnvelope[]>();
+export async function closeSideChat(id: string): Promise<void> {
+  draftLoaded.delete(id);
+  clearTimeout(draftSaveTimers.get(id));
+  draftSaveTimers.delete(id);
+  draftSaving.delete(id);
+  await draftSaveRequests.get(id)?.catch(report);
+  const result = await window.ZPI.closeSideChat(id);
+  if (!result.ok && result.error.code !== "not_found") {
+    draftLoaded.add(id);
+    unwrap(result);
+  }
+  drafts.delete(id);
+  draftRevisions.delete(id);
+  retainedSessionViews.delete(id);
+  loadedSessions.delete(id);
+  questionDrafts.delete(id);
+  previewLoader.clear(id);
+  const state = useStore.getState();
+  const views = new Map(state.views),
+    historyCursors = new Map(state.historyCursors),
+    historyLoading = new Set(state.historyLoading),
+    suggestions = new Map(state.suggestions),
+    resourceDiagnostics = new Map(state.resourceDiagnostics);
+  for (const cache of [views, historyCursors, historyLoading, suggestions, resourceDiagnostics])
+    cache.delete(id);
+  useStore.setState({ views, historyCursors, historyLoading, suggestions, resourceDiagnostics });
+  trimViews(useStore.getState().selected);
+}
 let queue: DesktopEventEnvelope[] = [];
 let frame = 0;
 function reduceSessionRecord(
@@ -152,6 +202,15 @@ function reduceSessionRecord(
     record = { ...record, updatedAt: envelope.activityAt, activitySeq: envelope.seq };
   }
   switch (event.type) {
+    case "environment_changed":
+      return { ...record, cwd: event.cwd, newWorktree: event.newWorktree, worktree: event.worktree };
+    case "question_changed":
+      return {
+        ...record,
+        pendingQuestion: event.question
+          ? { id: event.question.id, autoResolution: event.question.autoResolution }
+          : null,
+      };
     case "session_changed":
       return { ...record, title: event.title };
     case "started":
@@ -180,6 +239,11 @@ function apply(events: DesktopEventEnvelope[]): void {
       continue;
     }
     const view = views.get(e.sessionId);
+    if (!view || e.seq > view.seq) {
+      if (e.event.type === "question_changed") retainQuestionDraft(e.sessionId, e.event.question?.id);
+      if (e.event.type === "settled") questionDrafts.delete(e.sessionId);
+      if (e.event.type === "history_reset") retainQuestionDraft(e.sessionId, e.event.view.question?.id);
+    }
     if (view) views.set(e.sessionId, reduceSession(view, e));
     const record = records.get(e.sessionId);
     if (record) {
@@ -233,6 +297,12 @@ export async function refreshSuggestions(id: string): Promise<void> {
     suggestions = new Map(state.suggestions);
   resourceDiagnostics.set(id, catalog.diagnostics);
   suggestions.set(id, [
+    ...(state.sessions.get(id)?.parentSessionId
+      ? []
+      : [
+          { name: "side", description: "新建并打开一个辅助对话", insert: "/side ", group: "命令" as const },
+          { name: "btw", description: "在辅助对话中提问", insert: "/btw ", group: "命令" as const },
+        ]),
     ...commands.map((c) => ({ ...c, insert: `/${c.name} `, group: "命令" as const })),
     ...catalog.skills.map((s) => ({
       name: s.name,
@@ -249,6 +319,12 @@ export async function refresh(): Promise<void> {
     window.ZPI.listRecentSessions().then(unwrap),
     window.ZPI.getSettings().then(unwrap),
   ]);
+  const parentIds = new Set(records.map((record) => record.id));
+  records.push(
+    ...[...useStore.getState().sessions.values()].filter(
+      (record) => record.parentSessionId && parentIds.has(record.parentSessionId),
+    ),
+  );
   useStore.setState({
     projects,
     sessions: new Map(
@@ -275,6 +351,7 @@ export function accept(snapshot: import("../shared/bridge.ts").SessionSnapshot):
   const state = useStore.getState();
   const current = state.views.get(snapshot.session.id);
   if (!current || current.seq <= snapshot.seq) {
+    retainQuestionDraft(snapshot.session.id, snapshot.view.question?.id);
     const views = new Map(state.views),
       sessions = new Map(state.sessions),
       cursors = new Map(state.historyCursors);
@@ -282,6 +359,7 @@ export function accept(snapshot: import("../shared/bridge.ts").SessionSnapshot):
     sessions.set(snapshot.session.id, snapshot.session);
     if (!cursors.has(snapshot.session.id)) cursors.set(snapshot.session.id, snapshot.historyCursor ?? null);
     useStore.setState({ views, sessions, historyCursors: cursors });
+    trimViews(snapshot.session.id);
   }
 }
 export async function selectSession(id: string): Promise<void> {
@@ -341,6 +419,7 @@ export async function selectSession(id: string): Promise<void> {
       let record = snapshot.session;
       for (const e of buffered) if (e.seq > snapshot.seq) record = reduceSessionRecord(record, e.event, e);
       sessions.set(id, record);
+      retainQuestionDraft(id, view.question?.id);
       useStore.setState({ views, sessions, historyCursors });
       trimViews(id);
     } catch (error) {
@@ -391,14 +470,21 @@ export async function loadEarlier(id: string): Promise<void> {
 const openingDrafts = new Map<string, Promise<void>>();
 export function focusComposer(sessionId: string): void {
   requestAnimationFrame(() => {
+    const state = useStore.getState();
+    const parentId = state.sessions.get(sessionId)?.parentSessionId;
     if (
-      useStore.getState().selected !== sessionId ||
+      state.selected !== (parentId ?? sessionId) ||
       document.querySelector(
         'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
       )
     )
       return;
-    document.querySelector<HTMLElement>(".composer-container .mention-editor[contenteditable=true]")?.focus();
+    const editor = document.querySelector<HTMLElement>(
+      parentId
+        ? `[data-side-chat-session="${sessionId}"] .mention-editor[contenteditable=true]`
+        : "main .composer-container .mention-editor[contenteditable=true]",
+    );
+    if (editor && !editor.closest("[hidden]")) editor.focus();
   });
 }
 export async function newSession(
@@ -476,6 +562,7 @@ export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnap
   const current = views.get(snapshot.session.id);
   // Newer events already passed history_reset in sequence; keep their streamed content.
   if (!current || current.seq <= snapshot.seq) {
+    retainQuestionDraft(snapshot.session.id, snapshot.view.question?.id);
     views.set(snapshot.session.id, snapshot.view);
     sessions.set(snapshot.session.id, snapshot.session);
   }

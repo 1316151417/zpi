@@ -47,6 +47,7 @@ it("notification preferences default on, migrate old settings and preserve the i
   try {
     const store = new SettingsStore(dir, encryption);
     expect(store.get().interface).toMatchObject({
+      askUserQuestionAutoResolutionEnabled: true,
       notificationEnabled: true,
       notificationSoundEnabled: true,
     });
@@ -66,9 +67,11 @@ it("notification preferences default on, migrate old settings and preserve the i
     const data = JSON.parse(await readFile(file, "utf8"));
     delete data.interface.notificationEnabled;
     delete data.interface.notificationSoundEnabled;
+    delete data.interface.askUserQuestionAutoResolutionEnabled;
     const original = JSON.stringify(data);
     await writeFile(file, original);
     expect(new SettingsStore(dir, encryption).get().interface).toMatchObject({
+      askUserQuestionAutoResolutionEnabled: true,
       notificationEnabled: true,
       notificationSoundEnabled: true,
     });

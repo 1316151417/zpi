@@ -2,6 +2,7 @@
 import { Pencil, Search, SquareTerminal, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { LinkContext } from "../link-target.ts";
+import { AskQuestionToolBlock } from "./AskQuestionToolBlock.tsx";
 import { FlipMetricValue } from "./FlipMetricValue.tsx";
 import { FileIcon } from "./Reference.tsx";
 import { ToolCode, ToolDiff } from "./ToolDiff.tsx";
@@ -126,6 +127,7 @@ function FileToolDetails({ block, onLoadPatch }: Pick<ToolBlockProps, "block" | 
 }
 
 export function ToolBlock(props: ToolBlockProps) {
+  if (props.block.name === "AskUserQuestion") return <AskQuestionToolBlock {...props} />;
   const { block, expanded, toggle, workspace, onCopy, showIcon = true } = props;
   const running = block.status === "preparing" || block.status === "running";
   const file = toolFile(block, workspace?.cwd);

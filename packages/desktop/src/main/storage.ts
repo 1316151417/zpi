@@ -34,16 +34,19 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type {
+  CapabilityName,
   CombinedSelection,
   InterfacePreferences,
   ModelSelection,
   ModelSettings,
+  PluginCapabilities,
   ProviderInput,
   ProviderRecord,
   PublicSettings,
   SettingsInput,
 } from "../shared/bridge.ts";
 import {
+  defaultCapabilities,
   defaultPreferences,
   modelDefaults,
   reasoningPresets,
@@ -74,6 +77,7 @@ interface Credentials {
   chatgpt?: ChatGPTCredential;
 }
 interface SettingsData {
+  capabilities: PluginCapabilities;
   version: 4;
   templates: PromptTemplate[];
   selectedTemplateId: string;
@@ -106,6 +110,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
 }
 export class SettingsStore {
   private data: SettingsData = {
+    capabilities: { ...defaultCapabilities },
     version: 4,
     templates: [],
     selectedTemplateId: "pi",
@@ -168,6 +173,9 @@ export class SettingsStore {
         });
         this.data.lastSelection = this.recoverLastSelection();
       }
+      if (this.data.capabilities != null && !isJsonObject(this.data.capabilities))
+        throw new Error("storage: Invalid plugin capabilities");
+      this.data.capabilities = { ...defaultCapabilities, ...this.data.capabilities };
       if (isJsonObject(this.data.interface)) {
         this.data.interface = { ...defaultPreferences, ...this.data.interface };
         const legacySize: unknown = this.data.interface.fontSize;
@@ -261,6 +269,7 @@ export class SettingsStore {
   }
   get(): PublicSettings {
     return {
+      capabilities: structuredClone(this.data.capabilities),
       providers: this.data.providers.map((p) => ({
         ...structuredClone(p),
         hasApiKey: Boolean(this.credentials[p.id]?.apiKey),
@@ -481,6 +490,11 @@ export class SettingsStore {
     this.data = data;
     return this.get();
   }
+  setCapabilityEnabled(name: CapabilityName, enabled: boolean): PublicSettings {
+    if (!Object.hasOwn(defaultCapabilities, name) || typeof enabled !== "boolean")
+      throw new Error("invalid_input: 无效插件能力");
+    return this.savePublic({ ...this.data, capabilities: { ...this.data.capabilities, [name]: enabled } });
+  }
   getTemplate(): PromptTemplate {
     return structuredClone(
       this.data.templates.find((t) => t.id === this.data.selectedTemplateId) ?? piTemplate,
@@ -571,6 +585,7 @@ export class SettingsStore {
       templates: [],
       selectedTemplateId: "pi",
       disabledSkillPaths: [],
+      capabilities: { ...defaultCapabilities },
       providers: [
         {
           id: "custom",
@@ -603,10 +618,19 @@ export class SettingsStore {
         "templates",
         "selectedTemplateId",
         "disabledSkillPaths",
+        "capabilities",
       ],
       "settings",
     );
     if (data.version !== 4 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");
+    if (
+      !isJsonObject(data.capabilities) ||
+      (Object.keys(defaultCapabilities) as CapabilityName[]).some(
+        (name) => typeof data.capabilities[name] !== "boolean",
+      )
+    )
+      throw new Error("storage: Invalid plugin capabilities");
+    assertSupportedOptions(data.capabilities, Object.keys(defaultCapabilities), "plugin capabilities");
     if (
       !Array.isArray(data.templates) ||
       !Array.isArray(data.disabledSkillPaths) ||
@@ -639,6 +663,7 @@ export class SettingsStore {
     assertSupportedOptions(prefs, Object.keys(defaultPreferences), "interface preferences");
     if (
       [
+        prefs.askUserQuestionAutoResolutionEnabled,
         prefs.showContextUsage,
         prefs.showSendButton,
         prefs.notificationEnabled,

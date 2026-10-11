@@ -1,7 +1,9 @@
 import { ActionHint, TaskTitleOverflowText } from "ZPI-ui";
 import { Archive, LoaderIcon, Pin } from "lucide-react";
+import type { CSSProperties } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
+import { report, unwrap } from "./store.ts";
 
 export function SidebarTaskRow({
   record: r,
@@ -25,25 +27,27 @@ export function SidebarTaskRow({
   const indicator =
     r.status === "error" ? "error" : r.unreadAt !== undefined ? "unread" : r.running ? "running" : "none";
   const actions = (
-    <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control">
-      <span className="task-row-actions">
-        <button
-          className="row-action task-archive"
-          aria-label={`归档任务 ${r.title}`}
-          disabled={r.running || Boolean(r.diagnostic)}
-          onClick={(event) => {
-            event.stopPropagation();
-            onArchive();
-          }}
-        >
-          <Archive size={14} />
-        </button>
-      </span>
-    </ActionHint>
+    <span className="task-row-actions">
+      <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control">
+        <span className="task-archive-hint">
+          <button
+            className="row-action task-archive"
+            aria-label={`归档任务 ${r.title}`}
+            disabled={r.running || Boolean(r.diagnostic)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onArchive();
+            }}
+          >
+            <Archive size={14} />
+          </button>
+        </span>
+      </ActionHint>
+    </span>
   );
   const time = (
     <span className="task-row-time" data-task-row-metadata="true">
-      {formatTaskRelativeTime(r.updatedAt)}
+      {r.pendingQuestion ? <QuestionBadge record={r} /> : formatTaskRelativeTime(r.updatedAt)}
     </span>
   );
   return (
@@ -65,6 +69,7 @@ export function SidebarTaskRow({
       data-session-id={r.id}
       data-task-item-key={r.id}
       data-status={r.status ?? "idle"}
+      data-question={Boolean(r.pendingQuestion)}
       data-indicator={indicator}
     >
       <span className="task-leading-slot">
@@ -139,5 +144,33 @@ export function SidebarTaskRow({
         </>
       )}
     </div>
+  );
+}
+
+function QuestionBadge({ record }: { record: SessionRecord }) {
+  const question = record.pendingQuestion;
+  if (!question) return null;
+  const state = question.autoResolution;
+  const timed = state && state.phase !== "snoozed";
+  const progress = state?.phase === "visibleCountdown";
+  return (
+    <button
+      className="task-question-badge"
+      aria-label={timed ? "停止提问计时" : "等待回答"}
+      data-timed={Boolean(timed)}
+      data-progress={progress}
+      style={
+        progress
+          ? ({ "--question-elapsed": `${-Math.max(0, Date.now() - state.visibleAt)}ms` } as CSSProperties)
+          : undefined
+      }
+      onClick={(event) => {
+        event.stopPropagation();
+        if (timed) void window.ZPI.snoozeQuestion(record.id, question.id).then(unwrap).catch(report);
+      }}
+    >
+      <span>等待确认</span>
+      {timed && <span>停止计时</span>}
+    </button>
   );
 }

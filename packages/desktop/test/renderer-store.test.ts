@@ -41,6 +41,7 @@ async function setup() {
       value: { text: "", fileReferences: [], selection: [0, 0], revision: 0 },
     })),
     saveDraft: vi.fn(async () => ({ ok: true, value: undefined })),
+    closeSideChat: vi.fn(async () => ({ ok: true, value: undefined })),
     getSessionSnapshot: vi.fn(async () => ({ ok: true, value: snapshot })),
     listCommands: vi.fn(async () => ({ ok: true, value: [] })),
     listSessionSkills: vi.fn(async () => ({ ok: true, value: { skills: [], diagnostics: [] } })),
@@ -235,5 +236,130 @@ it("typing batches draft writes and hiding or closing the window flushes the lat
     f.session.id,
     expect.objectContaining({ text: "closing draft" }),
   ]);
+  f.unsubscribe();
+});
+
+it("synchronizes the complete worktree environment on creation", async () => {
+  const f = await setup();
+  const worktree = { branch: "abcd", path: "/trees/abcd/project", sourceCwd: "/project" };
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 1,
+    event: { type: "environment_changed", cwd: worktree.path, newWorktree: true, worktree },
+  });
+  f.frame();
+  expect(f.store.useStore.getState().sessions.get(f.session.id)).toMatchObject({
+    cwd: worktree.path,
+    newWorktree: true,
+    worktree,
+  });
+  f.unsubscribe();
+});
+
+it("retains question drafts across timing updates and releases them when questions end", async () => {
+  const f = await setup();
+  const draft = { requestId: "q", index: 0, answers: [{ selected: [], custom: "my answer" }] };
+  f.store.questionDrafts.set(f.session.id, draft);
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 1,
+    event: { type: "question_changed", question: { id: "q", questions: [] } },
+  });
+  f.frame();
+  expect(f.store.questionDrafts.get(f.session.id)).toBe(draft);
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 2,
+    event: { type: "question_changed", question: null },
+  });
+  f.frame();
+  expect(f.store.questionDrafts.has(f.session.id)).toBe(false);
+  f.store.questionDrafts.set(f.session.id, draft);
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 3,
+    event: { type: "settled", status: "aborted", endedAt: 2 },
+  });
+  f.frame();
+  expect(f.store.questionDrafts.has(f.session.id)).toBe(false);
+  f.unsubscribe();
+});
+
+it("closing a side chat drains active draft writes and releases heavy caches while keeping pane ownership", async () => {
+  vi.useFakeTimers();
+  const f = await setup();
+  const child = { ...f.session, parentSessionId: "parent" };
+  f.store.useStore.setState({
+    sessions: new Map([[child.id, child]]),
+    views: new Map([[child.id, f.snapshot.view]]),
+    historyCursors: new Map([[child.id, null]]),
+  });
+  await f.store.loadDraft(child.id);
+  const gate = deferred();
+  f.bridge.saveDraft.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: undefined };
+  });
+  const draft = { text: "unsent", selections: [], fileReferences: [], attachments: [], pending: 0 };
+  f.store.drafts.set(child.id, draft);
+  await vi.advanceTimersByTimeAsync(200);
+  f.store.retainedSessionViews.add(child.id);
+  f.store.questionDrafts.set(child.id, { requestId: "q", index: 0, answers: [] });
+  f.store.useStore.setState({
+    suggestions: new Map([[child.id, []]]),
+    resourceDiagnostics: new Map([[child.id, []]]),
+    historyLoading: new Set([child.id]),
+  });
+  const closing = f.store.closeSideChat(child.id);
+  expect(f.bridge.closeSideChat).not.toHaveBeenCalled();
+  f.store.drafts.set(child.id, { ...draft, text: "later edit" });
+  await vi.advanceTimersByTimeAsync(200);
+  expect(f.bridge.saveDraft).toHaveBeenCalledTimes(1);
+  gate.resolve();
+  await closing;
+  const state = f.store.useStore.getState();
+  for (const cache of [
+    state.views,
+    state.historyCursors,
+    state.historyLoading,
+    state.suggestions,
+    state.resourceDiagnostics,
+  ])
+    expect(cache.has(child.id)).toBe(false);
+  expect(state.sessions.get(child.id)?.parentSessionId).toBe("parent");
+  expect(f.store.drafts.has(child.id)).toBe(false);
+  expect(f.store.retainedSessionViews.has(child.id)).toBe(false);
+  expect(f.store.questionDrafts.has(child.id)).toBe(false);
+  f.unsubscribe();
+});
+
+it("opening auxiliary views never evicts the selected main conversation", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    selected: f.session.id,
+    views: new Map([
+      [f.session.id, f.snapshot.view],
+      ...Array.from({ length: 8 }, (_, index) => {
+        const id = `inactive-${index}`;
+        return [id, { ...f.snapshot.view, sessionId: id }] as const;
+      }),
+    ]),
+  });
+  const child = { ...f.session, id: "child", parentSessionId: f.session.id };
+  f.bridge.getSessionSnapshot.mockResolvedValueOnce({
+    ok: true,
+    value: { ...f.snapshot, session: child, view: { ...f.snapshot.view, sessionId: child.id } },
+  });
+  const panes = await import("../src/renderer/pane-store.ts");
+  await panes.loadSideChat(child.id);
+  const views = f.store.useStore.getState().views;
+  expect(views.has(f.session.id)).toBe(true);
+  expect(views.has(child.id)).toBe(true);
+  expect(views.size).toBe(8);
+  expect(f.bridge.getDraft).toHaveBeenCalledWith(child.id);
   f.unsubscribe();
 });

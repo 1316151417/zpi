@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Folder, FolderPlus, MessageCircle, Search, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { newSession, refresh, report, unwrap, useStore } from "./store.ts";
+import { focusComposer, newSession, refresh, report, unwrap, useStore } from "./store.ts";
 
 export function DraftProjectPicker({ projectId }: { projectId: string | null }) {
   const projects = useStore((state) => state.projects);
@@ -69,7 +69,11 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
             side="top"
             sideOffset={4}
             onCloseAutoFocus={(event) => {
-              if (skipCloseFocus.current) event.preventDefault();
+              if (skipCloseFocus.current) {
+                event.preventDefault();
+                const selected = useStore.getState().selected;
+                if (selected) focusComposer(selected);
+              }
               skipCloseFocus.current = false;
             }}
           >

@@ -28,6 +28,8 @@ test("read-only resource settings, skill defaults, file changes and compaction u
   const dir = await mkdtemp(join(tmpdir(), "ZPI-resource-settings-")),
     project = join(dir, "project");
   await mkdir(project);
+  await mkdir(join(dir, "agent"));
+  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
   await writeFile(
     join(dir, ".agents", "skills", "review", "SKILL.md"),
@@ -35,17 +37,16 @@ test("read-only resource settings, skill defaults, file changes and compaction u
   );
   await writeFile(join(project, "AGENTS.md"), "PROJECT POLICY");
   await writeFile(join(project, "existing.txt"), "external old\n");
+  let recovered = false;
   const server = await fakeServer((body, r) => {
     const messages = body.messages as unknown as { role: string; content: unknown }[];
-    if (JSON.stringify(messages).includes("Return only the summary")) {
+    if (JSON.stringify(messages).includes("ONLY output the structured summary")) {
+      recovered = true;
       send(r, chunk({ content: "## Goal\nContinue file work\n## Progress\nUpdated existing.txt" }));
       done(r);
       return;
     }
-    if (
-      messages.at(-1)?.content === "compact check" &&
-      !JSON.stringify(messages).includes("Summary of earlier conversation")
-    ) {
+    if (messages.findLast((message) => message.role === "user")?.content === "compact check" && !recovered) {
       r.writeHead(400, { "content-type": "application/json" });
       r.end(JSON.stringify({ error: { message: "context_length_exceeded" } }));
       return;
@@ -100,6 +101,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "界面设置",
       "系统提示词",
       "工具",
+      "插件能力",
       "技能",
       "模型",
       "已归档任务",
@@ -119,12 +121,14 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".prompt-preview")).toContainText("available_skills");
     await expect(page.locator(".prompt-preview")).not.toContainText("<system_rules>");
     await expect(page.getByRole("heading", { name: "基础系统提示词 只读", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "系统规则 ZPI 补充 · 只读", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "插件提示词 按启用能力生成 · 只读", exact: true }),
+    ).toBeVisible();
     const rules = page.locator(".system-rules-preview");
     await expect(rules).toContainText("Return web URLs as Markdown links");
     await expect(rules).toContainText("return local file references as Markdown links");
     const systemRules = await rules.textContent();
-    await expect(page.locator(".resource-settings")).toContainText("仅追加少量桌面规则");
+    await expect(page.locator(".resource-settings")).toContainText("按启用的插件能力追加规则");
     expect(
       await page.locator(".prompt-preview").evaluate((base) => {
         const rules = document.querySelector(".system-rules-preview");
@@ -161,7 +165,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await page.screenshot({ path: "test-results/desktop-resource-settings-prompt.png" });
     await page.getByLabel("关闭设置").click();
     await page.getByLabel("消息", { exact: true }).fill("$");
-    await page.getByRole("option", { name: /\$review/ }).click();
+    await page.getByRole("option", { name: /^review/ }).click();
     await expect(page.getByLabel("消息", { exact: true }).locator(".inline-mention.skill")).toHaveText(
       "review",
     );
@@ -252,9 +256,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     expect(await readFile(join(project, "existing.txt"), "utf8")).toBe("new result\n");
     await page.getByLabel("消息", { exact: true }).fill("compact check");
     await page.getByLabel("消息", { exact: true }).press("Enter");
-    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
-    await expect(page.getByTestId("run").last()).toContainText("已自动压缩");
     await expect(page.getByTestId("run")).toHaveCount(2);
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(page.getByTestId("compaction-divider")).toHaveText("上下文已自动压缩");
   } finally {
     await app?.close();
     await server.close();

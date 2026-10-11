@@ -1,6 +1,5 @@
 import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
-import { randomUUID } from "node:crypto";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { demoServer, fakeConfig } from "../../../tests/fake-server.ts";
@@ -42,29 +41,10 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   expect(await readFile(join(cwd, "demo.txt"), "utf8")).toBe("ZPI\n");
   expect(session.messages.filter((m) => m.role === "toolResult")).toHaveLength(4);
   session.dispose();
-  // Old goal records remain readable, but cannot reactivate an automatic prompt loop.
   const file = manager.getSessionFile() as string;
-  manager.appendMessage({
-    role: "system",
-    content: "",
-    sections: { "ZPI.goal": "OBSOLETE GOAL INSTRUCTION" },
-    timestamp: Date.now(),
-  });
-  await appendFile(
-    file,
-    `${JSON.stringify({
-      type: "goal_change",
-      id: randomUUID(),
-      parentId: manager.getEntries().at(-1)?.id,
-      timestamp: new Date().toISOString(),
-      goal: { text: "LEGACY TARGET", status: "active", updatedAt: Date.now() },
-    })}\n`,
-  );
   const original = await readFile(file, "utf8");
   const reopened = SessionManager.open(file);
   expect(await readFile(file, "utf8")).toBe(original);
-  expect(reopened.getEntries().at(-1)?.type).toBe("goal_change");
-  expect(reopened.buildSessionContext()).not.toHaveProperty("goal");
   const restored = await createAgentSession({
     userSkillPaths: [],
     modelRuntime: runtime,
@@ -74,11 +54,10 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   const requests = s.requests.length;
   await restored.session.prompt("continue");
   expect(s.requests.length).toBe(requests + 1);
-  expect(JSON.stringify(s.requests.at(-1))).not.toMatch(/OBSOLETE GOAL INSTRUCTION|LEGACY TARGET/);
   expect((await readFile(file, "utf8")).startsWith(original)).toBe(true);
   expect(s.requests.at(-1)?.messages).toEqual(
     expect.arrayContaining([expect.objectContaining({ role: "tool", tool_call_id: "call-3" })]),
   );
-  expect(restored.session.messages.filter((m) => m.role === "system")).toHaveLength(2);
+  expect(restored.session.messages.filter((m) => m.role === "system")).toHaveLength(1);
   restored.session.dispose();
 });

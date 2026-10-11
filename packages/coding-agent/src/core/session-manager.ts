@@ -51,8 +51,6 @@ export type SessionEntry = EntryBase &
         usage?: Usage;
         systemMessage?: SystemMessage;
       }
-    // Read-only legacy entry. It is never projected into the active context.
-    | { type: "goal_change"; goal: JsonValue }
   );
 export interface SessionContext {
   messages: Message[];
@@ -153,6 +151,15 @@ export class SessionManager {
   getCwd(): string {
     return this.header.cwd;
   }
+  /** Move a draft into its worktree before any model messages are committed. */
+  setCwd(cwd: string): void {
+    if (this.storageError) throw this.storageError;
+    if (this.entries.some((entry) => entry.type === "message" || entry.type === "compaction"))
+      throw new Error("Cannot move a session with messages");
+    const header = { ...this.header, cwd: resolve(cwd) };
+    this.writeTranscript(header, this.entries);
+    this.header = header;
+  }
   getEntries(): SessionEntry[] {
     return this.entries.slice();
   }
@@ -179,18 +186,20 @@ export class SessionManager {
       parentId = next.id;
       return next;
     });
-    if (this.file) {
-      const temporary = `${this.file}.${randomUUID()}.tmp`;
-      try {
-        writeFileSync(temporary, `${[this.header, ...entries].map((e) => JSON.stringify(e)).join("\n")}\n`, {
-          mode: 0o600,
-        });
-        renameSync(temporary, this.file);
-      } finally {
-        rmSync(temporary, { force: true });
-      }
-    }
+    this.writeTranscript(this.header, entries);
     this.entries = entries;
+  }
+  private writeTranscript(header: SessionHeader, entries: SessionEntry[]): void {
+    if (!this.file) return;
+    const temporary = `${this.file}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temporary, `${[header, ...entries].map((entry) => JSON.stringify(entry)).join("\n")}\n`, {
+        mode: 0o600,
+      });
+      renameSync(temporary, this.file);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
   }
   buildSessionContext(): SessionContext {
     return buildSessionContext(this.entries);
@@ -270,13 +279,7 @@ export class SessionManager {
 export type CompactionEntry = Extract<SessionEntry, { type: "compaction" }>;
 /** Entries are append-only. Like Pi, context projection shares immutable message records. */
 export function sessionEntryToContextMessages(entry: SessionEntry): Message[] {
-  if (entry.type !== "message") return [];
-  const message = entry.message;
-  if (message.role === "system" && message.sections && "ZPI.goal" in message.sections) {
-    const { "ZPI.goal": _, ...sections } = message.sections;
-    return [{ ...message, sections }];
-  }
-  return [message];
+  return entry.type === "message" ? [entry.message] : [];
 }
 function collapseSystemMessages(messages: Message[], timestamp: number): SystemMessage {
   const system: SystemMessage = {

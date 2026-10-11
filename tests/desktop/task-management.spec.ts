@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
@@ -8,7 +8,11 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 const editor = (page: Page) => page.getByLabel("消息", { exact: true });
-const openMenu = (page: Page) => page.getByLabel("任务菜单", { exact: true }).click();
+const openMenu = async (page: Page) => {
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.getByLabel("任务菜单", { exact: true }).click();
+  await expect(page.getByRole("menu")).toBeVisible();
+};
 const openArchives = async (page: Page) => {
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "已归档任务", exact: true }).click();
@@ -52,20 +56,17 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     const run = page.getByTestId("run");
     const row = page.locator('.projects [data-testid="session-row"]').first();
     await expect(row.getByLabel("归档任务 运行任务", { exact: true })).toBeDisabled();
-    await expect(row.getByLabel("归档任务 运行任务", { exact: true })).toHaveAttribute(
-      "title",
-      "请先停止运行",
-    );
     const archiveButton = row.getByLabel("归档任务 运行任务", { exact: true });
     await editor(page).focus();
     await editor(page).hover();
-    await expect(archiveButton).toHaveCSS("opacity", "0");
+    await expect(archiveButton).toBeHidden();
     await row.hover();
     const disabledAppearance = await archiveButton.evaluate((el) => {
       const style = getComputedStyle(el);
       return { color: style.color, background: style.backgroundColor, opacity: style.opacity };
     });
     await archiveButton.hover();
+    await expect(page.getByRole("tooltip")).toContainText("请先停止运行");
     expect(
       await archiveButton.evaluate((el) => {
         const style = getComputedStyle(el);
@@ -74,14 +75,14 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     ).toEqual(disabledAppearance);
     await expect(archiveButton).toHaveCSS("opacity", "0.45");
     await editor(page).hover();
-    await expect(archiveButton).toHaveCSS("opacity", "0");
+    await expect(archiveButton).toBeHidden();
     await row.locator(".session-name").focus();
     await expect(archiveButton).toHaveCSS("opacity", "0.45");
     await expect(archiveButton).toBeDisabled();
     await editor(page).focus();
-    await expect(archiveButton).toHaveCSS("opacity", "0");
-    await page.getByLabel("任务菜单").hover();
-    const iconOffset = await page.getByLabel("任务菜单").evaluate((el) => {
+    await expect(archiveButton).toBeHidden();
+    await page.getByLabel("任务菜单", { exact: true }).hover();
+    const iconOffset = await page.getByLabel("任务菜单", { exact: true }).evaluate((el) => {
       const button = el.getBoundingClientRect();
       const icon = el.querySelector("svg")?.getBoundingClientRect();
       if (!icon) throw new Error("missing menu icon");
@@ -93,10 +94,10 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     expect(iconOffset.x).toBeLessThan(1);
     expect(iconOffset.y).toBeLessThan(1);
     await openMenu(page);
-    await expect(page.getByRole("menuitem")).toHaveCount(5);
-    await expect(page.getByRole("separator")).toHaveCSS("border-top-style", "dashed");
+    await expect(page.getByRole("menuitem")).toHaveCount(6);
+    await expect(page.getByRole("separator")).toHaveCSS("height", "1px");
     await expect(page.getByRole("menuitem", { name: /^归档任务/ })).toHaveAttribute("aria-disabled", "true");
-    await expect(page.getByLabel("任务菜单")).toHaveCSS("-webkit-app-region", "no-drag");
+    await expect(page.getByLabel("任务菜单", { exact: true })).toHaveCSS("-webkit-app-region", "no-drag");
     await page.screenshot({ path: "test-results/task-menu.png" });
     await page.keyboard.press("Escape");
     await expect(run).toHaveAttribute("data-status", "running");
@@ -123,6 +124,28 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await expect
       .poll(() => app?.evaluate(({ clipboard }) => clipboard.readText()))
       .toBe(await realpath(project));
+    const sessionId = await page
+      .locator('.pinned-tasks [data-testid="session-row"]')
+      .first()
+      .getAttribute("data-session-id");
+    const copiedSessionPath = async () => app?.evaluate(({ clipboard }) => clipboard.readText());
+    await openMenu(page);
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "取消置顶",
+      "重命名任务",
+      "归档任务请先停止运行",
+      "Finder",
+      "复制路径",
+      "复制会话路径",
+    ]);
+    await page.getByRole("menuitem", { name: "复制会话路径", exact: true }).click();
+    await expect.poll(copiedSessionPath).toMatch(new RegExp(`${sessionId}\\.jsonl$`));
+    const sessionPath = await copiedSessionPath();
+    expect(sessionPath).toContain(join(dir, "agent", "sessions"));
+    expect(await readFile(sessionPath as string, "utf8")).toContain("运行任务");
+    const sidebarRow = page.locator(`[data-testid="session-row"][data-session-id="${sessionId}"]`);
+    await sidebarRow.hover();
+    await expect(sidebarRow.locator(".task-more")).toHaveCount(0);
     await app.evaluate(({ shell }) => {
       shell.openPath = async (path) => {
         (globalThis as typeof globalThis & { openedDirectory: string }).openedDirectory = path;
@@ -151,6 +174,11 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await expect(run).toHaveAttribute("data-status", "running");
     await editor(page).dispatchEvent("compositionend", { data: "" });
     await page.getByRole("button", { name: "设置", exact: true }).click();
+    await expect(page.getByLabel("关闭设置", { exact: true })).toBeFocused();
+    await page.getByLabel("关闭设置", { exact: true }).hover();
+    // Escape dismisses any outstanding control hint before the settings surface.
+    if (await page.getByRole("tooltip").count()) await page.keyboard.press("Escape");
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("region", { name: "设置", exact: true })).toHaveCount(0);
     await expect(run).toHaveAttribute("data-status", "running");
@@ -296,7 +324,7 @@ test("every new-task entry focuses the composer when creating or reusing a draft
     await taskHeader.getByLabel("新建任务", { exact: true }).click();
     await expect(editor(page)).toBeFocused();
     await page.getByLabel("收起侧边栏", { exact: true }).click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
+    await page.locator('.window-chrome-button[aria-label="新建任务"]').click();
     await expect(editor(page)).toBeFocused();
     expect(await selected()).toBe(unassigned);
     await page.getByLabel("展开侧边栏", { exact: true }).click();

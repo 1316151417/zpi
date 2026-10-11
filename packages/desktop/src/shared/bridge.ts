@@ -7,6 +7,7 @@ import type {
   RunStatus,
   SessionControls,
   SessionView,
+  WorktreeInfo,
 } from "ZPI-ui";
 import type { FileLocation } from "ZPI-ui/links";
 
@@ -21,6 +22,9 @@ export interface ProjectRecord {
   hidden?: boolean;
 }
 export interface SessionRecord {
+  parentSessionId?: string;
+  newWorktree?: boolean;
+  worktree?: WorktreeInfo;
   draft?: boolean;
   id: string;
   projectId: string | null;
@@ -33,6 +37,7 @@ export interface SessionRecord {
   status?: RunStatus;
   /** Runtime evidence supplied by SessionHost, never restored from persisted status. */
   running?: boolean;
+  pendingQuestion?: Pick<import("ZPI-ui").UserQuestionRequest, "id" | "autoResolution"> | null;
   activitySeq?: number;
   createdAt: number;
   updatedAt: number;
@@ -89,6 +94,7 @@ export interface CombinedSelection extends ModelSelection {
   reasoning: ReasoningPreset;
 }
 export interface InterfacePreferences {
+  askUserQuestionAutoResolutionEnabled: boolean;
   theme: "system" | "light" | "dark";
   fontSize: number;
   showContextUsage: boolean;
@@ -101,7 +107,14 @@ export interface InterfacePreferences {
   projectsCollapsed: boolean;
   tasksCollapsed: boolean;
 }
+export interface PluginCapabilities {
+  askUserQuestion: boolean;
+  toolBatching: boolean;
+  fileLinks: boolean;
+}
+export type CapabilityName = keyof PluginCapabilities;
 export interface PublicSettings {
+  capabilities: PluginCapabilities;
   providers: ProviderRecord[];
   lastSelection: CombinedSelection | null;
   interface: InterfacePreferences;
@@ -192,6 +205,17 @@ export interface PaneBounds {
   height: number;
 }
 export interface DesktopBridge {
+  setCapabilityEnabled(name: CapabilityName, enabled: boolean): Promise<Result<PublicSettings>>;
+  snoozeQuestion(sessionId: string, requestId: string): Promise<Result<void>>;
+  respondToQuestion(
+    sessionId: string,
+    requestId: string,
+    response: import("ZPI-ui").UserQuestionResponse,
+  ): Promise<Result<void>>;
+  closeSideChat(sessionId: string): Promise<Result<void>>;
+  createSideChat(sessionId: string): Promise<Result<SessionRecord>>;
+  getGitEnvironment(sessionId: string): Promise<Result<{ branch: string; head: string } | null>>;
+  setNewWorktree(sessionId: string, enabled: boolean): Promise<Result<SessionRecord>>;
   logError(error: { source: string; message: string; stack?: string }): void;
   readonly platform: string;
   readonly workspacePanelRadius: number;
@@ -222,6 +246,7 @@ export interface DesktopBridge {
     before: number,
   ): Promise<Result<{ view: SessionView; cursor: number | null; calls: number }>>;
   copyText(text: string): Promise<Result<void>>;
+  copySessionPath(sessionId: string): Promise<Result<void>>;
   fileAction(
     sessionId: string,
     path: string,
@@ -304,6 +329,13 @@ export interface DesktopBridge {
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
 export const methods = [
+  "setCapabilityEnabled",
+  "respondToQuestion",
+  "snoozeQuestion",
+  "createSideChat",
+  "closeSideChat",
+  "getGitEnvironment",
+  "setNewWorktree",
   "beginChatGPTLogin",
   "completeChatGPTLogin",
   "submitChatGPTCallback",
@@ -325,6 +357,7 @@ export const methods = [
   "saveDraft",
   "getHistoryPage",
   "copyText",
+  "copySessionPath",
   "fileAction",
   "searchFiles",
   "getWorkspaceInfo",

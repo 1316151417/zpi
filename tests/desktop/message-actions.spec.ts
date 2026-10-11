@@ -7,6 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function selectText(locator: Locator) {
+  await locator.click();
   await locator.evaluate((element) => {
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -283,7 +284,7 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await selectText(run.locator(".answer p"));
     const add = page.getByRole("button", { name: "添加到当前任务", exact: true });
     await expect(add).toBeVisible();
-    await expect(page.getByText("辅助对话", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "在辅助对话中提问", exact: true })).toBeVisible();
     await add.click();
     await expect(composer).toBeFocused();
     await page.keyboard.insertText("X");

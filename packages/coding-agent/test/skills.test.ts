@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, test } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
-import { buildMentionMarkdown, FileResourceLoader, parseInput, SkillCatalog } from "../src/index.ts";
+import { buildMentionMarkdown, FileResourceLoader, SkillCatalog } from "../src/index.ts";
 import { fixture as resourceFixture, skill as writeSkill } from "./helpers/resource-fixture.ts";
 
 const cleanup: (() => Promise<unknown>)[] = [];
@@ -122,22 +122,68 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
   expect(extended.getAppendSystemPrompt().join("\n")).not.toContain("EXTRA BODY");
 });
 
-it("explicit skills expand only at input start and invalid skills never reach the provider", async () => {
-  const f = await resourceFixture((_, r) => {
-    send(r, chunk({ content: "ok" }));
-    done(r);
+it.each(["plain", "linked", "missing"])(
+  "sends %s skill references unchanged without loading their body",
+  async (kind) => {
+    const f = await resourceFixture((_, r) => {
+      send(r, chunk({ content: "ok" }));
+      done(r);
+    });
+    const root = join(f.cwd, ".ZPI", "skills");
+    await writeSkill(root, "review", "Review", "BODY ON DEMAND");
+    const name = kind === "missing" ? "missing" : "review";
+    const reference =
+      kind === "plain" ? `$${name}` : buildMentionMarkdown(`$${name}`, join(root, name, "SKILL.md"));
+    const text = `  ${reference}\ncheck sources  `;
+    await f.session.submit(text);
+    expect(f.server.requests[0].messages).toContainEqual(
+      expect.objectContaining({ role: "user", content: text }),
+    );
+    const request = JSON.stringify(f.server.requests[0]);
+    expect(request).toContain("<available_skills>");
+    expect(request).toContain(join(root, "review", "SKILL.md"));
+    expect(request).not.toContain("BODY ON DEMAND");
+    expect(f.server.requestHeaders[0].authorization).toBeUndefined();
+    expect(f.server.requests).toHaveLength(1);
+  },
+);
+
+it("loads a referenced skill only after the model calls read", async () => {
+  let path = "";
+  const f = await resourceFixture((_, r, index) => {
+    if (index === 0) {
+      send(
+        r,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "read-skill",
+              type: "function",
+              function: { name: "read", arguments: JSON.stringify({ path }) },
+            },
+          ],
+        }),
+      );
+      done(r, "tool_calls");
+    } else {
+      send(r, chunk({ content: "ok" }));
+      done(r);
+    }
   });
-  await writeSkill(join(f.cwd, ".ZPI", "skills"), "review", "Review", "BODY ON DEMAND");
-  await f.session.submit("$review check sources");
-  expect(JSON.stringify(f.server.requests[0])).toContain("BODY ON DEMAND");
-  expect(f.server.requestHeaders[0].authorization).toBeUndefined();
-  const missing = buildMentionMarkdown("$missing", join(f.cwd, ".ZPI", "skills", "missing", "SKILL.md"));
-  await expect(f.session.submit(`${missing} do it`)).rejects.toThrow("not found");
-  expect(f.server.requests).toHaveLength(1);
-  expect(parseInput("Mention /compact and $review")).toEqual({
-    kind: "prompt",
-    text: "Mention /compact and $review",
-  });
+  const root = join(f.cwd, ".ZPI", "skills");
+  await writeSkill(root, "review", "Review", "BODY ON DEMAND");
+  path = join(root, "review", "SKILL.md");
+  const text = `${buildMentionMarkdown("$review", path)} check sources`;
+  await f.session.submit(text);
+  expect(f.server.requests).toHaveLength(2);
+  expect(f.server.requests[0].messages).toContainEqual(
+    expect.objectContaining({ role: "user", content: text }),
+  );
+  expect(JSON.stringify(f.server.requests[0])).not.toContain("BODY ON DEMAND");
+  expect(f.server.requests[1].messages).toContainEqual(
+    expect.objectContaining({ role: "tool", content: expect.stringContaining("BODY ON DEMAND") }),
+  );
 });
 
 it("unknown dollar-prefixed text is sent unchanged without expanding a skill", async () => {

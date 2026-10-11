@@ -2,10 +2,13 @@ import { buildMentionMarkdown } from "ZPI-coding-agent";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { desktopSystemRules } from "../src/main/desktop-prompt.ts";
+import { pluginSystemRules } from "../src/main/desktop-prompt.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
+import { defaultCapabilities } from "../src/shared/config.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
+
+const desktopSystemRules = pluginSystemRules(defaultCapabilities);
 
 test.each(["/中文读杠", "$100", "$missing task", "@someone@example.com"])(
   "ordinary input %j reaches the provider and remains in desktop history",
@@ -72,7 +75,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
   }
 });
 
-test("legacy prompt snapshots and skill defaults survive restart; the read-only preview omits project context", async () => {
+test("prompt snapshots and skill defaults survive restart; the read-only preview omits project context", async () => {
   const f = await fixture(undefined, {
     id: "mine",
     name: "Mine",
@@ -102,14 +105,21 @@ test("legacy prompt snapshots and skill defaults survive restart; the read-only 
   expect((await f.host.listSessionSkills(configured.id)).skills).toHaveLength(1);
   await run(f, "$review task");
   expect(JSON.stringify(f.server.requests[1])).toContain("MY RULE");
-  expect(JSON.stringify(f.server.requests[1])).toContain("BODY");
+  expect(JSON.stringify(f.server.requests[1])).not.toContain("BODY");
+  expect(f.server.requests[1].messages).toContainEqual(
+    expect.objectContaining({ role: "user", content: "$review task" }),
+  );
   f.session = f.host.createSession(null);
   expect((await f.host.listSessionSkills(f.session.id)).skills).toHaveLength(0);
-  await expect(run(f, `${buildMentionMarkdown("$review", path)} task`)).rejects.toThrow("disabled");
-  expect(f.host.getSessionSnapshot(f.session.id).session.draft).toBe(true);
-  await run(f, "new session");
+  const linked = `${buildMentionMarkdown("$review", path)} task`;
+  await run(f, linked);
+  expect(f.host.getSessionSnapshot(f.session.id).session.draft).toBe(false);
+  expect(f.server.requests[2].messages).toContainEqual(
+    expect.objectContaining({ role: "user", content: linked }),
+  );
   expect(JSON.stringify(f.server.requests[2])).toContain("MY RULE");
   expect(JSON.stringify(f.server.requests[2])).not.toContain("available_skills");
+  expect(JSON.stringify(f.server.requests[2])).not.toContain("BODY");
   f.session = original;
   await run(f, "original");
   expect(JSON.stringify(f.server.requests[3])).toContain("MY RULE");
@@ -126,6 +136,9 @@ test("legacy prompt snapshots and skill defaults survive restart; the read-only 
   await restarted.startRun({ sessionId: configured.id, text: "$review after restart" });
   await restarted.activeRuns.get(configured.id)?.done;
   expect(JSON.stringify(f.server.requests[4])).toContain("MY RULE");
-  expect(JSON.stringify(f.server.requests[4])).toContain("BODY");
+  expect(JSON.stringify(f.server.requests[4])).not.toContain("BODY");
+  expect(f.server.requests[4].messages).toContainEqual(
+    expect.objectContaining({ role: "user", content: "$review after restart" }),
+  );
   expect(f.host.listTools().map((t) => t.name)).toEqual(["read", "bash", "edit", "write"]);
 });

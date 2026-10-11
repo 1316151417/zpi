@@ -200,6 +200,7 @@ export class HistoryIndex {
           "ZPI.selection",
           "ZPI.attention",
           "ZPI.fork",
+          "ZPI.environment",
         ].includes(key)
       )
         d.state[key] = entry;

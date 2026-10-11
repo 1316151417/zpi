@@ -1,33 +1,50 @@
 import { FileIcon, type FindRequest, type FindState } from "ZPI-ui";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { FileDiff as Files, Globe, Plus, SquareTerminal as TerminalSquare, X } from "lucide-react";
+import {
+  FileDiff as Files,
+  Globe,
+  MessageSquare,
+  Plus,
+  SquareTerminal as TerminalSquare,
+  X,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
 import {
   activatePaneTab,
+  canOpenSideChat,
   closeTab,
   openBrowser,
   openChanges,
+  openSideChat,
   openTerminal,
   paneTask,
   reorderPaneTab,
   usePane,
   visiblePaneTabs,
 } from "./pane-store.ts";
+import { SideChatPane } from "./SideChatPane.tsx";
+import { useStore } from "./store.ts";
 import { TerminalPane } from "./TerminalPane.tsx";
 export function RightPane({
   available,
   sessionId,
   findRequest,
   onFindStateChange,
+  onSettings,
 }: {
   findRequest?: FindRequest;
   onFindStateChange?: (state: FindState) => void;
   available: number;
   sessionId?: string;
+  onSettings: () => void;
 }) {
+  const sideChatAvailable = useStore((state) => {
+    const record = state.sessions.get(sessionId ?? "");
+    return canOpenSideChat(record);
+  });
   const state = usePane();
   const panel = useRef<HTMLElement>(null);
   const previousOpen = useRef(state.open);
@@ -138,7 +155,9 @@ export function RightPane({
                       if (event.button !== 1) activatePaneTab(tab.id);
                     }}
                   >
-                    {tab.type === "changes" ? (
+                    {tab.type === "side-chat" ? (
+                      <MessageSquare size={16} />
+                    ) : tab.type === "changes" ? (
                       <Files size={16} />
                     ) : tab.type === "terminal" ? (
                       <TerminalSquare size={16} />
@@ -168,6 +187,15 @@ export function RightPane({
                 </Dropdown.Trigger>
                 <Dropdown.Portal>
                   <Dropdown.Content className="pane-launcher" align="start" sideOffset={8}>
+                    <Dropdown.Item
+                      disabled={!sideChatAvailable}
+                      onSelect={() => {
+                        if (sessionId) paneTask(openSideChat(sessionId));
+                      }}
+                    >
+                      <MessageSquare size={16} />
+                      辅助对话
+                    </Dropdown.Item>
                     <Dropdown.Item
                       disabled={!sessionId}
                       onSelect={() => {
@@ -202,6 +230,15 @@ export function RightPane({
               <p>选择要在侧栏中打开的标签。</p>
               <div className="pane-launcher-actions">
                 <button
+                  disabled={!sideChatAvailable}
+                  onClick={() => {
+                    if (sessionId) paneTask(openSideChat(sessionId));
+                  }}
+                >
+                  <MessageSquare size={16} />
+                  辅助对话
+                </button>
+                <button
                   disabled={!sessionId}
                   onClick={() => {
                     if (sessionId) openChanges(sessionId, null);
@@ -234,7 +271,13 @@ export function RightPane({
               aria-label={tab.title}
               hidden={tab.id !== active}
             >
-              {tab.type === "changes" ? (
+              {tab.type === "side-chat" ? (
+                <SideChatPane
+                  sessionId={tab.childSessionId}
+                  visible={state.open && tab.id === active}
+                  onSettings={onSettings}
+                />
+              ) : tab.type === "changes" ? (
                 <ChangesPane
                   findRequest={tab.id === active ? findRequest : undefined}
                   onFindStateChange={onFindStateChange}

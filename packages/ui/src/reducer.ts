@@ -8,11 +8,19 @@ export function emptySession(sessionId: string, title = "新对话"): SessionVie
 export function sessionViewBytes(view: SessionView): number {
   let chars = view.title.length;
   for (const run of view.runs) {
-    chars += run.userMessage.length + (run.error?.length ?? 0) + (run.notice?.length ?? 0);
+    chars +=
+      run.userMessage.length +
+      (run.error?.length ?? 0) +
+      (run.notice?.length ?? 0) +
+      (run.preparation?.length ?? 0);
     for (const marker of run.compactions ?? [])
       chars += marker.id.length + (marker.afterBlockId?.length ?? 0) + (marker.error?.length ?? 0);
-    for (const block of run.orderedBlocks)
+    for (const block of run.orderedBlocks) {
       chars += block.type === "tool" ? block.output.length + block.argsText.length : block.text.length;
+      if (block.type === "tool" && block.questionAnswers)
+        for (const [question, answer] of Object.entries(block.questionAnswers.answers))
+          chars += question.length + answer.length;
+    }
   }
   for (const item of view.queue?.items ?? []) chars += item.text.length;
   return chars * 2;
@@ -25,6 +33,8 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   if (event.type === "session_changed") return { ...view, seq, title: event.title };
   if (event.type === "controls_changed") return { ...view, seq, controls: event.controls };
   if (event.type === "queue_changed") return { ...view, seq, queue: event.queue };
+  if (event.type === "question_changed") return { ...view, seq, question: event.question };
+  if (event.type === "environment_changed") return { ...view, seq };
   let index = view.runs.findIndex((r) => r.runId === runId);
   if (index < 0 && event.type !== "started") return { ...view, seq };
   const runs = [...view.runs];
@@ -59,6 +69,8 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.startedAt = event.startedAt;
     run.modelLabel = event.modelLabel;
     if (/^\/compact(?:\s|$)/.test(event.text.trimStart())) run.kind = "compact";
+  } else if (event.type === "run_preparation") {
+    run.preparation = event.message;
   } else if (event.type === "compaction") {
     const markers = [...(run.compactions ?? [])];
     const index = markers.findIndex((marker) => marker.id === event.id);
@@ -93,6 +105,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         ...(block.startedAt !== undefined ? { endedAt: event.timestamp } : {}),
       });
   } else if (event.type === "settled") {
+    run.preparation = null;
     run.apiRetry = null;
     run.status = event.status;
     run.endedAt = event.endedAt;
@@ -180,6 +193,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
               isError: event.isError,
               hasFileChange: event.hasFileChange,
               fileChange: event.fileChange,
+              questionAnswers: event.questionAnswers,
               status: event.isError ? "error" : "completed",
             }
           : {}),
@@ -211,6 +225,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
             isError: previous?.type === "tool" ? previous.isError : undefined,
             hasFileChange: previous?.type === "tool" ? previous.hasFileChange : undefined,
             fileChange: previous?.type === "tool" ? previous.fileChange : undefined,
+            questionAnswers: previous?.type === "tool" ? previous.questionAnswers : undefined,
           });
         } else {
           const previous = oldBlocks.get(id);
@@ -250,6 +265,10 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
               ? (m.details.fileChange as unknown as import("./types.ts").FileChangeSummary)
               : b.fileChange,
           status: m.isError ? "error" : "completed",
+          questionAnswers:
+            m.details && typeof m.details === "object" && "questionAnswers" in m.details
+              ? (m.details.questionAnswers as unknown as import("./types.ts").UserQuestionResponse)
+              : b.questionAnswers,
         });
     }
   }

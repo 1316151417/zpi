@@ -36,6 +36,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
+import { CapabilitySettings } from "./CapabilitySettings.tsx";
 import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
 import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
@@ -49,6 +50,7 @@ const sections = [
   ["interface", "界面设置", Monitor],
   ["prompt", "系统提示词", Sparkles],
   ["tools", "工具", Wrench],
+  ["capabilities", "插件能力", Package],
   ["skills", "技能", Puzzle],
   ["models", "模型", Braces],
   ["archived", "已归档任务", Archive],
@@ -404,6 +406,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                   </div>
                   {error && <div role="alert">{error}</div>}
                 </div>
+              ) : tab === "capabilities" ? (
+                <CapabilitySettings />
               ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (
                 <ResourceSettings page={tab} />
               ) : tab === "interface" ? (

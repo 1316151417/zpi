@@ -163,6 +163,7 @@ export function toolFile(block: ToolView, cwd?: string) {
 export function toolLabel(block: ToolView): string {
   const running = block.status === "preparing" || block.status === "running";
   const labels: Record<string, [string, string]> = {
+    AskUserQuestion: ["正在询问", "已询问"],
     read: ["正在读取", "读取"],
     bash: ["正在执行", "终端"],
     write: ["正在写入", "写入"],

@@ -101,7 +101,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
         {page === "tools"
           ? "查看内置工具的能力与参数。工具定义只读，对所有任务生效。"
           : page === "prompt"
-            ? "沿用 Pi 基础提示词，仅追加少量桌面规则。两部分均只读，下方分别展示。"
+            ? "沿用 Pi 基础提示词，按启用的插件能力追加规则。两部分均只读，下方分别展示。"
             : "全局默认配置，在新任务首次发送时生效；已有任务保留原技能开关。"}
       </p>
       {error && (
@@ -122,10 +122,12 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           </p>
           <pre className="prompt-preview">{preview?.basePrompt ?? "正在生成预览…"}</pre>
           <h2 className="preview-heading">
-            系统规则 <small>ZPI 补充 · 只读</small>
+            插件提示词 <small>按启用能力生成 · 只读</small>
           </h2>
-          <p>相比 Pi，仅补充文件和网页链接的桌面展示约定；基础提示词保持独立。</p>
-          <pre className="system-rules-preview">{preview?.systemRules ?? "正在生成预览…"}</pre>
+          <p>在插件能力中配置多工具调用和文件链接格式；启用的规则会加入新对话，基础提示词保持独立。</p>
+          <pre className="system-rules-preview">
+            {preview ? preview.systemRules || "未启用额外提示词能力。" : "正在生成预览…"}
+          </pre>
         </>
       )}
       {page === "tools" && (

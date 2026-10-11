@@ -1,11 +1,18 @@
-import { ConversationSelectionMenu, type FileAction, FileIcon, Markdown, useAppearance } from "ZPI-ui";
+import {
+  type ConversationSelection,
+  ConversationSelectionMenu,
+  type FileAction,
+  FileIcon,
+  Markdown,
+  useAppearance,
+} from "ZPI-ui";
 import type { FileLocation, WebOpenOptions } from "ZPI-ui/links";
 import { File } from "@pierre/diffs/react";
 import { Copy, RefreshCw, WrapText } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FilePreview } from "../shared/bridge.ts";
 import { readMarkdownImage } from "./markdown-image.ts";
-import { openFile, openWebLink, paneTask } from "./pane-store.ts";
+import { openFile, openSideChat, openWebLink, paneTask, useSideChatBlocked } from "./pane-store.ts";
 import { addConversationSelection, unwrap, useStore } from "./store.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
@@ -43,8 +50,20 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
   const positioned = useRef<FilePreview | undefined>(undefined);
   const selectionRoot = useRef<HTMLDivElement>(null);
   const currentTask = useStore((state) => state.selected);
+  const sideChatAvailable = useStore((state) => {
+    const record = state.sessions.get(currentTask ?? "");
+    return Boolean(record && !record.draft && !record.parentSessionId && record.archivedAt == null);
+  });
+  const parentBlocked = useStore((state) => Boolean(state.views.get(currentTask ?? "")?.question));
+  const sideChatBlocked = useSideChatBlocked(currentTask) || parentBlocked;
   const addSelection = useCallback(
-    (reference: import("ZPI-ui").ConversationSelection) => addConversationSelection(reference, currentTask),
+    (reference: ConversationSelection) => addConversationSelection(reference, currentTask),
+    [currentTask],
+  );
+  const askInSideChat = useCallback(
+    (reference: ConversationSelection) => {
+      if (currentTask) paneTask(openSideChat(currentTask, reference));
+    },
     [currentTask],
   );
   const [wrap, setWrap] = useState(false);
@@ -117,6 +136,13 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
         rootRef={selectionRoot}
         scopeKey={`${currentTask}:${preview.path}`}
         onAdd={currentTask ? addSelection : undefined}
+        onSideChat={askInSideChat}
+        sideChatDisabled={!sideChatAvailable || sideChatBlocked}
+        sideChatDisabledTitle={
+          sideChatBlocked
+            ? "请先处理主任务或辅助对话中的待处理请求。"
+            : "请在支持辅助对话的可编辑主任务中使用。"
+        }
       />
       {error && (
         <p role="alert" className="run-error">

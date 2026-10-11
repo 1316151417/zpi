@@ -448,6 +448,13 @@ small {
   width: 16px;
   height: 16px;
 }
+.run-preparation {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+}
 .chat-loading-spinner {
   color: var(--color-text-subtle);
   animation: chat-loading-spin 1s linear infinite;
@@ -627,6 +634,25 @@ small {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.question-tool-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 8px;
+  padding-left: 14px;
+  border-left: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
+  font-size: var(--text-body);
+  line-height: 20px;
+}
+.question-tool-answers p {
+  margin: 0;
+}
+.question-tool-answers .question-tool-question {
+  margin-bottom: 4px;
+  color: var(--color-text);
+  font-weight: 500;
 }
 .tool-kind-label {
   font-weight: 500;
@@ -3268,31 +3294,45 @@ button.inline-mention,
   border-radius: 16px;
 }
 .conversation-selection-menu {
+  --selection-menu-hover: var(--color-surface-muted);
   position: fixed;
   z-index: 50;
   display: flex;
   width: max-content;
-  max-width: calc(100vw - 24px);
+  max-width: min(576px, calc(100vw - 24px));
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-surface);
+  background: var(--color-popover);
   color: var(--color-foreground);
   font-size: var(--text-small);
   box-shadow:
     0 4px 6px -1px #0000001a,
     0 2px 4px -2px #0000001a;
 }
-.conversation-selection-menu :where(button),
+.conversation-selection-menu > :where(button),
 .conversation-selection-menu > span {
+  min-width: 0;
   padding: 6px 10px;
   border: 0;
+  border-radius: 0;
   background: transparent;
   font: inherit;
   color: inherit;
 }
-.conversation-selection-menu:has(:where(button:hover)) :where(button) {
-  background: var(--color-fill-hover);
+.conversation-selection-menu > :where(button):hover:not(:disabled) {
+  background: var(--selection-menu-hover);
+}
+[data-theme="dark"] .conversation-selection-menu {
+  --selection-menu-hover: var(--color-secondary);
+}
+.conversation-selection-menu > :where(button):disabled {
+  cursor: not-allowed;
+}
+.conversation-selection-divider {
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--color-border);
 }
 .conversation-selection-menu > span {
   color: var(--color-warning);

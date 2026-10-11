@@ -572,11 +572,16 @@ export const RunGroup = memo(function RunGroup({
         {run.status === "running" && !compacting && (
           <div
             className="chat-loading-slot"
-            data-stream-entrance="true"
+            data-stream-entrance={run.preparation ? undefined : "true"}
             role="status"
-            aria-label={run.apiRetry?.attempt ? undefined : "加载中"}
+            aria-label={run.preparation || (run.apiRetry?.attempt ? undefined : "加载中")}
           >
-            {run.apiRetry && run.apiRetry.attempt > 0 ? (
+            {run.preparation ? (
+              <span className="run-preparation" data-testid="run-preparation">
+                <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
+                {run.preparation}
+              </span>
+            ) : run.apiRetry && run.apiRetry.attempt > 0 ? (
               <span
                 className="api-retry-status"
                 title={`重新连接中... ${run.apiRetry.attempt}/${run.apiRetry.maxRetries}${run.apiRetry.errorStatus == null ? "" : ` · HTTP ${run.apiRetry.errorStatus}`}`}
@@ -681,6 +686,8 @@ export function Conversation({
   onEdit,
   onFork,
   onAddSelection,
+  onSideChat,
+  sideChatDisabled,
   onNavigateOrigin,
   findRequest,
   onFindStateChange,
@@ -693,6 +700,8 @@ export function Conversation({
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
   onAddSelection?: (reference: ConversationSelection) => void;
+  onSideChat?: (reference: ConversationSelection) => void;
+  sideChatDisabled?: boolean;
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
   onLoadEarlier?: () => Promise<void>;
@@ -984,7 +993,13 @@ export function Conversation({
           )}
         </div>
       </div>
-      <ConversationSelectionMenu rootRef={ref} scopeKey={view.sessionId} onAdd={onAddSelection} />
+      <ConversationSelectionMenu
+        rootRef={ref}
+        scopeKey={view.sessionId}
+        onAdd={onAddSelection}
+        onSideChat={onSideChat}
+        sideChatDisabled={sideChatDisabled}
+      />
       {showLatest && (
         <button
           className="latest"
@@ -1021,7 +1036,9 @@ export function ChatComposer({
   onFile,
   onCancel,
   resetFiles,
+  onCommand,
 }: {
+  onCommand?: (name: string) => void;
   onCancel?: () => void;
   resetFiles?: { disabled: boolean; description: string };
   onFile?: (path: string, location?: FileLocation) => void;
@@ -1240,17 +1257,24 @@ export function ChatComposer({
           : suggestions.filter(
               (suggestion) =>
                 suggestion.group === "命令" &&
-                ["init", "compact"].includes(suggestion.name) &&
+                (["init", "compact"].includes(suggestion.name) ||
+                  (onCommand && ["side", "btw"].includes(suggestion.name))) &&
                 suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
             )
         : [],
-    [inputQuery, suggestions],
+    [inputQuery, suggestions, onCommand],
   );
   const menuOpen = Boolean(inputQuery);
   const insert = (suggestion: InputSuggestion) => {
     if (!inputQuery) return;
     const { start, end } = inputQuery;
     const inserted = suggestion.insert;
+    if (onCommand && ["side", "btw"].includes(suggestion.name)) {
+      updateDraft(draft.slice(0, start) + draft.slice(end));
+      setInputQuery(undefined);
+      onCommand(suggestion.name);
+      return;
+    }
     updateDraft(draft.slice(0, start) + inserted + draft.slice(end));
     setInputQuery(undefined);
     // The editor applies this caret when it renders the new text, before another user selection.

@@ -2,8 +2,22 @@ import type { Message } from "ZPI-ai";
 import { isJsonObject } from "ZPI-ai";
 import type { AgentSessionEvent, Attachment, SessionEntry } from "ZPI-coding-agent";
 import { patchLineCounts, projectStreamedToolJournal } from "ZPI-coding-agent";
-import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView } from "ZPI-ui";
+import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView, UserQuestionResponse } from "ZPI-ui";
 import { emptySession, reduceSession, resultText } from "ZPI-ui/projection";
+
+function questionAnswers(toolName: string, details: unknown): UserQuestionResponse | undefined {
+  if (toolName !== "AskUserQuestion" || !isJsonObject(details) || !isJsonObject(details.answers)) return;
+  return {
+    answers: Object.fromEntries(
+      Object.entries(details.answers)
+        .filter(
+          (entry): entry is [string, string] =>
+            entry[0].length <= 8000 && typeof entry[1] === "string" && entry[1].length <= 16000,
+        )
+        .slice(0, 4),
+    ),
+  };
+}
 
 function fileChangeSummary(details: unknown): FileChangeSummary | undefined {
   if (
@@ -89,6 +103,7 @@ export function projectEvent(event: AgentSessionEvent, messageId: string): Deskt
       isError: event.isError,
       hasFileChange: isJsonObject(event.result.details) && isJsonObject(event.result.details.fileChange),
       fileChange: fileChangeSummary(event.result.details),
+      questionAnswers: questionAnswers(event.toolName, event.result.details),
     };
   return undefined;
 }
@@ -193,11 +208,13 @@ function visibleMessage(message: Message): Message {
   if (message.role === "system") return { role: "system", content: "", timestamp: message.timestamp };
   if (message.role === "toolResult") {
     const fileChange = fileChangeSummary(message.details);
+    const answers = questionAnswers(message.toolName, message.details);
     return {
       ...message,
       details: {
         hasFileChange: isJsonObject(message.details) && isJsonObject(message.details.fileChange),
         ...(fileChange ? { fileChange: { ...fileChange } } : {}),
+        ...(answers ? { questionAnswers: { answers: answers.answers } } : {}),
       },
       content: message.content.map((c) =>
         c.type === "image" ? { type: "text", text: "[Image result]" } : c,

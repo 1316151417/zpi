@@ -18,18 +18,16 @@ it.each([
   "$100",
   "$100 is the price",
   "$unknown task",
+  "$review",
+  "$review check",
+  "  $review\ncheck sources  ",
   "$中文",
   "$HOME/path",
   "@hello",
   "@someone@example.com",
   "@/tmp/missing",
-])("preserves slash-prefixed text as a prompt: %j", (text) => {
+])("preserves ordinary input as a prompt: %j", (text) => {
   expect(parseInput(text)).toEqual({ kind: "prompt", text });
-});
-
-it("routes a plain skill name only when it is available", () => {
-  expect(parseInput("$review check", ["review"])).toEqual({ kind: "skill", name: "review", task: "check" });
-  expect(parseInput("$review check", ["other"])).toEqual({ kind: "prompt", text: "$review check" });
 });
 
 it.each(["init", "compact"] as const)("recognizes only the exact /%s command", (name) => {

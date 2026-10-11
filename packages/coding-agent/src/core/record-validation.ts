@@ -129,19 +129,6 @@ const entry = Type.Intersect([
       usage: Type.Optional(usage),
       systemMessage: Type.Optional(systemMessage),
     }),
-    // Legacy read compatibility only; replay ignores this entry.
-    Type.Object({
-      type: Type.Literal("goal_change"),
-      goal: Type.Union([
-        Type.Null(),
-        Type.Object({
-          text: Type.String(),
-          status: Type.Union([Type.Literal("active"), Type.Literal("paused"), Type.Literal("completed")]),
-          updatedAt: Type.Number(),
-          reason: Type.Optional(Type.String()),
-        }),
-      ]),
-    }),
   ]),
 ]);
 export function isSessionHeader(value: unknown): value is SessionHeader {

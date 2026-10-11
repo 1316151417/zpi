@@ -63,7 +63,12 @@ test.each([false, true])(
     });
     expect(await searchFiles(f.workspace, "empty-folder")).toMatchObject([{ type: "directory" }]);
     expect(await searchFiles(f.workspace, "ignored-folder")).toEqual([]);
-    expect(await searchFiles(f.workspace, "escape-folder")).toEqual([]);
+    // Absolute-path fuzzy matches can include valid folders in randomly named temporary directories.
+    expect(
+      (await searchFiles(f.workspace, "escape-folder")).every(
+        ({ path }) => path !== "escape-folder" && !path.startsWith("escape-folder/"),
+      ),
+    ).toBe(true);
   },
 );
 

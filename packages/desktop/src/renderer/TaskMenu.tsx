@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Archive, MoreHorizontal, Pencil, Pin, PinOff } from "lucide-react";
+import { Archive, Copy, MoreHorizontal, Pencil, Pin, PinOff } from "lucide-react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { taskPinLimit } from "../shared/config.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
@@ -30,13 +30,13 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             {pinned ? <PinOff size={16} /> : <Pin size={16} />}
             {pinned ? "取消置顶" : "置顶"}
           </Menu.Item>
-          <Menu.Item className="menu-item" onSelect={onRename}>
+          <Menu.Item className="menu-item" disabled={Boolean(record.diagnostic)} onSelect={onRename}>
             <Pencil size={16} />
             重命名任务
           </Menu.Item>
           <Menu.Item
             className="menu-item"
-            disabled={running}
+            disabled={running || Boolean(record.diagnostic)}
             title={running ? "请先停止运行" : undefined}
             onSelect={() => task(() => archiveSession(record.id))}
           >
@@ -48,6 +48,17 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
           <DirectoryMenuItems
             getPath={async () => unwrap(await window.ZPI.getWorkspaceInfo(record.id)).cwd}
           />
+          <Menu.Item
+            className="menu-item"
+            onSelect={() =>
+              task(async () => {
+                unwrap(await window.ZPI.copySessionPath(record.id));
+              })
+            }
+          >
+            <Copy size={14} />
+            复制会话路径
+          </Menu.Item>
         </Menu.Content>
       </Menu.Portal>
     </Menu.Root>

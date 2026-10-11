@@ -1,3 +1,7 @@
+# ZCode questions and side conversations
+
+AskUserQuestion's schema, choice card layout, keyboard navigation, answer/skip semantics, and selection side-chat context boundary in packages/desktop/src/{main,renderer} follow ZCode's contracts/tools/ask-user-question.ts, ElicitationDialog.tsx, v4/SessionPane.tsx, and runtime/methods/session-fork.ts. Adapted to ZPI's existing custom-tool, session and Electron IPC interfaces under the Apache-2.0 license reproduced below.
+
 # ZCode visual interactions
 
 Workspace sidebar spacing, input drag feedback, menu/dialog surfaces and motion, side-pane toggle animation and content width locking, and live tool entrances in packages/desktop/src/renderer and packages/ui/src follow ZCode packages/ui/src/{WorkspaceSidebar,ToolCallBlocks}.tsx, app-shell/{useAnimatedResizablePanel.ts,AnimatedSidePanePanel.tsx}, prompt-editor/ChatPromptEditor.tsx, components/ui/{button,dialog,dropdown-menu,popover}.tsx and styles.css. Adapted to ZPI’s four-tool interface and existing React/Radix components under the Apache-2.0 license reproduced below. No new artwork is included.
@@ -827,3 +831,5 @@ Automatic assistant preview parsing, change gates, candidate limits, stat valida
 `packages/desktop/src/renderer/task-view-icons.ts` preserves the exact MessageCircleCheck SVG paths from the reference Lucide 1.17 package; the current Lucide package uses a different check mark. The existing Lucide ISC attribution applies.
 
 Context compaction timeline dividers in packages/ui/src/components/CompactionDivider.tsx follow ZCode `v4/ConversationRowView.tsx` (`MarkerDividerRow`, compact status labels) and `styles.css` at commit 872ad960de7ec172591f7e1952f7849229f94521: 14px Lucide Archive, centered label, 1px border at 50% opacity, 12px outer gap, 6px icon gap, 8px/16px padding and the existing four-second gradient text animation. Adapted to ZPI's Pi compaction lifecycle and local session history. Existing ZCode Apache-2.0 and Lucide ISC attributions above apply; the compaction prompt is unchanged.
+
+Question transcript presentation in `AskQuestionToolBlock.tsx` and `user-question-presentation.ts` adapts ZCode `ToolCallBlocks/renderers/ask-question.tsx` and `lib/askUserQuestion.ts`. `UserQuestionCard.tsx` and its styles follow `ElicitationDialog.tsx` and the Badge, Button and Textarea primitives, including option descriptions, paging, focus restoration, keyboard/IME handling, responsive collapse and scroll bounds. Adapted to ZPI’s optional question tool, Pi text results and local IPC. CircleHelp, Check, Chevron and Info reuse the Lucide assets attributed above. Existing ZCode Apache-2.0 and Lucide ISC attributions apply.

@@ -157,6 +157,7 @@ async function launch(): Promise<void> {
     requestFetch,
     testMode ? [join(app.getPath("userData"), ".agents", "skills")] : undefined,
     errors,
+    testMode ? join(app.getPath("userData"), "worktree") : undefined,
   );
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
@@ -260,11 +261,10 @@ async function launch(): Promise<void> {
   const notifications = new TaskNotifications(window, () => settings.get().interface);
   host.subscribe((event) => {
     if (!window.isDestroyed()) window.webContents.send("ZPI:event", event);
-    if (!ending && event.event.type === "settled")
-      notifications.handle(
-        event,
-        host.listRecentSessions().find((record) => record.id === event.sessionId)?.title ?? "",
-      );
+    if (!ending && event.event.type === "settled") {
+      const record = host.listRecentSessions().find((record) => record.id === event.sessionId);
+      if (record) notifications.handle(event, record.title);
+    }
   });
   ipcMain.handle("ZPI:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
     try {
@@ -293,6 +293,13 @@ async function launch(): Promise<void> {
         return value;
       };
       const count: Record<(typeof methods)[number], number> = {
+        setCapabilityEnabled: 2,
+        respondToQuestion: 3,
+        snoozeQuestion: 2,
+        createSideChat: 1,
+        closeSideChat: 1,
+        getGitEnvironment: 1,
+        setNewWorktree: 2,
         activateSession: 1,
         archiveSession: 1,
         listArchivedSessions: 0,
@@ -310,6 +317,7 @@ async function launch(): Promise<void> {
         saveDraft: 2,
         getHistoryPage: 2,
         copyText: 1,
+        copySessionPath: 1,
         fileAction: 4,
         searchFiles: 2,
         getWorkspaceInfo: 1,
@@ -369,6 +377,34 @@ async function launch(): Promise<void> {
       const sessionContext = () => (args[0] === null ? null : string(0));
       let value: unknown;
       switch (method) {
+        case "setCapabilityEnabled":
+          value = settings.setCapabilityEnabled(
+            string(0) as import("../shared/bridge.ts").CapabilityName,
+            args[1] as boolean,
+          );
+          break;
+        case "respondToQuestion":
+          host.questions.respond(
+            string(0),
+            string(1),
+            object(2, ["answers", "annotations"]) as unknown as import("ZPI-ui").UserQuestionResponse,
+          );
+          break;
+        case "snoozeQuestion":
+          host.questions.snooze(string(0), string(1));
+          break;
+        case "closeSideChat":
+          await host.closeSideChat(string(0));
+          break;
+        case "createSideChat":
+          value = await host.createSideChat(string(0));
+          break;
+        case "getGitEnvironment":
+          value = await host.getGitEnvironment(string(0));
+          break;
+        case "setNewWorktree":
+          value = await host.setNewWorktree(string(0), args[1] as boolean);
+          break;
         case "archiveSession":
           await host.archiveSession(string(0));
           break;
@@ -438,6 +474,9 @@ async function launch(): Promise<void> {
         case "getHistoryPage":
           if (typeof args[1] !== "number") throw new Error("invalid_input: 历史游标必须为数字");
           value = host.getHistoryPage(string(0), args[1]);
+          break;
+        case "copySessionPath":
+          clipboard.writeText(host.sessionPath(string(0)));
           break;
         case "copyText": {
           const text = string(0);
@@ -585,6 +624,7 @@ async function launch(): Promise<void> {
         case "updatePreferences":
           value = settings.updatePreferences(
             object(0, [
+              "askUserQuestionAutoResolutionEnabled",
               "theme",
               "fontSize",
               "showContextUsage",
@@ -599,6 +639,9 @@ async function launch(): Promise<void> {
             ]) as Partial<InterfacePreferences>,
           );
           nativeTheme.themeSource = settings.get().interface.theme;
+          host.questions.setAutoResolutionEnabled(
+            settings.get().interface.askUserQuestionAutoResolutionEnabled,
+          );
           break;
         case "setSessionSelection":
           value = await host.setSessionSelection(
