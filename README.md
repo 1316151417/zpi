@@ -53,6 +53,8 @@ npm run dev
 
 模型配置位于同一数据目录的 `settings.json`，加密凭据位于 `credentials.enc`。删除环境变量自动导入的提供商后，只要启动进程仍带有对应 API Key，下一次启动就会再次导入。注释 shell 配置中的 `export` 不会清除已有终端的变量；应在启动终端中执行 `unset MINIMAX_API_KEY MINIMAX_PAYGO_API_KEY`，或关闭旧终端后打开新终端，再删除该提供商并重启。
 
+临时历史会话修复（0.2.3 命名变更）：先退出 ZPI、ZPI Preview 和开发客户端，再运行 `npm run repair:sessions`，默认检查正式版与 Preview 的应用数据目录。脚本将旧会话格式、内部记录和系统段落键改为小写 `zpi`，按默认值补齐缺失的能力配置，保留已有配置和消息正文；修改前在数据目录旁备份原始会话与索引，修改后移除旧索引，重启应用时自动重建。已修复的数据重复运行不会写入或新建备份。可用 `npm run repair:sessions -- --dry-run` 预览，或用 `npm run repair:sessions -- "/path/to/app-data"` 指定数据目录（包含 `agent/sessions`，不是项目目录）。此命令、`scripts/repair-sessions.ts` 及其测试仅短期保留，迁移完成后可一并删除。
+
 调试界面可在 Electron 的 View 菜单打开 Toggle Developer Tools。调试主进程可使用 VS Code 的「ZPI: Electron main」配置；也可用 `ZPI_DEV_DEBUG=1 npm run dev` 开放本机 DevTools 调试端口。
 
 常用命令：
