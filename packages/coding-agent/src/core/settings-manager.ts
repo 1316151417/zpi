@@ -92,7 +92,7 @@ export class SettingsManager {
     const config = this.settings.retry;
     return {
       enabled: config?.enabled ?? true,
-      maxRetries: config?.maxRetries ?? 3,
+      maxRetries: config?.maxRetries ?? 5,
       baseDelayMs: config?.baseDelayMs ?? 2000,
       maxAgentDelayMs: config?.maxAgentDelayMs ?? 60000,
     };

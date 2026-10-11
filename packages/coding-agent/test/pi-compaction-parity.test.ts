@@ -292,7 +292,7 @@ it("retries whole failed turns three times and cancels backoff without erasing d
   const manager = SessionManager.inMemory(cwd);
   const settings = SettingsManager.inMemory({
     compaction: { enabled: false },
-    retry: { baseDelayMs: 0, provider: { maxRetries: 0 } },
+    retry: { maxRetries: 3, baseDelayMs: 0, provider: { maxRetries: 0 } },
   });
   const { session } = await createAgentSession({
     cwd,

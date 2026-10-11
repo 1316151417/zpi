@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import type { DesktopEventEnvelope } from "zpi-ui";
@@ -83,6 +83,11 @@ it("failure and storage error affect only their session; closing aborts all", as
       response.destroy();
     } else first.resolve();
   });
+  // 固定重试预算与退避，验证断流恢复上限本身，而不依赖默认 agent 重试次数。
+  await writeFile(
+    join(f.dir, "agent", "settings.json"),
+    JSON.stringify({ retry: { maxRetries: 3, baseDelayMs: 0 } }),
+  );
   const a = f.host.createSession(f.a.id),
     b = f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: a.id, text: "fail" });

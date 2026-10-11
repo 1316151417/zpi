@@ -12,7 +12,7 @@ import {
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 
-it("loads global/project settings with recursive overrides and Pi defaults", async () => {
+it("loads global/project settings with recursive overrides and ZPI defaults", async () => {
   const cwd = await directory();
   const agentDir = join(cwd, "agent");
   await mkdir(agentDir);
@@ -46,7 +46,7 @@ it("loads global/project settings with recursive overrides and Pi defaults", asy
   });
   expect(settings.getRetrySettings()).toEqual({
     enabled: true,
-    maxRetries: 3,
+    maxRetries: 5,
     baseDelayMs: 100,
     maxAgentDelayMs: 60000,
   });
@@ -61,7 +61,15 @@ it("loads global/project settings with recursive overrides and Pi defaults", asy
     reserveTokens: 16384,
     keepRecentTokens: 20000,
   });
+  expect(defaults.getRetrySettings()).toEqual({
+    enabled: true,
+    maxRetries: 5,
+    baseDelayMs: 2000,
+    maxAgentDelayMs: 60000,
+  });
   expect(defaults.getHttpIdleTimeoutMs()).toBe(300000);
+  settings.applyOverrides({ retry: { maxRetries: 0 } });
+  expect(settings.getRetrySettings().maxRetries).toBe(0);
   settings.applyOverrides({ compaction: { reserveTokens: -1 } });
   expect(() => settings.getCompactionSettings(fakeModel(""))).toThrow("non-negative safe integer");
 });

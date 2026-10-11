@@ -53,7 +53,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     const run = () => page.getByTestId("run").last();
     await expect(run().locator(".chat-loading-spinner")).toBeVisible();
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/3");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
     await expect(run()).toHaveAttribute("data-status", "running");
     await expect(run().locator(".run-error")).toHaveCount(0);
     await expect(page.getByTestId("api-retry-status")).toHaveAttribute("title", /HTTP 429/);
@@ -70,7 +70,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.screenshot({ path: "test-results/model-retry-dark.png" });
     await page.reload();
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/3");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
     await expect(run()).toHaveAttribute("data-status", "completed", { timeout: 15_000 });
     await expect(run().locator(".answer")).toHaveText("recovered answer");
     expect(counts.get("recover")).toBe(4);
@@ -81,7 +81,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(run().locator(".answer")).toHaveText("recovered stream");
     await expect(run()).not.toContainText("discarded partial");
     await submit("stop");
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/3");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
     await page.getByLabel("停止", { exact: true }).click();
     await expect(run()).toHaveAttribute("data-status", "aborted");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
@@ -94,7 +94,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await submit("exhaust");
     await expect(run()).toHaveAttribute("data-status", "error");
-    expect(counts.get("exhaust")).toBe(12);
+    expect(counts.get("exhaust")).toBe(18);
     await expect(run().locator(".run-error")).toContainText("Rate limit reached");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
   } finally {

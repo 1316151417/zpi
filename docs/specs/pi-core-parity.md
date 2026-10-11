@@ -62,8 +62,8 @@ negative/non-integral token budgets are rejected.
 | Setting | Default |
 | --- | --- |
 | `retry.enabled` | `true` |
-| `retry.maxRetries` | `3` agent retries |
-| `retry.baseDelayMs` | `2000`; deterministic 2/4/8-second waits |
+| `retry.maxRetries` | `5` agent retries |
+| `retry.baseDelayMs` | `2000`; deterministic 2/4/8/16/32-second waits |
 | `retry.maxAgentDelayMs` | `60000` per agent wait |
 | `retry.provider.maxRetries` | unspecified; OpenAI SDK default `2` |
 | `retry.provider.timeoutMs` | stream option, provider value, then HTTP idle default |
@@ -79,7 +79,7 @@ Empty successful responses are not retried. The old ten-retry ZCode stream loop
 and jitter policy are removed.
 
 Existing streamed-tool recovery still drains closed reads once and pairs deferred
-mutations with interruption results. It now shares the three-retry agent budget
+mutations with interruption results. It now shares the five-retry agent budget
 and Pi classifier. Desktop retry presentation starts with the first agent retry;
 terminal error presentation waits until the task settles.
 
