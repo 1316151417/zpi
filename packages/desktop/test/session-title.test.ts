@@ -40,7 +40,7 @@ it("title is independent, snapshot-bound, once-only and preserves the complete f
       .messages.some((m) => m.role === "user" && m.content === text),
   ).toBe(true);
   await host.close();
-  const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined, []);
+  const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(reopened.listRecentSessions()[0].title).toBe("完整生成的长标题，保留全部内容");

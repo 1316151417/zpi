@@ -48,7 +48,7 @@ it("SDK sessions run ordinary calls in parallel and persist their results in dec
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(cwd, "agent"),
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     sessionManager: manager,
     noTools: "builtin",
@@ -161,7 +161,7 @@ for (const recovery of [false, true]) {
     const { session } = await createAgentSession({
       cwd,
       agentDir: join(cwd, "agent"),
-      userSkillPaths: [],
+      homeDir: join(cwd, "home"),
       modelRuntime: runtime,
       sessionManager: manager,
       settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),

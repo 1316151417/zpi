@@ -36,7 +36,7 @@ export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
     maxTokens: 4096,
   });
   settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
-  const host = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
+  const host = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined);
   await host.init();
   cleanup.push(() => host.close());
   const aDir = join(dir, "a"),

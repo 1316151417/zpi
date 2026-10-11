@@ -16,7 +16,7 @@ test("Pi prompt facts, literal nonrecursive variables, custom rules replace defa
     agentDir = join(cwd, "agent");
   await mkdir(agentDir);
   await writeFile(join(cwd, "AGENTS.md"), "PROJECT RULE");
-  const loader = new FileResourceLoader({ userSkillPaths: [], cwd, agentDir });
+  const loader = new FileResourceLoader({ projectDir: cwd, homeDir: agentDir });
   await loader.reload();
   const prompt = buildSystemPrompt({ cwd, tools: createCodingTools(cwd), loader });
   expect(prompt.startsWith(piTemplate.preamble)).toBe(true);

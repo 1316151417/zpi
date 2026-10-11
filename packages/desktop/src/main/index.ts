@@ -152,10 +152,9 @@ async function launch(): Promise<void> {
   const host = new SessionHost(
     app.getPath("userData"),
     settings,
-    testMode ? join(app.getPath("userData"), "resources") : join(homedir(), ".zpi", "agent"),
+    testMode ? app.getPath("userData") : homedir(),
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
     requestFetch,
-    testMode ? [join(app.getPath("userData"), ".agents", "skills")] : undefined,
     errors,
     testMode ? join(app.getPath("userData"), "worktree") : undefined,
   );

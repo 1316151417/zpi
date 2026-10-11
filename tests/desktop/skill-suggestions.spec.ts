@@ -21,9 +21,9 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     );
   }
   // Project skills already override same-name user skills in the catalog.
-  await mkdir(join(dir, "resources", "skills", "ke-db"), { recursive: true });
+  await mkdir(join(dir, ".zpi", "skills", "ke-db"), { recursive: true });
   await writeFile(
-    join(dir, "resources", "skills", "ke-db", "SKILL.md"),
+    join(dir, ".zpi", "skills", "ke-db", "SKILL.md"),
     "---\ndescription: User version\n---\nUser body",
   );
   const id = seedHistory(dir, cwd, 1).id;

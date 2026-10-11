@@ -49,7 +49,7 @@ it("pairs an unexecuted write with a synthetic failure during streaming recovery
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(cwd, "agent"),
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
   });
@@ -108,7 +108,7 @@ it("recovers text and reasoning from the prior tool result without replaying wri
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(cwd, "agent"),
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
     sessionManager: manager,
@@ -177,7 +177,7 @@ it("bounds partial stream recovery at Pi three retries and preserves the final f
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(cwd, "agent"),
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
   });

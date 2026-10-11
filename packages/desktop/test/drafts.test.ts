@@ -31,7 +31,7 @@ it("text drafts persist with selection, reject stale writes, and retain invalid 
   host.saveDraft(a.id, { text: "stale", fileReferences: [], selection: [0, 0], revision: 1 });
   host.saveDraft(b.id, { text: "会话 B", fileReferences: [], selection: [4, 4], revision: 1 });
   await host.close();
-  const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined, []);
+  const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(await reopened.getDraft(a.id)).toMatchObject({

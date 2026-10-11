@@ -30,7 +30,7 @@ it("medium, xhigh and max survive task reload and reach the provider unchanged; 
     decryptString: () => "",
   });
   expect(settings.get().lastSelection).toBeNull();
-  const host = new SessionHost(f.dir, settings, join(f.dir, "agent"), undefined, undefined, []);
+  const host = new SessionHost(f.dir, settings, join(f.dir, "agent"), undefined, undefined);
   cleanup.push(() => host.close());
   await host.init();
   expect(host.getSessionSnapshot(task.id).controls?.selection?.reasoning).toBe("max");
@@ -123,7 +123,7 @@ it("running selection changes preserve old tool turns and use the new provider o
   expect(f.server.requests.at(-1)?.model).toBe("new-model");
   expect(f.server.requestHeaders.at(-1)?.authorization).toBe("Bearer new-key");
   await f.host.close();
-  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.getSessionSnapshot(a.id).controls.selection?.provider).toBe("next-provider");

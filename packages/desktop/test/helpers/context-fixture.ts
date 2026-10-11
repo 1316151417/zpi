@@ -50,7 +50,7 @@ export async function fixture(
   }
   const workspace = join(dir, "workspace"),
     resources = join(dir, "resources"),
-    host = new SessionHost(dir, settings, resources, workspace, undefined, []);
+    host = new SessionHost(dir, settings, resources, workspace, undefined);
   await host.init();
   cleanup.push(() => host.close());
   const session = host.createSession(null);

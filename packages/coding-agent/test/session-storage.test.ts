@@ -84,7 +84,7 @@ it("bad tail is backed up, middle damage fails, unpaired call recovers without e
   const runtime = await ModelRuntime.create();
   runtime.registerProvider("fake", { models: [fakeConfig("http://localhost")], apiKey: "local" });
   const { session } = await createAgentSession({
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     sessionManager: reopened,
   });
@@ -107,7 +107,7 @@ it("storage failure rejects prompt, settles once, blocks further runs", async ()
   runtime.registerProvider("fake", { models: [fakeConfig(s.url)], baseUrl: s.url, apiKey: "local" });
   const m = SessionManager.create(cwd, join(cwd, "sessions"));
   const { session } = await createAgentSession({
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     sessionManager: m,
   });

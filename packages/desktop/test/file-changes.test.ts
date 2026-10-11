@@ -61,7 +61,7 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   await f.host.archiveSession(f.session.id);
   expect(f.host.listRecentSessions().some((record) => record.id === f.session.id)).toBe(false);
   await f.host.close();
-  const reopened = new SessionHost(f.dir, f.settings, f.resources, f.workspace, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, f.resources, f.workspace, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(reopened.listRecentSessions().some((record) => record.id === f.session.id)).toBe(false);

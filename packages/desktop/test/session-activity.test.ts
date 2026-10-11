@@ -23,7 +23,7 @@ it("uses the header creation time and persisted conversation activity, excluding
   f.host.activateSession(created.id);
   expect(f.host.listRecentSessions()[0].updatedAt).toBe(completed.updatedAt);
   await f.host.close();
-  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(reopened.getSessionSnapshot(created.id).session).toMatchObject({
@@ -66,7 +66,7 @@ it("reconstructs last message activity for an interrupted historical run", async
     const activity = Date.now();
     vi.setSystemTime(new Date("2026-10-08T00:00:00Z"));
     manager.appendSessionInfo("later metadata");
-    const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+    const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
     await reopened.init();
     cleanup.push(() => reopened.close());
     expect(reopened.listRecentSessions().find((s) => s.id === manager.getSessionId())).toMatchObject({

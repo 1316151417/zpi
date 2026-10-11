@@ -114,12 +114,11 @@ export class SessionHost {
   private closing = false;
   private deleting = new Set<string>();
   private updating = new Set<string>();
-  private resourceDir: string;
+  private homeDir: string;
   private defaultWorkspace: string;
   readonly attachments: AttachmentStore;
   readonly inputQueue: SessionInputQueue;
   private requestFetch?: typeof fetch;
-  private userSkillPaths?: string[];
   private configurations = new Map<string, SessionConfiguration>();
   private searches = new Map<string, AbortController>();
   private errors: ErrorLog;
@@ -127,10 +126,9 @@ export class SessionHost {
   constructor(
     dir: string,
     settings: SettingsStore,
-    resourceDir = join(homedir(), ".zpi", "agent"),
+    homeDir = homedir(),
     defaultWorkspace = join(homedir(), "Documents", "ZPI"),
     requestFetch?: typeof fetch,
-    userSkillPaths?: string[],
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
   ) {
@@ -139,7 +137,6 @@ export class SessionHost {
     this.dir = dir;
     this.errors = errors;
     this.drafts = new DraftStore(join(dir, "drafts"));
-    this.userSkillPaths = userSkillPaths;
     this.requestFetch = requestFetch;
     this.attachments = new AttachmentStore(join(dir, "agent", "attachments"));
     this.inputQueue = new SessionInputQueue({
@@ -211,7 +208,7 @@ export class SessionHost {
         this.emit(id, "queue", { type: "queue_changed", queue });
       },
     });
-    this.resourceDir = resourceDir;
+    this.homeDir = homeDir;
     this.defaultWorkspace = defaultWorkspace;
     this.settings = settings;
     const file = join(dir, "projects.json");
@@ -937,9 +934,8 @@ export class SessionHost {
   }
   async listSkills(projectId: string) {
     const loader = new FileResourceLoader({
-      cwd: this.project(projectId).path,
-      agentDir: this.resourceDir,
-      userSkillPaths: this.userSkillPaths,
+      projectDir: this.project(projectId).path,
+      homeDir: this.homeDir,
       isSkillEnabled: (path) => this.settings.isSkillEnabled(path),
     });
     await loader.reload();
@@ -962,9 +958,8 @@ export class SessionHost {
   private resourceLoader(id: string | null) {
     const config = id ? this.configuration(id) : this.defaultConfiguration();
     return new FileResourceLoader({
-      cwd: this.workspaceInfo(id).cwd,
-      agentDir: this.resourceDir,
-      userSkillPaths: this.userSkillPaths,
+      projectDir: this.workspaceInfo(id).cwd,
+      homeDir: this.homeDir,
       projectResources: id !== null,
       isSkillEnabled: (path) => !config.disabledSkillPaths.includes(path),
     });
@@ -1049,10 +1044,7 @@ export class SessionHost {
     return {
       skills: loader.listDiscoveredSkills(),
       diagnostics: loader.getDiagnostics(),
-      directories: [
-        ...(this.userSkillPaths ?? [join(homedir(), ".agents", "skills")]),
-        join(this.resourceDir, "skills"),
-      ],
+      directories: [join(this.homeDir, ".agents", "skills"), join(this.homeDir, ".zpi", "skills")],
     };
   }
   async readSkill(path: string) {

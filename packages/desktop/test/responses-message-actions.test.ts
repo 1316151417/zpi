@@ -179,7 +179,6 @@ async function fixture(holdText?: string) {
       join(dir, "agent"),
       join(dir, "workspace"),
       fetcher,
-      [],
     );
     await host.init();
     cleanup.push(() => host.close());

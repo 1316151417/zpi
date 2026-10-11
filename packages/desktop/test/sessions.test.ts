@@ -58,14 +58,14 @@ it("same-project and cross-project sessions stream concurrently; busy, stale can
   const settled = events.filter((e) => e.event.type === "settled");
   expect(new Set(settled.map((e) => e.runId)).size).toBe(settled.length);
   await host.close();
-  const restored = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
+  const restored = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.listRecentSessions().find((r) => r.id === sessions[1].id)?.unreadAt).toBe(unread);
   const updatedAt = restored.listRecentSessions().find((r) => r.id === sessions[1].id)?.updatedAt;
   expect(restored.activateSession(sessions[1].id)).toMatchObject({ unreadAt: undefined, updatedAt });
   await restored.close();
-  const readAgain = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
+  const readAgain = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined);
   await readAgain.init();
   cleanup.push(() => readAgain.close());
   expect(readAgain.listRecentSessions().find((r) => r.id === sessions[1].id)?.unreadAt).toBeUndefined();
@@ -112,7 +112,7 @@ it("credential values never leave settings reader or metadata and hidden project
   const restored = await f.host.addProject(f.a.path);
   expect(restored.id).toBe(f.a.id);
   expect(f.host.listSessions(f.a.id)[0].id).toBe(session.id);
-  const restart = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const restart = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await restart.init();
   expect(restart.getSessionSnapshot(session.id).view.runs[0].status).toBe("completed");
   expect(restart.activeRuns.size).toBe(0);

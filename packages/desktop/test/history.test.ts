@@ -22,7 +22,7 @@ it("legacy tool declarations preserve block identity between streaming and paged
   const seed = seedHistory(dir, a.path, 1, { projectId: a.id });
   SessionManager.open(seed.file).appendMessage({ role: "system", content: "legacy", timestamp: Date.now() });
   await host.close();
-  const reopened = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   reopened.subscribe(({ event }) => {
@@ -94,7 +94,7 @@ it("page counts Agent pairs, includes interrupted invocation, and keeps continua
   const { host, dir, cwd, settings, server } = await setup();
   const seed = seedHistory(dir, cwd, 26, { perRun: 13, interrupted: true, outputBytes: 2048 });
   await host.close();
-  const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined, []);
+  const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   const snapshot = reopened.getSessionSnapshot(seed.id);

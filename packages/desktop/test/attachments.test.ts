@@ -16,7 +16,7 @@ test("invalid cache directories and damaged indexes do not block startup or clea
   await writeFile(join(root, "damaged", "keep.png"), "preserve");
   const image = await f.host.importImage(f.session.id, "unsent.png", await png());
   await f.host.close();
-  const reopened = new SessionHost(f.dir, f.settings, f.resources, f.workspace, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, f.resources, f.workspace, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(reopened.listRecentSessions().map((record) => record.id)).toContain(f.session.id);
@@ -68,7 +68,6 @@ test("opaque image ownership, actual image_url, raw visible references, restart 
     f.resources,
     f.workspace,
     undefined,
-    [],
   );
   await restarted.init();
   cleanup.push(() => restarted.close());
