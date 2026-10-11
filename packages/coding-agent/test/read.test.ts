@@ -1,6 +1,6 @@
-import { createReadToolDefinition } from "ZPI-coding-agent";
 import { Check } from "typebox/value";
 import { expect, it, vi } from "vitest";
+import { createReadToolDefinition } from "zpi-coding-agent";
 
 it("read rejects invalid line numbers before accessing files, including direct SDK calls", async () => {
   const operations = {

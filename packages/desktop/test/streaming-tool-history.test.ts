@@ -1,7 +1,7 @@
-import { emptyAssistant } from "ZPI-ai";
-import { SessionManager } from "ZPI-coding-agent";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { emptyAssistant } from "zpi-ai";
+import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { StreamingToolJournal } from "../../coding-agent/src/core/streaming-tool-journal.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
@@ -22,14 +22,14 @@ it("reconciles crash-recovered streamed tool pairs with history offsets before c
   await f.host.close();
   const file = join(f.dir, "agent", "sessions", f.a.id, `${id}.jsonl`);
   const manager = SessionManager.open(file);
-  manager.appendCustomEntry("ZPI.run", {
+  manager.appendCustomEntry("zpi.run", {
     phase: "start",
     runId: "interrupted",
     text: "read",
     startedAt: 1,
     agentBoundaries: true,
   });
-  manager.appendCustomEntry("ZPI.agent_call", { phase: "start", ordinal: 0 });
+  manager.appendCustomEntry("zpi.agent_call", { phase: "start", ordinal: 0 });
   manager.appendMessage({ role: "user", content: "read", timestamp: 1 });
   const call = { type: "toolCall" as const, id: "read", name: "read", arguments: { path: "README.md" } };
   const message = { ...emptyAssistant(fakeModel(f.server.url)), content: [call] };

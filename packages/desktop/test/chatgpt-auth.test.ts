@@ -1,10 +1,10 @@
-import { fetchProviderModels } from "ZPI-ai";
-import { beginChatGPTLogin, type ChatGPTCredential, verifyChatGPTIdentity } from "ZPI-ai/auth/openai-chatgpt";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, expect, it } from "vitest";
+import { fetchProviderModels } from "zpi-ai";
+import { beginChatGPTLogin, type ChatGPTCredential, verifyChatGPTIdentity } from "zpi-ai/auth/openai-chatgpt";
 import { ChatGPTAuth } from "../src/main/chatgpt-auth.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
@@ -23,7 +23,7 @@ const codec = {
   decryptString: (value: Buffer) => value.toString(),
 };
 async function store() {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-chatgpt-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-chatgpt-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   return { dir, settings: new SettingsStore(dir, codec) };
 }

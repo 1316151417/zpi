@@ -6,7 +6,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("wheel and editor focus scroll only their viewport across drafts, conversations and side panes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-window-scroll-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-window-scroll-"));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
   await writeFile(join(cwd, "preview.md"), "Preview\n\n".repeat(100));

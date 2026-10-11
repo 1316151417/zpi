@@ -8,7 +8,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("Office, PDF and media cards preview actual existing files without turn changes", async () => {
   test.setTimeout(60000);
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-preview-formats-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-preview-formats-")));
   const project = join(dir, "project");
   await mkdir(project);
   await copyFile(resolve("tests/fixtures/preview.docx"), join(project, "报告.docx"));

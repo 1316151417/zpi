@@ -6,7 +6,7 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
 it("continues one persisted task across all three protocols with all four tools, title generation and compaction", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-protocol-switch-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-protocol-switch-"));
   await mkdir(join(dir, "agent"));
   await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 10 } }));
   const codec = {

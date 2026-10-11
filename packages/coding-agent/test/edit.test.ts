@@ -1,5 +1,5 @@
-import { createEditToolDefinition, createWriteToolDefinition } from "ZPI-coding-agent";
 import { expect, it, vi } from "vitest";
+import { createEditToolDefinition, createWriteToolDefinition } from "zpi-coding-agent";
 
 function editable(content: string) {
   const operations = {

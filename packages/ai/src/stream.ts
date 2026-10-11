@@ -5,7 +5,7 @@ import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } fr
 import { createAssistantMessageEventStream } from "./utils/event-stream.ts";
 import { emptyAssistant } from "./utils/transcript.ts";
 
-/** Provider and wire-protocol selection stays inside ZPI-ai. Credentials resolve for every request. */
+/** Provider and wire-protocol selection stays inside zpi-ai. Credentials resolve for every request. */
 export function streamSimple(
   model: Model,
   context: TranscriptContext,

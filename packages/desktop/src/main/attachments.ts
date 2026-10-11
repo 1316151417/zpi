@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { basename, extname, isAbsolute, join } from "node:path";
 import {
   type Attachment,
   createReadTool,
@@ -7,10 +10,7 @@ import {
   imageLimits,
   isImageAttachment,
   processImage,
-} from "ZPI-coding-agent";
-import { randomUUID } from "node:crypto";
-import { mkdir, open, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { basename, extname, isAbsolute, join } from "node:path";
+} from "zpi-coding-agent";
 import { atomicJson } from "./storage.ts";
 
 type Saved = Attachment & {

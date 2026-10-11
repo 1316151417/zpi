@@ -1,5 +1,5 @@
-import type { Model, ModelCompat, ModelDiscoveryResult, ProviderApi, ProviderPresetId } from "ZPI-ai";
-import type { Attachment, DiscoveredSkill, SkillList } from "ZPI-coding-agent";
+import type { Model, ModelCompat, ModelDiscoveryResult, ProviderApi, ProviderPresetId } from "zpi-ai";
+import type { Attachment, DiscoveredSkill, SkillList } from "zpi-coding-agent";
 import type {
   DesktopEventEnvelope,
   FileAction,
@@ -9,10 +9,10 @@ import type {
   SessionMentionSuggestion,
   SessionView,
   WorktreeInfo,
-} from "ZPI-ui";
-import type { FileLocation } from "ZPI-ui/links";
+} from "zpi-ui";
+import type { FileLocation } from "zpi-ui/links";
 
-export type { SessionControls } from "ZPI-ui";
+export type { SessionControls } from "zpi-ui";
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
 export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode; message: string } };
 export interface ProjectRecord {
@@ -38,7 +38,7 @@ export interface SessionRecord {
   status?: RunStatus;
   /** Runtime evidence supplied by SessionHost, never restored from persisted status. */
   running?: boolean;
-  pendingQuestion?: Pick<import("ZPI-ui").UserQuestionRequest, "id" | "autoResolution"> | null;
+  pendingQuestion?: Pick<import("zpi-ui").UserQuestionRequest, "id" | "autoResolution"> | null;
   activitySeq?: number;
   createdAt: number;
   updatedAt: number;
@@ -136,7 +136,7 @@ export interface RunInput {
   attachments?: string[];
 }
 export type EditUserInput = Omit<RunInput, "sessionId"> & { workspaceMode?: "preserve" | "rewind" };
-export type EditUserResult = SessionSnapshot | { conflicts: import("ZPI-ui").FileRewindConflict[] };
+export type EditUserResult = SessionSnapshot | { conflicts: import("zpi-ui").FileRewindConflict[] };
 export interface WorkspaceInfo {
   home: string;
   cwd: string;
@@ -175,7 +175,7 @@ export interface SkillSettings {
   directories: string[];
 }
 export interface TextDraft {
-  selections?: import("ZPI-ui").ConversationSelection[];
+  selections?: import("zpi-ui").ConversationSelection[];
   text: string;
   fileReferences: string[];
   selection: [number, number];
@@ -211,7 +211,7 @@ export interface DesktopBridge {
   respondToQuestion(
     sessionId: string,
     requestId: string,
-    response: import("ZPI-ui").UserQuestionResponse,
+    response: import("zpi-ui").UserQuestionResponse,
   ): Promise<Result<void>>;
   closeSideChat(sessionId: string): Promise<Result<void>>;
   createSideChat(sessionId: string): Promise<Result<SessionRecord>>;

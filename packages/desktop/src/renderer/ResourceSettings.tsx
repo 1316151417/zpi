@@ -29,7 +29,8 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
     let active = true;
     setError("");
     if (page === "prompt") {
-      void window.ZPI.previewPrompt()
+      void window.zpi
+        .previewPrompt()
         .then(unwrap)
         .then((value) => {
           if (active) setPreview(value);
@@ -42,7 +43,8 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
         });
     }
     if (page === "tools")
-      void window.ZPI.listTools()
+      void window.zpi
+        .listTools()
         .then(unwrap)
         .then((v) => {
           if (active) setTools(v);
@@ -51,7 +53,8 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           if (active) setError(String(e));
         });
     if (page === "skills")
-      void window.ZPI.getSkillSettings()
+      void window.zpi
+        .getSkillSettings()
         .then(unwrap)
         .then((v) => {
           if (active) setSkills(v);
@@ -67,7 +70,8 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
     let active = true;
     setBody("");
     if (skillPath)
-      void window.ZPI.readSkill(skillPath)
+      void window.zpi
+        .readSkill(skillPath)
         .then(unwrap)
         .then((v) => {
           if (active) setBody(v);
@@ -242,7 +246,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
                     onChange={(e) => {
                       const enabled = e.target.checked;
                       void action(async () => {
-                        adopt(unwrap(await window.ZPI.setSkillEnabled(s.path, enabled)));
+                        adopt(unwrap(await window.zpi.setSkillEnabled(s.path, enabled)));
                         await refresh();
                       });
                     }}

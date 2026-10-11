@@ -1,7 +1,7 @@
-import { Agent, type AgentTool } from "ZPI-agent";
-import { streamSimple } from "ZPI-ai";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
+import { Agent, type AgentTool } from "zpi-agent";
+import { streamSimple } from "zpi-ai";
 import { deferred } from "../../../tests/fake-server.ts";
 import { getModel } from "../../ai/test/helpers/anthropic.ts";
 

@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("automatic overflow compaction uses the same divider and stays visible after the work is collapsed", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-auto-compaction-divider-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-auto-compaction-divider-"));
   await mkdir(join(dir, "agent"));
   await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   const release = deferred();
@@ -60,7 +60,7 @@ test("automatic overflow compaction uses the same divider and stays visible afte
 
 for (const outcome of ["completed", "error", "aborted"] as const) {
   test(`manual compaction is a timeline divider, persists ${outcome} and preserves chat history`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ZPI-compaction-divider-"));
+    const dir = await mkdtemp(join(tmpdir(), "zpi-compaction-divider-"));
     await mkdir(join(dir, "agent"));
     await writeFile(
       join(dir, "agent/settings.json"),

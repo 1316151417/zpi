@@ -1,5 +1,5 @@
-import type { DesktopEventEnvelope } from "ZPI-ui";
 import { app, BrowserWindow, Notification } from "electron";
+import type { DesktopEventEnvelope } from "zpi-ui";
 import type { InterfacePreferences } from "../shared/bridge.ts";
 
 // Adapted from ZCode desktopNotifications.ts; ZPI supplies live run events directly.
@@ -63,12 +63,12 @@ export class TaskNotifications {
           app.focus({ steal: true });
         }
         window.focus();
-        window.webContents.send("ZPI:task-notification-click", sessionId);
+        window.webContents.send("zpi:task-notification-click", sessionId);
       });
       notification.once("close", () => this.active.delete(current));
       notification.once("failed", () => this.active.delete(current));
       notification.show();
-      this.window.webContents.send("ZPI:task-notification-sound");
+      this.window.webContents.send("zpi:task-notification-sound");
       return true;
     } catch {
       if (notification) this.active.delete(notification);

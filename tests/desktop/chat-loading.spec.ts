@@ -6,7 +6,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("loading keeps ZCode spacing before content, during shell execution and until the turn ends", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-chat-loading-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-chat-loading-"));
   const project = join(dir, "project");
   await mkdir(project);
   const prepare = deferred(),
@@ -71,10 +71,10 @@ test("loading keeps ZCode spacing before content, during shell execution and unt
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const sessions = await window.ZPI.listRecentSessions();
+          const sessions = await window.zpi.listRecentSessions();
           const id = sessions.ok ? sessions.value[0]?.id : undefined;
           if (!id) return "";
-          const snapshot = await window.ZPI.getSessionSnapshot(id);
+          const snapshot = await window.zpi.getSessionSnapshot(id);
           const block = snapshot.ok
             ? snapshot.value.view.runs[0]?.orderedBlocks.find((item) => item.type === "tool")
             : undefined;

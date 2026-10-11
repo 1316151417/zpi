@@ -1,8 +1,8 @@
-import type { AgentTool, ThinkingLevel } from "ZPI-agent";
-import type { Model } from "ZPI-ai";
-import { assertSupportedOptions, clampThinkingLevel } from "ZPI-ai";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import type { AgentTool, ThinkingLevel } from "zpi-agent";
+import type { Model } from "zpi-ai";
+import { assertSupportedOptions, clampThinkingLevel } from "zpi-ai";
 import { AgentSession } from "./agent-session.ts";
 import type { CompactionOptions } from "./compaction.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -63,7 +63,7 @@ export async function createAgentSession(
   if (options.noTools !== undefined && options.noTools !== "all" && options.noTools !== "builtin")
     throw new Error("Invalid noTools");
   const cwd = resolve(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
-  const agentDir = options.agentDir ?? join(homedir(), ".ZPI", "agent");
+  const agentDir = options.agentDir ?? join(homedir(), ".zpi", "agent");
   const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
   if (options.compaction) settingsManager.applyOverrides({ compaction: options.compaction });
   const runtime = options.modelRuntime ?? (await ModelRuntime.create());

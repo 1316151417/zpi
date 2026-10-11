@@ -5,7 +5,7 @@ export interface TaskPreferences {
   organizeBy: "project" | "chronological";
   sortBy: TaskSortBy;
 }
-export const taskPreferencesKey = "ZPI.sidebarTaskPreferences";
+export const taskPreferencesKey = "zpi.sidebarTaskPreferences";
 export function readTaskPreferences(raw: string | null): TaskPreferences {
   let value: Partial<TaskPreferences> | null = null;
   try {

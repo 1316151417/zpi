@@ -11,7 +11,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("native terminal shell, browser link/navigation isolation, tabs and responsive pane bounds", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-native-panes-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-native-panes-"));
   await writeFile(join(dir, ".zshrc"), "PROMPT='ZPI> '\n");
   let recovered = false;
   const site = createServer((request, response) => {
@@ -82,7 +82,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
               (child) => child instanceof WebContentsView && child.webContents.id === guest.id,
             )
             .map((child) => child.getBounds()),
-          isolated: await guest.executeJavaScript("[typeof window.ZPI, typeof require, typeof process]"),
+          isolated: await guest.executeJavaScript("[typeof window.zpi, typeof require, typeof process]"),
         };
       }, url);
     await expect
@@ -107,13 +107,13 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await page.getByLabel("刷新页面").click();
     await expect(page.locator(".browser-pane [role=alert]")).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "本地预览", exact: true })).toBeVisible();
-    const invalid = await page.evaluate(() => window.ZPI.createBrowser("file://remote-host/share/page.html"));
+    const invalid = await page.evaluate(() => window.zpi.createBrowser("file://remote-host/share/page.html"));
     expect(invalid.ok).toBe(false);
     const invalidNavigation = await page.evaluate(async () => {
-      const blank = await window.ZPI.createBrowser("");
+      const blank = await window.zpi.createBrowser("");
       if (!blank.ok) throw Error(blank.error.message);
-      const rejected = await window.ZPI.browserAction(blank.value.id, "navigate", "javascript:alert(1)");
-      await window.ZPI.closeBrowser(blank.value.id);
+      const rejected = await window.zpi.browserAction(blank.value.id, "navigate", "javascript:alert(1)");
+      await window.zpi.closeBrowser(blank.value.id);
       return rejected;
     });
     expect(invalidNavigation).toMatchObject({ ok: false, error: { code: "invalid_input" } });
@@ -238,7 +238,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
 });
 
 test("local HTML links and address-bar paths load sandboxed pages, assets and relative navigation", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-file-browser-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-file-browser-"));
   const project = join(dir, "中文 项目");
   await mkdir(project);
   const file = join(project, "本地 页面.html");
@@ -269,7 +269,7 @@ test("local HTML links and address-bar paths load sandboxed pages, assets and re
         const guest = webContents.getAllWebContents().find((c) => c.getURL().startsWith(prefix));
         return guest
           ? guest.executeJavaScript(
-              "[document.body.dataset.ready, getComputedStyle(document.querySelector('h1')).color, typeof window.ZPI, typeof require, typeof process]",
+              "[document.body.dataset.ready, getComputedStyle(document.querySelector('h1')).color, typeof window.zpi, typeof require, typeof process]",
             )
           : null;
       }, pathToFileURL(file).href);
@@ -308,7 +308,7 @@ test("local HTML links and address-bar paths load sandboxed pages, assets and re
 });
 
 test("reasoning submenu keeps the native browser visible with long model names and a wide sidebar", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-reasoning-pane-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-reasoning-pane-"));
   await mkdir(join(dir, "workspace"));
   const file = join(dir, "workspace", "preview.html");
   await writeFile(
@@ -320,7 +320,7 @@ test("reasoning submenu keeps the native browser visible with long model names a
   try {
     const page = await app.firstWindow();
     await page.evaluate(async () => {
-      const result = await window.ZPI.saveProvider({
+      const result = await window.zpi.saveProvider({
         id: "menu-fixture",
         name: "菜单测试",
         baseUrl: "http://127.0.0.1:1",

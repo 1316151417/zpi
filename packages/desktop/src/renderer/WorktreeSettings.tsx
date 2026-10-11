@@ -9,7 +9,8 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     let active = true;
-    void window.ZPI.getGitEnvironment(record.id)
+    void window.zpi
+      .getGitEnvironment(record.id)
       .then(unwrap)
       .then((value) => {
         if (active) setEnvironment(value);
@@ -37,7 +38,8 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
                 onSelect={(event) => event.preventDefault()}
                 onCheckedChange={(enabled) => {
                   setSaving(true);
-                  void window.ZPI.setNewWorktree(record.id, enabled)
+                  void window.zpi
+                    .setNewWorktree(record.id, enabled)
                     .then(unwrap)
                     .then((updated) => {
                       const sessions = new Map(useStore.getState().sessions);

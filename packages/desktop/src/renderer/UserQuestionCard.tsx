@@ -1,7 +1,8 @@
 // Adapted from ZCode's ElicitationDialog interaction and layout (Apache-2.0).
-import type { UserQuestionRequest, UserQuestionResponse } from "ZPI-ui";
+
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import type { UserQuestionRequest, UserQuestionResponse } from "zpi-ui";
 import { type QuestionDraft, questionDrafts, report, unwrap } from "./store.ts";
 
 type AnswerDraft = QuestionDraft["answers"][number];
@@ -74,7 +75,8 @@ export function UserQuestionCard({
   const snooze = () => {
     if (interacted.current || !deadline) return;
     interacted.current = true;
-    void window.ZPI.snoozeQuestion(sessionId, request.id)
+    void window.zpi
+      .snoozeQuestion(sessionId, request.id)
       .then(unwrap)
       .catch((error) => {
         interacted.current = false;
@@ -117,7 +119,7 @@ export function UserQuestionCard({
         if (preview && response.annotations) response.annotations[q.question] = { preview };
       });
     try {
-      unwrap(await window.ZPI.respondToQuestion(sessionId, request.id, response));
+      unwrap(await window.zpi.respondToQuestion(sessionId, request.id, response));
       if (questionDrafts.get(sessionId)?.requestId === request.id) questionDrafts.delete(sessionId);
     } catch (error) {
       setError(String(error));

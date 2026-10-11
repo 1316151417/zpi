@@ -1,6 +1,6 @@
-import { DiffView, type FindRequest, type FindState } from "ZPI-ui";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { DiffView, type FindRequest, type FindState } from "zpi-ui";
 import type { DiffItem } from "../shared/bridge.ts";
 import { openFile, paneTask } from "./pane-store.ts";
 import { unwrap } from "./store.ts";
@@ -32,12 +32,13 @@ export function ChangesPane({
     setError("");
     const changes =
       toolCallId && path
-        ? window.ZPI.readPatch(sessionId, runId, `operation:${toolCallId}`)
+        ? window.zpi
+            .readPatch(sessionId, runId, `operation:${toolCallId}`)
             .then(unwrap)
             .then((patch): DiffItem[] => [
               { id: `operation:${toolCallId}`, path, status: "modified", area: "工具变更", patch },
             ])
-        : window.ZPI.getChanges(sessionId, runId).then(unwrap);
+        : window.zpi.getChanges(sessionId, runId).then(unwrap);
     void changes
       .then((value) => {
         if (active) setEntries(value);
@@ -55,7 +56,7 @@ export function ChangesPane({
   useEffect(() => {
     if (!visible) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const off = window.ZPI.onEvent((event) => {
+    const off = window.zpi.onEvent((event) => {
       if (
         event.sessionId === sessionId &&
         (event.event.type === "settled" || event.event.type === "tool_end")
@@ -70,7 +71,7 @@ export function ChangesPane({
     };
   }, [sessionId, visible]);
   const load = useCallback(
-    (id: string) => window.ZPI.readPatch(sessionId, runId, id).then(unwrap),
+    (id: string) => window.zpi.readPatch(sessionId, runId, id).then(unwrap),
     [sessionId, runId],
   );
   const open = useCallback(

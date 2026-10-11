@@ -1,8 +1,8 @@
-# zpi
+# ZPI
 
 **极简的编码客户端。** 参考 ZCode 的界面，结合 Pi Coding Agent 的极简内核，并把同样的减法理念用到客户端：界面干净、清爽，只保留最核心、最常用的功能，让日常编码保持高效。
 
-## 为什么选择 zpi
+## 为什么选择 ZPI
 
 - 功能简单，操作直接，没有遥测。
 - 以节省 token 和时间为目标，具体对比证据后续补充。
@@ -30,9 +30,11 @@
 
 ChatGPT 在线目录缺少 GPT-6.1 Sol、GPT-6 Astra 或 GPT-6 Luna 时，会补充预置配置并标记「待验证」；实际调用仍取决于账号权限，在线目录明确隐藏的型号不会被补充。三个模型默认使用「中」档；Sol、Astra 支持低、中、高、极高、最高，Luna 另外支持关闭。国内模型的默认配置只显示其支持的档位，相同请求参数的映射合并为一个选项。
 
-在「编辑模型配置 → 高级配置」可点击修改推理等级，通过 `+` 新增、删除或拖动排序，也可按 Alt + 左右方向键排序。推理参数映射采用与 ZCode 相同的 CEL 表达式，以 `reasoningLevel` 为变量返回 JSON 请求参数；保存时会验证每个等级。配置的等级用于聊天选择、排队消息和任务恢复，由 `ZPI-ai` 统一映射到供应商请求。自定义模型默认使用列表最后一级，预置 GPT 模型保留「中」档默认值。
+在「编辑模型配置 → 高级配置」可点击修改推理等级，通过 `+` 新增、删除或拖动排序，也可按 Alt + 左右方向键排序。推理参数映射采用与 ZCode 相同的 CEL 表达式，以 `reasoningLevel` 为变量返回 JSON 请求参数；保存时会验证每个等级。配置的等级用于聊天选择、排队消息和任务恢复，由 `zpi-ai` 统一映射到供应商请求。自定义模型默认使用列表最后一级，预置 GPT 模型保留「中」档默认值。
 
 ## 开发与调试
+
+命名约定：产品展示和自然语言文案使用 **ZPI**；npm 包、隐藏目录（`.zpi`）、应用 ID、IPC、存储键和前端技术前缀使用小写 `zpi`；环境变量和全大写常量使用 `ZPI_*`。应用显示名及其对应的 `ZPI.app`、`ZPI Preview` 数据目录保留品牌大小写。OpenAI 对接是明确例外：ChatGPT 授权参数 `agent_name_hint` 和 Responses 工具命名空间保留大写 `ZPI`，不要随内部技术命名修改。
 
 使用 Node.js 24 和 npm。当前桌面构建与本地打包在 macOS Apple Silicon 上验证；编译终端模块需要 Xcode Command Line Tools。
 
@@ -69,6 +71,6 @@ npm run test:desktop         # 构建并在隐藏窗口中运行桌面测试
 
 ## Agent SDK
 
-客户端内核同时提供一个小型 `ZPI-coding-agent` SDK，方便在脚本中复用模型、四个工具和会话能力。调用示例见 [examples/coding-session.ts](examples/coding-session.ts)，可运行 `npm run example:coding`。
+客户端内核同时提供一个小型 `zpi-coding-agent` SDK，方便在脚本中复用模型、四个工具和会话能力。调用示例见 [examples/coding-session.ts](examples/coding-session.ts)，可运行 `npm run example:coding`。
 
 第三方代码和素材的来源、许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

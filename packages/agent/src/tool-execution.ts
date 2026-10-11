@@ -1,6 +1,6 @@
-import type { AssistantMessage, ToolCall, ToolResultMessage } from "ZPI-ai";
-import { isJsonValue } from "ZPI-ai";
 import { Check } from "typebox/value";
+import type { AssistantMessage, ToolCall, ToolResultMessage } from "zpi-ai";
+import { isJsonValue } from "zpi-ai";
 import type { AgentContext, AgentEventSink, AgentLoopConfig, AgentTool, AgentToolResult } from "./types.ts";
 
 export const toolFailure = (error: unknown): AgentToolResult => ({

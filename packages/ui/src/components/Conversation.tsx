@@ -1,4 +1,3 @@
-import { buildMentionMarkdown, imageLimits, parseMentions } from "ZPI-coding-agent/input";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,6 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { buildMentionMarkdown, imageLimits, parseMentions } from "zpi-coding-agent/input";
 import {
   buildSelectionPrompt,
   type ConversationSelection,
@@ -826,8 +826,8 @@ export function Conversation({
       root.scrollTop += target.getBoundingClientRect().top - root.getBoundingClientRect().top;
       setShowLatest(root.scrollHeight - root.scrollTop - root.clientHeight >= 60);
     };
-    window.addEventListener("ZPI:scroll-to-run", navigate);
-    return () => window.removeEventListener("ZPI:scroll-to-run", navigate);
+    window.addEventListener("zpi:scroll-to-run", navigate);
+    return () => window.removeEventListener("zpi:scroll-to-run", navigate);
   }, [view.sessionId]);
 
   const prepend = useRef<{ height: number; top: number } | null>(null);
@@ -854,7 +854,7 @@ export function Conversation({
     const el = ref.current;
     if (!el) return;
     readingWrite.current = {
-      key: `ZPI.reading.${view.sessionId}`,
+      key: `zpi.reading.${view.sessionId}`,
       value: JSON.stringify({ top: el.scrollTop, following: following.current, cursor: historyCursor ?? 0 }),
     };
     readingTimer.current ??= setTimeout(flushReading, 250);
@@ -862,7 +862,7 @@ export function Conversation({
   useLayoutEffect(() => {
     let saved: { top: number; following: boolean } | undefined;
     try {
-      saved = JSON.parse(localStorage.getItem(`ZPI.reading.${view.sessionId}`) ?? "null") ?? undefined;
+      saved = JSON.parse(localStorage.getItem(`zpi.reading.${view.sessionId}`) ?? "null") ?? undefined;
     } catch {
       /* Invalid optional bookmark starts at latest. */
     }
@@ -1228,7 +1228,7 @@ export function ChatComposer({
     textarea.current?.focus();
     textarea.current?.setSelectionRange(start + markdown.length + 1, start + markdown.length + 1);
   };
-  const addAttachments = async (operation: () => Promise<import("ZPI-coding-agent").Attachment[]>) => {
+  const addAttachments = async (operation: () => Promise<import("zpi-coding-agent").Attachment[]>) => {
     const id = sessionId;
     updateValue(id, (old) => ({ ...old, pending: old.pending + 1, error: undefined }));
     try {
@@ -1250,7 +1250,7 @@ export function ChatComposer({
     }
   };
   const importFiles = async (files: File[]) => {
-    const imported: import("ZPI-coding-agent").Attachment[] = [];
+    const imported: import("zpi-coding-agent").Attachment[] = [];
     if (!context) return imported;
     const id = sessionId;
     try {

@@ -1,4 +1,9 @@
-import { isJsonObject } from "ZPI-ai";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync as rmSyncFile, statSync } from "node:fs";
+import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, isAbsolute, join, relative } from "node:path";
+import { isJsonObject } from "zpi-ai";
 import {
   type AgentSession,
   buildSessionMentionMarkdown,
@@ -18,7 +23,7 @@ import {
   SessionManager,
   supportedThinkingLevels,
   validateTemplate,
-} from "ZPI-coding-agent";
+} from "zpi-coding-agent";
 import type {
   DesktopEvent,
   DesktopEventEnvelope,
@@ -26,14 +31,9 @@ import type {
   RunStatus,
   SessionMentionSuggestion,
   SessionView,
-} from "ZPI-ui";
-import { reduceSession, sessionViewBytes } from "ZPI-ui/projection";
-import { parseSelectionPrompt, validSelections } from "ZPI-ui/selections";
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync as rmSyncFile, statSync } from "node:fs";
-import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative } from "node:path";
+} from "zpi-ui";
+import { reduceSession, sessionViewBytes } from "zpi-ui/projection";
+import { parseSelectionPrompt, validSelections } from "zpi-ui/selections";
 import type {
   CombinedSelection,
   DiffItem,
@@ -127,7 +127,7 @@ export class SessionHost {
   constructor(
     dir: string,
     settings: SettingsStore,
-    resourceDir = join(homedir(), ".ZPI", "agent"),
+    resourceDir = join(homedir(), ".zpi", "agent"),
     defaultWorkspace = join(homedir(), "Documents", "ZPI"),
     requestFetch?: typeof fetch,
     userSkillPaths?: string[],
@@ -205,7 +205,7 @@ export class SessionHost {
         if (run) await this.abortRun({ sessionId: id, runId: run.runId });
       },
       save: (id, queue) =>
-        this.meta(id, { type: "custom", customType: "ZPI.queue", data: JSON.parse(JSON.stringify(queue)) }),
+        this.meta(id, { type: "custom", customType: "zpi.queue", data: JSON.parse(JSON.stringify(queue)) }),
       publish: (id, queue) => {
         this.getSessionSnapshot(id);
         this.emit(id, "queue", { type: "queue_changed", queue });
@@ -281,7 +281,7 @@ export class SessionHost {
         const state = index.data.state;
         const info = state.session_info;
         const title = info?.type === "session_info" ? info.name : "新对话";
-        const meta = state["ZPI.session_meta"];
+        const meta = state["zpi.session_meta"];
         let pinnedAt: number | null = null,
           archivedAt: number | null = null;
         let diagnostic = index.data.diagnostic;
@@ -299,15 +299,15 @@ export class SessionHost {
                 : null;
           }
         }
-        const latest = state["ZPI.run"];
+        const latest = state["zpi.run"];
         const data = latest?.type === "custom" && isJsonObject(latest.data) ? latest.data : undefined;
         const status = data
           ? ((data.phase === "start" ? "interrupted" : data.status) as RunStatus)
           : undefined;
         const createdAt = Date.parse(index.data.header.timestamp);
         const updatedAt = index.data.lastActivityAt ?? createdAt;
-        const attention = state["ZPI.attention"];
-        const environment = state["ZPI.environment"];
+        const attention = state["zpi.attention"];
+        const environment = state["zpi.environment"];
         const environmentData =
           environment?.type === "custom" && isJsonObject(environment.data) ? environment.data : undefined;
         const unreadAt =
@@ -348,7 +348,7 @@ export class SessionHost {
             Object.keys(index.data.runs).length === 0,
           ...(diagnostic ? { diagnostic } : {}),
         });
-        const savedQueue = state["ZPI.queue"];
+        const savedQueue = state["zpi.queue"];
         if (
           savedQueue?.type === "custom" &&
           isJsonObject(savedQueue.data) &&
@@ -390,7 +390,7 @@ export class SessionHost {
     const cached = this.configurations.get(id);
     if (cached) return cached;
     if (this.record(id).draft) return this.defaultConfiguration();
-    const entry = this.indexes.get(id)?.data.state["ZPI.configuration"];
+    const entry = this.indexes.get(id)?.data.state["zpi.configuration"];
     if (entry?.type !== "custom" || !isJsonObject(entry.data))
       throw new Error("Invalid session configuration");
     const config = entry.data as unknown as SessionConfiguration;
@@ -568,10 +568,10 @@ export class SessionHost {
     manager.subscribeEntries((entry) => index.ingest(entry));
     try {
       manager.appendSessionInfo("新对话");
-      manager.appendCustomEntry("ZPI.title", { state: "new" });
-      manager.appendCustomEntry("ZPI.session_meta", { projectId, pinnedAt: null, draft: true });
+      manager.appendCustomEntry("zpi.title", { state: "new" });
+      manager.appendCustomEntry("zpi.session_meta", { projectId, pinnedAt: null, draft: true });
       if (options.parentSessionId)
-        manager.appendCustomEntry("ZPI.environment", { parentSessionId: options.parentSessionId });
+        manager.appendCustomEntry("zpi.environment", { parentSessionId: options.parentSessionId });
       const selected = this.settings.get().lastSelection;
       if (selected && this.settings.isSelectionValid(selected)) {
         manager.appendModelChange(selected.provider, selected.modelId);
@@ -609,7 +609,7 @@ export class SessionHost {
     if (!record.projectId || !(await this.getGitEnvironment(id)))
       throw new Error("configuration: 新工作树需要已有提交的 Git 项目");
     if (!record.draft || this.activeRuns.has(id)) throw new Error("busy: 会话已开始");
-    this.meta(id, { type: "custom", customType: "ZPI.environment", data: { newWorktree: enabled } });
+    this.meta(id, { type: "custom", customType: "zpi.environment", data: { newWorktree: enabled } });
     record.newWorktree = enabled;
     return structuredClone(record);
   }
@@ -630,7 +630,7 @@ export class SessionHost {
       ? entries.findIndex(
           (entry) =>
             entry.type === "custom" &&
-            entry.customType === "ZPI.run" &&
+            entry.customType === "zpi.run" &&
             isJsonObject(entry.data) &&
             entry.data.runId === active.runId &&
             entry.data.phase === "start",
@@ -669,18 +669,18 @@ export class SessionHost {
       });
       const title = "辅助对话";
       manager.appendSessionInfo(title);
-      manager.appendCustomEntry("ZPI.session_meta", {
+      manager.appendCustomEntry("zpi.session_meta", {
         projectId: parent.projectId,
         pinnedAt: null,
         draft: false,
       });
-      manager.appendCustomEntry("ZPI.title", { state: "manual" });
-      manager.appendCustomEntry("ZPI.environment", { parentSessionId: id });
-      manager.appendCustomEntry("ZPI.configuration", JSON.parse(JSON.stringify(this.configuration(id))));
+      manager.appendCustomEntry("zpi.title", { state: "manual" });
+      manager.appendCustomEntry("zpi.environment", { parentSessionId: id });
+      manager.appendCustomEntry("zpi.configuration", JSON.parse(JSON.stringify(this.configuration(id))));
       const inherited = manager.buildSessionContext();
       if (inherited.model) {
         const model = this.settings.getModel(inherited.model);
-        manager.appendCustomEntry("ZPI.selection", {
+        manager.appendCustomEntry("zpi.selection", {
           ...inherited.model,
           reasoning: toPreset(inherited.thinkingLevel, model),
         });
@@ -717,7 +717,7 @@ export class SessionHost {
     return structuredClone(record);
   }
   private saveUnread(id: string, unreadAt: number | undefined): void {
-    this.meta(id, { type: "custom", customType: "ZPI.attention", data: { unreadAt: unreadAt ?? null } });
+    this.meta(id, { type: "custom", customType: "zpi.attention", data: { unreadAt: unreadAt ?? null } });
     this.record(id).unreadAt = unreadAt;
   }
   setSessionPinned(id: string, pinned: boolean): SessionRecord {
@@ -735,10 +735,10 @@ export class SessionHost {
       const pinnedAt = pinned
         ? Math.max(Date.now(), ...[...this.records.values()].map((r) => (r.pinnedAt ?? 0) + 1))
         : null;
-      const prior = this.indexes.get(id)?.data.state["ZPI.session_meta"];
+      const prior = this.indexes.get(id)?.data.state["zpi.session_meta"];
       this.meta(id, {
         type: "custom",
-        customType: "ZPI.session_meta",
+        customType: "zpi.session_meta",
         data: {
           ...(prior?.type === "custom" && isJsonObject(prior.data) ? prior.data : {}),
           projectId: record.projectId,
@@ -755,11 +755,11 @@ export class SessionHost {
     for (const child of this.records.values())
       if (child.parentSessionId === id) await this.closeSideChat(child.id);
     await this.inputQueue.archive(id, () => {
-      const previous = this.indexes.get(id)?.data.state["ZPI.session_meta"];
+      const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
       const archivedAt = Date.now();
       this.meta(id, {
         type: "custom",
-        customType: "ZPI.session_meta",
+        customType: "zpi.session_meta",
         data: {
           ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
           projectId: record.projectId,
@@ -776,14 +776,14 @@ export class SessionHost {
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
     if (record.diagnostic || this.blocked.has(id)) throw new Error("storage: 无法读取的任务只能删除");
-    const previous = this.indexes.get(id)?.data.state["ZPI.session_meta"];
+    const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
     if (record.projectId !== null) {
       const project = this.project(record.projectId);
       if (project.hidden) this.saveProject({ ...project, hidden: false });
     }
     this.meta(id, {
       type: "custom",
-      customType: "ZPI.session_meta",
+      customType: "zpi.session_meta",
       data: {
         ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
         projectId: record.projectId,
@@ -834,7 +834,7 @@ export class SessionHost {
       this.views.set(id, view);
     }
     const controls = this.getControls(id);
-    const origin = index.data.state["ZPI.fork"];
+    const origin = index.data.state["zpi.fork"];
     const forkOrigin =
       origin?.type === "custom" &&
       isJsonObject(origin.data) &&
@@ -889,7 +889,7 @@ export class SessionHost {
       .filter(([key]) => key !== "thinking_last")
       .map(([, entry]) => entry);
     const context = SessionManager.inMemory(this.cwd(this.record(id)), { id }, entries).buildSessionContext();
-    const saved = index.data.state["ZPI.selection"];
+    const saved = index.data.state["zpi.selection"];
     const data = saved?.type === "custom" && isJsonObject(saved.data) ? saved.data : undefined;
     const selection: CombinedSelection | null =
       data &&
@@ -1074,7 +1074,7 @@ export class SessionHost {
     for (const e of index.read({ start: boundary.start.start, end: boundary.end?.end ?? index.data.size })) {
       if (
         e.type === "custom" &&
-        e.customType === "ZPI.run" &&
+        e.customType === "zpi.run" &&
         isJsonObject(e.data) &&
         e.data.phase === "start" &&
         typeof e.data.runId === "string"
@@ -1139,7 +1139,7 @@ export class SessionHost {
     if (!selection || !this.settings.isSelectionValid(selection))
       throw new Error("configuration: 模型已删除、关闭或思考程度不可用，请重新选择");
     // Composer selection is independent of the current SDK run's immutable configuration.
-    this.meta(id, { type: "custom", customType: "ZPI.selection", data: { ...selection } });
+    this.meta(id, { type: "custom", customType: "zpi.selection", data: { ...selection } });
     this.settings.rememberSelection(selection);
     this.getSessionSnapshot(id);
     this.emit(id, "controls", { type: "controls_changed", controls: this.getControls(id) });
@@ -1152,7 +1152,7 @@ export class SessionHost {
     if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
     const title = this.name(name);
     this.meta(id, { type: "session_info", name: title });
-    this.meta(id, { type: "custom", customType: "ZPI.title", data: { state: "manual" } });
+    this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "manual" } });
     record.title = title;
     const view = this.views.get(id);
     if (view) this.views.set(id, { ...view, title });
@@ -1316,7 +1316,7 @@ export class SessionHost {
     const index = entries.findIndex(
       (entry) =>
         entry.type === "custom" &&
-        entry.customType === "ZPI.run" &&
+        entry.customType === "zpi.run" &&
         isJsonObject(entry.data) &&
         entry.data.phase === "start" &&
         entry.data.runId === runId,
@@ -1333,7 +1333,7 @@ export class SessionHost {
     const end = entries.findIndex(
       (entry) =>
         entry.type === "custom" &&
-        entry.customType === "ZPI.run" &&
+        entry.customType === "zpi.run" &&
         isJsonObject(entry.data) &&
         entry.data.phase === "end" &&
         entry.data.runId === runId,
@@ -1349,7 +1349,7 @@ export class SessionHost {
           entry.type !== "session_info" &&
           !(
             entry.type === "custom" &&
-            ["ZPI.session_meta", "ZPI.title", "ZPI.queue", "ZPI.attention"].includes(entry.customType)
+            ["zpi.session_meta", "zpi.title", "zpi.queue", "zpi.attention"].includes(entry.customType)
           ),
       );
       const manager = this.manager(child.id);
@@ -1365,7 +1365,7 @@ export class SessionHost {
         child.id,
         prefix.flatMap((entry) =>
           entry.type === "custom" &&
-          entry.customType === "ZPI.run" &&
+          entry.customType === "zpi.run" &&
           isJsonObject(entry.data) &&
           Array.isArray(entry.data.attachments)
             ? entry.data.attachments.flatMap((image) =>
@@ -1375,13 +1375,13 @@ export class SessionHost {
         ),
       );
       manager.appendSessionInfo(`Fork of ${parent.title}`.slice(0, 200));
-      manager.appendCustomEntry("ZPI.session_meta", {
+      manager.appendCustomEntry("zpi.session_meta", {
         projectId: child.projectId,
         pinnedAt: null,
         draft: false,
       });
-      manager.appendCustomEntry("ZPI.title", { state: "manual" });
-      manager.appendCustomEntry("ZPI.fork", { parentSessionId: id, runId });
+      manager.appendCustomEntry("zpi.title", { state: "manual" });
+      manager.appendCustomEntry("zpi.fork", { parentSessionId: id, runId });
       this.managers.delete(child.id);
       const index = new HistoryIndex(this.path(child));
       await index.load();
@@ -1414,7 +1414,7 @@ export class SessionHost {
         .some(
           (entry) =>
             entry.type === "custom" &&
-            entry.customType === "ZPI.run" &&
+            entry.customType === "zpi.run" &&
             isJsonObject(entry.data) &&
             entry.data.phase === "start",
         )
@@ -1461,11 +1461,11 @@ export class SessionHost {
       const current = manager.getEntries();
       const boundary = this.runStart(current, runId);
       const remaining = new Set([
-        "ZPI.session_meta",
-        "ZPI.title",
-        "ZPI.selection",
-        "ZPI.configuration",
-        "ZPI.queue",
+        "zpi.session_meta",
+        "zpi.title",
+        "zpi.selection",
+        "zpi.configuration",
+        "zpi.queue",
       ]);
       const metadata: SessionEntry[] = [];
       for (let i = current.length - 1; i >= 0 && remaining.size; i--) {
@@ -1569,7 +1569,7 @@ export class SessionHost {
       this.getSessionSnapshot(id);
       if (record.draft) this.configurations.set(id, this.defaultConfiguration());
       const configuration = this.configuration(id);
-      const accept = async (model: import("ZPI-ai").Model) => {
+      const accept = async (model: import("zpi-ai").Model) => {
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         this.titleFromInput(
           id,
@@ -1580,10 +1580,10 @@ export class SessionHost {
         const modelLabel = `${config.name} / ${model.name}`;
         if (record.draft)
           manager.appendCustomEntry(
-            "ZPI.configuration",
-            configuration as unknown as import("ZPI-ai").JsonObject,
+            "zpi.configuration",
+            configuration as unknown as import("zpi-ai").JsonObject,
           );
-        manager.appendCustomEntry("ZPI.run", {
+        manager.appendCustomEntry("zpi.run", {
           phase: "start",
           runId: run.runId,
           text,
@@ -1606,8 +1606,8 @@ export class SessionHost {
         started = true;
         await this.attachments.markUsed(id, input.attachments ?? []);
         if (record.draft) {
-          const prior = this.indexes.get(id)?.data.state["ZPI.session_meta"];
-          manager.appendCustomEntry("ZPI.session_meta", {
+          const prior = this.indexes.get(id)?.data.state["zpi.session_meta"];
+          manager.appendCustomEntry("zpi.session_meta", {
             ...(prior?.type === "custom" && isJsonObject(prior.data) ? prior.data : {}),
             projectId: record.projectId,
             pinnedAt: record.pinnedAt ?? null,
@@ -1636,7 +1636,7 @@ export class SessionHost {
           await this.indexes.get(id)?.load();
           this.meta(id, {
             type: "custom",
-            customType: "ZPI.environment",
+            customType: "zpi.environment",
             data: { newWorktree: true, worktree },
           });
           this.emit(id, run.runId, {
@@ -1692,13 +1692,13 @@ export class SessionHost {
         );
         const unsubscribe = session.subscribe((e) => {
           if (e.type === "agent_start" || e.type === "agent_end")
-            manager.appendCustomEntry("ZPI.agent_call", {
+            manager.appendCustomEntry("zpi.agent_call", {
               phase: e.type === "agent_start" ? "start" : "end",
               runId: run.runId,
               ordinal: run.ordinal,
             });
           if (e.type === "compaction")
-            manager.appendCustomEntry("ZPI.compaction", {
+            manager.appendCustomEntry("zpi.compaction", {
               runId: run.runId,
               id: e.id,
               status: e.status,
@@ -1785,7 +1785,7 @@ export class SessionHost {
   }
   private titleFromInput(id: string, text: string): void {
     const record = this.record(id),
-      state = this.indexes.get(id)?.data.state["ZPI.title"];
+      state = this.indexes.get(id)?.data.state["zpi.title"];
     if (state?.type !== "custom" || !isJsonObject(state.data) || state.data.state !== "new") return;
     const visible = text.trim().replace(/\s+/g, " ");
     const characters = Array.from(
@@ -1801,15 +1801,15 @@ export class SessionHost {
   private startTitle(
     id: string,
     text: string,
-    images: import("ZPI-ai").ImageContent[],
+    images: import("zpi-ai").ImageContent[],
     config: ReturnType<SettingsStore["snapshot"]>,
-    model: import("ZPI-ai").Model,
+    model: import("zpi-ai").Model,
   ): void {
-    const state = this.indexes.get(id)?.data.state["ZPI.title"];
+    const state = this.indexes.get(id)?.data.state["zpi.title"];
     if (state?.type !== "custom" || !isJsonObject(state.data) || state.data.state !== "new") return;
     this.meta(id, {
       type: "custom",
-      customType: "ZPI.title",
+      customType: "zpi.title",
       data: { state: "pending", provider: model.provider, modelId: model.id },
     });
     const controller = new AbortController();
@@ -1824,7 +1824,7 @@ export class SessionHost {
           images,
           controller.signal,
         );
-        const latest = this.indexes.get(id)?.data.state["ZPI.title"];
+        const latest = this.indexes.get(id)?.data.state["zpi.title"];
         if (
           this.closing ||
           this.deleting.has(id) ||
@@ -1836,11 +1836,11 @@ export class SessionHost {
           return;
         this.meta(id, { type: "session_info", name: title });
         this.record(id).title = title;
-        this.meta(id, { type: "custom", customType: "ZPI.title", data: { state: "generated" } });
+        this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "generated" } });
         this.emit(id, "title", { type: "session_changed", title });
       } catch (error) {
         if (!controller.signal.aborted) this.errors.write("session.title", error, { sessionId: id });
-        const latest = this.indexes.get(id)?.data.state["ZPI.title"];
+        const latest = this.indexes.get(id)?.data.state["zpi.title"];
         if (
           this.records.has(id) &&
           !this.deleting.has(id) &&
@@ -1848,7 +1848,7 @@ export class SessionHost {
           isJsonObject(latest.data) &&
           latest.data.state === "pending"
         )
-          this.meta(id, { type: "custom", customType: "ZPI.title", data: { state: "failed" } });
+          this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "failed" } });
       } finally {
         this.titleJobs.delete(id);
       }
@@ -1894,7 +1894,7 @@ export class SessionHost {
       this.errors.write("agent.run", error ?? message ?? "Task failed", { sessionId: id, runId: run.runId });
     const endedAt = Date.now();
     try {
-      this.manager(id).appendCustomEntry("ZPI.run", {
+      this.manager(id).appendCustomEntry("zpi.run", {
         phase: "end",
         runId: run.runId,
         status,

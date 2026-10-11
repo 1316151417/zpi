@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("context indicator hides after compaction and returns when the next response reports usage", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-context-compaction-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-context-compaction-"));
   await mkdir(join(dir, "agent"));
   await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   const next = deferred();
@@ -64,7 +64,7 @@ test("context indicator hides after compaction and returns when the next respons
 });
 
 test("context indicator appears after the first response and keeps measured usage across model switches and restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-context-indicator-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-context-indicator-"));
   const first = deferred();
   const second = deferred();
   const server = await fakeServer(async (body, response) => {
@@ -89,7 +89,7 @@ test("context indicator appears after the first response and keeps measured usag
     app = await launchDesktop({ dir, url: server.url });
     let page = await app.firstWindow();
     await page.evaluate(async (url) => {
-      const result = await window.ZPI.saveProvider({
+      const result = await window.zpi.saveProvider({
         id: "context-other",
         name: "Other provider",
         baseUrl: url,

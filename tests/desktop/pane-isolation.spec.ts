@@ -10,7 +10,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("task switching isolates files, terminals and browser guests and restores active/collapsed state", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-pane-isolation-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-pane-isolation-"));
   const project = join(dir, "project");
   await mkdir(project);
   const file = join(project, "shared.txt");

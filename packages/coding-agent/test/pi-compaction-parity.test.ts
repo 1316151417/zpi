@@ -1,19 +1,19 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { expect, it } from "vitest";
 import {
   createAssistantMessageEventStream,
   emptyAssistant,
   getCurrentSystemPrompt,
   type SimpleStreamOptions,
-} from "ZPI-ai";
+} from "zpi-ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "ZPI-coding-agent";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { expect, it } from "vitest";
+} from "zpi-coding-agent";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import {
   compact,

@@ -31,15 +31,15 @@ it("truncated output remains readable after the stream closes", async () => {
 });
 
 it("cleanup removes only expired generated logs and preserves recent or unrelated files", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-output-cleanup-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-output-cleanup-"));
   try {
-    const old = "ZPI-bash-0123456789abcdef.log";
-    const recent = "ZPI-bash-fedcba9876543210.log";
-    const unrelated = "ZPI-bash-user.log";
+    const old = "zpi-bash-0123456789abcdef.log";
+    const recent = "zpi-bash-fedcba9876543210.log";
+    const unrelated = "zpi-bash-user.log";
     for (const name of [old, recent, unrelated]) await writeFile(join(dir, name), "output");
     const expired = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
     for (const name of [old, unrelated]) await utimes(join(dir, name), expired, expired);
-    await cleanupOutputFiles("ZPI-bash", dir);
+    await cleanupOutputFiles("zpi-bash", dir);
     expect((await readdir(dir)).sort()).toEqual([recent, unrelated].sort());
   } finally {
     await rm(dir, { recursive: true, force: true });

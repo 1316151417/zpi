@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("folder mentions share ZCode file search, parent paths, icons, keyboard scrolling and draft restoration", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-mention-folders-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-mention-folders-"));
   const cwd = join(dir, "workspace");
   const folder = join(cwd, "skills", "know-base-update");
   await mkdir(join(folder, "references"), { recursive: true });
@@ -73,7 +73,7 @@ test("folder mentions share ZCode file search, parent paths, icons, keyboard scr
     await expect(chip).toHaveCSS("--mention-image", /folder\.svg/);
     await expect
       .poll(async () => {
-        const draft = await page.evaluate((id) => window.ZPI.getDraft(id), id);
+        const draft = await page.evaluate((id) => window.zpi.getDraft(id), id);
         return draft.ok ? draft.value.text : "";
       })
       .toBe(`[know-base-update](${folderPath}/) `);

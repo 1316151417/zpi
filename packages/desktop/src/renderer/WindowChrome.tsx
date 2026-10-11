@@ -1,4 +1,3 @@
-import { ActionHint } from "ZPI-ui";
 import {
   MessageCirclePlus,
   PanelLeftClose,
@@ -6,6 +5,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
+import { ActionHint } from "zpi-ui";
 
 // Adapted from ZCode DesktopTopOverlay and WorkspaceSidePaneToggleButton.
 // See THIRD_PARTY_NOTICES.md for provenance.

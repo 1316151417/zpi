@@ -1,14 +1,14 @@
-import { clampThinkingLevel, createAssistantMessageEventStream, emptyAssistant } from "ZPI-ai";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { expect, it } from "vitest";
+import { clampThinkingLevel, createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "ZPI-coding-agent";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { expect, it } from "vitest";
+} from "zpi-coding-agent";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 
@@ -16,7 +16,7 @@ it("loads global/project settings with recursive overrides and Pi defaults", asy
   const cwd = await directory();
   const agentDir = join(cwd, "agent");
   await mkdir(agentDir);
-  await mkdir(join(cwd, ".ZPI"));
+  await mkdir(join(cwd, ".zpi"));
   await writeFile(
     join(agentDir, "settings.json"),
     JSON.stringify({
@@ -26,7 +26,7 @@ it("loads global/project settings with recursive overrides and Pi defaults", asy
     }),
   );
   await writeFile(
-    join(cwd, ".ZPI/settings.json"),
+    join(cwd, ".zpi/settings.json"),
     JSON.stringify({
       compaction: { modelOverrides: { "fake/fake": { reserveTokens: 0 } } },
       retry: { provider: { timeoutMs: 500 } },
@@ -74,8 +74,8 @@ it("parses Pi HTTP timeout values and reports invalid files without discarding v
       "Invalid httpIdleTimeoutMs",
     );
   const cwd = await directory();
-  await mkdir(join(cwd, ".ZPI"));
-  await writeFile(join(cwd, ".ZPI/settings.json"), "bad json");
+  await mkdir(join(cwd, ".zpi"));
+  await writeFile(join(cwd, ".zpi/settings.json"), "bad json");
   expect(SettingsManager.create(cwd, cwd).getErrors()).toHaveLength(1);
 });
 
@@ -127,7 +127,7 @@ it("chooses explicit, restored, per-model, global and medium reasoning in Pi ord
 
 it("applies provider timeout/retry settings to both normal and summary requests", async () => {
   const cwd = await directory();
-  const requests: import("ZPI-ai").SimpleStreamOptions[] = [];
+  const requests: import("zpi-ai").SimpleStreamOptions[] = [];
   const runtime = await ModelRuntime.create();
   runtime.registerProvider("fake", {
     models: [fakeConfig("")],

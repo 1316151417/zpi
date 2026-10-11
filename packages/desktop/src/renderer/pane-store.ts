@@ -1,5 +1,5 @@
-import type { ConversationSelection } from "ZPI-ui";
-import { type FileLocation, type WebOpenOptions, webOpenTarget } from "ZPI-ui/links";
+import type { ConversationSelection } from "zpi-ui";
+import { type FileLocation, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
 import { create } from "zustand";
 import type { BrowserState, FilePreview, PaneEvent, SessionRecord } from "../shared/bridge.ts";
 import {
@@ -42,7 +42,7 @@ interface PaneState {
 }
 let savedRatio = 0.45;
 try {
-  const value = Number(localStorage.getItem("ZPI.rightPaneRatio"));
+  const value = Number(localStorage.getItem("zpi.rightPaneRatio"));
   if (value >= 0.2 && value <= 0.7) savedRatio = value;
 } catch {
   /* Optional UI preference. */
@@ -125,7 +125,7 @@ export function listenPanes() {
     }
     if (state.selected !== previous.selected) restorePane();
   });
-  const offEvents = window.ZPI.onPaneEvent((event) => {
+  const offEvents = window.zpi.onPaneEvent((event) => {
     if (event.type === "terminal") {
       terminalOutput.set(event.id, ((terminalOutput.get(event.id) ?? "") + event.data).slice(-524288));
       terminalListeners.get(event.id)?.(event);
@@ -163,7 +163,7 @@ const sideChatCounters = new Map<string, number>();
 export async function loadSideChat(id: string) {
   retainedSessionViews.add(id);
   try {
-    accept(unwrap(await window.ZPI.getSessionSnapshot(id)));
+    accept(unwrap(await window.zpi.getSessionSnapshot(id)));
     await loadDraft(id);
     await refreshSuggestions(id);
   } catch (error) {
@@ -178,7 +178,7 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
   );
   let childId = reference && active?.type === "side-chat" ? active.childSessionId : undefined;
   if (childId && active) {
-    const snapshot = await window.ZPI.getSessionSnapshot(childId);
+    const snapshot = await window.zpi.getSessionSnapshot(childId);
     if (!snapshot.ok && snapshot.error.code === "not_found") {
       await closeTab(active.id);
       childId = undefined;
@@ -191,7 +191,8 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
     const pendingKey = `${parentId}:${text ?? ""}`;
     let pending = pendingSideChats.get(pendingKey);
     if (!pending) {
-      pending = window.ZPI.createSideChat(parentId)
+      pending = window.zpi
+        .createSideChat(parentId)
         .then(unwrap)
         .then(async (record) => {
           await loadSideChat(record.id);
@@ -212,7 +213,7 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
           if (text) {
             const draft = drafts.get(record.id);
             if (draft) drafts.set(record.id, { ...draft, text, selection: [text.length, text.length] });
-            unwrap(await window.ZPI.submitInput({ sessionId: record.id, text }));
+            unwrap(await window.zpi.submitInput({ sessionId: record.id, text }));
             if (draft) drafts.set(record.id, { ...draft, text: "", selection: [0, 0] });
           }
           return record.id;
@@ -238,12 +239,12 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
   });
 }
 export async function openTerminal(sessionId: string) {
-  const cwd = unwrap(await window.ZPI.getWorkspaceInfo(sessionId)).cwd;
-  const created = unwrap(await window.ZPI.createTerminal(sessionId));
+  const cwd = unwrap(await window.zpi.getWorkspaceInfo(sessionId)).cwd;
+  const created = unwrap(await window.zpi.createTerminal(sessionId));
   showTab({ type: "terminal", id: created.id, title: created.shell, sessionId, cwd });
 }
 export async function openBrowser(url = "", sessionId = useStore.getState().selected) {
-  const created = unwrap(await window.ZPI.createBrowser(url));
+  const created = unwrap(await window.zpi.createBrowser(url));
   showTab({ type: "browser", id: created.id, title: "浏览器", sessionId, state: created });
 }
 export async function openWebLink(
@@ -252,12 +253,12 @@ export async function openWebLink(
   sessionId = useStore.getState().selected,
 ) {
   if (webOpenTarget(url, options) === "app-browser") await openBrowser(url, sessionId);
-  else unwrap(await window.ZPI.openExternal(url));
+  else unwrap(await window.zpi.openExternal(url));
 }
 export async function openFile(sessionId: string, path: string, location?: FileLocation) {
-  const preview = unwrap(await window.ZPI.readFilePreview(sessionId, path, location));
+  const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
   if (preview.kind === "directory") {
-    unwrap(await window.ZPI.fileAction(sessionId, preview.path, "reveal"));
+    unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
     return;
   }
   if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
@@ -265,7 +266,7 @@ export async function openFile(sessionId: string, path: string, location?: FileL
     return;
   }
   if (/\.pptx$/i.test(preview.path)) {
-    unwrap(await window.ZPI.fileAction(sessionId, preview.path, "open"));
+    unwrap(await window.zpi.fileAction(sessionId, preview.path, "open"));
     return;
   }
   const id = `file:${sessionId}:${preview.path}`;
@@ -282,10 +283,10 @@ export async function closeTab(id: string) {
     tab = state.tabs.find((t) => t.id === id);
   if (!tab) return;
   if (tab.type === "terminal") {
-    unwrap(await window.ZPI.closeTerminal(id));
+    unwrap(await window.zpi.closeTerminal(id));
     terminalOutput.delete(id);
   }
-  if (tab.type === "browser") unwrap(await window.ZPI.closeBrowser(id));
+  if (tab.type === "browser") unwrap(await window.zpi.closeBrowser(id));
   if (tab.type === "side-chat") {
     await closeSideChat(tab.childSessionId);
   }

@@ -1,9 +1,9 @@
-import { providerBaseUrl } from "ZPI-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { providerBaseUrl } from "zpi-ai";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function expectAlignedFields(page: Page, count: number) {
@@ -46,13 +46,13 @@ async function expectAlignedFields(page: Page, count: number) {
 
 for (const theme of ["light", "dark"] as const) {
   test(`provider forms align fields, empty models and feedback in ${theme} mode`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ZPI-provider-layout-"));
+    const dir = await mkdtemp(join(tmpdir(), "zpi-provider-layout-"));
     const app = await launchDesktop({ dir, url: "" });
     try {
       const page = await app.firstWindow();
       await page.emulateMedia({ colorScheme: theme });
       await page.evaluate(async (baseUrl) => {
-        const result = await window.ZPI.saveProvider({
+        const result = await window.zpi.saveProvider({
           id: "layout-preset",
           preset: "zhipu-coding",
           name: "智谱（Coding Plan）",

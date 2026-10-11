@@ -60,7 +60,7 @@ export function CapabilitySettings() {
                 disabled={saving}
                 onChange={(event) => {
                   const checked = event.target.checked;
-                  void save(() => window.ZPI.setCapabilityEnabled(name, checked));
+                  void save(() => window.zpi.setCapabilityEnabled(name, checked));
                 }}
               />
               <span aria-hidden="true" />
@@ -81,7 +81,7 @@ export function CapabilitySettings() {
               onChange={(event) => {
                 const checked = event.target.checked;
                 void save(() =>
-                  window.ZPI.updatePreferences({ askUserQuestionAutoResolutionEnabled: checked }),
+                  window.zpi.updatePreferences({ askUserQuestionAutoResolutionEnabled: checked }),
                 );
               }}
             />

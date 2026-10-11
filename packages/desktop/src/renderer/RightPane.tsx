@@ -1,4 +1,3 @@
-import { FileIcon, type FindRequest, type FindState } from "ZPI-ui";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   FileDiff as Files,
@@ -9,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { FileIcon, type FindRequest, type FindState } from "zpi-ui";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
@@ -88,7 +88,7 @@ export function RightPane({
         }}
         onPointerUp={(event) => {
           event.currentTarget.releasePointerCapture(event.pointerId);
-          localStorage.setItem("ZPI.rightPaneRatio", String(usePane.getState().ratio));
+          localStorage.setItem("zpi.rightPaneRatio", String(usePane.getState().ratio));
         }}
         onLostPointerCapture={() => panel.current?.removeAttribute("data-resizing")}
         onKeyDown={(event) => {
@@ -99,7 +99,7 @@ export function RightPane({
               Math.min(0.7, state.ratio + (event.key === "ArrowLeft" ? 0.03 : -0.03)),
             );
             usePane.setState({ ratio });
-            localStorage.setItem("ZPI.rightPaneRatio", String(ratio));
+            localStorage.setItem("zpi.rightPaneRatio", String(ratio));
           }
         }}
       />
@@ -130,15 +130,15 @@ export function RightPane({
                   className={`pane-tab ${state.active === tab.id ? "selected" : ""}`}
                   draggable
                   onDragStart={(event) => {
-                    event.dataTransfer.setData("application/x-ZPI-pane-tab", tab.id);
+                    event.dataTransfer.setData("application/x-zpi-pane-tab", tab.id);
                   }}
                   onDragOver={(event) => {
-                    if (event.dataTransfer.types.includes("application/x-ZPI-pane-tab"))
+                    if (event.dataTransfer.types.includes("application/x-zpi-pane-tab"))
                       event.preventDefault();
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    const id = event.dataTransfer.getData("application/x-ZPI-pane-tab");
+                    const id = event.dataTransfer.getData("application/x-zpi-pane-tab");
                     reorderPaneTab(id, tab.id);
                   }}
                   onAuxClick={(event) => {

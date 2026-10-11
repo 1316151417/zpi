@@ -1,31 +1,42 @@
-import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { demoServer, fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 
-it("legacy brand names restore metadata and system sections without rewriting the transcript", async () => {
+it("lowercase session names roundtrip metadata and system sections without rewriting the transcript", async () => {
   const cwd = await directory();
   const manager = SessionManager.create(cwd, cwd);
-  manager.appendCustomEntry("ZPI.title", { state: "manual" });
+  manager.appendCustomEntry("zpi.title", { state: "manual" });
   manager.appendMessage({
     role: "system",
     content: "",
-    sections: { "ZPI.instructions": "old instructions", "external.note": "unchanged" },
+    sections: { "zpi.instructions": "instructions", "external.note": "unchanged" },
     timestamp: 1,
   });
   const file = manager.getSessionFile() as string;
-  const old = (await readFile(file, "utf8")).replaceAll("ZPI", "ZPI".toLowerCase());
-  await writeFile(file, old);
+  const original = await readFile(file, "utf8");
+  expect(JSON.parse(original.split("\n")[0]).format).toBe("zpi");
   const restored = SessionManager.open(file);
-  expect(restored.getEntries()[0]).toMatchObject({ customType: "ZPI.title" });
+  expect(restored.getEntries()[0]).toMatchObject({ customType: "zpi.title" });
   expect(restored.getEntries()[1]).toMatchObject({
-    message: { sections: { "ZPI.instructions": "old instructions", "external.note": "unchanged" } },
+    message: { sections: { "zpi.instructions": "instructions", "external.note": "unchanged" } },
   });
-  expect(await readFile(file, "utf8")).toBe(old);
-  restored.appendCustomEntry("ZPI.attention", { unreadAt: 1 });
-  expect(SessionManager.open(file).getEntries().at(-1)).toMatchObject({ customType: "ZPI.attention" });
+  expect(await readFile(file, "utf8")).toBe(original);
+  restored.appendCustomEntry("zpi.attention", { unreadAt: 1 });
+  expect(SessionManager.open(file).getEntries().at(-1)).toMatchObject({ customType: "zpi.attention" });
+});
+
+it("session loading rejects a noncanonical format instead of converting its casing", async () => {
+  const cwd = await directory();
+  const manager = SessionManager.create(cwd, cwd);
+  const file = manager.getSessionFile() as string;
+  const header = JSON.parse(await readFile(file, "utf8"));
+  for (const format of ["zpi".toUpperCase(), "Zpi", "other"]) {
+    await writeFile(file, `${JSON.stringify({ ...header, format })}\n`);
+    expect(() => SessionManager.open(file)).toThrow("Unsupported session header");
+  }
 });
 
 it("transcript replacement rekeys compaction boundaries, persists a valid chain and rejects invalid replacement atomically", async () => {

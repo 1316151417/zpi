@@ -1,7 +1,7 @@
-import { ActionHint } from "ZPI-ui";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, Clock3, Folder, ListFilter, MessageCirclePlus } from "lucide-react";
 import type { ReactNode } from "react";
+import { ActionHint } from "zpi-ui";
 import type { TaskPreferences } from "./sidebar-task-model.ts";
 import { TaskUpdatedIcon } from "./task-view-icons.ts";
 export function TaskViewMenu({

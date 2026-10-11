@@ -8,7 +8,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 
 test("empty project and independent task lists match ZCode spacing, fonts and theme colors", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-empty-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-empty-"));
   const project = join(dir, "empty-project");
   await mkdir(project);
   const server = await fakeServer((_, response) => {
@@ -27,7 +27,7 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
       ["light", 14],
       ["dark", 18],
     ] as const) {
-      await page.evaluate(({ theme, fontSize }) => window.ZPI.updatePreferences({ theme, fontSize }), {
+      await page.evaluate(({ theme, fontSize }) => window.zpi.updatePreferences({ theme, fontSize }), {
         theme,
         fontSize: size,
       });

@@ -1,9 +1,10 @@
 // Settings subset adapted from Pi cd34e17ff039502f3664d8363b3c0a23f93a2ca3 (MIT).
-import type { ThinkingLevel } from "ZPI-agent";
-import type { Model, RetryPolicy } from "ZPI-ai";
+
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ThinkingLevel } from "zpi-agent";
+import type { Model, RetryPolicy } from "zpi-ai";
 import type { CompactionOptions, CompactionSettings } from "./compaction.ts";
 
 export interface ProviderRetrySettings {
@@ -41,9 +42,9 @@ export class SettingsManager {
   static inMemory(settings: Settings = {}): SettingsManager {
     return new SettingsManager(settings);
   }
-  static create(cwd = process.cwd(), agentDir = join(homedir(), ".ZPI", "agent")): SettingsManager {
+  static create(cwd = process.cwd(), agentDir = join(homedir(), ".zpi", "agent")): SettingsManager {
     const manager = new SettingsManager();
-    for (const path of [join(agentDir, "settings.json"), join(cwd, ".ZPI", "settings.json")]) {
+    for (const path of [join(agentDir, "settings.json"), join(cwd, ".zpi", "settings.json")]) {
       try {
         const settings: unknown = JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
         if (!object(settings)) throw new Error("Settings must be an object");

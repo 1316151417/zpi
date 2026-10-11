@@ -8,7 +8,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("interrupted history keeps its status and content without an extra notice", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-interrupted-notice-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-interrupted-notice-"));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
   seedHistory(dir, cwd, 1, { interrupted: true });
@@ -33,7 +33,7 @@ test("interrupted history keeps its status and content without an extra notice",
 });
 
 test("streaming tools, manual expansion, default collapse, IME, safe renderer and restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "README.md"), "# Test project");
@@ -119,10 +119,10 @@ test("streaming tools, manual expansion, default collapse, IME, safe renderer an
     expect(
       await page.evaluate(() => ({
         node: typeof (window as unknown as { require?: unknown }).require,
-        key: window.ZPI.getSettings().then((r) => JSON.stringify(r)),
+        key: window.zpi.getSettings().then((r) => JSON.stringify(r)),
       })),
     ).toMatchObject({ node: "undefined" });
-    const settings = await page.evaluate(() => window.ZPI.getSettings());
+    const settings = await page.evaluate(() => window.zpi.getSettings());
     expect(JSON.stringify(settings)).not.toContain("local-test-key");
     expect(errors).toEqual([]);
     await app.close();

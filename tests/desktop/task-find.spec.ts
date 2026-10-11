@@ -22,7 +22,7 @@ const highlight = (page: Page, scope = "conversation") =>
   }, scope);
 
 test("task find matches ZCode layout, shortcuts, wraparound, highlights and focus", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-find-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-find-"));
   const server = await fakeServer((_, response) => {
     send(
       response,
@@ -122,7 +122,7 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
 });
 
 test("search loads older history, preserves the active message and ignores tools and reasoning", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-find-history-")),
+  const dir = await mkdtemp(join(tmpdir(), "zpi-find-history-")),
     cwd = join(dir, "workspace");
   await mkdir(cwd);
   const seed = seedHistory(dir, cwd, 30);
@@ -162,7 +162,7 @@ test("search loads older history, preserves the active message and ignores tools
 });
 
 test("file scope searches lazy patches across files, highlights split diffs and Escape closes find before stopping", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-find-changes-")),
+  const dir = await mkdtemp(join(tmpdir(), "zpi-find-changes-")),
     project = join(dir, "project");
   await mkdir(project);
   await Promise.all(["a.txt", "b.txt"].map((path) => writeFile(join(project, path), "old needle\n")));

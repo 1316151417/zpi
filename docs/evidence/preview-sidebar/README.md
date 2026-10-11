@@ -1,6 +1,6 @@
 # 自动预览与侧边栏：实现和验收
 
-参考版本：ZCode `872ad960de7ec172591f7e1952f7849229f94521`，3.14.0。只读取参考仓库，没有修改；其原有未跟踪项 `.zcodeignore`、`study/` 保持不变。实现位于当前 zpi 工作树，未提交 commit。工作开始时 zpi 工作树干净。
+参考版本：ZCode `872ad960de7ec172591f7e1952f7849229f94521`，3.14.0。只读取参考仓库，没有修改；其原有未跟踪项 `.zcodeignore`、`study/` 保持不变。实现位于当前 ZPI 工作树，未提交 commit。工作开始时 ZPI 工作树干净。
 
 先完成 [spec](../../specs/assistant-previews-and-sidebar.md)，再补行为测试和实现。spec 包含产品规则、状态所有者、接口、事件顺序图和验收对照表。没有引入遥测、MCP、子代理或后台编排。
 
@@ -42,7 +42,7 @@
 | `npm run test:desktop -- …` | 构建成功；8 个相关桌面测试文件中的 20 项通过。随后补充整轮文本锚点和动画断言，两个相关文件的 5 项再次通过；共覆盖 21 个不同用例 |
 | `npx electron-builder --mac dir` | 成功生成 `release/mac-arm64/ZPI.app`，按项目配置未签名；未生成发行 DMG |
 | `ZPI_TEST_PACKAGED_APP=… npx playwright test …` | 3 项通过；应用先复制到仓库外临时目录再启动；覆盖真实文件预览、打开菜单、分页、偏好和重启 |
-| `node scripts/verify-preview-assets.mjs` | 1146 个 SVG 在 ZCode、zpi public、dist、app.asar 中逐字节一致；[资产清单](assets.json) |
+| `node scripts/verify-preview-assets.mjs` | 1146 个 SVG 在 ZCode、ZPI public、dist、app.asar 中逐字节一致；[资产清单](assets.json) |
 | `node scripts/verify-preview-sidebar.mjs` | 22 组浅色/深色对照；测量、图像和统计见 [evidence.json](evidence.json) |
 | `git diff --check` | 通过 |
 
@@ -64,9 +64,9 @@ node scripts/verify-preview-assets.mjs /Users/jiezhou/VSCodeProjects/ZCode
 
 ## 视觉对照
 
-固定时钟 `2026-10-08 12:00 Asia/Shanghai`，窗口内容 1200×800，侧栏 280px（窄栏用例 180px），UI 字号 14px，缩放 100%，系统字体，Retina DPR 2。截图每侧 2400×1600。**左 ZCode，右 zpi**；overlay 是 50% 叠图。
+固定时钟 `2026-10-08 12:00 Asia/Shanghai`，窗口内容 1200×800，侧栏 280px（窄栏用例 180px），UI 字号 14px，缩放 100%，系统字体，Retina DPR 2。截图每侧 2400×1600。**左 ZCode，右 ZPI**；overlay 是 50% 叠图。
 
-验证脚本直接编译只读 ZCode 源组件：AssistantPreviewCards、OpenSplitButton、TaskListItem、TaskTitleOverflowText、DropdownMenu；菜单使用 WorkspaceSidebar 的实际 JSX，时间线调用源分组函数。项目/时间线外围布局使用源 class 列表。加载源完整主题 CSS，平台服务和数据注入固定夹具。**这属于源码组件运行对照，不是完整 ZCode 应用的端到端截图。** 真实 zpi 应用的状态/IPC/文件打开另由上面的桌面测试覆盖。
+验证脚本直接编译只读 ZCode 源组件：AssistantPreviewCards、OpenSplitButton、TaskListItem、TaskTitleOverflowText、DropdownMenu；菜单使用 WorkspaceSidebar 的实际 JSX，时间线调用源分组函数。项目/时间线外围布局使用源 class 列表。加载源完整主题 CSS，平台服务和数据注入固定夹具。**这属于源码组件运行对照，不是完整 ZCode 应用的端到端截图。** 真实 ZPI 应用的状态/IPC/文件打开另由上面的桌面测试覆盖。
 
 | 场景 | 浅色并排 | 深色并排 | 每张超阈值像素数（浅/深） |
 | --- | --- | --- | --- |
@@ -84,7 +84,7 @@ node scripts/verify-preview-assets.mjs /Users/jiezhou/VSCodeProjects/ZCode
 
 阈值为任一 RGB 通道差值 >16/255，每张比较 3,840,000 个像素；0 表示没有超过这个阈值的像素，不表示所有字节完全一致。卡片/菜单边缘仍有上述微小差异。截图关闭动画以便稳定比较；动画时长和逐张延迟另通过真实浏览器计算样式断言。完整原图、并排图、叠图全部保留在本目录。
 
-真实 zpi 应用补充截图：[卡片浅色](app-previews-light.png)、[卡片深色](app-previews-dark.png)、[打开菜单](app-preview-open-menu.png)、[排序菜单](app-sidebar-sort-menu.png)、[时间线浅色](app-sidebar-timeline-light.png)、[时间线深色](app-sidebar-timeline-dark.png)。这些来自真实任务和临时文件的桌面测试，不参与上述组件像素差分统计。
+真实 ZPI 应用补充截图：[卡片浅色](app-previews-light.png)、[卡片深色](app-previews-dark.png)、[打开菜单](app-preview-open-menu.png)、[排序菜单](app-sidebar-sort-menu.png)、[时间线浅色](app-sidebar-timeline-light.png)、[时间线深色](app-sidebar-timeline-dark.png)。这些来自真实任务和临时文件的桌面测试，不参与上述组件像素差分统计。
 
 ## 源码细节与边界
 
@@ -92,8 +92,8 @@ node scripts/verify-preview-assets.mjs /Users/jiezhou/VSCodeProjects/ZCode
 - 日期标题是 `2 天前` / `3 天前`，有空格。分组按排序后第一次出现的顺序，运行任务可能让较旧日期组排在今天之前。
 - Archive 在 JSX 中写了 14px，但源 Button 的实际生效规则把 SVG 设成 12px；按实际渲染对齐。Lucide 更新改变了 MessageCircleCheck 的勾形，本次专门保留源 1.17 的精确 SVG，不替换全应用图标版本。
 - 显式引用和普通 prose 对 `~/` 的支持不同，按源解析规则保留，没有自行扩展语法。纯 localhost 地址不做文件 stat/服务连通性探测；关联实际 HTML 路径的候选按源规则参与 stat。
-- zpi 无远程工作区服务、任务等待交互协议和 ZCode 分组平台；没有复制这些系统。保留已有多本地会话同时运行和置顶/归档边界；菜单不额外添加状态筛选器。现有分区管理及项目操作继续使用 zpi 原实现。
-- zpi 没有内嵌 PPTX 渲染器，使用原生打开链路。测试覆盖到 Electron `shell.openPath/showItemInFolder/openExternal` 调用边界，并在测试中拦截这些 OS 调用；没有声称验证 PowerPoint/Keynote 窗口内的最终内容。DOCX/XLSX/PDF/音视频实际加载和渲染已经验证。
+- ZPI 无远程工作区服务、任务等待交互协议和 ZCode 分组平台；没有复制这些系统。保留已有多本地会话同时运行和置顶/归档边界；菜单不额外添加状态筛选器。现有分区管理及项目操作继续使用 ZPI 原实现。
+- ZPI 没有内嵌 PPTX 渲染器，使用原生打开链路。测试覆盖到 Electron `shell.openPath/showItemInFolder/openExternal` 调用边界，并在测试中拦截这些 OS 调用；没有声称验证 PowerPoint/Keynote 窗口内的最终内容。DOCX/XLSX/PDF/音视频实际加载和渲染已经验证。
 - 本机实际可用 App 由 Main 发现，图标取系统应用图标。仅在 macOS arm64 做过原生集成验证；Windows 路径解析有单测，Windows/Linux 的桌面运行及编辑器发现未在本次环境验证。没有移植远程、WSL 或 CLI 编辑器启动编排。
-- 所有文件检查、读取和原生打开通过 preload/IPC，Renderer 没有文件系统访问。沿用 zpi 原有预览大小和格式限制。
+- 所有文件检查、读取和原生打开通过 preload/IPC，Renderer 没有文件系统访问。沿用 ZPI 原有预览大小和格式限制。
 - 本报告提供范围内的实现和可复核证据；存在上述平台边界、组件夹具限制及少量像素差异，因此不宣称“完美一比一”。

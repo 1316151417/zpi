@@ -1,12 +1,3 @@
-import {
-  ActionHint,
-  ChatComposer,
-  Conversation,
-  type FileAction,
-  type FileLocation,
-  TaskFindBar,
-  type WebOpenOptions,
-} from "ZPI-ui";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
@@ -21,6 +12,15 @@ import {
   X,
 } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActionHint,
+  ChatComposer,
+  Conversation,
+  type FileAction,
+  type FileLocation,
+  TaskFindBar,
+  type WebOpenOptions,
+} from "zpi-ui";
 import { useShallow } from "zustand/react/shallow";
 import type { InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
@@ -217,7 +217,8 @@ export function App() {
     ? sidebarLimits.collapsed
     : boundedWidth(dragWidth ?? prefs?.sidebarWidth ?? sidebarLimits.default);
   const updatePrefs = (input: Partial<InterfacePreferences>) => {
-    void window.ZPI.updatePreferences(input)
+    void window.zpi
+      .updatePreferences(input)
       .then(unwrap)
       .then((settings) => useStore.setState({ settings }))
       .catch(report);
@@ -233,7 +234,7 @@ export function App() {
   useEffect(() => {
     const unsubscribe = subscribeEvents();
     const offPanes = listenPanes();
-    const offNotificationClick = window.ZPI.onTaskNotificationClick((id) => {
+    const offNotificationClick = window.zpi.onTaskNotificationClick((id) => {
       void refresh()
         .then(async () => {
           if (!useStore.getState().sessions.has(id)) return;
@@ -244,10 +245,10 @@ export function App() {
         })
         .catch(report);
     });
-    const offNotificationSound = window.ZPI.onTaskNotificationSound(() => {
+    const offNotificationSound = window.zpi.onTaskNotificationSound(() => {
       void playTaskNotificationSound();
     });
-    const offSettings = window.ZPI.onSettings((settings) => {
+    const offSettings = window.zpi.onSettings((settings) => {
       useStore.setState({ settings });
       void refresh().catch(report);
     });
@@ -262,7 +263,7 @@ export function App() {
   }, []);
   const selected = state.selected;
   const addSelection = useCallback(
-    (reference: import("ZPI-ui").ConversationSelection) => addConversationSelection(reference, selected),
+    (reference: import("zpi-ui").ConversationSelection) => addConversationSelection(reference, selected),
     [selected],
   );
   const workspace = useWorkspace(selected);
@@ -293,14 +294,14 @@ export function App() {
         .views.get(focusedSideId)
         ?.runs.find((run) => run.status === "running");
       if (sideRun)
-        paneTask(window.ZPI.abortRun({ sessionId: focusedSideId, runId: sideRun.runId }).then(unwrap));
+        paneTask(window.zpi.abortRun({ sessionId: focusedSideId, runId: sideRun.runId }).then(unwrap));
       return;
     }
     if (selected && activeRun)
-      void window.ZPI.abortRun({ sessionId: selected, runId: activeRun.runId }).then(unwrap).catch(report);
+      void window.zpi.abortRun({ sessionId: selected, runId: activeRun.runId }).then(unwrap).catch(report);
   }, [selected, activeRun?.runId]);
   useStopOnEscape(stop);
-  const copyCode = useCallback((text: string) => window.ZPI.copyText(text).then(unwrap), []);
+  const copyCode = useCallback((text: string) => window.zpi.copyText(text).then(unwrap), []);
   const openFile = useCallback(
     (path: string, location?: FileLocation) => {
       if (selected) paneTask(showFile(selected, path, location));
@@ -316,13 +317,13 @@ export function App() {
   const loadToolPatch = useCallback(
     (runId: string, toolCallId: string) => {
       if (!selected) return Promise.reject(new Error("任务未选中"));
-      return window.ZPI.readPatch(selected, runId, `operation:${toolCallId}`).then(unwrap);
+      return window.zpi.readPatch(selected, runId, `operation:${toolCallId}`).then(unwrap);
     },
     [selected],
   );
   const fileAction = useCallback(
     (path: string, action: FileAction, location?: FileLocation) =>
-      selected ? window.ZPI.fileAction(selected, path, action, location).then(unwrap) : Promise.resolve(),
+      selected ? window.zpi.fileAction(selected, path, action, location).then(unwrap) : Promise.resolve(),
     [selected],
   );
   const earlier = useCallback(
@@ -331,7 +332,7 @@ export function App() {
   );
   const addProject = async () => {
     try {
-      const p = unwrap(await window.ZPI.addProject());
+      const p = unwrap(await window.zpi.addProject());
       if (p) {
         await refresh();
         if (![...useStore.getState().sessions.values()].some((r) => r.projectId === p.id))
@@ -361,7 +362,7 @@ export function App() {
       title: "重命名任务",
       value: record.title,
       onConfirm: async (name) => {
-        unwrap(await window.ZPI.renameSession(record.id, name));
+        unwrap(await window.zpi.renameSession(record.id, name));
         await refresh();
       },
     });
@@ -379,7 +380,7 @@ export function App() {
       }}
       onPin={() =>
         task(async () => {
-          unwrap(await window.ZPI.setSessionPinned(r.id, r.pinnedAt == null));
+          unwrap(await window.zpi.setSessionPinned(r.id, r.pinnedAt == null));
           await refresh();
         })
       }
@@ -393,13 +394,13 @@ export function App() {
   );
   return (
     <div
-      className={`shell ${window.ZPI.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""}`}
+      className={`shell ${window.zpi.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""}`}
       style={
         {
           "--left-sidebar-width": `${width}px`,
           "--sidebar-content-width": `${boundedWidth(dragWidth ?? prefs?.sidebarWidth ?? sidebarLimits.default)}px`,
           "--right-pane-width": `${paneWidth}px`,
-          "--workspace-panel-radius": `${window.ZPI.workspacePanelRadius}px`,
+          "--workspace-panel-radius": `${window.zpi.workspacePanelRadius}px`,
         } as CSSProperties
       }
     >
@@ -532,7 +533,7 @@ export function App() {
                                         className="project-action-menu-item"
                                         onSelect={() =>
                                           task(async () => {
-                                            unwrap(await window.ZPI.removeProject(p.id));
+                                            unwrap(await window.zpi.removeProject(p.id));
                                             await refresh();
                                           })
                                         }
@@ -765,7 +766,7 @@ export function App() {
                       if (useStore.getState().historyCursors.get(origin.sessionId) === cursor) break;
                     }
                     requestAnimationFrame(() =>
-                      window.dispatchEvent(new CustomEvent("ZPI:scroll-to-run", { detail: origin })),
+                      window.dispatchEvent(new CustomEvent("zpi:scroll-to-run", { detail: origin })),
                     );
                   })().catch(report);
                 }}
@@ -777,12 +778,12 @@ export function App() {
                 }
                 sideChatDisabled={sideChatBlocked}
                 onEdit={async (runId, input) => {
-                  const result = unwrap(await window.ZPI.editUserMessage(view.sessionId, runId, input));
+                  const result = unwrap(await window.zpi.editUserMessage(view.sessionId, runId, input));
                   if ("conflicts" in result) return result;
                   resetSession(result);
                 }}
                 onFork={async (runId) => {
-                  const child = unwrap(await window.ZPI.forkSession(view.sessionId, runId));
+                  const child = unwrap(await window.zpi.forkSession(view.sessionId, runId));
                   await refresh();
                   await selectSession(child.id);
                 }}
@@ -867,7 +868,7 @@ export function App() {
                           );
                           return;
                         }
-                        const result = await window.ZPI.submitInput({
+                        const result = await window.zpi.submitInput({
                           sessionId: view.sessionId,
                           text,
                           ...input,

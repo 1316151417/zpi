@@ -1,5 +1,3 @@
-import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "ZPI-ai";
-import { listCommands } from "ZPI-coding-agent";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -18,6 +16,8 @@ import {
   screen,
   shell,
 } from "electron";
+import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
+import { listCommands } from "zpi-coding-agent";
 import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
@@ -152,7 +152,7 @@ async function launch(): Promise<void> {
   const host = new SessionHost(
     app.getPath("userData"),
     settings,
-    testMode ? join(app.getPath("userData"), "resources") : join(homedir(), ".ZPI", "agent"),
+    testMode ? join(app.getPath("userData"), "resources") : join(homedir(), ".zpi", "agent"),
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
     requestFetch,
     testMode ? [join(app.getPath("userData"), ".agents", "skills")] : undefined,
@@ -210,7 +210,7 @@ async function launch(): Promise<void> {
     nativeTheme.on("updated", () => {
       if (!window.isDestroyed()) window.setTitleBarOverlay(titleBarOverlay());
     });
-  ipcMain.on("ZPI:error", (event, error: unknown) => {
+  ipcMain.on("zpi:error", (event, error: unknown) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return;
     if (!error || typeof error !== "object") return;
     const details = error as { source?: unknown; message?: unknown; stack?: unknown };
@@ -243,7 +243,7 @@ async function launch(): Promise<void> {
           models: result.models.map((model) => ({ ...model, useRecommendedConfig: true })),
         });
         await settingsReady;
-        if (!window.isDestroyed()) window.webContents.send("ZPI:settings", settings.get());
+        if (!window.isDestroyed()) window.webContents.send("zpi:settings", settings.get());
       })
       .catch((error) => {
         errors.write("models.discovery", error, { providerId: id });
@@ -251,7 +251,7 @@ async function launch(): Promise<void> {
       });
   }
   const panes = new PaneServices(window, (event) => {
-    if (!window.isDestroyed()) window.webContents.send("ZPI:pane-event", event);
+    if (!window.isDestroyed()) window.webContents.send("zpi:pane-event", event);
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -260,13 +260,13 @@ async function launch(): Promise<void> {
   window.webContents.session.setPermissionCheckHandler(() => false);
   const notifications = new TaskNotifications(window, () => settings.get().interface);
   host.subscribe((event) => {
-    if (!window.isDestroyed()) window.webContents.send("ZPI:event", event);
+    if (!window.isDestroyed()) window.webContents.send("zpi:event", event);
     if (!ending && event.event.type === "settled") {
       const record = host.listRecentSessions().find((record) => record.id === event.sessionId);
       if (record) notifications.handle(event, record.title);
     }
   });
-  ipcMain.handle("ZPI:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
+  ipcMain.handle("zpi:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)
         throw new Error("invalid_input: 未授权的 IPC sender");
@@ -388,7 +388,7 @@ async function launch(): Promise<void> {
           host.questions.respond(
             string(0),
             string(1),
-            object(2, ["answers", "annotations"]) as unknown as import("ZPI-ui").UserQuestionResponse,
+            object(2, ["answers", "annotations"]) as unknown as import("zpi-ui").UserQuestionResponse,
           );
           break;
         case "snoozeQuestion":
@@ -876,7 +876,7 @@ function flushDraftsBeforeQuit(window: BrowserWindow): Promise<void> {
   return new Promise((resolveFlush, rejectFlush) => {
     const finish = (error?: Error) => {
       clearTimeout(timer);
-      ipcMain.removeListener("ZPI:drafts-flushed", reply);
+      ipcMain.removeListener("zpi:drafts-flushed", reply);
       contents.removeListener("render-process-gone", gone);
       contents.removeListener("destroyed", gone);
       if (error) rejectFlush(error);
@@ -894,9 +894,9 @@ function flushDraftsBeforeQuit(window: BrowserWindow): Promise<void> {
       finish(failure === null ? undefined : new Error(failure));
     };
     const timer = setTimeout(() => finish(new Error("草稿保存确认超时，请重试退出")), 5000);
-    ipcMain.on("ZPI:drafts-flushed", reply);
+    ipcMain.on("zpi:drafts-flushed", reply);
     contents.once("render-process-gone", gone);
     contents.once("destroyed", gone);
-    contents.send("ZPI:prepare-quit", request);
+    contents.send("zpi:prepare-quit", request);
   });
 }

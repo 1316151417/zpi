@@ -1,14 +1,3 @@
-import {
-  getProviderPreset,
-  type ProviderApi,
-  type ProviderPresetId,
-  presetModels,
-  providerApi,
-  providerBaseUrl,
-  providerPresets,
-  usesChatGPTAuth,
-} from "ZPI-ai";
-import { ActionHint, SortableList } from "ZPI-ui";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
@@ -34,6 +23,17 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import {
+  getProviderPreset,
+  type ProviderApi,
+  type ProviderPresetId,
+  presetModels,
+  providerApi,
+  providerBaseUrl,
+  providerPresets,
+  usesChatGPTAuth,
+} from "zpi-ai";
+import { ActionHint, SortableList } from "zpi-ui";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { CapabilitySettings } from "./CapabilitySettings.tsx";
@@ -195,7 +195,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       return;
     }
     if (selected)
-      void window.ZPI.getProviderCredentials(selected)
+      void window.zpi
+        .getProviderCredentials(selected)
         .then(unwrap)
         .then((value) => {
           if (active) {
@@ -220,7 +221,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     setError("");
     try {
       const result = unwrap(
-        await window.ZPI.discoverModels({
+        await window.zpi.discoverModels({
           api,
           ...(preset ? { preset } : { baseUrl: url }),
           ...(selected ? { providerId: selected } : {}),
@@ -282,7 +283,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     setNotice("已切换协议并更新推理参数映射，保存后生效。");
   };
   const updateAppearance = (input: Partial<InterfacePreferences>) => {
-    void window.ZPI.updatePreferences(input)
+    void window.zpi
+      .updatePreferences(input)
       .then(unwrap)
       .then((value) => useStore.setState({ settings: value }))
       .catch((error) => setError(String(error)));
@@ -295,7 +297,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       let discoveryNotice = "";
       if (!selected && preset && !chatgpt && key.trim()) {
         const result = unwrap(
-          await window.ZPI.discoverModels({
+          await window.zpi.discoverModels({
             preset,
             api,
             apiKey: key,
@@ -306,7 +308,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         discoveryNotice = result.warning ?? "";
       }
       const value = unwrap(
-        await window.ZPI.saveProvider({
+        await window.zpi.saveProvider({
           ...(selected ? { id: selected } : {}),
           ...(preset ? { preset } : {}),
           api,
@@ -470,7 +472,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                             aria-label={label}
                             checked={settings?.interface[field] ?? false}
                             onChange={(e) => {
-                              void window.ZPI.updatePreferences({ [field]: e.target.checked })
+                              void window.zpi
+                                .updatePreferences({ [field]: e.target.checked })
                                 .then(unwrap)
                                 .then((value) => useStore.setState({ settings: value }))
                                 .catch((e) => setError(String(e)));
@@ -525,7 +528,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           onReorder={(providers) => {
                             setSaving(true);
                             setError("");
-                            void window.ZPI.reorderProviders(providers.map((provider) => provider.id))
+                            void window.zpi
+                              .reorderProviders(providers.map((provider) => provider.id))
                               .then(unwrap)
                               .then((settings) => useStore.setState({ settings }))
                               .catch((error) => setError(String(error)))
@@ -969,7 +973,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               setSaving(true);
                               setError("");
                               try {
-                                const value = unwrap(await window.ZPI.deleteProvider(selected));
+                                const value = unwrap(await window.zpi.deleteProvider(selected));
                                 useStore.setState({ settings: value });
                                 await refresh();
                                 select(value.providers[0]);

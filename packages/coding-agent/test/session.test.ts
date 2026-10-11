@@ -1,7 +1,7 @@
-import { createAgentSession, ModelRuntime, SessionManager } from "ZPI-coding-agent";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { demoServer, fakeConfig } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 

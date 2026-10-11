@@ -10,7 +10,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("add panel shares the composer width, lists files and preserves the insertion selection", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-add-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-add-"));
   const project = join(dir, "workspace");
   await mkdir(join(project, "src"), { recursive: true });
   await writeFile(join(project, "src", "main.ts"), "export const main = 1;");
@@ -131,7 +131,7 @@ test("add panel shares the composer width, lists files and preserves the inserti
 });
 
 test("add panel imports multiple attachments and retains the draft when the picker fails or is cancelled", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-attachments-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-attachments-"));
   const project = join(dir, "workspace");
   await mkdir(project);
   const images = [join(dir, "first.png"), join(dir, "second.png")];
@@ -151,15 +151,15 @@ test("add panel imports multiple attachments and retains the draft when the pick
       const internal = ipcMain as unknown as {
         _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
       };
-      const original = internal._invokeHandlers.get("ZPI:call");
+      const original = internal._invokeHandlers.get("zpi:call");
       if (!original) throw Error("handler");
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
       (globalThis as unknown as { releasePicker: () => void }).releasePicker = release;
-      ipcMain.removeHandler("ZPI:call");
-      ipcMain.handle("ZPI:call", async (event, method, args) => {
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", async (event, method, args) => {
         const result = await original(event, method, args);
         if (method === "pickAttachments") await gate;
         return result;
@@ -212,7 +212,7 @@ test("add panel imports multiple attachments and retains the draft when the pick
 });
 
 test("mixed file attachments work through picker, paste and drop, and file mentions share the text line", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-files-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-files-"));
   const project = join(dir, "workspace");
   await mkdir(project);
   await writeFile(join(project, "bubble.html"), "<p>Bubble</p>");
@@ -341,7 +341,7 @@ test("mixed file attachments work through picker, paste and drop, and file menti
 });
 
 test("Shift+Enter moves the caret to a visible empty line and preserves repeated line breaks", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-newline-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-newline-"));
   const server = await fakeServer((_, res) => {
     send(res, chunk({ content: "reply" }));
     done(res);
@@ -382,7 +382,7 @@ test("Shift+Enter moves the caret to a visible empty line and preserves repeated
     await cdp.send("Input.insertText", { text: "中文" });
     await expect
       .poll(async () => {
-        const draft = await page.evaluate((id) => window.ZPI.getDraft(id), id);
+        const draft = await page.evaluate((id) => window.zpi.getDraft(id), id);
         return draft.ok ? draft.value.text : "";
       })
       .toBe("\n中文");
@@ -395,7 +395,7 @@ test("Shift+Enter moves the caret to a visible empty line and preserves repeated
 });
 
 test("Shift+Enter keeps the caret visible in a long pasted draft", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-newline-scroll-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-newline-scroll-"));
   const server = await fakeServer((_, res) => {
     send(res, chunk({ content: "reply" }));
     done(res);
@@ -457,7 +457,7 @@ test("Shift+Enter keeps the caret visible in a long pasted draft", async () => {
 });
 
 test("empty prefix suggestions allow Enter to send while matching suggestions still insert references", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-prefix-input-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-prefix-input-"));
   const server = await fakeServer((_, res) => {
     send(res, chunk({ content: "reply" }));
     done(res);
@@ -530,7 +530,7 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
     await resumeFrames.dispose();
     await editor.pressSequentially("$review");
     await expect
-      .poll(() => page.evaluate((id) => window.ZPI.getDraft(id), id))
+      .poll(() => page.evaluate((id) => window.zpi.getDraft(id), id))
       .toMatchObject({
         ok: true,
         value: { text: "$review" },
@@ -561,7 +561,7 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
 });
 
 test("canonical reference editing, IME, selection, undo/redo, cross-session caret and restart drafts", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-editor-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-editor-"));
   const server = await fakeServer((_, res) => {
     send(res, chunk({ content: "done" }));
     done(res);
@@ -663,7 +663,7 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
     await cdp.send("Input.insertText", { text: "中文" });
     await expect
       .poll(async () => {
-        const draft = await page.evaluate((id) => window.ZPI.getDraft(id), id);
+        const draft = await page.evaluate((id) => window.zpi.getDraft(id), id);
         return draft.ok ? draft.value.text : draft.error.message;
       })
       .toBe("中文");
@@ -684,14 +684,14 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
     await cdp.send("Input.insertText", { text: "当前" });
     await expect
       .poll(async () => {
-        const draft = await page.evaluate((id) => window.ZPI.getDraft(id), id);
+        const draft = await page.evaluate((id) => window.zpi.getDraft(id), id);
         return draft.ok ? draft.value.text : "";
       })
       .toBe("前当前尾");
     await page.evaluate(async () => {
-      const settings = await window.ZPI.getSettings();
+      const settings = await window.zpi.getSettings();
       if (!settings.ok) throw Error(settings.error.message);
-      await window.ZPI.updatePreferences(settings.value.interface);
+      await window.zpi.updatePreferences(settings.value.interface);
     });
     await page.getByLabel("添加上下文", { exact: true }).click();
     // Native menus/window focus can clear the document selection while the editor is blurred.
@@ -721,7 +721,7 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
     await expect(editor).toHaveText("甲X乙 missing");
     await expect
       .poll(async () => {
-        const r = await page.evaluate((id) => window.ZPI.getDraft(id), id);
+        const r = await page.evaluate((id) => window.zpi.getDraft(id), id);
         return r.ok ? r.value.text : "";
       })
       .toBe(`甲X乙 [missing](${cwd}/missing.txt)`);
@@ -741,7 +741,7 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
 });
 
 test("accepted submit clears only submitted content, rejects duplicates and preserves other drafts", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-submit-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-submit-"));
   const server = await fakeServer((_, res) => {
     send(res, chunk({ content: "reply" }));
     done(res);
@@ -761,15 +761,15 @@ test("accepted submit clears only submitted content, rejects duplicates and pres
       const internal = ipcMain as unknown as {
         _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
       };
-      const original = internal._invokeHandlers.get("ZPI:call");
+      const original = internal._invokeHandlers.get("zpi:call");
       if (!original) throw Error("handler");
       let release!: () => void;
       const gate = new Promise<void>((r) => {
         release = r;
       });
       (globalThis as unknown as { releaseSubmit: () => void }).releaseSubmit = release;
-      ipcMain.removeHandler("ZPI:call");
-      ipcMain.handle("ZPI:call", async (event, method, args) => {
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", async (event, method, args) => {
         const result = await original(event, method, args);
         if (method === "submitInput") await gate;
         return result;
@@ -798,7 +798,7 @@ test("accepted submit clears only submitted content, rejects duplicates and pres
 });
 
 test("sidebar expansion, distinct composer entries and equal-width pane tabs", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-layout-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-layout-"));
   await mkdir(join(dir, "workspace"));
   await writeFile(join(dir, "workspace", "main.txt"), "file content");
   await writeFile(join(dir, "workspace", "other.txt"), "other file");
@@ -816,15 +816,15 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     app = await launchDesktop({ dir, url: server.url });
     let page = await app.firstWindow();
     await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
-    const draftId = await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+    const draftId = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
     await page.getByLabel("新建任务", { exact: true }).first().click();
-    expect(await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"))).toBe(draftId);
+    expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(draftId);
     const text = `待发送 [main.txt](${join(dir, "workspace", "main.txt")})`;
     await page.getByLabel("消息", { exact: true }).fill(text);
     await expect
       .poll(async () => {
-        const result = await page.evaluate((id) => window.ZPI.getDraft(id as string), draftId);
+        const result = await page.evaluate((id) => window.zpi.getDraft(id as string), draftId);
         return result.ok ? result.value.text : "";
       })
       .toBe(text);
@@ -833,7 +833,7 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     page = await app.firstWindow();
     await expect(page.getByLabel("消息", { exact: true })).toHaveText("待发送 main.txt");
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
-    expect(await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"))).toBe(draftId);
+    expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(draftId);
     const editor = page.getByLabel("消息", { exact: true });
     await expect(editor).toBeVisible();
     const toggle = page.getByTestId("left-sidebar-toggle");

@@ -182,7 +182,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
       return;
     }
     setRenderState({ status: "loading" });
-    const renderId = `ZPI-mermaid-${renderIdPrefix}-${hashMermaidCode(`${dark}:${trimmedCode}`)}`;
+    const renderId = `zpi-mermaid-${renderIdPrefix}-${hashMermaidCode(`${dark}:${trimmedCode}`)}`;
     void enqueueMermaidRender(async () => {
       if (cancelled) return undefined;
       return mermaidPlugin.getMermaid(config).render(renderId, trimmedCode);
@@ -202,7 +202,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: { code: string 
       data-streamdown="mermaid-block"
       data-mermaid-block=""
       data-render-state={renderState.status}
-      className="ZPI-mermaid"
+      className="zpi-mermaid"
     >
       <div className="mermaid-toolbar">
         <span>mermaid</span>

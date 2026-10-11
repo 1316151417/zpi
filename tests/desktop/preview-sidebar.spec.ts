@@ -9,7 +9,7 @@ import { seedHistory } from "../history-fixture.ts";
 
 test("terminal cards use real turn changes, IPC file validation and native/browser/file opens", async () => {
   test.setTimeout(60000);
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-preview-cards-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-preview-cards-")));
   const project = join(dir, "中文 项目");
   await mkdir(project);
   await writeFile(join(project, "existing.md"), "# Existing\n");
@@ -265,7 +265,7 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
 
 test("independent project/task/timeline pages, menu keyboard navigation, preferences and real task selection", async () => {
   test.setTimeout(60000);
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-sidebar-pages-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-sidebar-pages-")));
   const now = new Date("2026-10-08T12:00:00+08:00").getTime();
   const projects = ["alpha", "beta"].map((id) => ({ id, name: id, path: join(dir, id), updatedAt: now }));
   await Promise.all(projects.map((p) => mkdir(p.path)));
@@ -288,7 +288,7 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
         if (line.type === "session") line.timestamp = new Date(now - (count - i) * 86400000).toISOString();
         if (line.type === "session_info")
           line.name = `${scope ?? "任务"} ${String(i).padStart(2, "0")} 完整标题用于窄侧栏渐隐显示`;
-        if (line.customType === "ZPI.run") {
+        if (line.customType === "zpi.run") {
           line.data.startedAt = now - i * 86400000;
           if (line.data.phase === "end") line.data.endedAt = now - i * 86400000;
         }

@@ -1,9 +1,9 @@
-import { emptyAssistant, type Message } from "ZPI-ai";
-import { createAgentSession, ModelRuntime, SessionManager, StaticResourceLoader } from "ZPI-coding-agent";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
+import { emptyAssistant, type Message } from "zpi-ai";
+import { createAgentSession, ModelRuntime, SessionManager, StaticResourceLoader } from "zpi-coding-agent";
 import { chunk, done, fakeConfig, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 import {
   DEFAULT_COMPACTION_SETTINGS,
@@ -151,7 +151,7 @@ it("auto compacts before requests and after tools, writes replayable summaries; 
   ).toBe(true);
   expect(server.requests[1].messages).not.toEqual(server.requests[0].messages);
   // A large completed tool result crosses the next request's threshold without another user prompt.
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-compact-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-compact-"));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   await writeFile(join(dir, "x"), "tool result ".repeat(2000));
   const toolManager = SessionManager.inMemory(dir);

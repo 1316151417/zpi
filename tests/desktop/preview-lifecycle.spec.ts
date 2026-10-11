@@ -7,7 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("references from earlier assistant segments produce one card below the final answer", async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-card-turn-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-card-turn-")));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "report.pdf"), "pdf");
@@ -59,7 +59,7 @@ test("references from earlier assistant segments produce one card below the fina
 });
 
 test("delayed file checks stay with their task, stable projections share checks and interruption reveals cards", async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-card-races-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-card-races-")));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "a.pdf"), "pdf");
@@ -79,12 +79,12 @@ test("delayed file checks stay with their task, stable projections share checks 
       const bus = ipcMain as typeof ipcMain & {
         _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>>;
       };
-      const original = bus._invokeHandlers.get("ZPI:call");
+      const original = bus._invokeHandlers.get("zpi:call");
       if (!original) throw new Error("missing IPC handler");
       const state = { calls: [] as string[], release: undefined as (() => void) | undefined };
       (globalThis as typeof globalThis & { previewRace: typeof state }).previewRace = state;
-      ipcMain.removeHandler("ZPI:call");
-      ipcMain.handle("ZPI:call", async (event, method, args) => {
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", async (event, method, args) => {
         const result = await original(event, method, args);
         if (method === "checkPreviewFiles") {
           state.calls.push(args[0]);
@@ -157,7 +157,7 @@ test("delayed file checks stay with their task, stable projections share checks 
 });
 
 test("rewind removes old turn cards and failed change reads suppress only gated formats", async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-card-rewind-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-card-rewind-")));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "ok.pdf"), "pdf");
@@ -200,7 +200,7 @@ test("rewind removes old turn cards and failed change reads suppress only gated 
     const runId = await page.getByTestId("run").getAttribute("data-run-id");
     const result = await page.evaluate(
       async ({ id, runId }) =>
-        window.ZPI.editUserMessage(id, runId, {
+        window.zpi.editUserMessage(id, runId, {
           text: "讨论",
           fileReferences: [],
           attachments: [],
@@ -215,10 +215,10 @@ test("rewind removes old turn cards and failed change reads suppress only gated 
       const bus = ipcMain as typeof ipcMain & {
         _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>>;
       };
-      const original = bus._invokeHandlers.get("ZPI:call");
+      const original = bus._invokeHandlers.get("zpi:call");
       if (!original) throw new Error("missing IPC handler");
-      ipcMain.removeHandler("ZPI:call");
-      ipcMain.handle("ZPI:call", (event, method, args) =>
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", (event, method, args) =>
         method === "getChanges"
           ? { ok: false, error: { code: "storage", message: "fixture snapshot unavailable" } }
           : original(event, method, args),

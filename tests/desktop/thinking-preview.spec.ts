@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("thinking matches ZCode: latest streaming line, completed duration and history fallback", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-thinking-preview-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-thinking-preview-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "README.md"), "# Test project");

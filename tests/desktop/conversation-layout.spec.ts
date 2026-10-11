@@ -6,7 +6,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("ZCode turn actions stay near the composer and share the turn hover area at every column width", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-conversation-layout-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-conversation-layout-"));
   const text = Array.from(
     { length: 45 },
     (_, index) => `第 ${index + 1} 段：检查正文、操作栏和输入栏的布局。`,

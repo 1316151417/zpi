@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("stop hover matches ZCode in both themes, without a shortcut badge and working stop controls", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-stop-hover-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-stop-hover-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "正在生成" }));
   });
@@ -29,7 +29,7 @@ test("stop hover matches ZCode in both themes, without a shortcut badge and work
       ["light", "rgb(230, 230, 230)", "rgb(240, 240, 240)", "rgb(13, 13, 13)"],
       ["dark", "rgb(54, 54, 54)", "rgb(43, 43, 43)", "rgb(248, 248, 248)"],
     ] as const) {
-      await page.evaluate((theme) => window.ZPI.updatePreferences({ theme }), theme);
+      await page.evaluate((theme) => window.zpi.updatePreferences({ theme }), theme);
       await editor.fill(`检查停止按钮 ${theme}`);
       await editor.press("Enter");
       await expect(stop).toBeVisible();

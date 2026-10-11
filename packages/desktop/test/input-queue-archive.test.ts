@@ -1,5 +1,5 @@
-import type { InputQueue } from "ZPI-ui";
 import { expect, it, vi } from "vitest";
+import type { InputQueue } from "zpi-ui";
 import { SessionInputQueue } from "../src/main/input-queue.ts";
 
 it("a failed archive never persists an empty queue or discards accepted input", async () => {

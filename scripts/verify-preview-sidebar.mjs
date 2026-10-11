@@ -186,7 +186,7 @@ const plugin = {
     build.onResolve({ filter: /^react(?:\/.*)?$|^react-dom(?:\/.*)?$/ }, (args) => ({
       path: createRequire(join(root, "package.json")).resolve(args.path),
     }));
-    build.onResolve({ filter: /^ZPI-ui$/ }, () => ({ path: "zpi-minimal", namespace: "minimal" }));
+    build.onResolve({ filter: /^zpi-ui$/ }, () => ({ path: "zpi-minimal", namespace: "minimal" }));
     build.onLoad({ filter: /.*/, namespace: "minimal" }, () => ({
       contents: `export {TaskTitleOverflowText} from ${JSON.stringify(resolve("packages/ui/src/components/TaskTitleOverflowText.tsx"))};export {ActionHint} from ${JSON.stringify(resolve("packages/ui/src/components/MessageActions.tsx"))};`,
       loader: "tsx",

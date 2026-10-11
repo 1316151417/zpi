@@ -1,9 +1,9 @@
-import type { AgentEvent, AgentOptions, AgentTool, ToolExecutionMetadata } from "ZPI-agent";
-import { Agent } from "ZPI-agent";
-import type { AssistantMessage, ToolCall } from "ZPI-ai";
-import { createAssistantMessageEventStream, emptyAssistant } from "ZPI-ai";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
+import type { AgentEvent, AgentOptions, AgentTool, ToolExecutionMetadata } from "zpi-agent";
+import { Agent } from "zpi-agent";
+import type { AssistantMessage, ToolCall } from "zpi-ai";
+import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
 import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 
 const model = fakeModel("http://localhost");

@@ -1,5 +1,5 @@
-import type { ImageContent, Message, UserMessage } from "ZPI-ai";
-import { assertSupportedOptions, getCurrentSystemPrompt, toToolDeclaration } from "ZPI-ai";
+import type { ImageContent, Message, UserMessage } from "zpi-ai";
+import { assertSupportedOptions, getCurrentSystemPrompt, toToolDeclaration } from "zpi-ai";
 import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.ts";
 import type { AgentEvent, AgentMessage, AgentOptions, AgentState, PrepareNextTurnContext } from "./types.ts";
 export class Agent {

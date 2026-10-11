@@ -1,9 +1,9 @@
-import type { Message } from "ZPI-ai";
-import { isJsonObject } from "ZPI-ai";
-import type { AgentSessionEvent, Attachment, SessionEntry } from "ZPI-coding-agent";
-import { patchLineCounts, projectStreamedToolJournal } from "ZPI-coding-agent";
-import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView, UserQuestionResponse } from "ZPI-ui";
-import { emptySession, reduceSession, resultText } from "ZPI-ui/projection";
+import type { Message } from "zpi-ai";
+import { isJsonObject } from "zpi-ai";
+import type { AgentSessionEvent, Attachment, SessionEntry } from "zpi-coding-agent";
+import { patchLineCounts, projectStreamedToolJournal } from "zpi-coding-agent";
+import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView, UserQuestionResponse } from "zpi-ui";
+import { emptySession, reduceSession, resultText } from "zpi-ui/projection";
 
 function questionAnswers(toolName: string, details: unknown): UserQuestionResponse | undefined {
   if (toolName !== "AskUserQuestion" || !isJsonObject(details) || !isJsonObject(details.answers)) return;
@@ -118,7 +118,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
   for (const e of projectStreamedToolJournal(entries)) {
     if (
       e.type === "custom" &&
-      e.customType === "ZPI.compaction" &&
+      e.customType === "zpi.compaction" &&
       isJsonObject(e.data) &&
       e.data.runId === runId &&
       typeof e.data.id === "string" &&
@@ -134,7 +134,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
       });
     if (
       e.type === "custom" &&
-      e.customType === "ZPI.notice" &&
+      e.customType === "zpi.notice" &&
       isJsonObject(e.data) &&
       typeof e.data.text === "string" &&
       e.data.runId === runId
@@ -151,7 +151,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
     }
     if (
       e.type === "custom" &&
-      e.customType === "ZPI.run" &&
+      e.customType === "zpi.run" &&
       e.data &&
       typeof e.data === "object" &&
       !Array.isArray(e.data)

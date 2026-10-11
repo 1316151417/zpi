@@ -1,9 +1,9 @@
-import type { AssistantMessage, ToolCall } from "ZPI-ai";
-import { emptyAssistant } from "ZPI-ai";
-import { projectStreamedToolJournal, SessionManager } from "ZPI-coding-agent";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import type { AssistantMessage, ToolCall } from "zpi-ai";
+import { emptyAssistant } from "zpi-ai";
+import { projectStreamedToolJournal, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { restoreView } from "../../desktop/src/main/projection.ts";
 import { StreamingToolJournal } from "../src/core/streaming-tool-journal.ts";
@@ -12,7 +12,7 @@ import { directory } from "./helpers/session-fixture.ts";
 async function fixture() {
   const cwd = await directory();
   const manager = SessionManager.create(cwd, join(cwd, "sessions"));
-  manager.appendCustomEntry("ZPI.run", { phase: "start", runId: "r", text: "read", startedAt: 1 });
+  manager.appendCustomEntry("zpi.run", { phase: "start", runId: "r", text: "read", startedAt: 1 });
   manager.appendMessage({ role: "user", content: "read", timestamp: 1 });
   const call: ToolCall = { type: "toolCall", id: "read", name: "read", arguments: { path: "README.md" } };
   const second: ToolCall = { ...call, id: "second" };
@@ -52,7 +52,7 @@ for (const completed of [false, true]) {
     f.start();
     if (completed) f.end();
     const before = await readFile(f.file, "utf8");
-    expect(before).toContain("ZPI.streaming_tools");
+    expect(before).toContain("zpi.streaming_tools");
     expect(before).not.toContain("discarded");
     const entries = f.manager.getEntries();
     const snapshot = structuredClone(entries);

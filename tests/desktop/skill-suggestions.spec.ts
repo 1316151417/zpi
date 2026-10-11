@@ -9,7 +9,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("skills preserve names beside long descriptions and match ZCode icons, search and insertion", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-skill-suggestions-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-skill-suggestions-"));
   const cwd = join(dir, "workspace");
   const root = join(cwd, ".agents", "skills");
   const names = ["grill-with-docs", "ke-db", ...Array.from({ length: 12 }, (_, i) => `review-${i}`)];
@@ -108,7 +108,7 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     }
     const canonical = `前文 [$ke-db](${await realpath(join(root, "ke-db", "SKILL.md"))}) 后文`;
     await expect
-      .poll(() => page.evaluate((id) => window.ZPI.getDraft(id), id))
+      .poll(() => page.evaluate((id) => window.zpi.getDraft(id), id))
       .toMatchObject({
         ok: true,
         value: { text: canonical },

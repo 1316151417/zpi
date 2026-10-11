@@ -14,7 +14,7 @@ export function DirectoryMenuItems({
     void getPath().then(action).then(unwrap).catch(report);
   return (
     <>
-      <Menu.Item className={className} onSelect={() => run(window.ZPI.openDirectory)}>
+      <Menu.Item className={className} onSelect={() => run(window.zpi.openDirectory)}>
         <img
           src={new URL("./file-actions/finder.png", document.baseURI).href}
           width={16}
@@ -23,7 +23,7 @@ export function DirectoryMenuItems({
         />
         Finder
       </Menu.Item>
-      <Menu.Item className={className} onSelect={() => run(window.ZPI.copyText)}>
+      <Menu.Item className={className} onSelect={() => run(window.zpi.copyText)}>
         <Copy size={14} />
         复制路径
       </Menu.Item>

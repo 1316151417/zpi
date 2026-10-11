@@ -7,7 +7,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("shows Pi agent reconnect status, survives reload, recovers, stops waits and only then exposes terminal errors", async () => {
   test.setTimeout(60000);
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-model-retry-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-model-retry-"));
   const project = join(dir, "project");
   await mkdir(project);
   await mkdir(join(dir, "agent"));

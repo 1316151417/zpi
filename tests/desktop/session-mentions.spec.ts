@@ -1,8 +1,8 @@
-import { piTemplate, SessionManager } from "ZPI-coding-agent";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ElectronApplication, expect, type Page, test } from "@playwright/test";
+import { piTemplate, SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { clipboardText } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
@@ -14,7 +14,7 @@ async function select(page: Page, id: string) {
 
 test("hash references search across workspaces, preserve surrounding text, undo atomically and restore draft/sent chips", async () => {
   test.setTimeout(60000);
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-session-mentions-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-session-mentions-"));
   const a = join(dir, "a"),
     b = join(dir, "b");
   await mkdir(a);
@@ -32,7 +32,7 @@ test("hash references search across workspaces, preserve surrounding text, undo 
     seedHistory(dir, b, 1, { projectId: "project-b" }),
   ];
   for (const seed of seeds)
-    SessionManager.open(seed.file).appendCustomEntry("ZPI.configuration", {
+    SessionManager.open(seed.file).appendCustomEntry("zpi.configuration", {
       template: { ...piTemplate },
       disabledSkillPaths: [],
       askUserQuestion: true,
@@ -51,8 +51,8 @@ test("hash references search across workspaces, preserve surrounding text, undo 
     await select(page, current);
     await page.evaluate(
       async ({ local, other }) => {
-        const localResult = await window.ZPI.renameSession(local, "本项目历史");
-        const otherResult = await window.ZPI.renameSession(other, "跨项目历史");
+        const localResult = await window.zpi.renameSession(local, "本项目历史");
+        const otherResult = await window.zpi.renameSession(other, "跨项目历史");
         if (!localResult.ok || !otherResult.ok) throw new Error(JSON.stringify({ localResult, otherResult }));
       },
       { local, other },
@@ -124,12 +124,12 @@ test("hash references search across workspaces, preserve surrounding text, undo 
     await expect
       .poll(() =>
         page.evaluate(async (id) => {
-          const result = await window.ZPI.getSessionSnapshot(id);
+          const result = await window.zpi.getSessionSnapshot(id);
           return result.ok ? result.value.view.runs.at(-1)?.status : undefined;
         }, current),
       )
       .toBe("completed");
-    const result = await page.evaluate((id) => window.ZPI.getSessionSnapshot(id), current);
+    const result = await page.evaluate((id) => window.zpi.getSessionSnapshot(id), current);
     expect(result.ok && result.value.view.runs.at(-1)?.fileReferences).toEqual([]);
     expect(result.ok && result.value.view.runs.at(-1)?.userMessage).toBe(canonical);
   } finally {

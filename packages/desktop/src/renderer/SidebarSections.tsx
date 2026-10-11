@@ -1,8 +1,8 @@
-import { SortableList } from "ZPI-ui";
 import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { SortableList } from "zpi-ui";
 
-const storageKey = "ZPI.sidebarSectionOrder";
+const storageKey = "zpi.sidebarSectionOrder";
 const defaultOrder = ["projects", "tasks"] as const;
 type SectionId = (typeof defaultOrder)[number];
 interface Section {

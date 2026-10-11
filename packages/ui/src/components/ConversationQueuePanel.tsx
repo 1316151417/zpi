@@ -1,4 +1,3 @@
-import { parseMentions } from "ZPI-coding-agent/input";
 import {
   closestCenter,
   DndContext,
@@ -12,6 +11,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { ArrowUpFromLine, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
+import { parseMentions } from "zpi-coding-agent/input";
 import type { InputQueue, QueuedInput } from "../types.ts";
 import { ActionHint } from "./MessageActions.tsx";
 

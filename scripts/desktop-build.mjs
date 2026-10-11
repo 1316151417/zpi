@@ -6,9 +6,9 @@ export const mainBuild = {
   splitting: false,
   sourcemap: true,
   noExternal: [
-    "ZPI-ai",
-    "ZPI-agent",
-    "ZPI-coding-agent",
+    "zpi-ai",
+    "zpi-agent",
+    "zpi-coding-agent",
     "typebox",
     "openai",
     "yaml",

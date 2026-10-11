@@ -1,4 +1,16 @@
-import type { Model } from "ZPI-ai";
+import { randomUUID } from "node:crypto";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import type { Model } from "zpi-ai";
 import {
   anthropicMessagesCompatKeys,
   assertSupportedOptions,
@@ -14,25 +26,13 @@ import {
   usesChatGPTAuth,
   validateReasoningConfig,
   validateThinkingMap,
-} from "ZPI-ai";
+} from "zpi-ai";
 import {
   type ChatGPTCredential,
   isChatGPTCredential,
   refreshChatGPTCredential,
-} from "ZPI-ai/auth/openai-chatgpt";
-import { type PromptTemplate, piTemplate, validateTemplate } from "ZPI-coding-agent";
-import { randomUUID } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+} from "zpi-ai/auth/openai-chatgpt";
+import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
 import type {
   CapabilityName,
   CombinedSelection,
@@ -238,10 +238,8 @@ export class SettingsStore {
         for (const line of readFileSync(join(root, partition.name, file), "utf8").split("\n")) {
           try {
             const e = JSON.parse(line);
-            if (e.type === "custom" && typeof e.customType === "string")
-              e.customType = e.customType.replace(/^ZPI\./i, "ZPI.");
             if (e.type === "thinking_level_change") thinking = e.thinkingLevel;
-            if (e.type === "custom" && e.customType === "ZPI.run" && e.data.phase === "start") {
+            if (e.type === "custom" && e.customType === "zpi.run" && e.data.phase === "start") {
               const c = e.data.modelConfig;
               run =
                 c?.provider && c.modelId

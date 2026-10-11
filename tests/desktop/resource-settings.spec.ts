@@ -8,10 +8,10 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 async function configureModels(page: Page) {
   await page.evaluate(async () => {
-    const result = await window.ZPI.getSettings();
+    const result = await window.zpi.getSettings();
     if (!result.ok) throw Error(result.error.message);
     const p = result.value.providers[0];
-    const saved = await window.ZPI.saveProvider({
+    const saved = await window.zpi.saveProvider({
       id: p.id,
       name: p.name,
       baseUrl: p.baseUrl,
@@ -25,7 +25,7 @@ async function configureModels(page: Page) {
   });
 }
 test("read-only resource settings, skill defaults, file changes and compaction use the live runtime", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-resource-settings-")),
+  const dir = await mkdtemp(join(tmpdir(), "zpi-resource-settings-")),
     project = join(dir, "project");
   await mkdir(project);
   await mkdir(join(dir, "agent"));

@@ -1,12 +1,12 @@
-import { SessionManager } from "ZPI-coding-agent";
-import { emptySession, reduceSession } from "ZPI-ui/projection";
 import { expect, it } from "vitest";
+import { SessionManager } from "zpi-coding-agent";
+import { emptySession, reduceSession } from "zpi-ui/projection";
 import { projectEvent, restoreView } from "../src/main/projection.ts";
 
 it("restores compaction lifecycle and turns unfinished operations into interrupted dividers", () => {
   const manager = SessionManager.inMemory();
-  manager.appendCustomEntry("ZPI.run", { phase: "start", runId: "r", text: "/compact", startedAt: 1 });
-  manager.appendCustomEntry("ZPI.compaction", {
+  manager.appendCustomEntry("zpi.run", { phase: "start", runId: "r", text: "/compact", startedAt: 1 });
+  manager.appendCustomEntry("zpi.compaction", {
     runId: "r",
     id: "c",
     status: "running",
@@ -17,13 +17,13 @@ it("restores compaction lifecycle and turns unfinished operations into interrupt
     status: "interrupted",
     compactions: [{ id: "c", status: "interrupted", origin: "manual" }],
   });
-  manager.appendCustomEntry("ZPI.compaction", {
+  manager.appendCustomEntry("zpi.compaction", {
     runId: "r",
     id: "c",
     status: "completed",
     origin: "manual",
   });
-  manager.appendCustomEntry("ZPI.run", { phase: "end", runId: "r", status: "completed", endedAt: 2 });
+  manager.appendCustomEntry("zpi.run", { phase: "end", runId: "r", status: "completed", endedAt: 2 });
   expect(restoreView("s", "task", manager.getEntries()).runs[0].compactions).toEqual([
     { id: "c", status: "completed", origin: "manual", afterBlockId: undefined, error: undefined },
   ]);
@@ -35,9 +35,9 @@ it("restores old manual and automatic compaction notices as timeline markers", (
     ["continue", "上下文接近容量，已自动压缩。", "auto"],
   ]) {
     const manager = SessionManager.inMemory();
-    manager.appendCustomEntry("ZPI.run", { phase: "start", runId: "r", text, startedAt: 1 });
-    manager.appendCustomEntry("ZPI.notice", { runId: "r", text: notice });
-    manager.appendCustomEntry("ZPI.run", { phase: "end", runId: "r", status: "completed", endedAt: 2 });
+    manager.appendCustomEntry("zpi.run", { phase: "start", runId: "r", text, startedAt: 1 });
+    manager.appendCustomEntry("zpi.notice", { runId: "r", text: notice });
+    manager.appendCustomEntry("zpi.run", { phase: "end", runId: "r", status: "completed", endedAt: 2 });
     const run = restoreView("s", "task", manager.getEntries()).runs[0];
     expect(run.notice).toBeUndefined();
     expect(run.compactions).toMatchObject([{ status: "completed", origin }]);

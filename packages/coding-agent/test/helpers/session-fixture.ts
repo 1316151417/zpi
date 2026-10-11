@@ -8,7 +8,7 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((f) => f()));
 });
 export async function directory() {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-sdk-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-sdk-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }

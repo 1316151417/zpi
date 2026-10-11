@@ -15,7 +15,7 @@ interface DraftSaveGate {
 
 for (const mode of ["scheduled", "in flight"] as const) {
   test(`quitting waits for ${mode} draft saves even after repeated quit requests`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ZPI-quit-draft-"));
+    const dir = await mkdtemp(join(tmpdir(), "zpi-quit-draft-"));
     const app = await launchDesktop({ dir, url: "" });
     try {
       const page = await app.firstWindow();
@@ -23,7 +23,7 @@ for (const mode of ["scheduled", "in flight"] as const) {
         const internal = ipcMain as unknown as {
           _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
         };
-        const original = internal._invokeHandlers.get("ZPI:call");
+        const original = internal._invokeHandlers.get("zpi:call");
         if (!original) throw Error("handler");
         let release!: () => void;
         const gate = new Promise<void>((resolve) => {
@@ -31,8 +31,8 @@ for (const mode of ["scheduled", "in flight"] as const) {
         });
         const state = { entered: false, release };
         (globalThis as unknown as { draftSaveGate: DraftSaveGate }).draftSaveGate = state;
-        ipcMain.removeHandler("ZPI:call");
-        ipcMain.handle("ZPI:call", async (event, method, args) => {
+        ipcMain.removeHandler("zpi:call");
+        ipcMain.handle("zpi:call", async (event, method, args) => {
           if (method === "saveDraft") {
             state.entered = true;
             await gate;
@@ -41,7 +41,7 @@ for (const mode of ["scheduled", "in flight"] as const) {
         });
       });
       await page.getByLabel("消息", { exact: true }).fill("草稿必须保存后才能退出");
-      const id = await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+      const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
       const entered = () =>
         app.evaluate(() => (globalThis as unknown as { draftSaveGate: DraftSaveGate }).draftSaveGate.entered);
       if (mode === "in flight") await expect.poll(entered).toBe(true);
@@ -72,7 +72,7 @@ for (const mode of ["scheduled", "in flight"] as const) {
 }
 
 test("draft save failure cancels quitting and allows a successful retry", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-quit-draft-failure-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quit-draft-failure-"));
   const app = await launchDesktop({ dir, url: "" });
   try {
     const page = await app.firstWindow();
@@ -80,21 +80,21 @@ test("draft save failure cancels quitting and allows a successful retry", async 
       const internal = ipcMain as unknown as {
         _invokeHandlers: Map<string, (event: unknown, method: string, args: unknown[]) => Promise<unknown>>;
       };
-      const original = internal._invokeHandlers.get("ZPI:call");
+      const original = internal._invokeHandlers.get("zpi:call");
       if (!original) throw Error("handler");
-      ipcMain.removeHandler("ZPI:call");
-      ipcMain.handle("ZPI:call", async (event, method, args) =>
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", async (event, method, args) =>
         method === "saveDraft"
           ? { ok: false, error: { code: "storage", message: "disk full" } }
           : original(event, method, args),
       );
       (globalThis as unknown as { restoreDraftHandler: () => void }).restoreDraftHandler = () => {
-        ipcMain.removeHandler("ZPI:call");
-        ipcMain.handle("ZPI:call", original);
+        ipcMain.removeHandler("zpi:call");
+        ipcMain.handle("zpi:call", original);
       };
     });
     await page.getByLabel("消息", { exact: true }).fill("保存失败后仍然保留的草稿");
-    const id = await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+    const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
     await app.evaluate(({ app }) => app.quit());
     await expect
       .poll(() => readFile(join(dir, "agent", "logs", "error.log"), "utf8"))
@@ -120,7 +120,7 @@ test("draft save failure cancels quitting and allows a successful retry", async 
 });
 
 test("leaving the models tab during ChatGPT login restores settings controls", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-login-unmount-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-login-unmount-"));
   const app = await launchDesktop({ dir, url: "" });
   try {
     await app.evaluate(({ shell }) => {
@@ -150,7 +150,7 @@ test("leaving the models tab during ChatGPT login restores settings controls", a
 });
 
 test("reading position survives immediate session switching and closing before the bookmark timer fires", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-reading-flush-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-reading-flush-"));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
   const first = seedHistory(dir, cwd, 30);
@@ -194,7 +194,7 @@ for (const selection of [
   [0, 2],
 ] as const) {
   test(`mixed image and text paste keeps subsequent typing after the inserted text (${selection})`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ZPI-mixed-paste-"));
+    const dir = await mkdtemp(join(tmpdir(), "zpi-mixed-paste-"));
     const server = await fakeServer((_, response) => done(response));
     const app = await launchDesktop({ dir, url: server.url });
     try {
@@ -223,10 +223,10 @@ for (const selection of [
       const expected = selection[0] === 1 ? "前粘贴X尾" : "粘贴X";
       await expect(editor).toHaveText(expected);
       await expect(page.getByRole("button", { name: "预览 paste.png", exact: true })).toBeVisible();
-      const id = await page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+      const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
       await expect
         .poll(async () => {
-          const draft = await page.evaluate((id) => window.ZPI.getDraft(id as string), id);
+          const draft = await page.evaluate((id) => window.zpi.getDraft(id as string), id);
           return draft.ok ? draft.value.text : draft.error.message;
         })
         .toBe(expected);

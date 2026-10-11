@@ -14,7 +14,7 @@ const call = (id: string, name: string, args: Record<string, unknown>, index = 0
 });
 
 test("long grouped commands keep the running label separate while rolling and at narrow widths", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-tool-summary-spacing-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-tool-summary-spacing-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "a.ts"), "export const a = 1;\n");
@@ -131,7 +131,7 @@ test("long grouped commands keep the running label separate while rolling and at
 
 test("ZCode tool summaries group by phase, preserve expansion and open per-operation diffs", async () => {
   test.setTimeout(60_000);
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-tool-presentation-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-tool-presentation-"));
   const project = join(dir, "project");
   await mkdir(join(project, "src"), { recursive: true });
   await writeFile(join(project, "src/a.ts"), "const value = 'original';\n");
@@ -319,7 +319,7 @@ test("ZCode tool summaries group by phase, preserve expansion and open per-opera
 
 test("terminal output follows live data, freezes while reading and preserves completed position", async () => {
   test.setTimeout(60_000);
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-tool-output-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-tool-output-"));
   const project = join(dir, "project");
   await mkdir(project);
   const finish = deferred();
@@ -405,7 +405,7 @@ test("terminal output follows live data, freezes while reading and preserves com
 });
 
 test("write previews load large per-operation patches and failed edits retain readable parameters", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-tool-file-preview-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-tool-file-preview-"));
   const project = join(dir, "project");
   await mkdir(project);
   const finish = deferred();

@@ -1,8 +1,8 @@
-import { presetModels, providerApi, providerApis, providerBaseUrl, providerPresets } from "ZPI-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { presetModels, providerApi, providerApis, providerBaseUrl, providerPresets } from "zpi-ai";
 import { SettingsStore } from "../src/main/storage.ts";
 import { draftModel, serializeModel } from "../src/renderer/ModelConfigDialog.tsx";
 import { availablePresets } from "../src/shared/config.ts";
@@ -14,7 +14,7 @@ const codec = {
 };
 
 it("persists each preset's Anthropic and OpenAI connection without losing its credentials or models", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-protocols-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-protocols-"));
   try {
     let settings = new SettingsStore(dir, codec);
     for (const preset of providerPresets.filter((preset) => preset.id !== "openai-chatgpt")) {
@@ -52,7 +52,7 @@ it("persists each preset's Anthropic and OpenAI connection without losing its cr
 });
 
 it("keeps existing protocol-less records on Chat Completions and imports new environment connections as Anthropic", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-legacy-protocol-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-legacy-protocol-"));
   try {
     let settings = new SettingsStore(dir, codec);
     settings.saveProvider({

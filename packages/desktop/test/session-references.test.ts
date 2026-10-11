@@ -1,8 +1,8 @@
-import { emptyAssistant } from "ZPI-ai";
-import { buildSessionMentionMarkdown, SessionManager } from "ZPI-coding-agent";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { emptyAssistant } from "zpi-ai";
+import { buildSessionMentionMarkdown, SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { sessionReferenceTranscript } from "../src/main/session-references.ts";
@@ -170,7 +170,7 @@ it("degrades an unreadable reference snapshot without blocking the user's curren
 
 it("excludes internal user context, system instructions, reasoning and metadata, while bounding long transcripts", () => {
   const manager = SessionManager.inMemory();
-  manager.appendCustomEntry("ZPI.run", { phase: "start", text: "visible input" });
+  manager.appendCustomEntry("zpi.run", { phase: "start", text: "visible input" });
   manager.appendMessage({ role: "user", content: "internal prepared context", timestamp: 1 });
   manager.appendMessage({ role: "system", content: "secret system declaration", timestamp: 1 });
   const assistant = emptyAssistant(fakeModel("http://localhost"));
@@ -191,7 +191,7 @@ it("excludes internal user context, system instructions, reasoning and metadata,
     isError: false,
     timestamp: 1,
   });
-  manager.appendCustomEntry("ZPI.configuration", { secret: "credential" });
+  manager.appendCustomEntry("zpi.configuration", { secret: "credential" });
   const clean = sessionReferenceTranscript("Title", "sess_source", manager.getEntries());
   expect(clean).toContain("visible input");
   expect(clean).toContain("visible response");

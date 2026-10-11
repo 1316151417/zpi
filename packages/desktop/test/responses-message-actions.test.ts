@@ -19,7 +19,7 @@ const sse = (events: unknown[]) =>
   });
 
 async function fixture(holdText?: string) {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-responses-message-actions-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-responses-message-actions-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   await mkdir(join(dir, "agent"));
   await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 10 } }));

@@ -1,5 +1,5 @@
-import { ChatComposer, Conversation } from "ZPI-ui";
 import { useEffect, useState } from "react";
+import { ChatComposer, Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { loadSideChat, openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
@@ -30,7 +30,7 @@ export function SideChatPane({
   }, [sessionId]);
   const running = view?.runs.find((run) => run.status === "running");
   const stop = () => {
-    if (running) paneTask(window.ZPI.abortRun({ sessionId, runId: running.runId }).then(unwrap));
+    if (running) paneTask(window.zpi.abortRun({ sessionId, runId: running.runId }).then(unwrap));
   };
   if (!view)
     return (
@@ -47,13 +47,13 @@ export function SideChatPane({
         previewServices={previewServices}
         onLink={(url, options) => paneTask(openWebLink(url, options, sessionId))}
         onFile={(path, location) => openFile(sessionId, path, location)}
-        onCopy={(text) => window.ZPI.copyText(text).then(unwrap)}
+        onCopy={(text) => window.zpi.copyText(text).then(unwrap)}
         onFileAction={(path, action, location) =>
-          window.ZPI.fileAction(sessionId, path, action, location).then(unwrap)
+          window.zpi.fileAction(sessionId, path, action, location).then(unwrap)
         }
         onChanges={(runId, path, toolCallId) => openChanges(sessionId, runId, path, toolCallId)}
         onLoadToolPatch={(runId, toolCallId) =>
-          window.ZPI.readPatch(sessionId, runId, toolCallId).then(unwrap)
+          window.zpi.readPatch(sessionId, runId, toolCallId).then(unwrap)
         }
         historyCursor={cursor}
         hasEarlier={cursor != null}
@@ -93,7 +93,7 @@ export function SideChatPane({
             onStop={stop}
             onSubmit={async (text, input) => {
               try {
-                const result = unwrap(await window.ZPI.submitInput({ sessionId, text, ...input }));
+                const result = unwrap(await window.zpi.submitInput({ sessionId, text, ...input }));
                 if (result.confirmationRequired) return "confirmationRequired";
               } catch (error) {
                 if (!view.controls?.selectionValid) setModelOpen(true);

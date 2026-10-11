@@ -1,3 +1,4 @@
+import type { Static, TSchema } from "typebox";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -12,12 +13,11 @@ import type {
   ToolCall,
   ToolResultMessage,
   TranscriptContext,
-} from "ZPI-ai";
-import type { Static, TSchema } from "typebox";
+} from "zpi-ai";
 // biome-ignore lint/suspicious/noEmptyInterface: Public declaration merging extension point.
 export interface CustomAgentMessages {}
 export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
-export type ThinkingLevel = "off" | import("ZPI-ai").ThinkingLevel;
+export type ThinkingLevel = "off" | import("zpi-ai").ThinkingLevel;
 export type ToolExecutionMode = "sequential" | "parallel";
 export interface ToolExecutionMetadata {
   readOnly?: boolean;

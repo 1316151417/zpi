@@ -2783,7 +2783,7 @@ button.inline-mention,
   overflow: auto;
   padding-block: 6px;
 }
-.answer .ZPI-mermaid {
+.answer .zpi-mermaid {
   background: var(--color-surface);
   border: 0;
   border-radius: var(--radius-panel);
@@ -2799,14 +2799,14 @@ button.inline-mention,
   color: var(--color-text-muted);
   font-size: var(--text-small);
 }
-.ZPI-mermaid .mermaid-toolbar button {
+.zpi-mermaid .mermaid-toolbar button {
   display: flex;
   align-items: center;
   padding: 5px;
   color: inherit;
   border-radius: var(--radius-control);
 }
-.ZPI-mermaid .mermaid-toolbar button:hover {
+.zpi-mermaid .mermaid-toolbar button:hover {
   background: var(--color-surface-muted);
 }
 .mermaid-scroll {

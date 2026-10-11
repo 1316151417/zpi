@@ -93,7 +93,7 @@ export class SkillCatalog {
         ? []
         : [
             { path: join(this.options.cwd, ".agents", "skills"), source: "project" as const },
-            { path: join(this.options.cwd, ".ZPI", "skills"), source: "project" as const },
+            { path: join(this.options.cwd, ".zpi", "skills"), source: "project" as const },
           ]),
     ];
     for (const root of roots) {

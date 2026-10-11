@@ -31,7 +31,7 @@ const questions = [
 ];
 
 test("question paging preserves keyboard focus, IME input, skipped answers and failed question records", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-question-keyboard-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-question-keyboard-"));
   const server = await fakeServer((_, response, index) => {
     if (index % 2 === 0) {
       send(
@@ -106,9 +106,9 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
     await expect(card).toBeVisible();
     const runId = await page.getByTestId("run").last().getAttribute("data-run-id");
     await page.evaluate(async (runId) => {
-      const sessions = await window.ZPI.listRecentSessions();
+      const sessions = await window.zpi.listRecentSessions();
       if (!sessions.ok || !runId) throw new Error("missing session");
-      const result = await window.ZPI.abortRun({ sessionId: sessions.value[0].id, runId });
+      const result = await window.zpi.abortRun({ sessionId: sessions.value[0].id, runId });
       if (!result.ok) throw new Error(result.error.message);
     }, runId);
     await expect(card).toHaveCount(0);
@@ -127,7 +127,7 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
 });
 
 test("prompt plugin switches update their preview and the first-send prompt", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-prompt-plugins-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-prompt-plugins-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "完成" }));
     done(response);
@@ -175,7 +175,7 @@ async function selectText(paragraph: Locator) {
 }
 
 test("long question cards retain ZCode scroll bounds and responsive collapse in both themes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-question-layout-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-question-layout-"));
   const question = {
     header: "方案选择",
     question: `请选择要执行的方案。\n${"这里是需要完整显示的长问题说明。".repeat(14)}`,
@@ -260,7 +260,7 @@ test("long question cards retain ZCode scroll bounds and responsive collapse in 
 });
 
 test("plugin settings add AskUserQuestion to a new chat, with paging, custom answers and continuation", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-questions-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-questions-e2e-"));
   const server = await fakeServer((_, response, index) => {
     if (index === 0) {
       send(
@@ -381,7 +381,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
 });
 
 test("side chat launchers are hidden for drafts and appear after the first message", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-side-launchers-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-side-launchers-e2e-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "主任务已创建" }));
     done(response);
@@ -431,7 +431,7 @@ test("side chat launchers are hidden for drafts and appear after the first messa
 });
 
 test("side chats route selected text to the active tab and preserve independent drafts", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-side-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-side-e2e-"));
   const server = await fakeServer((_, response, index) => {
     send(response, chunk({ content: index === 0 ? "用于引用的主对话文字" : "辅助回答" }));
     done(response);
@@ -521,7 +521,7 @@ test("side chats route selected text to the active tab and preserve independent 
 });
 
 test("selection disables only the auxiliary action while its active chat awaits a response", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-side-question-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-side-question-e2e-"));
   const server = await fakeServer((_, response, index) => {
     if (index === 1) {
       send(
@@ -603,7 +603,7 @@ test("selection disables only the auxiliary action while its active chat awaits 
 });
 
 test("Markdown preview selections open an auxiliary chat with their source path and retain the parent draft", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-markdown-side-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-markdown-side-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "notes.md"), "# Notes\n\nselected document text\n");
@@ -646,7 +646,7 @@ test("Markdown preview selections open an auxiliary chat with their source path 
 });
 
 test("first-send worktree settings create a short branch and switch the prompt and workspace", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-worktree-e2e-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-worktree-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
   const git = async (...args: string[]) => (await exec("git", ["-C", project, ...args])).stdout.trim();
@@ -717,7 +717,7 @@ test("first-send worktree settings create a short branch and switch the prompt a
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(page.getByTestId("run-preparation")).toHaveCount(0);
     const record = await page.evaluate(async () => {
-      const result = await window.ZPI.listRecentSessions();
+      const result = await window.zpi.listRecentSessions();
       if (!result.ok) throw new Error(result.error.message);
       return result.value.find((record) => !record.draft);
     });
@@ -733,7 +733,7 @@ test("first-send worktree settings create a short branch and switch the prompt a
     const childId = await side.getAttribute("data-side-chat-session");
     const workspace = await page.evaluate(async (id) => {
       if (!id) throw new Error("missing child session");
-      const result = await window.ZPI.getWorkspaceInfo(id);
+      const result = await window.zpi.getWorkspaceInfo(id);
       if (!result.ok) throw new Error(result.error.message);
       return result.value;
     }, childId);

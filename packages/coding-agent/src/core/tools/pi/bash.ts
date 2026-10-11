@@ -417,7 +417,7 @@ const bashToolConfig: ShellToolConfig = {
   shellName: "bash",
   promptSnippet: bashToolSystemPromptContribution.snippet,
   promptGuidelines: bashToolSystemPromptContribution.guidelines,
-  tempFilePrefix: "ZPI-bash",
+  tempFilePrefix: "zpi-bash",
 };
 
 export function createBashToolDefinition(

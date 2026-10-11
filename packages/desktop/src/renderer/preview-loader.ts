@@ -1,4 +1,4 @@
-import { createPreviewLoader } from "ZPI-ui";
+import { createPreviewLoader } from "zpi-ui";
 import type { Result } from "../shared/bridge.ts";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -7,7 +7,7 @@ const unwrap = <T>(result: Result<T>): T => {
 };
 export const previewLoader = createPreviewLoader({
   getChangedPaths: async (id, runId) => {
-    const changes = unwrap(await window.ZPI.getChanges(id, runId));
+    const changes = unwrap(await window.zpi.getChanges(id, runId));
     return changes
       .filter(
         (change) =>
@@ -17,5 +17,5 @@ export const previewLoader = createPreviewLoader({
       )
       .map((change) => change.path);
   },
-  checkFilesExist: (params, id) => window.ZPI.checkPreviewFiles(id, params.paths).then(unwrap),
+  checkFilesExist: (params, id) => window.zpi.checkPreviewFiles(id, params.paths).then(unwrap),
 });

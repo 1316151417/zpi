@@ -8,7 +8,7 @@ import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("settings replace the workspace on the first frame without changing its layout or state", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-first-frame-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-settings-first-frame-"));
   const session = seedHistory(dir, dir, 1);
   const app = await launchDesktop({ dir, url: "" });
   try {
@@ -64,7 +64,7 @@ test("settings replace the workspace on the first frame without changing its lay
 
 for (const timeline of [false, true]) {
   test(`settings preserve ${timeline ? "timeline" : "project"} task pagination and scroll while closing hints`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-sidebar-state-"));
+    const dir = await mkdtemp(join(tmpdir(), "zpi-settings-sidebar-state-"));
     for (let index = 0; index < 25; index++) seedHistory(dir, dir, 1);
     const app = await launchDesktop({ dir, url: "" });
     try {
@@ -108,7 +108,7 @@ for (const timeline of [false, true]) {
 }
 
 test("settings hide pinned task controls and restore the task sidebar on return", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-pinned-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-settings-pinned-"));
   const session = seedHistory(dir, dir, 1);
   let app: ElectronApplication | undefined;
   try {
@@ -148,7 +148,7 @@ test("settings hide pinned task controls and restore the task sidebar on return"
 });
 
 test("settings use ZCode typography and keep titlebar dragging separate from controls", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-settings-appearance-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-settings-appearance-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });

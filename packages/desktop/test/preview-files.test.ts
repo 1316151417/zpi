@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { checkPreviewFiles } from "../src/main/preview-files.ts";
 
 it("batch validates actual regular files without reading contents, rejecting malformed input", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ZPI-preview-stat-"));
+  const root = await mkdtemp(join(tmpdir(), "zpi-preview-stat-"));
   try {
     const path = join(root, "报告 空格.pdf");
     await writeFile(path, "pdf");

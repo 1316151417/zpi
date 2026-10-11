@@ -1,19 +1,19 @@
-import { providerBaseUrl, providerPresets } from "ZPI-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { providerBaseUrl, providerPresets } from "zpi-ai";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("preset connection protocol changes update endpoints, preserve keys and survive restarting", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-provider-protocol-ui-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-provider-protocol-ui-"));
   let app = await launchDesktop({ dir, url: "" });
   const presets = providerPresets.filter((preset) => preset.id !== "openai-chatgpt");
   try {
     let page = await app.firstWindow();
     await page.evaluate(async (presets) => {
       for (const preset of presets) {
-        const result = await window.ZPI.saveProvider({
+        const result = await window.zpi.saveProvider({
           id: preset.id,
           preset: preset.id,
           name: preset.name,
@@ -55,7 +55,7 @@ test("preset connection protocol changes update endpoints, preserve keys and sur
       await page.getByRole("button", { name: "保存提供商", exact: true }).click();
       await expect(page.locator(".provider-footer").getByRole("status")).toHaveText("提供商已保存。");
       const saved = await page.evaluate(async (id) => {
-        const result = await window.ZPI.getProviderCredentials(id);
+        const result = await window.zpi.getProviderCredentials(id);
         if (!result.ok) throw new Error(result.error.message);
         return result.value;
       }, preset.id);

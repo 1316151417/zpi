@@ -1,12 +1,12 @@
-import { isJsonObject } from "ZPI-ai";
-import type { SessionEntry } from "ZPI-coding-agent";
+import { isJsonObject } from "zpi-ai";
+import type { SessionEntry } from "zpi-coding-agent";
 
 const maxMessageCharacters = 16000;
 const maxTranscriptCharacters = 128000;
 
 // Export visible user input, assistant prose and bounded tool snippets, not system
 // prompts, reasoning, model-only reminders or raw storage metadata. The provider's prepared
-// user message can contain internal reference/attachment context: use ZPI.run instead.
+// user message can contain internal reference/attachment context: use zpi.run instead.
 export function sessionReferenceTranscript(
   title: string,
   sessionId: string,
@@ -21,7 +21,7 @@ export function sessionReferenceTranscript(
     let text: string;
     if (
       entry.type === "custom" &&
-      entry.customType === "ZPI.run" &&
+      entry.customType === "zpi.run" &&
       isJsonObject(entry.data) &&
       entry.data.phase === "start"
     ) {

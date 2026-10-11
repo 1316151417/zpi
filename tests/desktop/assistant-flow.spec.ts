@@ -7,7 +7,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("assistant prose stays in order with reasoning and tools, then only the last answer leaves history", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-assistant-flow-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-assistant-flow-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "README.md"), "# Test project");
@@ -115,7 +115,7 @@ test("assistant prose stays in order with reasoning and tools, then only the las
 
 for (const ending of ["completed", "aborted", "error"] as const) {
   test(`history with intermediate prose stays visible after ${ending} and restart`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ZPI-assistant-tail-"));
+    const dir = await mkdtemp(join(tmpdir(), "zpi-assistant-tail-"));
     const project = join(dir, "project");
     await mkdir(project);
     await writeFile(join(project, "README.md"), "# Test project");

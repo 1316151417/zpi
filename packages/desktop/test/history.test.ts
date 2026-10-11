@@ -1,8 +1,8 @@
-import { SessionManager } from "ZPI-coding-agent";
-import { mergeHistory } from "ZPI-ui";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { SessionManager } from "zpi-coding-agent";
+import { mergeHistory } from "zpi-ui";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { seedHistory } from "../../../tests/history-fixture.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
@@ -51,15 +51,13 @@ it("legacy tool declarations preserve block identity between streaming and paged
   }
 });
 
-it("legacy transcripts rebuild old indexes and retain run metadata and paged history", async () => {
+it("lowercase transcripts rebuild stale indexes and retain run metadata and paged history", async () => {
   const { host, dir, cwd } = await setup();
   const seed = seedHistory(dir, cwd, 2, { perRun: 2 });
   await host.close();
   const before = new HistoryIndex(seed.file);
   await before.load();
   const original = await readFile(seed.file, "utf8");
-  const legacy = original.replaceAll("ZPI", "ZPI".toLowerCase());
-  await writeFile(seed.file, legacy);
   const { stat } = await import("node:fs/promises");
   const fileStat = await stat(seed.file);
   await writeFile(
@@ -69,12 +67,12 @@ it("legacy transcripts rebuild old indexes and retain run metadata and paged his
   const restored = new HistoryIndex(seed.file);
   await restored.load();
   expect(restored.readBytes).toBeGreaterThan(0);
-  expect(restored.data.header.format).toBe("ZPI");
+  expect(restored.data.header.format).toBe("zpi");
   expect(restored.data.diagnostic).toBeUndefined();
-  expect(restored.data.state["ZPI.session_meta"]).toMatchObject({ customType: "ZPI.session_meta" });
+  expect(restored.data.state["zpi.session_meta"]).toMatchObject({ customType: "zpi.session_meta" });
   expect(restored.data.calls).toHaveLength(2);
   expect(restored.page().entries).toEqual(before.page().entries);
-  expect(await readFile(seed.file, "utf8")).toBe(legacy);
+  expect(await readFile(seed.file, "utf8")).toBe(original);
 });
 
 it("history diagnostics retain the first damaged record's byte offset", async () => {

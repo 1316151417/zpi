@@ -58,7 +58,7 @@ function select(selected: string | undefined) {
 beforeEach(() => {
   vi.clearAllMocks();
   serial = 0;
-  vi.stubGlobal("window", { ZPI: bridge });
+  vi.stubGlobal("window", { zpi: bridge });
   usePane.setState({ open: false, active: undefined, tabs: [], preferences: new Map() });
   useStore.setState({
     selected: "A",

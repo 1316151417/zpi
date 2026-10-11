@@ -7,7 +7,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 
 test("desktop automation renders and accepts input without showing or focusing its window", async () => {
   test.skip(process.env.ZPI_TEST_SHOW_WINDOW === "1", "Visible debugging was explicitly requested");
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-hidden-window-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-hidden-window-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });

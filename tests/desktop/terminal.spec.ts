@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("packaged terminal starts a shell and runs commands outside the repository", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-packaged-terminal-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-packaged-terminal-"));
   await writeFile(join(dir, ".zshrc"), "PROMPT='ZPI> '\n");
   let app: ElectronApplication | undefined;
   try {

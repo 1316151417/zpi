@@ -1,6 +1,6 @@
-import { emptyAssistant, normalizeContext, presetModels, streamSimple } from "ZPI-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
+import { emptyAssistant, normalizeContext, presetModels, streamSimple } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { responsesInput } from "../src/api/openai-responses.ts";
 import type { Message, Model } from "../src/types.ts";

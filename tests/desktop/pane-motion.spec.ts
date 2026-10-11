@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("right pane slides in both layouts, locks content during toggles and resizes without lag", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-pane-motion-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-pane-motion-"));
   const app = await launchDesktop({ dir, url: "" });
   try {
     const page = await app.firstWindow();

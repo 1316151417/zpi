@@ -19,7 +19,7 @@ const openArchives = async (page: Page) => {
 };
 
 test("running task menu, directory actions, Escape dismissal/IME priority and archive queue closure", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-task-actions-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-task-actions-"));
   const project = join(dir, "中文 项目");
   await mkdir(project);
   await writeFile(join(project, "file.txt"), "reference");
@@ -34,12 +34,12 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     const page = await app.firstWindow();
     await expect(editor(page)).toBeFocused();
     await page.evaluate(async () => {
-      const result = await window.ZPI.getSettings();
+      const result = await window.zpi.getSettings();
       if (!result.ok) throw new Error(result.error.message);
       const provider = result.value.providers[0];
-      const credentials = await window.ZPI.getProviderCredentials(provider.id);
+      const credentials = await window.zpi.getProviderCredentials(provider.id);
       if (!credentials.ok) throw new Error(credentials.error.message);
-      const saved = await window.ZPI.saveProvider({
+      const saved = await window.zpi.saveProvider({
         id: provider.id,
         name: provider.name,
         baseUrl: provider.baseUrl,
@@ -221,7 +221,7 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
 });
 
 test("archived and damaged groups, counted delete confirmation and batch deletion continues after failure", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-archived-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-archived-settings-"));
   await mkdir(join(dir, "agent", "sessions", "_unassigned"), { recursive: true });
   await writeFile(join(dir, "agent", "sessions", "_unassigned", "broken-task.jsonl"), "bad header\n");
   const server = await fakeServer((_, res) => done(res));
@@ -232,10 +232,10 @@ test("archived and damaged groups, counted delete confirmation and batch deletio
     await expect(editor(page)).toBeVisible();
     await page.evaluate(async () => {
       for (const title of ["archived one", "archived two"]) {
-        const created = await window.ZPI.createSession(null);
+        const created = await window.zpi.createSession(null);
         if (!created.ok) throw new Error(created.error.message);
-        await window.ZPI.renameSession(created.value.id, title);
-        await window.ZPI.archiveSession(created.value.id);
+        await window.zpi.renameSession(created.value.id, title);
+        await window.zpi.archiveSession(created.value.id);
       }
     });
     await openArchives(page);
@@ -256,7 +256,7 @@ test("archived and damaged groups, counted delete confirmation and batch deletio
     await page.screenshot({ path: "test-results/archived-delete-confirmation.png" });
     await page.getByRole("button", { name: "取消", exact: true }).click();
     const failedId = await page.evaluate(async () => {
-      const records = await window.ZPI.listArchivedSessions();
+      const records = await window.zpi.listArchivedSessions();
       if (!records.ok) throw new Error(records.error.message);
       return records.value.find((r) => r.title === "archived two")?.id;
     });
@@ -285,7 +285,7 @@ test("archived and damaged groups, counted delete confirmation and batch deletio
 });
 
 test("every new-task entry focuses the composer when creating or reusing a draft", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-new-task-focus-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-new-task-focus-"));
   const project = join(dir, "project");
   await mkdir(project);
   const server = await fakeServer((_, response) => done(response));
@@ -293,7 +293,7 @@ test("every new-task entry focuses the composer when creating or reusing a draft
   try {
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
-    const selected = () => page.evaluate(() => localStorage.getItem("ZPI.selectedSession"));
+    const selected = () => page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
     await expect(editor(page)).toBeFocused();
     const unassigned = await selected();
     const globalNew = page.locator(".sidebar-global").getByLabel("新建任务", { exact: true });
@@ -351,7 +351,7 @@ test("every new-task entry focuses the composer when creating or reusing a draft
 });
 
 test("composer focus restores per-task caret on switch/restart and terminal tabs receive focus", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-input-focus-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-input-focus-"));
   const server = await fakeServer((_, res) => {
     send(res, chunk({ content: "done" }));
     done(res);
@@ -375,9 +375,9 @@ test("composer focus restores per-task caret on switch/restart and terminal tabs
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const id = localStorage.getItem("ZPI.selectedSession");
+          const id = localStorage.getItem("zpi.selectedSession");
           if (!id) return;
-          const draft = await window.ZPI.getDraft(id);
+          const draft = await window.zpi.getDraft(id);
           return draft.ok ? draft.value.selection : undefined;
         }),
       )

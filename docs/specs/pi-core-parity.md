@@ -52,8 +52,8 @@ Fork/rewind still clone at the mutation boundary and rekey checkpoint references
 
 ## Retry and timeout settings
 
-Read `agentDir/settings.json` (normally `~/.ZPI/agent/settings.json`) and
-`cwd/.ZPI/settings.json`, recursively merging project values over global values.
+Read `agentDir/settings.json` (normally `~/.zpi/agent/settings.json`) and
+`cwd/.zpi/settings.json`, recursively merging project values over global values.
 SDK callers may supply `SettingsManager.inMemory(...)` and existing `compaction`
 options. Model budgets resolve each field through `compaction.modelOverrides`
 keyed by `provider/modelId`, ordinary values, then defaults. Zero is valid;

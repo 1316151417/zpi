@@ -22,7 +22,7 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
             disabled={!pinned && pins >= taskPinLimit}
             onSelect={() =>
               task(async () => {
-                unwrap(await window.ZPI.setSessionPinned(record.id, !pinned));
+                unwrap(await window.zpi.setSessionPinned(record.id, !pinned));
                 await refresh();
               })
             }
@@ -46,13 +46,13 @@ export function TaskMenu({ record, onRename }: { record: SessionRecord; onRename
           </Menu.Item>
           <Menu.Separator className="menu-separator" />
           <DirectoryMenuItems
-            getPath={async () => unwrap(await window.ZPI.getWorkspaceInfo(record.id)).cwd}
+            getPath={async () => unwrap(await window.zpi.getWorkspaceInfo(record.id)).cwd}
           />
           <Menu.Item
             className="menu-item"
             onSelect={() =>
               task(async () => {
-                unwrap(await window.ZPI.copySessionPath(record.id));
+                unwrap(await window.zpi.copySessionPath(record.id));
               })
             }
           >

@@ -1,5 +1,5 @@
-import type { DesktopEventEnvelope } from "ZPI-ui";
 import { afterEach, expect, it, vi } from "vitest";
+import type { DesktopEventEnvelope } from "zpi-ui";
 import { deferred } from "../../../tests/fake-server.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
 
@@ -55,7 +55,7 @@ async function setup() {
     }),
     logError: vi.fn(),
   };
-  const window = Object.assign(new EventTarget(), { ZPI: bridge });
+  const window = Object.assign(new EventTarget(), { zpi: bridge });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   vi.stubGlobal("window", window);
   vi.stubGlobal("document", document);

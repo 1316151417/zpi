@@ -8,7 +8,7 @@ import { SettingsStore } from "../src/main/storage.ts";
 import type { InterfacePreferences } from "../src/shared/bridge.ts";
 
 it("environment discovery skips locked credentials without modifying persisted settings or secrets", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-locked-discovery-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-locked-discovery-"));
   let available = true;
   const encryption = {
     isEncryptionAvailable: () => available,
@@ -38,7 +38,7 @@ it("environment discovery skips locked credentials without modifying persisted s
 });
 
 it("notification preferences default on, migrate old settings and preserve the independent sound choice", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-notification-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-notification-settings-"));
   const encryption = {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.alloc(0),
@@ -82,7 +82,7 @@ it("notification preferences default on, migrate old settings and preserve the i
 });
 
 it("pixel font sizes persist and invalid updates leave settings intact", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-font-size-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-font-size-"));
   const encryption = {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.alloc(0),
@@ -123,7 +123,7 @@ it("pixel font sizes persist and invalid updates leave settings intact", async (
 });
 
 it("restores numeric font sizes without changing other settings or rewriting stored data", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-font-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-font-settings-"));
   const encryption = {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.alloc(0),
@@ -151,7 +151,7 @@ it("restores numeric font sizes without changing other settings or rewriting sto
 });
 
 it("credential restore is bound to the endpoint and unavailable encryption removes stale credentials", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-storage-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-storage-"));
   let available = true;
   // A deterministic codec tests persistence without using the machine's keychain.
   const encryption = {
@@ -199,7 +199,7 @@ it("credential restore is bound to the endpoint and unavailable encryption remov
 });
 
 it("project files are validated before their IDs can become storage paths", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-project-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-project-record-"));
   const settings = new SettingsStore(dir, {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.alloc(0),

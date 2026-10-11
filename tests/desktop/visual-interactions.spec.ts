@@ -7,7 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("task menus and dialogs share ZCode surfaces, enter and exit without losing focus", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-visual-interactions-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-visual-interactions-"));
   const project = join(dir, "workspace");
   await mkdir(project);
   const server = await fakeServer((_, response) => {

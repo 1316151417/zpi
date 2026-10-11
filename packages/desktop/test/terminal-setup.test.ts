@@ -7,7 +7,7 @@ import { prepareTerminal } from "../../../scripts/prepare-terminal.ts";
 it.skipIf(process.platform !== "darwin")(
   "repairs macOS terminal helpers for both architectures and rebuilt binaries before packaging",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "ZPI-terminal-setup-"));
+    const root = await mkdtemp(join(tmpdir(), "zpi-terminal-setup-"));
     try {
       const helpers = ["prebuilds/darwin-arm64", "prebuilds/darwin-x64", "build/Release"];
       for (const dir of helpers) {
@@ -34,7 +34,7 @@ it.skipIf(process.platform !== "darwin")(
 it.skipIf(process.platform !== "darwin")(
   "surfaces terminal setup failures instead of ignoring them",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "ZPI-terminal-setup-error-"));
+    const root = await mkdtemp(join(tmpdir(), "zpi-terminal-setup-error-"));
     try {
       const file = join(root, "not-a-directory");
       await writeFile(file, "file");

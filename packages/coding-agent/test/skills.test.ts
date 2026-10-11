@@ -11,7 +11,7 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 async function temp() {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-skills-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-skills-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -80,15 +80,15 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
   await writeFile(join(f.cwd, "AGENTS.md"), "PROJECT RULE");
   await writeSkill(join(f.agentDir, "skills"), "review", "User review", "USER SECRET BODY");
   await writeSkill(
-    join(f.cwd, ".ZPI", "skills"),
+    join(f.cwd, ".zpi", "skills"),
     "review",
     "Project review",
     "PROJECT SECRET BODY\nUse references/check.md",
   );
-  await writeSkill(join(f.cwd, ".ZPI", "skills"), "another", "Another", "ANOTHER BODY");
-  await mkdir(join(f.cwd, ".ZPI", "skills", "broken"));
+  await writeSkill(join(f.cwd, ".zpi", "skills"), "another", "Another", "ANOTHER BODY");
+  await mkdir(join(f.cwd, ".zpi", "skills", "broken"));
   await writeFile(
-    join(f.cwd, ".ZPI", "skills", "broken", "SKILL.md"),
+    join(f.cwd, ".zpi", "skills", "broken", "SKILL.md"),
     "---\nname: [bad\ndescription: bad\n---\n",
   );
   const loader = new FileResourceLoader({ userSkillPaths: [], cwd: f.cwd, agentDir: f.agentDir });
@@ -103,7 +103,7 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
   expect(await loader.loadSkill("review")).toMatchObject({
     source: "project",
     body: "PROJECT SECRET BODY\nUse references/check.md",
-    baseDir: await realpath(join(f.cwd, ".ZPI", "skills", "review")),
+    baseDir: await realpath(join(f.cwd, ".zpi", "skills", "review")),
   });
   await expect(loader.loadSkill("missing")).rejects.toThrow("not found");
   const extraRoot = join(f.dir, "extra-skills");
@@ -129,7 +129,7 @@ it.each(["plain", "linked", "missing"])(
       send(r, chunk({ content: "ok" }));
       done(r);
     });
-    const root = join(f.cwd, ".ZPI", "skills");
+    const root = join(f.cwd, ".zpi", "skills");
     await writeSkill(root, "review", "Review", "BODY ON DEMAND");
     const name = kind === "missing" ? "missing" : "review";
     const reference =
@@ -171,7 +171,7 @@ it("loads a referenced skill only after the model calls read", async () => {
       done(r);
     }
   });
-  const root = join(f.cwd, ".ZPI", "skills");
+  const root = join(f.cwd, ".zpi", "skills");
   await writeSkill(root, "review", "Review", "BODY ON DEMAND");
   path = join(root, "review", "SKILL.md");
   const text = `${buildMentionMarkdown("$review", path)} check sources`;
@@ -191,7 +191,7 @@ it("unknown dollar-prefixed text is sent unchanged without expanding a skill", a
     send(r, chunk({ content: "ok" }));
     done(r);
   });
-  await writeSkill(join(f.cwd, ".ZPI", "skills"), "review", "Review", "BODY ON DEMAND");
+  await writeSkill(join(f.cwd, ".zpi", "skills"), "review", "Review", "BODY ON DEMAND");
   const text = "  $100 is the price\n$review is mentioned later  ";
   await f.session.submit(text);
   expect(f.server.requests[0].messages).toContainEqual(

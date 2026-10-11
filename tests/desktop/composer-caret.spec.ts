@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("native composer caret fades smoothly, resets on editing and stays visible during IME", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-composer-caret-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-caret-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });

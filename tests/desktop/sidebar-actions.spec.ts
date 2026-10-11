@@ -9,7 +9,7 @@ import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("sidebar headings match ZCode hover states and dimensions; project menu only removes its entry", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-actions-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-actions-"));
   const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "keep.txt"), "project source");
@@ -243,7 +243,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       page.locator(".projects").getByRole("button", { name: "项目任务", exact: true }),
     ).toBeVisible();
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
-    await page.evaluate(() => window.ZPI.updatePreferences({ theme: "dark", fontSize: 18 }));
+    await page.evaluate(() => window.zpi.updatePreferences({ theme: "dark", fontSize: 18 }));
     await page.reload();
     await editor.focus();
     await editor.hover();
@@ -269,7 +269,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
 });
 
 test("project directory actions preserve literal paths and report Finder failures", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-project-directory-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-project-directory-"));
   const project = join(dir, "project # % 项目 ");
   await mkdir(project);
   let app: ElectronApplication | undefined;
@@ -314,7 +314,7 @@ test("project directory actions preserve literal paths and report Finder failure
 });
 
 test("tasks appear in one section and return to their original group after unpinning and restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-groups-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-groups-"));
   const project = join(dir, "project");
   await mkdir(project);
   const server = await fakeServer((_, response) => {
@@ -349,7 +349,7 @@ test("tasks appear in one section and return to their original group after unpin
     // ZCode: text-ui-base headings/names, medium headings, normal names,
     // 28px purpose headers and 24px task text slots inside 32px rows.
     for (const size of [14, 18, 14]) {
-      await page.evaluate((fontSize) => window.ZPI.updatePreferences({ fontSize }), size);
+      await page.evaluate((fontSize) => window.zpi.updatePreferences({ fontSize }), size);
       await page.reload();
       const headings = page.locator(".section-toggle");
       const names = page.locator(".sidebar .project-name, .sidebar .session-name");
@@ -411,7 +411,7 @@ test("tasks appear in one section and return to their original group after unpin
 });
 
 test("sidebar section handles reorder with keyboard and pointer and preserve order after restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ZPI-sidebar-order-"));
+  const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-order-"));
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, url: "" });
@@ -465,7 +465,7 @@ test("sidebar section handles reorder with keyboard and pointer and preserve ord
 });
 
 test("task controls follow native hover even when React misses mouseleave, and retain keyboard access", async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "ZPI-task-hover-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-task-hover-")));
   const workspace = join(dir, "workspace");
   await mkdir(workspace);
   seedHistory(dir, workspace, 1);

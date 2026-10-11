@@ -1,6 +1,6 @@
-import { ActionHint, TaskTitleOverflowText } from "ZPI-ui";
 import { Archive, LoaderIcon, Pin } from "lucide-react";
 import type { CSSProperties } from "react";
+import { ActionHint, TaskTitleOverflowText } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
 import { report, unwrap } from "./store.ts";
@@ -166,7 +166,7 @@ function QuestionBadge({ record }: { record: SessionRecord }) {
       }
       onClick={(event) => {
         event.stopPropagation();
-        if (timed) void window.ZPI.snoozeQuestion(record.id, question.id).then(unwrap).catch(report);
+        if (timed) void window.zpi.snoozeQuestion(record.id, question.id).then(unwrap).catch(report);
       }}
     >
       <span>等待确认</span>

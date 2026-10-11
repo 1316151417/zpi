@@ -1,6 +1,3 @@
-import type { ThinkingLevel } from "ZPI-agent";
-import type { JsonValue, Message, SystemMessage, Usage } from "ZPI-ai";
-import { assertSupportedOptions, getCurrentTools } from "ZPI-ai";
 import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
@@ -14,18 +11,20 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import type { ThinkingLevel } from "zpi-agent";
+import type { JsonValue, Message, SystemMessage, Usage } from "zpi-ai";
+import { assertSupportedOptions, getCurrentTools } from "zpi-ai";
 import {
   isSessionEntry,
   isSessionHeader,
   maxSessionEntryBytes,
-  normalizeSessionRecord,
   validateMessage,
 } from "./record-validation.ts";
 import { recoverStreamedToolJournal } from "./streaming-tool-journal.ts";
 export interface SessionHeader {
   type: "session";
   version: 1;
-  format: "ZPI";
+  format: "zpi";
   id: string;
   timestamp: string;
   cwd: string;
@@ -74,7 +73,7 @@ export class SessionManager {
     this.header = {
       type: "session",
       version: 1,
-      format: "ZPI",
+      format: "zpi",
       id,
       timestamp: new Date().toISOString(),
       cwd: resolve(cwd),
@@ -82,7 +81,7 @@ export class SessionManager {
   }
   static create(
     cwd: string,
-    sessionDir = join(homedir(), ".ZPI", "agent", "sessions"),
+    sessionDir = join(homedir(), ".zpi", "agent", "sessions"),
     options: { id?: string } = {},
   ): SessionManager {
     assertSupportedOptions(options, ["id"], "SessionManager.create");
@@ -114,7 +113,7 @@ export class SessionManager {
       try {
         if (Buffer.byteLength(lines[i]) > maxSessionEntryBytes)
           throw new Error("Session entry exceeds 8 MiB");
-        parsed.push(normalizeSessionRecord(JSON.parse(lines[i])));
+        parsed.push(JSON.parse(lines[i]));
       } catch (error) {
         if (i !== lines.length - 1 || i === 0 || raw.endsWith("\n"))
           throw new Error(`Corrupt session at line ${i + 1}: ${String(error)}`);

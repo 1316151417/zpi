@@ -14,7 +14,7 @@ await buildAppIcon();
 let executable = electron;
 if (process.platform === "darwin") {
   // Match Preview's identity without modifying the installed Electron bundle.
-  const bundle = resolve("node_modules/.cache/ZPI-dev/ZPI Preview.app");
+  const bundle = resolve("node_modules/.cache/zpi-dev/ZPI Preview.app");
   await cp(resolve(dirname(electron), "../.."), bundle, {
     recursive: true,
     verbatimSymlinks: true,

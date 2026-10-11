@@ -1,15 +1,15 @@
-import type { DesktopEventEnvelope } from "ZPI-ui";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { DesktopEventEnvelope } from "zpi-ui";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 
-const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("ZPI:call", method, args);
+const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
 let beforeQuit: (() => Promise<void>) | undefined;
-ipcRenderer.on("ZPI:prepare-quit", async (_event, request: number) => {
+ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {
   try {
     await beforeQuit?.();
-    ipcRenderer.send("ZPI:drafts-flushed", request, null);
+    ipcRenderer.send("zpi:drafts-flushed", request, null);
   } catch (error) {
-    ipcRenderer.send("ZPI:drafts-flushed", request, error instanceof Error ? error.message : String(error));
+    ipcRenderer.send("zpi:drafts-flushed", request, error instanceof Error ? error.message : String(error));
   }
 });
 const bridge: DesktopBridge = {
@@ -20,7 +20,7 @@ const bridge: DesktopBridge = {
   createSideChat: (id) => call("createSideChat", id),
   getGitEnvironment: (id) => call("getGitEnvironment", id),
   setNewWorktree: (id, enabled) => call("setNewWorktree", id, enabled),
-  logError: (error) => ipcRenderer.send("ZPI:error", error),
+  logError: (error) => ipcRenderer.send("zpi:error", error),
   platform: process.platform,
   workspacePanelRadius:
     Number(process.argv.find((arg) => arg.startsWith("--zpi-panel-radius="))?.split("=")[1]) || 6,
@@ -32,13 +32,13 @@ const bridge: DesktopBridge = {
   },
   onTaskNotificationClick(listener) {
     const handler = (_: Electron.IpcRendererEvent, sessionId: string) => listener(sessionId);
-    ipcRenderer.on("ZPI:task-notification-click", handler);
-    return () => ipcRenderer.removeListener("ZPI:task-notification-click", handler);
+    ipcRenderer.on("zpi:task-notification-click", handler);
+    return () => ipcRenderer.removeListener("zpi:task-notification-click", handler);
   },
   onTaskNotificationSound(listener) {
     const handler = () => listener();
-    ipcRenderer.on("ZPI:task-notification-sound", handler);
-    return () => ipcRenderer.removeListener("ZPI:task-notification-sound", handler);
+    ipcRenderer.on("zpi:task-notification-sound", handler);
+    return () => ipcRenderer.removeListener("zpi:task-notification-sound", handler);
   },
   archiveSession: (id) => call("archiveSession", id),
   listArchivedSessions: () => call("listArchivedSessions"),
@@ -55,8 +55,8 @@ const bridge: DesktopBridge = {
   closeBrowser: (id) => call("closeBrowser", id),
   onPaneEvent(listener) {
     const handler = (_: Electron.IpcRendererEvent, event: PaneEvent) => listener(event);
-    ipcRenderer.on("ZPI:pane-event", handler);
-    return () => ipcRenderer.removeListener("ZPI:pane-event", handler);
+    ipcRenderer.on("zpi:pane-event", handler);
+    return () => ipcRenderer.removeListener("zpi:pane-event", handler);
   },
   getDraft: (id) => call("getDraft", id),
   saveDraft: (id, draft) => call("saveDraft", id, draft),
@@ -112,8 +112,8 @@ const bridge: DesktopBridge = {
       _event: Electron.IpcRendererEvent,
       settings: import("../shared/bridge.ts").PublicSettings,
     ) => listener(settings);
-    ipcRenderer.on("ZPI:settings", handler);
-    return () => ipcRenderer.removeListener("ZPI:settings", handler);
+    ipcRenderer.on("zpi:settings", handler);
+    return () => ipcRenderer.removeListener("zpi:settings", handler);
   },
   discoverModels: (input) => call("discoverModels", input),
   beginChatGPTLogin: (providerId) => call("beginChatGPTLogin", providerId),
@@ -132,8 +132,8 @@ const bridge: DesktopBridge = {
   openExternal: (url) => call("openExternal", url),
   onEvent(listener) {
     const handler = (_: Electron.IpcRendererEvent, event: DesktopEventEnvelope) => listener(event);
-    ipcRenderer.on("ZPI:event", handler);
-    return () => ipcRenderer.removeListener("ZPI:event", handler);
+    ipcRenderer.on("zpi:event", handler);
+    return () => ipcRenderer.removeListener("zpi:event", handler);
   },
 };
-contextBridge.exposeInMainWorld("ZPI", bridge);
+contextBridge.exposeInMainWorld("zpi", bridge);

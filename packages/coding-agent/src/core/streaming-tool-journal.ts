@@ -1,11 +1,11 @@
-import type { AgentEvent } from "ZPI-agent";
-import type { AssistantMessage, JsonValue, Message, ToolResultMessage } from "ZPI-ai";
-import { isJsonObject } from "ZPI-ai";
 import { randomUUID } from "node:crypto";
+import type { AgentEvent } from "zpi-agent";
+import type { AssistantMessage, JsonValue, Message, ToolResultMessage } from "zpi-ai";
+import { isJsonObject } from "zpi-ai";
 import { validateMessage } from "./record-validation.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 
-const JOURNAL_TYPE = "ZPI.streaming_tools";
+const JOURNAL_TYPE = "zpi.streaming_tools";
 interface Journal {
   id: string;
   anchorId: string | null;
