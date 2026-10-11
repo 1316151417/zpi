@@ -4,7 +4,7 @@
 
 ZPI 是一个极简的 AI 编码桌面客户端：参考 ZCode 的界面，采用 Pi 风格的 Agent 内核，把「做减法」同时用在工具、界面和工作流上。读代码、改文件、跑命令、看结果——不必先搭建一套复杂的 Agent 平台。
 
-[下载安装](https://github.com/1316151417/zpi/releases) · [项目介绍](http://101.200.240.206) · [GitHub](https://github.com/1316151417/zpi)
+[下载安装](https://github.com/1316151417/zpi/releases) · [项目介绍](http://101.200.240.206/zpi/) · [GitHub](https://github.com/1316151417/zpi)
 
 ## 理念：极简不是少做事，而是少干扰
 
