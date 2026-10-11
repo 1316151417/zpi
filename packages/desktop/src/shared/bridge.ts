@@ -6,6 +6,7 @@ import type {
   QueuedInput,
   RunStatus,
   SessionControls,
+  SessionMentionSuggestion,
   SessionView,
   WorktreeInfo,
 } from "ZPI-ui";
@@ -280,6 +281,7 @@ export interface DesktopBridge {
   removeProject(id: string): Promise<Result<void>>;
   listSessions(projectId: string): Promise<Result<SessionRecord[]>>;
   listRecentSessions(): Promise<Result<SessionRecord[]>>;
+  listSessionMentions(sessionId: string): Promise<Result<SessionMentionSuggestion[]>>;
   createSession(projectId: string | null): Promise<Result<SessionRecord>>;
   activateSession(sessionId: string): Promise<Result<SessionRecord>>;
   setSessionPinned(sessionId: string, pinned: boolean): Promise<Result<SessionRecord>>;
@@ -380,6 +382,7 @@ export const methods = [
   "removeProject",
   "listSessions",
   "listRecentSessions",
+  "listSessionMentions",
   "setSessionPinned",
   "createSession",
   "activateSession",

@@ -5,6 +5,7 @@ export const inputContext: ComposerContext = {
   readImage: readMarkdownImage,
   downloadImage: (src) => window.ZPI.downloadImage(src).then(unwrap),
   searchFiles: (id, q) => window.ZPI.searchFiles(id, q).then(unwrap),
+  listSessionMentions: (id) => window.ZPI.listSessionMentions(id).then(unwrap),
   pickAttachments: (id) => window.ZPI.pickAttachments(id).then(unwrap),
   importAttachment: (id, file) => window.ZPI.importAttachment(id, file).then(unwrap),
   removeAttachment: (id, image) => window.ZPI.removeAttachment(id, image).then(unwrap),

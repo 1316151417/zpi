@@ -1,5 +1,5 @@
 export interface Mention {
-  kind: "file" | "skill";
+  kind: "file" | "skill" | "session";
   label: string;
   path: string;
   start: number;
@@ -13,20 +13,51 @@ export function buildMentionMarkdown(label: string, path: string): string {
   const target = path.replace(/\\/g, "\\\\").replace(/[<>]/g, "\\$&");
   return `[${title}](${/[\s()<>]/.test(path) ? `<${target}>` : target})`;
 }
+// ZCode's canonical # destination, adapted to ZPI's UUID session identities.
+const sessionTarget = /^#(?:sess_[a-zA-Z0-9._-]+|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/i;
+export function buildSessionMentionMarkdown(sessionId: string, label?: string): string {
+  const title = label?.trim();
+  return title && title !== sessionId ? buildMentionMarkdown(`#${title}`, `#${sessionId}`) : `#${sessionId}`;
+}
+export function extractSessionReferences(text: string): string[] {
+  return [
+    ...new Set(
+      parseMentions(text)
+        .filter((mention) => mention.kind === "session")
+        .map((mention) => mention.path.slice(1)),
+    ),
+  ];
+}
 export function parseMentions(text: string): Mention[] {
   const result: Mention[] = [];
-  for (const match of text.matchAll(pattern)) {
+  const links = [...text.matchAll(pattern)];
+  for (const match of links) {
     const label = unescapeMarkdown(match[1]),
       path = unescapeMarkdown(match[2] ?? match[3]);
-    if (!path.startsWith("/") && !path.startsWith("./") && !path.startsWith("../")) continue;
+    const session = sessionTarget.test(path);
+    if (!session && !path.startsWith("/") && !path.startsWith("./") && !path.startsWith("../")) continue;
     result.push({
-      kind: label.startsWith("$") ? "skill" : "file",
-      label: label.replace(/^[$@]/, ""),
+      kind: session ? "session" : label.startsWith("$") ? "skill" : "file",
+      label: label.replace(session ? /^#/ : /^[$@]/, ""),
       path,
       start: match.index,
       end: match.index + match[0].length,
       markdown: match[0],
     });
   }
-  return result;
+  for (const match of text.matchAll(
+    /(^|\s)(#(?:sess_[a-zA-Z0-9._-]+|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}))(?=$|\s)/gi,
+  )) {
+    const start = match.index + match[1].length;
+    if (links.some((link) => start >= link.index && start < link.index + link[0].length)) continue;
+    result.push({
+      kind: "session",
+      label: match[2].slice(1),
+      path: match[2],
+      start,
+      end: start + match[2].length,
+      markdown: match[2],
+    });
+  }
+  return result.sort((a, b) => a.start - b.start);
 }

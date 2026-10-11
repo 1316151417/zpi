@@ -340,6 +340,7 @@ async function launch(): Promise<void> {
         removeProject: 1,
         listSessions: 1,
         listRecentSessions: 0,
+        listSessionMentions: 1,
         setSessionPinned: 2,
         getProviderCredentials: 1,
         updatePreferences: 1,
@@ -609,6 +610,9 @@ async function launch(): Promise<void> {
           break;
         case "listRecentSessions":
           value = host.listRecentSessions();
+          break;
+        case "listSessionMentions":
+          value = host.listSessionMentions(string(0));
           break;
         case "setSessionPinned": {
           if (typeof args[1] !== "boolean") throw new Error("invalid_input: 参数必须为布尔值");

@@ -21,7 +21,12 @@ export interface InputSuggestion {
   name: string;
   description: string;
   insert: string;
-  group: "命令" | "Skill";
+  group: "命令" | "Skill" | "对话";
+}
+export interface SessionMentionSuggestion extends InputSuggestion {
+  sessionId: string;
+  workspaceKey: string;
+  keywords: string[];
 }
 export type RunStatus = "running" | "completed" | "aborted" | "error" | "interrupted";
 export interface CompactionView {

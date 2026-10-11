@@ -66,6 +66,7 @@ export class ComposerDraftStore extends Map<string, ComposerDraft> {
   }
 }
 export interface ComposerContext {
+  listSessionMentions?(sessionId: string): Promise<import("../types.ts").SessionMentionSuggestion[]>;
   searchFiles(
     sessionId: string,
     query: string,

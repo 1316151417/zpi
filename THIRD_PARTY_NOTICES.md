@@ -718,6 +718,8 @@ Structured provider error details, streamed-tool recovery, and the retry/loading
 
 Tool summaries, phase grouping, file chips, per-operation patch previews, terminal output following/freezing, scroll fades, failure tooltips, 300ms collapsibles, queued summary transitions and flipping diff counts adapt ZCode `ToolCallBlocks/{ToolLayout,ToolSummaryRow,QueuedSummaryContent}.tsx`, `renderers/{read,execute,ExecuteOutput,explore,execute-group,edit,EditInlineDiffContent}.tsx`, `v4/conversationAssistantWorkItems.ts`, `lib/{exploreToolCall,patchDiffPreview}.ts`, and `components/ui/{collapsible,scroll-fade-viewport,lightweight-diff-preview,flip-metric-value}` at commit 872ad96. Adapted to ZPI’s four-tool runtime and existing file/patch IPC. The 1,146 Material SVG assets are byte-identical to the reference set. Existing ZCode Apache-2.0, Lucide ISC, and Material MIT attributions above apply.
 
+Hash conversation references follow ZCode commit aac47556: `mentions/providers/sessionsMentionProvider.ts`, `mentionMarkdown.ts`, `mentionSearch.ts`, `MentionPlugin.tsx`, `components/ContextMentionOptionContent.tsx`, `nodes/mentionIconDom.ts`, and CLI `session-context/{references,parts}.ts`. Current-workspace priority, per-workspace result limits, canonical Markdown, MessagesSquare icon, session colors and search labels are retained. Session identities, IPC and bounded transcript snapshots are adapted to ZPI's JSONL storage and existing `read` tool instead of introducing ReadSessionContext or a secondary extraction model. The existing ZCode Apache-2.0 and Lucide ISC attributions above apply.
+
 # Radix Collapsible
 
 MIT License

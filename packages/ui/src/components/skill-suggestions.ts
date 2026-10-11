@@ -1,7 +1,7 @@
 import type { InputSuggestion } from "../types.ts";
 
 // ZCode mentionSearch: prefix, substring, then English subsequence; Chinese stays contiguous.
-function score(text: string, query: string): number {
+export function scoreMentionMatch(text: string, query: string): number {
   const value = text.trim().toLowerCase();
   if (!value) return Number.POSITIVE_INFINITY;
   if (value.startsWith(query)) return value.length - query.length;
@@ -27,7 +27,10 @@ export function filterSkillSuggestions(suggestions: InputSuggestion[], query: st
     .map((suggestion, index) => ({
       suggestion,
       index,
-      score: Math.min(score(suggestion.name, normalized), score(suggestion.description, normalized) + 100),
+      score: Math.min(
+        scoreMentionMatch(suggestion.name, normalized),
+        scoreMentionMatch(suggestion.description, normalized) + 100,
+      ),
     }))
     .filter((item) => Number.isFinite(item.score))
     .sort((a, b) => a.score - b.score || a.index - b.index)

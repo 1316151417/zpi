@@ -40,6 +40,7 @@
   --color-file-reference: #1a70b8;
   --color-file-link: #0066dd;
   --color-skill-reference: #7453b0;
+  --color-session-reference: #14807a;
   --color-command-reference: #566270;
   --color-border: rgba(13, 13, 13, 0.1);
   --color-diff-added: #34754b;
@@ -115,6 +116,7 @@
   --color-file-reference: #8fc5ef;
   --color-file-link: #80beff;
   --color-skill-reference: #bda5e6;
+  --color-session-reference: #93d8d2;
   --color-command-reference: #b5c0cc;
   --color-focus: rgba(255, 255, 255, 0.15);
   --color-find-highlight: #542500;

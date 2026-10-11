@@ -7,7 +7,7 @@ import { fileIconSource } from "../file-icons.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";
 
 export interface DisplayReference {
-  kind: "file" | "skill" | "command";
+  kind: "file" | "skill" | "command" | "session";
   label: string;
   path: string;
   start: number;
@@ -38,8 +38,10 @@ export function referenceStyle(kind: DisplayReference["kind"], path: string): CS
   const source =
     kind === "file"
       ? fileIconSource(path)
-      : new URL(`./mention-icons/${kind === "skill" ? "skill" : path.toLowerCase()}.svg`, document.baseURI)
-          .href;
+      : new URL(
+          `./mention-icons/${kind === "skill" || kind === "session" ? kind : path.toLowerCase()}.svg`,
+          document.baseURI,
+        ).href;
   return {
     [kind === "file" ? "--mention-image" : "--mention-mask"]: `url(${JSON.stringify(source)})`,
     ...(kind === "file" ? {} : { "--mention-icon-color": "currentColor" }),

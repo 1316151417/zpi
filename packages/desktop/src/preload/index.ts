@@ -65,6 +65,7 @@ const bridge: DesktopBridge = {
   copySessionPath: (id) => call("copySessionPath", id),
   fileAction: (id, path, action, location) => call("fileAction", id, path, action, location),
   searchFiles: (id, q) => call("searchFiles", id, q),
+  listSessionMentions: (id) => call("listSessionMentions", id),
   getWorkspaceInfo: (id) => call("getWorkspaceInfo", id),
   downloadImage: (src) => call("downloadImage", src),
   checkPreviewFiles: (id, paths) => call("checkPreviewFiles", id, paths),

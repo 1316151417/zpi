@@ -9,6 +9,7 @@ import {
   Hand,
   Info,
   Loader,
+  MessagesSquare,
   Paperclip,
   Pencil,
   Plus,
@@ -45,6 +46,7 @@ import type {
   InputQueue,
   InputSuggestion,
   RunView,
+  SessionMentionSuggestion,
   SessionView,
   ViewBlock,
 } from "../types.ts";
@@ -70,6 +72,7 @@ import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./pro
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { StreamEntrance } from "./StreamEntrance.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
+import { filterSessionSuggestions } from "./session-suggestions.ts";
 import { filterSkillSuggestions } from "./skill-suggestions.ts";
 import { ToolBlock } from "./ToolBlock.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
@@ -1102,9 +1105,34 @@ export function ChatComposer({
   const [inputQuery, setInputQuery] = useState<{
     start: number;
     end: number;
-    trigger: "/" | "$";
+    trigger: "/" | "$" | "#";
     query: string;
   }>();
+  const sessionsEnabled = inputQuery?.trigger === "#";
+  const [sessionCatalog, setSessionCatalog] = useState<{
+    id: string;
+    items: SessionMentionSuggestion[];
+    error?: string;
+  }>();
+  useEffect(() => {
+    setSessionCatalog(undefined);
+    if (!sessionsEnabled || !context?.listSessionMentions) return;
+    let active = true;
+    void context.listSessionMentions(sessionId).then(
+      (items) => {
+        if (active) setSessionCatalog({ id: sessionId, items });
+      },
+      (error) => {
+        if (active) setSessionCatalog({ id: sessionId, items: [], error: String(error) });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [sessionsEnabled, sessionId, context]);
+  const sessionLoading =
+    sessionsEnabled && Boolean(context?.listSessionMentions) && sessionCatalog?.id !== sessionId;
+  const sessionError = sessionsEnabled && sessionCatalog?.id === sessionId ? sessionCatalog.error : undefined;
   const updateValue = (id: string, change: (old: ComposerDraft) => ComposerDraft) => {
     const old = drafts.current.get(id);
     if (!old) return;
@@ -1252,17 +1280,22 @@ export function ChatComposer({
   const matches = useMemo(
     () =>
       inputQuery
-        ? inputQuery.trigger === "$"
-          ? filterSkillSuggestions(suggestions, inputQuery.query)
-          : suggestions.filter(
-              (suggestion) =>
-                suggestion.group === "命令" &&
-                (["init", "compact"].includes(suggestion.name) ||
-                  (onCommand && ["side", "btw"].includes(suggestion.name))) &&
-                suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
+        ? inputQuery.trigger === "#"
+          ? filterSessionSuggestions(
+              sessionCatalog?.id === sessionId ? sessionCatalog.items : [],
+              inputQuery.query,
             )
+          : inputQuery.trigger === "$"
+            ? filterSkillSuggestions(suggestions, inputQuery.query)
+            : suggestions.filter(
+                (suggestion) =>
+                  suggestion.group === "命令" &&
+                  (["init", "compact"].includes(suggestion.name) ||
+                    (onCommand && ["side", "btw"].includes(suggestion.name))) &&
+                  suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
+              )
         : [],
-    [inputQuery, suggestions, onCommand],
+    [inputQuery, suggestions, onCommand, sessionCatalog, sessionId],
   );
   const menuOpen = Boolean(inputQuery);
   const insert = (suggestion: InputSuggestion) => {
@@ -1643,13 +1676,23 @@ export function ChatComposer({
           </div>
         )}
         {menuOpen && !fileQuery && (
-          <div className={`command-panel${inputQuery?.trigger === "$" ? " skill-panel" : ""}`}>
+          <div
+            className={`command-panel${inputQuery?.trigger === "$" ? " skill-panel" : sessionsEnabled ? " session-panel" : ""}`}
+          >
             <SuggestionOptions
               selectedIndex={highlighted}
               options={matches}
-              label={inputQuery?.trigger === "$" ? "技能" : "指令"}
+              label={sessionsEnabled ? "会话" : inputQuery?.trigger === "$" ? "技能" : "指令"}
             >
-              {!matches.length && <p>暂无匹配{inputQuery?.trigger === "$" ? "技能" : "指令"}</p>}
+              {sessionError && <p role="alert">{sessionError}</p>}
+              {sessionLoading && <p role="status">正在加载…</p>}
+              {!matches.length && !sessionError && !sessionLoading && (
+                <p>
+                  {sessionsEnabled
+                    ? "没有匹配的近期会话"
+                    : `暂无匹配${inputQuery?.trigger === "$" ? "技能" : "指令"}`}
+                </p>
+              )}
               {matches.map((suggestion, index) => (
                 <button
                   type="button"
@@ -1659,7 +1702,9 @@ export function ChatComposer({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => insert(suggestion)}
                 >
-                  {inputQuery?.trigger === "$" ? (
+                  {inputQuery?.trigger === "#" ? (
+                    <MessagesSquare size={14} className="skill-option-icon" aria-hidden="true" />
+                  ) : inputQuery?.trigger === "$" ? (
                     <WandSparkles size={14} className="skill-option-icon" aria-hidden="true" />
                   ) : (
                     <span
@@ -1679,7 +1724,7 @@ export function ChatComposer({
             {!inputQuery?.query && (
               <div className="command-hint">
                 <Info size={16} aria-hidden="true" />
-                输入内容以搜索{inputQuery?.trigger === "$" ? "技能" : "指令"}
+                输入内容以搜索{sessionsEnabled ? "近期会话" : inputQuery?.trigger === "$" ? "技能" : "指令"}
               </div>
             )}
           </div>
@@ -1736,13 +1781,13 @@ export function ChatComposer({
             }));
             const prefix = text.slice(0, caret);
             setFileQuery(context ? fileMentionQuery(prefix) : undefined);
-            const command = /(?:^|\s)([/$¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
+            const command = /(?:^|\s)([/$#¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
             setInputQuery(
               command
                 ? {
                     start: caret - command[2].length - 1,
                     end: caret,
-                    trigger: command[1] === "/" ? "/" : "$",
+                    trigger: command[1] === "/" ? "/" : command[1] === "#" ? "#" : "$",
                     query: command[2],
                   }
                 : undefined,
