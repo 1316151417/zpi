@@ -187,15 +187,16 @@ export function RightPane({
                 </Dropdown.Trigger>
                 <Dropdown.Portal>
                   <Dropdown.Content className="pane-launcher" align="start" sideOffset={8}>
-                    <Dropdown.Item
-                      disabled={!sideChatAvailable}
-                      onSelect={() => {
-                        if (sessionId) paneTask(openSideChat(sessionId));
-                      }}
-                    >
-                      <MessageSquare size={16} />
-                      辅助对话
-                    </Dropdown.Item>
+                    {sideChatAvailable && (
+                      <Dropdown.Item
+                        onSelect={() => {
+                          if (sessionId) paneTask(openSideChat(sessionId));
+                        }}
+                      >
+                        <MessageSquare size={16} />
+                        辅助对话
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       disabled={!sessionId}
                       onSelect={() => {
@@ -229,15 +230,16 @@ export function RightPane({
               <h2>打开标签页</h2>
               <p>选择要在侧栏中打开的标签。</p>
               <div className="pane-launcher-actions">
-                <button
-                  disabled={!sideChatAvailable}
-                  onClick={() => {
-                    if (sessionId) paneTask(openSideChat(sessionId));
-                  }}
-                >
-                  <MessageSquare size={16} />
-                  辅助对话
-                </button>
+                {sideChatAvailable && (
+                  <button
+                    onClick={() => {
+                      if (sessionId) paneTask(openSideChat(sessionId));
+                    }}
+                  >
+                    <MessageSquare size={16} />
+                    辅助对话
+                  </button>
+                )}
                 <button
                   disabled={!sessionId}
                   onClick={() => {

@@ -380,6 +380,56 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
   }
 });
 
+test("side chat launchers are hidden for drafts and appear after the first message", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ZPI-side-launchers-e2e-"));
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "主任务已创建" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const main = page.locator("main");
+    await expect(main.getByLabel("消息", { exact: true })).toBeVisible();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await expect(main).toHaveClass(/draft-main/);
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    const launcher = page.locator(".pane-empty-launcher");
+    await expect(launcher).toBeVisible();
+    await expect(launcher.getByRole("button")).toHaveText(["变更", "终端", "浏览器"]);
+    await expect(launcher.getByRole("button", { name: "辅助对话", exact: true })).toHaveCount(0);
+
+    await launcher.getByRole("button", { name: "浏览器", exact: true }).click();
+    await page.getByLabel("新增侧栏标签").click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem")).toHaveText(["变更", "终端", "浏览器"]);
+    await expect(menu.getByRole("menuitem", { name: "辅助对话", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.getByLabel("关闭标签 浏览器", { exact: true }).click();
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await main.getByLabel("消息", { exact: true }).fill("主问题");
+    await main.getByLabel("发送", { exact: true }).click();
+    await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await expect(launcher.getByRole("button", { name: "辅助对话", exact: true })).toBeEnabled();
+    await launcher.getByRole("button", { name: "辅助对话", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "辅助对话 1", exact: true })).toBeVisible();
+    await page.getByLabel("新增侧栏标签").click();
+    await expect(menu.getByRole("menuitem", { name: "辅助对话", exact: true })).toBeEnabled();
+    await page.keyboard.press("Escape");
+
+    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await expect(main).toHaveClass(/draft-main/);
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await expect(launcher).toBeVisible();
+    await expect(launcher.getByRole("button", { name: "辅助对话", exact: true })).toHaveCount(0);
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("side chats route selected text to the active tab and preserve independent drafts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ZPI-side-e2e-"));
   const server = await fakeServer((_, response, index) => {
