@@ -35,7 +35,7 @@ async function fixture(
     models: [{ id: "new" }, { id: "plain", reasoning: false }],
   });
   const workspace = join(dir, "workspace");
-  const host = new SessionHost(dir, settings, join(dir, "resources"), workspace, undefined, []);
+  const host = new SessionHost(dir, settings, join(dir, "resources"), workspace, undefined);
   await host.init();
   cleanup.push(() => host.close());
   return { dir, workspace, host, settings, server };
@@ -89,7 +89,7 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("workspace instructions");
   const file = join(f.dir, "agent", "sessions", "_unassigned", `${s.id}.jsonl`);
   expect(await readFile(file, "utf8")).toContain('"projectId":null');
-  const restarted = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace, undefined, []);
+  const restarted = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace, undefined);
   await restarted.init();
   cleanup.push(() => restarted.close());
   expect(restarted.getSessionSnapshot(s.id).session.cwd).toBe(f.workspace);
@@ -115,7 +115,7 @@ it("five pins are enforced globally, idempotently and persist through unpin/arch
   f.host.setSessionPinned(tasks[6].id, true);
   expect(() => f.host.setSessionPinned(tasks[1].id, true)).toThrow();
   await f.host.close();
-  const restarted = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace, undefined, []);
+  const restarted = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace, undefined);
   await restarted.init();
   cleanup.push(() => restarted.close());
   expect(

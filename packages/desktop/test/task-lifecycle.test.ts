@@ -23,7 +23,7 @@ it("failure after persisting a run start records an error end and releases the r
   expect(snapshot.view.runs[0]).toMatchObject({ status: "error", error: "attachment failure" });
   expect(f.server.requests).toHaveLength(0);
   await f.host.close();
-  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(reopened.getSessionSnapshot(id).view.runs[0].status).toBe("error");
@@ -52,7 +52,7 @@ it("running tasks reject archive/restore/delete while metadata rename and pin pr
   expect(f.host.getSessionSnapshot(id).view.runs[0].status).toBe("aborted");
   expect(f.host.listRecentSessions()[0].title).toBe("手动任务名");
   await f.host.close();
-  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   expect(reopened.listRecentSessions()[0]).toMatchObject({ title: "手动任务名", status: "aborted" });
@@ -86,7 +86,7 @@ it("archive discards pending messages, rejects later delivery and restores the o
   await expect(f.host.inputQueue.resume(id)).rejects.toThrow("已归档");
   f.host.removeProject(f.a.id);
   await f.host.close();
-  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   reopened.restoreSession(id);
@@ -110,7 +110,7 @@ it("damaged tasks are listed for deletion, cannot restore, and deletion removes 
   await mkdir(snapshots, { recursive: true });
   await writeFile(join(snapshots, "before.txt"), "snapshot");
   await writeFile(file, "broken header\n");
-  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
   const record = reopened.listArchivedSessions().find((r) => r.id === id);

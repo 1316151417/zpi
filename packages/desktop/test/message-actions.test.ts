@@ -28,7 +28,7 @@ it("fork copies only the chosen completed boundary, retains context after restar
   expect(f.host.getSessionSnapshot(child.id).view.runs.map((run) => run.userMessage)).toEqual(["first"]);
   expect(await readFile(path, "utf8")).toBe(before);
   await f.host.close();
-  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.getSessionSnapshot(child.id).view.runs.map((run) => run.userMessage)).toEqual(["first"]);
@@ -162,7 +162,7 @@ it("editing only the latest user input stops its running reply, removes old cont
   expect(JSON.stringify(f.server.requests.at(-1)?.messages)).not.toContain("old latest");
   expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("first");
   await f.host.close();
-  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.getSessionSnapshot(session.id).view.runs.map((run) => run.userMessage)).toEqual([

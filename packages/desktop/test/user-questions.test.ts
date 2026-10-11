@@ -215,7 +215,7 @@ it("snapshots the plugin for new sessions, resumes with answers, and restores th
   await f.host.activeRuns.get(next.id)?.done;
   expect(JSON.stringify(f.server.requests.at(-1)?.tools)).not.toContain("AskUserQuestion");
   await f.host.close();
-  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, []);
+  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.getSessionSnapshot(session.id).view.runs[0].orderedBlocks).toContainEqual(

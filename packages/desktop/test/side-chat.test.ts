@@ -37,7 +37,7 @@ it("opens independent hidden chats with inherited context and an empty timeline,
     f.host.forkSession(child.id, f.host.getSessionSnapshot(child.id).view.runs[0].runId),
   ).rejects.toThrow("不支持分叉");
   await f.host.close();
-  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, []);
+  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.listRecentSessions().map((s) => s.id)).toEqual([parent.id]);

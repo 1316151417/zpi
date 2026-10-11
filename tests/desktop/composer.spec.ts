@@ -465,7 +465,7 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
   let app: ElectronApplication | undefined;
   try {
     const cwd = join(dir, "workspace"),
-      skillDir = join(dir, "resources", "skills", "review");
+      skillDir = join(dir, ".zpi", "skills", "review");
     await mkdir(cwd);
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(cwd, "main.txt"), "file content");
@@ -576,9 +576,9 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
     let page = await app.firstWindow();
     await select(page, id);
     const file = join(cwd, "a.txt"),
-      skill = join(dir, "resources", "skills", "review", "SKILL.md");
+      skill = join(dir, ".zpi", "skills", "review", "SKILL.md");
     await writeFile(file, "file content");
-    await mkdir(join(dir, "resources", "skills", "review"), { recursive: true });
+    await mkdir(join(dir, ".zpi", "skills", "review"), { recursive: true });
     await writeFile(skill, "---\nname: review\ndescription: review\n---\nReview");
     const editor = page.getByLabel("消息", { exact: true }),
       canonical = `前 [a.txt](${file}) 后 [$review](${skill}) 尾`;

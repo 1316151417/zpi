@@ -27,7 +27,7 @@ export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
   runtime.registerProvider("fake", { baseUrl: server.url, apiKey: "", models: [fakeConfig(server.url)] });
   const manager = SessionManager.create(cwd, join(dir, "sessions"));
   const { session } = await createAgentSession({
-    userSkillPaths: [],
+    homeDir: join(dir, "home"),
     cwd,
     agentDir,
     modelRuntime: runtime,

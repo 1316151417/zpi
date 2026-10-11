@@ -121,15 +121,15 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
     modelId: settings.get().providers[0].models[0].id,
     reasoning: "none",
   });
-  const host = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []);
+  const host = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined);
   await host.init();
   cleanup.push(() => host.close());
   const project = await host.addProject(dir),
     a = host.createSession(project.id),
     b = host.createSession(project.id);
-  await mkdir(join(dir, "agent", "AGENTS.md"), { recursive: true });
+  await mkdir(join(dir, "agent", ".zpi", "AGENTS.md"), { recursive: true });
   expect((await host.listSkills(project.id)).diagnostics).toContainEqual({
-    path: join(dir, "agent", "AGENTS.md"),
+    path: join(dir, "agent", ".zpi", "AGENTS.md"),
     message: expect.stringContaining("EISDIR"),
   });
   await host.setSessionSelection(a.id, { provider: "one", modelId: "reason", reasoning: "high" });
@@ -153,7 +153,6 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
     join(dir, "agent"),
     undefined,
     undefined,
-    [],
   );
   await restarted.init();
   cleanup.push(() => restarted.close());
@@ -238,14 +237,8 @@ it("environment discovery persists private preset credentials; models normalize 
     done(response);
   });
   cleanup.push(server.close);
-  const host = new SessionHost(
-    dir,
-    settings,
-    join(dir, "agent"),
-    join(dir, "workspace"),
-    ((_, init) => fetch(`${server.url}/chat/completions`, init)) as typeof fetch,
-    [],
-  );
+  const host = new SessionHost(dir, settings, join(dir, "agent"), join(dir, "workspace"), ((_, init) =>
+    fetch(`${server.url}/chat/completions`, init)) as typeof fetch);
   await host.init();
   cleanup.push(() => host.close());
   for (const provider of settings.get().providers) {

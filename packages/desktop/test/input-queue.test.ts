@@ -96,7 +96,7 @@ it("stopped queues and image ownership survive restart; errors pause without los
   await f.host.abortRun({ sessionId: id, runId: first.runId });
   await expect.poll(() => f.host.getSessionSnapshot(id).view.queue?.autoDrain).toBe(false);
   await f.host.close();
-  const restart = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const restart = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await restart.init();
   cleanup.push(() => restart.close());
   expect(restart.getSessionSnapshot(id).view.queue?.items[0]).toMatchObject({

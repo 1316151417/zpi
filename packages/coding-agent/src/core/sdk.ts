@@ -24,8 +24,7 @@ export interface CreateAgentSessionOptions {
   customTools?: ToolDefinition[];
   resourceLoader?: ResourceLoader;
   sessionManager?: SessionManager;
-  additionalSkillPaths?: string[];
-  userSkillPaths?: string[];
+  homeDir?: string;
   compaction?: CompactionOptions;
   settingsManager?: SettingsManager;
   promptTemplate?: () => PromptTemplate;
@@ -51,8 +50,7 @@ export async function createAgentSession(
       "customTools",
       "resourceLoader",
       "sessionManager",
-      "additionalSkillPaths",
-      "userSkillPaths",
+      "homeDir",
       "compaction",
       "settingsManager",
       "promptTemplate",
@@ -157,10 +155,8 @@ export async function createAgentSession(
   const loader =
     options.resourceLoader ??
     new FileResourceLoader({
-      cwd,
-      agentDir,
-      additionalSkillPaths: options.additionalSkillPaths,
-      userSkillPaths: options.userSkillPaths,
+      projectDir: manager.getCwd(),
+      homeDir: options.homeDir,
     });
   await loader.reload?.();
   const buildPrompt = () =>

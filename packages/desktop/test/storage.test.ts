@@ -208,12 +208,12 @@ it("project files are validated before their IDs can become storage paths", asyn
   try {
     const record = { id: "../outside", name: "Bad", path: dir, updatedAt: Date.now() };
     await writeFile(join(dir, "projects.json"), JSON.stringify([record]));
-    expect(() => new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, [])).toThrow(
+    expect(() => new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined)).toThrow(
       "storage: Invalid project records",
     );
     await writeFile(join(dir, "projects.json"), JSON.stringify([{ ...record, id: "valid" }]));
     expect(
-      new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, []).listProjects(),
+      new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined).listProjects(),
     ).toHaveLength(1);
     await writeFile(
       join(dir, "projects.json"),
@@ -222,7 +222,7 @@ it("project files are validated before their IDs can become storage paths", asyn
         { ...record, id: "valid" },
       ]),
     );
-    expect(() => new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined, [])).toThrow(
+    expect(() => new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined)).toThrow(
       "storage: Duplicate project records",
     );
   } finally {

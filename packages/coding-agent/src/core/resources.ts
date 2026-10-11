@@ -9,17 +9,15 @@ export interface SkillMetadata {
   description: string;
   path: string;
   baseDir: string;
-  source: "user" | "project" | "extra";
+  source: "user" | "project";
 }
 export interface DiscoveredSkill extends SkillMetadata {
   enabled: boolean;
   overriddenBy?: string;
 }
 export interface SkillPolicyOptions {
-  cwd: string;
-  agentDir: string;
-  additionalSkillPaths?: string[];
-  userSkillPaths?: string[];
+  projectDir: string;
+  homeDir?: string;
   projectResources?: boolean;
   isSkillEnabled?: (path: string) => boolean;
 }
@@ -80,20 +78,13 @@ export class SkillCatalog {
     const discovered: SkillMetadata[] = [];
     const diagnostics: ResourceDiagnostic[] = [];
     const roots: { path: string; source: SkillMetadata["source"] }[] = [
-      ...(this.options.userSkillPaths ?? [join(homedir(), ".agents", "skills")]).map((path) => ({
-        path,
-        source: "user" as const,
-      })),
-      { path: join(this.options.agentDir, "skills"), source: "user" },
-      ...(this.options.additionalSkillPaths ?? []).map((path) => ({
-        path: resolve(path),
-        source: "extra" as const,
-      })),
+      { path: join(this.options.homeDir ?? homedir(), ".agents", "skills"), source: "user" },
+      { path: join(this.options.homeDir ?? homedir(), ".zpi", "skills"), source: "user" },
       ...(this.options.projectResources === false
         ? []
         : [
-            { path: join(this.options.cwd, ".agents", "skills"), source: "project" as const },
-            { path: join(this.options.cwd, ".zpi", "skills"), source: "project" as const },
+            { path: join(this.options.projectDir, ".agents", "skills"), source: "project" as const },
+            { path: join(this.options.projectDir, ".zpi", "skills"), source: "project" as const },
           ]),
     ];
     for (const root of roots) {
@@ -164,19 +155,14 @@ export class FileResourceLoader implements ResourceLoader {
     return [...this.append];
   }
   async reload(): Promise<void> {
-    const ancestors: string[] = [];
-    let path = resolve(this.options.cwd);
-    for (;;) {
-      ancestors.unshift(join(path, "AGENTS.md"));
-      const parent = dirname(path);
-      if (parent === path) break;
-      path = parent;
-    }
+    const home = this.options.homeDir ?? homedir();
+    const project = resolve(this.options.projectDir);
     const files = [
-      ...new Set([
-        join(this.options.agentDir, "AGENTS.md"),
-        ...(this.options.projectResources === false ? [] : ancestors),
-      ]),
+      join(home, ".agents", "AGENTS.md"),
+      join(home, ".zpi", "AGENTS.md"),
+      ...(this.options.projectResources === false
+        ? []
+        : [join(project, "AGENTS.md"), join(project, ".zpi", "AGENTS.md")]),
     ];
     const append: string[] = [];
     const diagnostics: ResourceDiagnostic[] = [];

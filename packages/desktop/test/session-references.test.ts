@@ -100,7 +100,7 @@ it("sends only a lightweight reminder and reads a clean immutable snapshot on de
   });
   expect((await f.host.getDraft(current.id)).warnings).toEqual([]);
   await f.host.close();
-  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.getSessionSnapshot(current.id).view.runs[0].userMessage).toBe(text);

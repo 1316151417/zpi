@@ -39,14 +39,7 @@ test("snapshots prompt plugins on first send and keeps them when global settings
   f.settings.setCapabilityEnabled("fileLinks", true);
   f.settings.setCapabilityEnabled("toolBatching", false);
   await f.host.close();
-  const host = new SessionHost(
-    f.dir,
-    new SettingsStore(f.dir, codec),
-    f.resources,
-    f.workspace,
-    undefined,
-    [],
-  );
+  const host = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace, undefined);
   await host.init();
   cleanup.push(() => host.close());
   await host.startRun({ sessionId: f.session.id, text: "old conversation" });

@@ -66,7 +66,7 @@ it("defers creation until sending and restores the actual worktree for prompts, 
   await repo(f.a.path);
   await f.host.close();
   const root = join(f.dir, "trees");
-  const host = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, [], undefined, root);
+  const host = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, undefined, root);
   await host.init();
   cleanup.push(() => host.close());
   const session = host.createSession(f.a.id);
@@ -88,7 +88,7 @@ it("defers creation until sending and restores the actual worktree for prompts, 
   expect(await readFile(join(f.a.path, "tracked.txt"), "utf8")).toBe("second");
   await expect(host.setNewWorktree(session.id, false)).rejects.toThrow("首次发送前");
   await host.close();
-  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, [], undefined, root);
+  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, undefined, root);
   await restored.init();
   cleanup.push(() => restored.close());
   expect(restored.workspaceInfo(session.id).cwd).toBe(record.cwd);

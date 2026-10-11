@@ -49,7 +49,7 @@ it("reconciles crash-recovered streamed tool pairs with history offsets before c
     isError: false,
     result: { content: [{ type: "text", text: "read before crash" }], details: undefined },
   });
-  const host = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const host = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   cleanup.push(() => host.close());
   await host.init();
   expect(host.getSessionSnapshot(id).view.runs[0]).toMatchObject({
@@ -65,7 +65,7 @@ it("reconciles crash-recovered streamed tool pairs with history offsets before c
   expect(index.data.diagnostic).toBeUndefined();
   const entries = index.page().entries;
   expect(entries.filter((e) => e.type === "message" && e.message.role === "toolResult")).toHaveLength(1);
-  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined, []);
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   cleanup.push(() => reopened.close());
   await reopened.init();
   expect(reopened.getSessionSnapshot(id).view.runs[0].orderedBlocks).toHaveLength(1);

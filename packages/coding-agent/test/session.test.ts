@@ -21,7 +21,7 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
     expect(entry.id).toBe(manager.getLastEntry()?.id);
   });
   const { session } = await createAgentSession({
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     cwd,
     agentDir: join(cwd, "agent"),
     modelRuntime: runtime,
@@ -46,7 +46,7 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   const reopened = SessionManager.open(file);
   expect(await readFile(file, "utf8")).toBe(original);
   const restored = await createAgentSession({
-    userSkillPaths: [],
+    homeDir: join(cwd, "home"),
     modelRuntime: runtime,
     sessionManager: reopened,
     agentDir: join(cwd, "agent"),

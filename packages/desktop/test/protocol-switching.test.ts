@@ -160,7 +160,7 @@ it("continues one persisted task across all three protocols with all four tools,
     scopes: ["chatgpt.tokens.use.direct"],
     idToken: "id-token",
   });
-  let host = new SessionHost(dir, settings, join(dir, "agent"), join(dir, "workspace"), fetcher, []);
+  let host = new SessionHost(dir, settings, join(dir, "agent"), join(dir, "workspace"), fetcher);
   try {
     await writeFile(join(dir, "README.md"), "portable local history");
     await host.init();
@@ -214,7 +214,6 @@ it("continues one persisted task across all three protocols with all four tools,
       join(dir, "agent"),
       join(dir, "workspace"),
       fetcher,
-      [],
     );
     await host.init();
     await host.setSessionSelection(task.id, { provider: "chat", modelId: "chat", reasoning: "none" });
