@@ -645,6 +645,89 @@ test("Markdown preview selections open an auxiliary chat with their source path 
   }
 });
 
+for (const remote of [false, true]) {
+  test(`worktree branch picker searches and starts from a ${remote ? "remote" : "local"} branch`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-worktree-base-e2e-"));
+    const project = join(dir, "project");
+    await mkdir(project);
+    const git = async (...args: string[]) => (await exec("git", ["-C", project, ...args])).stdout.trim();
+    await git("init", "-b", "main");
+    await git("config", "user.email", "test@example.test");
+    await git("config", "user.name", "Test");
+    await writeFile(join(project, "tracked.txt"), "remote content");
+    await git("add", ".");
+    await git("commit", "-m", "Initial");
+    const remoteHead = await git("rev-parse", "HEAD");
+    await git("update-ref", "refs/remotes/origin/feature/topic", remoteHead);
+    await git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/feature/topic");
+    await git("checkout", "-b", "feature/topic");
+    await writeFile(join(project, "tracked.txt"), "local content");
+    await git("commit", "-am", "Local feature");
+    const localHead = await git("rev-parse", "HEAD");
+    await git("checkout", "main");
+    await writeFile(join(project, "tracked.txt"), "dirty source");
+    const server = await fakeServer((_, response) => {
+      send(response, chunk({ content: "ready" }));
+      done(response);
+    });
+    let app: ElectronApplication | undefined;
+    try {
+      app = await launchDesktop({ dir, project, url: server.url });
+      const page = await app.firstWindow();
+      await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+      await page.getByRole("button", { name: "配置本地环境", exact: true }).click();
+      await page.getByRole("menuitemcheckbox", { name: "新工作树", exact: true }).click();
+      const picker = page.getByRole("menuitem", { name: "起始分支 main", exact: true });
+      await expect(picker).toBeVisible();
+      await picker.click();
+      await expect(page.getByText("本地分支", { exact: true })).toBeVisible();
+      await expect(page.getByText("远程分支（本地已同步）", { exact: true })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "origin/HEAD", exact: true })).toHaveCount(0);
+      await page.getByRole("textbox", { name: "搜索起始分支", exact: true }).fill("missing");
+      await expect(page.getByText("没有匹配的分支", { exact: true })).toBeVisible();
+      await page.getByRole("textbox", { name: "搜索起始分支", exact: true }).fill("TOPIC");
+      await expect(page.getByRole("menuitem", { name: "main", exact: true })).toHaveCount(0);
+      await page.screenshot({
+        path: `test-results/worktree-base-${remote ? "remote" : "local"}.png`,
+        animations: "disabled",
+      });
+      const name = remote ? "origin/feature/topic" : "feature/topic";
+      await page.getByRole("menuitem", { name, exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: `起始分支 ${name}`, exact: true })).toBeVisible();
+      await page.screenshot({
+        path: `test-results/worktree-base-selected-${remote ? "remote" : "local"}.png`,
+        animations: "disabled",
+      });
+      expect((await git("worktree", "list", "--porcelain")).match(/^worktree /gm)).toHaveLength(1);
+      await page.keyboard.press("Escape");
+      await page.getByLabel("消息", { exact: true }).fill("从所选分支开始");
+      await page.getByLabel("发送", { exact: true }).click();
+      await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      const record = await page.evaluate(async () => {
+        const result = await window.zpi.listRecentSessions();
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value.find((record) => !record.draft);
+      });
+      expect(record?.worktreeBaseRef).toBe(remote ? `refs/remotes/${name}` : `refs/heads/${name}`);
+      expect(record?.worktree?.branch).toMatch(/^[a-z0-9]{4}$/);
+      expect(
+        await exec("git", ["-C", record?.cwd ?? "", "rev-parse", "HEAD"]).then((result) =>
+          result.stdout.trim(),
+        ),
+      ).toBe(remote ? remoteHead : localHead);
+      expect(await readFile(join(record?.cwd ?? "", "tracked.txt"), "utf8")).toBe(
+        remote ? "remote content" : "local content",
+      );
+      expect(await git("branch", "--show-current")).toBe("main");
+      expect(await readFile(join(project, "tracked.txt"), "utf8")).toBe("dirty source");
+    } finally {
+      await app?.close();
+      await server.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
+
 test("first-send worktree settings create a short branch and switch the prompt and workspace", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-worktree-e2e-"));
   const project = join(dir, "project");

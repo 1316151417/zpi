@@ -63,7 +63,7 @@ import { generateSessionTitle } from "./session-title.ts";
 import { atomicJson, resolveModel, type SettingsStore } from "./storage.ts";
 import { UserQuestions } from "./user-questions.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
-import { createWorktree, gitEnvironment } from "./worktrees.ts";
+import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
 
 interface SessionConfiguration extends PluginCapabilities {
   template: PromptTemplate;
@@ -333,6 +333,9 @@ export class SessionHost {
               ? index.data.header.cwd
               : undefined,
           newWorktree: environmentData?.newWorktree === true,
+          ...(typeof environmentData?.worktreeBaseRef === "string"
+            ? { worktreeBaseRef: environmentData.worktreeBaseRef }
+            : {}),
           ...(isJsonObject(environmentData?.worktree)
             ? { worktree: environmentData.worktree as unknown as NonNullable<SessionRecord["worktree"]> }
             : {}),
@@ -599,16 +602,24 @@ export class SessionHost {
   async getGitEnvironment(id: string) {
     return gitEnvironment(this.cwd(this.record(id)));
   }
-  async setNewWorktree(id: string, enabled: boolean): Promise<SessionRecord> {
+  async setNewWorktree(id: string, enabled: boolean, baseRef?: string): Promise<SessionRecord> {
     const record = this.record(id);
     if (typeof enabled !== "boolean") throw new Error("invalid_input: 无效工作树设置");
+    if (baseRef !== undefined && typeof baseRef !== "string") throw new Error("invalid_input: 无效起始分支");
     if (!record.draft || record.worktree || record.parentSessionId || this.activeRuns.has(id))
       throw new Error("busy: 只能在首次发送前设置工作树");
-    if (!record.projectId || !(await this.getGitEnvironment(id)))
-      throw new Error("configuration: 新工作树需要已有提交的 Git 项目");
+    const environment = record.projectId ? await this.getGitEnvironment(id) : null;
+    if (!environment) throw new Error("configuration: 新工作树需要已有提交的 Git 项目");
+    const worktreeBaseRef = baseRef ?? record.worktreeBaseRef ?? environment.currentRef ?? "HEAD";
+    if (enabled) await resolveWorktreeBase(this.cwd(record), worktreeBaseRef);
     if (!record.draft || this.activeRuns.has(id)) throw new Error("busy: 会话已开始");
-    this.meta(id, { type: "custom", customType: "zpi.environment", data: { newWorktree: enabled } });
+    this.meta(id, {
+      type: "custom",
+      customType: "zpi.environment",
+      data: { newWorktree: enabled, worktreeBaseRef },
+    });
     record.newWorktree = enabled;
+    record.worktreeBaseRef = worktreeBaseRef;
     return structuredClone(record);
   }
   async createSideChat(id: string): Promise<SessionRecord> {
@@ -1624,8 +1635,11 @@ export class SessionHost {
       const initialize = async () => {
         if (needsWorktree) {
           if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
-          const worktree = await createWorktree(this.cwd(record), this.worktreeRoot, (message) =>
-            this.emit(id, run.runId, { type: "run_preparation", message }),
+          const worktree = await createWorktree(
+            this.cwd(record),
+            this.worktreeRoot,
+            (message) => this.emit(id, run.runId, { type: "run_preparation", message }),
+            record.worktreeBaseRef,
           );
           manager.setCwd(worktree.path);
           Object.assign(record, { cwd: worktree.path, worktree });
@@ -1633,7 +1647,11 @@ export class SessionHost {
           this.meta(id, {
             type: "custom",
             customType: "zpi.environment",
-            data: { newWorktree: true, worktree },
+            data: {
+              newWorktree: true,
+              ...(record.worktreeBaseRef ? { worktreeBaseRef: record.worktreeBaseRef } : {}),
+              worktree,
+            },
           });
           this.emit(id, run.runId, {
             type: "environment_changed",

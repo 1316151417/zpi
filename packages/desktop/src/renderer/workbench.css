@@ -3460,7 +3460,12 @@
   color: var(--color-text-subtle);
   font-size: var(--text-small);
 }
+.environment-branch > span {
+  flex: 0 0 auto;
+}
 .environment-branch small {
+  min-width: 0;
+  margin-left: auto;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;

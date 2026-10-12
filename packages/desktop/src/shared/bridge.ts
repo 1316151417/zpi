@@ -25,6 +25,7 @@ export interface ProjectRecord {
 export interface SessionRecord {
   parentSessionId?: string;
   newWorktree?: boolean;
+  worktreeBaseRef?: string;
   worktree?: WorktreeInfo;
   draft?: boolean;
   id: string;
@@ -42,6 +43,12 @@ export interface SessionRecord {
   activitySeq?: number;
   createdAt: number;
   updatedAt: number;
+}
+export interface GitEnvironment {
+  branch: string;
+  head: string;
+  currentRef: string | null;
+  branches: { ref: string; name: string; remote: boolean }[];
 }
 export interface SettingsInput {
   baseUrl: string;
@@ -215,8 +222,8 @@ export interface DesktopBridge {
   ): Promise<Result<void>>;
   closeSideChat(sessionId: string): Promise<Result<void>>;
   createSideChat(sessionId: string): Promise<Result<SessionRecord>>;
-  getGitEnvironment(sessionId: string): Promise<Result<{ branch: string; head: string } | null>>;
-  setNewWorktree(sessionId: string, enabled: boolean): Promise<Result<SessionRecord>>;
+  getGitEnvironment(sessionId: string): Promise<Result<GitEnvironment | null>>;
+  setNewWorktree(sessionId: string, enabled: boolean, baseRef?: string): Promise<Result<SessionRecord>>;
   logError(error: { source: string; message: string; stack?: string }): void;
   readonly platform: string;
   readonly workspacePanelRadius: number;
