@@ -67,10 +67,20 @@ function useToolTokens(code: string, language: BundledLanguage) {
   return tokens;
 }
 
-export function ToolCode({ text }: { text: string }) {
-  const tokens = useToolTokens(text, "json");
+export function toolCodeLanguage(path: string, content = ""): BundledLanguage {
+  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
+  if (languages[extension]) return languages[extension];
+  if (content.startsWith("#!/")) {
+    if (content.includes("python")) return "python";
+    if (content.includes("bash") || content.includes("sh")) return "bash";
+  }
+  return "log";
+}
+
+export function ToolCode({ text, language = "json" }: { text: string; language?: BundledLanguage }) {
+  const tokens = useToolTokens(text, language);
   return (
-    <div className="tool-input-code" data-language="json">
+    <div className="tool-input-code" data-language={language}>
       <pre>
         <code>
           {tokens

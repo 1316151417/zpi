@@ -240,6 +240,7 @@ function ProcessBlock({
         onFile={onFile}
         onChanges={onChanges}
         onLoadPatch={onLoadPatch}
+        onLink={onLink}
       />
     );
   if (block.type === "thinking") {
