@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync as rmSyncFile, statSync } from "node:fs";
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { isJsonObject } from "zpi-ai";
 import {
   type AgentSession,
@@ -966,10 +966,7 @@ export class SessionHost {
   }
   async referencedFile(id: string, path: string) {
     const cwd = this.workspaceInfo(id).cwd;
-    return validatedReference(
-      cwd,
-      isAbsolute(path) ? relative(await realpath(cwd), await realpath(path)) : path,
-    );
+    return validatedReference(cwd, path);
   }
   async searchFiles(id: string, query: string) {
     this.searches.get(id)?.abort();

@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 import { searchFiles, validatedReference } from "../src/main/workspace-files.ts";
 import { fixture, run } from "./helpers/context-fixture.ts";
 
-test("bounded search obeys gitignore, cwd scope and realpath; symlink escapes and cross-project paths fail", async () => {
+test("bounded search obeys gitignore and cwd scope; relative escapes fail but explicit absolute references work", async () => {
   const f = await fixture();
   await mkdir(join(f.workspace, "sub"));
   await writeFile(join(f.workspace, ".gitignore"), "ignored.txt\n*.log\n");
@@ -29,12 +29,41 @@ test("bounded search obeys gitignore, cwd scope and realpath; symlink escapes an
   expect((await searchFiles(f.workspace, "ignored")).length).toBe(0);
   await expect(validatedReference(f.workspace, "escape.txt")).rejects.toThrow("不在");
   await expect(validatedReference(f.workspace, "../outside.txt")).rejects.toThrow("不在");
-  await expect(validatedReference(f.workspace, "/etc/hosts")).rejects.toThrow("相对路径");
+  expect(await validatedReference(f.workspace, join(f.dir, "outside.txt"))).toBe(
+    await realpath(join(f.dir, "outside.txt")),
+  );
   await promisify(execFile)("git", ["init"], { cwd: f.workspace });
   expect((await searchFiles(f.workspace, "ignored")).length).toBe(0);
   expect(await validatedReference(f.workspace, "sub/a 中文.ts")).toBe(
     await realpath(join(f.workspace, "sub", "a 中文.ts")),
   );
+});
+
+test("absolute external Java references submit, retain their original paths and restore drafts without warnings", async () => {
+  const f = await fixture();
+  const folder = join(f.dir, "external project");
+  await mkdir(folder);
+  const path = join(folder, "BasicMetric.java");
+  await writeFile(path, "class BasicMetric {}\n");
+  const text = `[BasicMetric.java](<${path}>)`;
+  f.host.saveDraft(f.session.id, {
+    text,
+    fileReferences: [path],
+    selection: [text.length, text.length],
+    revision: 1,
+  });
+  expect((await f.host.getDraft(f.session.id)).warnings).toEqual([]);
+  expect(await f.host.referencedFile(f.session.id, path)).toBe(await realpath(path));
+  expect(await validatedReference(f.workspace, `${folder}/`)).toBe(await realpath(folder));
+  await run(f, text, { fileReferences: [path] });
+  expect(JSON.stringify(f.server.requests[0])).toContain(path);
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs[0]).toMatchObject({
+    userMessage: text,
+    fileReferences: [path],
+  });
+  for (const invalid of ["", `${path}\0`, `${path}\n`, "x".repeat(8193)])
+    await expect(validatedReference(f.workspace, invalid)).rejects.toThrow("路径无效");
+  await expect(validatedReference(f.workspace, join(folder, "missing.java"))).rejects.toThrow();
 });
 
 test.each([false, true])(
