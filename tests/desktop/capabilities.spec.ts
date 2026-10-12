@@ -665,6 +665,9 @@ for (const remote of [false, true]) {
     await git("commit", "-am", "Local feature");
     const localHead = await git("rev-parse", "HEAD");
     await git("checkout", "main");
+    for (let index = 0; index < 24; index++)
+      await git("branch", `feature/scroll-${String(index).padStart(2, "0")}`);
+    const branches = await git("for-each-ref", "--format=%(refname)", "refs/heads/");
     await writeFile(join(project, "tracked.txt"), "dirty source");
     const server = await fakeServer((_, response) => {
       send(response, chunk({ content: "ready" }));
@@ -680,6 +683,26 @@ for (const remote of [false, true]) {
       const picker = page.getByRole("menuitem", { name: "起始分支 main", exact: true });
       await expect(picker).toBeVisible();
       await picker.click();
+      const branchMenu = page.locator(".worktree-branch-menu");
+      const branchList = branchMenu.locator(".draft-project-options");
+      expect((await branchMenu.boundingBox())?.height).toBeLessThanOrEqual(320);
+      const search = page.getByRole("textbox", { name: "搜索起始分支" });
+      const searchTop = await search.evaluate((element) => element.getBoundingClientRect().top);
+      expect(await branchList.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+      await branchList.hover();
+      await page.mouse.wheel(0, 1000);
+      await expect.poll(() => branchList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      expect(await search.evaluate((element) => element.getBoundingClientRect().top)).toBeCloseTo(
+        searchTop,
+        0,
+      );
+      await expect(
+        page.getByRole("menuitem", { name: "origin/feature/topic", exact: true }),
+      ).toBeInViewport();
+      await page.screenshot({
+        path: `test-results/worktree-branch-scroll-${remote ? "remote" : "local"}.png`,
+        animations: "disabled",
+      });
       await expect(page.getByText("本地分支", { exact: true })).toBeVisible();
       await expect(page.getByText("远程分支（本地已同步）", { exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "origin/HEAD", exact: true })).toHaveCount(0);
@@ -709,7 +732,14 @@ for (const remote of [false, true]) {
         return result.value.find((record) => !record.draft);
       });
       expect(record?.worktreeBaseRef).toBe(remote ? `refs/remotes/${name}` : `refs/heads/${name}`);
-      expect(record?.worktree?.branch).toMatch(/^[a-z0-9]{4}$/);
+      expect(record?.worktree?.id).toMatch(/^[a-z0-9]{4}$/);
+      expect(record?.worktree?.branch).toBeUndefined();
+      expect(await git("for-each-ref", "--format=%(refname)", "refs/heads/")).toBe(branches);
+      expect(
+        await exec("git", ["-C", record?.cwd ?? "", "branch", "--show-current"]).then((result) =>
+          result.stdout.trim(),
+        ),
+      ).toBe("");
       expect(
         await exec("git", ["-C", record?.cwd ?? "", "rev-parse", "HEAD"]).then((result) =>
           result.stdout.trim(),
@@ -728,7 +758,7 @@ for (const remote of [false, true]) {
   });
 }
 
-test("first-send worktree settings create a short branch and switch the prompt and workspace", async () => {
+test("first-send worktree settings create a detached checkout and switch the prompt and workspace", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-worktree-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
@@ -804,8 +834,10 @@ test("first-send worktree settings create a short branch and switch the prompt a
       if (!result.ok) throw new Error(result.error.message);
       return result.value.find((record) => !record.draft);
     });
-    expect(record?.worktree?.branch).toMatch(/^[a-z0-9]{4}$/);
-    expect(record?.cwd).toBe(join(dir, "worktree", record?.worktree?.branch ?? "", "project"));
+    expect(record?.worktree?.id).toMatch(/^[a-z0-9]{4}$/);
+    expect(record?.worktree?.branch).toBeUndefined();
+    expect(await git("for-each-ref", "--format=%(refname)", "refs/heads/")).toBe("refs/heads/main");
+    expect(record?.cwd).toBe(join(dir, "worktree", record?.worktree?.id ?? "", "project"));
     expect(JSON.stringify(server.requests[0].messages)).toContain(record?.cwd);
     expect(await readFile(join(record?.cwd ?? "", "tracked.txt"), "utf8")).toBe("original");
     await expect(page.getByRole("button", { name: "配置本地环境", exact: true })).toHaveCount(0);

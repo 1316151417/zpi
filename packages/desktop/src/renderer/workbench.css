@@ -3460,6 +3460,20 @@
   color: var(--color-text-subtle);
   font-size: var(--text-small);
 }
+.worktree-branch-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, var(--radix-dropdown-menu-content-available-height, 320px));
+  overflow: hidden;
+}
+.worktree-branch-menu .draft-project-search {
+  flex-shrink: 0;
+}
+.worktree-branch-menu .draft-project-options {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .environment-branch > span {
   flex: 0 0 auto;
 }
