@@ -27,12 +27,18 @@ test("default Java opening launches the associated IDE and preserves the Markdow
   let app: ElectronApplication | undefined;
   try {
     app = await launchDesktop({ dir, project, url: server.url });
-    await app.evaluate(({ app, nativeImage }, bundle) => {
+    await app.evaluate(({ app, nativeImage, shell }, bundle) => {
       app.getApplicationInfoForProtocol = async () => ({
         path: bundle,
         name: "IntelliJ IDEA",
         icon: nativeImage.createEmpty(),
       });
+      const paths: string[] = [];
+      Object.assign(globalThis, { defaultEditorFallbackPaths: paths });
+      shell.openPath = async (path) => {
+        paths.push(path);
+        return "";
+      };
     }, bundle);
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
@@ -45,13 +51,43 @@ test("default Java opening launches the associated IDE and preserves the Markdow
     await expect
       .poll(async () => (await readFile(log, "utf8").catch(() => "")).trim().split("\n"))
       .toEqual(["--line", "80", path]);
-    const result = await page.evaluate(async (path) => {
-      const sessions = await window.zpi.listRecentSessions();
-      if (!sessions.ok) throw new Error(sessions.error.message);
-      return window.zpi.fileAction(sessions.value[0].id, path, "open");
-    }, path);
+    const perform = (line?: number) =>
+      page.evaluate(
+        async ({ path, line }) => {
+          const sessions = await window.zpi.listRecentSessions();
+          if (!sessions.ok) throw new Error(sessions.error.message);
+          return window.zpi.fileAction(sessions.value[0].id, path, "open", line ? { line } : undefined);
+        },
+        { path, line },
+      );
+    const result = await perform();
     expect(result.ok).toBe(true);
     await expect.poll(async () => (await readFile(log, "utf8")).trim()).toBe(path);
+    const fallbackCalls = () =>
+      app?.evaluate(
+        () =>
+          (globalThis as typeof globalThis & { defaultEditorFallbackPaths: string[] })
+            .defaultEditorFallbackPaths,
+      );
+    expect(await fallbackCalls()).toEqual([]);
+    for (const [index, mode] of ["not-executable", "exit-error", "missing"].entries()) {
+      if (mode === "not-executable") await chmod(binary, 0o600);
+      else if (mode === "exit-error") {
+        await writeFile(binary, "#!/bin/sh\nexit 7\n");
+        await chmod(binary, 0o755);
+      } else await rm(binary);
+      const fallback = await perform(80);
+      expect(fallback.ok).toBe(true);
+      expect(await fallbackCalls()).toEqual(Array(index + 1).fill(path));
+    }
+    await app.evaluate(({ shell }) => {
+      shell.openPath = async () => "没有可用的默认应用程序";
+    });
+    const failed = await perform();
+    expect(failed.ok).toBe(false);
+    if (failed.ok) throw new Error("Expected both open methods to fail");
+    expect(failed.error.message).toContain("ENOENT");
+    expect(failed.error.message).toContain("没有可用的默认应用程序");
   } finally {
     await app?.close();
     await server.close();

@@ -1,5 +1,20 @@
-import { expect, test, vi } from "vitest";
-import { editorLaunch, openDefaultFile } from "../src/main/default-file-open.ts";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, expect, test, vi } from "vitest";
+import { editorLaunch, launchEditor, openDefaultFile } from "../src/main/default-file-open.ts";
+
+const directories: string[] = [];
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await Promise.all(directories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+async function fixture() {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-editor-launch-"));
+  directories.push(dir);
+  return dir;
+}
 
 function services(app = "/Applications/IntelliJ IDEA.app") {
   return {
@@ -51,14 +66,82 @@ test("HTML, images, folders and other default apps retain the system opener and 
   }
 });
 
-test("association lookup failure falls back; editor launch failures are visible without a misleading retry", async () => {
+test("association lookup failure falls back to the system opener", async () => {
   const native = services();
   native.defaultApplication.mockRejectedValueOnce(new Error("lookup unavailable"));
   expect(await openDefaultFile("/workspace/Main.java", undefined, native)).toBe("");
-  expect(native.openPath).toHaveBeenCalledTimes(1);
+  expect(native.openPath).toHaveBeenCalledWith("/workspace/Main.java");
+  expect(native.launch).not.toHaveBeenCalled();
+});
+
+test.each(["ENOENT", "EACCES", "编辑器启动器退出：7"])(
+  "editor failure (%s) falls back with the literal file path and suppresses the recovered error",
+  async (failure) => {
+    const native = services();
+    native.launch.mockRejectedValueOnce(new Error(failure));
+    expect(await openDefaultFile("/workspace/Main.java", { line: 3 }, native)).toBe("");
+    expect(native.openPath).toHaveBeenCalledExactlyOnceWith("/workspace/Main.java");
+  },
+);
+
+test.each([false, true])(
+  "both failures are reported, including a rejecting system opener (%s)",
+  async (rejects) => {
+    const native = services();
+    native.launch.mockRejectedValueOnce(new Error("ENOENT"));
+    if (rejects) native.openPath.mockRejectedValueOnce(new Error("没有可用的默认应用程序"));
+    else native.openPath.mockResolvedValueOnce("没有可用的默认应用程序");
+    const failure = await openDefaultFile("/workspace/Main.java", undefined, native);
+    expect(failure).toContain("ENOENT");
+    expect(failure).toContain("没有可用的默认应用程序");
+    expect(native.openPath).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("an empty system error is still a failed fallback, not a successful open", async () => {
+  const native = services();
   native.launch.mockRejectedValueOnce(new Error("ENOENT"));
-  expect(await openDefaultFile("/workspace/Main.java", { line: 3 }, native)).toContain("ENOENT");
-  expect(native.openPath).toHaveBeenCalledTimes(1);
+  native.openPath.mockRejectedValueOnce("");
+  expect(await openDefaultFile("/workspace/Main.java", undefined, native)).toContain("系统打开异常");
+});
+
+test("launchers must exist and be executable before starting", async () => {
+  const dir = await fixture();
+  const command = join(dir, "idea");
+  await expect(launchEditor(command, [])).rejects.toThrow("ENOENT");
+  if (process.platform === "win32") return;
+  await writeFile(command, "#!/bin/sh\nexit 0\n");
+  await chmod(command, 0o600);
+  await expect(launchEditor(command, [])).rejects.toThrow("EACCES");
+  await writeFile(command, "#!/zpi-missing-interpreter\n");
+  await chmod(command, 0o755);
+  await expect(launchEditor(command, [])).rejects.toThrow("ENOENT");
+});
+
+test("a spawned launcher that exits unsuccessfully is not mistaken for a successful open", async () => {
+  await expect(launchEditor(process.execPath, ["-e", "process.exit(7)"])).rejects.toThrow("退出：7");
+});
+
+test("successful helpers do not inherit ZPI's Electron and debugger flags", async () => {
+  vi.stubEnv("NODE_OPTIONS", "--invalid-debugger-option");
+  vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
+  await expect(
+    launchEditor(process.execPath, [
+      "-e",
+      "process.exit(process.env.NODE_OPTIONS || process.env.ELECTRON_RUN_AS_NODE ? 1 : 0)",
+    ]),
+  ).resolves.toBeUndefined();
+});
+
+test("a long-lived editor is not killed and opening does not wait for it to close", async () => {
+  const marker = join(await fixture(), "completed");
+  await launchEditor(
+    process.execPath,
+    ["-e", "setTimeout(() => require('fs').writeFileSync(process.argv[1], 'done'), 300)", marker],
+    20,
+  );
+  await expect(readFile(marker, "utf8")).rejects.toThrow("ENOENT");
+  await vi.waitFor(async () => expect(await readFile(marker, "utf8")).toBe("done"));
 });
 
 test("non-macOS opening does not inspect macOS associations or launchers", async () => {
