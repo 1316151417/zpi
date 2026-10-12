@@ -64,6 +64,7 @@ export type AgentSessionEvent =
 export class AgentSession {
   private agent: Agent;
   private manager: SessionManager;
+  private steering: import("zpi-ai").UserMessage[] = [];
   private allTools: Map<string, AgentTool>;
   private listeners = new Set<(event: AgentSessionEvent) => void>();
   private running?: Promise<void>;
@@ -146,6 +147,7 @@ export class AgentSession {
         return undefined;
       },
       toolExecution: "parallel",
+      getSteeringMessages: () => this.steering.splice(0),
     });
     const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
     this.agent.subscribe((event) => {
@@ -593,7 +595,16 @@ export class AgentSession {
             await this.agent.continue();
             continue;
           }
-          if (!(await this.checkCompaction(signal))) break;
+          if (this.steering.length) {
+            await this.agent.prompt(this.steering.splice(0));
+            continue;
+          }
+          const compacted = await this.checkCompaction(signal);
+          if (!signal?.aborted && this.steering.length) {
+            await this.agent.prompt(this.steering.splice(0));
+            continue;
+          }
+          if (!compacted) break;
           await this.agent.continue();
         }
       })
@@ -604,9 +615,17 @@ export class AgentSession {
         this.compactController = undefined;
         this.notify({ type: "model_retry", status: null });
         this.active = false;
+        this.steering = [];
         this.notify({ type: "agent_settled" });
       });
     return this.running;
+  }
+  /** Deliver guidance after the current tool batch/model step without interrupting it. */
+  steer(text: string): boolean {
+    if (!text.trim() || text.length > 100000) throw new Error("Invalid steering input");
+    if (!this.active || this.disposed || this.abortRequested) return false;
+    this.steering.push({ role: "user", content: text, timestamp: Date.now() });
+    return true;
   }
   async abort(): Promise<void> {
     this.abortRequested = true;

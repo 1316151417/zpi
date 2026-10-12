@@ -31,6 +31,7 @@ import {
   canOpenSideChat,
   listenPanes,
   openSideChat,
+  openSubagent,
   openWebLink,
   paneTask,
   setPaneOpen,
@@ -46,6 +47,7 @@ import { SettingsPage } from "./SettingsPage.tsx";
 import { SidebarSections } from "./SidebarSections.tsx";
 import { SidebarTaskEmpty, SidebarTaskList } from "./SidebarTaskList.tsx";
 import { SidebarTaskRow } from "./SidebarTaskRow.tsx";
+import { SubagentActivity } from "./SubagentActivity.tsx";
 import {
   compareTasks,
   readTaskPreferences,
@@ -731,6 +733,7 @@ export function App() {
           {view ? (
             <div className="task-body">
               <Conversation
+                onOpenSubagent={(task) => paneTask(openSubagent(task))}
                 previewServices={previewServices}
                 findRequest={find.open && find.scope === "conversation" ? find.request : undefined}
                 onFindStateChange={find.update}
@@ -802,6 +805,7 @@ export function App() {
                 onFile={openFile}
               />
               <div className="composer-container">
+                <SubagentActivity tasks={view.subagents ?? []} />
                 {view.question && (
                   <UserQuestionCard
                     key={view.question.id}
@@ -824,7 +828,9 @@ export function App() {
                     sessionId={view.sessionId}
                     draftStorage={drafts}
                     historyScope={record?.cwd}
-                    sentMessages={view.runs.map((run) => run.userMessage)}
+                    sentMessages={view.runs
+                      .filter((run) => !run.subagentNotification)
+                      .map((run) => run.userMessage)}
                     header={
                       record?.draft ? (
                         <div className="draft-composer-header">

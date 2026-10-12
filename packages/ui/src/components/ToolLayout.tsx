@@ -7,6 +7,9 @@ import { QueuedSummaryContent } from "./QueuedSummaryContent.tsx";
 export function ToolLayout({
   icon: Icon,
   label,
+  kindDetail,
+  summaryAction,
+  summaryLabel,
   running,
   showIcon = true,
   expanded,
@@ -24,6 +27,9 @@ export function ToolLayout({
 }: {
   icon: LucideIcon;
   label: string;
+  kindDetail?: ReactNode;
+  summaryAction?: () => void;
+  summaryLabel?: string;
   running: boolean;
   showIcon?: boolean;
   expanded: boolean;
@@ -54,6 +60,7 @@ export function ToolLayout({
     <>
       {showIcon && <Icon size={16} aria-hidden="true" className="process-icon" />}
       <strong className={`tool-kind-label${running ? " thinking-label-streaming" : ""}`}>{label}</strong>
+      {kindDetail}
       {(primary || secondary || trailing || failure) && (
         <div className="tool-summary-content">
           {separator && <span className="process-separator">{separator}</span>}
@@ -76,31 +83,32 @@ export function ToolLayout({
       )}
     </>
   );
-  const summaryClass = `tool-summary-row ${toggle ? "tool-title" : "tool-summary-static"}${prioritize ? " tool-prioritize-file" : ""}`;
-  const summary = toggle ? (
-    // biome-ignore lint/a11y/useSemanticElements: File buttons inside the summary must not nest within a button.
-    <div
-      className={summaryClass}
-      data-testid="tool-summary"
-      title={title}
-      role="button"
-      tabIndex={0}
-      aria-expanded={expanded}
-      aria-label={expanded ? "收起工具详情" : "展开工具详情"}
-      onClick={toggle}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
-        event.preventDefault();
-        toggle();
-      }}
-    >
-      {summaryContent}
-    </div>
-  ) : (
-    <div className={summaryClass} data-testid="tool-summary" title={title}>
-      {summaryContent}
-    </div>
-  );
+  const summaryClass = `tool-summary-row ${toggle || summaryAction ? "tool-title" : "tool-summary-static"}${prioritize ? " tool-prioritize-file" : ""}`;
+  const summary =
+    toggle || summaryAction ? (
+      // biome-ignore lint/a11y/useSemanticElements: File buttons inside the summary must not nest within a button.
+      <div
+        className={summaryClass}
+        data-testid="tool-summary"
+        title={title}
+        role="button"
+        tabIndex={0}
+        aria-expanded={toggle ? expanded : undefined}
+        aria-label={summaryLabel ?? (expanded ? "收起工具详情" : "展开工具详情")}
+        onClick={summaryAction ?? toggle}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+          event.preventDefault();
+          (summaryAction ?? toggle)?.();
+        }}
+      >
+        {summaryContent}
+      </div>
+    ) : (
+      <div className={summaryClass} data-testid="tool-summary" title={title}>
+        {summaryContent}
+      </div>
+    );
   return (
     <Collapsible.Root open={expanded} className="tool-layout">
       {summary}

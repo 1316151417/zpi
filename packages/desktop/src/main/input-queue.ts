@@ -139,6 +139,7 @@ export class SessionInputQueue {
         {
           sessionId: id,
           text: item.text,
+          subagentNotification: item.subagentNotification,
           fileReferences: item.fileReferences,
           attachments: item.attachments.map((image) => image.id),
         },

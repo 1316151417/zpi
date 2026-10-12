@@ -1,4 +1,4 @@
-import { type ConversationSelection, toolFile } from "zpi-ui";
+import { type ConversationSelection, type SubagentTask, toolFile } from "zpi-ui";
 import { type FileLocation, resolveLinkTarget, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
 import { create } from "zustand";
 import type { BrowserState, FilePreview, PaneEvent, SessionRecord } from "../shared/bridge.ts";
@@ -23,6 +23,15 @@ export type PaneTab =
       sessionId: string;
       childSessionId: string;
       ordinal: number;
+    }
+  | { id: string; type: "subagent-directory"; title: string; sessionId: string }
+  | {
+      id: string;
+      type: "subagent";
+      title: string;
+      sessionId: string;
+      childSessionId: string;
+      agentId: string;
     }
   | {
       id: string;
@@ -127,7 +136,11 @@ export function listenPanes() {
     if (state.sessions !== previous.sessions) {
       for (const tab of usePane.getState().tabs) {
         const parent = state.sessions.get(paneOwner(tab.sessionId) ?? "");
-        if ((!parent || parent.archivedAt != null) && tab.type === "side-chat") paneTask(closeTab(tab.id));
+        if (
+          (!parent || parent.archivedAt != null) &&
+          (tab.type === "side-chat" || tab.type === "subagent" || tab.type === "subagent-directory")
+        )
+          paneTask(closeTab(tab.id));
       }
     }
     if (state.selected !== previous.selected) restorePane();
@@ -240,6 +253,24 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
   if (reference) addConversationSelection(reference, childId);
   focusComposer(childId);
 }
+export async function openSubagent(task: SubagentTask) {
+  const retained = retainedSessionViews.has(task.childSessionId);
+  retainedSessionViews.add(task.childSessionId);
+  try {
+    accept(unwrap(await window.zpi.getSessionSnapshot(task.childSessionId)));
+    showTab({
+      id: `subagent:${task.childSessionId}`,
+      type: "subagent",
+      title: task.description,
+      sessionId: task.parentSessionId,
+      childSessionId: task.childSessionId,
+      agentId: task.agentId,
+    });
+  } catch (error) {
+    if (!retained) retainedSessionViews.delete(task.childSessionId);
+    throw error;
+  }
+}
 export function openChanges(sessionId: string, runId: string | null, path?: string, toolCallId?: string) {
   const id = `changes:${sessionId}:${runId ?? "task"}${toolCallId ? `:operation:${toolCallId}` : ""}`;
   showTab({
@@ -326,6 +357,7 @@ export async function closeTab(id: string) {
     terminalOutput.delete(id);
   }
   if (tab.type === "browser") unwrap(await window.zpi.closeBrowser(id));
+  if (tab.type === "subagent") retainedSessionViews.delete(tab.childSessionId);
   if (tab.type === "side-chat") {
     await closeSideChat(tab.childSessionId);
   }
@@ -348,4 +380,8 @@ export async function closeTab(id: string) {
 }
 export function paneTask(task: Promise<unknown>) {
   void task.catch(report);
+}
+
+export function openSubagentDirectory(sessionId: string) {
+  showTab({ id: `subagents:${sessionId}`, type: "subagent-directory", title: "子智能体目录", sessionId });
 }

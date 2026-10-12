@@ -39,7 +39,7 @@ interface RunBoundary {
   auxiliary?: boolean;
 }
 interface IndexData {
-  version: 7;
+  version: 8;
   size: number;
   modified: number;
   header: SessionHeader;
@@ -68,7 +68,7 @@ export class HistoryIndex {
     const index = new HistoryIndex(path),
       stat = statSync(path);
     index.data = {
-      version: 7,
+      version: 8,
       size: stat.size,
       modified: stat.mtimeMs,
       header: JSON.parse(readFileSync(path, "utf8")) as SessionHeader,
@@ -87,7 +87,7 @@ export class HistoryIndex {
     try {
       const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
       if (
-        cached.version === 7 &&
+        cached.version === 8 &&
         cached.size === stat.size &&
         cached.modified === stat.mtimeMs &&
         cached.header &&
@@ -101,7 +101,7 @@ export class HistoryIndex {
       /* Missing/stale derived index is rebuilt with a bounded streaming scan. */
     }
     this.data = {
-      version: 7,
+      version: 8,
       size: 0,
       modified: 0,
       header: undefined as unknown as SessionHeader,
@@ -200,6 +200,7 @@ export class HistoryIndex {
           "zpi.attention",
           "zpi.fork",
           "zpi.environment",
+          "zpi.subagent_task",
         ].includes(key)
       )
         d.state[key] = entry;

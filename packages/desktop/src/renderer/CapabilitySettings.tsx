@@ -5,6 +5,11 @@ import { unwrap, useStore } from "./store.ts";
 
 const capabilities: { name: CapabilityName; label: string; description: string }[] = [
   {
+    name: "subagents",
+    label: "子智能体",
+    description: "将独立任务交给专门的智能体并行处理，支持自定义智能体和模型，在侧栏查看完整过程。",
+  },
+  {
     name: "toolBatching",
     label: "提示词-多工具调用",
     description: "提示助手在一次请求中调用多个工具，独立调用可并行执行。",

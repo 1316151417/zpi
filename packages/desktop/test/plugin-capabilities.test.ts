@@ -63,7 +63,12 @@ test("migrates previous plugin settings without changing existing prompt behavio
   const settings = JSON.parse(await readFile(path, "utf8"));
   await writeFile(path, JSON.stringify({ ...settings, capabilities: { askUserQuestion: true } }));
   const restored = new SettingsStore(f.dir, codec);
-  expect(restored.get().capabilities).toEqual({ askUserQuestion: true, toolBatching: true, fileLinks: true });
+  expect(restored.get().capabilities).toEqual({
+    subagents: false,
+    askUserQuestion: true,
+    toolBatching: true,
+    fileLinks: true,
+  });
   expect(() => restored.setCapabilityEnabled("unknown" as "fileLinks", true)).toThrow("无效插件能力");
   restored.setCapabilityEnabled("fileLinks", false);
   expect(new SettingsStore(f.dir, codec).get().capabilities.fileLinks).toBe(false);

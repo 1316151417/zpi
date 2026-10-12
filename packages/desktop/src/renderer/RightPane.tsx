@@ -1,5 +1,6 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  Bot,
   FileDiff as Files,
   Globe,
   MessageSquare,
@@ -26,6 +27,8 @@ import {
   visiblePaneTabs,
 } from "./pane-store.ts";
 import { SideChatPane } from "./SideChatPane.tsx";
+import { SubagentDirectory } from "./SubagentActivity.tsx";
+import { SubagentPane } from "./SubagentPane.tsx";
 import { useStore } from "./store.ts";
 import { TerminalPane } from "./TerminalPane.tsx";
 export function RightPane({
@@ -155,7 +158,9 @@ export function RightPane({
                       if (event.button !== 1) activatePaneTab(tab.id);
                     }}
                   >
-                    {tab.type === "side-chat" ? (
+                    {tab.type === "subagent" || tab.type === "subagent-directory" ? (
+                      <Bot size={16} />
+                    ) : tab.type === "side-chat" ? (
                       <MessageSquare size={16} />
                     ) : tab.type === "changes" ? (
                       <Files size={16} />
@@ -273,7 +278,11 @@ export function RightPane({
               aria-label={tab.title}
               hidden={tab.id !== active}
             >
-              {tab.type === "side-chat" ? (
+              {tab.type === "subagent-directory" ? (
+                <SubagentDirectory sessionId={tab.sessionId} />
+              ) : tab.type === "subagent" ? (
+                <SubagentPane tab={tab} />
+              ) : tab.type === "side-chat" ? (
                 <SideChatPane
                   sessionId={tab.childSessionId}
                   visible={state.open && tab.id === active}

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { AgentOptions, AgentTool, StreamFn } from "zpi-agent";
+import type { AgentMessage, AgentOptions, AgentTool, StreamFn } from "zpi-agent";
 import { Agent } from "zpi-agent";
 import type { Message } from "zpi-ai";
 import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
@@ -165,4 +165,52 @@ it("parallel starts both tools before completion; results retain source order an
     "first",
     "second",
   ]);
+});
+
+it("consumes FIFO guidance only after a complete tool batch and before preparing the next context", async () => {
+  const gate = deferred();
+  const entered = deferred();
+  const guides: AgentMessage[] = [];
+  const { agent, inputs } = make({
+    getSteeringMessages: () => guides.splice(0),
+    beforeToolCall: async () => {
+      entered.resolve();
+      await gate.promise;
+      return undefined;
+    },
+    prepareNextTurnWithContext: async ({ context }) => {
+      expect(context.messages.slice(-2).map((message) => message.content)).toEqual([
+        "guide one",
+        "guide two",
+      ]);
+      return undefined;
+    },
+  });
+  const pending = agent.prompt("go");
+  await entered.promise;
+  guides.push(
+    { role: "user", content: "guide one", timestamp: 1 },
+    { role: "user", content: "guide two", timestamp: 2 },
+  );
+  expect(inputs).toHaveLength(1);
+  expect(JSON.stringify(inputs[0])).not.toContain("guide one");
+  gate.resolve();
+  await pending;
+  expect(inputs).toHaveLength(2);
+  expect(inputs[1].slice(-3).map((message) => message.role)).toEqual(["toolResult", "user", "user"]);
+  expect(guides).toEqual([]);
+});
+
+it("continues a text-only step when guidance arrives at its boundary", async () => {
+  const guides: AgentMessage[] = [];
+  const { agent, inputs } = make({ getSteeringMessages: () => guides.splice(0) }, scripted(false));
+  let turns = 0;
+  agent.subscribe((event) => {
+    if (event.type === "turn_end" && ++turns === 1)
+      guides.push({ role: "user", content: "Boundary guidance", timestamp: 1 });
+  });
+  await agent.prompt("go");
+  expect(inputs).toHaveLength(2);
+  expect(inputs[1].at(-1)?.content).toBe("Boundary guidance");
+  expect(agent.state.messages.filter((message) => message.role === "user")).toHaveLength(2);
 });

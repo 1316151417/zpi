@@ -168,6 +168,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
         fileReferences?: string[];
         attachments?: Attachment[];
         ordinalStart?: number;
+        subagentNotification?: import("zpi-ui").SubagentNotification;
       };
       if (d.phase === "start" && d.runId) {
         runId = d.runId;
@@ -175,6 +176,7 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
         apply({
           type: "started",
           text: d.text ?? "",
+          subagentNotification: d.subagentNotification,
           fileReferences: d.fileReferences ?? [],
           attachments: d.attachments ?? [],
           startedAt: d.startedAt ?? Date.parse(e.timestamp),
