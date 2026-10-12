@@ -22,12 +22,11 @@ test("packaged ten complete Agent calls, upward paging, reading position and res
     app = await launchDesktop({ dir, url: server.url, packaged: true });
     let page = await app.firstWindow();
     await expect(page.getByTestId("run")).toHaveCount(10);
-    await page.locator(".conversation").evaluate((el) => {
-      el.scrollTop = 0;
-    });
     const first = page.getByTestId("run").filter({ hasText: "用户上下文 20" });
-    const before = (await first.boundingBox())?.y;
-    await page.getByRole("button", { name: "加载更早的十次调用" }).click();
+    const before = await page.locator(".conversation").evaluate((el) => {
+      el.scrollTop = 0;
+      return el.querySelector('[data-run-id="run-20"]')?.getBoundingClientRect().y;
+    });
     await expect(page.getByTestId("run")).toHaveCount(20);
     await expect
       .poll(async () => Math.abs(((await first.boundingBox())?.y ?? 0) - (before ?? 0)))

@@ -30,6 +30,7 @@ import type {
 import { methods } from "../shared/bridge.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
+import { defaultFileOpener } from "./default-file-open.ts";
 import { ErrorLog } from "./error-log.ts";
 import { performFileAction } from "./file-actions.ts";
 import { readFilePreview } from "./file-preview.ts";
@@ -42,6 +43,10 @@ import { SettingsStore } from "./storage.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
+const openFile = defaultFileOpener(
+  (path) => shell.openPath(path),
+  async (path) => (await app.getApplicationInfoForProtocol(pathToFileURL(path).href)).path,
+);
 // Match ZCode's Chromium locale: on macOS zh-CN changes system-ui's Chinese
 // fallback from PingFang UI Display to PingFang SC, enlarging every UI label.
 // UI copy is supplied by React and remains Chinese.
@@ -491,7 +496,7 @@ async function launch(): Promise<void> {
             string(1),
             string(2),
             {
-              openPath: (path) => shell.openPath(path),
+              openPath: openFile,
               showItemInFolder: (path) => shell.showItemInFolder(path),
               writeText: (text) => clipboard.writeText(text),
             },

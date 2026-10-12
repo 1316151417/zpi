@@ -147,6 +147,9 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await expect(page.getByText(/文件不存在：/).first()).toBeVisible();
     await answer.getByRole("button", { name: "越界符号链接", exact: true }).click();
     await expect(page.getByText(/相对文件链接超出当前工作目录/).first()).toBeVisible();
+    // Dismiss the toast before opening a menu: its layout shift can dismiss Radix's context menu.
+    await page.getByRole("button", { name: "关闭错误", exact: true }).click();
+    await expect(page.locator(".error-toast")).toHaveCount(0);
     await answer.getByRole("button", { name: "越界符号链接", exact: true }).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
     await expect(answer.getByRole("alert")).toContainText("相对文件链接超出当前工作目录");

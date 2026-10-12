@@ -806,7 +806,9 @@ export function Conversation({
     const attempt = `${view.sessionId}:${findQuery}:${historyCursor}`;
     if (attempt === findLoadAttempt.current) return;
     findLoadAttempt.current = attempt;
-    void onLoadEarlier();
+    void onLoadEarlier().catch((error) =>
+      setHistoryError(error instanceof Error ? error.message : String(error)),
+    );
   }, [findQuery, hasEarlier, loadingEarlier, onLoadEarlier, historyCursor, view]);
   const scrollToBottom = () => {
     const el = ref.current;
@@ -830,7 +832,29 @@ export function Conversation({
     return () => window.removeEventListener("zpi:scroll-to-run", navigate);
   }, [view.sessionId]);
 
-  const prepend = useRef<{ height: number; top: number } | null>(null);
+  const prepend = useRef<{ height: number; top: number; cursor: number | null | undefined } | null>(null);
+  const historyTrigger = useRef<HTMLButtonElement>(null);
+  const historyRequest = useRef<object | null>(null);
+  const autoLoadAttempt = useRef("");
+  const [historyError, setHistoryError] = useState("");
+  const loadHistory = useCallback(() => {
+    const el = ref.current;
+    if (!el || !hasEarlier || loadingEarlier || !onLoadEarlier || historyRequest.current) return;
+    const request = {};
+    historyRequest.current = request;
+    following.current = false;
+    prepend.current = { height: el.scrollHeight, top: el.scrollTop, cursor: historyCursor };
+    setHistoryError("");
+    void onLoadEarlier()
+      .catch((error) => {
+        if (historyRequest.current !== request) return;
+        prepend.current = null;
+        setHistoryError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (historyRequest.current === request) historyRequest.current = null;
+      });
+  }, [hasEarlier, loadingEarlier, onLoadEarlier, historyCursor]);
   const readingWrite = useRef<{ key: string; value: string } | null>(null);
   const readingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flushReading = useCallback(() => {
@@ -866,6 +890,10 @@ export function Conversation({
     } catch {
       /* Invalid optional bookmark starts at latest. */
     }
+    prepend.current = null;
+    historyRequest.current = null;
+    autoLoadAttempt.current = "";
+    setHistoryError("");
     following.current = saved?.following ?? true;
     latestRun.current = view.runs.at(-1)?.runId;
     if (ref.current) ref.current.scrollTop = following.current ? ref.current.scrollHeight : (saved?.top ?? 0);
@@ -882,14 +910,31 @@ export function Conversation({
       latestRun.current = tail;
       if (!findQuery) following.current = true;
     }
-    if (prepend.current) {
+    if (prepend.current && prepend.current.cursor !== historyCursor) {
       el.scrollTop = prepend.current.top + el.scrollHeight - prepend.current.height;
       lastScrollTop.current = el.scrollTop;
       prepend.current = null;
     } else if (following.current) scrollToBottom();
     setShowLatest(el.scrollHeight - el.scrollTop - el.clientHeight >= 60);
     saveReading();
-  }, [view]);
+  }, [view, historyCursor]);
+  useEffect(() => {
+    const root = ref.current;
+    const trigger = historyTrigger.current;
+    if (!root || !trigger || !hasEarlier || loadingEarlier) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        const attempt = `${view.sessionId}:${historyCursor}`;
+        if (autoLoadAttempt.current === attempt || historyRequest.current) return;
+        autoLoadAttempt.current = attempt;
+        loadHistory();
+      },
+      { root, rootMargin: "120px 0px 0px 0px" },
+    );
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [view.sessionId, historyCursor, hasEarlier, loadingEarlier, loadHistory]);
   useEffect(() => {
     if (!ref.current) return;
     const observer = new ResizeObserver(() => {
@@ -927,20 +972,18 @@ export function Conversation({
         <div className="conversation-inner">
           {hasEarlier && (
             <button
+              ref={historyTrigger}
               className="load-history"
               disabled={loadingEarlier}
-              onClick={() => {
-                const el = ref.current;
-                if (!el || !onLoadEarlier) return;
-                following.current = false;
-                prepend.current = { height: el.scrollHeight, top: el.scrollTop };
-                void onLoadEarlier().finally(() => {
-                  if (prepend.current) prepend.current = null;
-                });
-              }}
+              onClick={loadHistory}
             >
-              {loadingEarlier ? "正在加载…" : "加载更早的十次调用"}
+              {loadingEarlier ? "正在加载…" : historyError ? "加载失败，点击重试" : "加载更早的十次调用"}
             </button>
+          )}
+          {historyError && (
+            <p role="alert" className="run-error">
+              {historyError}
+            </p>
           )}
           {view.runs.length ? (
             view.runs.map((run) => (

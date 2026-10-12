@@ -72,7 +72,7 @@ export async function fakeServer(
             res,
             chunk({
               content: JSON.stringify({
-                session_title: chars.length > 10 ? `${chars.slice(0, 10).join("")}…` : text,
+                session_title: chars.length > 20 ? `${chars.slice(0, 20).join("")}…` : text,
               }),
             }),
           );

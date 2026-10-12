@@ -50,6 +50,24 @@ it("title is independent, snapshot-bound, once-only and preserves the complete f
   expect(server.titleRequests).toHaveLength(1);
 });
 
+it("default titles keep twenty graphemes, truncating only longer input without changing the message", async () => {
+  const { host } = await setup((_, res) => {
+    send(res, chunk({ content: '{"session_title":false}' }));
+    done(res);
+  });
+  const grapheme = "👨‍👩‍👧‍👦";
+  for (const length of [19, 20, 21]) {
+    const record = host.createSession(null);
+    const text = grapheme.repeat(length);
+    await host.startRun({ sessionId: record.id, text });
+    await idle(host, record.id);
+    expect(host.listRecentSessions().find((session) => session.id === record.id)?.title).toBe(
+      length > 20 ? `${grapheme.repeat(20)}…` : text,
+    );
+    expect(host.getSessionSnapshot(record.id).view.runs[0].userMessage).toBe(text);
+  }
+});
+
 it("manual rename and deletion win over late title responses; title failure is not retried", async () => {
   const gate = deferred();
   const { host, server } = await setup(async (_, res) => {
