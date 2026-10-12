@@ -1,6 +1,7 @@
 // Adapted from ZCode exploreToolCall.ts, conversationAssistantWorkItems.ts and
 // ToolCallBlocks/renderers (872ad96, Apache-2.0); see THIRD_PARTY_NOTICES.md.
 import type { ViewBlock } from "../types.ts";
+import { toolInputPreview } from "./tool-input-preview.ts";
 
 export type ToolView = Extract<ViewBlock, { type: "tool" }>;
 export type ToolGroupView = {
@@ -149,7 +150,7 @@ export function groupSummary(group: ToolGroupView): string {
 }
 
 export function toolFile(block: ToolView, cwd?: string) {
-  const value = toolInput(block).path;
+  const value = toolInputPreview(block)?.path;
   const path = block.fileChange?.path ?? (typeof value === "string" ? value.trim() : "");
   if (!path) return;
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");

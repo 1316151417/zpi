@@ -2,6 +2,10 @@
 
 AskUserQuestion's schema, choice card layout, keyboard navigation, answer/skip semantics, and selection side-chat context boundary in packages/desktop/src/{main,renderer} follow ZCode's contracts/tools/ask-user-question.ts, ElicitationDialog.tsx, v4/SessionPane.tsx, and runtime/methods/session-fork.ts. Adapted to ZPI's existing custom-tool, session and Electron IPC interfaces under the Apache-2.0 license reproduced below.
 
+# ZCode streaming tool parameter previews
+
+The partial JSON string decoding and empty-input visibility in packages/ui/src/components/tool-input-preview.ts follow ZCode commit 872ad960de7ec172591f7e1952f7849229f94521, packages/shared/src/streaming-tool-input-preview.ts and packages/ui/src/v4/toolCallRowAdapter.ts. The write content-versus-Parameters switch and preview surfaces follow ToolCallBody.tsx, lib/toolDisplay.ts and components/ai-elements/tool.tsx. Adapted to ZPI's Pi argument fields and existing Markdown/code/diff components under the Apache-2.0 license reproduced below. No new artwork is included.
+
 # ZCode visual interactions
 
 Workspace sidebar spacing, input drag feedback, menu/dialog surfaces and motion, side-pane toggle animation and content width locking, and live tool entrances in packages/desktop/src/renderer and packages/ui/src follow ZCode packages/ui/src/{WorkspaceSidebar,ToolCallBlocks}.tsx, app-shell/{useAnimatedResizablePanel.ts,AnimatedSidePanePanel.tsx}, prompt-editor/ChatPromptEditor.tsx, components/ui/{button,dialog,dropdown-menu,popover}.tsx and styles.css. Adapted to ZPI’s four-tool interface and existing React/Radix components under the Apache-2.0 license reproduced below. No new artwork is included.

@@ -1,22 +1,17 @@
 // ZCode read/execute/edit renderers, adapted to ZPI's four tools (Apache-2.0).
 import { Pencil, Search, SquareTerminal, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { LinkContext } from "../link-target.ts";
+import type { LinkContext, WebOpenOptions } from "../link-target.ts";
 import { AskQuestionToolBlock } from "./AskQuestionToolBlock.tsx";
 import { FlipMetricValue } from "./FlipMetricValue.tsx";
+import { Markdown } from "./Markdown.tsx";
 import { FileIcon } from "./Reference.tsx";
-import { ToolCode, ToolDiff } from "./ToolDiff.tsx";
+import { ToolCode, ToolDiff, toolCodeLanguage } from "./ToolDiff.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
 import { ToolOutput } from "./ToolOutput.tsx";
-import {
-  executionCommand,
-  type ToolView,
-  toolCommand,
-  toolFile,
-  toolInput,
-  toolLabel,
-} from "./tool-presentation.ts";
+import { toolInputPreview } from "./tool-input-preview.ts";
+import { executionCommand, type ToolView, toolCommand, toolFile, toolLabel } from "./tool-presentation.ts";
 
 export interface ToolBlockProps {
   block: ToolView;
@@ -26,6 +21,7 @@ export interface ToolBlockProps {
   workspace?: LinkContext;
   onFile?: (path: string) => void;
   onCopy?: (text: string) => Promise<void>;
+  onLink?: (url: string, options?: WebOpenOptions) => void;
   onChanges?: (path: string, toolCallId: string) => void;
   onLoadPatch?: (toolCallId: string) => Promise<string>;
 }
@@ -74,7 +70,11 @@ export function ToolFileChip({
   );
 }
 
-function FileToolDetails({ block, onLoadPatch }: Pick<ToolBlockProps, "block" | "onLoadPatch">) {
+function FileToolDetails({ block, onLoadPatch, workspace, onCopy, onFile, onLink }: ToolBlockProps) {
+  const input = toolInputPreview(block);
+  const content = block.name === "write" && typeof input?.content === "string" ? input.content : "";
+  const path = toolFile(block)?.path ?? "";
+  const language = toolCodeLanguage(path, content);
   const [patch, setPatch] = useState(block.fileChange?.patch);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -103,14 +103,29 @@ function FileToolDetails({ block, onLoadPatch }: Pick<ToolBlockProps, "block" | 
         />
       ) : block.fileChange?.patchAvailable && !error ? (
         <p className="tool-detail-note">正在加载...</p>
-      ) : (
+      ) : content.trim() ? (
+        <div className={`tool-content-preview${language === "markdown" ? " tool-markdown-preview" : ""}`}>
+          {language === "markdown" ? (
+            <Markdown
+              text={content}
+              streaming={block.status === "preparing"}
+              workspace={workspace}
+              onCopy={onCopy}
+              onFile={onFile}
+              onLink={onLink ?? (() => {})}
+            />
+          ) : (
+            <ToolCode text={content} language={language} />
+          )}
+        </div>
+      ) : input !== undefined ? (
         <div className="tool-parameters">
           <h4>Parameters</h4>
           <div className="tool-parameters-code">
-            <ToolCode text={JSON.stringify(toolInput(block), null, 2)} />
+            <ToolCode text={JSON.stringify(input, null, 2)} />
           </div>
         </div>
-      )}
+      ) : null}
       {(error || block.fileChange?.reason) && (
         <p role={error ? "alert" : undefined} className="tool-detail-note">
           {error || block.fileChange?.reason}
@@ -201,7 +216,7 @@ export function ToolBlock(props: ToolBlockProps) {
               )}
             </div>
           ) : (
-            <FileToolDetails block={block} onLoadPatch={props.onLoadPatch} />
+            <FileToolDetails {...props} />
           )
         }
       />

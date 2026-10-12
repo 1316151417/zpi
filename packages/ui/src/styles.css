@@ -790,6 +790,7 @@ small {
 .tool-parameters h4,
 .tool-detail-error h4 {
   margin: 0 0 8px;
+  font-size: var(--text-body);
   font-weight: 500;
   color: var(--color-text-muted);
   letter-spacing: 0.05em;
@@ -802,6 +803,16 @@ small {
   margin: 0;
   border-radius: 6px;
   background: color-mix(in srgb, var(--color-surface-muted) 50%, transparent);
+}
+.tool-content-preview {
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface-muted) 15%, transparent);
+}
+.tool-markdown-preview {
+  border: 1px solid var(--color-border);
+  padding: 12px;
 }
 .tool-input-code {
   border-radius: 12px;
