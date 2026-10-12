@@ -46,7 +46,7 @@ it("loads global/project settings with recursive overrides and ZPI defaults", as
   });
   expect(settings.getRetrySettings()).toEqual({
     enabled: true,
-    maxRetries: 5,
+    maxRetries: 10,
     baseDelayMs: 100,
     maxAgentDelayMs: 60000,
   });
@@ -63,11 +63,15 @@ it("loads global/project settings with recursive overrides and ZPI defaults", as
   });
   expect(defaults.getRetrySettings()).toEqual({
     enabled: true,
-    maxRetries: 5,
+    maxRetries: 10,
     baseDelayMs: 2000,
     maxAgentDelayMs: 60000,
   });
-  expect(defaults.getHttpIdleTimeoutMs()).toBe(300000);
+  expect(defaults.getHttpIdleTimeoutMs()).toBe(0);
+  expect(defaults.getStreamIdleTimeoutMs()).toBe(600000);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 0 }).getStreamIdleTimeoutMs()).toBe(0);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: -1 }).getStreamIdleTimeoutMs()).toBe(-1);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: NaN }).getStreamIdleTimeoutMs()).toBe(600000);
   settings.applyOverrides({ retry: { maxRetries: 0 } });
   expect(settings.getRetrySettings().maxRetries).toBe(0);
   settings.applyOverrides({ compaction: { reserveTokens: -1 } });

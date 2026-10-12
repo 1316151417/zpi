@@ -66,6 +66,7 @@ const TRANSIENT_CODES = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
+  "MODEL_STREAM_IDLE_TIMEOUT",
 ]);
 
 function record(value: unknown): Record<string, unknown> {
@@ -135,8 +136,16 @@ export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure
       ) ||
       (status === 409 && shouldRetry !== "false") ||
       (status === undefined && shouldRetry === "true"));
+  const stall = records.find((r) => r.code === "MODEL_STREAM_IDLE_TIMEOUT");
   return {
     retryable,
+    ...(stall
+      ? {
+          code: "MODEL_STREAM_IDLE_TIMEOUT",
+          ...(typeof stall.idleMs === "number" ? { idleMs: stall.idleMs } : {}),
+          ...(typeof stall.timeoutMs === "number" ? { timeoutMs: stall.timeoutMs } : {}),
+        }
+      : {}),
     ...(status !== undefined ? { status } : {}),
     ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
   };

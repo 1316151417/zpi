@@ -8,6 +8,7 @@ import type {
 } from "zpi-ai";
 import {
   assertSupportedOptions,
+  guardModelStream,
   normalizeContext,
   streamSimple,
   validateReasoningConfig,
@@ -120,7 +121,9 @@ export class ModelRuntime {
       fetch: options?.fetch ?? this.requestFetch,
       apiKey: options?.apiKey ?? this.keys.get(model.provider),
     };
-    if (p.streamSimple) return p.streamSimple(model, transcript, opts);
+    const customStream = p.streamSimple;
+    if (customStream)
+      return guardModelStream(model, (guarded) => customStream(model, transcript, guarded), opts);
     return streamSimple(model, transcript, {
       ...opts,
       ...(p.getApiKey && options?.apiKey === undefined ? { getApiKey: p.getApiKey } : {}),

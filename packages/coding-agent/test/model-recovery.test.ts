@@ -221,7 +221,7 @@ it.each(["text", "thinking", "toolCall"] as const)(
   },
 );
 
-it("bounds partial stream recovery at five retries by default and preserves the final failure", async () => {
+it("bounds partial stream recovery at ten retries like ZCode and preserves the final failure", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   let calls = 0;
@@ -255,9 +255,9 @@ it("bounds partial stream recovery at five retries by default and preserves the 
     if (event.type === "model_retry" && event.status) retries.push(event.status);
   });
   await session.prompt("recover");
-  expect(calls).toBe(6);
-  expect(retries.map((status) => status.attempt)).toEqual([1, 2, 3, 4, 5]);
-  expect(retries.every((status) => status.maxRetries === 5)).toBe(true);
+  expect(calls).toBe(11);
+  expect(retries.map((status) => status.attempt)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  expect(retries.every((status) => status.maxRetries === 10)).toBe(true);
   expect(session.isIdle).toBe(true);
   expect(session.messages.at(-1)).toMatchObject({
     stopReason: "error",

@@ -380,6 +380,8 @@ export class AgentSession {
       ...provider,
       ...options,
       timeoutMs: options.timeoutMs ?? provider.timeoutMs ?? (idle === 0 ? 2147483647 : idle),
+      streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? this.settingsManager.getStreamIdleTimeoutMs(),
+      streamIdleTimeoutRetryNumber: options.streamIdleTimeoutRetryNumber ?? this.retryAttempt,
       maxRetries: options.maxRetries ?? provider.maxRetries,
       maxRetryDelayMs: options.maxRetryDelayMs ?? provider.maxRetryDelayMs,
       fetch: withHttpIdleTimeout(requestFetch, idle),
@@ -411,6 +413,7 @@ export class AgentSession {
   private async summarizeContext(manual: boolean, instructions: string, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     const preparation = this.compactionBoundary();
+    let retryNumber = 0;
     const result = await compactContext(
       preparation,
       this.model,
@@ -420,14 +423,20 @@ export class AgentSession {
       signal,
       this.thinkingLevel,
       (model, context, options) =>
-        this.runtime.streamSimple(model, context, this.requestOptions(options ?? {})),
+        this.runtime.streamSimple(
+          model,
+          context,
+          this.requestOptions({ ...options, streamIdleTimeoutRetryNumber: retryNumber }),
+        ),
       this.settingsManager.getRetrySettings(),
       {
-        onRetryScheduled: (attempt, maxRetries, retryDelayMs) =>
+        onRetryScheduled: (attempt, maxRetries, retryDelayMs) => {
+          retryNumber = attempt;
           this.notify({
             type: "model_retry",
             status: { attempt, maxRetries, retryDelayMs, errorStatus: null },
-          }),
+          });
+        },
         onRetryFinished: () => this.notify({ type: "model_retry", status: null }),
       },
       randomUUID(),

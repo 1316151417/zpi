@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "zpi-agent";
-import type { Model, RetryPolicy } from "zpi-ai";
+import { DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS, type Model, type RetryPolicy } from "zpi-ai";
 import type { CompactionOptions, CompactionSettings } from "./compaction.ts";
 
 export interface ProviderRetrySettings {
@@ -21,6 +21,7 @@ export interface Settings {
   compaction?: CompactionOptions;
   retry?: RetrySettings;
   httpIdleTimeoutMs?: number | string;
+  streamIdleTimeoutMs?: number;
 }
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -92,7 +93,7 @@ export class SettingsManager {
     const config = this.settings.retry;
     return {
       enabled: config?.enabled ?? true,
-      maxRetries: config?.maxRetries ?? 5,
+      maxRetries: config?.maxRetries ?? 10,
       baseDelayMs: config?.baseDelayMs ?? 2000,
       maxAgentDelayMs: config?.maxAgentDelayMs ?? 60000,
     };
@@ -103,9 +104,14 @@ export class SettingsManager {
       maxRetryDelayMs: this.settings.retry?.provider?.maxRetryDelayMs ?? 60000,
     };
   }
+  getStreamIdleTimeoutMs(): number {
+    const value = this.settings.streamIdleTimeoutMs;
+    return value === undefined || !Number.isFinite(value) ? DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS : value;
+  }
   getHttpIdleTimeoutMs(): number {
     const value = this.settings.httpIdleTimeoutMs;
-    if (value === undefined) return 300000;
+    // The model-event watchdog is now the default. Retain explicit Pi HTTP timeout overrides.
+    if (value === undefined) return 0;
     const normalized =
       typeof value === "string" && value.trim().toLowerCase() === "disabled"
         ? 0

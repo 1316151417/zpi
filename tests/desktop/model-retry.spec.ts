@@ -54,7 +54,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     const run = () => page.getByTestId("run").last();
     await expect(run().locator(".chat-loading-spinner")).toBeVisible();
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
     await expect(run()).toHaveAttribute("data-status", "running");
     await expect(run().locator(".run-error")).toHaveCount(0);
     await expect(page.getByTestId("api-retry-status")).toHaveAttribute("title", /HTTP 429/);
@@ -71,7 +71,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.screenshot({ path: "test-results/model-retry-dark.png" });
     await page.reload();
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
     await expect(run().locator(".answer")).toHaveText("recovered answer", { timeout: 15_000 });
     await expect(run()).toHaveAttribute("data-status", "running");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
@@ -87,7 +87,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(run().locator(".answer")).toHaveText("recovered stream");
     await expect(run()).not.toContainText("discarded partial");
     await submit("stop");
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
     await page.getByLabel("停止", { exact: true }).click();
     await expect(run()).toHaveAttribute("data-status", "aborted");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
@@ -100,11 +100,73 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await submit("exhaust");
     await expect(run()).toHaveAttribute("data-status", "error");
-    expect(counts.get("exhaust")).toBe(18);
+    expect(counts.get("exhaust")).toBe(33);
     await expect(run().locator(".run-error")).toContainText("Rate limit reached");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
   } finally {
     finishRecoveredStream.resolve();
+    await app.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("recovers a heartbeat-only stream and stops a live request without waiting for the idle deadline", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-stream-stall-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  await mkdir(join(dir, "agent"));
+  await writeFile(
+    join(dir, "agent/settings.json"),
+    JSON.stringify({ streamIdleTimeoutMs: 1000, retry: { baseDelayMs: 3000 } }),
+  );
+  const counts = new Map<string, number>();
+  const closed: string[] = [];
+  const server = await fakeServer((body, response) => {
+    const messages = body.messages as unknown as { role: string; content: string }[];
+    const prompt = messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
+    const count = (counts.get(prompt) ?? 0) + 1;
+    counts.set(prompt, count);
+    if (prompt === "stall" && count > 1) {
+      send(response, chunk({ content: "recovered after idle timeout" }));
+      done(response);
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(": keepalive\n\n");
+    const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 100);
+    response.on("close", () => {
+      clearInterval(heartbeat);
+      closed.push(prompt);
+    });
+  });
+  const app = await launchDesktop({ dir, project, url: server.url });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    const submit = async (text: string) => {
+      await page.getByLabel("消息", { exact: true }).fill(text);
+      await page.getByLabel("发送", { exact: true }).click();
+    };
+    await submit("stall");
+    const run = () => page.getByTestId("run").last();
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(run().locator(".run-error")).toHaveCount(0);
+    await expect.poll(() => closed).toContain("stall");
+    await page.reload();
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(run()).toHaveAttribute("data-status", "completed", { timeout: 10000 });
+    await expect(run().locator(".answer")).toHaveText("recovered after idle timeout");
+    await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
+    expect(counts.get("stall")).toBe(2);
+    await submit("stop live request");
+    await expect.poll(() => counts.get("stop live request")).toBe(1);
+    await page.getByLabel("停止", { exact: true }).click();
+    await expect(run()).toHaveAttribute("data-status", "aborted");
+    await expect.poll(() => closed).toContain("stop live request");
+    expect(counts.get("stop live request")).toBe(1);
+    await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
+  } finally {
     await app.close();
     await server.close();
     await rm(dir, { recursive: true, force: true });

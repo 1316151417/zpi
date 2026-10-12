@@ -239,6 +239,9 @@ export interface AssistantMessage {
 }
 export interface ModelFailure {
   retryable: boolean;
+  code?: string;
+  idleMs?: number;
+  timeoutMs?: number;
   status?: number;
   retryAfterMs?: number;
 }
@@ -277,6 +280,10 @@ export interface StreamOptions {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  /** Model-event idle deadline; ZCode default is 600s, <= 0 disables it. */
+  streamIdleTimeoutMs?: number;
+  /** Recovery count: add 30s to the idle window for every retry. */
+  streamIdleTimeoutRetryNumber?: number;
   maxRetries?: number;
   maxRetryDelayMs?: number;
   onRetry?: (status: ModelRetryStatus | null) => void;

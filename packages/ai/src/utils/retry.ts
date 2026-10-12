@@ -65,6 +65,7 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
   "socket connection was closed",
   "timed? out",
   "timeout",
+  "model stream stalled",
   "terminated",
 
   // Chromium net-stack transport failures (Electron net.fetch), which surface as
