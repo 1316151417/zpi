@@ -59,6 +59,7 @@ import {
   drafts,
   initialize,
   loadEarlier,
+  markSessionRead,
   newSession,
   queueActions,
   refresh,
@@ -699,7 +700,11 @@ export function App() {
             onDoubleClick={() => updatePrefs({ sidebarWidth: sidebarLimits.default })}
           />
         )}
-        <main className={`main ${record?.draft ? "draft-main" : ""}`}>
+        <main
+          className={`main ${record?.draft ? "draft-main" : ""}`}
+          onPointerDownCapture={() => selected && paneTask(markSessionRead(selected))}
+          onFocusCapture={() => selected && paneTask(markSessionRead(selected))}
+        >
           <header className="topbar">
             <div className="topbar-title" title={taskTitle}>
               <Folder size={16} />

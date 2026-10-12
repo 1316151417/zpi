@@ -1,3 +1,7 @@
+# ZCode conversation interaction refinements
+
+The 120px user-message collapse, fade and expand/collapse button in packages/ui/src/components/UserMessageBody.tsx and styles.css follow ZCode packages/ui/src/v4/ConversationUserInputBody.tsx. Auxiliary chat numbering follows lib/workspaceSidePane.ts; task interaction capture follows v4/WorkbenchPane.tsx; pending write previews follow ToolCallBlocks/renderers/edit.tsx and its parameter/change snapshots. Adapted to ZPI's existing React components and Electron interfaces under the Apache-2.0 license reproduced below.
+
 # ZCode model stream idle recovery
 
 The event-iterator watchdog, 600-second default, 30-second retry increments, linked attempt cancellation, timeout error identity, and one-second bounded iterator cleanup in `packages/ai/src/utils/{stream-idle-timeout,guard-model-stream}.ts` follow ZCode commit `872ad960de7ec172591f7e1952f7849229f94521`, `apps/zcode-cli/packages/adapters/src/model/{stream-idle-timeout,runner-stream}.ts` and `packages/contracts/src/config/index.ts`. The ten-retry recovery default follows `packages/core/src/runtime/methods/streaming-recovery.ts`. Adapted to ZPI's native model event streams, existing safe tool-result recovery, JSONL error records and retry UI; no telemetry or orchestration is imported. Explicit Pi HTTP timeout overrides remain available, while model-event idle detection is now the default. The Apache-2.0 license reproduced below applies.

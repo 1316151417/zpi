@@ -35,7 +35,7 @@ async function setup() {
     listProjects: vi.fn(async () => ({ ok: true, value: [] })),
     listRecentSessions: vi.fn(async () => ({ ok: true, value: [session] })),
     getSettings: vi.fn(async () => ({ ok: true, value: {} })),
-    activateSession: vi.fn(async () => ({ ok: true, value: { unreadAt: null } })),
+    activateSession: vi.fn(async () => ({ ok: true, value: { unreadAt: undefined } })),
     getDraft: vi.fn(async () => ({
       ok: true,
       value: { text: "", fileReferences: [], selection: [0, 0], revision: 0 },
@@ -361,5 +361,46 @@ it("opening auxiliary views never evicts the selected main conversation", async 
   expect(views.has(child.id)).toBe(true);
   expect(views.size).toBe(8);
   expect(f.bridge.getDraft).toHaveBeenCalledWith(child.id);
+  f.unsubscribe();
+});
+
+it("reading the current task clears its completion indicator without reloading the conversation", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    selected: f.session.id,
+    sessions: new Map([
+      [
+        f.session.id,
+        {
+          ...f.session,
+          unreadAt: 10,
+        },
+      ],
+    ]),
+  });
+  await f.store.markSessionRead(f.session.id);
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.unreadAt).toBeUndefined();
+  expect(f.bridge.activateSession).toHaveBeenCalledOnce();
+  expect(f.bridge.getSessionSnapshot).not.toHaveBeenCalled();
+  await f.store.markSessionRead(f.session.id);
+  expect(f.bridge.activateSession).toHaveBeenCalledOnce();
+  f.unsubscribe();
+});
+
+it("a late read acknowledgement preserves a newer completion", async () => {
+  const f = await setup();
+  f.store.useStore.setState({ sessions: new Map([[f.session.id, { ...f.session, unreadAt: 10 }]]) });
+  const gate = deferred();
+  f.bridge.activateSession.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: { unreadAt: undefined } };
+  });
+  const reading = f.store.markSessionRead(f.session.id);
+  await f.store.markSessionRead(f.session.id);
+  expect(f.bridge.activateSession).toHaveBeenCalledOnce();
+  f.store.useStore.setState({ sessions: new Map([[f.session.id, { ...f.session, unreadAt: 20 }]]) });
+  gate.resolve();
+  await reading;
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.unreadAt).toBe(20);
   f.unsubscribe();
 });

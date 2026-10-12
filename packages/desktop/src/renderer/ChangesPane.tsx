@@ -1,9 +1,9 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { DiffView, type FindRequest, type FindState } from "zpi-ui";
+import { DiffView, type FindRequest, type FindState, ToolFilePreview } from "zpi-ui";
 import type { DiffItem } from "../shared/bridge.ts";
 import { openFile, paneTask } from "./pane-store.ts";
-import { unwrap } from "./store.ts";
+import { unwrap, useStore } from "./store.ts";
 export function ChangesPane({
   sessionId,
   runId,
@@ -21,12 +21,20 @@ export function ChangesPane({
   toolCallId?: string;
   visible: boolean;
 }) {
+  const operation = useStore((state) =>
+    state.views
+      .get(sessionId)
+      ?.runs.find((run) => run.runId === runId)
+      ?.orderedBlocks.find((block) => block.type === "tool" && block.toolCallId === toolCallId),
+  );
+  const pending = operation?.type === "tool" && ["preparing", "running"].includes(operation.status);
+  const previewOperation = operation?.type === "tool" && !operation.fileChange;
   const [entries, setEntries] = useState<DiffItem[]>([]),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
     [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || previewOperation) return;
     let active = true;
     setLoading(true);
     setError("");
@@ -52,7 +60,7 @@ export function ChangesPane({
     return () => {
       active = false;
     };
-  }, [sessionId, runId, revision, visible, toolCallId, path]);
+  }, [sessionId, runId, revision, visible, toolCallId, path, previewOperation]);
   useEffect(() => {
     if (!visible) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -86,18 +94,31 @@ export function ChangesPane({
       <div className="pane-subheading">
         <span>
           {toolCallId ? "工具变更" : runId ? "本轮变更" : "任务变更"} ·{" "}
-          {new Set(entries.map((entry) => entry.path)).size} 个文件
+          {previewOperation ? 1 : new Set(entries.map((entry) => entry.path)).size} 个文件
         </span>
-        <button aria-label="刷新变更" disabled={loading} onClick={() => setRevision((n) => n + 1)}>
+        <button
+          aria-label="刷新变更"
+          disabled={loading || previewOperation}
+          onClick={() => setRevision((n) => n + 1)}
+        >
           <RefreshCw size={14} />
         </button>
       </div>
-      {error && (
+      {!pending && error && (
         <p role="alert" className="run-error">
           {error}
         </p>
       )}
-      {loading && !entries.length ? (
+      {previewOperation && operation?.type === "tool" ? (
+        <div className="pending-file-preview">
+          {pending && (
+            <p className="pane-empty">
+              {operation.status === "preparing" ? "正在生成文件内容…" : "正在写入文件…"}
+            </p>
+          )}
+          <ToolFilePreview block={operation} />
+        </div>
+      ) : loading && !entries.length ? (
         <p className="pane-empty">加载变更…</p>
       ) : (
         <DiffView

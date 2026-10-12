@@ -1,5 +1,5 @@
-import type { ConversationSelection } from "zpi-ui";
-import { type FileLocation, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
+import { type ConversationSelection, toolFile } from "zpi-ui";
+import { type FileLocation, resolveLinkTarget, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
 import { create } from "zustand";
 import type { BrowserState, FilePreview, PaneEvent, SessionRecord } from "../shared/bridge.ts";
 import {
@@ -16,7 +16,14 @@ import {
   useStore,
 } from "./store.ts";
 export type PaneTab =
-  | { id: string; type: "side-chat"; title: string; sessionId: string; childSessionId: string }
+  | {
+      id: string;
+      type: "side-chat";
+      title: string;
+      sessionId: string;
+      childSessionId: string;
+      ordinal: number;
+    }
   | {
       id: string;
       type: "changes";
@@ -159,7 +166,6 @@ function showTab(tab: PaneTab) {
   if (paneOwner(tab.sessionId) === useStore.getState().selected) restorePane();
 }
 const pendingSideChats = new Map<string, Promise<string>>();
-const sideChatCounters = new Map<string, number>();
 export async function loadSideChat(id: string) {
   retainedSessionViews.add(id);
   try {
@@ -201,12 +207,20 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
             await closeSideChat(record.id);
             throw new Error("主对话已关闭");
           }
-          const count = sideChatCounters.get(parentId) ?? 0;
-          sideChatCounters.set(parentId, count + 1);
+          const used = new Set(
+            usePane
+              .getState()
+              .tabs.flatMap((tab) =>
+                tab.type === "side-chat" && tab.sessionId === parentId ? [tab.ordinal] : [],
+              ),
+          );
+          let ordinal = 1;
+          while (used.has(ordinal)) ordinal++;
           showTab({
             id: `side-chat:${record.id}`,
             type: "side-chat",
-            title: `辅助对话 ${count + 1}`,
+            title: `辅助对话 ${ordinal}`,
+            ordinal,
             sessionId: parentId,
             childSessionId: record.id,
           });
@@ -256,6 +270,31 @@ export async function openWebLink(
   else unwrap(await window.zpi.openExternal(url));
 }
 export async function openFile(sessionId: string, path: string, location?: FileLocation) {
+  const state = useStore.getState();
+  const cwd = state.sessions.get(sessionId)?.cwd;
+  const target = resolveLinkTarget(path, { cwd });
+  // Streamed write/edit parameters are a preview, not a file that already exists on disk.
+  for (const run of state.views.get(sessionId)?.runs ?? []) {
+    if (run.status !== "running") continue;
+    for (const block of run.orderedBlocks) {
+      if (
+        block.type !== "tool" ||
+        !["write", "edit"].includes(block.name) ||
+        !["preparing", "running"].includes(block.status)
+      )
+        continue;
+      const file = toolFile(block);
+      const pending = file && resolveLinkTarget(file.path, { cwd });
+      if (
+        file &&
+        (file.path === path ||
+          (target?.kind === "file" && pending?.kind === "file" && target.path === pending.path))
+      ) {
+        openChanges(sessionId, run.runId, file.path, block.toolCallId);
+        return;
+      }
+    }
+  }
   const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
   if (preview.kind === "directory") {
     unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));

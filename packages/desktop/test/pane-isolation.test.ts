@@ -19,7 +19,7 @@ import type { BrowserState, FilePreview, PaneEvent, Result } from "../src/shared
 vi.mock("../src/renderer/store.ts", async () => {
   const { create } = await import("zustand");
   return {
-    useStore: create(() => ({ selected: undefined, sessions: new Map(), projects: [] })),
+    useStore: create(() => ({ selected: undefined, sessions: new Map(), views: new Map(), projects: [] })),
     report: vi.fn(),
     unwrap: <T>(result: Result<T>) => {
       if (!result.ok) throw new Error(result.error.message);
@@ -76,6 +76,7 @@ beforeEach(() => {
       ]),
     ),
     projects: [],
+    views: new Map(),
   });
   off = listenPanes();
 });
@@ -220,4 +221,65 @@ it("does not remove a tab when native cleanup fails", async () => {
   await expect(closeTab(id)).rejects.toThrow("close failed");
   expect(usePane.getState()).toMatchObject({ open: true, active: id });
   expect(visiblePaneTabs("A")).toHaveLength(1);
+});
+
+it("opens streamed file operations from their parameters without reading an unfinished file", async () => {
+  useStore.setState({
+    views: new Map([
+      [
+        "A",
+        {
+          sessionId: "A",
+          title: "A",
+          seq: 1,
+          runs: [
+            {
+              runId: "writing",
+              status: "running",
+              userMessage: "write",
+              startedAt: 0,
+              finalAnswerBlockIds: [],
+              orderedBlocks: [
+                {
+                  type: "tool",
+                  id: "write",
+                  messageId: "assistant",
+                  toolCallId: "write",
+                  name: "write",
+                  status: "preparing",
+                  argsText: '{"path":"page.html","content":"partial',
+                  output: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    ]),
+  });
+  await openFile("A", "/shared/page.html");
+  expect(bridge.readFilePreview).not.toHaveBeenCalled();
+  expect(bridge.createBrowser).not.toHaveBeenCalled();
+  expect(visiblePaneTabs("A")).toEqual([
+    expect.objectContaining({
+      type: "changes",
+      runId: "writing",
+      toolCallId: "write",
+      path: "page.html",
+    }),
+  ]);
+  await openFile("B", "/shared/page.html");
+  expect(bridge.readFilePreview).toHaveBeenCalledWith("B", "/shared/page.html", undefined);
+});
+
+it("still reports missing files when there is no pending matching write", async () => {
+  bridge.readFilePreview.mockResolvedValueOnce({
+    ok: false,
+    error: {
+      code: "not_found",
+      message: "文件不存在",
+    },
+  });
+  await expect(openFile("A", "/shared/missing.html")).rejects.toThrow("文件不存在");
+  expect(visiblePaneTabs("A")).toHaveLength(0);
 });

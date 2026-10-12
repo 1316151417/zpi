@@ -90,10 +90,17 @@ test("write Parameters follow ZCode's empty input, partial input, content and re
     await expect(write.locator(".tool-content-fade")).toHaveCSS("opacity", "1");
     await page.screenshot({ path: "test-results/tool-parameters-partial.png" });
 
+    await write.locator(".tool-file-chip").click();
+    const pendingPreview = page.locator(".pending-file-preview");
+    await expect(pendingPreview).toContainText('"path": "streamed.ts"');
+    await expect(page.locator(".error-toast")).toHaveCount(0);
+
     content.resolve();
     const preview = write.locator(".tool-content-preview");
     await expect(preview).toContainText(source.trim());
     await expect(preview).toBeVisible();
+    await expect(pendingPreview).toContainText(source.trim());
+    await page.getByLabel("关闭标签 streamed.ts", { exact: true }).click();
     await expect(preview.locator(".tool-input-code")).toHaveAttribute("data-language", "typescript");
     await expect(preview).toHaveCSS("max-height", "240px");
     await expect(write.locator(".tool-parameters")).toHaveCount(0);
@@ -110,11 +117,16 @@ test("write Parameters follow ZCode's empty input, partial input, content and re
     await expect(preview).toContainText(source.trim());
     await expect(write.locator(".tool-parameters")).toHaveCount(0);
 
+    await write.locator(".tool-file-chip").click();
+    await expect(pendingPreview).toBeVisible();
     complete.resolve();
     await expect.poll(() => server.requests.length).toBe(2);
     await expect(write.locator(".tool-inline-diff")).toContainText(source.trim());
     await expect(write.locator(".tool-content-preview")).toHaveCount(0);
     await expect(write.locator(".tool-parameters")).toHaveCount(0);
+    await expect(pendingPreview).toHaveCount(0);
+    await expect(page.locator(".changes-pane [data-diff-id]")).toHaveCount(1);
+    await expect(page.locator(".error-toast")).toHaveCount(0);
     expect(await readFile(join(project, "streamed.ts"), "utf8")).toBe(source);
     finish.resolve();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");

@@ -82,6 +82,7 @@ import { filterSkillSuggestions } from "./skill-suggestions.ts";
 import { ToolBlock } from "./ToolBlock.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import { type ProcessItem, processItems } from "./tool-presentation.ts";
+import { UserMessageBody } from "./UserMessageBody.tsx";
 import { useTextFind } from "./use-text-find.ts";
 
 export interface MessageEditInput {
@@ -462,51 +463,53 @@ export const RunGroup = memo(function RunGroup({
                   ))}
               </div>
               <div className="user-message">
-                <div
-                  className="user-message-text"
-                  data-find-key={`${run.runId}:user`}
-                  data-conversation-selectable="user"
-                  data-selection-key={`${sessionId}:${run.runId}:user`}
-                >
-                  {(() => {
-                    const parts: ReactNode[] = [];
-                    let previous = 0;
-                    const mentions = displayReferences(parsedUser.text);
-                    for (const mention of mentions) {
-                      const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
-                      parts.push(parsedUser.text.slice(previous, mention.start));
-                      parts.push(
-                        <Reference
-                          key={mention.start}
-                          kind={mention.kind}
-                          path={file?.path ?? mention.path}
-                          location={file?.location}
-                          label={mention.label}
-                          onOpen={onFile}
-                          onAction={onFileAction}
-                        />,
-                      );
-                      previous = mention.end;
-                    }
-                    parts.push(parsedUser.text.slice(previous));
-                    for (const path of run.fileReferences ?? []) {
-                      if (mentions.some((m) => m.path === path)) continue;
-                      const file = splitFileLocation(path);
-                      parts.push(
-                        <Reference
-                          key={path}
-                          kind="file"
-                          path={file?.path ?? path}
-                          location={file?.location}
-                          label={path.split("/").at(-1) ?? path}
-                          onOpen={onFile}
-                          onAction={onFileAction}
-                        />,
-                      );
-                    }
-                    return parts;
-                  })()}
-                </div>
+                <UserMessageBody key={run.runId} text={run.userMessage}>
+                  <div
+                    className="user-message-text"
+                    data-find-key={`${run.runId}:user`}
+                    data-conversation-selectable="user"
+                    data-selection-key={`${sessionId}:${run.runId}:user`}
+                  >
+                    {(() => {
+                      const parts: ReactNode[] = [];
+                      let previous = 0;
+                      const mentions = displayReferences(parsedUser.text);
+                      for (const mention of mentions) {
+                        const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
+                        parts.push(parsedUser.text.slice(previous, mention.start));
+                        parts.push(
+                          <Reference
+                            key={mention.start}
+                            kind={mention.kind}
+                            path={file?.path ?? mention.path}
+                            location={file?.location}
+                            label={mention.label}
+                            onOpen={onFile}
+                            onAction={onFileAction}
+                          />,
+                        );
+                        previous = mention.end;
+                      }
+                      parts.push(parsedUser.text.slice(previous));
+                      for (const path of run.fileReferences ?? []) {
+                        if (mentions.some((m) => m.path === path)) continue;
+                        const file = splitFileLocation(path);
+                        parts.push(
+                          <Reference
+                            key={path}
+                            kind="file"
+                            path={file?.path ?? path}
+                            location={file?.location}
+                            label={path.split("/").at(-1) ?? path}
+                            onOpen={onFile}
+                            onAction={onFileAction}
+                          />,
+                        );
+                      }
+                      return parts;
+                    })()}
+                  </div>
+                </UserMessageBody>
               </div>
               <div className="message-actions user-message-actions">
                 <CopyMessage text={run.userMessage} onCopy={onCopy} />
@@ -787,13 +790,22 @@ export function Conversation({
     const root = ref.current;
     if (!root || !range) return;
     following.current = false;
-    const bounds = range.getBoundingClientRect();
-    const viewport = root.getBoundingClientRect();
-    root.scrollTo({
-      top: root.scrollTop + bounds.top - viewport.top - root.clientHeight / 2 + bounds.height / 2,
-      // ZCode first brings the target turn into view, then refines the visible hit smoothly.
-      behavior: bounds.bottom < viewport.top || bounds.top > viewport.bottom ? "instant" : "smooth",
-    });
+    const node = range.startContainer;
+    const element = node instanceof Element ? node : node.parentElement;
+    const content = element?.closest(".user-message-content-inner");
+    const scroll = () => {
+      const bounds = range.getBoundingClientRect();
+      const viewport = root.getBoundingClientRect();
+      root.scrollTo({
+        top: root.scrollTop + bounds.top - viewport.top - root.clientHeight / 2 + bounds.height / 2,
+        // ZCode first brings the target turn into view, then refines the visible hit smoothly.
+        behavior: bounds.bottom < viewport.top || bounds.top > viewport.bottom ? "instant" : "smooth",
+      });
+    };
+    if (content) {
+      content.dispatchEvent(new Event("zpi-reveal-user-message"));
+      requestAnimationFrame(scroll);
+    } else scroll();
   }, []);
   useTextFind({
     rootRef: ref,
