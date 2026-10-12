@@ -13,6 +13,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
   await mkdir(join(dir, "agent"));
   await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ retry: { baseDelayMs: 12000 } }));
   const counts = new Map<string, number>();
+  const finishRecoveredStream = Promise.withResolvers<void>();
   const server = await fakeServer((body, response) => {
     const messages = body.messages as unknown as { role: string; content: string }[];
     const prompt = messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
@@ -26,7 +27,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     }
     if (prompt === "recover" && count > 3) {
       send(response, chunk({ content: "recovered answer" }));
-      done(response);
+      void finishRecoveredStream.promise.then(() => done(response));
       return;
     }
     const delay = prompt === "recover" ? "0.4" : prompt === "stop" ? "120" : "0";
@@ -71,10 +72,15 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await page.screenshot({ path: "test-results/model-retry-dark.png" });
     await page.reload();
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/5");
-    await expect(run()).toHaveAttribute("data-status", "completed", { timeout: 15_000 });
-    await expect(run().locator(".answer")).toHaveText("recovered answer");
-    expect(counts.get("recover")).toBe(4);
+    await expect(run().locator(".answer")).toHaveText("recovered answer", { timeout: 15_000 });
+    await expect(run()).toHaveAttribute("data-status", "running");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
+    await page.reload();
+    await expect(run().locator(".answer")).toHaveText("recovered answer");
+    await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
+    finishRecoveredStream.resolve();
+    await expect(run()).toHaveAttribute("data-status", "completed");
+    expect(counts.get("recover")).toBe(4);
     await submit("partial");
     await expect(run()).toHaveAttribute("data-status", "completed", { timeout: 15000 });
     expect(counts.get("partial")).toBe(2);
@@ -98,6 +104,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(run().locator(".run-error")).toContainText("Rate limit reached");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
   } finally {
+    finishRecoveredStream.resolve();
     await app.close();
     await server.close();
     await rm(dir, { recursive: true, force: true });

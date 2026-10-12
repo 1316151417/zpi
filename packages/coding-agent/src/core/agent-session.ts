@@ -463,6 +463,9 @@ export class AgentSession {
           event.type === "error" ? event.error : event.type === "done" ? event.message : event.partial;
         if (event.type === "start") {
           started = true;
+          // The response stream is connected again; keep the retry budget until
+          // the message succeeds, but stop showing the reconnect indicator now.
+          if (this.retryAttempt > 0) this.notify({ type: "model_retry", status: null });
           output.push(event);
           continue;
         }

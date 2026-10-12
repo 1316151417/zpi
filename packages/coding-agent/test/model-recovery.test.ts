@@ -152,6 +152,75 @@ it("recovers text and reasoning from the prior tool result without replaying wri
   session.dispose();
 });
 
+it.each(["text", "thinking", "toolCall"] as const)(
+  "clears reconnect status while recovered %s is still streaming without resetting the retry budget",
+  async (kind) => {
+    const cwd = await directory();
+    const runtime = await ModelRuntime.create();
+    const streaming = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    let calls = 0;
+    runtime.registerProvider("fake", {
+      models: [fakeConfig("")],
+      streamSimple(model) {
+        const events = createAssistantMessageEventStream();
+        const output = emptyAssistant(model);
+        calls++;
+        events.push({ type: "start", partial: output });
+        if (calls < 3) {
+          output.stopReason = "error";
+          output.errorMessage = "network error: connection reset";
+          output.errorDetails = { retryable: true };
+          events.end(output);
+        } else {
+          output.content = [
+            kind === "text"
+              ? { type: "text", text: "recovered text" }
+              : kind === "thinking"
+                ? { type: "thinking", thinking: "recovered thought" }
+                : { type: "toolCall", id: "recovered-call", name: "read", arguments: {} },
+          ];
+          events.push({
+            type:
+              kind === "toolCall" ? "toolcall_start" : kind === "thinking" ? "thinking_start" : "text_start",
+            contentIndex: 0,
+            partial: output,
+          });
+          void finish.promise.then(() => {
+            // End without executing the partial tool call.
+            output.stopReason = "aborted";
+            events.end(output);
+          });
+        }
+        return events;
+      },
+    });
+    const { session } = await createAgentSession({
+      cwd,
+      agentDir: join(cwd, "agent"),
+      homeDir: join(cwd, "home"),
+      modelRuntime: runtime,
+      settingsManager: SettingsManager.inMemory({ retry: { baseDelayMs: 0 } }),
+    });
+    const retry: (ModelRetryStatus | null)[] = [];
+    session.subscribe((event) => {
+      if (event.type === "model_retry") retry.push(event.status);
+      if (event.type === "message_update" && calls === 3) streaming.resolve();
+    });
+    const running = session.prompt("recover while streaming");
+    try {
+      await streaming.promise;
+      expect(session.isStreaming).toBe(true);
+      expect(retry.filter(Boolean).map((status) => status?.attempt)).toEqual([1, 2]);
+      expect(retry.at(-1)).toBeNull();
+    } finally {
+      finish.resolve();
+      await running;
+      session.dispose();
+    }
+  },
+);
+
 it("bounds partial stream recovery at five retries by default and preserves the final failure", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
