@@ -32,6 +32,7 @@ import type {
   SessionMentionSuggestion,
   SessionView,
 } from "zpi-ui";
+import { splitFileLocation } from "zpi-ui/links";
 import { reduceSession, sessionViewBytes } from "zpi-ui/projection";
 import { parseSelectionPrompt, validSelections } from "zpi-ui/selections";
 import type {
@@ -1290,12 +1291,18 @@ export class SessionHost {
       new Set(references).size !== references.length
     )
       throw new Error("invalid_input: 文件引用列表无效");
-    for (const path of references) await this.referencedFile(id, path);
+    const inputReferences: string[] = [];
+    for (const path of references) {
+      const actual = await this.referencedFile(id, path);
+      // Keep the original references in the transcript, but give tools real paths,
+      // not destinations whose trailing line/column would become part of a filename.
+      inputReferences.push(splitFileLocation(path)?.location.line ? actual : path);
+    }
     const loaded = await this.attachments.load(id, input.attachments ?? []);
     const parsed = parseInput(text);
     if ((references.length || loaded.metadata.length) && parsed.kind === "compact")
       throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
-    return { references, loaded, parsed };
+    return { references, inputReferences: [...new Set(inputReferences)], loaded, parsed };
   }
   submitInput(input: RunInput, disposition?: "keep" | "clear") {
     this.record(input.sessionId);
@@ -1541,7 +1548,7 @@ export class SessionHost {
     let started = false;
     try {
       const manager = this.manager(id);
-      const { references, loaded, parsed } = await this.loadInput(input);
+      const { references, inputReferences, loaded, parsed } = await this.loadInput(input);
       const context = manager.buildSessionContext();
       if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
       if (
@@ -1662,7 +1669,7 @@ export class SessionHost {
         if (session.state.thinkingLevel !== toThinking(selection.reasoning, model))
           session.setThinkingLevel(toThinking(selection.reasoning, model));
         run.session = session;
-        const inputContext = { images: loaded.images, fileReferences: references };
+        const inputContext = { images: loaded.images, fileReferences: inputReferences };
         const prepared = await session.prepareInput(text, inputContext);
         if (prepared.kind === "prompt" && loaded.fileContext)
           prepared.text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;

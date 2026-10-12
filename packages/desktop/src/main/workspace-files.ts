@@ -4,6 +4,7 @@ import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import ignore from "ignore";
+import { splitFileLocation } from "zpi-ui/links";
 import { isPathInside } from "./path-bounds.ts";
 export const runGit = async (cwd: string, args: string[], signal?: AbortSignal) =>
   (
@@ -19,7 +20,16 @@ export const runGit = async (cwd: string, args: string[], signal?: AbortSignal) 
 export async function validatedReference(cwd: string, path: string): Promise<string> {
   if (!path || path.length > 8192 || /[\0\r\n]/.test(path))
     throw new Error("invalid_input: 文件引用路径无效");
-  const actual = await realpath(resolve(cwd, path));
+  let actual: string;
+  try {
+    actual = await realpath(resolve(cwd, path));
+  } catch (error) {
+    // Prefer literal names, including files named "report.ts:284". Only a missing
+    // literal target may be interpreted as a copied file/line reference.
+    const target = splitFileLocation(path);
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT" || !target?.location.line) throw error;
+    actual = await realpath(resolve(cwd, target.path));
+  }
   const info = await stat(actual);
   // Explicit absolute references may point outside the project, like file previews.
   // Relative references remain bounded, including symlinks that escape the workspace.

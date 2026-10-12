@@ -4,6 +4,7 @@ import { type CSSProperties, useState } from "react";
 import { parseMentions } from "zpi-coding-agent/input";
 import { selectionIntersects } from "../conversation-selections.ts";
 import { fileIconSource } from "../file-icons.ts";
+import type { FileLocation } from "../link-target.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";
 
 export interface DisplayReference {
@@ -58,13 +59,15 @@ export function Reference({
   label,
   onOpen,
   onAction,
+  location,
   className = "",
 }: {
   kind: DisplayReference["kind"];
   path: string;
   label: string;
-  onOpen?: (path: string) => void;
+  onOpen?: (path: string, location?: FileLocation) => void;
   onAction?: FileActionHandler;
+  location?: FileLocation;
   className?: string;
 }) {
   const [error, setError] = useState("");
@@ -78,7 +81,7 @@ export function Reference({
         style={style}
         title={path}
         onClick={(event) => {
-          if (!selectionIntersects(event.currentTarget)) onOpen(path);
+          if (!selectionIntersects(event.currentTarget)) onOpen(path, location);
         }}
       >
         <span className="reference-label">{label}</span>
@@ -91,7 +94,7 @@ export function Reference({
   if (kind !== "file" || !onOpen || !onAction) return reference;
   const perform = (action: FileAction) => {
     setError("");
-    void onAction(path, action).catch((error) =>
+    void onAction(path, action, location).catch((error) =>
       setError(error instanceof Error ? error.message : String(error)),
     );
   };
@@ -101,7 +104,7 @@ export function Reference({
         <ContextMenu.Trigger asChild>{reference}</ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content className="message-link-menu message-file-menu">
-            <ContextMenu.Item onSelect={() => onOpen(path)}>打开</ContextMenu.Item>
+            <ContextMenu.Item onSelect={() => onOpen(path, location)}>打开</ContextMenu.Item>
             <ContextMenu.Separator />
             <ContextMenu.Item onSelect={() => perform("reveal")}>
               <img

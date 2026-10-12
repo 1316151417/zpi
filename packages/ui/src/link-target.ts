@@ -34,17 +34,7 @@ function stripQuotes(path: string): string {
   const pairs: Record<string, string> = { '"': '"', "'": "'", "“": "”", "‘": "’" };
   return pairs[path[0]] === path.at(-1) ? path.slice(1, -1) : path;
 }
-export function resolveLinkTarget(raw: string, context: LinkContext = {}): LinkTarget | null {
-  if (!raw || raw.length > 8192 || /[\0\r\n]/.test(raw)) return null;
-  let path = stripQuotes(raw.trim());
-  if (/^https?:/i.test(path)) {
-    try {
-      const url = new URL(path);
-      return url.hostname && !url.username && !url.password ? { kind: "web", url: url.href } : null;
-    } catch {
-      return null;
-    }
-  }
+export function splitFileLocation(path: string): { path: string; location: FileLocation } | null {
   const location: FileLocation = {};
   const suffix = /#L(\d+)(?:-L?(\d+))?$/i.exec(path) ?? /:(\d+)(?::(\d+))?$/.exec(path);
   if (suffix) {
@@ -63,6 +53,24 @@ export function resolveLinkTarget(raw: string, context: LinkContext = {}): LinkT
     } else location.column = other;
     path = path.slice(0, suffix.index);
   }
+  return { path, location };
+}
+
+export function resolveLinkTarget(raw: string, context: LinkContext = {}): LinkTarget | null {
+  if (!raw || raw.length > 8192 || /[\0\r\n]/.test(raw)) return null;
+  let path = stripQuotes(raw.trim());
+  if (/^https?:/i.test(path)) {
+    try {
+      const url = new URL(path);
+      return url.hostname && !url.username && !url.password ? { kind: "web", url: url.href } : null;
+    } catch {
+      return null;
+    }
+  }
+  const file = splitFileLocation(path);
+  if (!file) return null;
+  path = file.path;
+  const location = file.location;
   if (/^file:/i.test(path)) {
     try {
       const url = new URL(path);

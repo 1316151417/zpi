@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveLinkTarget, webOpenTarget } from "../src/link-target.ts";
+import { resolveLinkTarget, splitFileLocation, webOpenTarget } from "../src/link-target.ts";
 
 const context = { cwd: "/workspace/project", home: "/Users/test" };
 describe("Markdown link targets", () => {
@@ -82,6 +82,23 @@ describe("Markdown link targets", () => {
     expect(resolveLinkTarget("~/file.txt", { home: "relative" })).toBeNull();
   });
 });
+describe("file location suffixes", () => {
+  it.each([
+    ["/tmp/index.ts:284", "/tmp/index.ts", { line: 284 }],
+    ["./index.ts:284:3", "./index.ts", { line: 284, column: 3 }],
+    ["/tmp/index.ts#L284-L286", "/tmp/index.ts", { line: 284, endLine: 286 }],
+    ["C:\\Projects\\index.ts:284:3", "C:\\Projects\\index.ts", { line: 284, column: 3 }],
+    ["/tmp/订单 %20 #1.ts:284", "/tmp/订单 %20 #1.ts", { line: 284 }],
+    ["/tmp/report.ts%3A284", "/tmp/report.ts%3A284", {}],
+  ])("separates location metadata without decoding or rewriting literal paths: %s", (raw, path, location) => {
+    expect(splitFileLocation(raw as string)).toEqual({ path, location });
+  });
+  it.each(["index.ts:0", "index.ts:1:0", "index.ts#L4-L2", "index.ts:9007199254740992"])(
+    "rejects invalid locations: %s",
+    (raw) => expect(splitFileLocation(raw)).toBeNull(),
+  );
+});
+
 describe("web open routing", () => {
   it("uses the embedded browser for ZCode's local and private development hosts", () => {
     for (const host of [

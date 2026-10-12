@@ -36,7 +36,12 @@ import {
   parseSelectionPrompt,
 } from "../conversation-selections.ts";
 import { type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
-import type { FileLocation, LinkContext, WebOpenOptions } from "../link-target.ts";
+import {
+  type FileLocation,
+  type LinkContext,
+  splitFileLocation,
+  type WebOpenOptions,
+} from "../link-target.ts";
 import type { PreviewServices } from "../preview/preview-lifecycle.ts";
 import { progressSummary } from "../reducer.ts";
 import type {
@@ -468,12 +473,14 @@ export const RunGroup = memo(function RunGroup({
                     let previous = 0;
                     const mentions = displayReferences(parsedUser.text);
                     for (const mention of mentions) {
+                      const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
                       parts.push(parsedUser.text.slice(previous, mention.start));
                       parts.push(
                         <Reference
                           key={mention.start}
                           kind={mention.kind}
-                          path={mention.path}
+                          path={file?.path ?? mention.path}
+                          location={file?.location}
                           label={mention.label}
                           onOpen={onFile}
                           onAction={onFileAction}
@@ -482,18 +489,21 @@ export const RunGroup = memo(function RunGroup({
                       previous = mention.end;
                     }
                     parts.push(parsedUser.text.slice(previous));
-                    for (const path of run.fileReferences ?? [])
-                      if (!mentions.some((m) => m.path === path))
-                        parts.push(
-                          <Reference
-                            key={path}
-                            kind="file"
-                            path={path}
-                            label={path.split("/").at(-1) ?? path}
-                            onOpen={onFile}
-                            onAction={onFileAction}
-                          />,
-                        );
+                    for (const path of run.fileReferences ?? []) {
+                      if (mentions.some((m) => m.path === path)) continue;
+                      const file = splitFileLocation(path);
+                      parts.push(
+                        <Reference
+                          key={path}
+                          kind="file"
+                          path={file?.path ?? path}
+                          location={file?.location}
+                          label={path.split("/").at(-1) ?? path}
+                          onOpen={onFile}
+                          onAction={onFileAction}
+                        />,
+                      );
+                    }
                     return parts;
                   })()}
                 </div>
@@ -1781,7 +1791,10 @@ export function ChatComposer({
         <MentionEditor
           key={sessionId}
           ref={textarea}
-          onFile={onFile}
+          onFile={(path) => {
+            const file = splitFileLocation(path);
+            onFile?.(file?.path ?? path, file?.location);
+          }}
           history={drafts.current.history(sessionId)}
           initialSelection={value.selection}
           onSelection={(selection) =>

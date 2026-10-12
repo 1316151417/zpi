@@ -66,6 +66,50 @@ test("absolute external Java references submit, retain their original paths and 
   await expect(validatedReference(f.workspace, join(folder, "missing.java"))).rejects.toThrow();
 });
 
+test.each([":284", ":284:3", "#L284", "#L284-L286"])(
+  "copied file links with locations (%s) validate, restore and submit without treating the suffix as a filename",
+  async (suffix) => {
+    const f = await fixture();
+    const path = join(f.dir, "订单 %20 #1.ts");
+    await writeFile(path, "export const value = 1;\n");
+    const reference = `${path}${suffix}`;
+    const text = `[index.ts](<${reference}>)`;
+    f.host.saveDraft(f.session.id, {
+      text,
+      fileReferences: [reference],
+      selection: [text.length, text.length],
+      revision: 1,
+    });
+    expect(await f.host.referencedFile(f.session.id, reference)).toBe(await realpath(path));
+    expect((await f.host.getDraft(f.session.id)).warnings).toEqual([]);
+    await run(f, text, { fileReferences: [reference] });
+    expect(f.host.getSessionSnapshot(f.session.id).view.runs[0]).toMatchObject({
+      userMessage: text,
+      fileReferences: [reference],
+    });
+    const messages = f.server.requests[0].messages as { role: string; content: string }[];
+    expect(messages.findLast((message) => message.role === "user")?.content).toContain(
+      `Referenced project files (read with the read tool when needed):\n- ${JSON.stringify(await realpath(path))}`,
+    );
+  },
+);
+
+test("line references preserve literal colon filenames and cannot bypass relative workspace boundaries", async () => {
+  const f = await fixture();
+  const path = join(f.workspace, "index.ts");
+  await writeFile(path, "export {};\n");
+  expect(await validatedReference(f.workspace, "index.ts:284:3")).toBe(await realpath(path));
+  const literal = join(f.workspace, "index.ts:284");
+  await writeFile(literal, "literal filename");
+  expect(await validatedReference(f.workspace, "index.ts:284")).toBe(await realpath(literal));
+  await writeFile(join(f.dir, "outside.ts"), "outside");
+  await symlink(join(f.dir, "outside.ts"), join(f.workspace, "escape.ts"));
+  for (const reference of ["../outside.ts:284", "escape.ts:284", "escape.ts#L284-L286"])
+    await expect(validatedReference(f.workspace, reference)).rejects.toThrow("不在");
+  for (const reference of ["index.ts:0", "index.ts:1:0", "index.ts#L4-L2", "missing.ts:284"])
+    await expect(validatedReference(f.workspace, reference)).rejects.toThrow();
+});
+
 test.each([false, true])(
   "file search includes directories, empty folders and fuzzy matches (git: %s)",
   async (git) => {
