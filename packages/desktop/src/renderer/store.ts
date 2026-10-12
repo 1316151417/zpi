@@ -363,6 +363,24 @@ export function accept(snapshot: import("../shared/bridge.ts").SessionSnapshot):
     trimViews(snapshot.session.id);
   }
 }
+const readingSessions = new Set<string>();
+export async function markSessionRead(id: string): Promise<void> {
+  const unreadAt = useStore.getState().sessions.get(id)?.unreadAt;
+  if (unreadAt === undefined || readingSessions.has(id)) return;
+  readingSessions.add(id);
+  try {
+    const active = unwrap(await window.zpi.activateSession(id));
+    const sessions = new Map(useStore.getState().sessions);
+    const record = sessions.get(id);
+    // A later completion must retain its own unread indicator.
+    if (record?.unreadAt === unreadAt) {
+      sessions.set(id, { ...record, unreadAt: active.unreadAt });
+      useStore.setState({ sessions });
+    }
+  } finally {
+    readingSessions.delete(id);
+  }
+}
 export async function selectSession(id: string): Promise<void> {
   const previous = useStore.getState().selected;
   if (previous && previous !== id) await saveDraft(previous);

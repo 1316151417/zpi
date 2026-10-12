@@ -11,6 +11,8 @@ export { FileIcon } from "./components/Reference.tsx";
 export { SortableList } from "./components/SortableList.tsx";
 export { TaskFindBar } from "./components/TaskFindBar.tsx";
 export { TaskTitleOverflowText } from "./components/TaskTitleOverflowText.tsx";
+export { ToolFilePreview } from "./components/ToolBlock.tsx";
+export { toolFile } from "./components/tool-presentation.ts";
 export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,

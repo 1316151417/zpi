@@ -35,7 +35,9 @@ export function ToolFileChip({
   const file = toolFile(block, workspace?.cwd);
   if (!file) return null;
   const open =
-    block.fileChange && onChanges
+    (block.fileChange ||
+      (["write", "edit"].includes(block.name) && ["preparing", "running"].includes(block.status))) &&
+    onChanges
       ? () => onChanges(file.path, block.toolCallId)
       : onFile
         ? () => onFile(file.path)
@@ -70,7 +72,14 @@ export function ToolFileChip({
   );
 }
 
-function FileToolDetails({ block, onLoadPatch, workspace, onCopy, onFile, onLink }: ToolBlockProps) {
+export function ToolFilePreview({
+  block,
+  onLoadPatch,
+  workspace,
+  onCopy,
+  onFile,
+  onLink,
+}: Pick<ToolBlockProps, "block" | "onLoadPatch" | "workspace" | "onCopy" | "onFile" | "onLink">) {
   const input = toolInputPreview(block);
   const content = block.name === "write" && typeof input?.content === "string" ? input.content : "";
   const path = toolFile(block)?.path ?? "";
@@ -216,7 +225,7 @@ export function ToolBlock(props: ToolBlockProps) {
               )}
             </div>
           ) : (
-            <FileToolDetails {...props} />
+            <ToolFilePreview {...props} />
           )
         }
       />

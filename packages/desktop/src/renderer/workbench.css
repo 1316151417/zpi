@@ -3926,3 +3926,14 @@
 .session-row[data-question="true"]:is(:hover, :focus-within) .task-row-time {
   display: none;
 }
+
+.pending-file-preview {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 16px;
+}
+.pending-file-preview .tool-content-preview,
+.pending-file-preview .tool-parameters-code {
+  max-height: none;
+  mask-image: none;
+}
