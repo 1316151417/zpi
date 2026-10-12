@@ -326,10 +326,7 @@ export function App() {
       selected ? window.zpi.fileAction(selected, path, action, location).then(unwrap) : Promise.resolve(),
     [selected],
   );
-  const earlier = useCallback(
-    () => (selected ? loadEarlier(selected).catch(report) : Promise.resolve()),
-    [selected],
-  );
+  const earlier = useCallback(() => (selected ? loadEarlier(selected) : Promise.resolve()), [selected]);
   const addProject = async () => {
     try {
       const p = unwrap(await window.zpi.addProject());

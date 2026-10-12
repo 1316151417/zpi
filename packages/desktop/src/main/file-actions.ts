@@ -1,9 +1,10 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
+import type { FileLocation } from "zpi-ui/links";
 import { localFileCandidate, resolveLocalFilePath, validateFileLocation } from "./local-file-path.ts";
 
 interface FileActionServices {
-  openPath(path: string): Promise<string>;
+  openPath(path: string, location?: FileLocation): Promise<string>;
   showItemInFolder(path: string): void;
   writeText(text: string): void;
 }
@@ -35,7 +36,8 @@ export async function performFileAction(
   if (!info.isFile() && !directory) throw new Error("invalid_input: 仅支持打开文件及文件夹");
   if (action === "reveal" && !directory) services.showItemInFolder(path);
   else {
-    const failure = await services.openPath(path);
+    const failure =
+      !directory && location?.line ? await services.openPath(path, location) : await services.openPath(path);
     if (failure) throw new Error(`storage: ${failure}`);
   }
 }

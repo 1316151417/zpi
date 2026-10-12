@@ -1784,7 +1784,7 @@ export class SessionHost {
       new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(visible),
       (part) => part.segment,
     );
-    const title = characters.length > 10 ? `${characters.slice(0, 10).join("")}…` : visible;
+    const title = characters.length > 20 ? `${characters.slice(0, 20).join("")}…` : visible;
     this.meta(id, { type: "session_info", name: title || "图片消息" });
     record.title = title || "图片消息";
     const view = this.views.get(id);

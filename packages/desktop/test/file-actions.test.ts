@@ -38,6 +38,23 @@ test("default opening and Finder reveal receive literal file paths and propagate
   await expect(performFileAction(cwd, path, "open", services)).rejects.toThrow("没有可用的默认应用程序");
 });
 
+test("default opening passes validated line locations only for files, not folders or Finder reveal", async () => {
+  const { cwd, services } = await fixture();
+  const path = join(cwd, "Main.java");
+  await writeFile(path, "class Main {}");
+  const location = { line: 80, column: 3, endLine: 82 };
+  await performFileAction(cwd, path, "open", services, location);
+  expect(services.openPath).toHaveBeenLastCalledWith(path, location);
+  await performFileAction(cwd, cwd, "open", services, location);
+  expect(services.openPath).toHaveBeenLastCalledWith(cwd);
+  await performFileAction(cwd, path, "reveal", services, location);
+  expect(services.showItemInFolder).toHaveBeenLastCalledWith(path);
+  services.openPath.mockClear();
+  for (const invalid of [{ line: 0 }, { line: "80" }, { column: 3 }, { line: 3, endLine: 2 }])
+    await expect(performFileAction(cwd, path, "open", services, invalid)).rejects.toThrow("invalid_input");
+  expect(services.openPath).not.toHaveBeenCalled();
+});
+
 test("copying paths is relative to the session workspace, including absolute paths outside it and removed files", async () => {
   const { dir, cwd, services } = await fixture();
   const path = join(cwd, "src", "removed.txt");

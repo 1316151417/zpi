@@ -41,9 +41,17 @@ export async function launchDesktop({
     });
     executablePath = join(bundle, "Contents", "MacOS", basename(source, ".app"));
   }
-  return electron.launch({
+  const application = await electron.launch({
     args: packaged ? [] : [resolve("packages/desktop/dist/main/index.js")],
     ...(executablePath ? { executablePath } : {}),
     env,
   });
+  // Native open actions are mocked by each test. Never launch an actual IDE
+  // based on the developer machine's file associations.
+  await application.evaluate(({ app }) => {
+    app.getApplicationInfoForProtocol = async () => {
+      throw new Error("No default application in desktop tests");
+    };
+  });
+  return application;
 }
