@@ -17,13 +17,15 @@ export const runGit = async (cwd: string, args: string[], signal?: AbortSignal) 
     })
   ).stdout;
 export async function validatedReference(cwd: string, path: string): Promise<string> {
-  if (!path || isAbsolute(path) || path.includes("\0"))
-    throw new Error("invalid_input: 文件引用必须为相对路径");
-  const root = await realpath(cwd),
-    actual = await realpath(resolve(cwd, path));
+  if (!path || path.length > 8192 || /[\0\r\n]/.test(path))
+    throw new Error("invalid_input: 文件引用路径无效");
+  const actual = await realpath(resolve(cwd, path));
   const info = await stat(actual);
-  if (!isPathInside(root, actual) || (!info.isFile() && !info.isDirectory()))
+  // Explicit absolute references may point outside the project, like file previews.
+  // Relative references remain bounded, including symlinks that escape the workspace.
+  if (!isAbsolute(path) && !isPathInside(await realpath(cwd), actual))
     throw new Error("invalid_input: 引用文件不在当前工作目录内");
+  if (!info.isFile() && !info.isDirectory()) throw new Error("invalid_input: 仅支持引用文件及文件夹");
   await access(actual, constants.R_OK);
   return actual;
 }
