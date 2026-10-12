@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
+import { SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import * as worktrees from "../src/main/worktrees.ts";
@@ -23,23 +24,26 @@ async function repo(cwd: string) {
   await git(cwd, "commit", "-m", "Initial");
 }
 
-it("creates a four-character branch from HEAD without carrying or changing uncommitted source files", async () => {
+it("creates detached worktrees from HEAD without adding branches or changing uncommitted source files", async () => {
   const f = await fixture((_, response) => done(response));
   await repo(f.a.path);
   const head = await git(f.a.path, "rev-parse", "HEAD");
   await writeFile(join(f.a.path, "tracked.txt"), "dirty");
+  const branches = await git(f.a.path, "for-each-ref", "--format=%(refname)", "refs/heads/");
   const tree = await createWorktree(f.a.path, join(f.dir, "trees"));
-  expect(tree.branch).toMatch(/^[a-z0-9]{4}$/);
-  expect(tree.path).toBe(join(f.dir, "trees", tree.branch, "a"));
+  expect(tree.id).toMatch(/^[a-z0-9]{4}$/);
+  expect(tree.path).toBe(join(f.dir, "trees", tree.id, "a"));
   expect(await git(tree.path, "rev-parse", "HEAD")).toBe(head);
+  expect(await git(tree.path, "branch", "--show-current")).toBe("");
   expect(await readFile(join(tree.path, "tracked.txt"), "utf8")).toBe("committed");
   expect(await readFile(join(f.a.path, "tracked.txt"), "utf8")).toBe("dirty");
   const second = await createWorktree(f.a.path, join(f.dir, "trees"));
-  expect(second.branch).not.toBe(tree.branch);
+  expect(second.id).not.toBe(tree.id);
+  expect(await git(f.a.path, "for-each-ref", "--format=%(refname)", "refs/heads/")).toBe(branches);
   expect(await gitEnvironment(f.b.path)).toBeNull();
 });
 
-it("lists local and fetched remote branches separately and creates independent branches from either", async () => {
+it("lists local and fetched remote branches separately and creates detached worktrees from either", async () => {
   const f = await fixture((_, response) => done(response));
   await repo(f.a.path);
   const initial = await git(f.a.path, "rev-parse", "HEAD");
@@ -71,19 +75,18 @@ it("lists local and fetched remote branches separately and creates independent b
     remote: true,
   });
   expect(environment?.branches.some((branch) => branch.ref === "refs/remotes/origin/HEAD")).toBe(false);
+  const branches = await git(f.a.path, "for-each-ref", "--format=%(refname)", "refs/heads/");
   for (const [ref, head, content] of [
     ["refs/heads/feature/topic", local, "local feature"],
     ["refs/remotes/origin/feature/topic", remote, "remote feature"],
   ]) {
     const tree = await createWorktree(f.a.path, join(f.dir, "trees"), undefined, ref);
-    expect(tree.branch).toMatch(/^[a-z0-9]{4}$/);
+    expect(tree.id).toMatch(/^[a-z0-9]{4}$/);
     expect(await git(tree.path, "rev-parse", "HEAD")).toBe(head);
-    expect(await git(tree.path, "branch", "--show-current")).toBe(tree.branch);
+    expect(await git(tree.path, "branch", "--show-current")).toBe("");
     expect(await readFile(join(tree.path, "tracked.txt"), "utf8")).toBe(content);
-    expect(
-      await git(tree.path, "config", "--get-regexp", `^branch\\.${tree.branch}\\.`).catch(() => ""),
-    ).toBe("");
   }
+  expect(await git(f.a.path, "for-each-ref", "--format=%(refname)", "refs/heads/")).toBe(branches);
   expect(await git(f.a.path, "branch", "--show-current")).toBe("main");
   expect(await readFile(join(f.a.path, "tracked.txt"), "utf8")).toBe("dirty");
   expect(await git(f.a.path, "rev-parse", "refs/heads/feature/topic")).toBe(local);
@@ -103,6 +106,45 @@ it("rejects missing branches and revision expressions and supports a detached st
   expect(await gitEnvironment(f.a.path)).toMatchObject({ currentRef: null, head });
   const tree = await createWorktree(f.a.path, join(f.dir, "trees"), undefined, "HEAD");
   expect(await git(tree.path, "rev-parse", "HEAD")).toBe(head);
+});
+
+it("keeps commits in detached worktrees and allows creating a named branch later", async () => {
+  const f = await fixture((_, response) => done(response));
+  await repo(f.a.path);
+  const sourceHead = await git(f.a.path, "rev-parse", "HEAD");
+  const tree = await createWorktree(f.a.path, join(f.dir, "trees"));
+  await writeFile(join(tree.path, "tracked.txt"), "worktree commit");
+  await git(tree.path, "commit", "-am", "Detached work");
+  const head = await git(tree.path, "rev-parse", "HEAD");
+  expect(head).not.toBe(sourceHead);
+  expect(await git(tree.path, "branch", "--show-current")).toBe("");
+  expect(await git(f.a.path, "rev-parse", "HEAD")).toBe(sourceHead);
+  expect(await git(f.a.path, "for-each-ref", "--format=%(refname)", "refs/heads/")).toBe("refs/heads/main");
+  await git(tree.path, "switch", "-c", "feature/saved-work");
+  expect(await git(tree.path, "rev-parse", "refs/heads/feature/saved-work")).toBe(head);
+  expect(await readFile(join(tree.path, "tracked.txt"), "utf8")).toBe("worktree commit");
+});
+
+it("restores existing named worktrees without detaching them or allocating another checkout", async () => {
+  const f = await fixture((_, response) => done(response));
+  await repo(f.a.path);
+  const path = join(f.dir, "legacy-tree");
+  await git(f.a.path, "worktree", "add", "-b", "legacy", path);
+  const session = f.host.createSession(f.a.id, { cwd: path });
+  await f.host.close();
+  const manager = SessionManager.open(join(f.dir, "agent", "sessions", f.a.id, `${session.id}.jsonl`));
+  const worktree = { branch: "legacy", path, sourceCwd: f.a.path };
+  manager.appendCustomEntry("zpi.environment", { newWorktree: true, worktree });
+  const host = new SessionHost(f.dir, f.settings, f.dir);
+  await host.init();
+  cleanup.push(() => host.close());
+  expect(host.getSessionSnapshot(session.id).session.worktree).toEqual(worktree);
+  expect(host.workspaceInfo(session.id).cwd).toBe(path);
+  await host.startRun({ sessionId: session.id, text: "continue" });
+  await host.activeRuns.get(session.id)?.done;
+  expect(host.workspaceInfo(session.id).cwd).toBe(path);
+  expect(await git(path, "branch", "--show-current")).toBe("legacy");
+  expect((await git(f.a.path, "worktree", "list", "--porcelain")).match(/^worktree /gm)).toHaveLength(2);
 });
 
 it("restores the chosen starting branch and resolves its latest commit at first send", async () => {
@@ -146,6 +188,9 @@ it("restores the chosen starting branch and resolves its latest commit at first 
   expect(await readFile(join(record.cwd as string, "tracked.txt"), "utf8")).toBe("latest feature");
   expect(await git(f.a.path, "branch", "--show-current")).toBe("main");
   await expect(host.setNewWorktree(session.id, true, "refs/heads/main")).rejects.toThrow("首次发送前");
+  await writeFile(join(record.cwd as string, "tracked.txt"), "saved detached commit");
+  await git(record.cwd as string, "commit", "-am", "Saved detached commit");
+  const committedHead = await git(record.cwd as string, "rev-parse", "HEAD");
   await host.close();
   const restored = new SessionHost(f.dir, f.settings, f.dir);
   await restored.init();
@@ -155,6 +200,8 @@ it("restores the chosen starting branch and resolves its latest commit at first 
     worktree: record.worktree,
     cwd: record.cwd,
   });
+  expect(await git(restored.workspaceInfo(session.id).cwd, "rev-parse", "HEAD")).toBe(committedHead);
+  expect(await git(restored.workspaceInfo(session.id).cwd, "branch", "--show-current")).toBe("");
 });
 
 it("reports a deleted starting branch without running the model and retries that branch when restored", async () => {
@@ -228,8 +275,8 @@ it("defers creation until sending and restores the actual worktree for prompts, 
   await host.startRun({ sessionId: session.id, text: "work" });
   await host.activeRuns.get(session.id)?.done;
   const record = host.getSessionSnapshot(session.id).session;
-  expect(record.worktree?.branch).toMatch(/^[a-z0-9]{4}$/);
-  expect(record.cwd).toBe(join(root, record.worktree?.branch as string, "a"));
+  expect(record.worktree?.id).toMatch(/^[a-z0-9]{4}$/);
+  expect(record.cwd).toBe(join(root, record.worktree?.id as string, "a"));
   expect(record.cwd).toBe(record.worktree?.path);
   expect(await git(record.cwd as string, "rev-parse", "HEAD")).toBe(head);
   expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain(record.cwd);

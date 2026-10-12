@@ -66,31 +66,25 @@ export async function createWorktree(
   const repository = await git(sourceCwd, ["rev-parse", "--show-toplevel"]);
   await mkdir(root, { recursive: true });
   for (let attempt = 0; attempt < 32; attempt++) {
-    const branch = randomBytes(2).toString("hex");
-    const branchDir = join(root, branch);
-    const path = join(branchDir, basename(repository));
+    const id = randomBytes(2).toString("hex");
+    const directory = join(root, id);
+    const path = join(directory, basename(repository));
     try {
-      await git(repository, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
-      continue;
-    } catch (error) {
-      if ((error as { code?: number }).code !== 1) throw error;
-    }
-    try {
-      await mkdir(branchDir);
+      await mkdir(directory);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
       throw error;
     }
     // Resolve once so changes to the source branch during checkout cannot change the base.
-    onProgress?.(`正在创建工作树 · ${branch}…`);
+    onProgress?.(`正在创建工作树 · ${id}…`);
     try {
-      await git(repository, ["worktree", "add", "-b", branch, path, head]);
+      await git(repository, ["worktree", "add", "--detach", path, head]);
     } catch (error) {
       // Only remove our empty reservation; Git may have left a partial checkout.
-      await rmdir(branchDir).catch(() => {});
+      await rmdir(directory).catch(() => {});
       throw error;
     }
-    return { branch, path, sourceCwd };
+    return { id, path, sourceCwd };
   }
   throw new Error("storage: 无法分配工作树名称，请重试");
 }

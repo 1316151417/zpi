@@ -47,7 +47,9 @@ export interface FileChangeSummary {
 }
 export type FileAction = "open" | "reveal" | "copy-absolute" | "copy-relative";
 export interface WorktreeInfo {
-  branch: string;
+  id?: string;
+  /** Branch recorded by older sessions; new worktrees start with a detached HEAD. */
+  branch?: string;
   path: string;
   sourceCwd: string;
 }

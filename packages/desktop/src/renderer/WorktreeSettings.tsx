@@ -108,7 +108,7 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
                   </Menu.SubTrigger>
                   <Menu.Portal>
                     <Menu.SubContent
-                      className="draft-project-menu environment-menu"
+                      className="draft-project-menu environment-menu worktree-branch-menu"
                       sideOffset={4}
                       onFocusOutside={(event) => {
                         if (event.target === menu.current) event.preventDefault();
