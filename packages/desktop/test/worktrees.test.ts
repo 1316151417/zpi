@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import * as worktrees from "../src/main/worktrees.ts";
-import { createWorktree, gitEnvironment } from "../src/main/worktrees.ts";
+import { createWorktree, gitEnvironment, resolveWorktreeBase } from "../src/main/worktrees.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 const exec = promisify(execFile);
@@ -37,6 +37,156 @@ it("creates a four-character branch from HEAD without carrying or changing uncom
   const second = await createWorktree(f.a.path, join(f.dir, "trees"));
   expect(second.branch).not.toBe(tree.branch);
   expect(await gitEnvironment(f.b.path)).toBeNull();
+});
+
+it("lists local and fetched remote branches separately and creates independent branches from either", async () => {
+  const f = await fixture((_, response) => done(response));
+  await repo(f.a.path);
+  const initial = await git(f.a.path, "rev-parse", "HEAD");
+  await git(f.a.path, "checkout", "-b", "feature/topic");
+  await writeFile(join(f.a.path, "tracked.txt"), "local feature");
+  await git(f.a.path, "commit", "-am", "Feature");
+  const local = await git(f.a.path, "rev-parse", "HEAD");
+  // Fetch from another repository so the list represents actual remote-tracking refs.
+  await repo(f.b.path);
+  await git(f.b.path, "checkout", "-b", "feature/topic");
+  await writeFile(join(f.b.path, "tracked.txt"), "remote feature");
+  await git(f.b.path, "commit", "-am", "Remote feature");
+  const remote = await git(f.b.path, "rev-parse", "HEAD");
+  await git(f.a.path, "remote", "add", "origin", f.b.path);
+  await git(f.a.path, "fetch", "origin");
+  await git(f.a.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+  await git(f.a.path, "checkout", "main");
+  await writeFile(join(f.a.path, "tracked.txt"), "dirty");
+  const environment = await gitEnvironment(f.a.path);
+  expect(environment).toMatchObject({ branch: "main", head: initial, currentRef: "refs/heads/main" });
+  expect(environment?.branches).toContainEqual({
+    ref: "refs/heads/feature/topic",
+    name: "feature/topic",
+    remote: false,
+  });
+  expect(environment?.branches).toContainEqual({
+    ref: "refs/remotes/origin/feature/topic",
+    name: "origin/feature/topic",
+    remote: true,
+  });
+  expect(environment?.branches.some((branch) => branch.ref === "refs/remotes/origin/HEAD")).toBe(false);
+  for (const [ref, head, content] of [
+    ["refs/heads/feature/topic", local, "local feature"],
+    ["refs/remotes/origin/feature/topic", remote, "remote feature"],
+  ]) {
+    const tree = await createWorktree(f.a.path, join(f.dir, "trees"), undefined, ref);
+    expect(tree.branch).toMatch(/^[a-z0-9]{4}$/);
+    expect(await git(tree.path, "rev-parse", "HEAD")).toBe(head);
+    expect(await git(tree.path, "branch", "--show-current")).toBe(tree.branch);
+    expect(await readFile(join(tree.path, "tracked.txt"), "utf8")).toBe(content);
+    expect(
+      await git(tree.path, "config", "--get-regexp", `^branch\\.${tree.branch}\\.`).catch(() => ""),
+    ).toBe("");
+  }
+  expect(await git(f.a.path, "branch", "--show-current")).toBe("main");
+  expect(await readFile(join(f.a.path, "tracked.txt"), "utf8")).toBe("dirty");
+  expect(await git(f.a.path, "rev-parse", "refs/heads/feature/topic")).toBe(local);
+  expect(await git(f.a.path, "rev-parse", "refs/remotes/origin/feature/topic")).toBe(remote);
+});
+
+it("rejects missing branches and revision expressions and supports a detached starting commit", async () => {
+  const f = await fixture((_, response) => done(response));
+  await repo(f.a.path);
+  for (const ref of ["main", "--help", "refs/heads/main~1", "refs/heads/main^{commit}"])
+    await expect(resolveWorktreeBase(f.a.path, ref)).rejects.toThrow("无效起始分支");
+  await expect(
+    createWorktree(f.a.path, join(f.dir, "trees"), undefined, "refs/heads/deleted"),
+  ).rejects.toThrow("起始分支不存在");
+  const head = await git(f.a.path, "rev-parse", "HEAD");
+  await git(f.a.path, "checkout", "--detach");
+  expect(await gitEnvironment(f.a.path)).toMatchObject({ currentRef: null, head });
+  const tree = await createWorktree(f.a.path, join(f.dir, "trees"), undefined, "HEAD");
+  expect(await git(tree.path, "rev-parse", "HEAD")).toBe(head);
+});
+
+it("restores the chosen starting branch and resolves its latest commit at first send", async () => {
+  const f = await fixture((_, response) => done(response));
+  await repo(f.a.path);
+  await git(f.a.path, "branch", "feature/topic");
+  const session = f.host.createSession(f.a.id);
+  expect(await f.host.setNewWorktree(session.id, true)).toMatchObject({ worktreeBaseRef: "refs/heads/main" });
+  await f.host.setNewWorktree(session.id, true, "refs/heads/feature/topic");
+  await f.host.setNewWorktree(session.id, false);
+  expect(await f.host.setNewWorktree(session.id, true)).toMatchObject({
+    worktreeBaseRef: "refs/heads/feature/topic",
+  });
+  expect((await git(f.a.path, "worktree", "list", "--porcelain")).match(/^worktree /gm)).toHaveLength(1);
+  expect(f.host.getSessionSnapshot(session.id).session.worktree).toBeUndefined();
+  await f.host.close();
+  const host = new SessionHost(
+    f.dir,
+    f.settings,
+    f.dir,
+    undefined,
+    undefined,
+    undefined,
+    join(f.dir, "trees"),
+  );
+  await host.init();
+  cleanup.push(() => host.close());
+  expect(host.getSessionSnapshot(session.id).session).toMatchObject({
+    draft: true,
+    worktreeBaseRef: "refs/heads/feature/topic",
+  });
+  await git(f.a.path, "checkout", "feature/topic");
+  await writeFile(join(f.a.path, "tracked.txt"), "latest feature");
+  await git(f.a.path, "commit", "-am", "Latest feature");
+  const head = await git(f.a.path, "rev-parse", "HEAD");
+  await git(f.a.path, "checkout", "main");
+  await host.startRun({ sessionId: session.id, text: "work" });
+  await host.activeRuns.get(session.id)?.done;
+  const record = host.getSessionSnapshot(session.id).session;
+  expect(await git(record.cwd as string, "rev-parse", "HEAD")).toBe(head);
+  expect(await readFile(join(record.cwd as string, "tracked.txt"), "utf8")).toBe("latest feature");
+  expect(await git(f.a.path, "branch", "--show-current")).toBe("main");
+  await expect(host.setNewWorktree(session.id, true, "refs/heads/main")).rejects.toThrow("首次发送前");
+  await host.close();
+  const restored = new SessionHost(f.dir, f.settings, f.dir);
+  await restored.init();
+  cleanup.push(() => restored.close());
+  expect(restored.getSessionSnapshot(session.id).session).toMatchObject({
+    worktreeBaseRef: "refs/heads/feature/topic",
+    worktree: record.worktree,
+    cwd: record.cwd,
+  });
+});
+
+it("reports a deleted starting branch without running the model and retries that branch when restored", async () => {
+  const f = await fixture((_, response) => done(response));
+  await repo(f.a.path);
+  await git(f.a.path, "branch", "feature/topic");
+  const session = f.host.createSession(f.a.id);
+  await expect(f.host.setNewWorktree(session.id, true, "refs/heads/missing")).rejects.toThrow(
+    "起始分支不存在",
+  );
+  expect(f.host.getSessionSnapshot(session.id).session.newWorktree).toBeUndefined();
+  await f.host.setNewWorktree(session.id, true, "refs/heads/feature/topic");
+  await git(f.a.path, "branch", "-D", "feature/topic");
+  await f.host.submitInput({ sessionId: session.id, text: "work" });
+  await f.host.activeRuns.get(session.id)?.done;
+  expect(f.host.getSessionSnapshot(session.id).view.runs[0]).toMatchObject({
+    status: "error",
+    error: expect.stringContaining("起始分支不存在"),
+  });
+  expect(f.server.requests).toHaveLength(0);
+  expect(f.host.getSessionSnapshot(session.id).session.worktree).toBeUndefined();
+  await git(f.a.path, "branch", "feature/topic");
+  const actual = worktrees.createWorktree;
+  vi.spyOn(worktrees, "createWorktree").mockImplementation((cwd, _root, onProgress, baseRef) =>
+    actual(cwd, join(f.dir, "trees"), onProgress, baseRef),
+  );
+  await f.host.submitInput({ sessionId: session.id, text: "retry" });
+  await f.host.activeRuns.get(session.id)?.done;
+  expect(f.host.getSessionSnapshot(session.id).view.runs.map((run) => run.status)).toEqual([
+    "error",
+    "completed",
+  ]);
 });
 
 it("defers creation until sending and restores the actual worktree for prompts, tools and subsequent sessions", async () => {

@@ -19,7 +19,7 @@ const bridge: DesktopBridge = {
   closeSideChat: (id) => call("closeSideChat", id),
   createSideChat: (id) => call("createSideChat", id),
   getGitEnvironment: (id) => call("getGitEnvironment", id),
-  setNewWorktree: (id, enabled) => call("setNewWorktree", id, enabled),
+  setNewWorktree: (id, enabled, baseRef) => call("setNewWorktree", id, enabled, baseRef),
   logError: (error) => ipcRenderer.send("zpi:error", error),
   platform: process.platform,
   workspacePanelRadius:

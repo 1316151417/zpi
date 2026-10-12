@@ -303,7 +303,7 @@ async function launch(): Promise<void> {
         createSideChat: 1,
         closeSideChat: 1,
         getGitEnvironment: 1,
-        setNewWorktree: 2,
+        setNewWorktree: 3,
         activateSession: 1,
         archiveSession: 1,
         listArchivedSessions: 0,
@@ -408,7 +408,7 @@ async function launch(): Promise<void> {
           value = await host.getGitEnvironment(string(0));
           break;
         case "setNewWorktree":
-          value = await host.setNewWorktree(string(0), args[1] as boolean);
+          value = await host.setNewWorktree(string(0), args[1] as boolean, args[2] as string | undefined);
           break;
         case "archiveSession":
           await host.archiveSession(string(0));
