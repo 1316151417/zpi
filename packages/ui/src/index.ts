@@ -9,6 +9,7 @@ export { Markdown } from "./components/Markdown.tsx";
 export { ActionHint } from "./components/MessageActions.tsx";
 export { FileIcon } from "./components/Reference.tsx";
 export { SortableList } from "./components/SortableList.tsx";
+export { subagentStatusLabels } from "./components/SubagentToolBlock.tsx";
 export { TaskFindBar } from "./components/TaskFindBar.tsx";
 export { TaskTitleOverflowText } from "./components/TaskTitleOverflowText.tsx";
 export { ToolFilePreview } from "./components/ToolBlock.tsx";

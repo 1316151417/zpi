@@ -25,6 +25,7 @@ export function sessionReferenceTranscript(
       isJsonObject(entry.data) &&
       entry.data.phase === "start"
     ) {
+      if (entry.data.subagentNotification) continue;
       heading = "User";
       text = typeof entry.data.text === "string" ? entry.data.text : "";
       const files = Array.isArray(entry.data.fileReferences)

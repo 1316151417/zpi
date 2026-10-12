@@ -87,6 +87,7 @@ async function run(
           toolExecution: ______,
           streamingToolExecution: _______,
           prepareNextTurnWithContext: ________,
+          getSteeringMessages: _________,
           ...options
         } = config;
         const apiKey = (await getApiKey?.(config.model.provider)) ?? config.apiKey;
@@ -170,8 +171,10 @@ async function run(
         }
       }
       await emit({ type: "turn_end", message: assistant, toolResults: results });
-      if (!calls.length || signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason))
-        break;
+      if (signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason)) break;
+      const steering = config.getSteeringMessages?.() ?? [];
+      for (const message of steering) await add(message);
+      if (!calls.length && !steering.length) break;
       const next = await config.prepareNextTurnWithContext?.(
         { message: assistant, toolResults: results, context, newMessages: fresh },
         signal,

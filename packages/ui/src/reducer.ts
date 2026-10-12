@@ -23,12 +23,22 @@ export function sessionViewBytes(view: SessionView): number {
     }
   }
   for (const item of view.queue?.items ?? []) chars += item.text.length;
+  for (const task of view.subagents ?? [])
+    chars +=
+      task.agentId.length +
+      task.agentType.length +
+      task.description.length +
+      task.modelLabel.length +
+      (task.result?.length ?? 0) +
+      (task.error?.length ?? 0) +
+      (task.latestActivity?.length ?? 0);
   return chars * 2;
 }
 /** Pure projection: update only the addressed run. Completed messages replace deltas. */
 export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope): SessionView {
   if (envelope.sessionId !== view.sessionId || envelope.seq <= view.seq) return view;
   const { event, runId, seq } = envelope;
+  if (event.type === "subagents_changed") return { ...view, seq, subagents: event.tasks };
   if (event.type === "history_reset") return { ...event.view, seq };
   if (event.type === "session_changed") return { ...view, seq, title: event.title };
   if (event.type === "controls_changed") return { ...view, seq, controls: event.controls };
@@ -64,6 +74,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   const tool = (id: string) => run.orderedBlocks.find((b) => b.type === "tool" && b.toolCallId === id);
   if (event.type === "started") {
     run.userMessage = event.text;
+    run.subagentNotification = event.subagentNotification;
     run.fileReferences = event.fileReferences ?? [];
     run.attachments = event.attachments ?? [];
     run.startedAt = event.startedAt;

@@ -78,7 +78,13 @@ export type ViewBlock =
       fileChange?: FileChangeSummary;
       questionAnswers?: UserQuestionResponse;
     };
+export interface SubagentNotification {
+  agentId: string;
+  agentType: string;
+  description: string;
+}
 export interface RunView {
+  subagentNotification?: SubagentNotification;
   runId: string;
   status: RunStatus;
   userMessage: string;
@@ -96,7 +102,28 @@ export interface RunView {
   apiRetry?: ModelRetryStatus | null;
   preparation?: string | null;
 }
+export interface SubagentTask {
+  agentId: string;
+  childSessionId: string;
+  parentSessionId: string;
+  parentToolCallId: string;
+  agentType: string;
+  description: string;
+  color: string;
+  background: boolean;
+  status: RunStatus;
+  startedAt: number;
+  endedAt?: number;
+  modelLabel: string;
+  totalToolUseCount: number;
+  totalTokens: number;
+  result?: string;
+  error?: string;
+  latestActivity?: string;
+  waitingForInput?: boolean;
+}
 export interface SessionView {
+  subagents?: SubagentTask[];
   question?: UserQuestionRequest | null;
   forkOrigin?: { sessionId: string; runId: string };
   sessionId: string;
@@ -107,6 +134,7 @@ export interface SessionView {
   queue?: InputQueue;
 }
 export interface QueuedInput {
+  subagentNotification?: SubagentNotification;
   id: string;
   text: string;
   fileReferences: string[];
@@ -121,6 +149,7 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
+  | { type: "subagents_changed"; tasks: SubagentTask[] }
   | { type: "run_preparation"; message: string | null }
   | { type: "environment_changed"; cwd: string; newWorktree: boolean; worktree: WorktreeInfo }
   | { type: "question_changed"; question: UserQuestionRequest | null }
@@ -135,6 +164,7 @@ export type DesktopEvent =
   | { type: "block_end"; messageId: string; contentIndex: number; timestamp?: number }
   | {
       type: "started";
+      subagentNotification?: SubagentNotification;
       text: string;
       fileReferences?: string[];
       attachments?: Attachment[];

@@ -41,6 +41,8 @@ const restrictQueueDragToPanel: Modifier = ({
   };
 };
 function displayText(item: QueuedInput) {
+  if (item.subagentNotification)
+    return `${item.subagentNotification.agentType} 已回传 · ${item.subagentNotification.description}`;
   let text = item.text;
   for (const mention of parseMentions(text).reverse())
     text = text.slice(0, mention.start) + mention.label + text.slice(mention.end);
@@ -90,7 +92,7 @@ const QueueRow = memo(function QueueRow({
           <GripVertical size={16} />
         </button>
       </ActionHint>
-      <span className={`queue-text${compact ? " compact" : ""}`} title={item.text}>
+      <span className={`queue-text${compact ? " compact" : ""}`} title={displayText(item)}>
         {compact ? "/compact" : displayText(item)}
       </span>
       <button
@@ -102,7 +104,7 @@ const QueueRow = memo(function QueueRow({
         <ArrowUpFromLine size={14} />
         立即
       </button>
-      {!compact && (
+      {!compact && !item.subagentNotification && (
         <ActionHint label="编辑" appearance="control">
           <button
             type="button"

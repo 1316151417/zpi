@@ -31,6 +31,7 @@ import type {
   RunStatus,
   SessionMentionSuggestion,
   SessionView,
+  SubagentTask,
 } from "zpi-ui";
 import { splitFileLocation } from "zpi-ui/links";
 import { reduceSession, sessionViewBytes } from "zpi-ui/projection";
@@ -49,6 +50,7 @@ import type {
   SessionSnapshot,
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
+import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { pluginSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
@@ -57,6 +59,8 @@ import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
 import { SessionInputQueue } from "./input-queue.ts";
+import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
+import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { sessionReferenceTranscript } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
@@ -68,6 +72,8 @@ import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees
 interface SessionConfiguration extends PluginCapabilities {
   template: PromptTemplate;
   disabledSkillPaths: string[];
+  subagentProfile?: SubagentProfile;
+  subagentInstructions?: string[];
 }
 interface ActiveRun {
   runId: string;
@@ -88,12 +94,17 @@ function validateRunInputText(input: RunInput): void {
 }
 
 export class SessionHost {
+  readonly subagents: SubagentPlugin;
   readonly questions = new UserQuestions((id, question) => {
     const record = this.records.get(id);
     if (record)
       record.pendingQuestion = question ? { id: question.id, autoResolution: question.autoResolution } : null;
     const run = this.activeRuns.get(id);
     if (run) this.emit(id, run.runId, { type: "question_changed", question });
+    else if (record) {
+      this.getSessionSnapshot(id);
+      this.emit(id, "questions", { type: "question_changed", question });
+    }
   });
   readonly sessions = new Map<string, AgentSession>();
   readonly activeRuns = new Map<string, ActiveRun>();
@@ -161,7 +172,13 @@ export class SessionHost {
         if (loaded.images.length && !model?.input.includes("image"))
           throw new Error("configuration: 当前模型不支持图片");
         if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
-        return { text: input.text, fileReferences: references, attachments: loaded.metadata, selection };
+        return {
+          text: input.text,
+          fileReferences: references,
+          attachments: loaded.metadata,
+          selection,
+          ...(input.subagentNotification ? { subagentNotification: input.subagentNotification } : {}),
+        };
       },
       retain: (id, item, retained) =>
         this.attachments.markQueued(
@@ -212,6 +229,64 @@ export class SessionHost {
     this.homeDir = homeDir;
     this.defaultWorkspace = defaultWorkspace;
     this.settings = settings;
+    this.subagents = new SubagentPlugin(new SubagentProfiles(dir), {
+      cwd: (id) => this.cwd(this.record(id)),
+      selection: (id) => {
+        const session = this.sessions.get(id);
+        const selection = session
+          ? {
+              provider: session.model.provider,
+              modelId: session.model.id,
+              reasoning: toPreset(session.thinkingLevel, session.model),
+            }
+          : this.getControls(id).selection;
+        if (!selection) throw new Error("configuration: 请先选择模型");
+        return selection;
+      },
+      create: (id, profile, selection, description) =>
+        this.createSubagentSession(id, profile, selection, description),
+      run: async (id, prompt, profile, selection) => {
+        if (profile && selection) {
+          if (!this.settings.isSelectionValid(selection))
+            throw new Error("configuration: 子智能体模型不可用");
+          const configuration = {
+            ...this.configuration(id),
+            subagentProfile: structuredClone(profile),
+            subagentInstructions: this.parentInstructions.get(this.record(id).parentSessionId ?? "") ?? [],
+          };
+          this.meta(id, {
+            type: "custom",
+            customType: "zpi.configuration",
+            data: JSON.parse(JSON.stringify(configuration)),
+          });
+          this.configurations.set(id, configuration);
+          this.meta(id, { type: "custom", customType: "zpi.selection", data: { ...selection } });
+          this.sessions.get(id)?.dispose();
+          this.sessions.delete(id);
+        }
+        await this.startRun({ sessionId: id, text: prompt }, undefined, true);
+        await this.activeRuns.get(id)?.done;
+      },
+      stop: async (id) => {
+        const run = this.activeRuns.get(id);
+        if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+      },
+      steer: (id, prompt) => this.sessions.get(id)?.steer(prompt) ?? false,
+      publish: (task) => {
+        if (!this.records.has(task.childSessionId) || !this.records.has(task.parentSessionId)) return;
+        this.meta(task.childSessionId, {
+          type: "custom",
+          customType: "zpi.subagent_task",
+          data: JSON.parse(JSON.stringify(task)),
+        });
+        this.getSessionSnapshot(task.parentSessionId);
+        this.emit(task.parentSessionId, "subagents", {
+          type: "subagents_changed",
+          tasks: this.subagents.list(task.parentSessionId),
+        });
+      },
+      notify: (task, message) => this.deliverSubagentMessage(task, message),
+    });
     const file = join(dir, "projects.json");
     if (existsSync(file)) {
       const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
@@ -362,6 +437,17 @@ export class SessionHost {
           );
       }
     }
+    for (const [id, index] of this.indexes) {
+      const entry = index.data.state["zpi.subagent_task"];
+      if (
+        entry?.type === "custom" &&
+        isJsonObject(entry.data) &&
+        entry.data.childSessionId === id &&
+        typeof entry.data.agentId === "string" &&
+        this.records.get(id)?.parentSessionId === entry.data.parentSessionId
+      )
+        this.subagents.restore(entry.data as unknown as SubagentTask);
+    }
     // Keep the earliest pins when migrating older versions without a pin limit.
     const excessPins = [...this.records.values()]
       .filter((record) => record.pinnedAt != null && record.archivedAt == null)
@@ -396,6 +482,8 @@ export class SessionHost {
       throw new Error("Invalid session configuration");
     const config = entry.data as unknown as SessionConfiguration;
     validateTemplate(config.template);
+    if (config.subagents !== undefined && typeof config.subagents !== "boolean")
+      throw new Error("Invalid subagent capability");
     if (
       !Array.isArray(config.disabledSkillPaths) ||
       config.disabledSkillPaths.some((p) => typeof p !== "string") ||
@@ -404,7 +492,7 @@ export class SessionHost {
       )
     )
       throw new Error("Invalid session configuration");
-    const snapshot = structuredClone(config);
+    const snapshot = { ...structuredClone(config), subagents: config.subagents ?? false };
     if (snapshot.template.id === piTemplate.id) snapshot.template = structuredClone(piTemplate);
     this.configurations.set(id, snapshot);
     return snapshot;
@@ -622,6 +710,160 @@ export class SessionHost {
     record.worktreeBaseRef = worktreeBaseRef;
     return structuredClone(record);
   }
+
+  private parentInstructions = new Map<string, string[]>();
+  private pendingSubagentMessages = new Map<string, string[]>();
+
+  private async deliverSubagentMessage(task: SubagentTask, reply?: { summary: string; message: string }) {
+    const parentId = task.parentSessionId;
+    if (
+      this.closing ||
+      !this.records.has(parentId) ||
+      this.deleting.has(parentId) ||
+      this.record(parentId).archivedAt != null
+    )
+      throw new Error("busy: 父会话已关闭");
+    const escapeXml = (value: string) =>
+      value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const tag = reply ? "subagent-message" : "task-notification";
+    const text = `<${tag}>\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(reply?.summary ?? task.description)}\n${escapeXml(reply?.message ?? task.result ?? task.error ?? "No output.")}\n</${tag}>`;
+    const active = this.activeRuns.get(parentId);
+    if (active) {
+      if (active.aborted) throw new Error("busy: 父会话已停止");
+      if (!this.sessions.get(parentId)?.steer(text)) {
+        const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
+        inbox.push(text);
+        this.pendingSubagentMessages.set(parentId, inbox);
+      }
+      return;
+    }
+    await this.startRun({
+      sessionId: parentId,
+      text,
+      subagentNotification: {
+        agentId: task.agentId,
+        agentType: task.agentType,
+        description: reply?.summary ?? task.description,
+      },
+    });
+  }
+
+  listSubagents(sessionId: string | null) {
+    return this.subagents.profiles.list(sessionId ? this.cwd(this.record(sessionId)) : undefined);
+  }
+  saveSubagent(input: SaveSubagentInput) {
+    if (!input || (input.sessionId !== null && typeof input.sessionId !== "string"))
+      throw new Error("invalid_input: 子智能体参数无效");
+    if (input.config?.modelSelection && !this.settings.isSelectionValid(input.config.modelSelection))
+      throw new Error("configuration: 请为子智能体选择可用模型和推理档位");
+    return this.subagents.profiles.save(
+      input.config,
+      input.scope,
+      input.id,
+      input.sessionId ? this.cwd(this.record(input.sessionId)) : undefined,
+    );
+  }
+  private async createSubagentSession(
+    parentId: string,
+    profile: SubagentProfile,
+    selection: CombinedSelection,
+    description: string,
+  ) {
+    if (!this.settings.isSelectionValid(selection))
+      throw new Error("configuration: 子智能体模型不可用，请在设置中重新选择");
+    const parent = this.record(parentId);
+    if (
+      parent.archivedAt != null ||
+      this.closing ||
+      this.deleting.has(parentId) ||
+      this.activeRuns.get(parentId)?.aborted
+    )
+      throw new Error("busy: 父会话已停止或关闭");
+    const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: parentId });
+    try {
+      const configuration = {
+        ...structuredClone(this.configuration(parentId)),
+        subagents: false,
+        askUserQuestion: this.configuration(parentId).askUserQuestion,
+        subagentProfile: structuredClone(profile),
+        subagentInstructions: structuredClone(this.parentInstructions.get(parentId) ?? []),
+      };
+      this.configurations.set(child.id, configuration);
+      const manager = this.manager(child.id);
+      manager.appendCustomEntry("zpi.configuration", JSON.parse(JSON.stringify(configuration)));
+      manager.appendCustomEntry("zpi.selection", { ...selection });
+      manager.appendCustomEntry("zpi.title", { state: "manual" });
+      manager.appendSessionInfo(description);
+      Object.assign(this.record(child.id), { title: description, draft: false });
+      manager.appendCustomEntry("zpi.session_meta", {
+        projectId: parent.projectId,
+        pinnedAt: null,
+        draft: false,
+      });
+      return child.id;
+    } catch (error) {
+      await this.deleteSession(child.id);
+      throw error;
+    }
+  }
+  private sessionQuestionTool(id: string) {
+    const parentId = this.configuration(id).subagentProfile ? this.record(id).parentSessionId : undefined;
+    const tool = this.questions.tool(parentId ?? id);
+    if (!parentId) return tool;
+    return {
+      ...tool,
+      execute: async (...args: Parameters<typeof tool.execute>) => {
+        const task = this.subagents.taskForChild(id);
+        if (task) this.subagents.update(task.agentId, { waitingForInput: true });
+        try {
+          return await tool.execute(...args);
+        } finally {
+          if (task) this.subagents.update(task.agentId, { waitingForInput: false });
+        }
+      },
+    };
+  }
+  private sessionResourceLoader(
+    id: string | null,
+    config: SessionConfiguration,
+    resources = this.resourceLoader(id),
+  ) {
+    const loader = withDesktopSystemRules(resources, config);
+    return {
+      ...loader,
+      reload: async () => {
+        await loader.reload?.();
+        if (id && !config.subagentProfile)
+          this.parentInstructions.set(
+            id,
+            loader.getAppendSystemPrompt().filter((part) => part.startsWith("<project_context")),
+          );
+      },
+      getSystemPrompt: () => config.subagentProfile?.systemPrompt ?? loader.getSystemPrompt(),
+      getAppendSystemPrompt: () => [
+        ...loader
+          .getAppendSystemPrompt()
+          .filter((part) => !config.subagentProfile || !part.startsWith("<project_context")),
+        ...(config.subagentProfile
+          ? [
+              ...(config.subagentProfile.injectAgentsMd ? (config.subagentInstructions ?? []) : []),
+              "Notes:\n- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.\n- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing — do not recap code you merely read.\n- For clear communication with the user the assistant MUST avoid using emojis.\n- Do not use a colon before tool calls.\n- Do NOT Write report/summary/findings/analysis .md files. Return findings directly as your final assistant message — the parent agent reads your text output, not files you create.",
+            ]
+          : []),
+        ...(config.subagents
+          ? [
+              "Available agent types for the Agent tool:\n" +
+                (id
+                  ? this.subagents.listing(id)
+                  : this.listSubagents(null)
+                      .agents.filter((agent) => agent.enabled)
+                      .map((agent) => `- ${agent.name}: ${agent.description}`)
+                      .join("\n")),
+            ]
+          : []),
+      ],
+    };
+  }
   async createSideChat(id: string): Promise<SessionRecord> {
     const parent = this.record(id);
     if (parent.newWorktree && !parent.worktree) throw new Error("busy: 工作树尚未创建，请稍后打开辅助对话");
@@ -762,7 +1004,11 @@ export class SessionHost {
     const record = this.record(id);
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
     for (const child of this.records.values())
-      if (child.parentSessionId === id) await this.closeSideChat(child.id);
+      if (child.parentSessionId === id) {
+        const task = this.subagents.taskForChild(child.id);
+        if (task?.status === "running") await this.subagents.stop(id, task.agentId);
+        await this.closeSideChat(child.id);
+      }
     await this.inputQueue.archive(id, () => {
       const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
       const archivedAt = Date.now();
@@ -858,6 +1104,7 @@ export class SessionHost {
       queue: this.inputQueue.get(id),
       forkOrigin,
       question: this.questions.get(id),
+      subagents: this.subagents.list(id),
     };
     this.views.delete(id);
     this.views.set(id, view);
@@ -1025,19 +1272,24 @@ export class SessionHost {
       tools: [
         ...createCodingTools(info.cwd),
         ...(capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
+        ...(capabilities.subagents ? this.subagents.tools("preview") : []),
       ],
     };
     return {
       ...info,
       basePrompt: buildSystemPrompt({ ...options, loader }),
       systemRules: pluginSystemRules(capabilities),
-      prompt: buildSystemPrompt({ ...options, loader: withDesktopSystemRules(loader, capabilities) }),
+      prompt: buildSystemPrompt({
+        ...options,
+        loader: this.sessionResourceLoader(null, this.defaultConfiguration(), loader),
+      }),
     };
   }
   listTools() {
     return [
       ...createCodingTools(this.defaultWorkspace),
       ...(this.settings.get().capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
+      ...(this.settings.get().capabilities.subagents ? this.subagents.tools("preview") : []),
     ].map((t) => ({
       name: t.name,
       description: t.description,
@@ -1184,6 +1436,9 @@ export class SessionHost {
       this.managers.delete(id);
       this.runtimes.delete(id);
       this.records.delete(id);
+      this.subagents.forgetSession(id);
+      this.pendingSubagentMessages.delete(id);
+      this.parentInstructions.delete(id);
       if (this.visibleSessionId === id) this.visibleSessionId = undefined;
       this.configurations.delete(id);
       this.views.delete(id);
@@ -1317,6 +1572,8 @@ export class SessionHost {
   }
   submitInput(input: RunInput, disposition?: "keep" | "clear") {
     this.record(input.sessionId);
+    if (this.configuration(input.sessionId).subagentProfile)
+      throw new Error("invalid_input: 子智能体会话只读");
     return this.inputQueue.submit(input, disposition);
   }
   private runStart(entries: SessionEntry[], runId: string): number {
@@ -1529,9 +1786,15 @@ export class SessionHost {
     const item = await this.inputQueue.remove(id, itemId, true);
     return { item, draft: this.drafts.get(id) };
   }
-  async startRun(input: RunInput, queueItemId?: string): Promise<{ runId: string }> {
+  async startRun(
+    input: RunInput,
+    queueItemId?: string,
+    internalSubagent = false,
+  ): Promise<{ runId: string }> {
     const { sessionId: id, text } = input;
     const record = this.record(id);
+    if (this.configuration(id).subagentProfile && !internalSubagent)
+      throw new Error("invalid_input: 子智能体会话只读");
     if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 应用正在关闭或会话正在删除");
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 此会话正在运行或更新");
@@ -1576,15 +1839,20 @@ export class SessionHost {
       this.getSessionSnapshot(id);
       if (record.draft) this.configurations.set(id, this.defaultConfiguration());
       const configuration = this.configuration(id);
+      if (configuration.subagents && !input.subagentNotification && parsed.kind !== "compact")
+        this.subagents.prepare(id);
       const accept = async (model: import("zpi-ai").Model) => {
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         this.titleFromInput(
           id,
           text.trim() || (loaded.images.length ? "图片消息" : (loaded.metadata[0]?.name ?? references[0])),
         );
-        this.settings.rememberSelection(this.getControls(id).selection ?? selection);
+        if (!configuration.subagentProfile)
+          this.settings.rememberSelection(this.getControls(id).selection ?? selection);
         const startedAt = Date.now();
         const modelLabel = `${config.name} / ${model.name}`;
+        const childTask = this.subagents.taskForChild(id);
+        if (childTask) this.subagents.update(childTask.agentId, { modelLabel });
         if (record.draft)
           manager.appendCustomEntry(
             "zpi.configuration",
@@ -1599,6 +1867,7 @@ export class SessionHost {
           startedAt,
           modelLabel,
           agentBoundaries: true,
+          ...(input.subagentNotification ? { subagentNotification: { ...input.subagentNotification } } : {}),
           ...(queueItemId ? { queueItemId } : {}),
           modelConfig: {
             baseUrl: config.baseUrl,
@@ -1625,6 +1894,7 @@ export class SessionHost {
         record.status = "running";
         this.emit(id, run.runId, {
           type: "started",
+          subagentNotification: input.subagentNotification,
           text,
           fileReferences: references,
           attachments: loaded.metadata,
@@ -1673,13 +1943,37 @@ export class SessionHost {
             await createAgentSession({
               cwd: this.cwd(record),
               agentDir: join(this.dir, "agent"),
-              resourceLoader: withDesktopSystemRules(this.resourceLoader(id), configuration),
+              resourceLoader: this.sessionResourceLoader(id, configuration),
               promptTemplate: () => configuration.template,
               projectName: () => this.workspaceInfo(id).projectName,
               modelRuntime: runtime,
               model,
               sessionManager: manager,
-              customTools: configuration.askUserQuestion ? [this.questions.tool(id)] : [],
+              customTools: [
+                ...(configuration.askUserQuestion ? [this.sessionQuestionTool(id)] : []),
+                ...(configuration.subagents ? this.subagents.tools(id) : []),
+                ...(configuration.subagentProfile ? this.subagents.childTools(id) : []),
+              ],
+              ...(configuration.subagentProfile
+                ? {
+                    tools: (() => {
+                      const profile = configuration.subagentProfile;
+                      const available = [
+                        "read",
+                        "bash",
+                        "edit",
+                        "write",
+                        ...(configuration.askUserQuestion ? ["AskUserQuestion"] : []),
+                        "RespondToCoordinator",
+                      ];
+                      const allowed =
+                        profile.tools && !profile.tools.includes("*")
+                          ? available.filter((tool) => profile.tools?.includes(tool))
+                          : available;
+                      return allowed.filter((tool) => !profile.disallowedTools?.includes(tool));
+                    })(),
+                  }
+                : {}),
             })
           ).session;
           this.sessions.set(id, session);
@@ -1697,13 +1991,14 @@ export class SessionHost {
         }
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         if (!started) await accept(model);
-        this.startTitle(
-          id,
-          text || (references.length ? references.join("\n") : ""),
-          loaded.images,
-          config,
-          model,
-        );
+        if (!input.subagentNotification)
+          this.startTitle(
+            id,
+            text || (references.length ? references.join("\n") : ""),
+            loaded.images,
+            config,
+            model,
+          );
         const unsubscribe = session.subscribe((e) => {
           if (e.type === "agent_start" || e.type === "agent_end")
             manager.appendCustomEntry("zpi.agent_call", {
@@ -1726,11 +2021,24 @@ export class SessionHost {
             run.ordinal++;
             if (e.message.role === "assistant") run.hasAssistant = true;
           }
+          const childTask = this.subagents.taskForChild(id);
+          if (childTask && e.type === "tool_execution_start")
+            this.subagents.update(childTask.agentId, {
+              latestActivity: `${e.toolName} · ${isJsonObject(e.args) ? String(e.args.path ?? e.args.command ?? "").slice(0, 500) : ""}`,
+              totalToolUseCount: childTask.totalToolUseCount + 1,
+            });
+          if (childTask && e.type === "message_end" && e.message.role === "assistant")
+            this.subagents.update(childTask.agentId, {
+              totalTokens: childTask.totalTokens + e.message.usage.totalTokens,
+            });
           const projected = projectEvent(e, `${run.runId}:${run.ordinal}`);
           if (projected) this.emit(id, run.runId, projected);
         });
-        void session
-          .executeInput(prepared, inputContext)
+        const execution = session.executeInput(prepared, inputContext);
+        const inbox = this.pendingSubagentMessages.get(id) ?? [];
+        this.pendingSubagentMessages.delete(id);
+        for (const message of inbox) session.steer(message);
+        void execution
           .then(
             () => this.settle(id, run),
             (error) => this.settle(id, run, error),
@@ -1924,8 +2232,28 @@ export class SessionHost {
       message = `storage: ${e instanceof Error ? e.message : String(e)}`;
       this.blocked.set(id, message);
     }
+    const childTask = this.subagents.taskForChild(id);
+    if (childTask) {
+      const messages = run.session?.messages ?? [];
+      const result = last?.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+      this.subagents.update(childTask.agentId, {
+        status,
+        endedAt,
+        error: message,
+        result,
+        totalToolUseCount: messages.filter((message) => message.role === "toolResult").length,
+        totalTokens: messages.reduce(
+          (total, message) => total + (message.role === "assistant" ? message.usage.totalTokens : 0),
+          0,
+        ),
+      });
+    }
     if (message?.includes("storage:")) this.blocked.set(id, message);
     this.activeRuns.delete(id);
+    this.pendingSubagentMessages.delete(id);
     const record = this.record(id);
     record.status = status;
     this.emit(id, run.runId, {
@@ -1945,11 +2273,14 @@ export class SessionHost {
     const run = this.activeRuns.get(input.sessionId);
     if (!run || run.runId !== input.runId) throw new Error("not_found: 当前运行不存在");
     run.aborted = true;
+    this.pendingSubagentMessages.delete(input.sessionId);
+    await this.subagents.stopAll(input.sessionId);
     if (run.session) await run.session.abort().catch(() => {});
     await run.done;
   }
   async close(): Promise<void> {
     this.closing = true;
+    await this.subagents.close();
     const queueClose = this.inputQueue.close();
     for (const job of this.titleJobs.values()) job.controller.abort();
     await Promise.allSettled([...this.titleJobs.values()].map((job) => job.done));

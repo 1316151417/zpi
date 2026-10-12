@@ -53,6 +53,7 @@ import type {
   RunView,
   SessionMentionSuggestion,
   SessionView,
+  SubagentTask,
   ViewBlock,
 } from "../types.ts";
 import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCards.tsx";
@@ -76,6 +77,7 @@ import { reasoningDuration, reasoningSummary, runPresentation } from "./process-
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
 import { StreamEntrance } from "./StreamEntrance.tsx";
+import { SubagentContext } from "./SubagentToolBlock.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
 import { filterSessionSuggestions } from "./session-suggestions.ts";
 import { filterSkillSuggestions } from "./skill-suggestions.ts";
@@ -438,90 +440,92 @@ export const RunGroup = memo(function RunGroup({
   return (
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
       <div className="assistant-turn">
-        <div className="user-message-row">
-          {editing && onEdit && sessionId ? (
-            <UserMessageEditor
-              run={run}
-              sessionId={sessionId}
-              context={context}
-              onEdit={onEdit}
-              onCancel={cancelEdit}
-            />
-          ) : (
-            <>
-              <div className="message-images">
-                <SelectionReferenceChip references={parsedUser.selections} />
-                {context &&
-                  sessionId &&
-                  run.attachments?.map((image) => (
-                    <AttachmentPreview
-                      key={image.id}
-                      sessionId={sessionId}
-                      image={image}
-                      read={context.readAttachment}
-                    />
-                  ))}
-              </div>
-              <div className="user-message">
-                <UserMessageBody key={run.runId} text={run.userMessage}>
-                  <div
-                    className="user-message-text"
-                    data-find-key={`${run.runId}:user`}
-                    data-conversation-selectable="user"
-                    data-selection-key={`${sessionId}:${run.runId}:user`}
-                  >
-                    {(() => {
-                      const parts: ReactNode[] = [];
-                      let previous = 0;
-                      const mentions = displayReferences(parsedUser.text);
-                      for (const mention of mentions) {
-                        const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
-                        parts.push(parsedUser.text.slice(previous, mention.start));
-                        parts.push(
-                          <Reference
-                            key={mention.start}
-                            kind={mention.kind}
-                            path={file?.path ?? mention.path}
-                            location={file?.location}
-                            label={mention.label}
-                            onOpen={onFile}
-                            onAction={onFileAction}
-                          />,
-                        );
-                        previous = mention.end;
-                      }
-                      parts.push(parsedUser.text.slice(previous));
-                      for (const path of run.fileReferences ?? []) {
-                        if (mentions.some((m) => m.path === path)) continue;
-                        const file = splitFileLocation(path);
-                        parts.push(
-                          <Reference
-                            key={path}
-                            kind="file"
-                            path={file?.path ?? path}
-                            location={file?.location}
-                            label={path.split("/").at(-1) ?? path}
-                            onOpen={onFile}
-                            onAction={onFileAction}
-                          />,
-                        );
-                      }
-                      return parts;
-                    })()}
-                  </div>
-                </UserMessageBody>
-              </div>
-              <div className="message-actions user-message-actions">
-                <CopyMessage text={run.userMessage} onCopy={onCopy} />
-                {onEdit && (
-                  <MessageAction label="编辑" onClick={() => setEditing(true)}>
-                    <Pencil size={14} />
-                  </MessageAction>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        {run.subagentNotification ? null : (
+          <div className="user-message-row">
+            {editing && onEdit && sessionId ? (
+              <UserMessageEditor
+                run={run}
+                sessionId={sessionId}
+                context={context}
+                onEdit={onEdit}
+                onCancel={cancelEdit}
+              />
+            ) : (
+              <>
+                <div className="message-images">
+                  <SelectionReferenceChip references={parsedUser.selections} />
+                  {context &&
+                    sessionId &&
+                    run.attachments?.map((image) => (
+                      <AttachmentPreview
+                        key={image.id}
+                        sessionId={sessionId}
+                        image={image}
+                        read={context.readAttachment}
+                      />
+                    ))}
+                </div>
+                <div className="user-message">
+                  <UserMessageBody key={run.runId} text={run.userMessage}>
+                    <div
+                      className="user-message-text"
+                      data-find-key={`${run.runId}:user`}
+                      data-conversation-selectable="user"
+                      data-selection-key={`${sessionId}:${run.runId}:user`}
+                    >
+                      {(() => {
+                        const parts: ReactNode[] = [];
+                        let previous = 0;
+                        const mentions = displayReferences(parsedUser.text);
+                        for (const mention of mentions) {
+                          const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
+                          parts.push(parsedUser.text.slice(previous, mention.start));
+                          parts.push(
+                            <Reference
+                              key={mention.start}
+                              kind={mention.kind}
+                              path={file?.path ?? mention.path}
+                              location={file?.location}
+                              label={mention.label}
+                              onOpen={onFile}
+                              onAction={onFileAction}
+                            />,
+                          );
+                          previous = mention.end;
+                        }
+                        parts.push(parsedUser.text.slice(previous));
+                        for (const path of run.fileReferences ?? []) {
+                          if (mentions.some((m) => m.path === path)) continue;
+                          const file = splitFileLocation(path);
+                          parts.push(
+                            <Reference
+                              key={path}
+                              kind="file"
+                              path={file?.path ?? path}
+                              location={file?.location}
+                              label={path.split("/").at(-1) ?? path}
+                              onOpen={onFile}
+                              onAction={onFileAction}
+                            />,
+                          );
+                        }
+                        return parts;
+                      })()}
+                    </div>
+                  </UserMessageBody>
+                </div>
+                <div className="message-actions user-message-actions">
+                  <CopyMessage text={run.userMessage} onCopy={onCopy} />
+                  {onEdit && (
+                    <MessageAction label="编辑" onClick={() => setEditing(true)}>
+                      <Pencil size={14} />
+                    </MessageAction>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <WorkProgress
           run={run}
           expanded={open}
@@ -687,6 +691,7 @@ export const RunGroup = memo(function RunGroup({
 });
 export function Conversation({
   view,
+  onOpenSubagent,
   previewServices,
   onLink,
   workspace,
@@ -710,6 +715,7 @@ export function Conversation({
   onFindStateChange,
   findBar,
 }: {
+  onOpenSubagent?: (task: SubagentTask) => void;
   findRequest?: FindRequest;
   onFindStateChange?: (state: FindState) => void;
   findBar?: ReactNode;
@@ -971,120 +977,122 @@ export function Conversation({
     return () => observer.disconnect();
   }, [view.sessionId]);
   return (
-    <div className="conversation-wrap">
-      {findBar}
-      <div
-        ref={ref}
-        className="conversation"
-        onScroll={() => {
-          const el = ref.current;
-          if (el) {
-            // Layout growth and delayed diagram rendering must not disable following.
-            // Only movement towards older content changes the reading mode.
-            if (
-              el.scrollTop < lastScrollTop.current - 1 &&
-              el.scrollHeight - el.scrollTop - el.clientHeight >= 60
-            )
-              following.current = false;
-            lastScrollTop.current = el.scrollTop;
-            setShowLatest(el.scrollHeight - el.scrollTop - el.clientHeight >= 60);
-            saveReading();
-          }
-        }}
-      >
-        <div className="conversation-inner">
-          {hasEarlier && (
-            <button
-              ref={historyTrigger}
-              className="load-history"
-              disabled={loadingEarlier}
-              onClick={loadHistory}
-            >
-              {loadingEarlier ? "正在加载…" : historyError ? "加载失败，点击重试" : "加载更早的十次调用"}
-            </button>
-          )}
-          {historyError && (
-            <p role="alert" className="run-error">
-              {historyError}
-            </p>
-          )}
-          {view.runs.length ? (
-            view.runs.map((run) => (
-              <Fragment key={run.runId}>
-                <RunGroup
-                  workspace={workspace}
-                  key={run.runId}
-                  run={run}
-                  previewServices={previewServices}
-                  previewAutoOpen={previewAutoOpen}
-                  sessionId={view.sessionId}
-                  context={context}
-                  onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}
-                  onFork={onFork}
-                  onChanges={onChanges}
-                  onLoadToolPatch={onLoadToolPatch}
-                  onFileAction={onFileAction}
-                  onCopy={onCopy}
-                  onFile={onFile}
-                  onLink={onLink}
-                  expanded={Boolean(
-                    expanded[run.runId] ||
-                      (findQuery &&
-                        runPresentation(run).process.some(
-                          (block) =>
-                            block.type === "text" && normalizeFindQuery(block.text).includes(findQuery),
-                        )),
-                  )}
-                  onToggle={toggle}
-                  blocks={blocks}
-                  onBlockToggle={toggleBlock}
-                />
-                {view.forkOrigin?.runId === run.runId && (
-                  <button
-                    type="button"
-                    className="fork-notice"
-                    onClick={() => view.forkOrigin && onNavigateOrigin?.(view.forkOrigin)}
-                  >
-                    <span />
-                    <strong>
-                      <GitBranch size={14} />
-                      <span>从对话中派生</span>
-                    </strong>
-                    <span />
-                  </button>
-                )}
-              </Fragment>
-            ))
-          ) : (
-            <div className="empty-chat">
-              <DraftGreeting />
-            </div>
-          )}
-        </div>
-      </div>
-      <ConversationSelectionMenu
-        rootRef={ref}
-        scopeKey={view.sessionId}
-        onAdd={onAddSelection}
-        onSideChat={onSideChat}
-        sideChatDisabled={sideChatDisabled}
-      />
-      {showLatest && (
-        <button
-          className="latest"
-          type="button"
-          aria-label="回到最新"
-          onClick={() => {
-            following.current = true;
-            scrollToBottom();
-            setShowLatest(false);
-            saveReading();
+    <SubagentContext.Provider value={{ tasks: view.subagents ?? [], open: onOpenSubagent }}>
+      <div className="conversation-wrap">
+        {findBar}
+        <div
+          ref={ref}
+          className="conversation"
+          onScroll={() => {
+            const el = ref.current;
+            if (el) {
+              // Layout growth and delayed diagram rendering must not disable following.
+              // Only movement towards older content changes the reading mode.
+              if (
+                el.scrollTop < lastScrollTop.current - 1 &&
+                el.scrollHeight - el.scrollTop - el.clientHeight >= 60
+              )
+                following.current = false;
+              lastScrollTop.current = el.scrollTop;
+              setShowLatest(el.scrollHeight - el.scrollTop - el.clientHeight >= 60);
+              saveReading();
+            }
           }}
         >
-          <ArrowDown size={16} aria-hidden="true" />
-        </button>
-      )}
-    </div>
+          <div className="conversation-inner">
+            {hasEarlier && (
+              <button
+                ref={historyTrigger}
+                className="load-history"
+                disabled={loadingEarlier}
+                onClick={loadHistory}
+              >
+                {loadingEarlier ? "正在加载…" : historyError ? "加载失败，点击重试" : "加载更早的十次调用"}
+              </button>
+            )}
+            {historyError && (
+              <p role="alert" className="run-error">
+                {historyError}
+              </p>
+            )}
+            {view.runs.length ? (
+              view.runs.map((run) => (
+                <Fragment key={run.runId}>
+                  <RunGroup
+                    workspace={workspace}
+                    key={run.runId}
+                    run={run}
+                    previewServices={previewServices}
+                    previewAutoOpen={previewAutoOpen}
+                    sessionId={view.sessionId}
+                    context={context}
+                    onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}
+                    onFork={onFork}
+                    onChanges={onChanges}
+                    onLoadToolPatch={onLoadToolPatch}
+                    onFileAction={onFileAction}
+                    onCopy={onCopy}
+                    onFile={onFile}
+                    onLink={onLink}
+                    expanded={Boolean(
+                      expanded[run.runId] ||
+                        (findQuery &&
+                          runPresentation(run).process.some(
+                            (block) =>
+                              block.type === "text" && normalizeFindQuery(block.text).includes(findQuery),
+                          )),
+                    )}
+                    onToggle={toggle}
+                    blocks={blocks}
+                    onBlockToggle={toggleBlock}
+                  />
+                  {view.forkOrigin?.runId === run.runId && (
+                    <button
+                      type="button"
+                      className="fork-notice"
+                      onClick={() => view.forkOrigin && onNavigateOrigin?.(view.forkOrigin)}
+                    >
+                      <span />
+                      <strong>
+                        <GitBranch size={14} />
+                        <span>从对话中派生</span>
+                      </strong>
+                      <span />
+                    </button>
+                  )}
+                </Fragment>
+              ))
+            ) : (
+              <div className="empty-chat">
+                <DraftGreeting />
+              </div>
+            )}
+          </div>
+        </div>
+        <ConversationSelectionMenu
+          rootRef={ref}
+          scopeKey={view.sessionId}
+          onAdd={onAddSelection}
+          onSideChat={onSideChat}
+          sideChatDisabled={sideChatDisabled}
+        />
+        {showLatest && (
+          <button
+            className="latest"
+            type="button"
+            aria-label="回到最新"
+            onClick={() => {
+              following.current = true;
+              scrollToBottom();
+              setShowLatest(false);
+              saveReading();
+            }}
+          >
+            <ArrowDown size={16} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    </SubagentContext.Provider>
   );
 }
 export function ChatComposer({

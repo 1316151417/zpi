@@ -103,6 +103,8 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
   ) => Promise<AfterToolCallResult | undefined>;
   toolExecution?: ToolExecutionMode;
   streamingToolExecution?: "off" | "readOnly";
+  /** Inputs consumed once at a completed model/tool boundary, never during a tool call. */
+  getSteeringMessages?: () => AgentMessage[];
   prepareNextTurnWithContext?: (
     turn: PrepareNextTurnContext,
     signal?: AbortSignal,
@@ -163,6 +165,7 @@ export interface AgentOptions
     | "toolExecution"
     | "streamingToolExecution"
     | "prepareNextTurnWithContext"
+    | "getSteeringMessages"
   > {
   initialState?: AgentInitialState;
   streamFn: StreamFn;

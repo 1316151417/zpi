@@ -3,6 +3,7 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Archive,
   ArrowLeft,
+  Bot,
   Braces,
   ChevronRight,
   Eye,
@@ -43,6 +44,7 @@ import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
+import { SubagentSettings } from "./SubagentSettings.tsx";
 import { refresh, unwrap, useStore } from "./store.ts";
 
 const sections = [
@@ -50,6 +52,7 @@ const sections = [
   ["interface", "界面设置", Monitor],
   ["prompt", "系统提示词", Sparkles],
   ["tools", "工具", Wrench],
+  ["subagents", "子智能体", Bot],
   ["capabilities", "插件能力", Package],
   ["skills", "技能", Puzzle],
   ["models", "模型", Braces],
@@ -408,6 +411,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                   </div>
                   {error && <div role="alert">{error}</div>}
                 </div>
+              ) : tab === "subagents" ? (
+                <SubagentSettings />
               ) : tab === "capabilities" ? (
                 <CapabilitySettings />
               ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (

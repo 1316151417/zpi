@@ -101,6 +101,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "界面设置",
       "系统提示词",
       "工具",
+      "子智能体",
       "插件能力",
       "技能",
       "模型",

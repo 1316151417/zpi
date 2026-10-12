@@ -290,6 +290,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     const settings = page.locator(".capability-settings");
     await expect(settings.locator(".settings-row strong")).toHaveText([
+      "子智能体",
       "提示词-多工具调用",
       "提示词-文件链接格式",
       "工具-向用户提问",
@@ -316,7 +317,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
         };
       }),
     );
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     for (const row of rows) {
       expect(row.toggleLeft).toBeGreaterThan(row.copyRight ?? 0);
       expect(row.height).toBeLessThan(100);
@@ -324,10 +325,12 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
-      await expect(settings.locator(".settings-switch > span").first()).toHaveCSS(
-        "background-color",
-        colorScheme === "light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
-      );
+      await expect(
+        settings
+          .locator(".settings-row")
+          .filter({ hasText: "提示词-多工具调用" })
+          .locator(".settings-switch > span"),
+      ).toHaveCSS("background-color", colorScheme === "light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
       await page.screenshot({
         path: `test-results/plugin-settings-${colorScheme}.png`,
         animations: "disabled",
@@ -509,7 +512,7 @@ test("side chats route selected text to the active tab and preserve independent 
     await page.getByRole("button", { name: "关闭标签 辅助对话 3", exact: true }).click();
     await main.getByLabel("消息", { exact: true }).fill("/side");
     await main.getByRole("option", { name: /side/ }).click();
-    await expect(page.getByRole("tab", { name: "辅助对话 4", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "辅助对话 3", exact: true })).toBeVisible();
     await expect(side.getByTestId("run")).toHaveCount(0);
     await expect(main.getByLabel("消息", { exact: true })).toHaveText("");
     expect(errors).toEqual([]);

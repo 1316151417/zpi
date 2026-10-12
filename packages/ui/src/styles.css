@@ -3767,3 +3767,95 @@ button.inline-mention,
     transition: none;
   }
 }
+
+/* ZCode subagent identity palette and single-line Agent summaries. */
+[data-agent-color="yellow"] {
+  --agent-dot: oklch(87.9% 0.169 91.605);
+  --agent-text: oklch(55.5% 0.163 48.998);
+  --agent-light: oklch(87.9% 0.169 91.605);
+  --agent-dark-dot: oklch(87.9% 0.169 91.605);
+}
+[data-agent-color="red"] {
+  --agent-dot: oklch(81% 0.117 11.638);
+  --agent-text: oklch(51.4% 0.222 16.935);
+  --agent-light: oklch(81% 0.117 11.638);
+  --agent-dark-dot: oklch(71.2% 0.194 13.428);
+}
+[data-agent-color="orange"] {
+  --agent-dot: oklch(83.7% 0.128 66.29);
+  --agent-text: oklch(55.3% 0.195 38.402);
+  --agent-light: oklch(83.7% 0.128 66.29);
+  --agent-dark-dot: oklch(75% 0.183 55.934);
+}
+[data-agent-color="green"] {
+  --agent-dot: oklch(84.5% 0.143 164.978);
+  --agent-text: oklch(50.8% 0.118 165.612);
+  --agent-light: oklch(84.5% 0.143 164.978);
+  --agent-dark-dot: oklch(76.5% 0.177 163.223);
+}
+[data-agent-color="cyan"] {
+  --agent-dot: oklch(86.5% 0.127 207.078);
+  --agent-text: oklch(52% 0.105 223.128);
+  --agent-light: oklch(86.5% 0.127 207.078);
+  --agent-dark-dot: oklch(78.9% 0.154 211.53);
+}
+[data-agent-color="blue"] {
+  --agent-dot: oklch(82.8% 0.111 230.318);
+  --agent-text: oklch(50% 0.134 242.749);
+  --agent-light: oklch(82.8% 0.111 230.318);
+  --agent-dark-dot: oklch(74.6% 0.16 232.661);
+}
+[data-agent-color="purple"] {
+  --agent-dot: oklch(81.1% 0.111 293.571);
+  --agent-text: oklch(49.1% 0.27 292.581);
+  --agent-light: oklch(81.1% 0.111 293.571);
+  --agent-dark-dot: oklch(70.2% 0.183 293.541);
+}
+[data-agent-color="pink"] {
+  --agent-dot: oklch(82.3% 0.12 346.018);
+  --agent-text: oklch(52.5% 0.223 3.958);
+  --agent-light: oklch(82.3% 0.12 346.018);
+  --agent-dark-dot: oklch(71.8% 0.202 349.761);
+}
+[data-theme="dark"] [data-agent-color] {
+  --agent-text: var(--agent-light);
+  --agent-dot: color-mix(in oklab, var(--agent-dark-dot) 32%, transparent);
+}
+.subagent-name {
+  display: inline-flex;
+  align-items: center;
+  max-width: 144px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-code);
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--agent-text, var(--color-text-subtle));
+}
+.subagent-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-message-details {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+}
+.subagent-message-details dt {
+  font-weight: 500;
+  color: var(--color-text-subtle);
+  margin-bottom: 4px;
+}
+.subagent-message-details dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

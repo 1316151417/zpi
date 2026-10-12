@@ -28,6 +28,7 @@ export class Agent {
         "toolExecution",
         "streamingToolExecution",
         "prepareNextTurnWithContext",
+        "getSteeringMessages",
       ],
       "Agent",
     );

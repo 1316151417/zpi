@@ -11,6 +11,7 @@ import type {
   WorktreeInfo,
 } from "zpi-ui";
 import type { FileLocation } from "zpi-ui/links";
+import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
 
 export type { SessionControls } from "zpi-ui";
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
@@ -116,6 +117,7 @@ export interface InterfacePreferences {
   tasksCollapsed: boolean;
 }
 export interface PluginCapabilities {
+  subagents: boolean;
   askUserQuestion: boolean;
   toolBatching: boolean;
   fileLinks: boolean;
@@ -137,6 +139,8 @@ export interface SessionSnapshot {
   historyCursor?: number | null;
 }
 export interface RunInput {
+  /** Internal plugin delivery; renderer IPC does not accept this field. */
+  subagentNotification?: import("zpi-ui").SubagentNotification;
   sessionId: string;
   text: string;
   fileReferences?: string[];
@@ -213,6 +217,15 @@ export interface PaneBounds {
   height: number;
 }
 export interface DesktopBridge {
+  listSubagents(sessionId: string | null): Promise<Result<SubagentCatalog>>;
+  saveSubagent(input: SaveSubagentInput): Promise<Result<SubagentCatalog>>;
+  deleteSubagent(id: string, sessionId: string | null): Promise<Result<SubagentCatalog>>;
+  setSubagentEnabled(
+    id: string,
+    enabled: boolean,
+    sessionId: string | null,
+  ): Promise<Result<SubagentCatalog>>;
+  stopSubagent(parentSessionId: string, agentId: string): Promise<Result<void>>;
   setCapabilityEnabled(name: CapabilityName, enabled: boolean): Promise<Result<PublicSettings>>;
   snoozeQuestion(sessionId: string, requestId: string): Promise<Result<void>>;
   respondToQuestion(
@@ -338,6 +351,11 @@ export interface DesktopBridge {
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
 export const methods = [
+  "listSubagents",
+  "saveSubagent",
+  "deleteSubagent",
+  "setSubagentEnabled",
+  "stopSubagent",
   "setCapabilityEnabled",
   "respondToQuestion",
   "snoozeQuestion",

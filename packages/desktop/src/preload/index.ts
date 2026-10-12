@@ -13,6 +13,11 @@ ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {
   }
 });
 const bridge: DesktopBridge = {
+  listSubagents: (id) => call("listSubagents", id),
+  saveSubagent: (input) => call("saveSubagent", input),
+  deleteSubagent: (id, sessionId) => call("deleteSubagent", id, sessionId),
+  setSubagentEnabled: (id, enabled, sessionId) => call("setSubagentEnabled", id, enabled, sessionId),
+  stopSubagent: (parentId, agentId) => call("stopSubagent", parentId, agentId),
   setCapabilityEnabled: (name, enabled) => call("setCapabilityEnabled", name, enabled),
   respondToQuestion: (id, requestId, response) => call("respondToQuestion", id, requestId, response),
   snoozeQuestion: (id, requestId) => call("snoozeQuestion", id, requestId),

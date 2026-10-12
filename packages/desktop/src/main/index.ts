@@ -297,6 +297,11 @@ async function launch(): Promise<void> {
         return value;
       };
       const count: Record<(typeof methods)[number], number> = {
+        listSubagents: 1,
+        saveSubagent: 1,
+        deleteSubagent: 2,
+        setSubagentEnabled: 3,
+        stopSubagent: 2,
         setCapabilityEnabled: 2,
         respondToQuestion: 3,
         snoozeQuestion: 2,
@@ -382,6 +387,35 @@ async function launch(): Promise<void> {
       const sessionContext = () => (args[0] === null ? null : string(0));
       let value: unknown;
       switch (method) {
+        case "listSubagents":
+          value = host.listSubagents(sessionContext());
+          break;
+        case "saveSubagent":
+          value = host.saveSubagent(
+            object(0, [
+              "id",
+              "config",
+              "scope",
+              "sessionId",
+            ]) as unknown as import("../shared/subagents.ts").SaveSubagentInput,
+          );
+          break;
+        case "deleteSubagent":
+          value = host.subagents.profiles.delete(
+            string(0),
+            args[1] === null ? undefined : host.workspaceInfo(string(1)).cwd,
+          );
+          break;
+        case "setSubagentEnabled":
+          value = host.subagents.profiles.enable(
+            string(0),
+            args[1] as boolean,
+            args[2] === null ? undefined : host.workspaceInfo(string(2)).cwd,
+          );
+          break;
+        case "stopSubagent":
+          await host.subagents.stop(string(0), string(1));
+          break;
         case "setCapabilityEnabled":
           value = settings.setCapabilityEnabled(
             string(0) as import("../shared/bridge.ts").CapabilityName,
