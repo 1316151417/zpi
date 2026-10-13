@@ -235,17 +235,19 @@ test("background child streams into the side pane, updates status live and retur
     });
     expect(geometry.top).toBe(16);
     expect(geometry.right).toBe(16);
-    expect(geometry.width).toBe(32);
-    expect(geometry.height).toBe(32);
+    expect(geometry.width).toBeGreaterThan(60);
+    expect(geometry.width).toBeLessThan(120);
+    expect(geometry.height).toBe(34);
     await page.screenshot({
       path: test.info().outputPath("task-activity-collapsed.png"),
       animations: "disabled",
     });
     await page.locator(".task-activity-toggle").click();
-    await expect(page.getByRole("button", { name: "收起任务状态", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "收起任务状态", exact: true }).click();
-    await expect(page.locator(".task-activity-list")).toHaveCount(0);
-    await page.getByRole("button", { name: "展开任务状态", exact: true }).click();
+    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
+    await expect(page.getByRole("button", { name: "收起为胶囊", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "收起为胶囊", exact: true }).click();
+    await expect(page.locator(".task-activity-list")).toBeHidden();
+    await page.getByRole("button", { name: "展开状态", exact: true }).click();
     await page.screenshot({
       path: test.info().outputPath("task-activity-light.png"),
       animations: "disabled",
@@ -254,6 +256,7 @@ test("background child streams into the side pane, updates status live and retur
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.locator(".task-activity-toggle").click();
+    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
     await page.screenshot({
       path: test.info().outputPath("task-activity-dark.png"),
       animations: "disabled",
@@ -261,16 +264,17 @@ test("background child streams into the side pane, updates status live and retur
     await page.evaluate(() => window.zpi.updatePreferences({ theme: "light" }));
     await page.reload();
     await page.locator(".task-activity-toggle").click();
+    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
     await page.getByRole("button", { name: "查看子智能体 Background research", exact: true }).click();
     await expect(page.locator(".subagent-pane")).toContainText("Live child progress");
-    await expect(page.locator(".task-activity-toggle")).toContainText("1个运行中");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1 运行");
     send(
       childResponse as import("node:http").ServerResponse,
       chunk({ content: "\nCompleted child findings" }),
     );
     done(childResponse as import("node:http").ServerResponse);
     await expect(page.locator(".subagent-pane")).toContainText("Completed child findings");
-    await expect(page.locator(".task-activity-toggle")).toContainText("1个已结束");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1 已结束");
     await expect(page.locator("main .answer")).toHaveCount(2);
     await expect(page.locator("main .subagent-result-notice")).toHaveCount(0);
     await expect(page.locator("main .user-message")).not.toContainText("<task-notification>");
@@ -291,21 +295,23 @@ test("background child streams into the side pane, updates status live and retur
     await expect(page.locator(".task-directory:visible")).toContainText("已完成");
     await editor.fill("Run research again");
     await editor.press("Enter");
-    await expect(page.locator(".task-activity-toggle")).toContainText("1个运行中");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1 运行");
     await page.locator(".task-activity-toggle").click();
+    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
     await page
       .locator(".task-activity")
       .getByRole("button", { name: "停止子智能体 Background research", exact: true })
       .click();
-    await expect(page.locator(".task-activity-toggle")).toContainText("2个已结束");
+    await expect(page.locator(".task-activity-toggle")).toContainText("2 已结束");
     await page.getByRole("button", { name: "关闭任务状态", exact: true }).click();
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await editor.fill("Start another background task");
     await editor.press("Enter");
     await expect(page.locator("main .answer")).toContainText("Coordinator report");
     await page.locator(".task-activity-toggle").click();
+    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
     await page.getByRole("button", { name: "查看子智能体 Background research", exact: true }).click();
-    await expect(page.locator(".task-activity-toggle")).toContainText("1个运行中");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1 运行");
     await page
       .locator(".task-activity")
       .getByRole("button", { name: "停止子智能体 Background research", exact: true })

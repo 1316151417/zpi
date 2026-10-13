@@ -23,6 +23,7 @@ export function ActionHint({
   description,
   shortcut,
   side,
+  sideOffset = 2,
   appearance = "message",
   open,
   className,
@@ -32,6 +33,7 @@ export function ActionHint({
   description?: string;
   shortcut?: string;
   side?: "top" | "bottom" | "left" | "right";
+  sideOffset?: number;
   appearance?: "message" | "control";
   open?: boolean;
   className?: string;
@@ -44,7 +46,7 @@ export function ActionHint({
           <Tooltip.Content
             side={side ?? (appearance === "control" ? "top" : "bottom")}
             align="center"
-            sideOffset={2}
+            sideOffset={sideOffset}
             className={`message-action-tooltip${appearance === "control" ? " control-hint-tooltip" : ""}${className ? ` ${className}` : ""}`}
           >
             <span>
