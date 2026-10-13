@@ -89,6 +89,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
     { id: "custom", name: "Custom", preamble: "Custom assistant", rules: "CUSTOM RULE" },
   ]) {
     const f = await fixture(undefined, template);
+    f.settings.setCapabilityEnabled("subagents", false);
     const assertLinks = (prompt: string) => {
       expect(prompt).toContain("Return web URLs as Markdown links");
       expect(prompt).toContain("return local file references as Markdown links");
@@ -200,6 +201,9 @@ test("prompt snapshots and skill defaults survive restart; the read-only preview
     "bash",
     "edit",
     "write",
+    "AskUserQuestion",
+    "Agent",
+    "SendMessage",
     "TaskOutput",
     "TaskStop",
   ]);

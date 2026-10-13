@@ -35,6 +35,7 @@ test("desktop Bash and shared controls work with subagents disabled; services ou
       done(response);
     }
   });
+  f.settings.setCapabilityEnabled("subagents", false);
   await run(f, "Start a server");
   const task = f.host.getSessionSnapshot(f.session.id).view.backgroundTasks?.[0];
   if (!task) throw new Error("Missing background task");
@@ -42,7 +43,7 @@ test("desktop Bash and shared controls work with subagents disabled; services ou
   const names = (f.server.requests[0].tools as { function: { name: string } }[]).map(
     (tool) => tool.function.name,
   );
-  expect(names).toEqual(["read", "bash", "edit", "write", "TaskOutput", "TaskStop"]);
+  expect(names).toEqual(["read", "bash", "edit", "write", "AskUserQuestion", "TaskOutput", "TaskStop"]);
   const controls = f.host.taskTools(f.session.id, false);
   const session = f.host.sessions.get(f.session.id);
   if (!session) throw new Error("Missing agent session");

@@ -52,9 +52,9 @@ const sections = [
   ["interface", "界面设置", Monitor],
   ["prompt", "系统提示词", Sparkles],
   ["tools", "工具", Wrench],
-  ["subagents", "子智能体", Bot],
-  ["capabilities", "插件能力", Package],
   ["skills", "技能", Puzzle],
+  ["capabilities", "插件能力", Package],
+  ["subagents", "子智能体", Bot],
   ["models", "模型", Braces],
   ["archived", "已归档任务", Archive],
 ] as const;

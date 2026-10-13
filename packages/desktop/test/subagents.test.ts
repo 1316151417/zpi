@@ -131,7 +131,16 @@ test.each(["Explore", "general-purpose", "code-reviewer"])(
         ? ["read", "bash", "TaskOutput", "TaskStop", "RespondToCoordinator"]
         : name === "code-reviewer"
           ? ["read", "RespondToCoordinator"]
-          : ["read", "bash", "edit", "write", "TaskOutput", "TaskStop", "RespondToCoordinator"],
+          : [
+              "read",
+              "bash",
+              "edit",
+              "write",
+              "TaskOutput",
+              "TaskStop",
+              "AskUserQuestion",
+              "RespondToCoordinator",
+            ],
     );
     expect(JSON.stringify(childRequest).includes("WORKSPACE POLICY")).toBe(name !== "Explore");
     expect(JSON.stringify(childRequest).includes("USER POLICY")).toBe(name !== "Explore");
@@ -186,25 +195,25 @@ test("publishes child updates without rebuilding cached parent snapshots and res
   }
 });
 
-test("plugin enablement is frozen on first send, including restart, and defaults to disabled", async () => {
+test("plugin enablement defaults on and is frozen on first send, including restart", async () => {
   const f = await fixture();
-  expect(f.host.listTools().map((tool) => tool.name)).not.toContain("Agent");
+  expect(f.host.listTools().map((tool) => tool.name)).toContain("Agent");
   await run(f, "first send");
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setCapabilityEnabled("subagents", false);
   await run(f, "existing session");
-  expect(tools(f.server.requests.at(-1) ?? {})).not.toContain("Agent");
+  expect(tools(f.server.requests.at(-1) ?? {})).toContain("Agent");
   const next = f.host.createSession(null);
   await f.host.startRun({ sessionId: next.id, text: "new session" });
   await f.host.activeRuns.get(next.id)?.done;
-  expect(tools(f.server.requests.at(-1) ?? {})).toContain("Agent");
+  expect(tools(f.server.requests.at(-1) ?? {})).not.toContain("Agent");
   await f.host.close();
-  f.settings.setCapabilityEnabled("subagents", false);
+  f.settings.setCapabilityEnabled("subagents", true);
   const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
   await restored.init();
   cleanup.push(() => restored.close());
   await restored.startRun({ sessionId: next.id, text: "restored" });
   await restored.activeRuns.get(next.id)?.done;
-  expect(tools(f.server.requests.at(-1) ?? {})).toContain("Agent");
+  expect(tools(f.server.requests.at(-1) ?? {})).not.toContain("Agent");
 });
 
 test("runs independent children concurrently and cancels them when the parent stops", async () => {

@@ -14,6 +14,7 @@ test.each([
   "plugin prompt rules follow independent switches: batching=%s, links=%s",
   async (toolBatching, fileLinks) => {
     const f = await fixture();
+    f.settings.setCapabilityEnabled("subagents", false);
     f.settings.setCapabilityEnabled("toolBatching", toolBatching);
     f.settings.setCapabilityEnabled("fileLinks", fileLinks);
     const preview = await f.host.previewPrompt();
@@ -57,20 +58,33 @@ test("snapshots prompt plugins on first send and keeps them when global settings
   expect(system()).toContain("return local file references as Markdown links");
 });
 
-test("migrates previous plugin settings without changing existing prompt behavior and rejects unknown capabilities", async () => {
+test("defaults all plugin capabilities on and preserves saved choices when filling missing settings", async () => {
   const f = await fixture();
-  const path = join(f.dir, "settings.json");
-  const settings = JSON.parse(await readFile(path, "utf8"));
-  await writeFile(path, JSON.stringify({ ...settings, capabilities: { askUserQuestion: true } }));
-  const restored = new SettingsStore(f.dir, codec);
-  expect(restored.get().capabilities).toEqual({
-    subagents: false,
+  expect(f.settings.get().capabilities).toEqual({
+    subagents: true,
     askUserQuestion: true,
     toolBatching: true,
     fileLinks: true,
   });
+  expect(f.settings.get().interface.askUserQuestionAutoResolutionEnabled).toBe(true);
+  const path = join(f.dir, "settings.json");
+  const settings = JSON.parse(await readFile(path, "utf8"));
+  await writeFile(path, JSON.stringify({ ...settings, capabilities: { askUserQuestion: false } }));
+  const restored = new SettingsStore(f.dir, codec);
+  expect(restored.get().capabilities).toEqual({
+    subagents: true,
+    askUserQuestion: false,
+    toolBatching: true,
+    fileLinks: true,
+  });
   expect(() => restored.setCapabilityEnabled("unknown" as "fileLinks", true)).toThrow("无效插件能力");
+  restored.setCapabilityEnabled("subagents", false);
   restored.setCapabilityEnabled("fileLinks", false);
+  restored.updatePreferences({ askUserQuestionAutoResolutionEnabled: false });
+  const saved = new SettingsStore(f.dir, codec).get();
+  expect(saved.capabilities.subagents).toBe(false);
+  expect(saved.capabilities.askUserQuestion).toBe(false);
+  expect(saved.interface.askUserQuestionAutoResolutionEnabled).toBe(false);
   expect(new SettingsStore(f.dir, codec).get().capabilities.fileLinks).toBe(false);
   await writeFile(path, JSON.stringify({ ...settings, capabilities: true }));
   expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");
