@@ -155,15 +155,15 @@ test("one compact task panel manages agents and services and retains finished hi
     await expect(panel).toBeVisible();
     await page.reload();
     await expect(panel.getByRole("button", { name: "展开状态", exact: true })).toHaveText("2 已结束");
-    await page.getByRole("button", { name: "查看任务目录", exact: true }).click();
+    await expect(page.getByRole("button", { name: "查看任务目录", exact: true })).toHaveCount(0);
+    await panel.getByRole("button", { name: "展开状态", exact: true }).click();
+    await panel.getByRole("button", { name: "展开终端", exact: true }).click();
+    await panel.getByRole("button", { name: "已结束 1", exact: true }).click();
     await expect(page.getByRole("region", { name: "任务目录", exact: true })).toContainText("Dev server");
     await editor.fill("Again");
     await editor.press("Enter");
     await expect(panel).toBeVisible();
     // Finished history remains available, and a new launch updates the same capsule.
-    if (await panel.getByRole("button", { name: "展开状态", exact: true }).isVisible())
-      await panel.getByRole("button", { name: "展开状态", exact: true }).click();
-    await panel.getByRole("button", { name: "展开终端", exact: true }).click();
     await panel.getByRole("button", { name: "停止后台任务 Second server", exact: true }).click();
     await expect(panel).toHaveAttribute("data-running", "false");
     await expect(panel.locator('[data-status-section="terminal"] .task-ended')).toContainText("2");
