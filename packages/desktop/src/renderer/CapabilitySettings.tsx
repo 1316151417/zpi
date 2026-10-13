@@ -4,7 +4,7 @@ import { defaultCapabilities } from "../shared/config.ts";
 import { unwrap, useStore } from "./store.ts";
 
 const capabilities: {
-  name: CapabilityName | "askUserQuestionAutoResolutionEnabled";
+  name: CapabilityName;
   label: string;
   description: string;
 }[] = [
@@ -34,11 +34,6 @@ const capabilities: {
     description: "让助手通过单选、多选或自定义回答澄清问题，再继续执行。",
   },
   {
-    name: "askUserQuestionAutoResolutionEnabled",
-    label: "工具-提问自动继续",
-    description: "五分钟未回答时使用最佳判断继续；开始作答后停止计时。",
-  },
-  {
     name: "subagents",
     label: "子智能体",
     description: "将独立任务交给专门的智能体并行处理，支持自定义智能体和模型，在侧栏查看完整过程。",
@@ -47,9 +42,6 @@ const capabilities: {
 
 export function CapabilitySettings() {
   const enabled = useStore((state) => state.settings?.capabilities ?? defaultCapabilities);
-  const autoResolution = useStore(
-    (state) => state.settings?.interface.askUserQuestionAutoResolutionEnabled ?? true,
-  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const save = async (update: () => Promise<Result<PublicSettings>>) => {
@@ -80,15 +72,11 @@ export function CapabilitySettings() {
               <input
                 type="checkbox"
                 aria-label={label}
-                checked={name === "askUserQuestionAutoResolutionEnabled" ? autoResolution : enabled[name]}
+                checked={enabled[name]}
                 disabled={saving}
                 onChange={(event) => {
                   const checked = event.target.checked;
-                  void save(() =>
-                    name === "askUserQuestionAutoResolutionEnabled"
-                      ? window.zpi.updatePreferences({ askUserQuestionAutoResolutionEnabled: checked })
-                      : window.zpi.setCapabilityEnabled(name, checked),
-                  );
+                  void save(() => window.zpi.setCapabilityEnabled(name, checked));
                 }}
               />
               <span aria-hidden="true" />

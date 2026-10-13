@@ -60,7 +60,6 @@ export const reasoningLabels: Record<string, string> = {
   max: "最高",
 } as const;
 export const defaultPreferences: InterfacePreferences = {
-  askUserQuestionAutoResolutionEnabled: true,
   theme: "system",
   fontSize: 14,
   showContextUsage: false,

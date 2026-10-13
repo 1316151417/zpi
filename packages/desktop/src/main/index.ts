@@ -674,7 +674,6 @@ async function launch(): Promise<void> {
         case "updatePreferences":
           value = settings.updatePreferences(
             object(0, [
-              "askUserQuestionAutoResolutionEnabled",
               "theme",
               "fontSize",
               "showContextUsage",
@@ -689,9 +688,6 @@ async function launch(): Promise<void> {
             ]) as Partial<InterfacePreferences>,
           );
           nativeTheme.themeSource = settings.get().interface.theme;
-          host.questions.setAutoResolutionEnabled(
-            settings.get().interface.askUserQuestionAutoResolutionEnabled,
-          );
           break;
         case "setSessionSelection":
           value = await host.setSessionSelection(

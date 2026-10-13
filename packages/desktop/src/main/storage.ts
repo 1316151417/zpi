@@ -177,7 +177,9 @@ export class SettingsStore {
         throw new Error("storage: Invalid plugin capabilities");
       this.data.capabilities = { ...defaultCapabilities, ...this.data.capabilities };
       if (isJsonObject(this.data.interface)) {
-        this.data.interface = { ...defaultPreferences, ...this.data.interface };
+        // Question timing is now built in; discard the retired preference, including saved false values.
+        const { askUserQuestionAutoResolutionEnabled: _retired, ...preferences } = this.data.interface;
+        this.data.interface = { ...defaultPreferences, ...preferences };
         const legacySize: unknown = this.data.interface.fontSize;
         const legacySizes: Record<string, number> = { small: 12, default: 14, large: 16 };
         if (typeof legacySize === "string" && Object.hasOwn(legacySizes, legacySize)) {
@@ -661,7 +663,6 @@ export class SettingsStore {
     assertSupportedOptions(prefs, Object.keys(defaultPreferences), "interface preferences");
     if (
       [
-        prefs.askUserQuestionAutoResolutionEnabled,
         prefs.showContextUsage,
         prefs.showSendButton,
         prefs.notificationEnabled,
