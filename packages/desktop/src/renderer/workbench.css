@@ -4334,6 +4334,8 @@
   border-radius: 6px;
 }
 .task-activity-menu {
+  /* 通用菜单层级 12 低于浮窗的 20；沿用 ZCode 菜单层级，避免列表和提示遮住菜单。 */
+  z-index: 60;
   width: 176px;
 }
 .task-activity-sections {

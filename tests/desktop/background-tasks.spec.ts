@@ -1,12 +1,43 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ElectronApplication } from "@playwright/test";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
-test("one compact task panel manages agents and services, shows live output and dismisses only when all finish", async () => {
+async function checkTaskMenuLayer(page: Page, panel: Locator, theme: string) {
+  await panel.getByRole("button", { name: "状态面板展开策略", exact: true }).click();
+  const menu = page.getByRole("menuitemradio", { name: "自动展开", exact: true });
+  await expect(menu).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath(`task-menu-${theme}.png`), animations: "disabled" });
+  const layers = await page.locator(".task-activity").evaluate((element) => {
+    const menu = document.querySelector(".task-activity-menu");
+    if (!(element instanceof HTMLElement) || !menu) throw new Error("Missing task menu");
+    const bounds = menu.getBoundingClientRect();
+    const panelBounds = element.getBoundingClientRect();
+    const previous = element.style.pointerEvents;
+    // Modal menus disable background pointer events; restore them briefly so hit testing
+    // detects a panel painted above the menu instead of clicking through that occlusion.
+    element.style.pointerEvents = "auto";
+    try {
+      return {
+        overlaps: bounds.top < panelBounds.bottom && bounds.bottom > panelBounds.top,
+        unobscured: [0.25, 0.5, 0.75].every((x) =>
+          menu.contains(document.elementFromPoint(bounds.left + bounds.width * x, bounds.top + 8)),
+        ),
+      };
+    } finally {
+      element.style.pointerEvents = previous;
+    }
+  });
+  expect(layers.overlaps).toBe(true);
+  expect(layers.unobscured).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+}
+
+test("one compact task panel manages agents and services and retains finished history without dismissal", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-task-panel-"));
   const server = await fakeServer((body, response) => {
     const tools = (body.tools as { function: { name: string } }[]).map((tool) => tool.function.name);
@@ -92,6 +123,7 @@ test("one compact task panel manages agents and services, shows live output and 
     // Each section retains its own expansion when the whole panel is collapsed.
     await expect(panel.getByRole("button", { name: "收起终端", exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "收起智能体", exact: true })).toBeVisible();
+    await checkTaskMenuLayer(page, panel, "light");
     await page.mouse.move(0, 0);
     await panel.screenshot({ path: test.info().outputPath("task-panel-light.png"), animations: "disabled" });
     await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
@@ -111,6 +143,7 @@ test("one compact task panel manages agents and services, shows live output and 
     await panel.getByRole("button", { name: "展开终端", exact: true }).click();
     await panel.getByRole("button", { name: "展开智能体", exact: true }).click();
     await page.mouse.move(0, 0);
+    await checkTaskMenuLayer(page, panel, "dark");
     await panel.screenshot({ path: test.info().outputPath("task-panel-dark.png"), animations: "disabled" });
     await panel.getByRole("button", { name: "停止后台任务 Dev server", exact: true }).click();
     await expect(panel.getByRole("button", { name: "停止后台任务 Dev server", exact: true })).toHaveCount(0);
@@ -118,14 +151,16 @@ test("one compact task panel manages agents and services, shows live output and 
     await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
     await panel.getByRole("button", { name: "停止子智能体 Inspect source", exact: true }).click();
     await expect(panel).toHaveAttribute("data-running", "false");
-    await page.getByRole("button", { name: "关闭任务状态", exact: true }).click();
-    await expect(panel).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    await page.reload();
+    await expect(panel.getByRole("button", { name: "展开状态", exact: true })).toHaveText("2 已结束");
     await page.getByRole("button", { name: "查看任务目录", exact: true }).click();
     await expect(page.getByRole("region", { name: "任务目录", exact: true })).toContainText("Dev server");
     await editor.fill("Again");
     await editor.press("Enter");
     await expect(panel).toBeVisible();
-    // Closing the presentation never forgets task history; a new launch reveals it again.
+    // Finished history remains available, and a new launch updates the same capsule.
     if (await panel.getByRole("button", { name: "展开状态", exact: true }).isVisible())
       await panel.getByRole("button", { name: "展开状态", exact: true }).click();
     await panel.getByRole("button", { name: "展开终端", exact: true }).click();
@@ -277,8 +312,11 @@ test("terminal capsule matches ZCode and automatic layout follows the conversati
     await expect(panel).toHaveAttribute("data-running", "false");
     // Stopping a task must not also trigger the transparent row's open-output button.
     await expect(page.getByRole("region", { name: "后台任务输出", exact: true })).toHaveCount(0);
-    await panel.getByRole("button", { name: "关闭任务状态", exact: true }).click();
-    await expect(panel).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
+    await panel.getByRole("button", { name: "收起为胶囊", exact: true }).click();
+    await expect(capsule).toHaveText("1 已结束");
+    await page.reload();
+    await expect(capsule).toHaveText("1 已结束");
   } finally {
     await app?.close();
     await server.close();

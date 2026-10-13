@@ -286,11 +286,11 @@ test("background child streams into the side pane, updates status live and retur
       .getByRole("button", { name: /Background research/ })
       .click();
     await expect(page.locator(".subagent-pane")).toContainText("Completed child findings");
-    await page.getByRole("button", { name: "关闭任务状态", exact: true }).click();
-    await expect(page.locator(".task-activity")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
+    await expect(page.locator(".task-activity")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("button", { name: "查看任务目录", exact: true })).toBeVisible();
-    await expect(page.locator(".task-activity")).toHaveCount(0);
+    await expect(page.locator(".task-activity-toggle")).toHaveText("1 已结束");
     await page.getByRole("button", { name: "查看任务目录", exact: true }).click();
     await expect(page.locator(".task-directory:visible")).toContainText("已完成");
     await editor.fill("Run research again");
@@ -303,7 +303,7 @@ test("background child streams into the side pane, updates status live and retur
       .getByRole("button", { name: "停止子智能体 Background research", exact: true })
       .click();
     await expect(page.locator(".task-activity-toggle")).toContainText("2 已结束");
-    await page.getByRole("button", { name: "关闭任务状态", exact: true }).click();
+    await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await editor.fill("Start another background task");
     await editor.press("Enter");
