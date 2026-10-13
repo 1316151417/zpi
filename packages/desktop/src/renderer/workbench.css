@@ -113,9 +113,11 @@
   min-width: 0;
   -webkit-app-region: drag;
 }
-/* Native drag regions are disjoint from controls, including overlay parents. */
+/* Header backgrounds and titles respond to native drag and double-click; controls opt out. */
 .topbar,
-.pane-header,
+.pane-header {
+  -webkit-app-region: drag;
+}
 .desktop-top-controls {
   -webkit-app-region: no-drag;
 }
@@ -1973,6 +1975,8 @@
 }
 .empty-chat .draft-greeting {
   position: relative;
+  /* The hidden unwrapped measurement must not enlarge the conversation's scroll area. */
+  overflow: clip;
   width: 100%;
   max-width: 672px;
   font-size: 30px;

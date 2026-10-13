@@ -1008,13 +1008,31 @@ export class SessionHost {
     try {
       const manager = this.manager(child.id);
       // Keep provider history and compaction boundaries, without projecting inherited messages into the pane.
-      const transcript = stable.filter(
-        (entry) =>
+      const boundaries = new Set(
+        stable.flatMap((entry) => (entry.type === "compaction" ? [entry.firstKeptEntryId] : [])),
+      );
+      const transcript = stable.flatMap((entry): SessionEntry[] => {
+        if (
           entry.type === "message" ||
           entry.type === "compaction" ||
           entry.type === "model_change" ||
-          entry.type === "thinking_level_change",
-      );
+          entry.type === "thinking_level_change"
+        )
+          return [entry];
+        // Compaction may start at a run marker or streaming journal. Preserve its identity
+        // without inheriting desktop lifecycle state or replaying tool journals in the child.
+        return boundaries.has(entry.id)
+          ? [
+              {
+                id: entry.id,
+                parentId: entry.parentId,
+                timestamp: entry.timestamp,
+                type: "custom",
+                customType: "zpi.context_boundary",
+              },
+            ]
+          : [];
+      });
       manager.replaceEntries(
         await copyFileChangeSnapshots(
           transcript,

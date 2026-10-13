@@ -181,7 +181,7 @@ test("file scope searches lazy patches across files, highlights split diffs and 
       send(
         response,
         chunk({
-          content: "过程中 needle",
+          content: "过程中 **needle**",
           tool_calls: ["a.txt", "b.txt", "large.txt"].map((path, index) => ({
             index,
             id: `write-${index}`,
@@ -222,6 +222,28 @@ test("file scope searches lazy patches across files, highlights split diffs and 
     await input.fill("needle");
     await expect(count(page)).toHaveText("1/2");
     await expect(page.getByTestId("process")).toBeVisible();
+    const progress = page.getByTestId("progress");
+    await progress.click();
+    await expect(progress).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("process")).toHaveCount(0);
+    await expect(count(page)).toHaveText("1/2");
+    await expect.poll(() => highlight(page)).toEqual([]);
+    await input.press("Enter");
+    await expect(count(page)).toHaveText("2/2");
+    await expect(progress).toHaveAttribute("aria-expanded", "false");
+    await input.press("Enter");
+    await expect(count(page)).toHaveText("1/2");
+    await expect(progress).toHaveAttribute("aria-expanded", "true");
+    await expect.poll(() => highlight(page).then((hits) => hits.map((hit) => hit.text))).toEqual(["needle"]);
+    await input.fill("过程中 needle");
+    await expect(count(page)).toHaveText("1/1");
+    await progress.click();
+    await expect(progress).toHaveAttribute("aria-expanded", "false");
+    await expect(count(page)).toHaveText("1/1");
+    await input.press("Enter");
+    await expect(progress).toHaveAttribute("aria-expanded", "true");
+    await input.fill("needle");
+    await expect(count(page)).toHaveText("1/2");
     await bar(page).getByRole("button", { name: "搜索文件变更", exact: true }).click();
     input = bar(page).getByRole("textbox");
     await expect(input).toHaveAttribute("placeholder", "搜索文件变更...");

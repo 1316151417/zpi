@@ -100,6 +100,7 @@ export function ConversationSelectionMenu({
   rootRef,
   scopeKey,
   onAdd,
+  addLabel = "添加到当前任务",
   onSideChat,
   sideChatDisabled,
   sideChatDisabledTitle = "请先处理辅助对话中的待处理请求。",
@@ -107,6 +108,7 @@ export function ConversationSelectionMenu({
   rootRef: RefObject<HTMLElement | null>;
   scopeKey: string;
   onAdd?: (reference: ConversationSelection) => void;
+  addLabel?: string;
   onSideChat?: (reference: ConversationSelection) => void;
   sideChatDisabled?: boolean;
   sideChatDisabledTitle?: string;
@@ -288,7 +290,7 @@ export function ConversationSelectionMenu({
                 close();
               }}
             >
-              添加到当前任务
+              {addLabel}
             </button>
           )}
           {onSideChat && state.text.length <= 8000 && (
