@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
+  Activity,
   Ellipsis,
   Folder,
   FolderOpen,
@@ -33,6 +34,7 @@ import {
   listenPanes,
   openSideChat,
   openSubagent,
+  openTaskDirectory,
   openWebLink,
   paneTask,
   setPaneOpen,
@@ -48,7 +50,6 @@ import { SettingsPage } from "./SettingsPage.tsx";
 import { SidebarSections } from "./SidebarSections.tsx";
 import { SidebarTaskEmpty, SidebarTaskList } from "./SidebarTaskList.tsx";
 import { SidebarTaskRow } from "./SidebarTaskRow.tsx";
-import { SubagentActivity } from "./SubagentActivity.tsx";
 import {
   compareTasks,
   readTaskPreferences,
@@ -73,6 +74,7 @@ import {
   unwrap,
   useStore,
 } from "./store.ts";
+import { TaskActivity } from "./TaskActivity.tsx";
 import { TaskMenu } from "./TaskMenu.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
@@ -718,6 +720,16 @@ export function App() {
             </div>
             {record && !record.draft && <TaskMenu record={record} onRename={() => renameTask(record)} />}
             <div className="topbar-drag-space" aria-hidden="true" />
+            {!!(view?.subagents?.length || view?.backgroundTasks?.length) && (
+              <button
+                className="icon-button"
+                aria-label="查看任务目录"
+                title="查看任务目录"
+                onClick={() => openTaskDirectory(view.sessionId)}
+              >
+                <Activity size={16} />
+              </button>
+            )}
           </header>
           {state.error && (
             <div className="error-toast" role="alert">
@@ -736,6 +748,12 @@ export function App() {
           )}
           {view ? (
             <div className="task-body">
+              <TaskActivity
+                key={view.sessionId}
+                sessionId={view.sessionId}
+                agents={view.subagents}
+                commands={view.backgroundTasks}
+              />
               <Conversation
                 onOpenSubagent={showSubagent}
                 previewServices={previewServices}
@@ -809,7 +827,6 @@ export function App() {
                 onFile={openFile}
               />
               <div className="composer-container">
-                <SubagentActivity tasks={view.subagents ?? []} />
                 {view.question && (
                   <UserQuestionCard
                     key={view.question.id}

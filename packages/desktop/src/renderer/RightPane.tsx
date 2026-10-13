@@ -1,5 +1,6 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  Activity,
   Bot,
   FileDiff as Files,
   Globe,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { FileIcon, type FindRequest, type FindState } from "zpi-ui";
+import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
@@ -27,9 +29,9 @@ import {
   visiblePaneTabs,
 } from "./pane-store.ts";
 import { SideChatPane } from "./SideChatPane.tsx";
-import { SubagentDirectory } from "./SubagentActivity.tsx";
 import { SubagentPane } from "./SubagentPane.tsx";
 import { useStore } from "./store.ts";
+import { TaskDirectory } from "./TaskActivity.tsx";
 import { TerminalPane } from "./TerminalPane.tsx";
 export function RightPane({
   available,
@@ -158,13 +160,15 @@ export function RightPane({
                       if (event.button !== 1) activatePaneTab(tab.id);
                     }}
                   >
-                    {tab.type === "subagent" || tab.type === "subagent-directory" ? (
+                    {tab.type === "subagent" ? (
                       <Bot size={16} />
+                    ) : tab.type === "task-directory" ? (
+                      <Activity size={16} />
                     ) : tab.type === "side-chat" ? (
                       <MessageSquare size={16} />
                     ) : tab.type === "changes" ? (
                       <Files size={16} />
-                    ) : tab.type === "terminal" ? (
+                    ) : tab.type === "terminal" || tab.type === "background-task" ? (
                       <TerminalSquare size={16} />
                     ) : tab.type === "file" ? (
                       <FileIcon path={tab.preview.path} />
@@ -278,8 +282,14 @@ export function RightPane({
               aria-label={tab.title}
               hidden={tab.id !== active}
             >
-              {tab.type === "subagent-directory" ? (
-                <SubagentDirectory sessionId={tab.sessionId} />
+              {tab.type === "background-task" ? (
+                <BackgroundTaskPane
+                  sessionId={tab.sessionId}
+                  taskId={tab.taskId}
+                  visible={state.open && tab.id === active}
+                />
+              ) : tab.type === "task-directory" ? (
+                <TaskDirectory sessionId={tab.sessionId} visible={state.open && tab.id === active} />
               ) : tab.type === "subagent" ? (
                 <SubagentPane tab={tab} />
               ) : tab.type === "side-chat" ? (

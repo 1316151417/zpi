@@ -195,5 +195,12 @@ test("prompt snapshots and skill defaults survive restart; the read-only preview
   expect(f.server.requests[4].messages).toContainEqual(
     expect.objectContaining({ role: "user", content: "$review after restart" }),
   );
-  expect(f.host.listTools().map((t) => t.name)).toEqual(["read", "bash", "edit", "write"]);
+  expect(f.host.listTools().map((t) => t.name)).toEqual([
+    "read",
+    "bash",
+    "edit",
+    "write",
+    "TaskOutput",
+    "TaskStop",
+  ]);
 });

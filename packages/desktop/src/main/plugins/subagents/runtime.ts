@@ -68,12 +68,23 @@ const stopParameters = Type.Object(
   { task_id: Type.String({ minLength: 1 }) },
   { additionalProperties: false },
 );
+const outputParameters = Type.Object(
+  {
+    task_id: Type.String({ minLength: 1 }),
+    block: Type.Optional(Type.Boolean({ default: true, description: "Whether to wait for completion" })),
+    timeout: Type.Optional(Type.Number({ minimum: 0, maximum: 600000, default: 30000 })),
+  },
+  { additionalProperties: false },
+);
 const result = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
 
 export class SubagentPlugin {
   readonly tasks = new Map<string, SubagentTask>();
   private childAgents = new Map<string, string>();
   private jobs = new Map<string, Promise<void>>();
+  private stopping = new Map<string, Promise<void>>();
+  private outputWaiters = new Map<string, Set<() => void>>();
+  private notified = new WeakSet<SubagentTask>();
   private closing = false;
   private cancellations = new Map<string, number>();
   private definitions = new Map<string, SubagentProfile[]>();
@@ -154,14 +165,22 @@ export class SubagentPlugin {
       if (task.childSessionId === id || task.parentSessionId === id) {
         this.tasks.delete(task.agentId);
         this.childAgents.delete(task.childSessionId);
+        this.cancellations.delete(task.agentId);
+        this.outputWaiters.get(task.agentId)?.forEach((wake) => {
+          wake();
+        });
       }
   }
   update(agentId: string, fields: Partial<SubagentTask>) {
     const previous = this.tasks.get(agentId);
     if (!previous) return;
+    if (Object.entries(fields).every(([key, value]) => previous[key as keyof SubagentTask] === value)) return;
     const next = { ...previous, ...fields };
     this.tasks.set(agentId, next);
     this.port.publish(next);
+    this.outputWaiters.get(agentId)?.forEach((wake) => {
+      wake();
+    });
   }
   private owned(parentId: string, agentId: string) {
     const task = this.tasks.get(agentId);
@@ -170,12 +189,21 @@ export class SubagentPlugin {
   }
   async stop(parentId: string, agentId: string) {
     const task = this.owned(parentId, agentId);
-    if (task.status !== "running" && !this.jobs.has(agentId)) throw new Error("busy: 子智能体已结束");
+    const stopping = this.stopping.get(agentId);
+    if (stopping) return stopping;
+    if (task.status !== "running") throw new Error("busy: 子智能体已结束");
     this.cancellations.set(agentId, (this.cancellations.get(agentId) ?? 0) + 1);
     // Mark before cancelling so background completion cannot wake the stopped parent.
-    this.update(agentId, { status: "aborted", endedAt: Date.now() });
-    await this.port.stop(task.childSessionId);
-    await this.jobs.get(agentId);
+    this.update(agentId, { status: "aborted", endedAt: Date.now(), waitingForInput: false });
+    const job = this.jobs.get(agentId);
+    const stopped = this.port
+      .stop(task.childSessionId)
+      .then(() => job?.catch(() => {}))
+      .finally(() => {
+        this.stopping.delete(agentId);
+      });
+    this.stopping.set(agentId, stopped);
+    return stopped;
   }
   async stopAll(parentId: string) {
     await Promise.all(
@@ -199,25 +227,27 @@ export class SubagentPlugin {
   ) {
     const previous = this.jobs.get(task.agentId);
     const generation = this.cancellations.get(task.agentId) ?? 0;
+    if (resume) {
+      this.update(task.agentId, {
+        background: true,
+        status: "running",
+        startedAt: Date.now(),
+        endedAt: undefined,
+        error: undefined,
+        latestActivity: undefined,
+        result: undefined,
+        waitingForInput: false,
+      });
+    }
     let done!: Promise<void>;
     done = (async () => {
-      await previous?.catch(() => {});
+      if (previous) await previous.catch(() => {});
       if (
         this.closing ||
         generation !== (this.cancellations.get(task.agentId) ?? 0) ||
         (!resume && this.tasks.get(task.agentId)?.status === "aborted")
       )
         return;
-      if (resume)
-        this.update(task.agentId, {
-          background: true,
-          status: "running",
-          startedAt: Date.now(),
-          endedAt: undefined,
-          error: undefined,
-          latestActivity: undefined,
-          result: undefined,
-        });
       try {
         await this.port.run(task.childSessionId, prompt, resume?.profile, resume?.selection);
       } catch (error) {
@@ -229,16 +259,43 @@ export class SubagentPlugin {
       if (
         this.jobs.get(task.agentId) === done &&
         latest?.background &&
+        latest.status !== "running" &&
         latest.status !== "aborted" &&
+        !this.notified.has(latest) &&
         !this.closing
-      )
+      ) {
         await this.port.notify(latest);
+        this.notified.add(latest);
+      }
     })().finally(() => {
       if (this.jobs.get(task.agentId) === done) this.jobs.delete(task.agentId);
     });
     this.jobs.set(task.agentId, done);
     void done.catch(() => {});
     return done;
+  }
+  private waitForOutput(parentId: string, agentId: string, timeout: number, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (this.owned(parentId, agentId).status !== "running" || timeout === 0) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const listeners = this.outputWaiters.get(agentId) ?? new Set<() => void>();
+      this.outputWaiters.set(agentId, listeners);
+      const finish = (error?: unknown) => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        listeners.delete(wake);
+        if (!listeners.size) this.outputWaiters.delete(agentId);
+        if (error) reject(error);
+        else resolve();
+      };
+      const wake = () => {
+        if (this.tasks.get(agentId)?.status !== "running") finish();
+      };
+      const abort = () => finish(signal?.reason ?? new Error("TaskOutput cancelled"));
+      const timer = setTimeout(finish, timeout);
+      listeners.add(wake);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
   }
   tools(parentId: string): ToolDefinition[] {
     return [
@@ -280,9 +337,11 @@ export class SubagentPlugin {
             void this.stop(parentId, task.agentId).catch(() => {});
           };
           signal?.addEventListener("abort", abort, { once: true });
-          if (signal?.aborted) {
+          if (signal?.aborted || this.closing) {
             await this.stop(parentId, task.agentId);
-            signal.throwIfAborted();
+            signal?.removeEventListener("abort", abort);
+            signal?.throwIfAborted();
+            throw new Error("busy: 子智能体插件正在关闭");
           }
           const job = this.begin(task, params.prompt);
           if (task.background) {
@@ -315,6 +374,7 @@ export class SubagentPlugin {
           signal?.throwIfAborted();
           const task = this.owned(parentId, params.to);
           if (this.closing) throw new Error("busy: 子智能体插件正在关闭");
+          if (this.stopping.has(task.agentId)) throw new Error("busy: 子智能体正在停止");
           const activeJob = this.jobs.get(task.agentId);
           const prompt = `The coordinator sent a message while you were working:\n${params.summary}\n\n${params.message}`;
           const steered = task.status === "running" && this.port.steer(task.childSessionId, prompt);
@@ -335,15 +395,71 @@ export class SubagentPlugin {
         },
       },
       {
+        name: "TaskOutput",
+        label: "查看子智能体输出",
+        parameters: outputParameters,
+        description:
+          "Retrieve output from a local subagent by task_id (the agentId returned by Agent). block defaults to true and timeout to 30000 ms (maximum 600000). block=false returns immediately. Background completion is delivered automatically; prefer that notification and avoid polling. Returns only the task result, never the full conversation transcript.",
+        metadata: { concurrentSafe: true, sideEffectScope: "session", destructive: false },
+        execute: async (_id, params, signal) => {
+          if (!Value.Check(outputParameters, params)) throw new Error("invalid_input: TaskOutput 参数无效");
+          signal?.throwIfAborted();
+          this.owned(parentId, params.task_id);
+          if (params.block !== false)
+            await this.waitForOutput(parentId, params.task_id, params.timeout ?? 30000, signal);
+          signal?.throwIfAborted();
+          const task = this.owned(parentId, params.task_id);
+          const status =
+            task.status === "running" ? (params.block === false ? "not_ready" : "timeout") : "success";
+          const output = task.result ?? task.latestActivity ?? "";
+          if (status === "success") this.notified.add(task);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `<retrieval_status>${status}</retrieval_status>`,
+                  `<task_id>${task.agentId}</task_id>`,
+                  "<task_type>local_agent</task_type>",
+                  `<status>${task.status}</status>`,
+                  ...(output ? [`<output>\n${output}\n</output>`] : []),
+                  ...(task.error ? [`<error>${task.error}</error>`] : []),
+                ].join("\n\n"),
+              },
+            ],
+            details: {
+              retrieval_status: status,
+              task: {
+                task_id: task.agentId,
+                task_type: "local_agent",
+                status: task.status,
+                description: task.description,
+                output,
+                ...(task.error ? { error: task.error } : {}),
+              },
+            },
+          };
+        },
+      },
+      {
         name: "TaskStop",
         label: "停止子智能体",
         parameters: stopParameters,
         description:
           "Stop a running subagent by its agentId. Stops only agents belonging to this conversation.",
-        execute: async (_id, params) => {
+        execute: async (_id, params, signal) => {
           if (!Value.Check(stopParameters, params)) throw new Error("invalid_input: TaskStop 参数无效");
+          signal?.throwIfAborted();
+          const task = this.owned(parentId, params.task_id);
           await this.stop(parentId, params.task_id);
-          return result("Task stopped.");
+          return result(
+            JSON.stringify({
+              message: "Task stopped.",
+              task_id: task.agentId,
+              task_type: "local_agent",
+              command: task.description,
+            }),
+          );
         },
       },
     ];

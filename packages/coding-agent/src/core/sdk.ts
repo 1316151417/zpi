@@ -22,6 +22,8 @@ export interface CreateAgentSessionOptions {
   tools?: string[];
   excludeTools?: string[];
   customTools?: ToolDefinition[];
+  /** Explicitly replace named built-ins while preserving the other coding tools. */
+  toolOverrides?: ToolDefinition[];
   resourceLoader?: ResourceLoader;
   sessionManager?: SessionManager;
   homeDir?: string;
@@ -48,6 +50,7 @@ export async function createAgentSession(
       "tools",
       "excludeTools",
       "customTools",
+      "toolOverrides",
       "resourceLoader",
       "sessionManager",
       "homeDir",
@@ -109,7 +112,7 @@ export async function createAgentSession(
       sessionManager: manager,
     }),
   );
-  const custom = (options.customTools ?? []).map((definition): AgentTool => {
+  const wrap = (definition: ToolDefinition): AgentTool => {
     assertSupportedOptions(
       definition,
       [
@@ -140,8 +143,18 @@ export async function createAgentSession(
           getSystemPrompt: () => session.systemPrompt,
         }),
     };
-  });
-  const all = [...builtin, ...custom];
+  };
+  const custom = (options.customTools ?? []).map(wrap);
+  const overrides = (options.toolOverrides ?? []).map(wrap);
+  if (new Set(overrides.map((tool) => tool.name)).size !== overrides.length)
+    throw new Error("Duplicate tool overrides");
+  for (const tool of overrides)
+    if (!builtin.some((base) => base.name === tool.name))
+      throw new Error(`Unknown built-in tool override: ${tool.name}`);
+  const all = [
+    ...builtin.map((base) => overrides.find((tool) => tool.name === base.name) ?? base),
+    ...custom,
+  ];
   if (new Set(all.map((t) => t.name)).size !== all.length) throw new Error("Duplicate tool names");
   const defaults = options.noTools === "all" ? [] : options.noTools === "builtin" ? custom : all;
   const selected = (options.tools ?? defaults.map((t) => t.name)).map((n) => {

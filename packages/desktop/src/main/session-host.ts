@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync as rmSyncFile, statSync } f
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
+import { Value } from "typebox/value";
 import { isJsonObject } from "zpi-ai";
 import {
   type AgentSession,
@@ -22,9 +23,11 @@ import {
   type SessionEntry,
   SessionManager,
   supportedThinkingLevels,
+  type ToolDefinition,
   validateTemplate,
 } from "zpi-coding-agent";
 import type {
+  BackgroundTask,
   DesktopEvent,
   DesktopEventEnvelope,
   InputQueue,
@@ -52,6 +55,7 @@ import type {
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { AttachmentStore } from "./attachments.ts";
+import { BackgroundTasks } from "./background-tasks.ts";
 import { pluginSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { ErrorLog } from "./error-log.ts";
@@ -95,6 +99,7 @@ function validateRunInputText(input: RunInput): void {
 
 export class SessionHost {
   readonly subagents: SubagentPlugin;
+  readonly backgroundTasks: BackgroundTasks;
   readonly questions = new UserQuestions((id, question) => {
     const record = this.records.get(id);
     if (record)
@@ -229,6 +234,39 @@ export class SessionHost {
     this.homeDir = homeDir;
     this.defaultWorkspace = defaultWorkspace;
     this.settings = settings;
+    this.backgroundTasks = new BackgroundTasks(dir, {
+      publish: (task) => {
+        if (!this.records.has(task.sessionId)) return;
+        this.meta(task.sessionId, {
+          type: "custom",
+          customType: `zpi.background_task:${task.taskId}`,
+          data: JSON.parse(JSON.stringify(task)),
+        });
+        if (!this.views.has(task.sessionId)) this.getSessionSnapshot(task.sessionId);
+        this.emit(task.sessionId, "background", { type: "background_task_changed", task });
+        const parentId = this.records.get(task.sessionId)?.parentSessionId;
+        if (parentId && this.subagents.taskForChild(task.sessionId)) {
+          if (!this.views.has(parentId)) this.getSessionSnapshot(parentId);
+          this.emit(parentId, "background", { type: "background_task_changed", task });
+        }
+      },
+      notify: async (task) => {
+        const active = this.activeRuns.get(task.sessionId);
+        if (active?.aborted) await active.done;
+        if (this.closing || this.deleting.has(task.sessionId)) return;
+        const child = this.subagents.taskForChild(task.sessionId);
+        if (child && child.status !== "running") return;
+        await this.deliverSubagentMessage({
+          parentSessionId: task.sessionId,
+          agentId: task.taskId,
+          agentType: "bash",
+          description: task.description,
+          status: task.status === "completed" ? "completed" : "error",
+          result: `Background command ${task.status}. Exit code: ${task.exitCode ?? "unknown"}.\nOutput file: ${task.outputPath}\nUse TaskOutput with task_id ${task.taskId} if the output is needed.`,
+        });
+      },
+      error: (error) => this.errors.write("background.task", error),
+    });
     this.subagents = new SubagentPlugin(new SubagentProfiles(dir), {
       cwd: (id) => this.cwd(this.record(id)),
       selection: (id) => {
@@ -265,13 +303,24 @@ export class SessionHost {
           this.sessions.delete(id);
         }
         await this.startRun({ sessionId: id, text: prompt }, undefined, true);
-        await this.activeRuns.get(id)?.done;
+        // Settlement can reserve a follow-up when guidance arrives after the SDK inbox closes.
+        while (this.activeRuns.has(id)) await this.activeRuns.get(id)?.done;
       },
       stop: async (id) => {
         const run = this.activeRuns.get(id);
         if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+        else await this.backgroundTasks.stopAll(id);
       },
-      steer: (id, prompt) => this.sessions.get(id)?.steer(prompt) ?? false,
+      steer: (id, prompt) => {
+        const active = this.activeRuns.get(id);
+        if (!active || active.aborted) return false;
+        if (this.sessions.get(id)?.steer(prompt)) return true;
+        // Cover both startup and the SDK's closed-inbox settlement boundary.
+        const inbox = this.pendingSubagentMessages.get(id) ?? [];
+        inbox.push({ sessionId: id, text: prompt });
+        this.pendingSubagentMessages.set(id, inbox);
+        return true;
+      },
       publish: (task) => {
         if (!this.records.has(task.childSessionId) || !this.records.has(task.parentSessionId)) return;
         this.meta(task.childSessionId, {
@@ -281,8 +330,8 @@ export class SessionHost {
         });
         if (!this.views.has(task.parentSessionId)) this.getSessionSnapshot(task.parentSessionId);
         this.emit(task.parentSessionId, "subagents", {
-          type: "subagents_changed",
-          tasks: this.subagents.list(task.parentSessionId),
+          type: "subagent_changed",
+          task: structuredClone(task),
         });
       },
       notify: (task, message) => this.deliverSubagentMessage(task, message),
@@ -438,6 +487,15 @@ export class SessionHost {
       }
     }
     for (const [id, index] of this.indexes) {
+      for (const [key, saved] of Object.entries(index.data.state))
+        if (
+          key.startsWith("zpi.background_task:") &&
+          saved.type === "custom" &&
+          isJsonObject(saved.data) &&
+          saved.data.sessionId === id &&
+          typeof saved.data.taskId === "string"
+        )
+          this.backgroundTasks.restore(saved.data as unknown as BackgroundTask);
       const entry = index.data.state["zpi.subagent_task"];
       if (
         entry?.type === "custom" &&
@@ -712,9 +770,15 @@ export class SessionHost {
   }
 
   private parentInstructions = new Map<string, string[]>();
-  private pendingSubagentMessages = new Map<string, string[]>();
+  private pendingSubagentMessages = new Map<string, RunInput[]>();
 
-  private async deliverSubagentMessage(task: SubagentTask, reply?: { summary: string; message: string }) {
+  private async deliverSubagentMessage(
+    task: Pick<
+      SubagentTask,
+      "parentSessionId" | "agentId" | "agentType" | "description" | "status" | "result" | "error"
+    >,
+    reply?: { summary: string; message: string },
+  ) {
     const parentId = task.parentSessionId;
     if (
       this.closing ||
@@ -727,17 +791,7 @@ export class SessionHost {
       value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const tag = reply ? "subagent-message" : "task-notification";
     const text = `<${tag}>\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(reply?.summary ?? task.description)}\n${escapeXml(reply?.message ?? task.result ?? task.error ?? "No output.")}\n</${tag}>`;
-    const active = this.activeRuns.get(parentId);
-    if (active) {
-      if (active.aborted) throw new Error("busy: 父会话已停止");
-      if (!this.sessions.get(parentId)?.steer(text)) {
-        const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
-        inbox.push(text);
-        this.pendingSubagentMessages.set(parentId, inbox);
-      }
-      return;
-    }
-    await this.startRun({
+    const input: RunInput = {
       sessionId: parentId,
       text,
       subagentNotification: {
@@ -745,7 +799,64 @@ export class SessionHost {
         agentType: task.agentType,
         description: reply?.summary ?? task.description,
       },
-    });
+    };
+    const active = this.activeRuns.get(parentId);
+    if (active) {
+      if (active.aborted) throw new Error("busy: 父会话已停止");
+      if (!this.sessions.get(parentId)?.steer(text)) {
+        const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
+        inbox.push(input);
+        this.pendingSubagentMessages.set(parentId, inbox);
+      }
+      return;
+    }
+    await this.startRun(input, undefined, !!this.subagents.taskForChild(parentId));
+  }
+
+  taskTools(id: string, agents: boolean): ToolDefinition[] {
+    return this.subagents
+      .tools(id)
+      .filter((tool) => agents || tool.name === "TaskOutput" || tool.name === "TaskStop")
+      .map((tool) => {
+        if (tool.name !== "TaskOutput" && tool.name !== "TaskStop") return tool;
+        return {
+          ...tool,
+          label: tool.name === "TaskOutput" ? "查看任务输出" : "停止任务",
+          promptSnippet:
+            tool.name === "TaskOutput"
+              ? "Read or wait for task output"
+              : "Stop a background command or agent",
+          description:
+            tool.name === "TaskOutput"
+              ? "Read or wait for a background command or local agent by task_id. block defaults to true; timeout defaults to 30000 milliseconds, maximum 600000. block=false returns immediately. Completion is delivered automatically; avoid polling."
+              : "Stop a running background command or local agent by task_id. Stops the command process tree, or the agent and its background commands.",
+          execute: async (callId, params, signal, update, context) => {
+            if (!Value.Check(tool.parameters, params))
+              throw new Error(`invalid_input: ${tool.name} 参数无效`);
+            const input = params as { task_id: string; block?: boolean; timeout?: number };
+            if (!input.task_id.startsWith("exec_"))
+              return tool.execute(callId, params, signal, update, context);
+            if (tool.name === "TaskOutput") return this.backgroundTasks.output(id, input, signal);
+            signal?.throwIfAborted();
+            await this.backgroundTasks.stop(id, input.task_id, true);
+            const task = this.backgroundTasks.list(id).find((task) => task.taskId === input.task_id);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    message: "Task stopped.",
+                    task_id: input.task_id,
+                    task_type: "local_bash",
+                    command: task?.command,
+                  }),
+                },
+              ],
+              details: undefined,
+            };
+          },
+        };
+      });
   }
 
   listSubagents(sessionId: string | null) {
@@ -1002,27 +1113,34 @@ export class SessionHost {
   async archiveSession(id: string): Promise<void> {
     const record = this.record(id);
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
-    for (const child of this.records.values())
-      if (child.parentSessionId === id) {
-        const task = this.subagents.taskForChild(child.id);
-        if (task?.status === "running") await this.subagents.stop(id, task.agentId);
-        await this.closeSideChat(child.id);
+    await this.inputQueue.archive(id, async () => {
+      this.updating.add(id);
+      try {
+        await this.backgroundTasks.stopAll(id);
+        for (const child of this.records.values())
+          if (child.parentSessionId === id) {
+            const task = this.subagents.taskForChild(child.id);
+            if (task?.status === "running") await this.subagents.stop(id, task.agentId);
+            await this.backgroundTasks.stopAll(child.id);
+            await this.closeSideChat(child.id);
+          }
+        const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
+        const archivedAt = Date.now();
+        this.meta(id, {
+          type: "custom",
+          customType: "zpi.session_meta",
+          data: {
+            ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
+            projectId: record.projectId,
+            pinnedAt: null,
+            archivedAt,
+          },
+        });
+        Object.assign(record, { archivedAt, pinnedAt: null });
+        if (this.visibleSessionId === id) this.visibleSessionId = undefined;
+      } finally {
+        this.updating.delete(id);
       }
-    await this.inputQueue.archive(id, () => {
-      const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
-      const archivedAt = Date.now();
-      this.meta(id, {
-        type: "custom",
-        customType: "zpi.session_meta",
-        data: {
-          ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
-          projectId: record.projectId,
-          pinnedAt: null,
-          archivedAt,
-        },
-      });
-      Object.assign(record, { archivedAt, pinnedAt: null });
-      if (this.visibleSessionId === id) this.visibleSessionId = undefined;
     });
   }
   restoreSession(id: string): SessionRecord {
@@ -1104,6 +1222,10 @@ export class SessionHost {
       forkOrigin,
       question: this.questions.get(id),
       subagents: this.subagents.list(id),
+      backgroundTasks: [
+        ...this.backgroundTasks.list(id),
+        ...this.subagents.list(id).flatMap((task) => this.backgroundTasks.list(task.childSessionId)),
+      ],
     };
     this.views.delete(id);
     this.views.set(id, view);
@@ -1269,9 +1391,11 @@ export class SessionHost {
       projectName: "ZPI",
       template: this.settings.getTemplate(),
       tools: [
-        ...createCodingTools(info.cwd),
+        ...createCodingTools(info.cwd).map((tool) =>
+          tool.name === "bash" ? this.backgroundTasks.tool("preview", info.cwd) : tool,
+        ),
         ...(capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
-        ...(capabilities.subagents ? this.subagents.tools("preview") : []),
+        ...this.taskTools("preview", capabilities.subagents),
       ],
     };
     return {
@@ -1286,9 +1410,11 @@ export class SessionHost {
   }
   listTools() {
     return [
-      ...createCodingTools(this.defaultWorkspace),
+      ...createCodingTools(this.defaultWorkspace).map((tool) =>
+        tool.name === "bash" ? this.backgroundTasks.tool("preview", this.defaultWorkspace) : tool,
+      ),
       ...(this.settings.get().capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
-      ...(this.settings.get().capabilities.subagents ? this.subagents.tools("preview") : []),
+      ...this.taskTools("preview", this.settings.get().capabilities.subagents),
     ].map((t) => ({
       name: t.name,
       description: t.description,
@@ -1418,6 +1544,7 @@ export class SessionHost {
     this.deleting.add(id);
     this.titleJobs.get(id)?.controller.abort();
     try {
+      await this.backgroundTasks.stopAll(id);
       for (const child of [...this.records.values()])
         if (child.parentSessionId === id) {
           await this.closeSideChat(child.id);
@@ -1436,6 +1563,7 @@ export class SessionHost {
       this.runtimes.delete(id);
       this.records.delete(id);
       this.subagents.forgetSession(id);
+      this.backgroundTasks.forget(id);
       this.pendingSubagentMessages.delete(id);
       this.parentInstructions.delete(id);
       if (this.visibleSessionId === id) this.visibleSessionId = undefined;
@@ -1948,9 +2076,12 @@ export class SessionHost {
               modelRuntime: runtime,
               model,
               sessionManager: manager,
+              toolOverrides: [
+                this.backgroundTasks.tool(id, this.cwd(record), !!configuration.subagentProfile),
+              ],
               customTools: [
                 ...(configuration.askUserQuestion ? [this.sessionQuestionTool(id)] : []),
-                ...(configuration.subagents ? this.subagents.tools(id) : []),
+                ...this.taskTools(id, configuration.subagents),
                 ...(configuration.subagentProfile ? this.subagents.childTools(id) : []),
               ],
               ...(configuration.subagentProfile
@@ -1962,6 +2093,8 @@ export class SessionHost {
                         "bash",
                         "edit",
                         "write",
+                        "TaskOutput",
+                        "TaskStop",
                         ...(configuration.askUserQuestion ? ["AskUserQuestion"] : []),
                         "RespondToCoordinator",
                       ];
@@ -1969,7 +2102,19 @@ export class SessionHost {
                         profile.tools && !profile.tools.includes("*")
                           ? available.filter((tool) => profile.tools?.includes(tool))
                           : available;
-                      return allowed.filter((tool) => !profile.disallowedTools?.includes(tool));
+                      const active = allowed.filter((tool) => !profile.disallowedTools?.includes(tool));
+                      // ZCode's coordinator channel remains available even with a profile allowlist.
+                      return [
+                        ...new Set([
+                          ...active,
+                          ...(active.includes("bash")
+                            ? ["TaskOutput", "TaskStop"].filter(
+                                (tool) => !profile.disallowedTools?.includes(tool),
+                              )
+                            : []),
+                          "RespondToCoordinator",
+                        ]),
+                      ];
                     })(),
                   }
                 : {}),
@@ -2036,7 +2181,7 @@ export class SessionHost {
         const execution = session.executeInput(prepared, inputContext);
         const inbox = this.pendingSubagentMessages.get(id) ?? [];
         this.pendingSubagentMessages.delete(id);
-        for (const message of inbox) session.steer(message);
+        for (const message of inbox) session.steer(message.text);
         void execution
           .then(
             () => this.settle(id, run),
@@ -2062,6 +2207,7 @@ export class SessionHost {
         this.sessions.delete(id);
       }
       if (this.activeRuns.get(id) === run) this.activeRuns.delete(id);
+      this.pendingSubagentMessages.delete(id);
       run.finish();
       throw error;
     }
@@ -2231,6 +2377,8 @@ export class SessionHost {
       message = `storage: ${e instanceof Error ? e.message : String(e)}`;
       this.blocked.set(id, message);
     }
+    const inbox = this.pendingSubagentMessages.get(id) ?? [];
+    const continueInbox = inbox.length > 0 && !run.aborted && !this.closing && !this.deleting.has(id);
     const childTask = this.subagents.taskForChild(id);
     if (childTask) {
       const messages = run.session?.messages ?? [];
@@ -2239,10 +2387,11 @@ export class SessionHost {
         .map((block) => block.text)
         .join("\n");
       this.subagents.update(childTask.agentId, {
-        status,
-        endedAt,
+        status: continueInbox ? "running" : status,
+        endedAt: continueInbox ? undefined : endedAt,
         error: message,
-        result,
+        result: continueInbox ? undefined : result,
+        waitingForInput: false,
         totalToolUseCount: messages.filter((message) => message.role === "toolResult").length,
         totalTokens: messages.reduce(
           (total, message) => total + (message.role === "assistant" ? message.usage.totalTokens : 0),
@@ -2265,6 +2414,22 @@ export class SessionHost {
     this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
     this.indexes.get(id)?.flush();
     this.trimCaches(id);
+    // A reply may arrive after the SDK closes its steering inbox but before settle runs.
+    // Reserve the next turn before the user-input queue drains, keeping that reply model-only.
+    if (continueInbox) {
+      const [first, ...remaining] = inbox;
+      if (remaining.length) this.pendingSubagentMessages.set(id, remaining);
+      void this.startRun(first, undefined, !!childTask).catch((error) => {
+        this.pendingSubagentMessages.delete(id);
+        this.errors.write("subagent.delivery", error, { sessionId: id });
+        if (childTask)
+          this.subagents.update(childTask.agentId, {
+            status: "error",
+            error: String(error),
+            endedAt: Date.now(),
+          });
+      });
+    }
     run.finish();
     this.inputQueue.settled(id, status);
   }
@@ -2273,13 +2438,19 @@ export class SessionHost {
     if (!run || run.runId !== input.runId) throw new Error("not_found: 当前运行不存在");
     run.aborted = true;
     this.pendingSubagentMessages.delete(input.sessionId);
-    await this.subagents.stopAll(input.sessionId);
-    if (run.session) await run.session.abort().catch(() => {});
+    await Promise.all([
+      this.subagents.stopAll(input.sessionId),
+      run.session?.abort().catch(() => {}),
+      ...(this.subagents.taskForChild(input.sessionId)
+        ? [this.backgroundTasks.stopAll(input.sessionId)]
+        : []),
+    ]);
     await run.done;
   }
   async close(): Promise<void> {
     this.closing = true;
     await this.subagents.close();
+    await this.backgroundTasks.close();
     const queueClose = this.inputQueue.close();
     for (const job of this.titleJobs.values()) job.controller.abort();
     await Promise.allSettled([...this.titleJobs.values()].map((job) => job.done));

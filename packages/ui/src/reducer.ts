@@ -23,6 +23,8 @@ export function sessionViewBytes(view: SessionView): number {
     }
   }
   for (const item of view.queue?.items ?? []) chars += item.text.length;
+  for (const task of view.backgroundTasks ?? [])
+    chars += task.taskId.length + task.command.length + task.description.length + task.outputPath.length;
   for (const task of view.subagents ?? [])
     chars +=
       task.agentId.length +
@@ -38,7 +40,22 @@ export function sessionViewBytes(view: SessionView): number {
 export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope): SessionView {
   if (envelope.sessionId !== view.sessionId || envelope.seq <= view.seq) return view;
   const { event, runId, seq } = envelope;
-  if (event.type === "subagents_changed") return { ...view, seq, subagents: event.tasks };
+  if (event.type === "background_task_changed") {
+    const tasks = view.backgroundTasks ?? [];
+    const index = tasks.findIndex((task) => task.taskId === event.task.taskId);
+    const backgroundTasks = [...tasks];
+    if (index < 0) backgroundTasks.push(event.task);
+    else backgroundTasks[index] = event.task;
+    return { ...view, seq, backgroundTasks };
+  }
+  if (event.type === "subagent_changed") {
+    const tasks = view.subagents ?? [];
+    const index = tasks.findIndex((task) => task.agentId === event.task.agentId);
+    const subagents = [...tasks];
+    if (index < 0) subagents.push(event.task);
+    else subagents[index] = event.task;
+    return { ...view, seq, subagents };
+  }
   if (event.type === "history_reset") return { ...event.view, seq };
   if (event.type === "session_changed") return { ...view, seq, title: event.title };
   if (event.type === "controls_changed") return { ...view, seq, controls: event.controls };

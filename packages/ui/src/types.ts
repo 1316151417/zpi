@@ -122,7 +122,28 @@ export interface SubagentTask {
   latestActivity?: string;
   waitingForInput?: boolean;
 }
+export interface BackgroundTask {
+  taskId: string;
+  sessionId: string;
+  toolCallId: string;
+  command: string;
+  description: string;
+  status: "running" | "completed" | "failed" | "cancelled" | "lost";
+  startedAt: number;
+  endedAt?: number;
+  pid?: number;
+  exitCode?: number | null;
+  outputPath: string;
+  error?: string;
+  autoBackgrounded?: boolean;
+}
+export interface BackgroundTaskOutput {
+  task: BackgroundTask;
+  output: string;
+  truncated: boolean;
+}
 export interface SessionView {
+  backgroundTasks?: BackgroundTask[];
   subagents?: SubagentTask[];
   question?: UserQuestionRequest | null;
   forkOrigin?: { sessionId: string; runId: string };
@@ -149,7 +170,8 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
-  | { type: "subagents_changed"; tasks: SubagentTask[] }
+  | { type: "background_task_changed"; task: BackgroundTask }
+  | { type: "subagent_changed"; task: SubagentTask }
   | { type: "run_preparation"; message: string | null }
   | { type: "environment_changed"; cwd: string; newWorktree: boolean; worktree: WorktreeInfo }
   | { type: "question_changed"; question: UserQuestionRequest | null }
