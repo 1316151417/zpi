@@ -24,6 +24,11 @@ const capabilities: {
     description: "提示助手复用已读或成功编辑的文件内容，避免仅为验证或开始新回合而重复读取。",
   },
   {
+    name: "proactiveExecution",
+    label: "提示词-主动推进",
+    description: "主动完成已授权的必要工作，减少不必要的确认；用户要求先确认时仍等待。",
+  },
+  {
     name: "askUserQuestion",
     label: "工具-向用户提问",
     description: "让助手通过单选、多选或自定义回答澄清问题，再继续执行。",
