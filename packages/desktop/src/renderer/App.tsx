@@ -1,7 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
-  Activity,
   Ellipsis,
   Folder,
   FolderOpen,
@@ -34,7 +33,6 @@ import {
   listenPanes,
   openSideChat,
   openSubagent,
-  openTaskDirectory,
   openWebLink,
   paneTask,
   setPaneOpen,
@@ -720,16 +718,6 @@ export function App() {
             </div>
             {record && !record.draft && <TaskMenu record={record} onRename={() => renameTask(record)} />}
             <div className="topbar-drag-space" aria-hidden="true" />
-            {!!(view?.subagents?.length || view?.backgroundTasks?.length) && (
-              <button
-                className="icon-button"
-                aria-label="查看任务目录"
-                title="查看任务目录"
-                onClick={() => openTaskDirectory(view.sessionId)}
-              >
-                <Activity size={16} />
-              </button>
-            )}
           </header>
           {state.error && (
             <div className="error-toast" role="alert">

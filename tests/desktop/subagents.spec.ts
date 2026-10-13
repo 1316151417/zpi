@@ -289,15 +289,15 @@ test("background child streams into the side pane, updates status live and retur
     await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
     await expect(page.locator(".task-activity")).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("button", { name: "查看任务目录", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看任务目录", exact: true })).toHaveCount(0);
     await expect(page.locator(".task-activity-toggle")).toHaveText("1 已结束");
-    await page.getByRole("button", { name: "查看任务目录", exact: true }).click();
+    await page.getByRole("button", { name: "展开状态", exact: true }).click();
+    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
+    await page.getByRole("button", { name: "已结束 1", exact: true }).click();
     await expect(page.locator(".task-directory:visible")).toContainText("已完成");
     await editor.fill("Run research again");
     await editor.press("Enter");
     await expect(page.locator(".task-activity-toggle")).toContainText("1 运行");
-    await page.locator(".task-activity-toggle").click();
-    await page.getByRole("button", { name: "展开智能体", exact: true }).click();
     await page
       .locator(".task-activity")
       .getByRole("button", { name: "停止子智能体 Background research", exact: true })
