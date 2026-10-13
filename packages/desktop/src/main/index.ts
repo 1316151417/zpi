@@ -902,14 +902,19 @@ async function launch(): Promise<void> {
   window.on("close", (event) => {
     if (!quitting) {
       event.preventDefault();
-      app.quit();
+      if (process.platform === "darwin") {
+        if (!preparingQuit) window.hide();
+      } else app.quit();
     }
   });
-  app.on("second-instance", () => {
-    if (hiddenTestMode) return;
+  const showWindow = () => {
+    if (hiddenTestMode || preparingQuit || window.isDestroyed()) return;
     if (window.isMinimized()) window.restore();
+    window.show();
     window.focus();
-  });
+  };
+  app.on("activate", showWindow);
+  app.on("second-instance", showWindow);
   const devUrl = process.env.ZPI_DEV_URL;
   await loadRenderer(window, devUrl ?? pathToFileURL(join(dir, "../renderer/index.html")).href);
 }
