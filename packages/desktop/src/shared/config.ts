@@ -7,6 +7,7 @@ export const defaultCapabilities: PluginCapabilities = {
   toolBatching: true,
   fileLinks: true,
   fileContextReuse: true,
+  proactiveExecution: true,
 };
 export const modelDefaults = {
   contextWindow: 1000000,

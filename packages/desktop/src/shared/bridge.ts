@@ -122,6 +122,7 @@ export interface PluginCapabilities {
   toolBatching: boolean;
   fileLinks: boolean;
   fileContextReuse: boolean;
+  proactiveExecution: boolean;
 }
 export type CapabilityName = keyof PluginCapabilities;
 export interface PublicSettings {

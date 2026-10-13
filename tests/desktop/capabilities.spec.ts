@@ -138,7 +138,12 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
-    for (const name of ["提示词-多工具调用", "提示词-文件链接格式", "提示词-文件内容复用"]) {
+    for (const name of [
+      "提示词-多工具调用",
+      "提示词-文件链接格式",
+      "提示词-文件内容复用",
+      "提示词-主动推进",
+    ]) {
       await expect(page.getByRole("checkbox", { name, exact: true })).toBeChecked();
       await page.getByRole("checkbox", { name, exact: true }).uncheck();
       await expect(page.getByRole("checkbox", { name, exact: true })).not.toBeChecked();
@@ -178,6 +183,35 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain(
       "Reuse file content already in context",
     );
+    expect(JSON.stringify(server.requests.at(-1)?.messages)).not.toContain(
+      "When you have enough information to act, act.",
+    );
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    const proactive = page.getByRole("checkbox", { name: "提示词-主动推进", exact: true });
+    await expect(proactive).not.toBeChecked();
+    await proactive.check();
+    await expect(proactive).toBeEnabled();
+    await expect(proactive).toBeChecked();
+    await page.screenshot({ path: "test-results/desktop-proactive-execution.png", animations: "disabled" });
+    await page.getByRole("button", { name: "系统提示词", exact: true }).click();
+    await expect(page.locator(".system-rules-preview")).toContainText(
+      "Always honor explicit user instructions to ask for confirmation",
+    );
+    await expect(page.locator(".system-rules-preview")).not.toContainText("cannot answer questions mid-task");
+    expect(await page.locator(".prompt-preview").textContent()).toBe(basePrompt);
+    await page.getByLabel("关闭设置").click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("主动推进的新会话");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain(
+      "When you have enough information to act, act.",
+    );
+    await page.reload();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    await expect(proactive).toBeChecked();
   } finally {
     await app?.close();
     await server.close();
