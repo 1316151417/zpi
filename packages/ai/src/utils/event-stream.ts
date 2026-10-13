@@ -1,7 +1,8 @@
 import type { AssistantMessage, AssistantMessageEvent } from "../types.ts";
 /** Single-consumer protocol stream. The final result is independent of iteration. */
 export class AssistantMessageEventStream implements AsyncIterable<AssistantMessageEvent> {
-  private queue: AssistantMessageEvent[] = [];
+  private queue: (AssistantMessageEvent | undefined)[] = [];
+  private head = 0;
   private waiter?: () => void;
   private ended = false;
   private resolveResult!: (message: AssistantMessage) => void;
@@ -32,8 +33,17 @@ export class AssistantMessageEventStream implements AsyncIterable<AssistantMessa
   }
   async *[Symbol.asyncIterator](): AsyncIterator<AssistantMessageEvent> {
     while (true) {
-      const next = this.queue.shift();
+      const next = this.queue[this.head];
       if (next) {
+        // Clear consumed references without shifting every remaining event.
+        this.queue[this.head++] = undefined;
+        if (this.head === this.queue.length) {
+          this.queue.length = 0;
+          this.head = 0;
+        } else if (this.head >= 1024 && this.head * 2 >= this.queue.length) {
+          this.queue = this.queue.slice(this.head);
+          this.head = 0;
+        }
         yield next;
         continue;
       }

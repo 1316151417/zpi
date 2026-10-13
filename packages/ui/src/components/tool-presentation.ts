@@ -1,7 +1,7 @@
 // Adapted from ZCode exploreToolCall.ts, conversationAssistantWorkItems.ts and
 // ToolCallBlocks/renderers (872ad96, Apache-2.0); see THIRD_PARTY_NOTICES.md.
 import type { ViewBlock } from "../types.ts";
-import { toolInputPreview } from "./tool-input-preview.ts";
+import { completeToolInput, toolInputPreview } from "./tool-input-preview.ts";
 
 export type ToolView = Extract<ViewBlock, { type: "tool" }>;
 export type ToolGroupView = {
@@ -13,13 +13,8 @@ export type ToolGroupView = {
 export type ProcessItem = { kind: "block"; block: ViewBlock; id: string } | ToolGroupView;
 
 export function toolInput(block: ToolView): Record<string, unknown> {
-  try {
-    const value: unknown = JSON.parse(block.argsText);
-    if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
-  } catch {
-    // 流式参数尚未组成 JSON 时不能提前猜测命令分类，以免父分组跳位。
-  }
-  return {};
+  // 流式参数尚未组成 JSON 时不能提前猜测命令分类，以免父分组跳位。
+  return completeToolInput(block) ?? {};
 }
 
 export function toolCommand(block: ToolView): string {

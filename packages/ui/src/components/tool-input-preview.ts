@@ -29,23 +29,52 @@ const stringFields = [
   "script",
 ] as const;
 
-/** No input yet is distinct from a real, complete empty tool argument object. */
-export function toolInputPreview(block: ToolView): Record<string, unknown> | undefined {
+interface ParsedInput {
+  raw: string;
+  complete?: Record<string, unknown>;
+  preview?: Record<string, unknown>;
+  previewReady: boolean;
+}
+// Reducer blocks retain their identity until changed. Weak keys release parsed
+// payloads with evicted views; the raw guard also handles callers mutating a block.
+const parsedInputs = new WeakMap<ToolView, ParsedInput>();
+
+function parsedInput(block: ToolView): ParsedInput {
+  const cached = parsedInputs.get(block);
+  if (cached?.raw === block.argsText) return cached;
+  const parsed: ParsedInput = { raw: block.argsText, previewReady: false };
   try {
     const input: unknown = JSON.parse(block.argsText);
-    if (input && typeof input === "object" && !Array.isArray(input)) {
-      const record = input as Record<string, unknown>;
-      return block.status === "preparing" && Object.keys(record).length === 0 ? undefined : record;
-    }
-    return undefined;
+    if (input && typeof input === "object" && !Array.isArray(input))
+      parsed.complete = input as Record<string, unknown>;
+    parsed.preview = parsed.complete;
+    parsed.previewReady = true;
   } catch {
+    // Recover previews lazily: command classification needs complete JSON only.
+  }
+  parsedInputs.set(block, parsed);
+  return parsed;
+}
+
+export function completeToolInput(block: ToolView): Record<string, unknown> | undefined {
+  return parsedInput(block).complete;
+}
+
+/** No input yet is distinct from a real, complete empty tool argument object. */
+export function toolInputPreview(block: ToolView): Record<string, unknown> | undefined {
+  const parsed = parsedInput(block);
+  if (!parsed.previewReady) {
     const input: Record<string, string> = {};
     for (const key of stringFields) {
       const value = readPartialString(block.argsText, key);
       if (value !== undefined) input[key] = value;
     }
-    return Object.keys(input).length ? input : undefined;
+    parsed.preview = Object.keys(input).length ? input : undefined;
+    parsed.previewReady = true;
   }
+  return block.status === "preparing" && parsed.preview && Object.keys(parsed.preview).length === 0
+    ? undefined
+    : parsed.preview;
 }
 
 function readPartialString(raw: string, key: string): string | undefined {

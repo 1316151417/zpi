@@ -725,7 +725,8 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
             const block = blocks[index];
             if (block && block.type === "toolCall") {
               block.partialJson += event.delta.partial_json;
-              block.arguments = parseStreamingJson(block.partialJson);
+              // Previews consume deltas. Re-parsing the growing input on every token
+              // makes large write/edit calls quadratic; only closed calls need arguments.
               stream.push({
                 type: "toolcall_delta",
                 contentIndex: index,

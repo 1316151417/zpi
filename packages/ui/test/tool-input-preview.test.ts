@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ToolBlock } from "../src/components/ToolBlock.tsx";
 import { toolInputPreview } from "../src/components/tool-input-preview.ts";
-import { type ToolView, toolFile } from "../src/components/tool-presentation.ts";
+import { type ToolView, toolCommand, toolFile } from "../src/components/tool-presentation.ts";
 
 // File icon URLs need the document base even during this server-rendered component test.
 beforeAll(() => vi.stubGlobal("document", { baseURI: "http://localhost/" }));
@@ -24,6 +24,35 @@ const render = (block: ToolView, expanded = true) =>
   renderToStaticMarkup(createElement(ToolBlock, { block, expanded, toggle: () => {} }));
 
 describe("ZCode streaming tool input preview", () => {
+  it("shares completed parsing across presentation readers and invalidates when arguments change", () => {
+    const block = tool('{"path":"a.ts","command":"rg old"}', { name: "bash" });
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      const before = parse.mock.calls.length;
+      expect(toolCommand(block)).toBe("rg old");
+      expect(toolFile(block)?.path).toBe("a.ts");
+      expect(toolInputPreview(block)?.command).toBe("rg old");
+      expect(parse.mock.calls.length - before).toBe(1);
+      block.argsText = '{"path":"b.ts","command":"rg new"}';
+      expect(toolFile(block)?.path).toBe("b.ts");
+      expect(toolCommand(block)).toBe("rg new");
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it("does not use a cached partial command for grouping and respects status-only transitions", () => {
+    const block = tool('{"command":"rg partial', { name: "bash" });
+    expect(toolInputPreview(block)?.command).toBe("rg partial");
+    expect(toolCommand(block)).toBe("");
+    block.argsText += '"}';
+    expect(toolCommand(block)).toBe("rg partial");
+    block.argsText = "{}";
+    expect(toolInputPreview(block)).toBeUndefined();
+    block.status = "running";
+    expect(toolInputPreview(block)).toEqual({});
+  });
+
   it.each(["", "{", "{}", '{"path":', '{"unknown":"unfinished'])(
     "does not invent an empty Parameters object from %j",
     (raw) => {
