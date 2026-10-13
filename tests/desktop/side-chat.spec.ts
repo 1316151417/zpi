@@ -89,7 +89,7 @@ for (const streamingPane of ["main", "side"] as const) {
   });
 }
 
-test("side chats fit narrow panes and add selected text to their own draft", async () => {
+test("side chats fit narrow panes, add references to their own draft and copy only the message body", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-side-chat-layout-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "可以引用的辅助回答" }));
@@ -148,6 +148,41 @@ test("side chats fit narrow panes and add selected text to their own draft", asy
     await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("# userselect:");
     expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("可以引用的辅助回答");
+    const quotedRun = side.getByTestId("run").last();
+    await expect(quotedRun.locator(".user-message-text")).toHaveText("保留辅助草稿");
+    await quotedRun.locator(".user-message-actions").getByLabel("复制", { exact: true }).click();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("保留辅助草稿");
+    const composer = side.getByLabel("消息", { exact: true });
+    await composer.focus();
+    await composer.press("Meta+v");
+    await expect(composer).toHaveText("保留辅助草稿");
+    await expect(side.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
+    await expect(quotedRun.locator(".selection-reference-chip")).toHaveAttribute(
+      "data-conversation-selection-reference-count",
+      "1",
+    );
+    await composer.fill("");
+    await side
+      .getByTestId("run")
+      .first()
+      .locator(".answer p")
+      .evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      });
+    await page
+      .getByRole("toolbar", { name: "选文操作", exact: true })
+      .getByRole("button", { name: "添加到当前辅助对话", exact: true })
+      .click();
+    await side.getByLabel("发送", { exact: true }).click();
+    await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(side.getByTestId("run").last().locator(".user-message-text")).toBeEmpty();
+    await expect(
+      side.getByTestId("run").last().locator(".user-message-actions").getByLabel("复制", { exact: true }),
+    ).toBeDisabled();
   } finally {
     await app.close();
     await server.close();

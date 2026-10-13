@@ -340,6 +340,13 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect(
       page.getByTestId("run").last().locator("[data-conversation-selection-reference-count]"),
     ).toHaveCount(1);
+    await page
+      .getByTestId("run")
+      .last()
+      .locator(".user-message-actions")
+      .getByLabel("复制", { exact: true })
+      .click();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("explain");
     await expectZCodeSurfaces(
       page,
       page.getByTestId("run").last().locator(".user-message"),
