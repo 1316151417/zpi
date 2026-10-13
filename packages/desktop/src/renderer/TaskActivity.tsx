@@ -14,7 +14,6 @@ import {
   Minimize2,
   Square,
   SquareTerminal,
-  X,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { ActionHint, type BackgroundTask, type SubagentTask, subagentStatusLabels } from "zpi-ui";
@@ -195,25 +194,13 @@ export const TaskActivity = memo(function TaskActivity({
   sessionId: string;
 }) {
   const [mode, setMode] = useState<PanelMode>("auto");
-  const storageKey = `zpi:tasks-dismissed:${sessionId}`;
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return sessionStorage.getItem(storageKey);
-    } catch {
-      return null;
-    }
-  });
-  const tasks = useMemo(() => [...agents, ...commands], [agents, commands]);
+  const total = agents.length + commands.length;
   const runningAgents = useMemo(() => agents.filter((task) => task.status === "running").length, [agents]);
   const runningCommands = useMemo(
     () => commands.filter((task) => task.status === "running").length,
     [commands],
   );
   const running = runningAgents + runningCommands;
-  const revision = useMemo(
-    () => tasks.map((task) => `${taskId(task)}:${task.startedAt}:${task.endedAt ?? ""}`).join("|"),
-    [tasks],
-  );
   const now = useNow(running > 0);
   const SummaryIcon = !running
     ? CheckCircle2
@@ -222,7 +209,7 @@ export const TaskActivity = memo(function TaskActivity({
       : runningCommands
         ? SquareTerminal
         : Bot;
-  if (!tasks.length || (!running && dismissed === revision)) return null;
+  if (!total) return null;
   return (
     <aside
       className="task-activity"
@@ -256,24 +243,6 @@ export const TaskActivity = memo(function TaskActivity({
             <Minimize2 size={14} />
           </button>
         </ActionHint>
-        {!running && (
-          <ActionHint label="关闭任务状态" side="left" appearance="control">
-            <button
-              className="task-activity-control"
-              aria-label="关闭任务状态"
-              onClick={() => {
-                setDismissed(revision);
-                try {
-                  sessionStorage.setItem(storageKey, revision);
-                } catch {
-                  /* In-memory dismissal still works. */
-                }
-              }}
-            >
-              <X size={14} />
-            </button>
-          </ActionHint>
-        )}
       </div>
       <div className="task-activity-sections">
         <TaskSection tasks={commands} kind="terminal" now={now} sessionId={sessionId} />
@@ -285,7 +254,7 @@ export const TaskActivity = memo(function TaskActivity({
             <SummaryIcon size={16} />
             <Maximize2 size={16} />
           </span>
-          <span>{running ? `${running} ${runningAgents ? "运行" : "后台"}` : `${tasks.length} 已结束`}</span>
+          <span>{running ? `${running} ${runningAgents ? "运行" : "后台"}` : `${total} 已结束`}</span>
         </button>
       </ActionHint>
     </aside>
