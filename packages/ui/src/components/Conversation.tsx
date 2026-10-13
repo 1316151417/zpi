@@ -35,7 +35,7 @@ import {
   type ConversationSelection,
   parseSelectionPrompt,
 } from "../conversation-selections.ts";
-import { type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
+import { type FindMatch, type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
 import {
   type FileLocation,
   type LinkContext,
@@ -349,6 +349,7 @@ export const RunGroup = memo(function RunGroup({
   onToggle,
   blocks,
   onBlockToggle,
+  finding = false,
   context,
   onChanges,
   onLoadToolPatch,
@@ -377,6 +378,7 @@ export const RunGroup = memo(function RunGroup({
   onToggle: (runId: string, value: boolean) => void;
   blocks: Record<string, boolean>;
   onBlockToggle: (blockId: string, value: boolean) => void;
+  finding?: boolean;
 }) {
   const openToolChange = useCallback(
     (path: string, toolCallId: string) => onChanges?.(run.runId, path, toolCallId),
@@ -584,6 +586,24 @@ export const RunGroup = memo(function RunGroup({
             )}
           </div>
         )}
+        {!open && finding && (
+          // Search rendered assistant text independently of the work fold, without mounting hidden tools.
+          <div hidden data-find-index>
+            {process.map((block) =>
+              block.type === "text" ? (
+                <div key={block.id} data-find-key={block.id}>
+                  <Markdown
+                    text={block.text}
+                    workspace={workspace}
+                    streaming={false}
+                    onLink={onLink}
+                    onFile={onFile}
+                  />
+                </div>
+              ) : null,
+            )}
+          </div>
+        )}
         {!open && markers.map((marker) => <CompactionDivider key={marker.id} marker={marker} />)}
         {run.notice && (
           <div className="run-notice" role="status">
@@ -708,6 +728,7 @@ export function Conversation({
   onEdit,
   onFork,
   onAddSelection,
+  addSelectionLabel,
   onSideChat,
   sideChatDisabled,
   onNavigateOrigin,
@@ -723,6 +744,7 @@ export function Conversation({
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
   onAddSelection?: (reference: ConversationSelection) => void;
+  addSelectionLabel?: string;
   onSideChat?: (reference: ConversationSelection) => void;
   sideChatDisabled?: boolean;
   hasEarlier?: boolean;
@@ -796,9 +818,18 @@ export function Conversation({
   const following = useRef(true);
   const lastScrollTop = useRef(0);
   const latestRun = useRef<string | undefined>(undefined);
-  const navigateFind = useCallback((_match: unknown, range?: Range) => {
+  const navigateFind = useCallback((match: FindMatch, range?: Range) => {
     const root = ref.current;
-    if (!root || !range) return;
+    if (!root) return;
+    if (!range) {
+      const target = root.querySelector(`[data-find-key="${CSS.escape(match.key)}"]`);
+      const runId = target?.closest<HTMLElement>("[data-run-id]")?.dataset.runId;
+      if (runId) {
+        following.current = false;
+        setExpanded((current) => ({ ...current, [runId]: true }));
+      }
+      return;
+    }
     following.current = false;
     const node = range.startContainer;
     const element = node instanceof Element ? node : node.parentElement;
@@ -1038,14 +1069,8 @@ export function Conversation({
                     onCopy={onCopy}
                     onFile={onFile}
                     onLink={onLink}
-                    expanded={Boolean(
-                      expanded[run.runId] ||
-                        (findQuery &&
-                          runPresentation(run).process.some(
-                            (block) =>
-                              block.type === "text" && normalizeFindQuery(block.text).includes(findQuery),
-                          )),
-                    )}
+                    expanded={Boolean(expanded[run.runId])}
+                    finding={Boolean(findQuery)}
                     onToggle={toggle}
                     blocks={blocks}
                     onBlockToggle={toggleBlock}
@@ -1077,6 +1102,7 @@ export function Conversation({
           rootRef={ref}
           scopeKey={view.sessionId}
           onAdd={onAddSelection}
+          addLabel={addSelectionLabel}
           onSideChat={onSideChat}
           sideChatDisabled={sideChatDisabled}
         />

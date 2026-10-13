@@ -23,13 +23,14 @@ function ensureHighlightStyle() {
   if (style.textContent !== findHighlightCSS) style.textContent = findHighlightCSS;
   if (!style.isConnected) document.head.append(style);
 }
-function textNodes(element: Element): Text[] {
+function textNodes(element: Element, includeHidden = false): Text[] {
   const nodes: Text[] = [];
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       return node.parentElement?.closest(
-        'button,input,textarea,select,script,style,[hidden],.katex-mathml,[contenteditable="true"],[data-find-ignore]',
-      )
+        'button,input,textarea,select,script,style,.katex-mathml,[contenteditable="true"],[data-find-ignore]',
+      ) ||
+        (!includeHidden && node.parentElement?.closest("[hidden]"))
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT;
     },
@@ -37,11 +38,11 @@ function textNodes(element: Element): Text[] {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
   return nodes;
 }
-function readText(element: Element) {
+function readText(element: Element, includeHidden = false) {
   let text = "",
     previousBlock: Element | null = null;
   const segments: { node: Text; start: number; end: number }[] = [];
-  for (const node of textNodes(element)) {
+  for (const node of textNodes(element, includeHidden)) {
     const block = node.parentElement?.closest("p,li,pre,h1,h2,h3,h4,h5,h6,tr") ?? null;
     if (text && block !== previousBlock) text += "\n";
     const start = text.length;
@@ -52,6 +53,7 @@ function readText(element: Element) {
   return { text, segments };
 }
 function rangeFor(element: Element, match: FindMatch): Range | undefined {
+  if (element.closest("[hidden]")) return;
   const { segments } = readText(element);
   const range = document.createRange();
   let started = false;
@@ -133,7 +135,7 @@ export function useTextFind({
         targets ??
         [...elements].map(([key, nodes]) => ({
           key,
-          text: readText(nodes[0]).text,
+          text: readText(nodes[0], Boolean(nodes[0].closest("[data-find-index]"))).text,
         }));
       const matches = buildFindMatches(source, query);
       const last = previous.current;

@@ -4,7 +4,15 @@ import { inputContext } from "./composer-context.ts";
 import { loadSideChat, openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { SessionToolbar } from "./SessionToolbar.tsx";
-import { drafts, loadEarlier, queueActions, report, unwrap, useStore } from "./store.ts";
+import {
+  addConversationSelection,
+  drafts,
+  loadEarlier,
+  queueActions,
+  report,
+  unwrap,
+  useStore,
+} from "./store.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
 import { useWorkspace } from "./use-workspace.ts";
 
@@ -48,6 +56,10 @@ export function SideChatPane({
         onLink={(url, options) => paneTask(openWebLink(url, options, sessionId))}
         onFile={(path, location) => openFile(sessionId, path, location)}
         onCopy={(text) => window.zpi.copyText(text).then(unwrap)}
+        onAddSelection={
+          view.question ? undefined : (reference) => addConversationSelection(reference, sessionId)
+        }
+        addSelectionLabel="添加到当前辅助对话"
         onFileAction={(path, action, location) =>
           window.zpi.fileAction(sessionId, path, action, location).then(unwrap)
         }

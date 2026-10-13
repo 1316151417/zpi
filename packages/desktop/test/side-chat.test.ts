@@ -1,9 +1,72 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
+
+for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
+  it(`inherits compacted context with a ${boundaryType} boundary without inheriting the timeline`, async () => {
+    const f = await fixture((_, response) => {
+      send(response, chunk({ content: "retained answer" }));
+      done(response);
+    });
+    const parent = f.host.createSession(f.a.id);
+    await f.host.startRun({ sessionId: parent.id, text: "retained question" });
+    await f.host.activeRuns.get(parent.id)?.done;
+    await f.host.close();
+    const path = join(f.dir, "agent", "sessions", f.a.id, `${parent.id}.jsonl`);
+    const manager = SessionManager.open(path);
+    const boundary = manager
+      .getEntries()
+      .find((entry) =>
+        boundaryType === "message"
+          ? entry.type === "message" && entry.message.role === "user"
+          : entry.type === "custom" && entry.customType === "zpi.run",
+      );
+    if (!boundary) throw new Error("Missing boundary fixture");
+    // Streaming journals can also be the first kept entry in real desktop transcripts.
+    if (boundaryType === "streaming-tools") {
+      manager.replaceEntries(
+        manager
+          .getEntries()
+          .map((entry) =>
+            entry.id === boundary.id
+              ? { ...entry, type: "custom", customType: "zpi.streaming_tools", data: undefined }
+              : entry,
+          ),
+      );
+    }
+    const firstKept =
+      boundaryType === "streaming-tools"
+        ? manager
+            .getEntries()
+            .find((entry) => entry.type === "custom" && entry.customType === "zpi.streaming_tools")
+        : boundary;
+    if (!firstKept) throw new Error("Missing kept entry");
+    manager.appendCompaction("earlier decisions", firstKept.id);
+    manager.appendCompaction("updated earlier decisions", firstKept.id);
+    const expected = manager.buildSessionContext().messages;
+    const original = await readFile(path, "utf8");
+    const host = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined);
+    await host.init();
+    cleanup.push(() => host.close());
+    const child = await host.createSideChat(parent.id);
+    const childPath = join(f.dir, "agent", "sessions", f.a.id, `${child.id}.jsonl`);
+    expect(SessionManager.open(childPath).buildSessionContext().messages.slice(0, -1)).toEqual(expected);
+    expect(host.getSessionSnapshot(child.id).view.runs).toHaveLength(0);
+    expect(host.getHistoryPage(child.id, 0).view.runs).toHaveLength(0);
+    await host.startRun({ sessionId: child.id, text: "explain decisions" });
+    await host.activeRuns.get(child.id)?.done;
+    expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("updated earlier decisions");
+    expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("retained question");
+    expect(host.getSessionSnapshot(child.id).view.runs.map((run) => run.userMessage)).toEqual([
+      "explain decisions",
+    ]);
+    expect(await readFile(path, "utf8")).toBe(original);
+  });
+}
 
 it("opens independent hidden chats with inherited context and an empty timeline, retaining isolation after restart", async () => {
   const f = await fixture((_, response) => {
