@@ -517,7 +517,7 @@ export const RunGroup = memo(function RunGroup({
                   </UserMessageBody>
                 </div>
                 <div className="message-actions user-message-actions">
-                  <CopyMessage text={run.userMessage} onCopy={onCopy} />
+                  <CopyMessage text={parsedUser.text} onCopy={onCopy} />
                   {onEdit && (
                     <MessageAction label="编辑" onClick={() => setEditing(true)}>
                       <Pencil size={14} />
