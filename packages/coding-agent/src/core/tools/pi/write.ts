@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
+import type { FileReadState } from "./file-read-state.ts";
 import { resolveToCwd } from "./path-utils.ts";
 
 const writeSchema = Type.Object({
@@ -35,6 +36,8 @@ const defaultWriteOperations: WriteOperations = {
 };
 
 export interface WriteToolOptions {
+  /** Shared knowledge of file contents in the current model context. */
+  fileReadState?: FileReadState;
   /** Custom operations for file writing. Default: local filesystem */
   operations?: WriteOperations;
 }
@@ -77,6 +80,7 @@ export function createWriteToolDefinition(
 
         // Write the file contents.
         await ops.writeFile(absolutePath, content);
+        options?.fileReadState?.recordWrite(absolutePath, content);
 
         return {
           content: [{ type: "text", text: `Successfully wrote to ${path}` }],

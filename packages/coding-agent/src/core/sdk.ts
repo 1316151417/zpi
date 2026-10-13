@@ -10,7 +10,7 @@ import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
-import { createCodingTools } from "./tools/index.ts";
+import { createCodingTools, FileReadState } from "./tools/index.ts";
 import type { ResourceLoader, ToolDefinition } from "./types.ts";
 export interface CreateAgentSessionOptions {
   cwd?: string;
@@ -101,6 +101,7 @@ export async function createAgentSession(
           paired.add(c.id);
         }
   let session: AgentSession;
+  const fileReadState = new FileReadState();
   const builtin = createCodingTools(
     cwd,
     join(agentDir, "tool-output", manager.getSessionId()),
@@ -111,6 +112,7 @@ export async function createAgentSession(
       thinkingLevel: session?.thinkingLevel ?? "off",
       sessionManager: manager,
     }),
+    fileReadState,
   );
   const wrap = (definition: ToolDefinition): AgentTool => {
     assertSupportedOptions(
@@ -198,6 +200,9 @@ export async function createAgentSession(
     loader,
     buildPrompt,
     settingsManager,
+  });
+  session.subscribe((event) => {
+    if (event.type === "compaction" && event.status === "completed") fileReadState.clear();
   });
   return { session };
 }

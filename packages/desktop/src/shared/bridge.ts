@@ -121,6 +121,7 @@ export interface PluginCapabilities {
   askUserQuestion: boolean;
   toolBatching: boolean;
   fileLinks: boolean;
+  fileContextReuse: boolean;
 }
 export type CapabilityName = keyof PluginCapabilities;
 export interface PublicSettings {

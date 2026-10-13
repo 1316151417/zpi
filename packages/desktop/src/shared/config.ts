@@ -6,6 +6,7 @@ export const defaultCapabilities: PluginCapabilities = {
   askUserQuestion: true,
   toolBatching: true,
   fileLinks: true,
+  fileContextReuse: true,
 };
 export const modelDefaults = {
   contextWindow: 1000000,

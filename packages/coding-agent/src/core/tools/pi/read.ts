@@ -6,6 +6,7 @@ import { access as fsAccess, readFile as fsReadFile } from "node:fs/promises";
 import { Type } from "typebox";
 import type { ImageContent, Model, TextContent } from "zpi-ai";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
+import { FileReadState } from "./file-read-state.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import {
   DEFAULT_MAX_BYTES,
@@ -65,6 +66,8 @@ const defaultReadOperations: ReadOperations = {
 };
 
 export interface ReadToolOptions {
+  /** Shared knowledge of file contents in the current model context. */
+  fileReadState?: FileReadState;
   /** Whether to auto-resize images. Default: true */
   autoResizeImages?: boolean;
   /** Fallback resize profile when the execution context has no model metadata. */
@@ -87,6 +90,7 @@ export function createReadToolDefinition(
   const autoResizeImages = options?.autoResizeImages ?? true;
   const fallbackResizeOptions = options?.resizeOptions;
   const ops = options?.operations ?? defaultReadOperations;
+  const fileReadState = options?.fileReadState ?? new FileReadState();
   return {
     name: "read",
     metadata: {
@@ -164,6 +168,7 @@ export function createReadToolDefinition(
                 // Read text content.
                 const buffer = await ops.readFile(absolutePath);
                 const textContent = buffer.toString("utf-8");
+                if (aborted) return;
                 const allLines = textContent ? textContent.split("\n") : [];
                 if (textContent.endsWith("\n")) allLines.pop();
                 const totalFileLines = allLines.length;
@@ -173,6 +178,19 @@ export function createReadToolDefinition(
                 // Check if offset is out of bounds.
                 if (startLine >= allLines.length && (offset !== undefined || allLines.length > 0)) {
                   throw new Error(`Offset ${offset} is beyond end of file (${allLines.length} lines total)`);
+                }
+                if (fileReadState.isUnchanged(absolutePath, textContent, offset, limit)) {
+                  signal?.removeEventListener("abort", onAbort);
+                  resolve({
+                    content: [
+                      {
+                        type: "text",
+                        text: "File unchanged. Reuse the file content already in context from your earlier read or successful edit/write.",
+                      },
+                    ],
+                    details: undefined,
+                  });
+                  return;
                 }
                 let selectedContent: string;
                 let userLimitedLines: number | undefined;
@@ -218,6 +236,7 @@ export function createReadToolDefinition(
                   outputText = truncation.content;
                 }
                 content = [{ type: "text", text: outputText }];
+                fileReadState.recordRead(absolutePath, textContent, offset, limit, truncation.truncated);
               }
 
               if (aborted) return;

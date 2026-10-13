@@ -115,12 +115,13 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".capability-settings .settings-row strong")).toHaveText([
       "提示词-多工具调用",
       "提示词-文件链接格式",
+      "提示词-文件内容复用",
       "工具-向用户提问",
       "工具-提问自动继续",
       "子智能体",
     ]);
     const pluginSwitches = page.locator(".capability-settings input[type=checkbox]");
-    await expect(pluginSwitches).toHaveCount(5);
+    await expect(pluginSwitches).toHaveCount(6);
     for (const toggle of await pluginSwitches.all()) await expect(toggle).toBeChecked();
     await page.screenshot({ path: "test-results/desktop-settings-capabilities.png" });
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();

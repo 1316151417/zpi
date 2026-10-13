@@ -542,6 +542,8 @@ export class SessionHost {
     validateTemplate(config.template);
     if (config.subagents !== undefined && typeof config.subagents !== "boolean")
       throw new Error("Invalid subagent capability");
+    if (config.fileContextReuse !== undefined && typeof config.fileContextReuse !== "boolean")
+      throw new Error("Invalid file context reuse capability");
     if (
       !Array.isArray(config.disabledSkillPaths) ||
       config.disabledSkillPaths.some((p) => typeof p !== "string") ||
@@ -550,7 +552,11 @@ export class SessionHost {
       )
     )
       throw new Error("Invalid session configuration");
-    const snapshot = { ...structuredClone(config), subagents: config.subagents ?? false };
+    const snapshot = {
+      ...structuredClone(config),
+      subagents: config.subagents ?? false,
+      fileContextReuse: config.fileContextReuse ?? false,
+    };
     if (snapshot.template.id === piTemplate.id) snapshot.template = structuredClone(piTemplate);
     this.configurations.set(id, snapshot);
     return snapshot;

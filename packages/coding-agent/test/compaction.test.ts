@@ -212,6 +212,13 @@ it("compaction keeps full history, pairs tools, invalidates usage and survives r
   f.session.settingsManager.applyOverrides({ compaction: { keepRecentTokens: 200 } });
   await f.session.prompt("old task");
   await f.session.prompt("recent task");
+  const read = f.session.state.tools.find((tool) => tool.name === "read");
+  if (!read) throw new Error("Missing read tool");
+  await writeFile(join(f.cwd, "note.md"), "File context before compaction");
+  await read.execute("read-before-compact", { path: "note.md" });
+  expect((await read.execute("repeat-before-compact", { path: "note.md" })).content).toEqual([
+    { type: "text", text: expect.stringContaining("File unchanged") },
+  ]);
   const before = f.manager.getEntries().filter((e) => e.type === "message").length;
   expect(f.session.getContextUsage().inputTokens).toBe(120);
   const compactions: unknown[] = [];
@@ -219,6 +226,9 @@ it("compaction keeps full history, pairs tools, invalidates usage and survives r
     if (event.type === "compaction") compactions.push(event);
   });
   await f.session.compact("keep decisions");
+  expect((await read.execute("read-after-compact", { path: "note.md" })).content).toEqual([
+    { type: "text", text: "File context before compaction" },
+  ]);
   expect(compactions).toMatchObject([
     { type: "compaction", status: "running", origin: "manual" },
     { type: "compaction", status: "completed", origin: "manual" },

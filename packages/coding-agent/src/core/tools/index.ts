@@ -6,12 +6,14 @@ import { beforeFile, type FileChange, recordFileChange } from "./file-change.ts"
 import { type BashToolOptions, createBashToolDefinition } from "./pi/bash.ts";
 import type { ExtensionContext, ToolDefinition } from "./pi/compat.ts";
 import { createEditToolDefinition, type EditToolOptions } from "./pi/edit.ts";
+import { FileReadState } from "./pi/file-read-state.ts";
 import { createReadToolDefinition, type ReadToolOptions } from "./pi/read.ts";
 import { wrapToolDefinition } from "./pi/tool-definition-wrapper.ts";
 import { createWriteToolDefinition, type WriteToolOptions } from "./pi/write.ts";
 
 export { createBashToolDefinition, createLocalBashOperations } from "./pi/bash.ts";
 export { createEditToolDefinition } from "./pi/edit.ts";
+export { FileReadState } from "./pi/file-read-state.ts";
 export { createReadToolDefinition } from "./pi/read.ts";
 export { createWriteToolDefinition } from "./pi/write.ts";
 export type { BashToolOptions, EditToolOptions, ReadToolOptions, WriteToolOptions };
@@ -90,6 +92,7 @@ function observeMutation(
       const definition =
         tool === "write"
           ? createWriteToolDefinition(cwd, {
+              ...options,
               operations: {
                 writeFile: observeWrite,
                 mkdir: async (path) => {
@@ -99,6 +102,7 @@ function observeMutation(
               },
             })
           : createEditToolDefinition(cwd, {
+              ...options,
               operations: {
                 writeFile: observeWrite,
                 readFile,
@@ -167,11 +171,16 @@ export function createCodingTools(
   outputDir?: string,
   getModel?: () => Model,
   context?: ToolContextFactory,
+  fileReadState = new FileReadState(),
 ): AgentTool[] {
   return [
-    createReadTool(cwd, getModel, context),
+    createReadTool(
+      cwd,
+      { fileReadState },
+      context ?? (getModel ? () => ({ cwd, model: getModel() }) as ExtensionContext : undefined),
+    ),
     createBashTool(cwd, undefined, context),
-    createEditTool(cwd, outputDir, context),
-    createWriteTool(cwd, outputDir, context),
+    observeMutation(cwd, "edit", { fileReadState }, outputDir, context),
+    observeMutation(cwd, "write", { fileReadState }, outputDir, context),
   ];
 }
