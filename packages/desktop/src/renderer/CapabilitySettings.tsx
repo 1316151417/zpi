@@ -19,6 +19,11 @@ const capabilities: {
     description: "使用桌面可点击的文件和网页链接格式，文件路径支持行号定位。",
   },
   {
+    name: "fileContextReuse",
+    label: "提示词-文件内容复用",
+    description: "提示助手复用已读或成功编辑的文件内容，避免仅为验证或开始新回合而重复读取。",
+  },
+  {
     name: "askUserQuestion",
     label: "工具-向用户提问",
     description: "让助手通过单选、多选或自定义回答澄清问题，再继续执行。",

@@ -10,17 +10,24 @@ const fileLinkRules = [
   'The compatible ::zcode-file-citation{path="path/to/file"} directive also opens a local file; paths can be absolute or relative to the current working directory. Prefer Markdown links for ordinary file references.',
 ];
 
-export function pluginSystemRules(capabilities: Pick<PluginCapabilities, "toolBatching" | "fileLinks">) {
+type PromptCapabilities = Pick<PluginCapabilities, "toolBatching" | "fileLinks" | "fileContextReuse">;
+
+export function pluginSystemRules(capabilities: PromptCapabilities) {
   const rules = [
     ...(capabilities.toolBatching ? ["Independent tool calls can run in parallel in one response."] : []),
     ...(capabilities.fileLinks ? fileLinkRules : []),
+    ...(capabilities.fileContextReuse
+      ? [
+          "Reuse file content already in context, including your successful edits. Do not re-read solely to verify a successful edit/write or because a new turn started.",
+        ]
+      : []),
   ];
   return rules.length ? ["<system_rules>", ...rules, "</system_rules>"].join("\n") : "";
 }
 
 export function withDesktopSystemRules(
   loader: FileResourceLoader,
-  capabilities: Pick<PluginCapabilities, "toolBatching" | "fileLinks">,
+  capabilities: PromptCapabilities,
 ): ResourceLoader {
   const rules = pluginSystemRules(capabilities);
   return {

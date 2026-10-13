@@ -128,7 +128,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           <h2 className="preview-heading">
             插件提示词 <small>按启用能力生成 · 只读</small>
           </h2>
-          <p>在插件能力中配置多工具调用和文件链接格式；启用的规则会加入新对话，基础提示词保持独立。</p>
+          <p>在插件能力中配置多工具调用、文件链接格式和文件内容复用；启用的规则会加入新对话。</p>
           <pre className="system-rules-preview">
             {preview ? preview.systemRules || "未启用额外提示词能力。" : "正在生成预览…"}
           </pre>

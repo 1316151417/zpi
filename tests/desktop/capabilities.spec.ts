@@ -138,7 +138,7 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
-    for (const name of ["提示词-多工具调用", "提示词-文件链接格式"]) {
+    for (const name of ["提示词-多工具调用", "提示词-文件链接格式", "提示词-文件内容复用"]) {
       await expect(page.getByRole("checkbox", { name, exact: true })).toBeChecked();
       await page.getByRole("checkbox", { name, exact: true }).uncheck();
       await expect(page.getByRole("checkbox", { name, exact: true })).not.toBeChecked();
@@ -146,6 +146,7 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(page.locator(".system-rules-preview")).toHaveText("未启用额外提示词能力。");
     await expect(page.locator(".prompt-preview")).not.toContainText("<system_rules>");
+    const basePrompt = await page.locator(".prompt-preview").textContent();
     await page.getByLabel("关闭设置").click();
     await page.getByLabel("消息", { exact: true }).fill("新会话");
     await page.getByLabel("消息", { exact: true }).press("Enter");
@@ -156,6 +157,27 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "提示词-文件链接格式", exact: true })).not.toBeChecked();
     await expect(page.getByRole("checkbox", { name: "提示词-多工具调用", exact: true })).not.toBeChecked();
+    const reuse = page.getByRole("checkbox", { name: "提示词-文件内容复用", exact: true });
+    await expect(reuse).not.toBeChecked();
+    await reuse.check();
+    await expect(reuse).toBeEnabled();
+    await expect(reuse).toBeChecked();
+    await page.screenshot({ path: "test-results/desktop-file-context-reuse.png", animations: "disabled" });
+    await page.getByRole("button", { name: "系统提示词", exact: true }).click();
+    await expect(page.locator(".system-rules-preview")).toContainText(
+      "Reuse file content already in context",
+    );
+    await expect(page.locator(".system-rules-preview")).not.toContainText("Independent tool calls");
+    await expect(page.locator(".system-rules-preview")).not.toContainText("Return web URLs");
+    expect(await page.locator(".prompt-preview").textContent()).toBe(basePrompt);
+    await page.getByLabel("关闭设置").click();
+    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("复用文件内容的新会话");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain(
+      "Reuse file content already in context",
+    );
   } finally {
     await app?.close();
     await server.close();

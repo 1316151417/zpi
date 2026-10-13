@@ -40,6 +40,7 @@ export {
   createReadToolDefinition,
   createWriteTool,
   createWriteToolDefinition,
+  FileReadState,
 } from "./core/tools/index.ts";
 export { getShellConfig, getShellEnv, killProcessTree } from "./core/tools/pi/utils/shell.ts";
 export type {

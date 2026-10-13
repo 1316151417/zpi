@@ -13,6 +13,7 @@ import {
   normalizeToLF,
 } from "./edit-diff.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
+import type { FileReadState } from "./file-read-state.ts";
 import { resolveToCwd } from "./path-utils.ts";
 import { splitBom } from "./utils/text.ts";
 
@@ -95,6 +96,8 @@ const defaultEditOperations: EditOperations = {
 };
 
 export interface EditToolOptions {
+  /** Shared knowledge of file contents in the current model context. */
+  fileReadState?: FileReadState;
   /** Custom operations for file editing. Default: local filesystem */
   operations?: EditOperations;
 }
@@ -203,6 +206,7 @@ export function createEditToolDefinition(
 
         const finalContent = bom + newContent;
         await ops.writeFile(absolutePath, finalContent);
+        options?.fileReadState?.recordEdit(absolutePath, rawContent, finalContent);
 
         const diffResult = generateDiffString(baseContent, newContent);
         const patch = generateUnifiedPatch(path, baseContent, newContent);
@@ -210,7 +214,9 @@ export function createEditToolDefinition(
           content: [
             {
               type: "text",
-              text: `Successfully replaced ${edits.length} block(s) in ${path}.`,
+              text:
+                `Successfully replaced ${edits.length} block(s) in ${path}. ` +
+                "No read-back needed while the edited text remains in context; re-read if it is missing or may have changed.",
             },
           ],
           details: { diff: diffResult.diff, patch, firstChangedLine: diffResult.firstChangedLine },
