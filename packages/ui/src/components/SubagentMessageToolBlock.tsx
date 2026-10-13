@@ -22,15 +22,21 @@ export function SubagentMessageToolBlock({ block, expanded, toggle, onCopy }: To
         expanded={details && expanded}
         toggle={details ? toggle : undefined}
         separator="·"
-        primary={summary || block.name}
+        // 与 ZCode SendMessage 一致：摘要和目标只占一行，侧栏打开后不能换行撑高工具行。
+        primary={<span className="tool-summary-text">{summary || block.name}</span>}
         secondary={
           !reply && target ? (
-            <span>
-              到 <code>{target}</code>
+            <span className="tool-message-target">
+              <span>到</span>
+              <code className="tool-summary-text">{target}</code>
             </span>
           ) : undefined
         }
-        trailing={reply && !running && block.status !== "error" ? "回复已排队" : undefined}
+        trailing={
+          reply && !running && block.status !== "error" ? (
+            <span className="tool-summary-status">回复已排队</span>
+          ) : undefined
+        }
         failure={
           block.status === "error" ? (
             <ToolFailure

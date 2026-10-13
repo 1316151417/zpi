@@ -53,8 +53,8 @@ export function SubagentTaskToolBlock({ block, expanded, toggle, onCopy, showIco
         running={running}
         expanded={!!output && expanded}
         toggle={output ? toggle : undefined}
-        primary={<code>{taskId}</code>}
-        trailing={!failure ? outcome : undefined}
+        primary={<code className="tool-summary-text">{taskId}</code>}
+        trailing={!failure && outcome ? <span className="tool-summary-status">{outcome}</span> : undefined}
         failure={failure ? <ToolFailure text={failure} onCopy={onCopy} /> : undefined}
         content={
           <pre
