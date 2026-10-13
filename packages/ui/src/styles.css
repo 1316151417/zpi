@@ -681,10 +681,25 @@ small {
 }
 .tool-file-chip > span,
 .tool-file-directory,
+.tool-summary-text,
 .tool-command-summary {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-message-target {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+.tool-summary-text:is(code) {
+  font-family: var(--font-code);
+}
+.tool-message-target > span,
+.tool-summary-status {
+  flex-shrink: 0;
   white-space: nowrap;
 }
 .tool-file-chip:hover:not(:disabled) {
