@@ -99,6 +99,10 @@
   background: var(--color-bg);
   overflow: hidden;
 }
+.left-collapsed .workspace-surface > main {
+  /* ZCode keeps a 4px sidebar gutter even when its sidebar is collapsed. */
+  margin-left: 4px;
+}
 .sidebar-drag-space {
   position: absolute;
   top: 0;
@@ -113,13 +117,15 @@
   min-width: 0;
   -webkit-app-region: drag;
 }
-/* Header backgrounds and titles respond to native drag and double-click; controls opt out. */
+/* Native drag regions must not overlap floating window controls: stacking order cannot exclude them. */
 .topbar,
-.pane-header {
-  -webkit-app-region: drag;
-}
+.pane-header,
 .desktop-top-controls {
   -webkit-app-region: no-drag;
+}
+.topbar-title {
+  align-self: stretch;
+  -webkit-app-region: drag;
 }
 .desktop-top-controls {
   position: absolute;

@@ -2,8 +2,92 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+
+for (const streamingPane of ["main", "side"] as const) {
+  test(`auxiliary selection stays open and adds to its own draft while ${streamingPane} streams`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-streaming-selection-"));
+    const steps = [deferred(), deferred()];
+    const finish = deferred();
+    const server = await fakeServer(async (_, response, index) => {
+      if (index < 2) {
+        send(response, chunk({ content: "可以引用的完整回答" }));
+      } else {
+        send(response, chunk({ content: "正在流式回复" }));
+        for (const [index, step] of steps.entries()) {
+          await step.promise;
+          send(response, chunk({ content: ` 增量${index + 1}` }));
+        }
+        await finish.promise;
+      }
+      done(response);
+    });
+    const app = await launchDesktop({ dir, url: server.url });
+    try {
+      const page = await app.firstWindow();
+      const main = page.locator("main");
+      await main.getByLabel("消息", { exact: true }).fill("主问题");
+      await main.getByLabel("发送", { exact: true }).click();
+      await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      await page.getByLabel("展开右侧栏", { exact: true }).click();
+      await page
+        .locator(".pane-empty-launcher")
+        .getByRole("button", { name: "辅助对话", exact: true })
+        .click();
+      const side = page.getByRole("region", { name: "辅助对话", exact: true });
+      await side.getByLabel("消息", { exact: true }).fill("辅助问题");
+      await side.getByLabel("发送", { exact: true }).click();
+      await expect(side.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      const streaming = streamingPane === "main" ? main : side;
+      await streaming.getByLabel("消息", { exact: true }).fill("继续回复");
+      await streaming.getByLabel("发送", { exact: true }).click();
+      await expect(streaming.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+      await expect(streaming.getByTestId("run").last()).toContainText("正在流式回复");
+      const paragraph = side.getByTestId("run").first().locator(".answer p");
+      await paragraph.click();
+      await paragraph.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      });
+      const menu = page.getByRole("toolbar", { name: "选文操作", exact: true });
+      const add = menu.getByRole("button", { name: "添加到当前辅助对话", exact: true });
+      await expect(add).toBeVisible();
+      await menu.evaluate((element) => {
+        element.dataset.streamAnchor = "original-menu";
+      });
+      for (const [index, step] of steps.entries()) {
+        step.resolve();
+        await expect(streaming.getByTestId("run").last()).toContainText(`增量${index + 1}`);
+        await expect(add).toBeVisible();
+        await expect(menu).toHaveAttribute("data-stream-anchor", "original-menu");
+        expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("可以引用的完整回答");
+      }
+      await add.click();
+      await expect(side.getByLabel("消息", { exact: true })).toBeFocused();
+      await expect(side.locator(".composer-container .selection-reference-chip")).toHaveAttribute(
+        "data-conversation-selection-reference-count",
+        "1",
+      );
+      await expect(main.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
+      finish.resolve();
+      await expect(streaming.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+      await expect(side.locator(".composer-container .selection-reference-chip")).toHaveAttribute(
+        "data-conversation-selection-reference-count",
+        "1",
+      );
+    } finally {
+      for (const step of steps) step.resolve();
+      finish.resolve();
+      await app.close();
+      await server.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
 
 test("side chats fit narrow panes and add selected text to their own draft", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-side-chat-layout-"));
@@ -71,7 +155,7 @@ test("side chats fit narrow panes and add selected text to their own draft", asy
   }
 });
 
-test("task and pane headers keep window drag regions outside controls while find is open", async () => {
+test("window drag regions never overlap floating toggles or header buttons while find is open", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-titlebar-find-"));
   const app = await launchDesktop({ dir, url: "" });
   try {
@@ -80,18 +164,61 @@ test("task and pane headers keep window drag regions outside controls while find
     await page.locator("main").getByLabel("消息", { exact: true }).press("Control+f");
     const find = page.getByRole("dialog", { name: "在任务中查找", exact: true });
     await expect(find).toBeVisible();
+    const assertDisjointRegions = async () => {
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const regions = [
+              ...document.querySelectorAll<HTMLElement>(
+                ".sidebar-drag-space,.topbar-title,.topbar-drag-space,.pane-drag-space",
+              ),
+            ].filter(
+              (element) =>
+                element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0,
+            );
+            const controls = [
+              ...document.querySelectorAll<HTMLElement>(
+                ".window-chrome-button,.topbar button,.pane-header button",
+              ),
+            ].filter(
+              (element) =>
+                element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0,
+            );
+            return regions.flatMap((region) =>
+              controls.flatMap((control) => {
+                const a = region.getBoundingClientRect();
+                const b = control.getBoundingClientRect();
+                return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+                  ? [`${region.className}: ${control.getAttribute("aria-label") ?? control.className}`]
+                  : [];
+              }),
+            );
+          }),
+        )
+        .toEqual([]);
+    };
     for (const selector of [".topbar", ".pane-header"]) {
-      await expect(page.locator(selector)).toHaveCSS("app-region", "drag");
+      await expect(page.locator(selector)).toHaveCSS("app-region", "no-drag");
       const header = await page.locator(selector).boundingBox();
       const overlay = await find.boundingBox();
       expect(header && overlay && header.y + header.height <= overlay.y).toBe(true);
     }
     await expect(page.locator(".desktop-top-controls")).toHaveCSS("app-region", "no-drag");
+    await expect(page.locator(".topbar-title")).toHaveCSS("app-region", "drag");
+    await expect(page.locator(".topbar-drag-space")).toHaveCSS("app-region", "drag");
     await expect(page.getByLabel("收起右侧栏", { exact: true })).toHaveCSS("app-region", "no-drag");
     await expect(find).toHaveCSS("app-region", "no-drag");
-    await find.getByRole("button", { name: "关闭查找", exact: true }).click();
+    await assertDisjointRegions();
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await expect(page.locator(".right-pane")).toBeHidden();
+    await assertDisjointRegions();
+    await page.getByLabel("收起侧边栏", { exact: true }).click();
+    await expect(page.locator(".sidebar")).toBeHidden();
+    await assertDisjointRegions();
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await expect(page.locator(".right-pane")).toBeVisible();
+    await assertDisjointRegions();
+    await find.getByRole("button", { name: "关闭查找", exact: true }).click();
   } finally {
     await app.close();
     await rm(dir, { recursive: true, force: true });
