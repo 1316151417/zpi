@@ -101,9 +101,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "界面设置",
       "系统提示词",
       "工具",
-      "子智能体",
-      "插件能力",
       "技能",
+      "插件能力",
+      "子智能体",
       "模型",
       "已归档任务",
     ]);
@@ -111,6 +111,18 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "aria-pressed",
       "true",
     );
+    await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    await expect(page.locator(".capability-settings .settings-row strong")).toHaveText([
+      "提示词-多工具调用",
+      "提示词-文件链接格式",
+      "工具-向用户提问",
+      "工具-提问自动继续",
+      "子智能体",
+    ]);
+    const pluginSwitches = page.locator(".capability-settings input[type=checkbox]");
+    await expect(pluginSwitches).toHaveCount(5);
+    for (const toggle of await pluginSwitches.all()) await expect(toggle).toBeChecked();
+    await page.screenshot({ path: "test-results/desktop-settings-capabilities.png" });
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(
       page.locator(".resource-settings input, .resource-settings textarea, .resource-settings select"),
@@ -149,7 +161,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await page.screenshot({ path: "test-results/desktop-settings-skills.png" });
     await page.getByRole("button", { name: "工具", exact: true }).click();
     await expect(page.locator(".tool-resource-detail")).toHaveCount(0);
-    await expect(page.locator(".tool-resource-row")).toHaveCount(4);
+    await expect(page.locator(".tool-resource-row")).toHaveCount(9);
     await page.screenshot({ path: "test-results/desktop-settings-tools-list.png" });
     await page.getByRole("button", { name: /read 已启用/ }).click();
     await expect(page.locator(".tool-resource-detail")).toContainText("Images are sent as attachments");
