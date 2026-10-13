@@ -589,7 +589,7 @@ test("selection disables only the auxiliary action while its active chat awaits 
     await card.getByRole("button", { name: "提交", exact: true }).click();
     await expect(side.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await selectText(side.locator(".answer p"));
-    await expect(menu).toHaveCount(0);
+    await expect(menu.getByRole("button")).toHaveText(["添加到当前辅助对话"]);
     await selectText(main.locator(".answer p"));
     await expect(auxiliary).toBeEnabled();
     await auxiliary.click();

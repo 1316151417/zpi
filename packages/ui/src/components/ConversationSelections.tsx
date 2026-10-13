@@ -116,6 +116,8 @@ export function ConversationSelectionMenu({
   const [snapshot, setSnapshot] = useState<{ scopeKey: string; selection: SelectionState }>();
   const menu = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
+  // Streaming can replace the action callback without changing selection availability or scope.
+  const enabled = Boolean(onAdd);
   const close = useCallback(() => {
     cancelAnimationFrame(frame.current);
     setSnapshot(undefined);
@@ -123,7 +125,7 @@ export function ConversationSelectionMenu({
   useEffect(() => {
     close();
     const root = rootRef.current;
-    if (!root || !onAdd) return;
+    if (!root || !enabled) return;
     const element = (node: Node) => (node instanceof Element ? node : node.parentElement);
     // 正文链接用按钮拦截原生跳转，但其文字仍属于消息选区，不能按操作控件排除。
     const excluded =
@@ -244,7 +246,7 @@ export function ConversationSelectionMenu({
       window.removeEventListener("resize", close);
       window.removeEventListener("blur", dismiss);
     };
-  }, [rootRef, scopeKey, onAdd, close]);
+  }, [rootRef, scopeKey, enabled, close]);
   const state = snapshot?.scopeKey === scopeKey ? snapshot.selection : undefined;
   useLayoutEffect(() => {
     const element = menu.current;

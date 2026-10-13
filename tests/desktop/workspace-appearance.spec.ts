@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function bounds(locator: Locator) {
@@ -10,6 +11,62 @@ async function bounds(locator: Locator) {
   if (!box) throw new Error("Expected a visible panel");
   return box;
 }
+
+test("drafts and completed tasks retain ZCode's four corner insets with both sidebars collapsed", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-window-corners-"));
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "完成" }));
+    done(response);
+  });
+  const app = await launchDesktop({ dir, url: server.url });
+  try {
+    const page = await app.firstWindow();
+    await page.getByLabel("收起侧边栏", { exact: true }).click();
+    await expect(page.locator(".sidebar")).toBeHidden();
+    const main = page.locator(".workspace-surface > main");
+    const radius = await page.evaluate(() => window.zpi.workspacePanelRadius);
+    for (const state of ["draft", "task"] as const) {
+      if (state === "task") {
+        await main.getByLabel("消息", { exact: true }).fill("检查窗口四角");
+        await main.getByLabel("发送", { exact: true }).click();
+        await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      }
+      for (const size of [
+        [1200, 800],
+        [900, 640],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(size[0], size[1]),
+          size,
+        );
+        for (const colorScheme of ["light", "dark"] as const) {
+          await page.emulateMedia({ colorScheme });
+          await expect(page.locator(".composer")).toHaveCSS(
+            "background-color",
+            colorScheme === "light" ? "rgb(255, 255, 255)" : "rgb(43, 43, 43)",
+          );
+          await expect
+            .poll(() =>
+              main.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return [box.left, box.top, innerWidth - box.right, innerHeight - box.bottom];
+              }),
+            )
+            .toEqual([4, 4, 4, 4]);
+          await expect(main).toHaveCSS("border-radius", `${radius}px`);
+          await expect(main).toHaveCSS("overflow", "hidden");
+          await page.screenshot({
+            path: `test-results/window-corners-${state}-${size[0]}-${colorScheme}.png`,
+          });
+        }
+      }
+    }
+  } finally {
+    await app.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("workspace has independent rounded panels, transparent gutters and ZCode launcher fills", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-workspace-appearance-"));
@@ -124,7 +181,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await rightHandle.press("ArrowLeft");
     await expect.poll(async () => (await bounds(frame))?.width).toBeGreaterThan(frameBox.width);
     await page.getByLabel("收起侧边栏", { exact: true }).click();
-    await expect.poll(async () => (await bounds(main))?.x).toBe(0);
+    await expect.poll(async () => (await bounds(main))?.x).toBe(4);
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await expect(frame).toBeHidden();
     await expect
@@ -133,6 +190,15 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
         return box.x + box.width;
       })
       .toBe(viewport.width - 4);
+    await expect(main).toHaveCSS("border-radius", `${panelRadius}px`);
+    const inset = await bounds(main);
+    expect([
+      inset.x,
+      inset.y,
+      viewport.width - inset.x - inset.width,
+      viewport.height - inset.y - inset.height,
+    ]).toEqual([4, 4, 4, 4]);
+    await page.screenshot({ path: "test-results/workspace-collapsed-four-corners.png" });
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.emulateMedia({ colorScheme: "dark" });
     await expectBackdrop(true);
