@@ -346,11 +346,12 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     const settings = page.locator(".capability-settings");
     await expect(settings.locator(".settings-row strong")).toHaveText([
-      "子智能体",
       "提示词-多工具调用",
       "提示词-文件链接格式",
+      "提示词-文件内容复用",
+      "提示词-主动推进",
       "工具-向用户提问",
-      "工具-提问自动继续",
+      "子智能体",
     ]);
     for (const row of await settings.locator(".settings-row").all()) {
       const toggle = row.getByRole("checkbox");
@@ -361,7 +362,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
     }
     await page.getByRole("checkbox", { name: "工具-向用户提问", exact: true }).check();
     await expect(page.getByRole("checkbox", { name: "工具-向用户提问", exact: true })).toBeChecked();
-    await expect(settings.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toBeChecked();
+    await expect(settings.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toHaveCount(0);
     const rows = await settings.locator(".settings-row").evaluateAll((rows) =>
       rows.map((row) => {
         const copy = row.querySelector(".settings-row-copy")?.getBoundingClientRect();
@@ -373,7 +374,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
         };
       }),
     );
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     for (const row of rows) {
       expect(row.toggleLeft).toBeGreaterThan(row.copyRight ?? 0);
       expect(row.height).toBeLessThan(100);

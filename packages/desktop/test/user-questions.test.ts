@@ -147,26 +147,24 @@ it.each([0, 60_000])("permanently stops question timing after user interaction a
   }
 });
 
-it("disabling timing stops existing questions and re-enabling applies only to future questions", async () => {
+it("snoozing one question does not disable automatic continuation for other questions", async () => {
   vi.useFakeTimers();
   try {
     const broker = new UserQuestions(() => {});
     const execute = (id: string) =>
       (broker.tool(id).execute as (...args: unknown[]) => Promise<unknown>)("q", params, undefined);
     const first = execute("first");
-    broker.setAutoResolutionEnabled(false);
+    broker.snooze("first", "q");
     expect(broker.get("first")?.autoResolution?.phase).toBe("snoozed");
     const second = execute("second");
-    expect(broker.get("second")?.autoResolution).toBeUndefined();
-    broker.setAutoResolutionEnabled(true);
+    expect(broker.get("second")?.autoResolution?.phase).toBe("hiddenGrace");
     const third = execute("third");
     await vi.advanceTimersByTimeAsync(300_000);
-    await third;
+    await Promise.all([second, third]);
     expect(broker.get("first")).not.toBeNull();
-    expect(broker.get("second")).not.toBeNull();
+    expect(broker.get("second")).toBeNull();
     broker.respond("first", "q", { answers: {} });
-    broker.respond("second", "q", { answers: {} });
-    await Promise.all([first, second]);
+    await first;
     expect(vi.getTimerCount()).toBe(0);
   } finally {
     vi.useRealTimers();

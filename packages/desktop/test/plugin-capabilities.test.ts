@@ -107,7 +107,6 @@ test("defaults all plugin capabilities on and preserves saved choices when filli
     fileContextReuse: true,
     proactiveExecution: true,
   });
-  expect(f.settings.get().interface.askUserQuestionAutoResolutionEnabled).toBe(true);
   const path = join(f.dir, "settings.json");
   const settings = JSON.parse(await readFile(path, "utf8"));
   await writeFile(path, JSON.stringify({ ...settings, capabilities: { askUserQuestion: false } }));
@@ -125,13 +124,11 @@ test("defaults all plugin capabilities on and preserves saved choices when filli
   restored.setCapabilityEnabled("fileLinks", false);
   restored.setCapabilityEnabled("fileContextReuse", false);
   restored.setCapabilityEnabled("proactiveExecution", false);
-  restored.updatePreferences({ askUserQuestionAutoResolutionEnabled: false });
   const saved = new SettingsStore(f.dir, codec).get();
   expect(saved.capabilities.subagents).toBe(false);
   expect(saved.capabilities.askUserQuestion).toBe(false);
   expect(saved.capabilities.fileContextReuse).toBe(false);
   expect(saved.capabilities.proactiveExecution).toBe(false);
-  expect(saved.interface.askUserQuestionAutoResolutionEnabled).toBe(false);
   expect(new SettingsStore(f.dir, codec).get().capabilities.fileLinks).toBe(false);
   await writeFile(path, JSON.stringify({ ...settings, capabilities: true }));
   expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");

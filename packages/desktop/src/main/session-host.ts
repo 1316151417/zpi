@@ -149,7 +149,6 @@ export class SessionHost {
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
   ) {
-    this.questions.setAutoResolutionEnabled(settings.get().interface.askUserQuestionAutoResolutionEnabled);
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
     this.errors = errors;

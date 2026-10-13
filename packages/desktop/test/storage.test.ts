@@ -47,7 +47,6 @@ it("notification preferences default on, migrate old settings and preserve the i
   try {
     const store = new SettingsStore(dir, encryption);
     expect(store.get().interface).toMatchObject({
-      askUserQuestionAutoResolutionEnabled: true,
       notificationEnabled: true,
       notificationSoundEnabled: true,
     });
@@ -67,15 +66,44 @@ it("notification preferences default on, migrate old settings and preserve the i
     const data = JSON.parse(await readFile(file, "utf8"));
     delete data.interface.notificationEnabled;
     delete data.interface.notificationSoundEnabled;
-    delete data.interface.askUserQuestionAutoResolutionEnabled;
     const original = JSON.stringify(data);
     await writeFile(file, original);
     expect(new SettingsStore(dir, encryption).get().interface).toMatchObject({
-      askUserQuestionAutoResolutionEnabled: true,
       notificationEnabled: true,
       notificationSoundEnabled: true,
     });
     expect(await readFile(file, "utf8")).toBe(original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each([true, false])("ignores the retired question timing setting when saved as %s", async (enabled) => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-retired-question-setting-"));
+  const encryption = {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.alloc(0),
+    decryptString: () => "",
+  };
+  try {
+    const store = new SettingsStore(dir, encryption);
+    store.updatePreferences({ theme: "dark" });
+    const file = join(dir, "settings.json");
+    const data = JSON.parse(await readFile(file, "utf8"));
+    data.interface.askUserQuestionAutoResolutionEnabled = enabled;
+    await writeFile(file, JSON.stringify(data));
+    const restored = new SettingsStore(dir, encryption);
+    expect(restored.get().interface.theme).toBe("dark");
+    expect(restored.get().interface).not.toHaveProperty("askUserQuestionAutoResolutionEnabled");
+    expect(() =>
+      restored.updatePreferences({
+        askUserQuestionAutoResolutionEnabled: false,
+      } as unknown as Partial<InterfacePreferences>),
+    ).toThrow();
+    restored.updatePreferences({ showSendButton: true });
+    expect(JSON.parse(await readFile(file, "utf8")).interface).not.toHaveProperty(
+      "askUserQuestionAutoResolutionEnabled",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

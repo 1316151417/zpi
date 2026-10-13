@@ -40,17 +40,12 @@ interface PendingQuestion {
 }
 export class UserQuestions {
   private pending = new Map<string, PendingQuestion>();
-  private autoResolutionEnabled = true;
   private publish: (sessionId: string, request: UserQuestionRequest | null) => void;
   constructor(publish: (sessionId: string, request: UserQuestionRequest | null) => void) {
     this.publish = publish;
   }
   get(sessionId: string) {
     return this.pending.get(sessionId)?.request ?? null;
-  }
-  setAutoResolutionEnabled(enabled: boolean) {
-    this.autoResolutionEnabled = enabled;
-    if (!enabled) for (const [id, pending] of this.pending) this.snooze(id, pending.request.id);
   }
   snooze(sessionId: string, requestId: string) {
     const pending = this.pending.get(sessionId);
@@ -134,16 +129,12 @@ export class UserQuestions {
         const request: UserQuestionRequest = {
           id,
           questions: params.questions,
-          ...(this.autoResolutionEnabled
-            ? {
-                autoResolution: {
-                  phase: "hiddenGrace",
-                  startedAt,
-                  visibleAt: startedAt + 60_000,
-                  deadlineAt: startedAt + 300_000,
-                } as const,
-              }
-            : {}),
+          autoResolution: {
+            phase: "hiddenGrace",
+            startedAt,
+            visibleAt: startedAt + 60_000,
+            deadlineAt: startedAt + 300_000,
+          },
         };
         let cancel = () => {};
         let autoResolved = false;
@@ -152,25 +143,23 @@ export class UserQuestions {
             cancel = () => reject(new Error("AskUserQuestion cancelled"));
             const pending: PendingQuestion = { request, resolve, timers: [] };
             this.pending.set(sessionId, pending);
-            if (request.autoResolution && request.autoResolution.phase !== "snoozed") {
-              pending.timers.push(
-                setTimeout(() => {
-                  const state = pending.request.autoResolution;
-                  if (!state || state.phase === "snoozed") return;
-                  pending.request = {
-                    ...pending.request,
-                    autoResolution: { ...state, phase: "visibleCountdown" },
-                  };
-                  this.publish(sessionId, pending.request);
-                }, 60_000),
-              );
-              pending.timers.push(
-                setTimeout(() => {
-                  autoResolved = true;
-                  pending.resolve({ answers: {} });
-                }, 300_000),
-              );
-            }
+            pending.timers.push(
+              setTimeout(() => {
+                const state = pending.request.autoResolution;
+                if (!state || state.phase === "snoozed") return;
+                pending.request = {
+                  ...pending.request,
+                  autoResolution: { ...state, phase: "visibleCountdown" },
+                };
+                this.publish(sessionId, pending.request);
+              }, 60_000),
+            );
+            pending.timers.push(
+              setTimeout(() => {
+                autoResolved = true;
+                pending.resolve({ answers: {} });
+              }, 300_000),
+            );
             signal?.addEventListener("abort", cancel, { once: true });
             this.publish(sessionId, request);
           });

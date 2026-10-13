@@ -103,7 +103,6 @@ export interface CombinedSelection extends ModelSelection {
   reasoning: ReasoningPreset;
 }
 export interface InterfacePreferences {
-  askUserQuestionAutoResolutionEnabled: boolean;
   theme: "system" | "light" | "dark";
   fontSize: number;
   showContextUsage: boolean;
