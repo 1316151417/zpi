@@ -226,6 +226,11 @@ export interface DesktopBridge {
     sessionId: string | null,
   ): Promise<Result<SubagentCatalog>>;
   stopSubagent(parentSessionId: string, agentId: string): Promise<Result<void>>;
+  stopBackgroundTask(sessionId: string, taskId: string): Promise<Result<void>>;
+  readBackgroundTask(
+    sessionId: string,
+    taskId: string,
+  ): Promise<Result<import("zpi-ui").BackgroundTaskOutput>>;
   setCapabilityEnabled(name: CapabilityName, enabled: boolean): Promise<Result<PublicSettings>>;
   snoozeQuestion(sessionId: string, requestId: string): Promise<Result<void>>;
   respondToQuestion(
@@ -356,6 +361,8 @@ export const methods = [
   "deleteSubagent",
   "setSubagentEnabled",
   "stopSubagent",
+  "stopBackgroundTask",
+  "readBackgroundTask",
   "setCapabilityEnabled",
   "respondToQuestion",
   "snoozeQuestion",

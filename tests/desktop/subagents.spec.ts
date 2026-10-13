@@ -182,7 +182,7 @@ test("background child streams into the side pane, updates status live and retur
       send(response, chunk({ content: "Live child progress" }));
       return;
     }
-    if (!rows.some((message) => message.role === "tool")) {
+    if (!rows.some((message) => message.role === "tool") || rows.at(-1)?.content === "Run research again") {
       send(
         response,
         chunk({
@@ -221,38 +221,168 @@ test("background child streams into the side pane, updates status live and retur
     await editor.fill("Start background research");
     await editor.press("Enter");
     await expect(page.locator("main .answer")).toContainText("Coordinator report");
-    await page.locator(".subagent-activity-toggle").click();
+    await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
+    await expect(page.locator(".composer-container .task-activity")).toHaveCount(0);
+    const geometry = await page.locator(".task-activity").evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const body = element.closest(".task-body")?.getBoundingClientRect();
+      return {
+        top: panel.top - (body?.top ?? 0),
+        right: (body?.right ?? 0) - panel.right,
+        width: panel.width,
+        height: panel.height,
+      };
+    });
+    expect(geometry.top).toBe(16);
+    expect(geometry.right).toBe(16);
+    expect(geometry.width).toBe(32);
+    expect(geometry.height).toBe(32);
+    await page.screenshot({
+      path: test.info().outputPath("task-activity-collapsed.png"),
+      animations: "disabled",
+    });
+    await page.locator(".task-activity-toggle").click();
+    await expect(page.getByRole("button", { name: "收起任务状态", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "收起任务状态", exact: true }).click();
+    await expect(page.locator(".task-activity-list")).toHaveCount(0);
+    await page.getByRole("button", { name: "展开任务状态", exact: true }).click();
+    await page.screenshot({
+      path: test.info().outputPath("task-activity-light.png"),
+      animations: "disabled",
+    });
+    await page.evaluate(() => window.zpi.updatePreferences({ theme: "dark" }));
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.locator(".task-activity-toggle").click();
+    await page.screenshot({
+      path: test.info().outputPath("task-activity-dark.png"),
+      animations: "disabled",
+    });
+    await page.evaluate(() => window.zpi.updatePreferences({ theme: "light" }));
+    await page.reload();
+    await page.locator(".task-activity-toggle").click();
     await page.getByRole("button", { name: "查看子智能体 Background research", exact: true }).click();
     await expect(page.locator(".subagent-pane")).toContainText("Live child progress");
-    await expect(page.locator(".subagent-activity-toggle")).toContainText("1个运行中");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1个运行中");
     send(
       childResponse as import("node:http").ServerResponse,
       chunk({ content: "\nCompleted child findings" }),
     );
     done(childResponse as import("node:http").ServerResponse);
     await expect(page.locator(".subagent-pane")).toContainText("Completed child findings");
-    await expect(page.locator(".subagent-activity-toggle")).toContainText("0个运行中");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1个已结束");
     await expect(page.locator("main .answer")).toHaveCount(2);
     await expect(page.locator("main .subagent-result-notice")).toHaveCount(0);
     await expect(page.locator("main .user-message")).not.toContainText("<task-notification>");
     await page.getByRole("button", { name: "关闭标签 Background research", exact: true }).click();
-    await page.locator(".subagent-ended").click();
-    await expect(page.locator(".subagent-directory")).toContainText("已完成");
+    await page.locator(".task-ended").click();
+    await expect(page.locator(".task-directory")).toContainText("已完成");
     await page
-      .locator(".subagent-directory")
+      .locator(".task-directory")
       .getByRole("button", { name: /Background research/ })
       .click();
     await expect(page.locator(".subagent-pane")).toContainText("Completed child findings");
+    await page.getByRole("button", { name: "关闭任务状态", exact: true }).click();
+    await expect(page.locator(".task-activity")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "查看任务目录", exact: true })).toBeVisible();
+    await expect(page.locator(".task-activity")).toHaveCount(0);
+    await page.getByRole("button", { name: "查看任务目录", exact: true }).click();
+    await expect(page.locator(".task-directory:visible")).toContainText("已完成");
+    await editor.fill("Run research again");
+    await editor.press("Enter");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1个运行中");
+    await page.locator(".task-activity-toggle").click();
+    await page
+      .locator(".task-activity")
+      .getByRole("button", { name: "停止子智能体 Background research", exact: true })
+      .click();
+    await expect(page.locator(".task-activity-toggle")).toContainText("2个已结束");
+    await page.getByRole("button", { name: "关闭任务状态", exact: true }).click();
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await editor.fill("Start another background task");
     await editor.press("Enter");
     await expect(page.locator("main .answer")).toContainText("Coordinator report");
-    await page.locator(".subagent-activity-toggle").click();
+    await page.locator(".task-activity-toggle").click();
     await page.getByRole("button", { name: "查看子智能体 Background research", exact: true }).click();
-    await expect(page.locator(".subagent-activity-toggle")).toContainText("1个运行中");
-    await page.getByRole("button", { name: "停止子智能体 Background research", exact: true }).click();
-    await page.locator(".subagent-ended").click();
-    await expect(page.locator(".subagent-directory:visible")).toContainText("已停止");
+    await expect(page.locator(".task-activity-toggle")).toContainText("1个运行中");
+    await page
+      .locator(".task-activity")
+      .getByRole("button", { name: "停止子智能体 Background research", exact: true })
+      .click();
+    await page.locator(".task-ended").click();
+    await expect(page.locator(".task-directory:visible")).toContainText("已停止");
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("TaskOutput waits for the child and shows a clean result without duplicate completion turns", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-subagents-output-"));
+  let childResponse: import("node:http").ServerResponse | undefined;
+  const server = await fakeServer((body, response) => {
+    const names = (body.tools as { function: { name: string } }[]).map((tool) => tool.function.name);
+    const rows = body.messages as { role: string; content: string }[];
+    if (!names.includes("Agent")) {
+      childResponse = response;
+      return;
+    }
+    const lastTool = rows.filter((row) => row.role === "tool").at(-1);
+    const name = lastTool ? "TaskOutput" : "Agent";
+    const id = lastTool?.content.match(/agentId: (agent_[^\s]+)/)?.[1];
+    if (!lastTool || id) {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: name,
+              type: "function",
+              function: {
+                name,
+                arguments: JSON.stringify(
+                  id
+                    ? { task_id: id, block: true, timeout: 30000 }
+                    : { description: "Read entry", prompt: "Read entry", run_in_background: true },
+                ),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: "Collected task output" }));
+      done(response);
+    }
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await page.evaluate(() => window.zpi.setCapabilityEnabled("subagents", true));
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("Research and collect");
+    await editor.press("Enter");
+    const output = page.locator('main [data-tool-name="TaskOutput"]');
+    await expect(output).toContainText("正在读取输出");
+    await expect.poll(() => !!childResponse).toBe(true);
+    send(
+      childResponse as import("node:http").ServerResponse,
+      chunk({ content: "Entry point is src/main.ts" }),
+    );
+    done(childResponse as import("node:http").ServerResponse);
+    await expect(page.locator("main .answer")).toContainText("Collected task output");
+    await expect(page.locator("main .answer")).toHaveCount(1);
+    await page.locator("main").getByTestId("progress").first().click();
+    await expect(output).toContainText("已读取");
+    await output.getByTestId("tool-summary").click();
+    await expect(output).toContainText("Entry point is src/main.ts");
+    await expect(output).not.toContainText("retrieval_status");
+    await expect(page.locator("main .user-message")).toHaveCount(1);
   } finally {
     await app?.close();
     await server.close();

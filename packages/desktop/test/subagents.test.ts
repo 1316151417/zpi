@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
+import { AgentSession, SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
@@ -128,10 +128,10 @@ test.each(["Explore", "general-purpose", "code-reviewer"])(
     expect(JSON.stringify(childRequest)).toContain("CHILD REQUEST");
     expect(tools(childRequest ?? {})).toEqual(
       name === "Explore"
-        ? ["read", "bash"]
+        ? ["read", "bash", "TaskOutput", "TaskStop", "RespondToCoordinator"]
         : name === "code-reviewer"
-          ? ["read"]
-          : ["read", "bash", "edit", "write", "RespondToCoordinator"],
+          ? ["read", "RespondToCoordinator"]
+          : ["read", "bash", "edit", "write", "TaskOutput", "TaskStop", "RespondToCoordinator"],
     );
     expect(JSON.stringify(childRequest).includes("WORKSPACE POLICY")).toBe(name !== "Explore");
     expect(JSON.stringify(childRequest).includes("USER POLICY")).toBe(name !== "Explore");
@@ -236,7 +236,27 @@ test("runs independent children concurrently and cancels them when the parent st
   const { runId } = await f.host.startRun({ sessionId: f.session.id, text: "Parallel work" });
   await bothStarted.promise;
   expect(f.host.subagents.list(f.session.id).filter((task) => task.status === "running")).toHaveLength(2);
-  await f.host.abortRun({ sessionId: f.session.id, runId });
+  const childId = f.host.subagents.list(f.session.id)[0].childSessionId;
+  const child = f.host.sessions.get(childId);
+  const parent = f.host.sessions.get(f.session.id);
+  assert(child && parent);
+  const drain = deferred();
+  const childAbort = child.abort.bind(child);
+  const childSpy = vi.spyOn(child, "abort").mockImplementation(async () => {
+    await childAbort();
+    await drain.promise;
+  });
+  const parentSpy = vi.spyOn(parent, "abort");
+  const stopping = f.host.abortRun({ sessionId: f.session.id, runId });
+  try {
+    // A slow child cleanup must not let the parent keep streaming or start another model step.
+    await expect.poll(() => parentSpy.mock.calls.length).toBe(1);
+  } finally {
+    drain.resolve();
+    await stopping;
+    childSpy.mockRestore();
+    parentSpy.mockRestore();
+  }
   expect(f.host.subagents.list(f.session.id).map((task) => task.status)).toEqual(["aborted", "aborted"]);
   expect(f.host.activeRuns.size).toBe(0);
 });
@@ -565,6 +585,176 @@ test("RespondToCoordinator queues model-only progress and child continues to its
   expect(() => f.host.submitInput({ sessionId: task.childSessionId, text: "Unexpected edit" })).toThrow(
     "只读",
   );
+});
+
+test("startup guidance reaches the first child turn while input preparation is still pending", async () => {
+  const f = await fixture((body, response) => {
+    if (tools(body).includes("Agent") && !messages(body).some((row) => row.role === "tool"))
+      call(response, { description: "Inspect", prompt: "Research" });
+    else {
+      send(response, chunk({ content: "findings" }));
+      done(response);
+    }
+  });
+  f.settings.setCapabilityEnabled("subagents", true);
+  const prepare = AgentSession.prototype.prepareInput;
+  let delivery: unknown;
+  const spy = vi.spyOn(AgentSession.prototype, "prepareInput").mockImplementation(async function (
+    this: AgentSession,
+    ...args
+  ) {
+    const task = f.host.subagents.taskForChild(this.sessionId);
+    if (task && delivery === undefined) {
+      const tool = f.host.subagents.tools(f.session.id).find((item) => item.name === "SendMessage");
+      assert(tool);
+      delivery = await tool.execute(
+        "guide",
+        { to: task.agentId, summary: "New scope", message: "STARTUP GUIDANCE" },
+        undefined,
+        undefined,
+        {
+          cwd: f.workspace,
+          model: fakeModel(f.server.url),
+          sessionManager: SessionManager.inMemory(),
+          isIdle: () => false,
+          getSystemPrompt: () => "",
+        },
+      );
+    }
+    return prepare.apply(this, args);
+  });
+  try {
+    await run(f, "Research");
+    expect(JSON.stringify(delivery)).toContain("steered");
+    const task = f.host.subagents.list(f.session.id)[0];
+    expect(f.host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(1);
+    expect(f.server.requests.filter((body) => !tools(body).includes("Agent"))).toHaveLength(2);
+    expect(JSON.stringify(f.server.requests)).toContain("STARTUP GUIDANCE");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a coordinator reply at the SDK settlement boundary starts a model-only follow-up instead of disappearing", async () => {
+  const f = await fixture((body, response) => {
+    if (tools(body).includes("Agent") && !messages(body).some((row) => row.role === "tool"))
+      call(response, { description: "Inspect", prompt: "Research" });
+    else {
+      send(response, chunk({ content: "findings" }));
+      done(response);
+    }
+  });
+  f.settings.setCapabilityEnabled("subagents", true);
+  await run(f, "Research");
+  const task = f.host.subagents.list(f.session.id)[0];
+  const parent = f.host.sessions.get(f.session.id);
+  assert(parent);
+  let sent = false;
+  let delivery: Promise<unknown> | undefined;
+  const unsubscribe = parent.subscribe((event) => {
+    if (event.type !== "agent_settled" || sent) return;
+    sent = true;
+    delivery = f.host.subagents.childTools(task.childSessionId)[0].execute(
+      "reply",
+      {
+        summary: "Last moment reply",
+        message: "BOUNDARY REPLY",
+      },
+      undefined,
+      undefined,
+      {
+        cwd: f.workspace,
+        model: fakeModel(f.server.url),
+        sessionManager: SessionManager.inMemory(),
+        isIdle: () => false,
+        getSystemPrompt: () => "",
+      },
+    );
+  });
+  try {
+    await run(f, "Follow up");
+    await delivery;
+    await expect
+      .poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.subagentNotification?.description)
+      .toBe("Last moment reply");
+    await f.host.activeRuns.get(f.session.id)?.done;
+    expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(3);
+    expect(JSON.stringify(f.server.requests.at(-1))).toContain("BOUNDARY REPLY");
+  } finally {
+    unsubscribe();
+  }
+});
+
+test("guidance at child settlement keeps the foreground caller waiting for the follow-up result", async () => {
+  const ready = deferred();
+  let responseToFinish: ServerResponse | undefined;
+  const f = await fixture((body, response) => {
+    if (!tools(body).includes("Agent")) {
+      if (JSON.stringify(body.messages).includes("LATE GUIDANCE")) {
+        responseToFinish = response;
+        ready.resolve();
+      } else {
+        send(response, chunk({ content: "First result" }));
+        done(response);
+      }
+    } else if (!messages(body).some((row) => row.role === "tool"))
+      call(response, { description: "Inspect", prompt: "Research" });
+    else {
+      send(response, chunk({ content: "Collected revised result" }));
+      done(response);
+    }
+  });
+  f.settings.setCapabilityEnabled("subagents", true);
+  const prepare = AgentSession.prototype.prepareInput;
+  let unsubscribe: (() => void) | undefined;
+  let sent = false;
+  const spy = vi.spyOn(AgentSession.prototype, "prepareInput").mockImplementation(function (
+    this: AgentSession,
+    ...args
+  ) {
+    const task = f.host.subagents.taskForChild(this.sessionId);
+    if (task && !unsubscribe)
+      unsubscribe = this.subscribe((event) => {
+        if (event.type !== "agent_settled" || sent) return;
+        sent = true;
+        const tool = f.host.subagents.tools(f.session.id).find((item) => item.name === "SendMessage");
+        assert(tool);
+        void tool.execute(
+          "guide",
+          { to: task.agentId, summary: "Continue", message: "LATE GUIDANCE" },
+          undefined,
+          undefined,
+          {
+            cwd: f.workspace,
+            model: fakeModel(f.server.url),
+            sessionManager: SessionManager.inMemory(),
+            isIdle: () => false,
+            getSystemPrompt: () => "",
+          },
+        );
+      });
+    return prepare.apply(this, args);
+  });
+  try {
+    const running = run(f, "Research");
+    await ready.promise;
+    expect(f.host.subagents.list(f.session.id)[0].status).toBe("running");
+    expect(f.host.activeRuns.has(f.session.id)).toBe(true);
+    assert(responseToFinish);
+    send(responseToFinish, chunk({ content: "Revised result" }));
+    done(responseToFinish);
+    await running;
+    expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({
+      status: "completed",
+      result: "Revised result",
+    });
+    const toolResult = messages(f.server.requests.at(-1) ?? {}).findLast((row) => row.role === "tool");
+    expect(toolResult?.content).toContain("Revised result");
+    expect(toolResult?.content).not.toContain("First result");
+  } finally {
+    unsubscribe?.();
+    spy.mockRestore();
+  }
 });
 
 test("freezes agent definitions and inherited AGENTS.md for the complete parent turn", async () => {

@@ -1,4 +1,4 @@
-import { type ConversationSelection, type SubagentTask, toolFile } from "zpi-ui";
+import { type BackgroundTask, type ConversationSelection, type SubagentTask, toolFile } from "zpi-ui";
 import { type FileLocation, resolveLinkTarget, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
 import { create } from "zustand";
 import type { BrowserState, FilePreview, PaneEvent, SessionRecord } from "../shared/bridge.ts";
@@ -16,6 +16,7 @@ import {
   useStore,
 } from "./store.ts";
 export type PaneTab =
+  | { id: string; type: "background-task"; title: string; sessionId: string; taskId: string }
   | {
       id: string;
       type: "side-chat";
@@ -24,7 +25,7 @@ export type PaneTab =
       childSessionId: string;
       ordinal: number;
     }
-  | { id: string; type: "subagent-directory"; title: string; sessionId: string }
+  | { id: string; type: "task-directory"; title: string; sessionId: string }
   | {
       id: string;
       type: "subagent";
@@ -137,7 +138,10 @@ export function listenPanes() {
         const parent = state.sessions.get(paneOwner(tab.sessionId) ?? "");
         if (
           (!parent || parent.archivedAt != null) &&
-          (tab.type === "side-chat" || tab.type === "subagent" || tab.type === "subagent-directory")
+          (tab.type === "side-chat" ||
+            tab.type === "subagent" ||
+            tab.type === "task-directory" ||
+            tab.type === "background-task")
         )
           paneTask(closeTab(tab.id));
       }
@@ -380,6 +384,15 @@ export function paneTask(task: Promise<unknown>) {
   void task.catch(report);
 }
 
-export function openSubagentDirectory(sessionId: string) {
-  showTab({ id: `subagents:${sessionId}`, type: "subagent-directory", title: "子智能体目录", sessionId });
+export function openTaskDirectory(sessionId: string) {
+  showTab({ id: `tasks:${sessionId}`, type: "task-directory", title: "任务目录", sessionId });
+}
+export function openBackgroundTask(task: BackgroundTask) {
+  showTab({
+    id: task.taskId,
+    type: "background-task",
+    title: task.description,
+    sessionId: task.sessionId,
+    taskId: task.taskId,
+  });
 }

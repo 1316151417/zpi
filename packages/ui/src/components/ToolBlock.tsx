@@ -7,6 +7,7 @@ import { FlipMetricValue } from "./FlipMetricValue.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { FileIcon } from "./Reference.tsx";
 import { SubagentMessageToolBlock } from "./SubagentMessageToolBlock.tsx";
+import { SubagentTaskToolBlock } from "./SubagentTaskToolBlock.tsx";
 import { SubagentToolBlock } from "./SubagentToolBlock.tsx";
 import { ToolCode, ToolDiff, toolCodeLanguage } from "./ToolDiff.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
@@ -155,6 +156,7 @@ export function ToolFilePreview({
 export function ToolBlock(props: ToolBlockProps) {
   if (["SendMessage", "RespondToCoordinator"].includes(props.block.name))
     return <SubagentMessageToolBlock {...props} />;
+  if (["TaskOutput", "TaskStop"].includes(props.block.name)) return <SubagentTaskToolBlock {...props} />;
   if (props.block.name === "Agent") return <SubagentToolBlock {...props} />;
   if (props.block.name === "AskUserQuestion") return <AskQuestionToolBlock {...props} />;
   const { block, expanded, toggle, workspace, onCopy, showIcon = true } = props;

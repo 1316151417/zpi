@@ -302,6 +302,8 @@ async function launch(): Promise<void> {
         deleteSubagent: 2,
         setSubagentEnabled: 3,
         stopSubagent: 2,
+        stopBackgroundTask: 2,
+        readBackgroundTask: 2,
         setCapabilityEnabled: 2,
         respondToQuestion: 3,
         snoozeQuestion: 2,
@@ -415,6 +417,12 @@ async function launch(): Promise<void> {
           break;
         case "stopSubagent":
           await host.subagents.stop(string(0), string(1));
+          break;
+        case "stopBackgroundTask":
+          await host.backgroundTasks.stop(string(0), string(1));
+          break;
+        case "readBackgroundTask":
+          value = await host.backgroundTasks.read(string(0), string(1));
           break;
         case "setCapabilityEnabled":
           value = settings.setCapabilityEnabled(

@@ -3769,6 +3769,19 @@ button.inline-mention,
 }
 
 /* ZCode subagent identity palette and single-line Agent summaries. */
+.subagent-task-output {
+  margin: 0;
+  max-height: 100px;
+  overflow: auto;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text-subtle);
+  font: inherit;
+  font-family: var(--font-mono);
+}
 [data-agent-color="yellow"] {
   --agent-dot: oklch(87.9% 0.169 91.605);
   --agent-text: oklch(55.5% 0.163 48.998);
