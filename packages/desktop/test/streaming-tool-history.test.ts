@@ -22,6 +22,11 @@ it("reconciles crash-recovered streamed tool pairs with history offsets before c
   await f.host.close();
   const file = join(f.dir, "agent", "sessions", f.a.id, `${id}.jsonl`);
   const manager = SessionManager.open(file);
+  manager.appendCustomEntry("zpi.configuration", {
+    template: { ...f.settings.getTemplate() },
+    disabledSkillPaths: f.settings.get().disabledSkillPaths,
+    ...f.settings.get().capabilities,
+  });
   manager.appendCustomEntry("zpi.run", {
     phase: "start",
     runId: "interrupted",

@@ -3978,18 +3978,14 @@
   font-size: var(--text-body);
   font-weight: 600;
 }
-.subagent-settings-heading > .secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
 .subagent-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--color-text-subtle);
 }
 .subagent-search input {
@@ -4005,7 +4001,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
+  margin: 0 0 16px;
+  padding: 0 4px;
   font-size: var(--text-body);
   font-weight: 500;
 }
@@ -4071,6 +4068,7 @@
   margin: 2px 0 0;
   font-size: var(--text-small);
   color: var(--color-text-subtle);
+  line-height: 1.5;
 }
 .subagent-tools-badge {
   display: inline-flex;
@@ -4199,7 +4197,8 @@
 }
 .subagent-tools-card > div:first-child {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -4399,9 +4398,6 @@
   margin-left: auto;
   width: 256px;
 }
-.subagent-settings-group h3 {
-  padding: 0 16px;
-}
 .subagent-settings-group h3 .subagent-group-actions {
   margin-left: auto;
   display: flex;
@@ -4422,9 +4418,6 @@
 .subagent-form footer .subagent-delete {
   margin-right: auto;
   color: var(--color-danger);
-}
-.subagent-settings-heading:has(+ .subagent-form) h2 {
-  font-size: 20px;
 }
 .subagent-model-menu {
   min-width: 256px;
@@ -4562,13 +4555,6 @@
 .subagent-settings-heading.editing h2 {
   font-size: 18px;
 }
-.subagent-settings-group h3 {
-  margin-bottom: 16px;
-  padding: 0 4px;
-}
-.subagent-row-copy p {
-  line-height: 1.5;
-}
 
 .subagent-empty strong {
   font-weight: 500;
@@ -4599,17 +4585,8 @@
   margin: -20px 0 -8px;
   color: var(--color-text-subtle);
 }
-.subagent-search {
-  height: 36px;
-  border-radius: 12px;
-  padding: 0 12px;
-}
 .subagent-search input::-webkit-search-cancel-button {
   appearance: none;
-}
-.subagent-tools-card > div:first-child {
-  justify-content: flex-start;
-  flex-wrap: wrap;
 }
 .subagent-tools-description {
   color: var(--color-text-subtle);

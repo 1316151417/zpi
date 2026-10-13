@@ -279,7 +279,7 @@ export class SessionHost {
           customType: "zpi.subagent_task",
           data: JSON.parse(JSON.stringify(task)),
         });
-        this.getSessionSnapshot(task.parentSessionId);
+        if (!this.views.has(task.parentSessionId)) this.getSessionSnapshot(task.parentSessionId);
         this.emit(task.parentSessionId, "subagents", {
           type: "subagents_changed",
           tasks: this.subagents.list(task.parentSessionId),
@@ -784,7 +784,6 @@ export class SessionHost {
       const configuration = {
         ...structuredClone(this.configuration(parentId)),
         subagents: false,
-        askUserQuestion: this.configuration(parentId).askUserQuestion,
         subagentProfile: structuredClone(profile),
         subagentInstructions: structuredClone(this.parentInstructions.get(parentId) ?? []),
       };
@@ -1880,7 +1879,6 @@ export class SessionHost {
           },
         });
         started = true;
-        await this.attachments.markUsed(id, input.attachments ?? []);
         if (record.draft) {
           const prior = this.indexes.get(id)?.data.state["zpi.session_meta"];
           manager.appendCustomEntry("zpi.session_meta", {
@@ -1901,6 +1899,7 @@ export class SessionHost {
           startedAt,
           modelLabel,
         });
+        await this.attachments.markUsed(id, input.attachments ?? []);
       };
       const initialize = async () => {
         if (needsWorktree) {

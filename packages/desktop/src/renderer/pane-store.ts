@@ -31,7 +31,6 @@ export type PaneTab =
       title: string;
       sessionId: string;
       childSessionId: string;
-      agentId: string;
     }
   | {
       id: string;
@@ -264,7 +263,6 @@ export async function openSubagent(task: SubagentTask) {
       title: task.description,
       sessionId: task.parentSessionId,
       childSessionId: task.childSessionId,
-      agentId: task.agentId,
     });
   } catch (error) {
     if (!retained) retainedSessionViews.delete(task.childSessionId);

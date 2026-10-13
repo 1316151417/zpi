@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
@@ -153,6 +153,38 @@ test.each(["Explore", "general-purpose", "code-reviewer"])(
     );
   },
 );
+
+test("publishes child updates without rebuilding cached parent snapshots and restores evicted parents", async () => {
+  const f = await fixture((body, response) => {
+    if (tools(body).includes("Agent") && !messages(body).some((message) => message.role === "tool"))
+      call(response, { description: "Inspect source", prompt: "Find entry point" });
+    else {
+      send(response, chunk({ content: "findings" }));
+      done(response);
+    }
+  });
+  f.settings.setCapabilityEnabled("subagents", true);
+  await run(f, "Research");
+  const task = f.host.subagents.list(f.session.id)[0];
+  f.host.getSessionSnapshot(f.session.id);
+  const snapshots = vi.spyOn(f.host, "getSessionSnapshot");
+  try {
+    f.host.subagents.update(task.agentId, { latestActivity: "cached update" });
+    expect(snapshots).not.toHaveBeenCalled();
+    const cached = f.host.getSessionSnapshot(f.session.id);
+    expect(cached.view.subagents?.[0].latestActivity).toBe("cached update");
+    for (let index = 0; index < 9; index++) f.host.getSessionSnapshot(f.host.createSession(null).id);
+    snapshots.mockClear();
+    f.host.subagents.update(task.agentId, { latestActivity: "restored update" });
+    expect(snapshots).toHaveBeenCalledExactlyOnceWith(f.session.id);
+    const restored = f.host.getSessionSnapshot(f.session.id);
+    expect(restored.view.subagents?.[0].latestActivity).toBe("restored update");
+    expect(restored.view.runs).toEqual(cached.view.runs);
+    expect(restored.seq).toBe(cached.seq + 1);
+  } finally {
+    snapshots.mockRestore();
+  }
+});
 
 test("plugin enablement is frozen on first send, including restart, and defaults to disabled", async () => {
   const f = await fixture();

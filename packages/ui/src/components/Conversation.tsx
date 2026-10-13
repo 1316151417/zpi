@@ -741,6 +741,10 @@ export function Conversation({
   onFile?: (path: string, location?: FileLocation) => void;
 }) {
   const previewAutoOpen = usePreviewAutoOpen(view);
+  const subagentContext = useMemo(
+    () => ({ tasks: view.subagents ?? [], open: onOpenSubagent }),
+    [view.subagents, onOpenSubagent],
+  );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [blocks, setBlocks] = useState<Record<string, boolean>>({});
   const lifecycle = useRef(new Map<string, boolean>());
@@ -977,7 +981,7 @@ export function Conversation({
     return () => observer.disconnect();
   }, [view.sessionId]);
   return (
-    <SubagentContext.Provider value={{ tasks: view.subagents ?? [], open: onOpenSubagent }}>
+    <SubagentContext.Provider value={subagentContext}>
       <div className="conversation-wrap">
         {findBar}
         <div

@@ -3,6 +3,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { emptyAssistant } from "zpi-ai";
 import { piTemplate, SessionManager } from "zpi-coding-agent";
+import { defaultCapabilities } from "../packages/desktop/src/shared/config.ts";
 import { fakeModel } from "./fake-server.ts";
 export function seedHistory(
   dir: string,
@@ -22,7 +23,11 @@ export function seedHistory(
     { id: options.id ?? randomUUID() },
   );
   manager.appendSessionInfo("历史标题");
-  manager.appendCustomEntry("zpi.configuration", { template: { ...piTemplate }, disabledSkillPaths: [] });
+  manager.appendCustomEntry("zpi.configuration", {
+    template: { ...piTemplate },
+    disabledSkillPaths: [],
+    ...defaultCapabilities,
+  });
   manager.appendCustomEntry("zpi.session_meta", { projectId: options.projectId ?? null, pinnedAt: null });
   manager.appendCustomEntry("zpi.title", { state: "legacy" });
   manager.appendModelChange("custom", "fake");

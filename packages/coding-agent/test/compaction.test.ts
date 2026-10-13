@@ -105,7 +105,11 @@ it("auto compacts before requests and after tools, writes replayable summaries; 
       );
       done(response, "tool_calls");
     } else {
-      send(response, chunk({ content: "done" }));
+      // Report the post-compaction context size instead of estimating the retained tool output again.
+      send(response, {
+        ...chunk({ content: "done" }),
+        usage: { prompt_tokens: 100, completion_tokens: 1, total_tokens: 101 },
+      });
       done(response);
     }
   });

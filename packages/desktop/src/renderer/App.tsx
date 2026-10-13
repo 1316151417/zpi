@@ -18,6 +18,7 @@ import {
   Conversation,
   type FileAction,
   type FileLocation,
+  type SubagentTask,
   TaskFindBar,
   type WebOpenOptions,
 } from "zpi-ui";
@@ -158,6 +159,9 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
 }
 function openLink(url: string, options?: WebOpenOptions): void {
   paneTask(openWebLink(url, options));
+}
+function showSubagent(task: SubagentTask) {
+  paneTask(openSubagent(task));
 }
 export function App() {
   const state = useStore(
@@ -733,7 +737,7 @@ export function App() {
           {view ? (
             <div className="task-body">
               <Conversation
-                onOpenSubagent={(task) => paneTask(openSubagent(task))}
+                onOpenSubagent={showSubagent}
                 previewServices={previewServices}
                 findRequest={find.open && find.scope === "conversation" ? find.request : undefined}
                 onFindStateChange={find.update}

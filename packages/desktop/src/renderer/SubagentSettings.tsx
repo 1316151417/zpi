@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CombinedSelection, Result } from "../shared/bridge.ts";
-import { availablePresets, reasoningLabels } from "../shared/config.ts";
+import { availablePresets, modelReasoningLabel } from "../shared/config.ts";
 import {
   agentColors,
   type SaveSubagentInput,
@@ -117,9 +117,9 @@ function AgentModelSelect({
             disabled={disabled}
             options={[
               ...(!presets.includes(value.reasoning)
-                ? [{ value: value.reasoning, label: reasoningLabels[value.reasoning] ?? value.reasoning }]
+                ? [{ value: value.reasoning, label: modelReasoningLabel(model, value.reasoning) }]
                 : []),
-              ...presets.map((preset) => ({ value: preset, label: reasoningLabels[preset] ?? preset })),
+              ...presets.map((preset) => ({ value: preset, label: modelReasoningLabel(model, preset) })),
             ]}
             onChange={(reasoning) => onChange({ ...value, reasoning })}
           />
@@ -267,6 +267,12 @@ export function SubagentSettings() {
     /^[a-zA-Z0-9-]{3,50}$/.test(config.name) &&
     config.description.trim() &&
     config.systemPrompt.trim();
+  const query = search.toLowerCase();
+  const visibleAgents = catalog.agents.filter(
+    (agent) =>
+      (listScope === "user" ? agent.scope !== "workspace" : agent.scope === "workspace") &&
+      `${agent.name} ${agent.description}`.toLowerCase().includes(query),
+  );
   return (
     <section className="subagent-settings" aria-label="子智能体管理">
       <header className={`subagent-settings-heading${editing ? " editing" : ""}`}>
@@ -285,17 +291,7 @@ export function SubagentSettings() {
             />
           )}
           <h2>{editing ? (editing === "new" ? "新建子智能体" : "编辑子智能体") : "子智能体"}</h2>
-          {!editing && (
-            <small>
-              {
-                catalog.agents.filter(
-                  (agent) =>
-                    (listScope === "user" ? agent.scope !== "workspace" : agent.scope === "workspace") &&
-                    `${agent.name} ${agent.description}`.toLowerCase().includes(search.toLowerCase()),
-                ).length
-              }
-            </small>
-          )}
+          {!editing && <small>{visibleAgents.length}</small>}
         </div>
         {!editing && (
           <label className="subagent-search">
@@ -508,11 +504,7 @@ export function SubagentSettings() {
           {!loaded && !error && <p role="status">正在加载子智能体…</p>}
           {(listScope === "user" ? (["user", "built-in"] as const) : (["workspace"] as const)).map(
             (scope) => {
-              const agents = catalog.agents.filter(
-                (agent) =>
-                  agent.scope === scope &&
-                  `${agent.name} ${agent.description}`.toLowerCase().includes(search.toLowerCase()),
-              );
+              const agents = visibleAgents.filter((agent) => agent.scope === scope);
               if (!agents.length && scope === "built-in") return null;
               return (
                 <section className="subagent-settings-group" key={scope}>

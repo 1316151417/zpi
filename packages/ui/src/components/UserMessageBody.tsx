@@ -7,7 +7,7 @@ const collapsedHeight = 120;
 export function UserMessageBody({ children, text }: { children: ReactNode; text: string }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(collapsedHeight);
-  const [expandable, setExpandable] = useState(false);
+  const expandable = height > collapsedHeight + 1;
   const [expanded, setExpanded] = useState(false);
   const [animate, setAnimate] = useState(true);
   useEffect(() => setExpanded(false), [text]);
@@ -19,7 +19,6 @@ export function UserMessageBody({ children, text }: { children: ReactNode; text:
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         setHeight(content.scrollHeight);
-        setExpandable(content.scrollHeight > collapsedHeight + 1);
       });
     };
     measure();

@@ -63,6 +63,27 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
         }),
       );
       done(r, "tool_calls");
+    } else if (
+      JSON.stringify(body).includes("$inspect inspect") &&
+      !JSON.stringify(body).includes("WORKSPACE SKILL")
+    ) {
+      send(
+        r,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "read-skill",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: JSON.stringify({ path: ".zpi/skills/inspect/SKILL.md" }),
+              },
+            },
+          ],
+        }),
+      );
+      done(r, "tool_calls");
     } else {
       send(r, chunk({ content: "done" }));
       done(r);
@@ -85,6 +106,11 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   expect(f.server.requests.every((r) => r.reasoning_effort === "none")).toBe(true);
   await f.host.startRun({ sessionId: s.id, text: "$inspect inspect" });
   await f.host.activeRuns.get(s.id)?.done;
+  const skillRequest = f.server.requests.find((request) =>
+    JSON.stringify(request).includes("$inspect inspect"),
+  );
+  expect(JSON.stringify(skillRequest)).toContain(join(f.workspace, ".zpi", "skills", "inspect", "SKILL.md"));
+  expect(JSON.stringify(skillRequest)).not.toContain("WORKSPACE SKILL");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("WORKSPACE SKILL");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("workspace instructions");
   const file = join(f.dir, "agent", "sessions", "_unassigned", `${s.id}.jsonl`);
