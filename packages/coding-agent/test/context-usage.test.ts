@@ -3,6 +3,20 @@ import { emptyAssistant } from "zpi-ai";
 import { contextUsage, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
+it("includes cache writes in measured context and the cache-hit denominator", () => {
+  const model = { ...fakeModel(""), contextWindow: 10000 };
+  const manager = SessionManager.inMemory();
+  const reply = emptyAssistant(model);
+  reply.usageAvailable = reply.cacheUsageAvailable = true;
+  reply.usage = { ...reply.usage, input: 10, cacheRead: 100, cacheWrite: 890, totalTokens: 1000 };
+  manager.appendMessage(reply);
+  expect(contextUsage(manager.getEntries(), model)).toMatchObject({
+    inputTokens: 1000,
+    percent: 10,
+    averageCacheHitRate: 0.1,
+  });
+});
+
 it("retains the last measured context across models and missing usage, updates on valid usage and clears on compaction", () => {
   const model = fakeModel("");
   const other = { ...model, id: "other", provider: "other", contextWindow: 10000 };

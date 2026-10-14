@@ -43,7 +43,7 @@ async function fixture() {
       isError: false,
       result: { content: [{ type: "text", text: `result:${id}` }], details: undefined },
     });
-  return { manager, journal, message, call, start, end, file: manager.getSessionFile() as string };
+  return { manager, journal, message, call, second, start, end, file: manager.getSessionFile() as string };
 }
 
 for (const completed of [false, true]) {
@@ -105,6 +105,11 @@ it("merges independent call records in declaration order and recovers the gap af
   });
   const projected = projectStreamedToolJournal(f.manager.getEntries());
   expect(projected.filter((e) => e.type === "message" && e.message.role === "assistant")).toHaveLength(1);
+  expect(
+    projected.flatMap((e) =>
+      e.type === "message" && e.message.role === "toolResult" ? [e.message.toolCallId] : [],
+    ),
+  ).toEqual(["read", "second"]);
   const reopened = SessionManager.open(f.file);
   expect(
     reopened
@@ -113,6 +118,56 @@ it("merges independent call records in declaration order and recovers the gap af
       .map((m) => m.toolCallId),
   ).toEqual(["read", "second"]);
   expect(reopened.buildSessionContext().messages.filter((m) => m.role === "assistant")).toHaveLength(1);
+});
+
+for (const canonical of [false, true]) {
+  it(`restores mixed streamed and deferred calls in declaration order ${canonical ? "after" : "before"} assistant commit`, async () => {
+    const f = await fixture();
+    f.start("second");
+    f.end("second");
+    const final = { ...f.message, stopReason: "toolUse" as const };
+    f.journal.observe({ type: "message_end", message: final });
+    if (canonical) f.manager.appendMessage(final);
+    const entries = f.manager.getEntries();
+    const projected = projectStreamedToolJournal(entries);
+    expect(
+      projected.flatMap((e) =>
+        e.type === "message" && e.message.role === "toolResult" ? [e.message.toolCallId] : [],
+      ),
+    ).toEqual(["read", "second"]);
+    const reopened = SessionManager.open(f.file);
+    const messages = reopened.buildSessionContext().messages;
+    expect(messages.filter((m) => m.role === "assistant")).toHaveLength(1);
+    expect(messages.filter((m) => m.role === "toolResult")).toMatchObject([
+      { toolCallId: "read", isError: true, details: { reason: "unknown_execution_state" } },
+      { toolCallId: "second", isError: false, content: [{ text: "result:second" }] },
+    ]);
+    const recovered = await readFile(f.file, "utf8");
+    SessionManager.open(f.file);
+    expect(await readFile(f.file, "utf8")).toBe(recovered);
+  });
+}
+
+it("checkpoints calls supplied only by the final response before any execution starts", async () => {
+  const f = await fixture();
+  f.journal.observe({ type: "message_start", message: emptyAssistant(fakeModel("")) });
+  f.journal.observe({ type: "message_end", message: f.message });
+  f.manager.appendMessage(f.message);
+  f.journal.observe({
+    type: "tool_execution_start",
+    toolCallId: f.second.id,
+    toolName: f.second.name,
+    args: f.second.arguments,
+  });
+  f.end("second");
+  expect(
+    SessionManager.open(f.file)
+      .buildSessionContext()
+      .messages.filter((m) => m.role === "toolResult"),
+  ).toMatchObject([
+    { toolCallId: "read", isError: true },
+    { toolCallId: "second", isError: false },
+  ]);
 });
 
 it("a committed journal does not resurrect calls or add model messages", async () => {

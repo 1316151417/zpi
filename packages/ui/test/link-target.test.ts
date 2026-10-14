@@ -81,6 +81,54 @@ describe("Markdown link targets", () => {
     expect(resolveLinkTarget("~/file.txt")).toBeNull();
     expect(resolveLinkTarget("~/file.txt", { home: "relative" })).toBeNull();
   });
+  it.each([
+    ["/project", "/project/docs/readme.md", "/project"],
+    ["C:\\Project", "c:\\project\\docs\\readme.md", "C:/Project"],
+    ["\\\\server\\share", "\\\\server\\share\\docs\\readme.md", "//server/share"],
+  ])(
+    "resolves preview links beside %s documents while retaining workspace bounds",
+    (cwd, documentPath, root) => {
+      const preview = { cwd, documentPath };
+      expect(resolveLinkTarget("images/x.png", preview)).toEqual({
+        kind: "file",
+        path: `${root}/docs/images/x.png`,
+        relative: true,
+      });
+      expect(resolveLinkTarget("guide.md#L2-L4", preview)).toMatchObject({
+        path: `${root}/docs/guide.md`,
+        line: 2,
+        endLine: 4,
+        relative: true,
+      });
+      expect(resolveLinkTarget("../README.md", preview)).toMatchObject({
+        path: `${root}/README.md`,
+        relative: true,
+      });
+      for (const raw of ["../../outside.md", "../%2e%2e/outside.md", "images/../../../outside.png"])
+        expect(resolveLinkTarget(raw, preview)).toBeNull();
+      expect(resolveLinkTarget("guide.md", { cwd })).toMatchObject({ path: `${root}/guide.md` });
+      expect(resolveLinkTarget("../README.md", { cwd })).toBeNull();
+    },
+  );
+  it("keeps preview link bases within the actual workspace and preserves explicit destinations", () => {
+    for (const documentPath of ["/other/docs/readme.md", "/project-other/readme.md", "docs/readme.md"])
+      expect(resolveLinkTarget("guide.md", { cwd: "/project", documentPath })).toBeNull();
+    const preview = { ...context, documentPath: "/workspace/project/docs/readme.md" };
+    for (const raw of ["/tmp/report.md", "~/report.md", "https://example.com/guide"])
+      expect(resolveLinkTarget(raw, preview)).toEqual(resolveLinkTarget(raw, context));
+    expect(resolveLinkTarget("guide.md", { documentPath: "/project/docs/readme.md" })).toBeNull();
+  });
+  it.each([
+    ["/", "/readme.md", "/guide.md"],
+    ["C:\\", "C:\\readme.md", "C:/guide.md"],
+    ["/project/", "/project/readme.md", "/project/guide.md"],
+  ])("handles workspace roots without dropping their separators: %s", (cwd, documentPath, path) => {
+    expect(resolveLinkTarget("guide.md", { cwd, documentPath })).toEqual({
+      kind: "file",
+      path,
+      relative: true,
+    });
+  });
 });
 describe("file location suffixes", () => {
   it.each([

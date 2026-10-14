@@ -16,7 +16,8 @@ export function measureContextBreakdown(payload: JsonObject): ContextBreakdownIt
     return content
       .map((block) => {
         if (!block || typeof block !== "object") return "";
-        if (block.type === "text") return block.text ?? "";
+        if (block.type === "text" || block.type === "input_text" || block.type === "output_text")
+          return block.text ?? "";
         if (block.type === "thinking") return block.thinking ?? "";
         if (block.type === "tool_use") return JSON.stringify(block.input ?? {});
         if (block.type === "tool_result") return textContent(block.content);

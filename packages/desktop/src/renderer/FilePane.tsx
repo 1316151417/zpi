@@ -72,6 +72,10 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
     if (preview.location?.line) setRenderMarkdown(false);
   }, [preview]);
   const workspace = useWorkspace(sessionId);
+  const markdownWorkspace = useMemo(
+    () => ({ ...workspace, documentPath: preview.path }),
+    [workspace, preview.path],
+  );
   // Refresh reloads embedded images; unrelated UI renders do not repeat filesystem reads.
   const readImage = useCallback(
     (path: string, location?: FileLocation) => readMarkdownImage(sessionId, path, location),
@@ -166,7 +170,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
               data-selection-title={preview.path}
             >
               <Markdown
-                workspace={workspace}
+                workspace={markdownWorkspace}
                 onImage={readImage}
                 onDownloadImage={downloadImage}
                 text={preview.text}

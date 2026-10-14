@@ -3,10 +3,61 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { buildSelectionPrompt } from "zpi-ui/selections";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { clipboardText, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
+
+test("editing a queued quoted message preserves its reference cards and resubmitted context", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-queue-quotes-"));
+  const server = await fakeServer((_body, response) => {
+    send(response, chunk({ content: "waiting" }));
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    const cwd = join(dir, "workspace");
+    await mkdir(cwd);
+    const id = seedHistory(dir, cwd, 1).id;
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await select(page, id);
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("hold");
+    await editor.press("Enter");
+    await expect(page.getByLabel("停止", { exact: true })).toBeVisible();
+    const selections = [{ text: "const result = 1;", path: join(cwd, "example.ts") }];
+    for (const text of ["解释一下", ""]) {
+      const prompt = buildSelectionPrompt(text, selections);
+      const queued = await page.evaluate(
+        ({ id, prompt }) => window.zpi.submitInput({ sessionId: id, text: prompt }),
+        { id, prompt },
+      );
+      expect(queued.ok).toBe(true);
+      const row = page.getByTestId("queue-item");
+      await expect(row).toHaveCount(1);
+      await row.getByLabel("编辑", { exact: true }).click();
+      await expect(row).toHaveCount(0);
+      await expect(editor).toHaveText(text);
+      await expect(page.locator(".composer-container .selection-reference-chip")).toHaveAttribute(
+        "data-conversation-selection-reference-count",
+        "1",
+      );
+      await editor.press("Enter");
+      await expect(row).toHaveCount(1);
+      const snapshot = await page.evaluate((id) => window.zpi.getSessionSnapshot(id), id);
+      if (!snapshot.ok) throw new Error(snapshot.error.message);
+      expect(snapshot.value.view.queue?.items[0]?.text).toBe(prompt);
+      await row.getByLabel("移除待发送消息", { exact: true }).click();
+      await expect(row).toHaveCount(0);
+      await expect(page.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
+    }
+  } finally {
+    await app?.close();
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("queued messages reorder, edit, delete, send immediately and persist through stop/restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-queue-ui-"));

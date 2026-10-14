@@ -39,7 +39,7 @@ interface RunBoundary {
   auxiliary?: boolean;
 }
 interface IndexData {
-  version: 10;
+  version: 11;
   searchText: import("../shared/task-search.ts").TaskSearchText[];
   size: number;
   modified: number;
@@ -70,7 +70,7 @@ export class HistoryIndex {
     const index = new HistoryIndex(path),
       stat = statSync(path);
     index.data = {
-      version: 10,
+      version: 11,
       searchText: [],
       size: stat.size,
       modified: stat.mtimeMs,
@@ -90,7 +90,7 @@ export class HistoryIndex {
     try {
       const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
       if (
-        cached.version === 10 &&
+        cached.version === 11 &&
         cached.size === stat.size &&
         cached.modified === stat.mtimeMs &&
         cached.header &&
@@ -108,7 +108,7 @@ export class HistoryIndex {
     this.searchChars = 0;
     this.currentRun = "";
     this.data = {
-      version: 10,
+      version: 11,
       searchText: [],
       size: 0,
       modified: 0,
@@ -256,7 +256,7 @@ export class HistoryIndex {
         d.state.usage = { ...entry, message: { ...m, content: [] } };
         if (m.cacheUsageAvailable === true) {
           d.cacheRead += m.usage.cacheRead;
-          d.cacheInput += m.usage.input + m.usage.cacheRead;
+          d.cacheInput += m.usage.input + m.usage.cacheRead + m.usage.cacheWrite;
         }
       }
     }

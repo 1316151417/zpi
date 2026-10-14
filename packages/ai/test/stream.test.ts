@@ -172,6 +172,49 @@ describe("OpenAI streaming contract", () => {
     expect(messages.map((m) => m.role)).toEqual(["assistant", "tool", "user"]);
     expect(messages[1].tool_call_id).toBe("c");
   });
+  it.each([false, true])(
+    "keeps parallel tool results together before image messages (following prompt: %s)",
+    async (followingPrompt) => {
+      const s = await server((_, r) => done(r));
+      const model = fakeModel(s.url);
+      const context = normalizeContext({
+        messages: [
+          {
+            ...emptyAssistant(model),
+            stopReason: "toolUse",
+            content: [
+              { type: "toolCall", id: "a", name: "read", arguments: { path: "a.png" } },
+              { type: "toolCall", id: "b", name: "read", arguments: { path: "b.png" } },
+            ],
+          },
+          ...["a", "b"].map((id) => ({
+            role: "toolResult" as const,
+            toolCallId: id,
+            toolName: "read",
+            content: [{ type: "image" as const, data: "aA==", mimeType: "image/png" }],
+            isError: false,
+            timestamp: 0,
+          })),
+          ...(followingPrompt ? [{ role: "user" as const, content: "Compare them", timestamp: 1 }] : []),
+        ],
+      });
+      const original = structuredClone(context);
+      const result = await streamSimple(model, context, { apiKey: "local" }).result();
+      expect(result.stopReason).toBe("stop");
+      const messages = s.requests[0].messages as unknown as { role: string; tool_call_id?: string }[];
+      expect(messages.map((message) => message.role)).toEqual([
+        "assistant",
+        "tool",
+        "tool",
+        "user",
+        "user",
+        ...(followingPrompt ? ["user"] : []),
+      ]);
+      expect(messages.slice(1, 3).map((message) => message.tool_call_id)).toEqual(["a", "b"]);
+      if (followingPrompt) expect(messages.at(-1)).toMatchObject({ content: "Compare them" });
+      expect(context).toEqual(original);
+    },
+  );
 });
 
 it("maxRetries: 0 disables provider retries", async () => {

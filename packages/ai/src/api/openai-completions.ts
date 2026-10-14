@@ -53,11 +53,17 @@ function imagePart(c: ImageContent): { type: "image_url"; image_url: { url: stri
 }
 function serialize(context: TranscriptContext, model: Model): ChatCompletionMessageParam[] {
   const messages: ChatCompletionMessageParam[] = [];
+  const toolImages: ChatCompletionMessageParam[] = [];
+  const flushToolImages = () => {
+    messages.push(...toolImages);
+    toolImages.length = 0;
+  };
   const prompt = getCurrentSystemPrompt(context.messages);
   if (prompt)
     messages.push({ role: model.compat?.supportsDeveloperRole ? "developer" : "system", content: prompt });
   for (const m of transformMessages(context.messages, model)) {
     if (m.role === "system") continue;
+    if (m.role !== "toolResult") flushToolImages();
     if (m.role === "user") {
       messages.push({
         role: "user",
@@ -106,15 +112,16 @@ function serialize(context: TranscriptContext, model: Model): ChatCompletionMess
             .map((c) => c.text)
             .join("\n") || "Image result attached.",
       });
-      // Tool role does not support images. Keep its pairing, then send legal visual input.
+      // Keep every tool result adjacent to its assistant batch before sending visual input.
       const images = m.content.filter((c) => c.type === "image");
       if (images.length && model.input.includes("image"))
-        messages.push({
+        toolImages.push({
           role: "user",
           content: [{ type: "text", text: `Images from tool ${m.toolCallId}:` }, ...images.map(imagePart)],
         });
     }
   }
+  flushToolImages();
   return messages;
 }
 export function streamSimple(model: Model, context: TranscriptContext, options: SimpleStreamOptions = {}) {

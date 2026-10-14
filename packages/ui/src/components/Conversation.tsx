@@ -1571,8 +1571,7 @@ export function ChatComposer({
     drafts.current.submitting.add(id);
     try {
       const restored = await queueActions.edit(itemId);
-      const parsed = parseSelectionPrompt(restored.text);
-      drafts.current.set(id, { ...restored, text: parsed.text, selections: parsed.selections });
+      drafts.current.set(id, restored);
       if (currentSession.current === id) {
         requestAnimationFrame(() => {
           if (currentSession.current !== id) return;

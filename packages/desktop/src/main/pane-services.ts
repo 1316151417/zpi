@@ -4,6 +4,7 @@ import { type BrowserWindow, session, WebContentsView } from "electron";
 import type { IPty } from "node-pty";
 import type { BrowserState, PaneBounds, PaneEvent } from "../shared/bridge.ts";
 import { browserUrl } from "./browser-url.ts";
+import { terminalShell } from "./terminal-shell.ts";
 export class PaneServices {
   private terminals = new Map<string, IPty>();
   private browsers = new Map<string, { view: WebContentsView; error?: string }>();
@@ -17,12 +18,12 @@ export class PaneServices {
   async createTerminal(cwd: string) {
     if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
     const { spawn } = await import("node-pty");
-    const shell = process.env.SHELL || "/bin/zsh";
+    const { shell, args } = terminalShell();
     const env = Object.fromEntries(
       Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     delete env.ELECTRON_RUN_AS_NODE;
-    const pty = spawn(shell, ["-l"], {
+    const pty = spawn(shell, args, {
       name: "xterm-256color",
       cwd,
       cols: 80,

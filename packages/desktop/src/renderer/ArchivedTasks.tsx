@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Folder, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
+import { deleteSessionWithPanes } from "./pane-store.ts";
 import { refresh, unwrap, useStore } from "./store.ts";
 
 type ArchivedRecord = SessionRecord & { projectName: string };
@@ -38,7 +39,7 @@ export function ArchivedTasks() {
     try {
       for (const r of targets) {
         try {
-          unwrap(await window.zpi.deleteSession(r.id));
+          await deleteSessionWithPanes(r.id);
         } catch (e) {
           failures.push(`${r.title}：${e instanceof Error ? e.message : String(e)}`);
         }

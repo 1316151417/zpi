@@ -1759,6 +1759,16 @@ export class SessionHost {
     }
     return lines.join("\n");
   }
+  private async resolveInputReferences(id: string, references: string[]): Promise<string[]> {
+    const inputReferences: string[] = [];
+    for (const path of references) {
+      const actual = await this.referencedFile(id, path);
+      // Keep the original references in the transcript, but give tools real paths,
+      // not destinations whose trailing line/column would become part of a filename.
+      inputReferences.push(splitFileLocation(path)?.location.line ? actual : path);
+    }
+    return [...new Set(inputReferences)];
+  }
   private async loadInput(input: RunInput) {
     const { sessionId: id, text } = input;
     validateRunInputText(input);
@@ -1770,18 +1780,12 @@ export class SessionHost {
       new Set(references).size !== references.length
     )
       throw new Error("invalid_input: 文件引用列表无效");
-    const inputReferences: string[] = [];
-    for (const path of references) {
-      const actual = await this.referencedFile(id, path);
-      // Keep the original references in the transcript, but give tools real paths,
-      // not destinations whose trailing line/column would become part of a filename.
-      inputReferences.push(splitFileLocation(path)?.location.line ? actual : path);
-    }
+    const inputReferences = await this.resolveInputReferences(id, references);
     const loaded = await this.attachments.load(id, input.attachments ?? []);
     const parsed = parseInput(text);
     if ((references.length || loaded.metadata.length) && parsed.kind === "compact")
       throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
-    return { references, inputReferences: [...new Set(inputReferences)], loaded, parsed };
+    return { references, inputReferences, loaded, parsed };
   }
   submitInput(input: RunInput, disposition?: "keep" | "clear") {
     this.record(input.sessionId);
@@ -1942,6 +1946,7 @@ export class SessionHost {
         "zpi.title",
         "zpi.selection",
         "zpi.configuration",
+        "zpi.environment",
         "zpi.queue",
       ]);
       const metadata: SessionEntry[] = [];
@@ -2035,7 +2040,9 @@ export class SessionHost {
     let started = false;
     try {
       const manager = this.manager(id);
-      const { references, inputReferences, loaded, parsed } = await this.loadInput(input);
+      const loadedInput = await this.loadInput(input);
+      const { references, loaded, parsed } = loadedInput;
+      let inputReferences = loadedInput.inputReferences;
       const context = manager.buildSessionContext();
       if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
       if (
@@ -2143,6 +2150,9 @@ export class SessionHost {
             worktree,
           });
           this.emit(id, run.runId, { type: "run_preparation", message: null });
+          // References were validated in the source checkout before acceptance.
+          // Resolve them again after checkout so relative paths use the selected branch.
+          inputReferences = await this.resolveInputReferences(id, references);
         }
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         const runtime = this.runtimes.get(id) ?? (await ModelRuntime.create({ fetch: this.requestFetch }));
