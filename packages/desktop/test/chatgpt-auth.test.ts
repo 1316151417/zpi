@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -130,7 +130,7 @@ it("uses dynamic registration, validates state and OIDC identity, discovers acco
   });
   expect(result.settings.providers[0].models).toHaveLength(4);
   expect(JSON.stringify(result.settings)).not.toContain("private-");
-  expect(await readFile(join(dir, "settings.json"), "utf8")).not.toContain("private-");
+  expect(JSON.stringify(settings.state.getSetting("app"))).not.toContain("private-");
   expect(settings.getProviderCredentials(result.providerId)).toEqual({ apiKey: "" });
   expect(await new SettingsStore(dir, codec).getRequestApiKey(result.providerId)).toBe("private-access");
   await auth.disconnect(result.providerId);

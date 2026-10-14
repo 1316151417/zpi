@@ -305,3 +305,22 @@ it.each(["error", "length", "aborted"] as const)(
     }
   },
 );
+
+it("pairs a reused tool ID only with results in the same assistant turn", async () => {
+  const { unresolvedCanonicalToolCalls } = await import("../src/core/streaming-tool-journal.ts");
+  const call: ToolCall = { type: "toolCall", id: "same", name: "read", arguments: { path: "a" } };
+  const assistant: AssistantMessage = { ...emptyAssistant(fakeModel("")), content: [call] };
+  const result: Message = {
+    role: "toolResult",
+    toolCallId: "same",
+    toolName: "read",
+    content: [],
+    isError: false,
+    timestamp: 0,
+  };
+  expect(unresolvedCanonicalToolCalls([assistant, result, structuredClone(assistant)])).toEqual([call]);
+  expect(unresolvedCanonicalToolCalls([assistant, result, structuredClone(assistant), result])).toEqual([]);
+  expect(() => unresolvedCanonicalToolCalls([assistant, structuredClone(assistant)])).toThrow(
+    "later assistant turn",
+  );
+});

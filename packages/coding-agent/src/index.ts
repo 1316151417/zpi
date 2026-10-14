@@ -44,6 +44,7 @@ export {
   FileReadState,
 } from "./core/tools/index.ts";
 export { getShellConfig, getShellEnv, killProcessTree } from "./core/tools/pi/utils/shell.ts";
+export * from "./core/transcript-store.ts";
 export type {
   ExtensionToolContext,
   ResourceDiagnostic,

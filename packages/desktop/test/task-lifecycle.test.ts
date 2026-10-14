@@ -1,7 +1,6 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
@@ -39,11 +38,11 @@ it("running tasks reject archive/restore/delete while metadata rename and pin pr
   await expect.poll(() => f.host.getSessionSnapshot(id).view.runs[0].orderedBlocks.length).toBe(1);
   const before = f.host.getSessionSnapshot(id).view.runs;
   const file = join(f.dir, "agent", "sessions", f.a.id, `${id}.jsonl`);
-  const context = SessionManager.open(file).buildSessionContext();
+  const context = await readFile(file, "utf8");
   f.host.renameSession(id, "手动任务名");
   f.host.setSessionPinned(id, true);
   expect(f.host.getSessionSnapshot(id).view.runs).toEqual(before);
-  expect(SessionManager.open(file).buildSessionContext()).toEqual(context);
+  expect(await readFile(file, "utf8")).toEqual(context);
   await expect(f.host.archiveSession(id)).rejects.toThrow("请先停止运行");
   expect(() => f.host.restoreSession(id)).toThrow("请先停止运行");
   await expect(f.host.deleteSession(id)).rejects.toThrow("请先停止运行");
@@ -128,5 +127,7 @@ it("damaged tasks are listed for deletion, cannot restore, and deletion removes 
   ])
     await expect(access(path)).rejects.toThrow();
   expect(reopened.listArchivedSessions()).toEqual([]);
-  expect(await readFile(join(f.dir, "projects.json"), "utf8")).toContain(f.a.path);
+  expect(f.settings.state.listProjects().some((p) => p.path === f.a.path)).toBe(true);
+  expect(f.settings.state.getTask(id)).toBeUndefined();
+  expect(f.settings.state.getDraft(id)).toBeUndefined();
 });

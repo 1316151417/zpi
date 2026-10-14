@@ -1,0 +1,130 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, expect, test, vi } from "vitest";
+import { StateStore } from "../src/main/state-store.ts";
+import {
+  acquireStorageLock,
+  openStorageGeneration,
+  readActiveGeneration,
+} from "../src/main/storage-generation.ts";
+
+const roots: string[] = [];
+function root() {
+  const path = mkdtempSync(join(tmpdir(), "zpi-generation-"));
+  roots.push(path);
+  return path;
+}
+function initialize(path: string) {
+  new StateStore(join(path, "state.sqlite")).close();
+}
+afterEach(() => {
+  for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true });
+});
+test("fresh generation publishes once and reopens the exact authoritative database", () => {
+  const dir = root();
+  const first = openStorageGeneration(dir, initialize);
+  const db = new StateStore(join(first.directory, "state.sqlite"));
+  db.setSetting("example", { value: 42 });
+  db.close();
+  first.close();
+  const second = openStorageGeneration(dir, () => {
+    throw new Error("must not initialize twice");
+  });
+  expect(second.marker.generationId).toBe(first.marker.generationId);
+  const reopened = new StateStore(join(second.directory, "state.sqlite"));
+  expect(reopened.getSetting("example")).toEqual({ value: 42 });
+  reopened.close();
+  second.close();
+});
+test("legacy data is not loaded, mutated, or implicitly migrated", () => {
+  const dir = root();
+  const old = '{"private":"unchanged"}';
+  writeFileSync(join(dir, "settings.json"), old);
+  expect(() => openStorageGeneration(dir, initialize)).toThrow("独立 storage-migrate");
+  expect(readFileSync(join(dir, "settings.json"), "utf8")).toBe(old);
+  expect(existsSync(join(dir, "active-generation.json"))).toBe(false);
+  expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
+});
+test("failed initialization never publishes or falls back to an unready directory", () => {
+  const dir = root();
+  expect(() =>
+    openStorageGeneration(dir, () => {
+      throw new Error("injected failure");
+    }),
+  ).toThrow("injected failure");
+  expect(readActiveGeneration(dir)).toBeUndefined();
+  const result = openStorageGeneration(dir, initialize);
+  result.close();
+});
+test("runtime and migration share an exclusive maintenance lock", () => {
+  const dir = root();
+  const release = acquireStorageLock(dir, "migration");
+  expect(() => openStorageGeneration(dir, initialize)).toThrow("存储已锁定");
+  release();
+  release();
+  const result = openStorageGeneration(dir, initialize);
+  result.close();
+});
+test("bad pointer and missing database fail closed rather than recreating user state", () => {
+  const dir = root();
+  writeFileSync(
+    join(dir, "active-generation.json"),
+    JSON.stringify({ format: 2, generationId: "../../outside", schemaVersion: 1, transcriptVersion: 2 }),
+  );
+  expect(() => readActiveGeneration(dir)).toThrow("标识无效");
+  const marker = { format: 2, generationId: "incomplete", schemaVersion: 1, transcriptVersion: 2 };
+  mkdirSync(join(dir, "storage", "incomplete"), { recursive: true });
+  writeFileSync(join(dir, "storage", "incomplete", "ready.json"), JSON.stringify(marker));
+  writeFileSync(join(dir, "active-generation.json"), JSON.stringify(marker));
+  expect(() => openStorageGeneration(dir, initialize)).toThrow("未完整发布");
+});
+
+test("never publishes an empty or partial initialized database and releases its lock", () => {
+  const dir = root();
+  expect(() => openStorageGeneration(dir, (path) => writeFileSync(join(path, "state.sqlite"), ""))).toThrow(
+    "offline migration",
+  );
+  expect(existsSync(join(dir, "active-generation.json"))).toBe(false);
+  expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
+});
+test("refuses a truncated active database without repair or leaving a lock", () => {
+  const dir = root();
+  const generation = openStorageGeneration(dir, initialize);
+  generation.close();
+  const file = join(generation.directory, "state.sqlite");
+  writeFileSync(file, "");
+  expect(() => openStorageGeneration(dir, initialize)).toThrow("offline migration");
+  expect(readFileSync(file)).toHaveLength(0);
+  expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
+});
+test("does not replace existing published state when its active pointer is lost", () => {
+  const dir = root();
+  const generation = openStorageGeneration(dir, initialize);
+  generation.close();
+  rmSync(join(dir, "active-generation.json"));
+  expect(() => openStorageGeneration(dir, initialize)).toThrow("缺少活动指针");
+  expect(existsSync(join(generation.directory, "state.sqlite"))).toBe(true);
+  expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
+});
+
+test("reopens an active generation without scanning all database pages", () => {
+  const dir = root();
+  const initial = openStorageGeneration(dir, initialize);
+  initial.close();
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    const reopened = openStorageGeneration(dir, initialize);
+    const state = new StateStore(join(reopened.directory, "state.sqlite"));
+    state.close();
+    reopened.close();
+    expect(
+      prepare.mock.calls
+        .map(([sql]) => sql)
+        .filter((sql) => /(?:integrity_check|quick_check|foreign_key_check)/i.test(sql)),
+    ).toEqual([]);
+  } finally {
+    prepare.mockRestore();
+  }
+});

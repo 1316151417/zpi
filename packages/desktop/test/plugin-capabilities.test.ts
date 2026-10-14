@@ -97,7 +97,7 @@ test("snapshots prompt plugins on first send and keeps them when global settings
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults all plugin capabilities on and preserves saved choices when filling missing settings", async () => {
+test("defaults all plugin capabilities on and preserves saved choices in SQLite", async () => {
   const f = await fixture();
   expect(f.settings.get().capabilities).toEqual({
     subagents: true,
@@ -107,9 +107,8 @@ test("defaults all plugin capabilities on and preserves saved choices when filli
     fileContextReuse: true,
     proactiveExecution: true,
   });
-  const path = join(f.dir, "settings.json");
-  const settings = JSON.parse(await readFile(path, "utf8"));
-  await writeFile(path, JSON.stringify({ ...settings, capabilities: { askUserQuestion: false } }));
+  const settings = f.settings.state.getSetting<Record<string, unknown>>("app");
+  f.settings.setCapabilityEnabled("askUserQuestion", false);
   const restored = new SettingsStore(f.dir, codec);
   expect(restored.get().capabilities).toEqual({
     subagents: true,
@@ -130,7 +129,7 @@ test("defaults all plugin capabilities on and preserves saved choices when filli
   expect(saved.capabilities.fileContextReuse).toBe(false);
   expect(saved.capabilities.proactiveExecution).toBe(false);
   expect(new SettingsStore(f.dir, codec).get().capabilities.fileLinks).toBe(false);
-  await writeFile(path, JSON.stringify({ ...settings, capabilities: true }));
+  f.settings.state.setSetting("app", { ...settings, capabilities: true });
   expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");
 });
 

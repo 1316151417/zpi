@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
@@ -6,7 +6,7 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
-it("medium, xhigh and max survive task reload and reach the provider unchanged; obsolete settings selections are cleared", async () => {
+it("medium, xhigh and max survive task reload and reach the provider unchanged; changing global defaults does not overwrite task state", async () => {
   const f = await fixture((_, response) => {
     send(response, chunk({ content: "ok" }));
     done(response);
@@ -20,16 +20,13 @@ it("medium, xhigh and max survive task reload and reach the provider unchanged; 
     expect(f.host.getSessionSnapshot(task.id).controls?.thinkingLevel).toBe(reasoning);
   }
   await f.host.close();
-  const file = join(f.dir, "settings.json");
-  const old = JSON.parse(await readFile(file, "utf8"));
-  old.lastSelection.reasoning = "disabled";
-  await writeFile(file, JSON.stringify(old));
+  f.settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
   const settings = new SettingsStore(f.dir, {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.alloc(0),
     decryptString: () => "",
   });
-  expect(settings.get().lastSelection).toBeNull();
+  expect(settings.get().lastSelection?.reasoning).toBe("none");
   const host = new SessionHost(f.dir, settings, join(f.dir, "agent"), undefined, undefined);
   cleanup.push(() => host.close());
   await host.init();

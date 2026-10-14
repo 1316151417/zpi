@@ -12,11 +12,18 @@ export function sessionReferenceTranscript(
   sessionId: string,
   entries: SessionEntry[],
 ): string {
+  return sessionReferenceTranscriptReverse(title, sessionId, entries.slice().reverse());
+}
+
+export function sessionReferenceTranscriptReverse(
+  title: string,
+  sessionId: string,
+  newestFirst: Iterable<SessionEntry>,
+): string {
   const chunks: string[] = [];
   let characters = 0;
   let truncated = false;
-  for (let index = entries.length - 1; index >= 0; index--) {
-    const entry = entries[index];
+  for (const entry of newestFirst) {
     let heading: string;
     let text: string;
     if (

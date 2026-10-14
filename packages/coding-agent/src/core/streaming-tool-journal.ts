@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentEvent } from "zpi-agent";
-import type { AssistantMessage, JsonValue, Message, ToolResultMessage } from "zpi-ai";
+import type { AssistantMessage, JsonValue, Message, ToolCall, ToolResultMessage } from "zpi-ai";
 import { isJsonObject } from "zpi-ai";
 import { validateMessage } from "./record-validation.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
@@ -200,9 +200,11 @@ function interruptedMessages(entries: SessionEntry[]): { index: number; id: stri
 }
 
 export function recoverStreamedToolJournal(manager: SessionManager): void {
-  for (const { id, messages } of interruptedMessages(manager.getEntries())) {
-    for (const message of messages) manager.appendMessage(message);
-    manager.appendCustomEntry(JOURNAL_TYPE, { id, committed: true });
+  for (const entries of manager.unresolvedToolJournals()) {
+    for (const { id, messages } of interruptedMessages(entries)) {
+      for (const message of messages) manager.appendMessage(message);
+      manager.appendCustomEntry(JOURNAL_TYPE, { id, committed: true });
+    }
   }
 }
 
@@ -225,4 +227,23 @@ export function projectStreamedToolJournal(entries: SessionEntry[]): SessionEntr
         ),
       ),
   ]);
+}
+
+/** Pair results within their declaring assistant turn, never by a global call-ID set. */
+export function unresolvedCanonicalToolCalls(messages: Message[]): ToolCall[] {
+  const pending = new Map<string, ToolCall>();
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      if (pending.size)
+        throw new Error("Invalid transcript: unresolved tool call before a later assistant turn");
+      for (const part of message.content) {
+        if (part.type !== "toolCall") continue;
+        if (pending.has(part.id)) throw new Error("Invalid transcript: duplicate tool call in one turn");
+        pending.set(part.id, part);
+      }
+    } else if (message.role === "toolResult") {
+      pending.delete(message.toolCallId);
+    }
+  }
+  return [...pending.values()];
 }

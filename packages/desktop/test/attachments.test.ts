@@ -65,6 +65,9 @@ test("opaque image ownership, actual image_url, raw visible references, restart 
   });
   expect(JSON.stringify(snapshot)).not.toContain("base64");
   expect(JSON.stringify(snapshot)).not.toContain((await f.host.readAttachment(f.session.id, image.id)).data);
+  await f.host.removeAttachment(f.session.id, image.id);
+  expect((await f.host.readAttachment(f.session.id, image.id)).data).toBeTruthy();
+  await f.host.close();
   const restarted = new SessionHost(
     f.dir,
     new SettingsStore(f.dir, codec),
@@ -76,8 +79,6 @@ test("opaque image ownership, actual image_url, raw visible references, restart 
   cleanup.push(() => restarted.close());
   expect(restarted.getSessionSnapshot(f.session.id).view.runs[0].attachments?.[0].id).toBe(image.id);
   expect((await restarted.readAttachment(f.session.id, image.id)).metadata.name).toBe("original.jpg");
-  await f.host.removeAttachment(f.session.id, image.id);
-  expect((await f.host.readAttachment(f.session.id, image.id)).data).toBeTruthy();
   await restarted.deleteSession(f.session.id);
   expect(existsSync(join(f.dir, "agent", "attachments", f.session.id))).toBe(false);
 });

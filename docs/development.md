@@ -12,7 +12,9 @@
 
 ## 本地数据与凭据
 
-模型配置在应用数据目录的 `settings.json`，加密凭据在 `credentials.enc`，会话在 `agent/sessions`。任务分组、成员和手工顺序由主进程原子保存到 `task-groups.json`；折叠状态和视图选择是 renderer 本地偏好。分组不修改会话工作目录，删除分组不会删除会话。
+本分支使用 SQLite 存储当前业务状态，JSONL v2 存储会话事实。应用数据根的 `active-generation.json` 指向 `storage/<generationId>/`；该目录包含 `state.sqlite`、`credentials.enc`、`agent/sessions` 和受控附件等文件。设置、项目、任务、草稿、队列与分组从 SQLite 读取，不再加载旧 `settings.json`、`projects.json` 或 `task-groups.json`。附件仍保留专用文件与 `index.json`，不是所有 JSON 都被删除。折叠状态和视图选择仍是 renderer 本地偏好。分组不修改工作目录，删除分组不删除会话。
+
+发现旧数据但没有已激活的新 generation 时，启动会拒绝继续，并要求离线迁移；不会自动转换或回退读取。可用 `ZPI_DATA_DIR="/absolute/path/to/trial" npm run dev` 覆盖数据根进行隔离试用（只隔离数据，不隔离项目或权限）。个人智能体正文保留为 generation 内 `agents/*.md`，启用/选择状态在 SQLite 的 `subagentProfiles` 配置中。完整合同、隔离试用、迁移命令与回滚限制见 [SQLite 存储说明](specs/sqlite-storage.md)。
 
 macOS 数据目录：
 
@@ -29,7 +31,7 @@ macOS 数据目录：
 
 ## 异常日志
 
-日志位于应用数据目录的 `agent/logs/error.log`，与 `agent/sessions` 同级。每行是一个 JSON 记录，包含时间、来源、错误消息、可用堆栈及相关会话/运行 ID。
+日志位于应用数据根的 `agent/logs/error.log`；会话位于活动 generation 的 `agent/sessions`，两者不再是同一个根下的同级目录。每行是一个 JSON 记录，包含时间、来源、错误消息、可用堆栈及相关会话/运行 ID。
 
 达到 5 MB 后轮换为 `error.log.1`，保留一份旧日志。日志仅存本机，不记录 IPC 参数、完整请求或聊天内容，并屏蔽常见凭据格式；日志写入失败不影响原有错误处理。
 
@@ -110,15 +112,23 @@ ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npm run test:desktop
 
 `docs/specs/` 和 `docs/evidence/` 保留实现时的设计、引用版本和验收记录。其中的测试数量、机器路径及当时未运行的检查只描述该次工作，不是当前覆盖率、当前工作树状态或后续改动的测试豁免。
 
+### 存储专项验证
+
+SQLite 状态、独立迁移、历史换代、编辑恢复与辅助对话回归的命令见 [存储专项指南](specs/sqlite-storage.md#定向验证)。大样本脚本只生成临时合成数据；按需恢复的实测环境和限制见 [基准报告](storage-lazy-restore-benchmark.md)。迁移验证逐条对照源转换结果，因此 validate/activate 需要保留未变化的离线旧源。
+
+实际 Electron 二进制的 Node 模式 SQLite 烟测通过不等于 Electron GUI/打包通过。构建必须保留 `node:sqlite` 前缀；主进程/preload 的 tsup 配置已禁用移除 Node 协议，专门的 `sqlite-build.test.ts` 防止再次回归。
+
 ## 快捷键实现与回归
 
-桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 `settings.json` 的 `shortcuts` 字段。平台默认值使用明确的 Command/Ctrl 映射；没有该字段的旧设置自动采用默认值。默认左栏 J、右栏 L、任务搜索 K、模型选择 ;、任务输入框聚焦 I，均使用平台主修饰键。内部 `shortcutDefaultsVersion` 标记一次性迁移：仅替换仍为旧默认的 K / L / Shift+F，保留自定义、清空项和总开关；整个候选存在冲突时保留全部旧绑定。旧记录缺少输入框聚焦命令时补 I，若 I 已被自定义占用则补空绑定。迁移版本与结果原子保存，后续主动改回旧组合不会再次迁移。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建、查找和显式输入框聚焦命令，xterm 焦点由 renderer 捕获阶段处理。模型选择和队列发送由当前 composer 自己处理。
+桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 SQLite 的 `app_settings`（`app` 配置的 `shortcuts` 字段）。平台默认值使用明确的 Command/Ctrl 映射；新建配置采用默认值；旧设置仅由独立迁移工具转换。默认左栏 J、右栏 L、任务搜索 K、模型选择 ;、任务输入框聚焦 I，均使用平台主修饰键。离线迁移中的 `shortcutDefaultsVersion` 标记一次性转换：仅替换仍为旧默认的 K / L / Shift+F，保留自定义、清空项和总开关；整个候选存在冲突时保留全部旧绑定。旧记录缺少输入框聚焦命令时补 I，若 I 已被自定义占用则补空绑定。迁移版本与结果原子保存，后续主动改回旧组合不会再次迁移。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建、查找和显式输入框聚焦命令，xterm 焦点由 renderer 捕获阶段处理。模型选择和队列发送由当前 composer 自己处理。
 
 全局改键先注册候选键，再保存设置并注销旧键；注册或保存失败不会覆盖原设置。退出只有在草稿确认保存后才注销，取消退出仍保留原绑定。`ZPI_TEST_MODE=1` 从不向系统注册全局快捷键，注册冲突、回滚及窗口切换使用假 registry/window 单元测试。
 
 定向回归用例在 `tests/desktop/shortcuts.spec.ts` 与 `tests/desktop/composer-shortcuts.spec.ts`，涵盖持久化、总开关、录入冲突、侧栏/置顶、原生浏览器与终端焦点，以及主/辅助 composer 的队列和模型操作。真实系统全局抢占与 macOS 前后台切换仍需在目标平台做手工烟测；不可将测试模式的模拟注册视为系统注册成功。
 
-## 临时历史会话修复（0.2.3 命名变更）
+## 旧版历史会话修复（仅旧格式）
+
+以下命令只用于尚未迁移的旧数据副本，不是 SQLite 迁移命令。不要对 `storage/<generationId>` 运行它，也不要据此删除新数据库。新格式迁移使用 [独立迁移 CLI](specs/sqlite-storage.md#独立迁移-cli)。
 
 先退出 ZPI、ZPI Preview 和开发客户端，再运行：
 
@@ -131,7 +141,7 @@ npm run repair:sessions -- "/path/to/app-data"
 
 默认检查正式版与 Preview 的应用数据目录。脚本将旧会话格式、内部记录和系统段落键改为小写 `zpi`，按默认值补齐缺失的能力配置，保留已有配置和消息正文。
 
-修改前在数据目录旁备份原始会话与索引，修改后移除旧索引，重启应用时自动重建。已修复数据重复运行不会写入或新建备份。此命令、`scripts/repair-sessions.ts` 及其测试仅短期保留，迁移完成后可一并删除。
+修改前在数据目录旁备份原始会话与旧索引，修改后移除旧索引，旧版应用重启时重建；本分支仍要求独立迁移。已修复数据重复运行不会写入或新建备份。此命令、`scripts/repair-sessions.ts` 及其测试仅短期保留，迁移完成后可一并删除。
 
 ## 命名约定
 

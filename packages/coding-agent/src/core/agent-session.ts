@@ -206,7 +206,7 @@ export class AgentSession {
     return this.state.systemPrompt;
   }
   getContextUsage(): ContextUsage {
-    return contextUsage(this.manager.getEntries(), this.model);
+    return contextUsage(this.manager.getContextEntries(), this.model);
   }
   listSkills(): SkillList {
     return this.resources?.loader.listSkills?.() ?? { skills: [], diagnostics: [] };
@@ -264,7 +264,7 @@ export class AgentSession {
   }
   private compactionBoundary() {
     const preparation = prepareCompaction(
-      this.manager.getEntries(),
+      this.manager.getContextEntries(),
       this.settingsManager.getCompactionSettings(this.model),
     );
     if (!preparation) throw new Error("invalid_input: 没有可压缩的完整对话内容");
@@ -277,15 +277,15 @@ export class AgentSession {
     return estimate.tokens;
   }
   private precedesCompaction(message: AgentState["messages"][number]): boolean {
-    // Context projection shares immutable transcript records. Wall-clock timestamps can tie or go backwards.
-    for (const entry of this.manager.getEntries().reverse()) {
-      if (entry.type === "compaction") return true;
-      if (entry.type === "message" && entry.message === message) return false;
-    }
-    return false;
+    return this.manager.precedesCompaction(message);
   }
   private async tryAutoCompact(signal?: AbortSignal): Promise<boolean> {
-    if (!prepareCompaction(this.manager.getEntries(), this.settingsManager.getCompactionSettings(this.model)))
+    if (
+      !prepareCompaction(
+        this.manager.getContextEntries(),
+        this.settingsManager.getCompactionSettings(this.model),
+      )
+    )
       return false;
     try {
       await this.summarize(false, "", signal);
@@ -395,9 +395,8 @@ export class AgentSession {
     };
   }
   private alreadyCompacted(): boolean {
-    const entries = this.manager.getEntries();
-    const last = entries.findLastIndex((entry) => entry.type === "compaction");
-    return last >= 0 && !entries.slice(last + 1).some((entry) => entry.type === "message");
+    const state = this.manager.getStateAt();
+    return state.lastCompactionSeq > 0 && state.lastMessageSeq < state.lastCompactionSeq;
   }
   private async summarize(manual: boolean, instructions: string, signal?: AbortSignal): Promise<void> {
     const id = randomUUID();
@@ -545,10 +544,7 @@ export class AgentSession {
     return this.manager.getSessionFile();
   }
   get sessionName(): string | undefined {
-    return this.manager
-      .getEntries()
-      .filter((e) => e.type === "session_info")
-      .at(-1)?.name;
+    return this.manager.getCurrentState().name;
   }
   subscribe(listener: (event: AgentSessionEvent) => void): () => void {
     this.listeners.add(listener);
@@ -676,22 +672,20 @@ export class AgentSession {
   async setModel(model: Model): Promise<void> {
     this.idleCheck();
     if (model.provider !== this.model.provider || model.id !== this.model.id) {
-      this.manager.appendModelChange(model.provider, model.id);
-      this.notifyLastEntry();
+      if (this.manager.appendModelChange(model.provider, model.id)) this.notifyLastEntry();
     }
     this.state.model = model;
   }
   setThinkingLevel(thinkingLevel: ThinkingLevel): void {
     this.idleCheck();
-    this.manager.appendThinkingLevelChange(thinkingLevel);
+    const entryId = this.manager.appendThinkingLevelChange(thinkingLevel);
     this.state.thinkingLevel = thinkingLevel;
-    this.notifyLastEntry();
+    if (entryId) this.notifyLastEntry();
     this.notify({ type: "thinking_level_changed", thinkingLevel });
   }
   setSessionName(name: string): void {
     this.idleCheck();
-    this.manager.appendSessionInfo(name);
-    this.notifyLastEntry();
+    if (this.manager.appendSessionInfo(name)) this.notifyLastEntry();
     this.notify({ type: "session_info_changed", name });
   }
 }

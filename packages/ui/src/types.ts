@@ -84,6 +84,8 @@ export interface SubagentNotification {
   description: string;
 }
 export interface RunView {
+  /** This page starts inside a run; its original input is on an older page. */
+  historyContinuation?: boolean;
   subagentNotification?: SubagentNotification;
   runId: string;
   status: RunStatus;
@@ -186,6 +188,7 @@ export type DesktopEvent =
   | { type: "block_end"; messageId: string; contentIndex: number; timestamp?: number }
   | {
       type: "started";
+      historyContinuation?: boolean;
       subagentNotification?: SubagentNotification;
       text: string;
       fileReferences?: string[];

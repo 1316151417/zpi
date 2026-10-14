@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
+
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
@@ -35,9 +35,14 @@ it("title is independent, snapshot-bound, once-only and preserves the complete f
   const log = await readFile(join(dir, "agent", "sessions", "_unassigned", `${record.id}.jsonl`), "utf8");
   expect(log).not.toContain("ZPI_SESSION_TITLE");
   expect(
-    SessionManager.open(join(dir, "agent", "sessions", "_unassigned", `${record.id}.jsonl`))
-      .buildSessionContext()
-      .messages.some((m) => m.role === "user" && m.content === text),
+    log
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .some(
+        (entry) =>
+          entry.type === "message" && entry.message.role === "user" && entry.message.content === text,
+      ),
   ).toBe(true);
   await host.close();
   const reopened = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined);

@@ -77,6 +77,9 @@ test("restored ordinary project drafts resolve the project root even with a diff
   await Promise.all([mkdir(projectPath), mkdir(f.workspace)]);
   const project = await f.host.addProject(projectPath);
   const draft = f.host.createSession(project.id, { cwd: f.workspace });
+  const persisted = f.settings.state.getTask(draft.id);
+  if (!persisted) throw new Error("Missing task fixture");
+  f.settings.state.upsertTask({ ...persisted, cwd: projectPath });
   await f.host.close();
   const restored = new SessionHost(f.home, f.settings, f.home, f.workspace);
   await restored.init();

@@ -114,7 +114,8 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("WORKSPACE SKILL");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("workspace instructions");
   const file = join(f.dir, "agent", "sessions", "_unassigned", `${s.id}.jsonl`);
-  expect(await readFile(file, "utf8")).toContain('"projectId":null');
+  expect(f.settings.state.getTask(s.id)?.projectId).toBeNull();
+  expect(await readFile(file, "utf8")).not.toContain('"projectId"');
   const restarted = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace, undefined);
   await restarted.init();
   cleanup.push(() => restarted.close());

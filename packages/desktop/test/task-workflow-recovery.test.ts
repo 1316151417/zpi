@@ -215,11 +215,10 @@ it("surfaces child restore persistence failures and permits retry after the pare
   const task = await launchCompletedChild(f);
   await f.host.archiveSession(f.session.id);
   await f.host.archiveSession(task.childSessionId);
-  const owner = f.host as unknown as { indexes: Map<string, { append(): void }> };
-  const child = owner.indexes.get(task.childSessionId);
-  if (!child) throw new Error("missing child index");
-  const failure = vi.spyOn(child, "append").mockImplementation(() => {
-    throw new Error("storage: cannot restore child");
+  const save = f.settings.state.upsertTask.bind(f.settings.state);
+  const failure = vi.spyOn(f.settings.state, "upsertTask").mockImplementation((value) => {
+    if (value.id === task.childSessionId) throw new Error("storage: cannot restore child");
+    return save(value);
   });
   try {
     expect(() => f.host.restoreSession(f.session.id)).toThrow("cannot restore child");

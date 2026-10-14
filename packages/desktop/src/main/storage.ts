@@ -1,14 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Model } from "zpi-ai";
 import {
@@ -49,20 +40,18 @@ import {
   defaultCapabilities,
   defaultPreferences,
   modelDefaults,
-  reasoningPresets,
   sidebarLimits,
-  toPreset,
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
 import {
   defaultShortcuts,
-  normalizeShortcut,
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
 } from "../shared/shortcuts.ts";
-import { migrateShortcutDefaults, shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
+import { shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
+import { StateStore } from "./state-store.ts";
 export function atomicJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   const temp = `${path}.${randomUUID()}.tmp`;
@@ -84,7 +73,7 @@ interface Credentials {
   apiKey: string;
   chatgpt?: ChatGPTCredential;
 }
-interface SettingsData {
+export interface SettingsData {
   shortcuts: ShortcutSettings;
   shortcutDefaultsVersion: typeof shortcutDefaultsVersion;
   capabilities: PluginCapabilities;
@@ -137,168 +126,51 @@ export class SettingsStore {
   private unreadCredentials = false;
   private dir: string;
   private encryption: CredentialEncryption;
-  constructor(dir: string, encryption: CredentialEncryption) {
+  readonly state: StateStore;
+  private ownsState: boolean;
+  constructor(dir: string, encryption: CredentialEncryption, state?: StateStore) {
+    this.ownsState = !state;
+    this.state = state ?? new StateStore(join(dir, "state.sqlite"));
     this.dir = dir;
     this.encryption = encryption;
-    const file = join(dir, "settings.json"),
-      creds = join(dir, "credentials.enc");
-    let oldVersion: 1 | 2 | 3 | undefined;
-    let migratedFontSize = false;
-    let migratedShortcuts = false;
-    let clearedSelection = false;
-    if (existsSync(file)) {
-      const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
-      if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
-      if (raw.version === 4) this.data = raw as unknown as SettingsData;
-      else if (raw.version === 3) {
-        this.data = {
-          ...raw,
-          version: 4,
-          templates: [],
-          selectedTemplateId: "pi",
-          disabledSkillPaths: [],
-        } as unknown as SettingsData;
-        oldVersion = 3;
-      } else {
-        if (raw.version !== undefined && raw.version !== 1 && raw.version !== 2)
-          throw new Error("storage: Unsupported settings version");
-        oldVersion = raw.version === 2 ? 2 : 1;
-        if (oldVersion === 1 && ("apiKey" in raw || "headers" in raw))
-          throw new Error("storage: Credentials must not be stored in public settings");
-        const { version: _version, ...legacy } = raw;
-        const old =
-          oldVersion === 2 ? raw.providers : this.legacy(legacy as unknown as SettingsInput).providers;
-        if (!Array.isArray(old)) throw new Error("storage: Invalid providers");
-        this.data.providers = old.map((p) => {
-          if (!isJsonObject(p) || !Array.isArray(p.models))
-            throw new Error("storage: Invalid provider record");
-          return {
-            ...p,
-            models: p.models.map((m) => ({
-              ...(m as ModelSettings),
-              contextWindow: (m as ModelSettings).contextWindow ?? 32768,
-              maxTokens: (m as ModelSettings).maxTokens ?? 4096,
-              reasoning: (m as ModelSettings).reasoning ?? false,
-              input: (m as ModelSettings).input ?? ["text"],
-              compat: { supportsReasoningEffort: false, ...(m as ModelSettings).compat },
-            })),
-          } as ProviderData;
-        });
-        this.data.lastSelection = this.recoverLastSelection();
+    try {
+      const creds = join(dir, "credentials.enc");
+      const raw = this.state.getSetting<SettingsData>("app");
+      if (raw !== undefined) {
+        if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
+        this.validateData(raw);
+        this.data = raw;
       }
-      if (this.data.capabilities != null && !isJsonObject(this.data.capabilities))
-        throw new Error("storage: Invalid plugin capabilities");
-      this.data.capabilities = { ...defaultCapabilities, ...this.data.capabilities };
-      if (isJsonObject(this.data.interface)) {
-        // Question timing is now built in; discard the retired preference, including saved false values.
-        const { askUserQuestionAutoResolutionEnabled: _retired, ...preferences } = this.data.interface;
-        this.data.interface = { ...defaultPreferences, ...preferences };
-        const legacySize: unknown = this.data.interface.fontSize;
-        const legacySizes: Record<string, number> = { small: 12, default: 14, large: 16 };
-        if (typeof legacySize === "string" && Object.hasOwn(legacySizes, legacySize)) {
-          this.data.interface.fontSize = legacySizes[legacySize];
-          migratedFontSize = true;
-        }
-      }
-      const lastSelection: unknown = this.data.lastSelection;
-      if (
-        isJsonObject(lastSelection) &&
-        (typeof lastSelection.reasoning !== "string" ||
-          !lastSelection.reasoning.trim() ||
-          (!this.getModel(lastSelection as unknown as CombinedSelection)?.reasoningConfig &&
-            !(reasoningPresets as readonly string[]).includes(lastSelection.reasoning)))
-      ) {
-        this.data.lastSelection = null;
-        clearedSelection = true;
-      }
-      const hadShortcuts = this.data.shortcuts != null;
-      this.data.shortcuts ??= defaultShortcuts(process.platform);
-      const migrateShortcuts = this.data.shortcutDefaultsVersion === undefined;
-      if (migrateShortcuts) {
-        this.data.shortcutDefaultsVersion = shortcutDefaultsVersion;
-        const bindings = this.data.shortcuts.bindings;
-        if (isJsonObject(bindings) && !Object.hasOwn(bindings, "focus-composer")) {
-          const focus = defaultShortcuts(process.platform).bindings["focus-composer"];
-          bindings["focus-composer"] = Object.values(bindings).some(
-            (binding) =>
-              typeof binding === "string" && normalizeShortcut(binding, process.platform) === focus,
-          )
-            ? null
-            : focus;
-        }
-      }
-      this.validateData(this.data);
-      if (migrateShortcuts && hadShortcuts) {
-        this.data.shortcuts = migrateShortcutDefaults(this.data.shortcuts, process.platform);
-        migratedShortcuts = true;
-      }
-    }
-    if (existsSync(creds)) {
-      if (!encryption.isEncryptionAvailable()) this.unreadCredentials = true;
-      else {
-        const raw: unknown = JSON.parse(encryption.decryptString(readFileSync(creds)));
-        if (!isJsonObject(raw)) throw new Error("storage: Invalid credential record");
-        const values = raw.version === 2 || raw.version === 3 ? raw.providers : { custom: raw };
-        if (!isJsonObject(values)) throw new Error("storage: Invalid credential providers");
-        for (const [id, value] of Object.entries(values)) {
-          if (!isJsonObject(value) || typeof value.baseUrl !== "string" || typeof value.apiKey !== "string")
-            throw new Error("storage: Invalid credential record");
-          if (this.data.providers.find((p) => p.id === id)?.baseUrl === value.baseUrl)
-            this.credentials[id] = {
-              baseUrl: value.baseUrl,
-              apiKey: value.apiKey,
-              ...(isChatGPTCredential(value.chatgpt) ? { chatgpt: value.chatgpt } : {}),
-            };
-        }
-        this.persisted = true;
-      }
-    }
-    if (oldVersion) {
-      for (const path of [file, creds])
-        if (existsSync(path) && !existsSync(`${path}.v${oldVersion}.bak`))
-          copyFileSync(path, `${path}.v${oldVersion}.bak`);
-      this.writeConfiguration(this.data, encryption.isEncryptionAvailable() ? this.credentials : undefined);
-    } else if (migratedFontSize || clearedSelection || migratedShortcuts) atomicJson(file, this.data);
-  }
-  private recoverLastSelection(): CombinedSelection | null {
-    const root = join(this.dir, "agent", "sessions");
-    let latest: { time: number; selection: CombinedSelection } | undefined;
-    if (!existsSync(root)) return null;
-    for (const partition of readdirSync(root, { withFileTypes: true })) {
-      if (!partition.isDirectory()) continue;
-      for (const file of readdirSync(join(root, partition.name))) {
-        if (!file.endsWith(".jsonl")) continue;
-        let thinking: Parameters<typeof toPreset>[0] = "off";
-        let run: { time: number; selection: CombinedSelection } | undefined;
-        for (const line of readFileSync(join(root, partition.name, file), "utf8").split("\n")) {
-          try {
-            const e = JSON.parse(line);
-            if (e.type === "thinking_level_change") thinking = e.thinkingLevel;
-            if (e.type === "custom" && e.customType === "zpi.run" && e.data.phase === "start") {
-              const c = e.data.modelConfig;
-              run =
-                c?.provider && c.modelId
-                  ? {
-                      time: e.data.startedAt,
-                      selection: { provider: c.provider, modelId: c.modelId, reasoning: toPreset(thinking) },
-                    }
-                  : undefined;
-            }
-            if (
-              e.type === "message" &&
-              e.message.role === "assistant" &&
-              run &&
-              Number.isFinite(run.time) &&
-              (!latest || run.time > latest.time)
-            )
-              latest = run;
-          } catch {
-            /* Damaged logs are diagnosed by the session loader. */
+      if (existsSync(creds)) {
+        if (!encryption.isEncryptionAvailable()) this.unreadCredentials = true;
+        else {
+          const raw: unknown = JSON.parse(encryption.decryptString(readFileSync(creds)));
+          if (!isJsonObject(raw)) throw new Error("storage: Invalid credential record");
+          const values = raw.version === 2 || raw.version === 3 ? raw.providers : { custom: raw };
+          if (!isJsonObject(values)) throw new Error("storage: Invalid credential providers");
+          for (const [id, value] of Object.entries(values)) {
+            if (!isJsonObject(value) || typeof value.baseUrl !== "string" || typeof value.apiKey !== "string")
+              throw new Error("storage: Invalid credential record");
+            if (this.data.providers.find((p) => p.id === id)?.baseUrl === value.baseUrl)
+              this.credentials[id] = {
+                baseUrl: value.baseUrl,
+                apiKey: value.apiKey,
+                ...(isChatGPTCredential(value.chatgpt) ? { chatgpt: value.chatgpt } : {}),
+              };
           }
+          this.persisted = true;
         }
       }
+    } catch (error) {
+      this.close();
+      throw error;
     }
-    return latest?.selection ?? null;
+  }
+  close(): void {
+    if (this.ownsState) {
+      this.state.close();
+      this.ownsState = false;
+    }
   }
   get(): PublicSettings {
     return {
@@ -477,7 +349,7 @@ export class SettingsStore {
       throw new Error("invalid_input: 提供商排序必须包含全部提供商");
     const providers = [...this.data.providers].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
     const data = { ...this.data, providers };
-    atomicJson(join(this.dir, "settings.json"), data);
+    this.state.setSetting("app", data);
     this.data = data;
     return this.get();
   }
@@ -518,7 +390,7 @@ export class SettingsStore {
   rememberSelection(selection: CombinedSelection): void {
     if (!this.isSelectionValid(selection)) throw new Error("configuration: 请重新选择有效模型与思考程度");
     const data = { ...this.data, lastSelection: { ...selection } };
-    atomicJson(join(this.dir, "settings.json"), data);
+    this.state.setSetting("app", data);
     this.data = data;
   }
   updateShortcuts(input: ShortcutSettings): PublicSettings {
@@ -527,7 +399,7 @@ export class SettingsStore {
   updatePreferences(input: Partial<InterfacePreferences>): PublicSettings {
     const data = { ...this.data, interface: { ...this.data.interface, ...input } };
     this.validateData(data);
-    atomicJson(join(this.dir, "settings.json"), data);
+    this.state.setSetting("app", data);
     this.data = data;
     return this.get();
   }
@@ -557,7 +429,7 @@ export class SettingsStore {
   }
   private savePublic(data: SettingsData): PublicSettings {
     this.validateData(data);
-    atomicJson(join(this.dir, "settings.json"), data);
+    this.state.setSetting("app", data);
     this.data = data;
     return this.get();
   }
@@ -573,25 +445,22 @@ export class SettingsStore {
   }
   private writeConfiguration(data: SettingsData, credentials?: Record<string, Credentials>): void {
     if (!credentials) {
-      atomicJson(join(this.dir, "settings.json"), data);
+      this.state.setSetting("app", data);
       return;
     }
-    // Stage both files before replacing either. Restore encrypted bytes if the settings rename fails.
+    // Preserve the encrypted-file contract; restore its bytes if the database commit fails.
     const encrypted = this.encryption.encryptString(JSON.stringify({ version: 3, providers: credentials }));
     mkdirSync(this.dir, { recursive: true });
-    const settings = join(this.dir, "settings.json"),
-      creds = join(this.dir, "credentials.enc");
+    const creds = join(this.dir, "credentials.enc");
     const token = randomUUID(),
-      settingsTemp = `${settings}.${token}.tmp`,
       credsTemp = `${creds}.${token}.tmp`;
     const previous = existsSync(creds) ? readFileSync(creds) : undefined;
     let replaced = false;
     try {
-      writeFileSync(settingsTemp, JSON.stringify(data, null, 2), { mode: 0o600 });
       writeFileSync(credsTemp, encrypted, { mode: 0o600 });
       renameSync(credsTemp, creds);
       replaced = true;
-      renameSync(settingsTemp, settings);
+      this.state.setSetting("app", data);
     } catch (error) {
       if (replaced) {
         if (previous) {
@@ -601,7 +470,6 @@ export class SettingsStore {
       }
       throw error;
     } finally {
-      rmSync(settingsTemp, { force: true });
       rmSync(credsTemp, { force: true });
     }
   }

@@ -49,7 +49,9 @@ import {
   toggleShortcutWindow,
 } from "./shortcut-controller.ts";
 import { ShortcutModifier } from "./shortcut-modifier.ts";
+import { StateStore } from "./state-store.ts";
 import { SettingsStore } from "./storage.ts";
+import { openStorageGeneration } from "./storage-generation.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
@@ -85,7 +87,11 @@ function titleBarOverlay(): Electron.TitleBarOverlayOptions {
 const dataName = app.isPackaged ? app.getName() : "ZPI Preview";
 app.setName(dataName);
 app.setPath("userData", join(app.getPath("appData"), dataName));
-if (testMode && process.env.ZPI_TEST_DATA_DIR) app.setPath("userData", process.env.ZPI_TEST_DATA_DIR);
+const dataOverride = (testMode && process.env.ZPI_TEST_DATA_DIR) || process.env.ZPI_DATA_DIR;
+if (dataOverride) {
+  if (!isAbsolute(dataOverride)) throw new Error("storage: ZPI_DATA_DIR/ZPI_TEST_DATA_DIR must be absolute");
+  app.setPath("userData", dataOverride);
+}
 const errors = new ErrorLog(app.getPath("userData"), {
   version: app.isPackaged ? app.getVersion() : version,
   electron: process.versions.electron,
@@ -137,7 +143,32 @@ async function launch(): Promise<void> {
   const encryption = testMode
     ? { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => "" }
     : safeStorage;
-  const settings = new SettingsStore(app.getPath("userData"), encryption);
+  const storage = openStorageGeneration(app.getPath("userData"), (directory) => {
+    const initial = new StateStore(join(directory, "state.sqlite"));
+    initial.close();
+  });
+  let state: StateStore;
+  try {
+    state = new StateStore(join(storage.directory, "state.sqlite"));
+  } catch (error) {
+    storage.close();
+    throw error;
+  }
+  let storageClosed = false;
+  const closeStorage = () => {
+    if (storageClosed) return;
+    state.close();
+    storage.close();
+    storageClosed = true;
+  };
+  app.once("will-quit", () => {
+    try {
+      closeStorage();
+    } catch (error) {
+      errors.write("storage.close", error);
+    }
+  });
+  const settings = new SettingsStore(storage.directory, encryption, state);
   nativeTheme.themeSource = settings.get().interface.theme;
   let discovered: string[] = [];
   if (!testMode) {
@@ -165,7 +196,7 @@ async function launch(): Promise<void> {
     settings.updatePreferences({ showSendButton: true, showContextUsage: true });
   }
   const host = new SessionHost(
-    app.getPath("userData"),
+    storage.directory,
     settings,
     testMode ? app.getPath("userData") : homedir(),
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
