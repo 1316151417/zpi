@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -215,3 +215,77 @@ test("truncated foreground output retains the full log and gives its path", asyn
   if (!path) throw new Error("Missing output artifact");
   expect((await readFile(path)).length).toBe(70003);
 });
+
+test.each([70000, 8 * 1024 ** 2 + 1024])(
+  "completed TaskOutput retains final errors when the log contains %i padding bytes",
+  async (paddingBytes) => {
+    const f = await fixture();
+    const outputPath = join(f.dir, "completed.log");
+    await writeFile(outputPath, `HEAD${"x".repeat(paddingBytes)}\nFINAL_ERROR: compiler failed\n`);
+    f.runtime.restore({
+      taskId: "exec_completed",
+      sessionId: "owner",
+      toolCallId: "call",
+      command: "build",
+      description: "Build",
+      status: "failed",
+      startedAt: 1,
+      endedAt: 2,
+      exitCode: 7,
+      outputPath,
+    });
+    const result = await f.runtime.output("owner", { task_id: "exec_completed" });
+    expect(result.details.retrieval_status).toBe("success");
+    expect(result.details.task.output).not.toContain("HEAD");
+    expect(result.details.task.output).toContain("FINAL_ERROR: compiler failed\n");
+    expect(result.details.task.output).toContain(`Full output: ${outputPath}`);
+    expect(result.details.task.output.length).toBeLessThan(33000);
+    expect(result.content[0].text).toContain("FINAL_ERROR: compiler failed\n");
+  },
+);
+
+// POSIX truncate extends the file with holes, so this tests the real limit without writing 5 GiB.
+test.skipIf(process.platform === "win32").each([false, true])(
+  "the output limit stops the process tree with run_in_background=%s",
+  async (background) => {
+    const f = await fixture();
+    const run = f.invoke({
+      command: "echo $$ > shell.pid; sleep 30 & echo $! > child.pid; wait",
+      run_in_background: background,
+    });
+    await expect.poll(() => readFile(join(f.dir, "child.pid"), "utf8")).toMatch(/^\d+\n$/);
+    const pids = await Promise.all(
+      ["shell.pid", "child.pid"].map(async (name) => Number(await readFile(join(f.dir, name), "utf8"))),
+    );
+    const directory = join(f.dir, "agent", "tool-output", "owner");
+    const [name] = await readdir(directory);
+    const outputPath = join(directory, name);
+    await truncate(outputPath, 5 * 1024 ** 3 + 1);
+    expect((await stat(outputPath)).blocks * 512).toBeLessThan(1024 ** 2);
+
+    if (background) {
+      await run;
+      await expect.poll(() => f.runtime.list("owner")[0].status, { timeout: 5000 }).toBe("failed");
+      expect(f.runtime.list("owner")[0].error).toBe("Command output exceeded 5 GiB.");
+    } else {
+      expect(await run).toMatchObject({
+        isError: true,
+        content: [{ text: expect.stringContaining("Command output exceeded 5 GiB.") }],
+      });
+      expect(f.runtime.list("owner")).toHaveLength(0);
+    }
+    for (const pid of pids) {
+      await expect
+        .poll(() => {
+          try {
+            process.kill(pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .toBe(false);
+    }
+    expect(f.port.error).not.toHaveBeenCalled();
+  },
+);

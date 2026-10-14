@@ -268,6 +268,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     const blocks = new Map<string, number>();
     const args = new Map<string, string>();
     const ended = new Set<string>();
+    const invalidToolInputs = new Map<string, unknown>();
     const contentKey = (itemId: string, index: number) => `${itemId}:${index}`;
     function append(key: string, type: "text" | "thinking", delta: string) {
       let index = blocks.get(key);
@@ -339,10 +340,17 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         const index = blocks.get(item.id);
         if (index === undefined) throw new Error("Incomplete tool call");
         const block = output.content[index];
-        const argumentsValue: unknown = JSON.parse(item.arguments || args.get(item.id) || "{}");
-        if (block.type !== "toolCall" || !item.call_id || !item.name || !isJsonObject(argumentsValue))
-          throw new Error("Incomplete tool call");
-        block.arguments = argumentsValue;
+        try {
+          const argumentsValue: unknown = JSON.parse(item.arguments || args.get(item.id) || "{}");
+          if (block.type !== "toolCall" || !item.call_id || !item.name || !isJsonObject(argumentsValue))
+            throw new Error("Incomplete tool call");
+          block.arguments = argumentsValue;
+        } catch (error) {
+          // Item completion precedes response.incomplete; wait for the terminal reason before failing.
+          invalidToolInputs.set(item.id, error);
+          return;
+        }
+        invalidToolInputs.delete(item.id);
         complete.add(block);
         ended.add(item.id);
         events.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial: output });
@@ -457,7 +465,10 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     }
     if (options.signal?.aborted) throw new Error("Request aborted");
     if (!terminal) throw new Error("Stream ended without response.completed");
+    if (invalidToolInputs.size && output.stopReason !== "length")
+      throw invalidToolInputs.values().next().value;
     for (const key of blocks.keys()) close(key);
+    output.content = output.content.filter((block) => block.type !== "toolCall" || complete.has(block));
     for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const)
       output.usage.cost[key] = (output.usage[key] * model.cost[key]) / 1e6;
     output.usage.cost.total = Object.values(output.usage.cost)

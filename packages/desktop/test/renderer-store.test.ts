@@ -272,6 +272,32 @@ it("snapshot failure replays both buffered and pending-frame events and allows a
   f.unsubscribe();
 });
 
+it("keeps the latest task selection when an earlier navigation waits for a draft save", async () => {
+  const f = await setup();
+  await f.store.selectSession(f.session.id);
+  const gate = deferred();
+  f.bridge.saveDraft.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: undefined };
+  });
+  const draft = f.store.drafts.get(f.session.id);
+  if (!draft) throw new Error("draft missing");
+  f.store.drafts.set(f.session.id, { ...draft, text: "unsaved draft" });
+  const earlier = f.store.selectSession("other");
+  expect(f.bridge.saveDraft).toHaveBeenCalledOnce();
+  expect(f.store.useStore.getState().selected).toBe(f.session.id);
+  // Clicking the still-selected row is a newer explicit intent, without another save wait.
+  await f.store.selectSession(f.session.id);
+  gate.resolve();
+  await earlier;
+  expect(f.store.useStore.getState().selected).toBe(f.session.id);
+  expect(localStorage.getItem("zpi.selectedSession")).toBe(f.session.id);
+  expect(f.bridge.activateSession).not.toHaveBeenCalledWith("other");
+  expect(f.bridge.getSessionSnapshot).toHaveBeenCalledOnce();
+  expect(f.store.drafts.get(f.session.id)?.text).toBe("unsaved draft");
+  f.unsubscribe();
+});
+
 it.each(["scheduled", "in flight"])(
   "quitting waits for %s saves and subsequent draft changes",
   async (mode) => {

@@ -338,6 +338,9 @@ export async function openWebLink(
   if (webOpenTarget(url, options) === "app-browser") await openBrowser(url, sessionId);
   else unwrap(await window.zpi.openExternal(url));
 }
+const fileOpenVersions = new Map<string, number>();
+let fileOpenVersion = 0;
+let pendingFileReads = 0;
 export async function openFile(sessionId: string, path: string, location?: FileLocation) {
   const ownerSessionId = paneOwner(sessionId);
   const state = useStore.getState();
@@ -365,29 +368,42 @@ export async function openFile(sessionId: string, path: string, location?: FileL
       }
     }
   }
-  const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
-  if (ownerDeleted(ownerSessionId)) return;
-  if (preview.kind === "directory") {
-    unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
-    return;
+  const requestKey = `file:${sessionId}:${target?.kind === "file" ? target.path : path}`;
+  const version = ++fileOpenVersion;
+  fileOpenVersions.set(requestKey, version);
+  pendingFileReads++;
+  try {
+    const result = await window.zpi.readFilePreview(sessionId, path, location);
+    if (ownerDeleted(ownerSessionId) || fileOpenVersions.get(requestKey) !== version) return;
+    const preview = unwrap(result);
+    const id = `file:${sessionId}:${preview.path}`;
+    // 相对路径和符号链接可能指向同一标签；较旧的读取或关闭前的刷新不得重新提交。
+    if ((fileOpenVersions.get(id) ?? 0) > version) return;
+    fileOpenVersions.set(id, version);
+    if (preview.kind === "directory") {
+      unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
+      return;
+    }
+    if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
+      await openBrowser(location?.fileUrl ?? preview.path, sessionId, ownerSessionId);
+      return;
+    }
+    if (/\.pptx$/i.test(preview.path)) {
+      unwrap(await window.zpi.fileAction(sessionId, preview.path, "open"));
+      return;
+    }
+    showTab({
+      id,
+      type: "file",
+      title: preview.path.split("/").at(-1) ?? preview.path,
+      sessionId,
+      ownerSessionId,
+      preview,
+    });
+  } finally {
+    // 仅在读取未结束时保留版本，避免已关闭文件永久占用状态。
+    if (--pendingFileReads === 0) fileOpenVersions.clear();
   }
-  if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
-    await openBrowser(location?.fileUrl ?? preview.path, sessionId, ownerSessionId);
-    return;
-  }
-  if (/\.pptx$/i.test(preview.path)) {
-    unwrap(await window.zpi.fileAction(sessionId, preview.path, "open"));
-    return;
-  }
-  const id = `file:${sessionId}:${preview.path}`;
-  showTab({
-    id,
-    type: "file",
-    title: preview.path.split("/").at(-1) ?? preview.path,
-    sessionId,
-    ownerSessionId,
-    preview,
-  });
 }
 /** Only a successful explicit deletion proves that retained native panes must be closed. */
 export async function deleteSessionWithPanes(sessionId: string) {
@@ -409,6 +425,7 @@ export async function closeTab(id: string) {
   const state = usePane.getState(),
     tab = state.tabs.find((t) => t.id === id);
   if (!tab) return;
+  if (tab.type === "file" && pendingFileReads) fileOpenVersions.set(id, ++fileOpenVersion);
   if (tab.type === "terminal") {
     unwrap(await window.zpi.closeTerminal(id));
     terminalOutput.delete(id);

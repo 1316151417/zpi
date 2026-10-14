@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -94,3 +95,50 @@ it("still commits a completed login when optional model discovery fails", async 
   expect(new SettingsStore(dir, codec).get().providers[0].chatgptAccount?.connected).toBe(true);
   auth.close();
 });
+
+it.each([false, true])(
+  "failed credential persistence leaves no partial login, including on retry (returning=%s)",
+  async (returning) => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-auth-persist-failed-"));
+    directories.push(dir);
+    let fail = false;
+    const settings = new SettingsStore(dir, {
+      ...codec,
+      encryptString: (value) => {
+        if (fail && value.includes("synthetic-access-new")) throw new Error("Synthetic encryption failure");
+        return codec.encryptString(value);
+      },
+    });
+    if (returning) {
+      settings.saveProvider({
+        id: "chatgpt",
+        preset: "openai-chatgpt",
+        name: "ChatGPT",
+        baseUrl: "https://api.openai.com/v1",
+        models: [{ id: "original", reasoning: false }],
+      });
+      settings.saveChatGPTCredential("chatgpt", credential("old"));
+    }
+    const files = ["settings.json", "credentials.enc"].map((file) => join(dir, file));
+    const before = await Promise.all(files.map((file) => (existsSync(file) ? readFile(file) : undefined)));
+    const previous = settings.get();
+    fail = true;
+    login.wait.mockResolvedValue(credential("new"));
+    const auth = new ChatGPTAuth(settings, async () =>
+      Response.json({ models: [{ slug: "new-model", visibility: "list" }] }),
+    );
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const pending = await auth.begin(returning ? "chatgpt" : null);
+        await expect(auth.complete(pending.loginId)).rejects.toThrow("Synthetic encryption failure");
+        expect(settings.get()).toEqual(previous);
+        expect(new SettingsStore(dir, codec).get()).toEqual(previous);
+        expect(
+          await Promise.all(files.map((file) => (existsSync(file) ? readFile(file) : undefined))),
+        ).toEqual(before);
+      }
+    } finally {
+      auth.close();
+    }
+  },
+);

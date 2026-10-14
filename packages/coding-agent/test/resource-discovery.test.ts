@@ -1,4 +1,6 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { closeSync, constants, openSync, writeSync } from "node:fs";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -105,5 +107,56 @@ test("missing fixed paths are optional and unreadable instructions are diagnosed
   const path = join(f.projectDir, ".zpi", "AGENTS.md");
   await mkdir(path, { recursive: true });
   await loader.reload();
-  expect(loader.getDiagnostics()).toEqual([{ path, message: expect.stringContaining("EISDIR") }]);
+  expect(loader.getDiagnostics()).toEqual([{ path, message: expect.stringContaining("regular file") }]);
 });
+
+test.skipIf(process.platform === "win32")(
+  "rejects non-regular resource files without blocking and still follows file symlinks",
+  async () => {
+    const f = await fixture();
+    const root = join(f.projectDir, ".agents", "skills");
+    const pipe = join(root, "pipe", "SKILL.md");
+    const instructions = join(f.projectDir, "AGENTS.md");
+    const directory = join(root, "directory", "SKILL.md");
+    const linked = join(root, "linked", "SKILL.md");
+    await mkdir(join(root, "pipe"), { recursive: true });
+    await mkdir(directory, { recursive: true });
+    await mkdir(join(root, "linked"), { recursive: true });
+    const target = join(f.dir, "target.md");
+    await writeFile(target, "---\ndescription: linked skill\n---\nBODY");
+    await symlink(target, linked);
+    expect(spawnSync("mkfifo", [pipe, instructions]).status).toBe(0);
+    // Unblock the reader if the guard regresses, so a failed assertion cannot leave a blocked fs handle.
+    const release = setInterval(() => {
+      for (const path of [pipe, instructions]) {
+        let fd: number;
+        try {
+          fd = openSync(path, constants.O_WRONLY | constants.O_NONBLOCK);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENXIO") continue;
+          throw error;
+        }
+        try {
+          writeSync(fd, "---\ndescription: must not load a pipe\n---\n");
+        } finally {
+          closeSync(fd);
+        }
+      }
+    }, 50);
+    try {
+      const loader = new FileResourceLoader(f);
+      await loader.reload();
+      expect(loader.listSkills().skills.map((skill) => skill.name)).toEqual(["linked"]);
+      expect(loader.getDiagnostics()).toEqual(
+        expect.arrayContaining(
+          [pipe, directory, instructions].map((path) => ({
+            path,
+            message: expect.stringContaining("regular file"),
+          })),
+        ),
+      );
+    } finally {
+      clearInterval(release);
+    }
+  },
+);

@@ -343,14 +343,22 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
     closeCurrent();
     if (options.signal?.aborted) throw new Error("Request aborted");
     if (!finish) throw new Error("Stream ended without finish_reason");
+    output.rawStopReason = finish;
     for (const state of toolStates.values()) {
-      const args: unknown = JSON.parse(state.raw || "{}");
-      if (!state.call.id || !state.call.name || !isJsonObject(args)) throw new Error("Incomplete tool call");
-      state.call.arguments = args;
+      try {
+        const args: unknown = JSON.parse(state.raw || "{}");
+        if (!state.call.id || !state.call.name || !isJsonObject(args))
+          throw new Error("Incomplete tool call");
+        state.call.arguments = args;
+      } catch (error) {
+        // A token cutoff can end inside JSON; keep its length/usage facts without executing the fragment.
+        if (finish === "length") continue;
+        throw error;
+      }
       completeCalls.add(state.call);
       events.push({ type: "toolcall_end", contentIndex: state.index, toolCall: state.call, partial: output });
     }
-    output.rawStopReason = finish;
+    output.content = output.content.filter((block) => block.type !== "toolCall" || completeCalls.has(block));
     if (finish === "content_filter") throw new Error("Response blocked by provider");
     if (!["stop", "length", "tool_calls", "function_call"].includes(finish))
       throw new Error(`Unsupported finish_reason: ${finish}`);

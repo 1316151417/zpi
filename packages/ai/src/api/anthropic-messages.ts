@@ -39,7 +39,7 @@ import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.ts";
+import { parseJsonWithRepair } from "../utils/json-parse.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -557,6 +557,8 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
     };
 
     let receivedStopReason = false;
+    const completeCalls = new Set<ToolCall>();
+    let invalidToolInput: unknown;
     try {
       let client: Anthropic;
       let isOAuth: boolean;
@@ -763,10 +765,20 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
                 partial: output,
               });
             } else if (block.type === "toolCall") {
-              if (block.partialJson) block.arguments = parseStreamingJson(block.partialJson);
-              // Finalize in-place and strip the scratch buffer so replay only
-              // carries parsed arguments.
-              delete (block as { partialJson?: string }).partialJson;
+              try {
+                const args: unknown = block.partialJson
+                  ? parseJsonWithRepair(block.partialJson)
+                  : block.arguments;
+                if (!isJsonObject(args)) throw new Error("Incomplete tool call");
+                block.arguments = args;
+              } catch (error) {
+                // Never repair a cutoff into executable input. The later stop reason distinguishes length.
+                invalidToolInput ??= error;
+                continue;
+              } finally {
+                delete (block as { partialJson?: string }).partialJson;
+              }
+              completeCalls.add(block);
               stream.push({
                 type: "toolcall_end",
                 contentIndex: index,
@@ -822,6 +834,10 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       if (!receivedStopReason) {
         throw new Error("Anthropic stream ended without a stop reason");
       }
+      if (invalidToolInput && output.stopReason !== "length") throw invalidToolInput;
+      output.content = output.content.filter(
+        (block) => block.type !== "toolCall" || completeCalls.has(block),
+      );
       if (output.stopReason === "aborted" || output.stopReason === "error") {
         throw new Error(output.errorMessage || "An unknown error occurred");
       }
@@ -842,6 +858,9 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
+      output.content = output.content.filter(
+        (block) => block.type !== "toolCall" || completeCalls.has(block),
+      );
       for (const block of output.content) {
         delete (block as { index?: number }).index;
         // partialJson is only a streaming scratch buffer; never persist it.
