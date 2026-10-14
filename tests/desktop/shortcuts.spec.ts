@@ -56,13 +56,13 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
     await expect(pinned.last()).toHaveClass(/active/);
     await page.keyboard.press(`${primary}+5`);
     await expect(pinned.last()).toHaveClass(/active/);
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.locator(".shell")).toHaveClass(/left-collapsed/);
     await page.evaluate((mac) => {
       window.dispatchEvent(
         new KeyboardEvent("keydown", {
-          key: "j",
-          code: "KeyJ",
+          key: "[",
+          code: "BracketLeft",
           metaKey: mac,
           ctrlKey: !mac,
           repeat: true,
@@ -73,8 +73,8 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
       window.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
       window.dispatchEvent(
         new KeyboardEvent("keydown", {
-          key: "j",
-          code: "KeyJ",
+          key: "[",
+          code: "BracketLeft",
           metaKey: mac,
           ctrlKey: !mac,
           bubbles: true,
@@ -84,11 +84,11 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
       window.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
     }, process.platform === "darwin");
     await expect(page.locator(".shell")).toHaveClass(/left-collapsed/);
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed/);
     await page.keyboard.press(`${primary}+k`);
     await expect(page.getByRole("dialog", { name: "搜索任务", exact: true })).toBeVisible();
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed/);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "搜索任务", exact: true })).toHaveCount(0);
@@ -121,8 +121,8 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
         },
         {
           type: "keyDown",
-          key: "j",
-          code: "KeyJ",
+          key: "[",
+          code: "BracketLeft",
           control: process.platform !== "darwin",
           meta: process.platform === "darwin",
           alt: false,
@@ -173,7 +173,7 @@ test("shortcut recording validates conflicts, persists custom keys and disables 
     await page.getByRole("button", { name: "保存快捷键", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText("快捷键已保存。");
     await page.getByLabel("关闭设置", { exact: true }).click();
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed/);
     await page.keyboard.press(`${primary}+Shift+j`);
     await expect(page.locator(".shell")).toHaveClass(/left-collapsed/);
@@ -192,7 +192,7 @@ test("shortcut recording validates conflicts, persists custom keys and disables 
     await expect(page.getByRole("status")).toHaveText("快捷键已保存。");
     await page.getByLabel("关闭设置", { exact: true }).click();
     await page.keyboard.press(`${primary}+Shift+j`);
-    await page.keyboard.press(`${primary}+l`);
+    await page.keyboard.press(`${primary}+]`);
     await page.keyboard.press(`${primary}+k`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed|pane-open/);
     await expect(page.getByRole("dialog", { name: "搜索任务", exact: true })).toHaveCount(0);
@@ -231,9 +231,9 @@ test("pane shortcuts escape xterm without sending terminal input", async () => {
         return original(event, method, args);
       });
     });
-    await input.press(`${primary}+j`);
+    await input.press(`${primary}+[`);
     await expect(page.locator(".shell")).toHaveClass(/left-collapsed/);
-    await input.press(`${primary}+l`);
+    await input.press(`${primary}+]`);
     await expect(page.locator(".shell")).not.toHaveClass(/pane-open/);
     expect(
       await app.evaluate(

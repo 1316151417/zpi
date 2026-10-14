@@ -2,11 +2,11 @@
 
 ## 默认映射与升级
 
-- Command/Ctrl+J 切换左栏，Command/Ctrl+L 切换右栏，Command/Ctrl+K 搜索任务，Command/Ctrl+; 打开模型选择。模型菜单内 → 选择思考档位等现有行为不变。
+- Command/Ctrl+[ 切换左栏，Command/Ctrl+] 切换右栏，Command/Ctrl+K 搜索任务，Command/Ctrl+J 打开草稿输入框的本地环境菜单，Command/Ctrl+L 打开当前输入框的模型选择。两种菜单内 ↑↓ 移动、→ 进入子菜单、← 返回、Enter 确认、Esc 关闭后返回原输入框。
 - Command/Ctrl+I 主动聚焦当前主任务输入框；全局窗口快捷键恢复有效原焦点，只有原目标失效时回退主输入。隐藏窗口与可见设置/弹窗期间不抢焦点。
-- 旧配置只替换仍等于旧默认的三个绑定，保留自定义、null 及总开关。候选整体校验失败时保留全部旧绑定，不做部分迁移。
-- 新增 focus-composer 缺项先补平台 I；已有自定义占用 I 时补 null，不覆盖旧键。迁移版本只存于内部 settings.json，原子写入后不再重新迁移。
-- 提示继续由共享 formatter 根据实际配置生成。Semicolon 物理键及分号字符都能匹配模型选择；Shift/Alt、IME 和重复触发边界不变。
+- 旧配置按历史版本只替换仍等于旧默认的绑定，保留自定义、null 及总开关。候选整体校验失败时保留全部旧绑定，不做部分迁移。
+- 新增 focus-composer 缺项先补平台 I；已有自定义占用 I 时补 null，不覆盖旧键。新增 configure-environment 缺项补平台 J，被自定义占用时补 null。迁移版本只存于内部 settings.json，原子写入后不再重新迁移。
+- 提示继续由共享 formatter 根据实际配置生成。自定义分号及方括号组合按物理键匹配；Shift/Alt、IME 和重复触发边界不变。
 
 ## 停止回复
 

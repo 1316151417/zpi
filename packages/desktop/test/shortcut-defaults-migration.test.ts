@@ -4,6 +4,8 @@ import { defaultShortcuts, type ShortcutSettings, validateShortcuts } from "../s
 
 function legacyShortcuts(platform: string): ShortcutSettings {
   const settings = defaultShortcuts(platform);
+  settings.bindings["configure-environment"] = null;
+  settings.bindings["toggle-sidebar"] = "CmdOrCtrl+J";
   settings.bindings["toggle-pane"] = "CmdOrCtrl+K";
   settings.bindings["select-model"] = "CmdOrCtrl+L";
   settings.bindings.search = "CmdOrCtrl+Shift+F";
@@ -55,5 +57,43 @@ describe.each(["darwin", "win32", "linux"])("shortcut default migration on %s", 
   it("leaves an already updated map unchanged", () => {
     const settings = defaultShortcuts(platform);
     expect(migrateShortcutDefaults(settings, platform)).toEqual(settings);
+  });
+  it("migrates version 1 sidebar and model defaults while adding environment settings", () => {
+    const original = defaultShortcuts(platform);
+    Object.assign(original.bindings, {
+      "toggle-sidebar": "CmdOrCtrl+J",
+      "toggle-pane": "CmdOrCtrl+L",
+      "select-model": "CmdOrCtrl+;",
+      "configure-environment": null,
+    });
+    expect(migrateShortcutDefaults(original, platform, 1)).toEqual(defaultShortcuts(platform));
+  });
+  it("keeps version 1 custom bindings and leaves environment unbound when J is occupied", () => {
+    const original = defaultShortcuts(platform);
+    Object.assign(original.bindings, {
+      "toggle-sidebar": "CmdOrCtrl+Shift+J",
+      "toggle-pane": "CmdOrCtrl+L",
+      "select-model": "CmdOrCtrl+J",
+      "configure-environment": null,
+    });
+    const expected = structuredClone(original);
+    expected.bindings["toggle-pane"] = defaultShortcuts(platform).bindings["toggle-pane"];
+    expect(migrateShortcutDefaults(original, platform, 1)).toEqual(expected);
+  });
+  it("preserves all version 1 bindings when brackets conflict with a custom shortcut", () => {
+    const original = defaultShortcuts(platform);
+    Object.assign(original.bindings, {
+      "toggle-sidebar": "CmdOrCtrl+J",
+      "toggle-pane": "CmdOrCtrl+L",
+      "select-model": "CmdOrCtrl+;",
+      "configure-environment": null,
+      "new-task": "CmdOrCtrl+[",
+    });
+    expect(migrateShortcutDefaults(original, platform, 1)).toBe(original);
+  });
+  it("does not rebind a cleared environment shortcut in the current version", () => {
+    const settings = defaultShortcuts(platform);
+    settings.bindings["configure-environment"] = null;
+    expect(migrateShortcutDefaults(settings, platform, 2)).toEqual(settings);
   });
 });

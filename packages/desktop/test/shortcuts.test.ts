@@ -22,10 +22,11 @@ describe("shortcut contract", () => {
       );
       const primary = platform === "darwin" ? "Command" : "Control";
       expect(settings.bindings).toMatchObject({
-        "toggle-sidebar": `${primary}+J`,
-        "toggle-pane": `${primary}+L`,
+        "toggle-sidebar": `${primary}+[`,
+        "toggle-pane": `${primary}+]`,
         search: `${primary}+K`,
-        "select-model": `${primary}+;`,
+        "configure-environment": `${primary}+J`,
+        "select-model": `${primary}+L`,
         "focus-composer": `${primary}+I`,
       });
       settings.bindings["toggle-sidebar"] = null;
@@ -47,13 +48,15 @@ describe("shortcut contract", () => {
       const settings = defaultShortcuts(platform);
       const modifiers = { metaKey: platform === "darwin", ctrlKey: platform !== "darwin" };
       for (const [key, command] of [
-        ["j", "toggle-sidebar"],
-        ["l", "toggle-pane"],
+        ["[", "toggle-sidebar"],
+        ["]", "toggle-pane"],
         ["k", "search"],
-        [";", "select-model"],
+        ["j", "configure-environment"],
+        ["l", "select-model"],
         ["i", "focus-composer"],
       ])
         expect(shortcutForEvent({ key, ...modifiers }, platform, settings)).toBe(command);
+      settings.bindings["select-model"] = "CmdOrCtrl+;";
       const semicolon = { key: "；", code: "Semicolon", ...modifiers };
       const binding = platform === "darwin" ? "Command+;" : "Control+;";
       expect(shortcutFromEvent(semicolon, platform)).toBe(binding);
@@ -72,8 +75,8 @@ describe("shortcut contract", () => {
   );
   it("matches exact modifiers, physical letters, uppercase, and disabled commands", () => {
     const settings = defaultShortcuts("darwin");
-    expect(shortcutForEvent({ key: "j", metaKey: true }, "darwin", settings)).toBe("toggle-sidebar");
-    expect(shortcutForEvent({ key: "J", metaKey: true }, "darwin", settings)).toBe("toggle-sidebar");
+    expect(shortcutForEvent({ key: "j", metaKey: true }, "darwin", settings)).toBe("configure-environment");
+    expect(shortcutForEvent({ key: "J", metaKey: true }, "darwin", settings)).toBe("configure-environment");
     expect(shortcutForEvent({ key: "j", ctrlKey: true }, "darwin", settings)).toBeUndefined();
     expect(shortcutForEvent({ key: "j", metaKey: true, altKey: true }, "darwin", settings)).toBeUndefined();
     expect(shortcutForEvent({ key: "j", metaKey: true, repeat: true }, "darwin", settings)).toBeUndefined();
@@ -85,7 +88,7 @@ describe("shortcut contract", () => {
     );
     expect(shortcutFromEvent({ key: "Dead", code: "KeyE", altKey: true }, "darwin")).toBeNull();
     expect(shortcutFromEvent({ key: "Control", ctrlKey: true }, "linux")).toBeNull();
-    settings.bindings["toggle-sidebar"] = null;
+    settings.bindings["configure-environment"] = null;
     expect(shortcutForEvent({ key: "j", metaKey: true }, "darwin", settings)).toBeUndefined();
     settings.enabled = false;
     expect(shortcutForEvent({ key: "k", metaKey: true }, "darwin", settings)).toBeUndefined();

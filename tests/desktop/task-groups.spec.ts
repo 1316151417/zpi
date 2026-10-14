@@ -204,7 +204,7 @@ test("long group names stay beside their color dot and truncate in menus and dra
   }
 });
 
-test("grouped view shares pinned shortcuts and creates group drafts through Cmd/Ctrl+N; J/K and search hints stay synchronized", async () => {
+test("grouped view shares pinned shortcuts and creates group drafts through Cmd/Ctrl+N; bracket panes and search hints stay synchronized", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-task-group-shortcuts-"));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
@@ -265,13 +265,13 @@ test("grouped view shares pinned shortcuts and creates group drafts through Cmd/
     await expect(
       page.locator(`[data-grouped-group-item-id="${groupId}"] [data-testid=grouped-draft-row]`),
     ).toHaveCount(1);
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
-    await page.keyboard.press(`${primary}+l`);
+    await page.keyboard.press(`${primary}+]`);
     await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
-    await page.keyboard.press(`${primary}+l`);
+    await page.keyboard.press(`${primary}+]`);
     await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
     await expect(
       page.locator('.sidebar-global button[aria-label="搜索"] .sidebar-action-shortcut'),

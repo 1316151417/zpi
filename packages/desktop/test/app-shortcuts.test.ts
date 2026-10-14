@@ -23,20 +23,20 @@ it("uses the displayed pinned order and excludes archived, draft and child sessi
 
 it("reserves held workspace commands from terminals but leaves composer commands local", () => {
   const settings = defaultShortcuts("linux");
-  expect(workspaceShortcutForEvent({ key: "j", ctrlKey: true, repeat: true }, "linux", settings)).toBe(
+  expect(workspaceShortcutForEvent({ key: "[", ctrlKey: true, repeat: true }, "linux", settings)).toBe(
     "toggle-sidebar",
   );
   expect(workspaceShortcutForEvent({ key: "Enter", ctrlKey: true }, "linux", settings)).toBeUndefined();
-  expect(workspaceShortcutForEvent({ key: "l", ctrlKey: true }, "linux", settings)).toBe("toggle-pane");
+  expect(workspaceShortcutForEvent({ key: "]", ctrlKey: true }, "linux", settings)).toBe("toggle-pane");
   expect(workspaceShortcutForEvent({ key: "k", ctrlKey: true }, "linux", settings)).toBe("search");
   expect(
-    workspaceShortcutForEvent({ key: ";", code: "Semicolon", ctrlKey: true }, "linux", settings),
+    workspaceShortcutForEvent({ key: "l", code: "KeyL", ctrlKey: true }, "linux", settings),
   ).toBeUndefined();
   expect(
-    workspaceShortcutForEvent({ key: "j", ctrlKey: true, isComposing: true }, "linux", settings),
+    workspaceShortcutForEvent({ key: "[", ctrlKey: true, isComposing: true }, "linux", settings),
   ).toBeUndefined();
   expect(
-    workspaceShortcutForEvent({ key: "j", ctrlKey: true }, "linux", { ...settings, enabled: false }),
+    workspaceShortcutForEvent({ key: "[", ctrlKey: true }, "linux", { ...settings, enabled: false }),
   ).toBeUndefined();
 });
 

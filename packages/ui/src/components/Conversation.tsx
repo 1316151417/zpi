@@ -1146,9 +1146,13 @@ export function ChatComposer({
   onCommand,
   shortcutCommand,
   onSelectModel,
+  onConfigureEnvironment,
 }: {
-  shortcutCommand?: (event: KeyboardEvent) => "send-next" | "select-model" | undefined;
+  shortcutCommand?: (
+    event: KeyboardEvent,
+  ) => "send-next" | "select-model" | "configure-environment" | undefined;
   onSelectModel?: () => void;
+  onConfigureEnvironment?: () => void;
   onCommand?: (name: string) => void;
   onCancel?: () => void;
   resetFiles?: { disabled: boolean; description: string };
@@ -1622,6 +1626,7 @@ export function ChatComposer({
         event.stopPropagation();
         if (event.repeat) return;
         if (command === "select-model") onSelectModel?.();
+        else if (command === "configure-environment") onConfigureEnvironment?.();
         else {
           const first = queue?.items[0];
           if (first?.state === "queued")

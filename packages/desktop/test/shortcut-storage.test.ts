@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { shortcutDefaultsVersion } from "../src/main/shortcut-defaults-migration.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
@@ -10,6 +11,36 @@ const encryption = {
   encryptString: () => Buffer.alloc(0),
   decryptString: () => "",
 };
+it("upgrades a version 1 file once and retains later custom or cleared menu shortcuts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-menu-migration-"));
+  try {
+    new SettingsStore(dir, encryption).updatePreferences({ theme: "dark" });
+    const file = join(dir, "settings.json");
+    const raw = JSON.parse(await readFile(file, "utf8"));
+    raw.shortcutDefaultsVersion = 1;
+    delete raw.shortcuts.bindings["configure-environment"];
+    Object.assign(raw.shortcuts.bindings, {
+      "toggle-sidebar": "CmdOrCtrl+J",
+      "toggle-pane": "CmdOrCtrl+L",
+      "select-model": "CmdOrCtrl+;",
+    });
+    await writeFile(file, JSON.stringify(raw));
+    const store = new SettingsStore(dir, encryption);
+    expect(store.get().shortcuts).toEqual(defaultShortcuts(process.platform));
+    expect(JSON.parse(await readFile(file, "utf8")).shortcutDefaultsVersion).toBe(shortcutDefaultsVersion);
+    const bytes = await readFile(file, "utf8");
+    expect(new SettingsStore(dir, encryption).get().shortcuts).toEqual(store.get().shortcuts);
+    expect(await readFile(file, "utf8")).toBe(bytes);
+    const custom = store.get().shortcuts;
+    custom.bindings["configure-environment"] = null;
+    custom.bindings["toggle-sidebar"] = "CmdOrCtrl+J";
+    custom.bindings["select-model"] = "CmdOrCtrl+;";
+    store.updateShortcuts(custom);
+    expect(new SettingsStore(dir, encryption).get().shortcuts).toEqual(store.get().shortcuts);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 it("defaults missing legacy shortcuts without writing, then persists customization and master disable", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-shortcut-storage-"));
   try {
@@ -47,7 +78,9 @@ it("migrates persisted legacy defaults once, preserving disabled state, credenti
     const raw = JSON.parse(await readFile(file, "utf8"));
     delete raw.shortcutDefaultsVersion;
     delete raw.shortcuts.bindings["focus-composer"];
+    delete raw.shortcuts.bindings["configure-environment"];
     Object.assign(raw.shortcuts.bindings, {
+      "toggle-sidebar": "CmdOrCtrl+J",
       "toggle-pane": "CmdOrCtrl+K",
       "select-model": "CmdOrCtrl+L",
       search: "CmdOrCtrl+Shift+F",
@@ -59,12 +92,13 @@ it("migrates persisted legacy defaults once, preserving disabled state, credenti
     const migrated = new SettingsStore(dir, encryption);
     expect(migrated.get().shortcuts).toEqual({ ...defaultShortcuts(process.platform), enabled: false });
     expect(migrated.get().interface.theme).toBe("dark");
-    expect(JSON.parse(await readFile(file, "utf8")).shortcutDefaultsVersion).toBe(1);
+    expect(JSON.parse(await readFile(file, "utf8")).shortcutDefaultsVersion).toBe(shortcutDefaultsVersion);
     expect(await readFile(creds, "utf8")).toBe("unavailable encrypted credentials");
     const saved = await readFile(file, "utf8");
     expect(new SettingsStore(dir, encryption).get().shortcuts).toEqual(migrated.get().shortcuts);
     expect(await readFile(file, "utf8")).toBe(saved);
     const chosenOldKeys = migrated.get().shortcuts;
+    chosenOldKeys.bindings["configure-environment"] = null;
     Object.assign(chosenOldKeys.bindings, raw.shortcuts.bindings);
     migrated.updateShortcuts(chosenOldKeys);
     expect(new SettingsStore(dir, encryption).get().shortcuts).toEqual(migrated.get().shortcuts);
@@ -102,7 +136,7 @@ it.each(["CmdOrCtrl+;", "CmdOrCtrl+I"])(
       } else {
         expect(shortcuts.bindings).toEqual({ ...defaults, "new-task": binding, "focus-composer": null });
       }
-      expect(JSON.parse(await readFile(file, "utf8")).shortcutDefaultsVersion).toBe(1);
+      expect(JSON.parse(await readFile(file, "utf8")).shortcutDefaultsVersion).toBe(shortcutDefaultsVersion);
       expect(new SettingsStore(dir, encryption).get().shortcuts).toEqual(shortcuts);
       // A later edit that removes a conflict must not trigger deferred default migration.
       shortcuts.bindings["new-task"] = null;
@@ -151,7 +185,7 @@ it("rejects invalid legacy bindings and unknown migration versions without rewri
     new SettingsStore(dir, encryption).updatePreferences({ theme: "dark" });
     const file = join(dir, "settings.json");
     const raw = JSON.parse(await readFile(file, "utf8"));
-    for (const version of [null, 0, 2, "1"]) {
+    for (const version of [null, 0, 3, "1"]) {
       const bytes = JSON.stringify({ ...raw, shortcutDefaultsVersion: version });
       await writeFile(file, bytes);
       expect(() => new SettingsStore(dir, encryption)).toThrow("Unsupported shortcut defaults version");

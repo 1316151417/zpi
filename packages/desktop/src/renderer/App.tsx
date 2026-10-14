@@ -202,6 +202,8 @@ export function App() {
   }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
+  const [environmentOpen, setEnvironmentOpen] = useState(false);
+  useEffect(() => setEnvironmentOpen(false), [state.selected]);
   const [action, setAction] = useState<ActionDialog>();
   const [viewport, setViewport] = useState(window.innerWidth);
   const [dragWidth, setDragWidth] = useState<number>();
@@ -1082,7 +1084,12 @@ export function App() {
                       record?.draft ? (
                         <div className="draft-composer-header">
                           <DraftProjectPicker projectId={record.projectId} />
-                          <WorktreeSettings record={record} />
+                          <WorktreeSettings
+                            key={record.id}
+                            record={record}
+                            open={environmentOpen}
+                            onOpenChange={setEnvironmentOpen}
+                          />
                         </div>
                       ) : undefined
                     }
@@ -1095,6 +1102,9 @@ export function App() {
                       composerShortcutCommand(event, window.zpi.platform, shortcuts)
                     }
                     onSelectModel={() => setModelOpen(true)}
+                    onConfigureEnvironment={() => {
+                      if (record?.draft) setEnvironmentOpen(true);
+                    }}
                     showSendButton={prefs?.showSendButton ?? false}
                     toolbar={
                       <SessionToolbar

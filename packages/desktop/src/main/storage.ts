@@ -213,10 +213,13 @@ export class SettingsStore {
       }
       const hadShortcuts = this.data.shortcuts != null;
       this.data.shortcuts ??= defaultShortcuts(process.platform);
-      const migrateShortcuts = this.data.shortcutDefaultsVersion === undefined;
+      const previousShortcutVersion: unknown = this.data.shortcutDefaultsVersion;
+      const migrateShortcuts = previousShortcutVersion === undefined || previousShortcutVersion === 1;
       if (migrateShortcuts) {
         this.data.shortcutDefaultsVersion = shortcutDefaultsVersion;
         const bindings = this.data.shortcuts.bindings;
+        if (isJsonObject(bindings) && !Object.hasOwn(bindings, "configure-environment"))
+          bindings["configure-environment"] = null;
         if (isJsonObject(bindings) && !Object.hasOwn(bindings, "focus-composer")) {
           const focus = defaultShortcuts(process.platform).bindings["focus-composer"];
           bindings["focus-composer"] = Object.values(bindings).some(
@@ -229,7 +232,11 @@ export class SettingsStore {
       }
       this.validateData(this.data);
       if (migrateShortcuts && hadShortcuts) {
-        this.data.shortcuts = migrateShortcutDefaults(this.data.shortcuts, process.platform);
+        this.data.shortcuts = migrateShortcutDefaults(
+          this.data.shortcuts,
+          process.platform,
+          previousShortcutVersion === 1 ? 1 : 0,
+        );
         migratedShortcuts = true;
       }
     }

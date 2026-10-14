@@ -33,9 +33,12 @@ describe("composer shortcut routing", () => {
       composerShortcutCommand(event({ ctrlKey: false, metaKey: true }), "darwin", defaultShortcuts("darwin")),
     ).toBe("send-next");
     expect(
-      composerShortcutCommand(event({ key: ";", code: "Semicolon" }), "linux", defaultShortcuts("linux")),
+      composerShortcutCommand(event({ key: "l", code: "KeyL" }), "linux", defaultShortcuts("linux")),
     ).toBe("select-model");
-    for (const key of ["j", "k", "l", "i", "n", "f", "1"])
+    expect(
+      composerShortcutCommand(event({ key: "j", code: "KeyJ" }), "linux", defaultShortcuts("linux")),
+    ).toBe("configure-environment");
+    for (const key of ["[", "]", "k", "i", "n", "f", "1"])
       expect(
         composerShortcutCommand(event({ key, code: undefined }), "linux", defaultShortcuts("linux")),
       ).toBeUndefined();
@@ -44,9 +47,9 @@ describe("composer shortcut routing", () => {
   it.each(["darwin", "win32", "linux"])("keeps model selection local and repeat-safe on %s", (platform) => {
     const settings = defaultShortcuts(platform);
     const modelEvent = event({
-      key: "；",
-      code: "Semicolon",
-      keyCode: 186,
+      key: "L",
+      code: "KeyL",
+      keyCode: 76,
       ctrlKey: platform !== "darwin",
       metaKey: platform === "darwin",
     });
