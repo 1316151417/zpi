@@ -47,9 +47,18 @@ export function SidebarTaskRow({
       </ActionHint>
     </span>
   );
+  const showShortcut = Boolean(shortcut) && !r.pendingQuestion;
   const time = (
     <span className="task-row-time" data-task-row-metadata="true">
-      {r.pendingQuestion ? <QuestionBadge record={r} /> : formatTaskRelativeTime(r.updatedAt)}
+      {showShortcut ? (
+        <kbd className="task-row-shortcut" title={`切换任务 ${shortcut}`}>
+          {shortcut}
+        </kbd>
+      ) : r.pendingQuestion ? (
+        <QuestionBadge record={r} />
+      ) : (
+        formatTaskRelativeTime(r.updatedAt)
+      )}
     </span>
   );
   return (
@@ -72,6 +81,7 @@ export function SidebarTaskRow({
       data-task-item-key={r.id}
       data-status={r.status ?? "idle"}
       data-question={Boolean(r.pendingQuestion)}
+      data-shortcut={showShortcut}
       data-indicator={indicator}
     >
       <span className="task-leading-slot">
@@ -141,11 +151,6 @@ export function SidebarTaskRow({
           >
             <TaskTitleOverflowText as="span">{r.title}</TaskTitleOverflowText>
           </button>
-          {shortcut && (
-            <kbd className="task-row-shortcut" title={`切换任务 ${shortcut}`}>
-              {shortcut}
-            </kbd>
-          )}
           {time}
           {actions}
         </>

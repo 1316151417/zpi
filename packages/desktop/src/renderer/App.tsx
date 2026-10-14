@@ -33,7 +33,13 @@ import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
 import { defaultShortcuts, formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
 import { taskGroupFor } from "../shared/task-groups.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
-import { captureWorkspaceShortcut, visiblePinnedTasks, workspaceShortcutBlocked } from "./app-shortcuts.ts";
+import {
+  captureWorkspaceShortcut,
+  listenShortcutModifier,
+  pinnedTaskShortcut,
+  visiblePinnedTasks,
+  workspaceShortcutBlocked,
+} from "./app-shortcuts.ts";
 import { selectAppState, selectTaskRecords } from "./app-state.ts";
 import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
@@ -204,6 +210,8 @@ export function App() {
   const oldSelect = useRef("");
   const prefs = state.settings?.interface;
   const shortcuts = state.settings?.shortcuts ?? defaultShortcuts(window.zpi.platform);
+  const [shortcutModifierHeld, setShortcutModifierHeld] = useState(false);
+  useEffect(() => listenShortcutModifier(window.zpi.platform, setShortcutModifierHeld), []);
   const shortcutHint = (command: ShortcutCommand) =>
     shortcuts.enabled && shortcuts.bindings[command]
       ? formatShortcut(shortcuts.bindings[command], window.zpi.platform)
@@ -473,8 +481,12 @@ export function App() {
       workspace={r.cwd?.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "ZPI"}
       pinLimitReached={pinnedCount >= taskPinLimit}
       shortcut={
-        r.pinnedAt != null
-          ? shortcutHint(`pin-${pinned.findIndex((item) => item.id === r.id) + 1}` as ShortcutCommand)
+        shortcutModifierHeld
+          ? pinnedTaskShortcut(
+              pinned.findIndex((item) => item.id === r.id),
+              shortcuts,
+              window.zpi.platform,
+            )
           : undefined
       }
       onSelect={() => {

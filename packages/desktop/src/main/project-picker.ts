@@ -7,15 +7,16 @@ import type { SessionHost } from "./session-host.ts";
 
 export async function openProjectFromDialog(
   sessionId: string | null,
-  host: Pick<SessionHost, "workspaceInfo" | "addProject">,
+  host: Pick<SessionHost, "workspaceInfo" | "listProjects" | "addProject">,
   showDialog: (options: OpenDialogOptions) => Promise<OpenDialogReturnValue>,
   home = homedir(),
 ): Promise<ProjectRecord | null> {
   let defaultPath = home;
   if (sessionId !== null) {
     try {
-      const { cwd } = host.workspaceInfo(sessionId);
-      if (isAbsolute(cwd) && (await stat(cwd)).isDirectory()) defaultPath = cwd;
+      const { cwd, projectId } = host.workspaceInfo(sessionId);
+      const path = host.listProjects(true).find((project) => project.id === projectId)?.path ?? cwd;
+      if (isAbsolute(path) && (await stat(path)).isDirectory()) defaultPath = path;
     } catch {
       // A stale session or unavailable directory must not prevent opening another workspace.
     }
