@@ -14,6 +14,25 @@ export function imageFormat(bytes: Uint8Array): string | undefined {
   return undefined;
 }
 
+/** Sharp does not expose JPEG comments or every APP segment in metadata(). */
+function hasJpegMetadata(input: Buffer): boolean {
+  let offset = 2; // Skip SOI, already checked by imageFormat.
+  while (offset < input.length) {
+    // After SOS, skip entropy-coded bytes and stuffed/restart markers too.
+    if (input[offset++] !== 0xff) continue;
+    while (input[offset] === 0xff) offset++;
+    const marker = input[offset++];
+    if (marker === 0xfe || (marker >= 0xe0 && marker <= 0xef)) return true;
+    if (marker === 0xd9) return offset !== input.length;
+    if (marker === 0 || marker === 1 || (marker >= 0xd0 && marker <= 0xd8)) continue;
+    if (offset + 2 > input.length) return true;
+    const length = input.readUInt16BE(offset);
+    if (length < 2 || offset + length > input.length) return true;
+    offset += length;
+  }
+  return true;
+}
+
 /** Decode the first frame with the same pixel guard for attachments and the read tool. */
 export async function openImage(bytes: Uint8Array) {
   const format = imageFormat(bytes);
@@ -51,7 +70,14 @@ export async function openImage(bytes: Uint8Array) {
     width: orientation >= 5 ? height : width,
     height: orientation >= 5 ? width : height,
     orientation,
-    hasMetadata: !!(metadata.exif || metadata.iptc || metadata.xmp),
+    hasMetadata: !!(
+      metadata.exif ||
+      metadata.iptc ||
+      metadata.xmp ||
+      metadata.icc ||
+      metadata.comments?.length ||
+      (format === "jpeg" && hasJpegMetadata(input))
+    ),
     animated: (metadata.pages ?? 1) > 1 || (format === "png" && isAnimatedPng(input)),
   };
 }

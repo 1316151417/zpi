@@ -135,7 +135,7 @@ export class SessionHost {
   private closing = false;
   private deleting = new Set<string>();
   private updating = new Set<string>();
-  private closingSideChats = new Set<string>();
+  private closingChildren = new Set<string>();
   private homeDir: string;
   private defaultWorkspace: string;
   readonly attachments: AttachmentStore;
@@ -289,6 +289,26 @@ export class SessionHost {
         this.createSubagentSession(id, profile, selection, description),
       run: async (id, prompt, profile, selection) => {
         if (profile && selection) {
+          const record = this.record(id);
+          if (record.archivedAt != null) {
+            const parent = record.parentSessionId ? this.records.get(record.parentSessionId) : undefined;
+            const task = this.subagents.taskForChild(id);
+            if (
+              !this.configuration(id).subagentProfile ||
+              !parent ||
+              task?.childSessionId !== id ||
+              task.parentSessionId !== parent.id ||
+              parent.archivedAt != null ||
+              this.closing ||
+              this.deleting.has(parent.id) ||
+              this.updating.has(parent.id) ||
+              this.closingChildren.has(parent.id) ||
+              this.activeRuns.get(parent.id)?.aborted
+            )
+              throw new Error("busy: 父会话已停止或关闭");
+            // Repair a legacy cascade when its parent was restored before upgrading.
+            this.restoreSessionState(id);
+          }
           if (!this.settings.isSelectionValid(selection))
             throw new Error("configuration: 子智能体模型不可用");
           const configuration = {
@@ -863,7 +883,7 @@ export class SessionHost {
       this.closing ||
       !this.records.has(parentId) ||
       this.deleting.has(parentId) ||
-      this.closingSideChats.has(parentId) ||
+      this.closingChildren.has(parentId) ||
       this.record(parentId).archivedAt != null
     )
       throw new Error("busy: 父会话已关闭");
@@ -967,7 +987,7 @@ export class SessionHost {
       parent.archivedAt != null ||
       this.closing ||
       this.deleting.has(parentId) ||
-      this.closingSideChats.has(parentId) ||
+      this.closingChildren.has(parentId) ||
       this.activeRuns.get(parentId)?.aborted
     )
       throw new Error("busy: 父会话已停止或关闭");
@@ -1158,16 +1178,30 @@ export class SessionHost {
     }
   }
   async closeSideChat(id: string): Promise<void> {
+    if (!this.record(id).parentSessionId || this.configuration(id).subagentProfile)
+      throw new Error("invalid_input: 不是辅助对话");
+    await this.closeChildSession(id);
+  }
+  private async closeChildSession(id: string): Promise<void> {
     const record = this.record(id);
-    if (!record.parentSessionId) throw new Error("invalid_input: 不是辅助对话");
-    if (this.closingSideChats.has(id)) throw new Error("busy: 辅助对话正在关闭");
-    this.closingSideChats.add(id);
+    const subagent = this.configuration(id).subagentProfile;
+    if (this.closingChildren.has(id)) throw new Error("busy: 子会话正在关闭");
+    this.closingChildren.add(id);
     try {
+      const task = subagent ? this.subagents.taskForChild(id) : undefined;
+      if (task?.status === "running") await this.subagents.stop(task.parentSessionId, task.agentId);
       const run = this.activeRuns.get(id);
       if (run) await this.abortRun({ sessionId: id, runId: run.runId });
-      // Closing discards this tab; opening another side chat creates a new child.
-      // Retain its history, but stop all owned work and durably reject late wakeups.
-      if (record.archivedAt == null) await this.archiveSession(id);
+      if (subagent) {
+        // Parent archival stops reusable agents without discarding their ability
+        // to receive SendMessage after the parent is restored.
+        await this.backgroundTasks.stopAll(id);
+        if (record.archivedAt == null) await this.inputQueue.archive(id, () => {});
+      } else if (record.archivedAt == null) {
+        // Closing discards this tab; a new side chat gets a new child. Preserve
+        // its history, but durably reject late notifications after closing.
+        await this.archiveSession(id);
+      }
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.runtimes.delete(id);
@@ -1175,7 +1209,7 @@ export class SessionHost {
       this.views.delete(id);
       this.drafts.delete(id);
     } finally {
-      this.closingSideChats.delete(id);
+      this.closingChildren.delete(id);
     }
   }
   activateSession(id: string): SessionRecord {
@@ -1226,12 +1260,7 @@ export class SessionHost {
       try {
         await this.backgroundTasks.stopAll(id);
         for (const child of this.records.values())
-          if (child.parentSessionId === id) {
-            const task = this.subagents.taskForChild(child.id);
-            if (task?.status === "running") await this.subagents.stop(id, task.agentId);
-            await this.backgroundTasks.stopAll(child.id);
-            await this.closeSideChat(child.id);
-          }
+          if (child.parentSessionId === id) await this.closeChildSession(child.id);
         const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
         const archivedAt = Date.now();
         this.meta(id, {
@@ -1252,6 +1281,19 @@ export class SessionHost {
     });
   }
   restoreSession(id: string): SessionRecord {
+    const restored = this.restoreSessionState(id);
+    // Versions 0.2.33–0.2.34 archived reusable agents along with their parent.
+    // Also repair already-restored parents, without reopening closed side chats.
+    for (const child of this.records.values())
+      if (
+        child.parentSessionId === id &&
+        child.archivedAt != null &&
+        this.configuration(child.id).subagentProfile
+      )
+        this.restoreSessionState(child.id);
+    return restored;
+  }
+  private restoreSessionState(id: string): SessionRecord {
     const record = this.record(id);
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
@@ -1655,7 +1697,7 @@ export class SessionHost {
       await this.backgroundTasks.stopAll(id);
       for (const child of [...this.records.values()])
         if (child.parentSessionId === id) {
-          await this.closeSideChat(child.id);
+          await this.closeChildSession(child.id);
           await this.deleteSession(child.id);
         }
       await this.inputQueue.delete(id);
@@ -2036,7 +2078,7 @@ export class SessionHost {
     if (this.configuration(id).subagentProfile && !internalSubagent)
       throw new Error("invalid_input: 子智能体会话只读");
     if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
-    if (this.closing || this.deleting.has(id) || this.closingSideChats.has(id))
+    if (this.closing || this.deleting.has(id) || this.closingChildren.has(id))
       throw new Error("busy: 应用正在关闭或会话正在删除");
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 此会话正在运行或更新");
     if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);

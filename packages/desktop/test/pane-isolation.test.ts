@@ -8,6 +8,7 @@ import {
   openChanges,
   openFile,
   openTerminal,
+  openWebLink,
   reorderPaneTab,
   setPaneOpen,
   terminalOutput,
@@ -256,6 +257,69 @@ it("retains ordinary panes when a session is archived or omitted from a refreshe
   select("A");
   expect(visiblePaneTabs("A")).toEqual(tabs);
 });
+
+it("retains a child pane's owner across restoration, refresh, navigation and permanent deletion", async () => {
+  const parent = useStore.getState().sessions.get("A");
+  if (!parent) throw new Error("missing session");
+  useStore.setState({
+    sessions: new Map(useStore.getState().sessions).set("child-a", {
+      ...parent,
+      id: "child-a",
+      parentSessionId: "A",
+    }),
+  });
+  await openFile("child-a", file.path);
+  const fileId = usePane.getState().active;
+  const sessions = new Map(useStore.getState().sessions);
+  sessions.delete("A");
+  sessions.delete("child-a");
+  useStore.setState({ sessions });
+  select("B");
+  // Restoring reloads the top-level task, not its archived child records.
+  useStore.setState({ sessions: new Map(sessions).set("A", parent) });
+  select("A");
+  expect(visiblePaneTabs("A")).toHaveLength(1);
+  await openFile("child-a", file.path);
+  expect(visiblePaneTabs("A")).toEqual([
+    expect.objectContaining({ id: fileId, ownerSessionId: "A", sessionId: "child-a" }),
+  ]);
+  bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path: "/shared/linked.md" }));
+  await openFile("child-a", "/shared/linked.md");
+  await openWebLink("http://localhost:3000/", undefined, "child-a");
+  const browserId = usePane.getState().active;
+  expect(visiblePaneTabs("A")).toHaveLength(3);
+  expect(visiblePaneTabs("child-a")).toEqual([]);
+  expect(visiblePaneTabs("A").every((tab) => tab.ownerSessionId === "A")).toBe(true);
+  useStore.setState({ sessions });
+  select("B");
+  await deleteSessionWithPanes("A");
+  expect(usePane.getState().tabs).toEqual([]);
+  expect(bridge.closeBrowser).toHaveBeenCalledExactlyOnceWith(browserId);
+});
+
+it.each(["B", undefined])(
+  "uses live child ownership instead of stale retained tabs: %s",
+  async (parentId) => {
+    const parent = useStore.getState().sessions.get("A");
+    if (!parent) throw new Error("missing session");
+    const child = { ...parent, id: "child-a", parentSessionId: "A" };
+    useStore.setState({ sessions: new Map(useStore.getState().sessions).set(child.id, child) });
+    await openFile(child.id, file.path);
+    useStore.setState({
+      sessions: new Map(useStore.getState().sessions).set(child.id, {
+        ...child,
+        parentSessionId: parentId,
+      }),
+    });
+    const owner = parentId ?? child.id;
+    select(owner);
+    await openFile(child.id, file.path);
+    await openWebLink("http://localhost:3000/", undefined, child.id);
+    expect(visiblePaneTabs(owner)).toHaveLength(2);
+    expect(visiblePaneTabs("A")).toEqual([]);
+    expect(visiblePaneTabs(owner).every((tab) => tab.ownerSessionId === owner)).toBe(true);
+  },
+);
 
 it("closes permanently deleted task panes and their retained child panes without touching another task", async () => {
   await openTerminal("A");

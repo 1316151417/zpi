@@ -137,6 +137,7 @@ export function createStreamingToolCoordinator(
             toolCallId: call.id,
             toolName: call.name,
             args: call.arguments,
+            toolCall: call,
           });
         const failure = {
           ...toolFailure(text),

@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "zpi-agent";
 import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "zpi-ai";
 import {
+  calculateContextTokens,
   contentText,
   normalizeContext,
   type RetryCallbacks,
@@ -148,13 +149,7 @@ export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
 // Token calculation
 // ============================================================================
 
-/**
- * Calculate total context tokens from usage.
- * Uses the native totalTokens field when available, falls back to computing from components.
- */
-export function calculateContextTokens(usage: Usage): number {
-  return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-}
+export { calculateContextTokens };
 
 /**
  * Get usage from an assistant message if available.
@@ -170,20 +165,6 @@ function getAssistantUsage(msg: AgentMessage): Usage | undefined {
       calculateContextTokens(assistantMsg.usage) > 0
     ) {
       return assistantMsg.usage;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Find the last valid assistant message usage from session entries.
- */
-export function getLastAssistantUsage(entries: SessionEntry[]): Usage | undefined {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (entry.type === "message") {
-      const usage = getAssistantUsage(entry.message);
-      if (usage) return usage;
     }
   }
   return undefined;
@@ -596,44 +577,6 @@ export async function completeSummarization(
       ? (await streamFn(model, context, requestOptions)).result()
       : streamSimple(model, context, requestOptions).result();
   return retryAssistantCall(produce, retry, requestOptions.signal, callbacks);
-}
-
-/**
- * Generate a summary of the conversation using the LLM.
- * If previousSummary is provided, uses the update prompt to merge.
- */
-export async function generateSummary(
-  currentMessages: AgentMessage[],
-  model: Model,
-  reserveTokens: number,
-  apiKey: string | undefined,
-  headers?: Record<string, string>,
-  signal?: AbortSignal,
-  customInstructions?: string,
-  previousSummary?: string,
-  thinkingLevel?: ThinkingLevel,
-  streamFn?: StreamFn,
-  retry?: RetryPolicy,
-  callbacks?: RetryCallbacks,
-  sessionId?: string,
-): Promise<string> {
-  return (
-    await generateSummaryWithUsage(
-      currentMessages,
-      model,
-      reserveTokens,
-      apiKey,
-      headers,
-      signal,
-      customInstructions,
-      previousSummary,
-      thinkingLevel,
-      streamFn,
-      retry,
-      callbacks,
-      sessionId,
-    )
-  ).text;
 }
 
 /** Build the provider context for a standalone summary request. */

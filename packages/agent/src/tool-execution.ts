@@ -62,6 +62,7 @@ export function createToolExecutor(
       toolCallId: call.id,
       toolName: call.name,
       args: call.arguments,
+      toolCall: call,
     });
     const tool = context.tools?.find((t) => t.name === call.name);
     let args: unknown = call.arguments;

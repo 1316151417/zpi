@@ -132,18 +132,6 @@ function cleanMarkdownLinkTitle(title: string): string | null {
   return normalizedTitle;
 }
 
-export function shouldOpenAssistantHtmlInBrowser(params: {
-  path: string;
-  workspaceIdentity?: string;
-  workspaceRemoteSessionId?: string;
-}): boolean {
-  return (
-    isAssistantPreviewHtmlPath(params.path) &&
-    !params.workspaceIdentity?.trim() &&
-    !params.workspaceRemoteSessionId
-  );
-}
-
 function normalizePathForCompare(path: string): string {
   return path.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "");
 }

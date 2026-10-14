@@ -12,13 +12,17 @@ function isMissingPathError(error: unknown): boolean {
 }
 
 async function getMutationQueueKey(filePath: string): Promise<string> {
-  let ancestor = resolve(filePath);
+  const resolvedPath = resolve(filePath);
+  let ancestor = resolvedPath;
   const missing: string[] = [];
   let symlinks = 0;
   while (true) {
     try {
       return join(await realpath(ancestor), ...missing);
     } catch (error) {
+      // Custom operations may target a remote directory that is a local file.
+      // Leave validity to the operation, as for other paths absent locally.
+      if (error instanceof Error && "code" in error && error.code === "ENOTDIR") return resolvedPath;
       if (!isMissingPathError(error)) throw error;
       let target: string | undefined;
       try {
