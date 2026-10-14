@@ -14,6 +14,9 @@ ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {
   }
 });
 const bridge: DesktopBridge = {
+  setSessionUnread: (id) => call("setSessionUnread", id),
+  getTaskGroups: () => call("getTaskGroups"),
+  updateTaskGroups: (command) => call("updateTaskGroups", command),
   listSubagents: (id) => call("listSubagents", id),
   saveSubagent: (input) => call("saveSubagent", input),
   deleteSubagent: (id, sessionId) => call("deleteSubagent", id, sessionId),
@@ -103,7 +106,7 @@ const bridge: DesktopBridge = {
   listTaskFiles: (id) => call("listTaskFiles", id),
   listRecentSessions: () => call("listRecentSessions"),
   setSessionPinned: (id, pinned) => call("setSessionPinned", id, pinned),
-  createSession: (id) => call("createSession", id),
+  createSession: (id, groupId) => call("createSession", id, groupId),
   getSessionSnapshot: (id) => call("getSessionSnapshot", id),
   renameSession: (id, name) => call("renameSession", id, name),
   deleteSession: (id) => call("deleteSession", id),

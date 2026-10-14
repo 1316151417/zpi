@@ -17,8 +17,10 @@ import type {
   Result,
   SessionRecord,
 } from "../shared/bridge.ts";
+import { emptyTaskGroups, type TaskGroupState, taskGroupFor } from "../shared/task-groups.ts";
 import { logRendererError } from "./error-log.ts";
 import { previewLoader } from "./preview-loader.ts";
+import { readTaskPreferences, taskPreferencesKey } from "./sidebar-task-model.ts";
 
 declare global {
   interface Window {
@@ -30,6 +32,8 @@ export function unwrap<T>(result: Result<T>): T {
   return result.value;
 }
 interface Store {
+  taskGroups: TaskGroupState;
+  taskGroupsHydrated: boolean;
   projects: ProjectRecord[];
   sessions: Map<string, SessionRecord>;
   views: Map<string, SessionView>;
@@ -43,6 +47,8 @@ interface Store {
   resourceDiagnostics: Map<string, { path: string; message: string }[]>;
 }
 export const useStore = create<Store>(() => ({
+  taskGroups: emptyTaskGroups(),
+  taskGroupsHydrated: false,
   projects: [],
   sessions: new Map(),
   views: new Map(),
@@ -323,11 +329,14 @@ export async function refreshSuggestions(id: string): Promise<void> {
   ]);
   useStore.setState({ resourceDiagnostics, suggestions });
 }
+let taskGroupGeneration = 0;
 export async function refresh(): Promise<void> {
-  const [projects, records, settings] = await Promise.all([
+  const groupGeneration = taskGroupGeneration;
+  const [projects, records, settings, taskGroups] = await Promise.all([
     window.zpi.listProjects().then(unwrap),
     window.zpi.listRecentSessions().then(unwrap),
     window.zpi.getSettings().then(unwrap),
+    window.zpi.getTaskGroups().then(unwrap),
   ]);
   const parentIds = new Set(records.map((record) => record.id));
   records.push(
@@ -336,6 +345,8 @@ export async function refresh(): Promise<void> {
     ),
   );
   useStore.setState({
+    taskGroups: groupGeneration === taskGroupGeneration ? taskGroups : useStore.getState().taskGroups,
+    taskGroupsHydrated: true,
     projects,
     sessions: new Map(
       records.map((record) => {
@@ -528,16 +539,38 @@ export function focusComposer(sessionId: string): void {
 export async function newSession(
   projectId: string | null = useStore.getState().sessions.get(useStore.getState().selected ?? "")
     ?.projectId ?? null,
+  groupId?: string | null,
 ): Promise<void> {
-  const key = projectId ?? "_unassigned";
+  if (groupId === undefined) {
+    let grouped = false;
+    try {
+      grouped = readTaskPreferences(localStorage.getItem(taskPreferencesKey)).organizeBy === "grouped";
+    } catch {}
+    const active = useStore.getState().sessions.get(useStore.getState().selected ?? "");
+    groupId =
+      grouped && active && active.pinnedAt == null && active.archivedAt == null && !active.parentSessionId
+        ? taskGroupFor(useStore.getState().taskGroups, active.id)
+        : null;
+  }
+  const targetGroup = groupId;
+  const key = `${projectId ?? "_unassigned"}:${targetGroup ?? "root"}`;
   const pending = openingDrafts.get(key);
   if (pending) return pending;
   const open = (async () => {
     const draft = [...useStore.getState().sessions.values()]
-      .filter((record) => record.draft && record.projectId === projectId && record.archivedAt == null)
+      .filter(
+        (record) =>
+          record.draft &&
+          !record.parentSessionId &&
+          record.projectId === projectId &&
+          record.archivedAt == null &&
+          taskGroupFor(useStore.getState().taskGroups, record.id) === targetGroup,
+      )
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    const record = draft ?? unwrap(await window.zpi.createSession(projectId));
-    if (!draft) await refresh();
+    const record = draft ?? unwrap(await window.zpi.createSession(projectId, targetGroup));
+    if (!draft) {
+      await refresh();
+    }
     await selectSession(record.id);
     focusComposer(record.id);
   })();
@@ -607,4 +640,31 @@ export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnap
   }
   cursors.set(snapshot.session.id, snapshot.historyCursor ?? null);
   useStore.setState({ views, sessions, historyCursors: cursors });
+}
+
+export async function changeTaskGroups(
+  command: Parameters<DesktopBridge["updateTaskGroups"]>[0],
+): Promise<TaskGroupState> {
+  ++taskGroupGeneration;
+  const taskGroups = unwrap(await window.zpi.updateTaskGroups(command));
+  useStore.setState({ taskGroups });
+  return taskGroups;
+}
+
+export async function prepareDiscardDraft(id: string): Promise<void> {
+  if (!useStore.getState().sessions.get(id)?.draft) throw new Error("只能关闭未发送的新任务");
+  await saveDraft(id);
+}
+export function forgetDiscardedDraft(id: string): void {
+  clearTimeout(draftSaveTimers.get(id));
+  draftSaveTimers.delete(id);
+  draftSaving.delete(id);
+  draftLoaded.delete(id);
+  draftRevisions.delete(id);
+  drafts.delete(id);
+  loadedSessions.delete(id);
+  if (useStore.getState().selected === id) {
+    useStore.setState({ selected: undefined });
+    localStorage.removeItem("zpi.selectedSession");
+  }
 }

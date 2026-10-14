@@ -73,6 +73,7 @@ import { projectEvent, restoreView } from "./projection.ts";
 import { sessionReferenceTranscript } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import { atomicJson, resolveModel, type SettingsStore } from "./storage.ts";
+import { TaskGroupsStore } from "./task-groups.ts";
 import { UserQuestions } from "./user-questions.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
@@ -102,6 +103,13 @@ function validateRunInputText(input: RunInput): void {
 }
 
 export class SessionHost {
+  readonly taskGroups: TaskGroupsStore;
+  getTaskGroups() {
+    return this.taskGroups.get([...this.records.values()]);
+  }
+  updateTaskGroups(command: unknown) {
+    return this.taskGroups.update(command, [...this.records.values()]);
+  }
   readonly subagents: SubagentPlugin;
   readonly backgroundTasks: BackgroundTasks;
   readonly questions = new UserQuestions((id, question) => {
@@ -156,6 +164,7 @@ export class SessionHost {
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
   ) {
+    this.taskGroups = new TaskGroupsStore(join(dir, "task-groups.json"));
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
     this.errors = errors;
@@ -801,7 +810,7 @@ export class SessionHost {
   }
   createSession(
     projectId: string | null,
-    options: { cwd?: string; parentSessionId?: string } = {},
+    options: { cwd?: string; parentSessionId?: string; groupId?: string | null } = {},
   ): SessionRecord {
     if (this.closing) throw new Error("busy: 应用正在关闭");
     const cwd = options.cwd ?? (projectId === null ? this.defaultWorkspace : this.project(projectId).path);
@@ -811,10 +820,11 @@ export class SessionHost {
       cwd,
       join(this.dir, "agent", "sessions", projectId ?? "_unassigned"),
     );
-    const index = HistoryIndex.fresh(manager.getSessionFile() as string);
-    this.indexes.set(manager.getSessionId(), index);
-    manager.subscribeEntries((entry) => index.ingest(entry));
+    const id = manager.getSessionId();
     try {
+      const index = HistoryIndex.fresh(manager.getSessionFile() as string);
+      this.indexes.set(id, index);
+      manager.subscribeEntries((entry) => index.ingest(entry));
       manager.appendSessionInfo("新对话");
       manager.appendCustomEntry("zpi.title", { state: "new" });
       manager.appendCustomEntry("zpi.session_meta", { projectId, pinnedAt: null, draft: true });
@@ -825,26 +835,38 @@ export class SessionHost {
         manager.appendModelChange(selected.provider, selected.modelId);
         manager.appendThinkingLevelChange(toThinking(selected.reasoning, this.settings.getModel(selected)));
       }
+      const record: SessionRecord = {
+        id,
+        projectId,
+        title: "新对话",
+        draft: true,
+        createdAt: Date.parse(index.data.header.timestamp),
+        updatedAt: Date.parse(index.data.header.timestamp),
+        running: false,
+        pinnedAt: null,
+        cwd,
+        ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+      };
+      this.records.set(id, record);
+      this.managers.set(id, manager);
+      index.flush();
+      if (!record.parentSessionId)
+        this.taskGroups.update({ type: "moveTask", id, groupId: options.groupId ?? null, start: true }, [
+          ...this.records.values(),
+        ]);
+      return structuredClone(record);
     } catch (error) {
-      if (manager.getSessionFile()) rmSyncFile(manager.getSessionFile() as string);
+      // 分组与会话必须一起创建成功；分组写盘失败时清掉刚创建的草稿，避免 IPC 报错却留下幽灵会话。
+      this.records.delete(id);
+      this.managers.delete(id);
+      this.indexes.delete(id);
+      const file = manager.getSessionFile();
+      if (file) {
+        rmSyncFile(file, { force: true });
+        rmSyncFile(`${file}.index.json`, { force: true });
+      }
       throw error;
     }
-    const record = {
-      id: manager.getSessionId(),
-      projectId,
-      title: "新对话",
-      draft: true,
-      createdAt: Date.parse(index.data.header.timestamp),
-      updatedAt: Date.parse(index.data.header.timestamp),
-      running: false,
-      pinnedAt: null,
-      cwd,
-      ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
-    };
-    this.records.set(record.id, record);
-    this.managers.set(record.id, manager);
-    index.flush();
-    return structuredClone(record);
   }
   async getGitEnvironment(id: string) {
     return gitEnvironment(this.cwd(this.record(id)));
@@ -1220,6 +1242,12 @@ export class SessionHost {
     if (record.unreadAt !== undefined) this.saveUnread(id, undefined);
     this.visibleSessionId = id;
     return structuredClone(record);
+  }
+  setSessionUnread(id: string): void {
+    const record = this.record(id);
+    if (record.parentSessionId || record.archivedAt != null || this.closing || this.deleting.has(id))
+      throw new Error("busy: 任务不可修改");
+    this.saveUnread(id, Date.now());
   }
   private saveUnread(id: string, unreadAt: number | undefined): void {
     this.meta(id, { type: "custom", customType: "zpi.attention", data: { unreadAt: unreadAt ?? null } });
@@ -1726,6 +1754,11 @@ export class SessionHost {
       this.managers.delete(id);
       this.runtimes.delete(id);
       this.records.delete(id);
+      try {
+        this.taskGroups.prune([...this.records.values()]);
+      } catch (error) {
+        this.errors.write("task-groups.delete", error, { sessionId: id });
+      }
       this.subagents.forgetSession(id);
       this.backgroundTasks.forget(id);
       this.pendingSubagentMessages.delete(id);

@@ -1,0 +1,112 @@
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import type { SessionRecord } from "../shared/bridge.ts";
+import {
+  applyTaskGroupCommand,
+  emptyTaskGroups,
+  reconcileTaskGroups,
+  type TaskGroupCommand,
+  type TaskGroupNode,
+  type TaskGroupState,
+  taskGroupColors,
+} from "../shared/task-groups.ts";
+import { atomicJson } from "./storage.ts";
+
+function object(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function node(value: unknown): value is TaskGroupNode {
+  return (
+    object(value) &&
+    (value.type === "group" || value.type === "task") &&
+    typeof value.id === "string" &&
+    value.id.length > 0
+  );
+}
+function validState(value: unknown): value is TaskGroupState {
+  return (
+    object(value) &&
+    value.version === 1 &&
+    Array.isArray(value.groups) &&
+    value.groups.every(
+      (group) =>
+        object(group) &&
+        typeof group.id === "string" &&
+        group.id.length > 0 &&
+        typeof group.title === "string" &&
+        typeof group.createdAt === "number" &&
+        Number.isFinite(group.createdAt) &&
+        taskGroupColors.includes(group.color as never),
+    ) &&
+    new Set(value.groups.map((group) => group.id)).size === value.groups.length &&
+    Array.isArray(value.roots) &&
+    value.roots.every(node) &&
+    object(value.members) &&
+    Object.values(value.members).every(
+      (ids) => Array.isArray(ids) && ids.every((id) => typeof id === "string"),
+    )
+  );
+}
+export class TaskGroupsStore {
+  private state: TaskGroupState;
+  private path: string;
+  constructor(path: string) {
+    this.path = path;
+    const value: unknown = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : emptyTaskGroups();
+    if (!validState(value)) throw new Error("storage: 无效任务分组数据");
+    this.state = value;
+  }
+  get(records: readonly SessionRecord[]): TaskGroupState {
+    return reconcileTaskGroups(this.state, records);
+  }
+  prune(records: readonly SessionRecord[]): void {
+    const next = this.get(records);
+    if (JSON.stringify(next) === JSON.stringify(this.state)) return;
+    atomicJson(this.path, next);
+    this.state = next;
+  }
+  update(input: unknown, records: readonly SessionRecord[]): TaskGroupState {
+    if (!object(input) || typeof input.type !== "string") throw new Error("invalid_input: 无效分组操作");
+    const keys: Record<string, string[]> = {
+      create: ["type"],
+      rename: ["type", "id", "title"],
+      color: ["type", "id", "color"],
+      delete: ["type", "id"],
+      moveTask: ["type", "id", "groupId", "before", "after", "start"],
+      moveGroup: ["type", "id", "target", "position"],
+      taskTop: ["type", "id"],
+    };
+    if (
+      !Object.hasOwn(keys, input.type) ||
+      Object.keys(input).some((key) => !keys[input.type as string].includes(key))
+    )
+      throw new Error("invalid_input: 未知分组操作");
+    if (input.type !== "create" && (typeof input.id !== "string" || !input.id))
+      throw new Error("invalid_input: 无效分组或任务 ID");
+    if (
+      (input.type === "rename" && typeof input.title !== "string") ||
+      (input.type === "color" && !taskGroupColors.includes(input.color as never)) ||
+      (input.type === "moveGroup" &&
+        (!node(input.target) || !["before", "after"].includes(input.position as string))) ||
+      (input.type === "moveTask" &&
+        ((input.groupId !== null && typeof input.groupId !== "string") ||
+          (input.before !== undefined && input.before !== null && !node(input.before)) ||
+          (input.after !== undefined && !node(input.after)) ||
+          (input.start !== undefined && typeof input.start !== "boolean")))
+    )
+      throw new Error("invalid_input: 无效分组操作参数");
+    if (
+      (input.type === "moveTask" || input.type === "taskTop") &&
+      !records.some((record) => record.id === input.id && !record.parentSessionId)
+    )
+      throw new Error("not_found: 任务不存在");
+    const command: TaskGroupCommand =
+      input.type === "create"
+        ? { type: "create", id: randomUUID(), createdAt: Date.now() }
+        : (input as unknown as TaskGroupCommand);
+    const next = applyTaskGroupCommand(this.get(records), command);
+    atomicJson(this.path, next);
+    this.state = next;
+    return structuredClone(next);
+  }
+}

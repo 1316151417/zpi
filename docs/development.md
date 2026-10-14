@@ -12,7 +12,7 @@
 
 ## 本地数据与凭据
 
-模型配置在应用数据目录的 `settings.json`，加密凭据在 `credentials.enc`，会话在 `agent/sessions`。
+模型配置在应用数据目录的 `settings.json`，加密凭据在 `credentials.enc`，会话在 `agent/sessions`。任务分组、成员和手工顺序由主进程原子保存到 `task-groups.json`；折叠状态和视图选择是 renderer 本地偏好。分组不修改会话工作目录，删除分组不会删除会话。
 
 macOS 数据目录：
 
