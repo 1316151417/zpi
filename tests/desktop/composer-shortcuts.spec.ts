@@ -1,0 +1,205 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ElectronApplication } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { presetModels } from "zpi-ai";
+import {
+  availablePresets,
+  defaultPreset,
+  modelReasoningLabel,
+} from "../../packages/desktop/src/shared/config.ts";
+import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
+import { launchDesktop } from "../helpers/desktop.ts";
+
+test("send-next consumes empty queues, ignores IME and repeats, and sends only the queue head without changing the draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-queue-shortcut-"));
+  const server = await fakeServer((_, response) => send(response, chunk({ content: "waiting" })));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const primary = await page.evaluate(() => (window.zpi.platform === "darwin" ? "Meta" : "Control"));
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("empty queue draft");
+    await editor.press(`${primary}+Enter`);
+    await expect(editor).toHaveText("empty queue draft");
+    expect(server.requests).toHaveLength(0);
+    await editor.fill("running");
+    await editor.press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
+    for (const text of ["queued first", "queued second"]) {
+      await editor.fill(text);
+      await editor.press("Enter");
+    }
+    const rows = page.getByTestId("queue-item");
+    await expect(rows).toHaveCount(2);
+    await editor.fill("keep this unsent draft");
+    await editor.evaluate((element) => {
+      const primary = window.zpi.platform === "darwin" ? { metaKey: true } : { ctrlKey: true };
+      for (const flags of [{ repeat: true }, { isComposing: true }, { keyCode: 229 }])
+        element.dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, key: "Enter", ...primary, ...flags }),
+        );
+    });
+    await expect(rows).toHaveCount(2);
+    expect(server.requests).toHaveLength(1);
+    await editor.evaluate((element) => {
+      const primary = window.zpi.platform === "darwin" ? { metaKey: true } : { ctrlKey: true };
+      // Two separate keydowns before IPC settles must still dispatch only once.
+      for (let i = 0; i < 2; i++)
+        element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter", ...primary }));
+    });
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toContainText("queued second");
+    await expect(page.getByTestId("run").first()).toHaveAttribute("data-status", "aborted");
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await expect(editor).toHaveText("keep this unsent draft");
+    await expect.poll(() => server.requests.length).toBe(2);
+    const last = server.requests.at(-1)?.messages as unknown as { role: string; content: string }[];
+    expect(last.filter((message) => message.role === "user").at(-1)?.content).toBe("queued first");
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("model shortcut navigates models and supported reasoning levels, confirms explicitly, and restores the composer on cancel", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-model-shortcut-"));
+  const server = await fakeServer((_, response) => done(response));
+  const models = presetModels("openai-chatgpt").filter(
+    (model) => model.name === "GPT-6.1 Sol" || model.name === "GPT-6 Astra",
+  );
+  expect(models).toHaveLength(2);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await page.evaluate(
+      async ({ url, modelsJson }) => {
+        const result = await window.zpi.saveProvider({
+          id: "keyboard-models",
+          name: "Keyboard models",
+          baseUrl: url,
+          apiKey: "isolated-test-key",
+          models: JSON.parse(modelsJson),
+        });
+        if (!result.ok) throw new Error(result.error.message);
+      },
+      { url: server.url, modelsJson: JSON.stringify(models) },
+    );
+    await page.reload();
+    const primary = await page.evaluate(() => (window.zpi.platform === "darwin" ? "Meta" : "Control"));
+    const editor = page.getByLabel("消息", { exact: true });
+    const trigger = page.getByLabel("模型选择", { exact: true });
+    await editor.fill("preserved draft");
+    await editor.press(`${primary}+l`);
+    await expect(page.getByRole("menuitem", { name: "fake", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    const firstModel = page.getByRole("menuitem", { name: models[0].name, exact: true });
+    await expect(firstModel).toBeFocused();
+    await expect(page.locator(".reasoning-menu")).toHaveCount(0);
+    await expect(trigger).toContainText("fake");
+    await page.keyboard.press("ArrowRight");
+    const levels = page.locator(".reasoning-menu [role=menuitem]");
+    const supported = availablePresets(models[0]);
+    expect(supported).not.toContain("none");
+    await expect(levels).toHaveText(
+      supported.map(
+        (reasoning) =>
+          `${modelReasoningLabel(models[0], reasoning)}${models[0].defaultThinkingLevel && reasoning === defaultPreset(models[0]) ? " · 默认" : ""}`,
+      ),
+    );
+    await expect(levels.first()).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.locator(".reasoning-menu")).toHaveCount(0);
+    await expect(firstModel).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect(levels.first()).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(levels.nth(1)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(trigger).toContainText(models[0].name ?? models[0].id);
+    await expect(trigger).toContainText(modelReasoningLabel(models[0], supported[1]));
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveText("preserved draft");
+    await editor.press(`${primary}+l`);
+    await expect(firstModel).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: models[1].name, exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(editor).toBeFocused();
+    await expect(trigger).toContainText(models[0].name ?? models[0].id);
+    expect(server.requests).toHaveLength(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("side-chat shortcuts affect only the focused composer and return focus there", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-side-shortcut-"));
+  const server = await fakeServer((body, response) => {
+    const messages = body.messages as unknown as { role: string; content: string }[];
+    send(response, chunk({ content: "reply" }));
+    if (messages.filter((message) => message.role === "user").at(-1)?.content === "initial") done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const primary = await page.evaluate(() => (window.zpi.platform === "darwin" ? "Meta" : "Control"));
+    const main = page.locator("main");
+    const mainEditor = main.getByLabel("消息", { exact: true });
+    await mainEditor.fill("initial");
+    await mainEditor.press("Enter");
+    await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
+    const side = page.getByRole("region", { name: "辅助对话", exact: true });
+    for (const [pane, label] of [
+      [main, "main"],
+      [side, "side"],
+    ] as const) {
+      const editor = pane.getByLabel("消息", { exact: true });
+      await editor.fill(`${label} running`);
+      await editor.press("Enter");
+      await expect(pane.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+      await editor.fill(`${label} queued`);
+      await editor.press("Enter");
+      await expect(pane.getByTestId("queue-item")).toHaveCount(1);
+      await editor.fill(`${label} draft`);
+    }
+    const sideEditor = side.getByLabel("消息", { exact: true });
+    await sideEditor.press(`${primary}+Enter`);
+    await expect(side.getByTestId("queue-item")).toHaveCount(0);
+    await expect(side.getByTestId("run").first()).toHaveAttribute("data-status", "aborted");
+    await expect(main.getByTestId("queue-item")).toHaveCount(1);
+    await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await expect(mainEditor).toHaveText("main draft");
+    await expect(sideEditor).toHaveText("side draft");
+    await sideEditor.press(`${primary}+l`);
+    await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
+    await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "closed");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(sideEditor).toBeFocused();
+    await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});

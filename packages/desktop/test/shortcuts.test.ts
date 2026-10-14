@@ -1,0 +1,124 @@
+import { describe, expect, it } from "vitest";
+import {
+  defaultShortcuts,
+  formatShortcut,
+  normalizeShortcut,
+  normalizeShortcuts,
+  shortcutCommands,
+  shortcutForEvent,
+  shortcutFromEvent,
+  validateShortcuts,
+} from "../src/shared/shortcuts.ts";
+
+describe("shortcut contract", () => {
+  it.each(["darwin", "win32", "linux"])(
+    "provides complete, valid independent defaults for %s",
+    (platform) => {
+      const settings = defaultShortcuts(platform);
+      expect(validateShortcuts(settings, platform)).toBeUndefined();
+      expect(Object.keys(settings.bindings)).toHaveLength(shortcutCommands.length);
+      expect(settings.bindings["toggle-window"]).toBe(
+        platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
+      );
+      settings.bindings["toggle-sidebar"] = null;
+      expect(defaultShortcuts(platform).bindings["toggle-sidebar"]).not.toBeNull();
+    },
+  );
+  it("normalizes aliases and ordering across the platform primary modifier", () => {
+    expect(normalizeShortcut("cmdorctrl + shift + f", "darwin")).toBe("Shift+Command+F");
+    expect(normalizeShortcut("CommandOrControl+Alt+E", "linux")).toBe("Control+Alt+E");
+    expect(normalizeShortcut("Option+Ctrl+return", "darwin")).toBe("Control+Alt+Enter");
+    expect(normalizeShortcut("Meta+Cmd+J", "darwin")).toBeUndefined();
+    expect(normalizeShortcut("CmdOrCtrl+Control+J", "linux")).toBeUndefined();
+    expect(normalizeShortcuts(defaultShortcuts("darwin"), "darwin").bindings.search).toBe("Shift+Command+F");
+  });
+  it.each(["Command", "Command++J", "Command+Unknown", "J+Control", "Control+A+B", "", "Control+F25"])(
+    "rejects malformed accelerator %s",
+    (binding) => expect(normalizeShortcut(binding, "darwin")).toBeUndefined(),
+  );
+  it("matches exact modifiers, physical letters, uppercase, and disabled commands", () => {
+    const settings = defaultShortcuts("darwin");
+    expect(shortcutForEvent({ key: "j", metaKey: true }, "darwin", settings)).toBe("toggle-sidebar");
+    expect(shortcutForEvent({ key: "J", metaKey: true }, "darwin", settings)).toBe("toggle-sidebar");
+    expect(shortcutForEvent({ key: "j", ctrlKey: true }, "darwin", settings)).toBeUndefined();
+    expect(shortcutForEvent({ key: "j", metaKey: true, altKey: true }, "darwin", settings)).toBeUndefined();
+    expect(shortcutForEvent({ key: "j", metaKey: true, repeat: true }, "darwin", settings)).toBeUndefined();
+    expect(
+      shortcutForEvent({ key: "j", metaKey: true, isComposing: true }, "darwin", settings),
+    ).toBeUndefined();
+    expect(shortcutFromEvent({ key: "†", code: "KeyT", altKey: true, metaKey: true }, "darwin")).toBe(
+      "Alt+Command+T",
+    );
+    expect(shortcutFromEvent({ key: "Dead", code: "KeyE", altKey: true }, "darwin")).toBeNull();
+    expect(shortcutFromEvent({ key: "Control", ctrlKey: true }, "linux")).toBeNull();
+    settings.bindings["toggle-sidebar"] = null;
+    expect(shortcutForEvent({ key: "j", metaKey: true }, "darwin", settings)).toBeUndefined();
+    settings.enabled = false;
+    expect(shortcutForEvent({ key: "k", metaKey: true }, "darwin", settings)).toBeUndefined();
+  });
+  it("rejects duplicate bindings even through aliases", () => {
+    const settings = defaultShortcuts("darwin");
+    settings.bindings["toggle-pane"] = "CmdOrCtrl+J";
+    expect(validateShortcuts(settings, "darwin")).toContain("冲突");
+  });
+  it.each([
+    "Command+C",
+    "Command+Shift+V",
+    "Command+W",
+    "Command+Q",
+    "Command+R",
+    "Command+Left",
+    "Control+A",
+    "Command+Space",
+    "Command+Shift+4",
+    "Alt+A",
+    "Shift+J",
+    "J",
+    "Escape",
+    "Control+Alt+Delete",
+    "Alt+F4",
+    "F5",
+    "F6",
+    "F11",
+    "F12",
+    "Command+Alt+C",
+    "Command+Alt+I",
+    "Control+Command+Q",
+    "Control+Command+F",
+  ])("reserves native editing and system accelerator %s", (binding) => {
+    const settings = defaultShortcuts("darwin");
+    settings.bindings["toggle-pane"] = binding;
+    expect(validateShortcuts(settings, "darwin")).toBeTypeOf("string");
+  });
+  it("reserves the platform developer-tools menu accelerator", () => {
+    const settings = defaultShortcuts("linux");
+    settings.bindings["toggle-pane"] = "Control+Shift+I";
+    expect(validateShortcuts(settings, "linux")).toContain("保留");
+  });
+  it("allows removing every binding and resetting to defaults", () => {
+    const settings = defaultShortcuts("linux");
+    for (const { id } of shortcutCommands) settings.bindings[id] = null;
+    expect(validateShortcuts(settings, "linux")).toBeUndefined();
+    expect(validateShortcuts(defaultShortcuts("linux"), "linux")).toBeUndefined();
+  });
+  it("validates the full untrusted IPC shape", () => {
+    const valid = defaultShortcuts("linux");
+    for (const invalid of [
+      null,
+      [],
+      {},
+      { ...valid, enabled: "true" },
+      { ...valid, extra: true },
+      { ...valid, bindings: {} },
+      { ...valid, bindings: [] },
+      { ...valid, bindings: { ...valid.bindings, unknown: null } },
+      { ...valid, bindings: { ...valid.bindings, find: 5 } },
+    ])
+      expect(validateShortcuts(invalid, "linux")).toBeTypeOf("string");
+  });
+  it("formats platform modifiers and unbound commands", () => {
+    expect(formatShortcut("Control+Command+E", "darwin")).toBe("⌃⌘E");
+    expect(formatShortcut("CmdOrCtrl+Alt+E", "linux")).toBe("Ctrl+Alt+E");
+    expect(formatShortcut(null, "darwin")).toBe("未设置");
+  });
+});

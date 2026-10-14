@@ -5172,3 +5172,41 @@
 .task-search-removed {
   color: var(--color-diff-removed);
 }
+
+.shortcut-setting-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.shortcut-recorder {
+  min-width: 132px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  font-size: 12px;
+}
+.shortcut-recorder.recording {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.shortcut-clear {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.shortcut-settings-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+.task-row-shortcut {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0.65;
+}

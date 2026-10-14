@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { type BrowserWindow, session, WebContentsView } from "electron";
 import type { IPty } from "node-pty";
 import type { BrowserState, PaneBounds, PaneEvent } from "../shared/bridge.ts";
+import type { ShortcutKeyEvent } from "../shared/shortcuts.ts";
 import { browserUrl } from "./browser-url.ts";
 import { terminalShell } from "./terminal-shell.ts";
 export class PaneServices {
@@ -11,9 +12,15 @@ export class PaneServices {
   private shown?: string;
   private window: BrowserWindow;
   private emit: (event: PaneEvent) => void;
-  constructor(window: BrowserWindow, emit: (event: PaneEvent) => void) {
+  private shortcut: (event: ShortcutKeyEvent) => boolean;
+  constructor(
+    window: BrowserWindow,
+    emit: (event: PaneEvent) => void,
+    shortcut: (event: ShortcutKeyEvent) => boolean = () => false,
+  ) {
     this.window = window;
     this.emit = emit;
+    this.shortcut = shortcut;
   }
   async createTerminal(cwd: string) {
     if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
@@ -84,6 +91,22 @@ export class PaneServices {
     });
     this.browsers.set(id, { view });
     const content = view.webContents;
+    content.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown") return;
+      if (
+        this.shortcut({
+          key: input.key,
+          code: input.code,
+          ctrlKey: input.control,
+          metaKey: input.meta,
+          altKey: input.alt,
+          shiftKey: input.shift,
+          repeat: input.isAutoRepeat,
+          isComposing: input.isComposing,
+        })
+      )
+        event.preventDefault();
+    });
     content.on("will-navigate", (event, target) => {
       try {
         browserUrl(target);

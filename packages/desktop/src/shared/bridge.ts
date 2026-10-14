@@ -11,6 +11,7 @@ import type {
   WorktreeInfo,
 } from "zpi-ui";
 import type { FileLocation } from "zpi-ui/links";
+import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
 import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
 
 export type { SessionControls } from "zpi-ui";
@@ -135,6 +136,7 @@ export interface PluginCapabilities {
 }
 export type CapabilityName = keyof PluginCapabilities;
 export interface PublicSettings {
+  shortcuts: ShortcutSettings;
   capabilities: PluginCapabilities;
   providers: ProviderRecord[];
   lastSelection: CombinedSelection | null;
@@ -345,6 +347,9 @@ export interface DesktopBridge {
   editUserMessage(id: string, runId: string, input: EditUserInput): Promise<Result<EditUserResult>>;
   abortRun(input: { sessionId: string; runId: string }): Promise<Result<void>>;
   getSettings(): Promise<Result<PublicSettings>>;
+  updateShortcuts(input: ShortcutSettings): Promise<Result<PublicSettings>>;
+  setShortcutCapture(capturing: boolean): Promise<Result<void>>;
+  onShortcut(listener: (command: ShortcutCommand) => void): () => void;
   beginChatGPTLogin(providerId: string | null): Promise<Result<{ loginId: string; url: string }>>;
   completeChatGPTLogin(
     loginId: string,
@@ -451,6 +456,8 @@ export const methods = [
   "editUserMessage",
   "abortRun",
   "getSettings",
+  "updateShortcuts",
+  "setShortcutCapture",
   "discoverModels",
   "saveProvider",
   "reorderProviders",

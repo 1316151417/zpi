@@ -55,6 +55,12 @@ import {
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
+import {
+  defaultShortcuts,
+  normalizeShortcuts,
+  type ShortcutSettings,
+  validateShortcuts,
+} from "../shared/shortcuts.ts";
 export function atomicJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   const temp = `${path}.${randomUUID()}.tmp`;
@@ -77,6 +83,7 @@ interface Credentials {
   chatgpt?: ChatGPTCredential;
 }
 interface SettingsData {
+  shortcuts: ShortcutSettings;
   capabilities: PluginCapabilities;
   version: 4;
   templates: PromptTemplate[];
@@ -110,6 +117,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
 }
 export class SettingsStore {
   private data: SettingsData = {
+    shortcuts: defaultShortcuts(process.platform),
     capabilities: { ...defaultCapabilities },
     version: 4,
     templates: [],
@@ -198,6 +206,7 @@ export class SettingsStore {
         this.data.lastSelection = null;
         clearedSelection = true;
       }
+      this.data.shortcuts ??= defaultShortcuts(process.platform);
       this.validateData(this.data);
     }
     if (existsSync(creds)) {
@@ -269,6 +278,7 @@ export class SettingsStore {
   }
   get(): PublicSettings {
     return {
+      shortcuts: structuredClone(this.data.shortcuts),
       capabilities: structuredClone(this.data.capabilities),
       providers: this.data.providers.map((p) => ({
         ...structuredClone(p),
@@ -487,6 +497,9 @@ export class SettingsStore {
     atomicJson(join(this.dir, "settings.json"), data);
     this.data = data;
   }
+  updateShortcuts(input: ShortcutSettings): PublicSettings {
+    return this.savePublic({ ...this.data, shortcuts: normalizeShortcuts(input, process.platform) });
+  }
   updatePreferences(input: Partial<InterfacePreferences>): PublicSettings {
     const data = { ...this.data, interface: { ...this.data.interface, ...input } };
     this.validateData(data);
@@ -585,6 +598,7 @@ export class SettingsStore {
       "legacy settings",
     );
     return {
+      shortcuts: defaultShortcuts(process.platform),
       version: 4,
       templates: [],
       selectedTemplateId: "pi",
@@ -623,9 +637,12 @@ export class SettingsStore {
         "selectedTemplateId",
         "disabledSkillPaths",
         "capabilities",
+        "shortcuts",
       ],
       "settings",
     );
+    const shortcutError = validateShortcuts(data.shortcuts, process.platform);
+    if (shortcutError) throw new Error(`storage: ${shortcutError}`);
     if (data.version !== 4 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");
     if (
       !isJsonObject(data.capabilities) ||

@@ -110,6 +110,14 @@ ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npm run test:desktop
 
 `docs/specs/` 和 `docs/evidence/` 保留实现时的设计、引用版本和验收记录。其中的测试数量、机器路径及当时未运行的检查只描述该次工作，不是当前覆盖率、当前工作树状态或后续改动的测试豁免。
 
+## 快捷键实现与回归
+
+桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 `settings.json` 的 `shortcuts` 字段。平台默认值使用明确的 Command/Ctrl 映射；没有该字段的旧设置自动采用默认值。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建和查找命令，xterm 焦点由 renderer 捕获阶段处理。模型选择和队列发送由当前 composer 自己处理。
+
+全局改键先注册候选键，再保存设置并注销旧键；注册或保存失败不会覆盖原设置。退出只有在草稿确认保存后才注销，取消退出仍保留原绑定。`ZPI_TEST_MODE=1` 从不向系统注册全局快捷键，注册冲突、回滚及窗口切换使用假 registry/window 单元测试。
+
+定向回归用例在 `tests/desktop/shortcuts.spec.ts` 与 `tests/desktop/composer-shortcuts.spec.ts`，涵盖持久化、总开关、录入冲突、侧栏/置顶、原生浏览器与终端焦点，以及主/辅助 composer 的队列和模型操作。真实系统全局抢占与 macOS 前后台切换仍需在目标平台做手工烟测；不可将测试模式的模拟注册视为系统注册成功。
+
 ## 临时历史会话修复（0.2.3 命名变更）
 
 先退出 ZPI、ZPI Preview 和开发客户端，再运行：

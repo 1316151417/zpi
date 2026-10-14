@@ -6,6 +6,7 @@ import {
   PanelRightOpen,
 } from "lucide-react";
 import { ActionHint } from "zpi-ui";
+import type { ShortcutCommand } from "../shared/shortcuts.ts";
 
 // Adapted from ZCode DesktopTopOverlay and WorkspaceSidePaneToggleButton.
 // See THIRD_PARTY_NOTICES.md for provenance.
@@ -16,6 +17,7 @@ export function WindowChrome({
   onNewTask,
   onToggleLeft,
   onToggleRight,
+  shortcutHint,
 }: {
   leftCollapsed: boolean;
   rightOpen: boolean;
@@ -23,6 +25,7 @@ export function WindowChrome({
   onNewTask: () => void;
   onToggleLeft: () => void;
   onToggleRight: () => void;
+  shortcutHint: (command: ShortcutCommand) => string;
 }) {
   const LeftIcon = leftCollapsed ? PanelLeftOpen : PanelLeftClose;
   const RightIcon = rightOpen ? PanelRightClose : PanelRightOpen;
@@ -31,7 +34,12 @@ export function WindowChrome({
       <div className="sidebar-drag-space" aria-hidden="true" hidden={hidden || leftCollapsed} />
       <div className="desktop-top-controls" hidden={hidden}>
         <div className="desktop-top-actions">
-          <ActionHint label="切换侧边栏" appearance="control" side="bottom">
+          <ActionHint
+            shortcut={shortcutHint("toggle-sidebar")}
+            label="切换侧边栏"
+            appearance="control"
+            side="bottom"
+          >
             <button
               className="window-chrome-button"
               data-testid="left-sidebar-toggle"
@@ -45,7 +53,7 @@ export function WindowChrome({
           {leftCollapsed && (
             <ActionHint
               label="新建任务"
-              shortcut={window.zpi.platform === "darwin" ? "⌘ N" : "Ctrl+N"}
+              shortcut={shortcutHint("new-task")}
               appearance="control"
               side="bottom"
             >
@@ -56,7 +64,7 @@ export function WindowChrome({
           )}
         </div>
       </div>
-      <ActionHint label="切换面板" appearance="control" side="bottom">
+      <ActionHint shortcut={shortcutHint("toggle-pane")} label="切换面板" appearance="control" side="bottom">
         <button
           className="window-chrome-button right-sidebar-toggle"
           data-testid="right-sidebar-toggle"

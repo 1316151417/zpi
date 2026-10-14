@@ -11,6 +11,7 @@ export function SidebarTaskRow({
   workspace,
   variant = "default",
   pinLimitReached,
+  shortcut,
   onSelect,
   onPin,
   onArchive,
@@ -20,6 +21,7 @@ export function SidebarTaskRow({
   workspace: string;
   variant?: "default" | "timeline";
   pinLimitReached: boolean;
+  shortcut?: string;
   onSelect(): void;
   onPin(): void;
   onArchive(): void;
@@ -139,6 +141,11 @@ export function SidebarTaskRow({
           >
             <TaskTitleOverflowText as="span">{r.title}</TaskTitleOverflowText>
           </button>
+          {shortcut && (
+            <kbd className="task-row-shortcut" title={`切换任务 ${shortcut}`}>
+              {shortcut}
+            </kbd>
+          )}
           {time}
           {actions}
         </>

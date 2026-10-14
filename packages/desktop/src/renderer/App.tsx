@@ -30,9 +30,12 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import type { EditUserInput, InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
+import { defaultShortcuts, formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
+import { visiblePinnedTasks, workspaceShortcutBlocked, workspaceShortcutForEvent } from "./app-shortcuts.ts";
 import { selectAppState, selectTaskRecords } from "./app-state.ts";
 import { inputContext } from "./composer-context.ts";
+import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
 import {
@@ -87,7 +90,6 @@ import { type SearchCommand, TaskSearchDialog } from "./TaskSearchDialog.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { PanelLeftClose, PanelLeftOpen, SquareTerminal } from "./task-search-icons.ts";
-import { taskShortcut } from "./task-shortcut.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
@@ -196,6 +198,11 @@ export function App() {
   const resizing = useRef(false);
   const oldSelect = useRef("");
   const prefs = state.settings?.interface;
+  const shortcuts = state.settings?.shortcuts ?? defaultShortcuts(window.zpi.platform);
+  const shortcutHint = (command: ShortcutCommand) =>
+    shortcuts.enabled && shortcuts.bindings[command]
+      ? formatShortcut(shortcuts.bindings[command], window.zpi.platform)
+      : "";
   const collapsed = prefs?.sidebarCollapsed ?? false;
   const [taskPreferences, setTaskPreferences] = useState(() => {
     try {
@@ -292,21 +299,6 @@ export function App() {
     setPendingSearch(undefined);
   }, [pendingSearch, selected, view, find.start]);
   const openSearch = useCallback(() => setSearchOpen(true), []);
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      const shortcut = taskShortcut(event, window.zpi.platform);
-      if (!shortcut) return;
-      if (document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
-      event.preventDefault();
-      if (shortcut === "search") setSearchOpen(true);
-      else {
-        setSettingsOpen(false);
-        void newSession().catch(report);
-      }
-    };
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
-  }, []);
   const record = state.activeRecord;
   const taskTitle = record?.draft ? "新任务" : (record?.title ?? view?.title ?? "新任务");
   const diagnostics = [
@@ -393,9 +385,50 @@ export function App() {
   const task = (fn: () => Promise<unknown>) => {
     void fn().catch(report);
   };
-  const pinned = records
-    .filter((r) => r.pinnedAt != null)
-    .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0));
+  const pinned = visiblePinnedTasks(records);
+  useEffect(() => {
+    let composing = false;
+    const begin = () => {
+      composing = true;
+    };
+    const end = () => {
+      composing = false;
+    };
+    const run = (command: ShortcutCommand) => {
+      if (!shortcuts.enabled || !shortcuts.bindings[command] || workspaceShortcutBlocked(command)) return;
+      if (command === "toggle-sidebar") updatePrefs({ sidebarCollapsed: !collapsed });
+      else if (command === "toggle-pane") setPaneOpen(!usePane.getState().open);
+      else if (command === "search") setSearchOpen(true);
+      else if (command === "new-task") void newSession().catch(report);
+      else if (command === "find") find.show();
+      else if (command.startsWith("pin-")) {
+        const record = pinned[Number(command.slice(4)) - 1];
+        if (record) {
+          setModelOpen(false);
+          void selectSession(record.id).catch(report);
+        }
+      }
+    };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || composing || event.isComposing || event.keyCode === 229) return;
+      const command = workspaceShortcutForEvent(event, window.zpi.platform, shortcuts);
+      if (!command || workspaceShortcutBlocked(command)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) run(command);
+    };
+    // Capture before xterm consumes Ctrl combinations. Composer and question commands stay local.
+    window.addEventListener("keydown", keydown, true);
+    window.addEventListener("compositionstart", begin, true);
+    window.addEventListener("compositionend", end, true);
+    const offNative = window.zpi.onShortcut(run);
+    return () => {
+      window.removeEventListener("keydown", keydown, true);
+      window.removeEventListener("compositionstart", begin, true);
+      window.removeEventListener("compositionend", end, true);
+      offNative();
+    };
+  }, [shortcuts, collapsed, pinned.map((record) => record.id).join(":"), find.show]);
   const unpinned = records
     .filter((r) => r.pinnedAt == null && r.archivedAt == null)
     .sort((a, b) => compareTasks(a, b, taskPreferences.sortBy));
@@ -422,6 +455,11 @@ export function App() {
       variant={variant}
       workspace={r.cwd?.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "ZPI"}
       pinLimitReached={pinnedCount >= taskPinLimit}
+      shortcut={
+        r.pinnedAt != null
+          ? shortcutHint(`pin-${pinned.findIndex((item) => item.id === r.id) + 1}` as ShortcutCommand)
+          : undefined
+      }
       onSelect={() => {
         setModelOpen(false);
         task(() => selectSession(r.id));
@@ -551,6 +589,7 @@ export function App() {
           onNewTask={() => task(() => newSession())}
           onToggleLeft={() => updatePrefs({ sidebarCollapsed: !collapsed })}
           onToggleRight={() => setPaneOpen(!paneOpen)}
+          shortcutHint={shortcutHint}
         />
         {useMemo(
           () => (
@@ -559,16 +598,12 @@ export function App() {
                 <button aria-label="新建任务" onClick={() => task(() => newSession())}>
                   <MessageCirclePlus size={16} />
                   <span className="sidebar-action-label">新建任务</span>
-                  <span className="sidebar-action-shortcut">
-                    {window.zpi.platform === "darwin" ? "⌘ N" : "Ctrl+N"}
-                  </span>
+                  <span className="sidebar-action-shortcut">{shortcutHint("new-task")}</span>
                 </button>
                 <button aria-label="搜索" onClick={openSearch}>
                   <Search size={16} />
                   <span className="sidebar-action-label">搜索</span>
-                  <span className="sidebar-action-shortcut">
-                    {window.zpi.platform === "darwin" ? "⌘ K" : "Ctrl+K"}
-                  </span>
+                  <span className="sidebar-action-shortcut">{shortcutHint("search")}</span>
                 </button>
               </div>
               <div className="sidebar-sections">
@@ -794,6 +829,7 @@ export function App() {
           ),
           [
             settingsOpen,
+            shortcuts,
             openSearch,
             collapsed,
             width,
@@ -991,6 +1027,10 @@ export function App() {
                     busy={Boolean(activeRun)}
                     queue={view.queue}
                     queueActions={queueActions(view.sessionId)}
+                    shortcutCommand={(event) =>
+                      composerShortcutCommand(event, window.zpi.platform, shortcuts)
+                    }
+                    onSelectModel={() => setModelOpen(true)}
                     showSendButton={prefs?.showSendButton ?? false}
                     toolbar={
                       <SessionToolbar

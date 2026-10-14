@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { defaultShortcuts, shortcutForEvent } from "../shared/shortcuts.ts";
+import { useStore } from "./store.ts";
 
 /** Snapshot dismissible UI before its Escape handlers remove it. Stop runs last. */
 export function useStopOnEscape(stop?: () => void) {
@@ -13,8 +15,14 @@ export function useStopOnEscape(stop?: () => void) {
     const end = () => {
       composing = false;
     };
+    const matches = (event: KeyboardEvent) =>
+      shortcutForEvent(
+        event,
+        window.zpi.platform,
+        useStore.getState().settings?.shortcuts ?? defaultShortcuts(window.zpi.platform),
+      ) === "stop-run";
     const capture = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!matches(event)) return;
       if (
         composing ||
         event.isComposing ||
@@ -26,7 +34,7 @@ export function useStopOnEscape(stop?: () => void) {
         blocked.add(event);
     };
     const bubble = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.repeat || event.defaultPrevented || blocked.has(event)) return;
+      if (!matches(event) || event.repeat || event.defaultPrevented || blocked.has(event)) return;
       if (callback.current) {
         event.preventDefault();
         callback.current();
