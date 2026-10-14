@@ -16,7 +16,7 @@ export const mainBuild = {
     "ignore",
     "bmp-js",
   ],
-  external: ["electron", "node-pty", "sharp", "@silvia-odwyer/photon-node"],
+  external: ["electron", "node-pty", "sharp"],
   target: "node24",
   banner: {
     js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',

@@ -10,7 +10,7 @@ export function detectSupportedImageMimeType(buffer: Uint8Array): string | null 
     return buffer[3] === 0xf7 ? null : "image/jpeg";
   }
   if (startsWith(buffer, PNG_SIGNATURE)) {
-    return isPng(buffer) && !isAnimatedPng(buffer) ? "image/png" : null;
+    return isPng(buffer) ? "image/png" : null;
   }
   if (startsWithAscii(buffer, 0, "GIF87a") || startsWithAscii(buffer, 0, "GIF89a")) {
     return "image/gif";
@@ -43,7 +43,7 @@ function isPng(buffer: Uint8Array): boolean {
   );
 }
 
-function isAnimatedPng(buffer: Uint8Array): boolean {
+export function isAnimatedPng(buffer: Uint8Array): boolean {
   let offset = PNG_SIGNATURE.length;
   while (offset + 8 <= buffer.length) {
     const chunkLength = readUint32BE(buffer, offset);

@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -84,7 +84,6 @@
     "asarUnpack": [
       "**/node_modules/sharp/**/*",
       "**/node_modules/@img/**/*",
-      "**/node_modules/@silvia-odwyer/photon-node/**/*",
       "**/node_modules/node-pty/**/*"
     ]
   },
@@ -93,7 +92,6 @@
     "esbuild": "0.28.1"
   },
   "dependencies": {
-    "@silvia-odwyer/photon-node": "0.3.4",
     "node-pty": "1.1.0",
     "sharp": "0.35.5"
   }

@@ -2,88 +2,55 @@
 
 ZPI 介绍页是纯静态页面，不需要 Node.js、构建工具、JavaScript、CDN 或外部字体。它介绍桌面客户端，不是在线运行的 Agent 服务。
 
-## 访问路径
-
-- 公开地址：[http://101.200.240.206/zpi/](http://101.200.240.206/zpi/)
-- `/zpi`（无斜杠）由 Nginx 301 重定向到 `/zpi/`。
-- 根路径 `/` 返回 404，不放置任何内容，为这台服务器保留其他路径。
-
-## 文件
+## 文件与部署边界
 
 - `docs/site/index.html`：介绍内容与导航。
 - `docs/site/styles.css`：桌面和移动端样式。
 - `docs/site/favicon.svg`：站点图标。
-- `docs/deploy/nginx.conf`：Nginx 站点配置，不属于公开站点目录。
+- `docs/deploy/nginx.conf`：已有站点的配置参考，不属于公开站点目录；复用前必须检查并调整 `server_name`、路径和其他环境相关设置。
 
-页面没有统计脚本、Cookie 或表单。Nginx 默认仍会保存服务器访问日志，这与桌面客户端的「没有遥测」不是同一件事。
+只将三个静态文件放入站点公开目录，不要上传整个仓库、环境配置、凭据或服务器运维记录。实际 SSH 目标、账号、安装目录和备份位置应保存在自己的运维记录中，不在这里提供可直接操作真实服务器的命令。
 
-## 当前机器
+页面没有统计脚本、Cookie 或表单；Web 服务器仍可能记录访问日志，这与桌面客户端的「没有遥测」不是同一件事。
 
-- 服务器：`root@101.200.240.206`，Ubuntu 22.04。
-- Web 根目录：`/var/www/zpi/html`；介绍页位于 `/var/www/zpi/html/zpi`，对应路径 `/zpi/`。
-- Nginx 配置：`/etc/nginx/sites-available/zpi`，由 `sites-enabled/zpi` 链接启用。
-- 旧配置备份：`/etc/nginx/sites-available/zpi.before-zpi-path`（根路径版本）和 `sites-available/default.before-zpi`（Nginx 默认站点），均不在启用目录中。
-- Nginx 已设置开机启动。
+## 部署步骤
 
-当前仅使用 HTTP。没有配置域名或 TLS；不要在这个介绍站点传输凭据。若后续绑定域名，再更新 `server_name` 并配置 HTTPS。部署前应确认云安全组允许 TCP 80；不要为静态站点开放额外端口或关闭防火墙。
+1. 确认目标主机、站点域名、HTTPS 配置、发布目录及已有业务。不要直接覆盖默认站点或关闭防火墙。
+2. 备份现有站点文件和相关 Web 服务器配置。
+3. 将三个静态文件上传到该站点的 `/zpi/` 对应目录。需要分享元数据时，可按实际公开站点地址补充 canonical 和 Open Graph URL；仓库模板不固定部署地址。
+4. 若配置有变，先检查配置有效性，通过后再重载；仅更新静态文件通常不需要重启服务。
+5. 检查页面、样式、图标、跳转与访问限制。失败时恢复之前的站点文件和配置。
 
-## 首次部署
-
-以下命令从仓库根目录执行，适用于这台初始未安装 Nginx、80 端口无其他业务的服务器。对已有业务的机器，不要直接移除默认站点，应先检查 `nginx -T` 并使用独立域名配置。
+以下地址仅为文档示例，请替换为你已配置的站点：
 
 ```sh
-ssh root@101.200.240.206 \
-  'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y nginx'
-
-ssh root@101.200.240.206 'install -d -m 755 /var/www/zpi/html/zpi'
-scp docs/site/index.html docs/site/styles.css docs/site/favicon.svg \
-  root@101.200.240.206:/var/www/zpi/html/zpi/
-scp docs/deploy/nginx.conf root@101.200.240.206:/etc/nginx/sites-available/zpi
-
-ssh root@101.200.240.206 '
-  if [ -L /etc/nginx/sites-enabled/default ]; then
-    cp -n /etc/nginx/sites-available/default /etc/nginx/sites-available/default.before-zpi
-    rm /etc/nginx/sites-enabled/default
-  fi
-  chmod 644 /var/www/zpi/html/zpi/* /etc/nginx/sites-available/zpi
-  ln -sfn /etc/nginx/sites-available/zpi /etc/nginx/sites-enabled/zpi
-  nginx -t && systemctl enable --now nginx && systemctl reload nginx
-'
+curl -I https://example.com/zpi/
+curl -I https://example.com/zpi/styles.css
+curl -I https://example.com/zpi/favicon.svg
 ```
 
-只上传三个静态文件，不要把仓库、环境配置或凭据上传到公开目录。
+不要通过没有 HTTPS 的介绍页传输凭据。
 
-## 更新与验证
+## 验收清单
 
-更新前保留旧站点备份，之后上传静态文件即可；没有配置变更时无需重启 Nginx。
+- `/zpi` 跳转到 `/zpi/`，页面、样式和图标均可访问。
+- 未知资源返回 404；隐藏配置文件不可被公开读取。
+- 根据站点用途验证安全响应头和缓存设置。
+- 检查手机与桌面布局、键盘导航、页内链接和资源加载。
+- 核对线上文件与本次发布内容一致；保留可恢复的备份。
+
+这些是部署时需要执行的检查，不代表当前线上环境已经通过，也不替代桌面客户端的构建和功能回归测试。
+
+## 本地预览
+
+在仓库根目录运行：
 
 ```sh
-ssh root@101.200.240.206 \
-  'cp -a /var/www/zpi/html/zpi "/var/www/zpi/zpi.backup-$(date +%Y%m%d-%H%M%S)"'
-scp docs/site/index.html docs/site/styles.css docs/site/favicon.svg \
-  root@101.200.240.206:/var/www/zpi/html/zpi/
-
-ssh root@101.200.240.206 \
-  'nginx -t && systemctl is-active nginx && systemctl is-enabled nginx'
-curl -I http://101.200.240.206/zpi/
-curl -I http://101.200.240.206/zpi/styles.css
+python3 -m http.server 8080 --directory docs/site --bind 127.0.0.1
 ```
 
-若需更新配置，先备份 `/etc/nginx/sites-available/zpi`，上传后执行 `nginx -t && systemctl reload nginx`。验证失败时还原旧配置；回退网页时把备份目录中的三个静态文件复制回 `/var/www/zpi/html/zpi`。
+然后访问 [http://127.0.0.1:8080](http://127.0.0.1:8080)。直接打开 `docs/site/index.html` 也可以查看，不依赖网络加载样式。
 
-本地预览可运行 `python3 -m http.server 8080 --directory docs/site --bind 127.0.0.1`，然后访问 [http://127.0.0.1:8080](http://127.0.0.1:8080)。直接用浏览器打开 `index.html` 也可查看，不依赖网络加载样式。
+## 历史说明
 
-## 迁移记录
-
-- 2026-10-11：介绍页从根路径 `/` 迁移到 `/zpi/`。服务器执行 `mkdir -p /var/www/zpi/html && mv /var/www/zpi/site /var/www/zpi/html/zpi` 保留原文件；旧配置备份为 `zpi.before-zpi-path`，替换配置后 `nginx -t` 通过并 reload。根路径不再提供内容。
-
-## 本次部署验收
-
-- `nginx -t` 通过，服务状态为 `active`。
-- 路径行为：`/` 返回 404；`/zpi` 返回 301 且 `Location` 为 `http://101.200.240.206/zpi/`；`/zpi/`、`/zpi/styles.css`、`/zpi/favicon.svg` 返回 200；`/zpi/does-not-exist`、`/styles.css`、`/zpix` 返回 404；`/.env` 与 `/zpi/.env` 返回 403。
-- 线上三个静态文件与仓库内容逐字节一致。
-- 公网 `/zpi/` 通过 Chromium 的 320、375、390、768、1280、1440 px 布局检查：无横向溢出，资源加载正常，页内锚点存在，FAQ 支持键盘打开与关闭。
-- CSP、`nosniff` 与缓存头在 `/zpi/` 正常。
-- 站点文件通过 Biome 检查，Markdown 本地链接及 `git diff --check` 通过。
-
-本次只修改文档、静态介绍页和 Nginx 配置，未运行桌面应用构建或完整单元测试；上述浏览器检查不代表桌面客户端的功能回归验证。
+介绍页曾于 2026-10-11 从根路径迁移到 `/zpi/`。当时的部署和浏览器验收属于历史记录，不是持续监控结果；再次部署时按以上清单重新验证。

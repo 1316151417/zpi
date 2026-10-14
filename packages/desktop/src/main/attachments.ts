@@ -9,6 +9,7 @@ import {
   imageFormat,
   imageLimits,
   isImageAttachment,
+  prepareInlineImage,
   processImage,
 } from "zpi-coding-agent";
 import { atomicJson } from "./storage.ts";
@@ -45,9 +46,17 @@ export class AttachmentStore {
     if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) throw new Error("invalid_input: 无效会话 ID");
     return join(this.root, sessionId);
   }
-  private imagePath(sessionId: string, id: string) {
+  private imagePath(sessionId: string, id: string, mimeType = "image/png") {
     if (typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("invalid_input: 无效附件 ID");
-    return join(this.directory(sessionId), `${id}.png`);
+    const extension = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/gif": "gif",
+      "image/webp": "webp",
+      "image/bmp": "bmp",
+    }[mimeType];
+    if (!extension) throw new Error("invalid_input: 图片格式无效");
+    return join(this.directory(sessionId), `${id}.${extension}`);
   }
   private filePath(sessionId: string, id: string) {
     return this.imagePath(sessionId, id).replace(/\.png$/, ".file");
@@ -131,10 +140,16 @@ export class AttachmentStore {
         for (const item of await this.list(dir.name))
           if (!item.used && !item.queued) await this.remove(dir.name, item.id);
         const keep = new Set(
-          (await this.list(dir.name)).map((item) => `${item.id}.${isImageAttachment(item) ? "png" : "file"}`),
+          (await this.list(dir.name)).map((item) =>
+            basename(
+              isImageAttachment(item)
+                ? this.imagePath(dir.name, item.id, item.mimeType)
+                : this.filePath(dir.name, item.id),
+            ),
+          ),
         );
         for (const file of await readdir(this.directory(dir.name)))
-          if (/\.(png|file)$/.test(file) && !keep.has(file))
+          if (/\.(png|jpg|gif|webp|bmp|file)$/.test(file) && !keep.has(file))
             await rm(join(this.directory(dir.name), file), { force: true });
       } catch (error) {
         onError(error, dir.name);
@@ -158,7 +173,7 @@ export class AttachmentStore {
       const item: Saved = {
         id: randomUUID(),
         name,
-        mimeType: "image/png",
+        mimeType: processed.image.mimeType,
         width: processed.width,
         height: processed.height,
         size: processed.bytes.length,
@@ -166,11 +181,11 @@ export class AttachmentStore {
         ...(processed.warning ? { warning: processed.warning } : {}),
       };
       await mkdir(this.directory(sessionId), { recursive: true });
-      await writeFile(this.imagePath(sessionId, item.id), processed.bytes, { mode: 0o600 });
+      await writeFile(this.imagePath(sessionId, item.id, item.mimeType), processed.bytes, { mode: 0o600 });
       try {
         atomicJson(join(this.directory(sessionId), "index.json"), [...entries, item]);
       } catch (e) {
-        await rm(this.imagePath(sessionId, item.id), { force: true });
+        await rm(this.imagePath(sessionId, item.id, item.mimeType), { force: true });
         throw e;
       }
       const { used: _, queued: _queued, cached: _cached, ...metadata } = item;
@@ -196,8 +211,21 @@ export class AttachmentStore {
         throw new Error("invalid_input: 附件文件路径无效");
       return { metadata, data: Buffer.alloc(0) };
     }
-    const data = await readFile(this.imagePath(sessionId, item.id));
-    return { metadata, data };
+    const data = await readFile(this.imagePath(sessionId, item.id, item.mimeType));
+    // Old indexes and interrupted writes must not bypass source validation or pixel limits.
+    const source = await processImage(data);
+    const { warning: _warning, ...savedMetadata } = metadata;
+    return {
+      metadata: {
+        ...savedMetadata,
+        mimeType: source.image.mimeType,
+        width: source.width,
+        height: source.height,
+        size: data.length,
+        ...(source.warning ? { warning: source.warning } : {}),
+      },
+      data,
+    };
   }
   async load(sessionId: string, ids: string[]) {
     if (
@@ -210,13 +238,25 @@ export class AttachmentStore {
     const entries = new Map<string, Saved>();
     for (const item of ids.length ? await this.list(sessionId) : [])
       if (!entries.has(item.id)) entries.set(item.id, item);
-    const loaded = await Promise.all(ids.map((id) => this.readSaved(sessionId, entries.get(id))));
+    const loaded = await Promise.all(ids.map((id) => this.readSavedBytes(sessionId, entries.get(id))));
     const images = loaded.filter((e): e is typeof e & { metadata: ImageAttachment } =>
       isImageAttachment(e.metadata),
     );
     if (images.reduce((sum, e) => sum + e.metadata.width * e.metadata.height, 0) > imageLimits.messagePixels)
       throw new Error("invalid_input: 本条消息图片总像素超限");
-    const files: string[] = [];
+    const inlineImages = await Promise.all(
+      images.map(async ({ metadata, data }) => {
+        const prepared = await prepareInlineImage(data, metadata.mimeType);
+        if (!prepared.ok) throw new Error(`invalid_input: ${prepared.message}`);
+        return {
+          image: { type: "image" as const, data: prepared.data, mimeType: prepared.mimeType },
+          note: prepared.hints.length
+            ? `Attached image ${JSON.stringify(metadata.name)}: ${prepared.hints.join("\n")}`
+            : "",
+        };
+      }),
+    );
+    const files: string[] = inlineImages.map((prepared) => prepared.note).filter(Boolean);
     for (const { metadata } of loaded) {
       if (isImageAttachment(metadata)) continue;
       const info = await stat(metadata.path);
@@ -261,7 +301,7 @@ export class AttachmentStore {
     }
     return {
       metadata: loaded.map((e) => e.metadata),
-      images: images.map((e) => ({ type: "image" as const, data: e.data, mimeType: e.metadata.mimeType })),
+      images: inlineImages.map((prepared) => prepared.image),
       fileContext: files.join("\n\n"),
     };
   }
@@ -286,7 +326,7 @@ export class AttachmentStore {
     });
   }
   async remove(sessionId: string, id: string) {
-    const path = this.imagePath(sessionId, id);
+    this.imagePath(sessionId, id);
     await this.serial(sessionId, async () => {
       const entries = await this.list(sessionId);
       const item = entries.find((e) => e.id === id);
@@ -295,7 +335,7 @@ export class AttachmentStore {
         join(this.directory(sessionId), "index.json"),
         entries.filter((e) => e.id !== id),
       );
-      if (isImageAttachment(item)) await rm(path, { force: true });
+      if (isImageAttachment(item)) await rm(this.imagePath(sessionId, id, item.mimeType), { force: true });
       else if (item.cached) await rm(this.filePath(sessionId, id), { force: true });
     });
   }
@@ -308,7 +348,7 @@ export class AttachmentStore {
       for (const id of new Set(ids)) {
         const image = await this.readSavedBytes(sourceId, entries.get(id));
         if (isImageAttachment(image.metadata)) {
-          await writeFile(this.imagePath(targetId, id), image.data, { mode: 0o600 });
+          await writeFile(this.imagePath(targetId, id, image.metadata.mimeType), image.data, { mode: 0o600 });
           metadata.push({ ...image.metadata, used: true });
         } else if (entries.get(id)?.cached) {
           const path = this.filePath(targetId, id);

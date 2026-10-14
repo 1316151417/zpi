@@ -52,12 +52,6 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     done(r);
   });
   let app = await launchDesktop({ dir, project, url: server.url });
-  const clipboard = await app.evaluate(({ clipboard }) => ({
-    text: clipboard.readText(),
-    html: clipboard.readHTML(),
-    rtf: clipboard.readRTF(),
-    image: Array.from(clipboard.readImage().toPNG()),
-  }));
   try {
     const page = await app.firstWindow(),
       errors: string[] = [];
@@ -246,16 +240,6 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     reasoning.resolve();
     first.resolve();
     second.resolve();
-    await app.evaluate(
-      ({ clipboard, nativeImage }, old) =>
-        clipboard.write({
-          text: old.text,
-          html: old.html,
-          rtf: old.rtf,
-          ...(old.image.length ? { image: nativeImage.createFromBuffer(Buffer.from(old.image)) } : {}),
-        }),
-      clipboard,
-    );
     await app.close();
     await server.close();
     await rm(dir, { recursive: true, force: true });

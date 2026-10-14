@@ -68,7 +68,7 @@ export class AgentSession {
   private allTools: Map<string, AgentTool>;
   private listeners = new Set<(event: AgentSessionEvent) => void>();
   private running?: Promise<void>;
-  private active = false;
+  private active?: "prompt" | "compact";
   private disposed = false;
   private abortRequested = false;
   private fault?: Error;
@@ -197,7 +197,7 @@ export class AgentSession {
     return this.state.thinkingLevel;
   }
   get isStreaming(): boolean {
-    return this.active;
+    return this.active !== undefined;
   }
   get isIdle(): boolean {
     return !this.active;
@@ -272,11 +272,17 @@ export class AgentSession {
   }
   private estimateTokens(messages: AgentState["messages"]): number {
     const estimate = estimateContextTokens(messages);
-    const boundary = this.manager.getEntries().findLast((entry) => entry.type === "compaction");
     const source = estimate.lastUsageIndex === null ? undefined : messages[estimate.lastUsageIndex];
-    if (boundary && source?.role === "assistant" && source.timestamp <= Date.parse(boundary.timestamp))
-      return 0;
+    if (source?.role === "assistant" && this.precedesCompaction(source)) return 0;
     return estimate.tokens;
+  }
+  private precedesCompaction(message: AgentState["messages"][number]): boolean {
+    // Context projection shares immutable transcript records. Wall-clock timestamps can tie or go backwards.
+    for (const entry of this.manager.getEntries().reverse()) {
+      if (entry.type === "compaction") return true;
+      if (entry.type === "message" && entry.message === message) return false;
+    }
+    return false;
   }
   private async tryAutoCompact(signal?: AbortSignal): Promise<boolean> {
     if (!prepareCompaction(this.manager.getEntries(), this.settingsManager.getCompactionSettings(this.model)))
@@ -299,8 +305,7 @@ export class AgentSession {
       (!includeAborted && message.stopReason === "aborted")
     )
       return false;
-    const boundary = this.manager.getEntries().findLast((entry) => entry.type === "compaction");
-    if (boundary && message.timestamp <= Date.parse(boundary.timestamp)) return false;
+    if (this.precedesCompaction(message)) return false;
     const sameModel = message.provider === this.model.provider && message.model === this.model.id;
     const overflow =
       sameModel &&
@@ -518,7 +523,7 @@ export class AgentSession {
     } catch (error) {
       return Promise.reject(error);
     }
-    this.active = true;
+    this.active = "compact";
     this.abortRequested = false;
     const controller = new AbortController();
     this.compactController = controller;
@@ -528,7 +533,7 @@ export class AgentSession {
       this.state.messages = this.manager.buildSessionContext().messages;
     })().finally(() => {
       this.compactController = undefined;
-      this.active = false;
+      this.active = undefined;
       this.notify({ type: "agent_settled" });
     });
     return this.running;
@@ -576,7 +581,7 @@ export class AgentSession {
     } catch (e) {
       return Promise.reject(e);
     }
-    this.active = true;
+    this.active = "prompt";
     this.abortRequested = false;
     this.overflowRecoveryAttempted = false;
     this.retryAttempt = 0;
@@ -614,7 +619,7 @@ export class AgentSession {
       .finally(() => {
         this.compactController = undefined;
         this.notify({ type: "model_retry", status: null });
-        this.active = false;
+        this.active = undefined;
         this.steering = [];
         this.notify({ type: "agent_settled" });
       });
@@ -623,7 +628,7 @@ export class AgentSession {
   /** Deliver guidance after the current tool batch/model step without interrupting it. */
   steer(text: string): boolean {
     if (!text.trim() || text.length > 100000) throw new Error("Invalid steering input");
-    if (!this.active || this.disposed || this.abortRequested) return false;
+    if (this.active !== "prompt" || this.disposed || this.abortRequested) return false;
     this.steering.push({ role: "user", content: text, timestamp: Date.now() });
     return true;
   }

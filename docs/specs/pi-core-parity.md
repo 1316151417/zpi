@@ -1,6 +1,10 @@
 # Pi core parity
 
-Reference: `/Users/jiezhou/VSCodeProjects/pi`, commit
+Historical implementation and acceptance record. Test totals and validation
+results below describe this change, not the current repository baseline. See the
+[development guide](../development.md) for current commands and desktop boundaries.
+
+Reference: `/path/to/pi`, commit
 `cd34e17ff039502f3664d8363b3c0a23f93a2ca3`.
 
 This change ports Pi's compaction algorithm/prompts and assistant retry/overflow

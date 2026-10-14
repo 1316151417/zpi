@@ -33,9 +33,52 @@ macOS 数据目录：
 
 达到 5 MB 后轮换为 `error.log.1`，保留一份旧日志。日志仅存本机，不记录 IPC 参数、完整请求或聊天内容，并屏蔽常见凭据格式；日志写入失败不影响原有错误处理。
 
-## 桌面测试
+## 工具与会话边界
 
-`npm run test:desktop` 构建应用后运行 Playwright。默认隐藏窗口、不抢焦点，并静默系统通知和音频；界面仍正常渲染，支持自动交互、截图和失败 trace。
+- `packages/coding-agent` 的默认工具是 `read`、`write`、`edit`、`bash`。SDK 用 `customTools` 增加工具，用 `toolOverrides` 显式替换同名基础工具，不依赖 Electron。
+- 桌面端的 `SessionHost` 负责注入 `AskUserQuestion`、子智能体工具和后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体插件后仍提供这两个后台任务工具。
+- 「插件能力」中的提问、子智能体和提示词选项目前均默认开启，已有设置中的显式选择会保留。新对话首次发送时保存配置快照；之后修改全局开关不会重配已有对话。提示词开关不构成权限沙箱，也不会禁用底层并行执行能力。
+- 辅助对话是用户手动创建的独立会话，只复制创建时的稳定上下文和配置。子智能体是桌面编排的受委派任务。两者都共享父任务的工作目录；Git 工作树只提供独立检出目录，不隔离操作系统权限。
+
+### Bash 生命周期
+
+SDK 原生 `bash.timeout` 使用**秒**，不传时没有默认超时；超时或取消会终止命令。桌面覆盖实现使用**毫秒**：前台默认等待 120,000 ms，工具参数最大 600,000 ms；超时可转后台，单独以 `sleep` 开头的命令则终止。`run_in_background` 显式转后台后立即返回任务 ID。
+
+后台进程跨主任务回合保留。中断主任务当前回合不会清理已转后台的命令；`TaskStop`、停止子智能体、归档/删除会话和正常退出应用会清理相应进程树。异常退出后不能保证子进程已清理；重启仅恢复历史并把原运行中任务标记为失联，不重启任务，也不凭历史 PID 杀进程。
+
+输出直接落盘，模型输出预览有长度上限，侧栏按需读取末尾 64 KiB。后台输出达到 5 GiB 时停止；子智能体命令转后台后最多运行一小时。`TaskOutput` 默认等待 30,000 ms，最长 600,000 ms；`block=false` 立即返回。完成结果会自动回传，避免反复轮询。
+
+实现入口：[SDK](../packages/coding-agent/src/core/sdk.ts)、[默认能力](../packages/desktop/src/shared/config.ts)、[会话装配](../packages/desktop/src/main/session-host.ts)、[后台命令](../packages/desktop/src/main/background-tasks.ts)。
+
+## 测试
+
+### 单元与服务测试：不启动窗口
+
+`npm run test:unit` 只运行 `packages/*/test/**/*.test.ts`，使用 Node 环境，不启动 Electron、浏览器或桌面窗口。部分用例会启动本地假模型 HTTP 服务、Git 或 Shell 子进程，并使用临时目录；它们不是纯函数测试，但不需要 GUI。
+
+先运行与改动相关的文件，再跑完整套件：
+
+```sh
+npm run test:unit -- packages/desktop/test/side-chat.test.ts
+npm run test:unit -- packages/coding-agent/test/context-usage.test.ts
+npm run test:unit
+```
+
+默认最多使用 50% 的可用测试 worker，给本机其他工作留出 CPU 余量，并保留测试文件间隔离。专用测试环境可运行 `npm run test:unit -- --maxWorkers=100%` 使用更多 worker；实际耗时取决于 CPU、内存和其他负载，不保证增加并发就更快。
+
+新增测试优先验证公开行为、失败路径和并发边界；同类输入用参数化用例覆盖，避免在多个层次重复相同断言。需要真实 renderer/preload/main 交互时再增加桌面测试，不以测试数量代替覆盖价值。
+
+### 桌面集成测试：启动隐藏的 Electron
+
+`npm run test:desktop` 构建应用后运行 Playwright。测试使用临时数据目录和本地假模型服务；默认隐藏窗口、禁用窗口焦点，并静默系统通知和音频。界面仍正常渲染，支持自动交互、截图和失败 trace。隐藏窗口不等于无图形依赖：仍需要可运行 Electron 的环境，Linux 无桌面环境通常需要虚拟显示服务。
+
+所有桌面用例应复用 `tests/helpers/desktop.ts`：它将 Home、XDG 和 Windows 应用数据目录指向临时目录，移除继承的 Shell 启动脚本变量，将文本剪贴板留在内存中，并拒绝未显式模拟的原生打开文件、浏览器和文件管理器操作。需要验证这些操作时，在用例中提供假实现，不启动用户的外部应用。
+
+定向运行不需要安装包的用例：
+
+```sh
+npm run test:desktop -- tests/desktop/assistant-flow.spec.ts
+```
 
 需要观察窗口时运行：
 
@@ -43,7 +86,17 @@ macOS 数据目录：
 ZPI_TEST_SHOW_WINDOW=1 npm run test:desktop
 ```
 
-打包历史测试需要先运行 `npm run package:mac`，或通过 `ZPI_TEST_PACKAGED_APP` 指定包含当前测试模式的应用包。
+完整套件还包含打包历史和终端测试，需要已有 macOS `.app`，仅执行 `npm run build` 不足以运行这些用例。可先运行 `npm run package:mac`；不需要 DMG 时也可只生成目录包：
+
+```sh
+npm run build
+npx electron-builder --mac dir
+ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npm run test:desktop
+```
+
+路径按实际产物调整，测试默认查找 `release/mac-arm64/ZPI.app`。`ZPI_TEST_PACKAGED_APP` 指定的应用必须包含当前测试模式；测试会把应用复制到临时目录后运行，验证它不依赖仓库中的依赖。其他平台只选择支持该平台的用例，不应把未运行的 macOS 打包测试记作通过。
+
+`docs/specs/` 和 `docs/evidence/` 保留实现时的设计、引用版本和验收记录。其中的测试数量、机器路径及当时未运行的检查只描述该次工作，不是当前覆盖率、当前工作树状态或后续改动的测试豁免。
 
 ## 临时历史会话修复（0.2.3 命名变更）
 

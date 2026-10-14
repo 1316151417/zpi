@@ -1,8 +1,10 @@
 # 自动预览与侧边栏：实现和验收
 
-参考版本：ZCode `872ad960de7ec172591f7e1952f7849229f94521`，3.14.0。只读取参考仓库，没有修改；其原有未跟踪项 `.zcodeignore`、`study/` 保持不变。实现位于当前 ZPI 工作树，未提交 commit。工作开始时 ZPI 工作树干净。
+本文保留自动预览与侧边栏实现当时的验收快照，测试数量、工作树状态和平台限制不代表当前版本。当前开发与测试说明见 [开发指南](../../development.md)。
 
-先完成 [spec](../../specs/assistant-previews-and-sidebar.md)，再补行为测试和实现。spec 包含产品规则、状态所有者、接口、事件顺序图和验收对照表。没有引入遥测、MCP、子代理或后台编排。
+参考版本：ZCode `872ad960de7ec172591f7e1952f7849229f94521`，3.14.0。只读取参考仓库，没有修改；其原有未跟踪项 `.zcodeignore`、`study/` 保持不变。验收时实现尚未提交，工作开始时 ZPI 工作树干净。
+
+先完成 [spec](../../specs/assistant-previews-and-sidebar.md)，再补行为测试和实现。spec 包含产品规则、状态所有者、接口、事件顺序图和验收对照表。这次预览/侧边栏改动未引入遥测、MCP、子代理或后台编排；后续桌面扩展不属于本报告范围。
 
 ## 能力与代码
 
@@ -48,7 +50,7 @@
 
 初次全量单测曾有未修改的 `workspace-files.test.ts` 模糊搜索用例失败：随机临时目录下查询 `escape-folder` 匹配到了 `empty-folder`。该文件单独 6 项、后续两次完整单测均通过；未改动相关搜索实现。首次完整桌面运行有两个新增用例在菜单关闭动画尚未完成时过早再次点击；测试已改为等待菜单卸载，无固定 sleep，之后完整 20 项通过。构建有依赖中的 `use client` 警告，打包有重复依赖提示，均不导致失败。
 
-通过运行的输出摘录保存在 [verification.log](verification.log)。桌面构建日志仅摘录测试段，完整警告不重复保存。
+当前仓库未包含当时的 `verification.log`；以上结果为历史验收记录，可通过下列命令重新验证。
 
 可重跑命令：
 
@@ -58,8 +60,8 @@ npm run test:unit
 npm run test:desktop -- tests/desktop/preview-sidebar.spec.ts tests/desktop/preview-lifecycle.spec.ts tests/desktop/preview-formats.spec.ts tests/desktop/sessions.spec.ts tests/desktop/changed-files.spec.ts tests/desktop/file-preview.spec.ts tests/desktop/message-actions.spec.ts tests/desktop/assistant-flow.spec.ts
 npx electron-builder --mac dir
 ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npx playwright test tests/desktop/preview-sidebar.spec.ts tests/desktop/preview-formats.spec.ts
-node scripts/verify-preview-sidebar.mjs /Users/jiezhou/VSCodeProjects/ZCode
-node scripts/verify-preview-assets.mjs /Users/jiezhou/VSCodeProjects/ZCode
+node scripts/verify-preview-sidebar.mjs /path/to/ZCode
+node scripts/verify-preview-assets.mjs /path/to/ZCode
 ```
 
 ## 视觉对照

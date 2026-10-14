@@ -1,5 +1,8 @@
 # Tool execution parity
 
+Implementation reference for the core tool executor. Desktop extensions have
+separate lifecycle owners; see [current boundaries](../development.md#工具与会话边界).
+
 Ordinary batches follow Pi: parallel by default, with an entire batch running
 sequentially when any declared tool requests sequential execution. Argument
 preparation and before hooks run in declaration order before a parallel batch
@@ -23,8 +26,10 @@ not_executed errors for calls that were never launched. It discards partial text
 and reasoning, then continues from the paired tool results. Late execution
 events cannot modify a recovered response. Existing recovery limits remain.
 
-The core stays limited to read, write, edit, and bash. No subagents, background
-orchestration, provider protocol heuristics, thinking or compaction changes.
+The core's built-in tools stay limited to read, write, edit, and bash. Desktop
+subagents and background commands are injected through generic extension points;
+their orchestration does not belong in the core executor. Provider protocol,
+thinking and compaction behavior are separate concerns.
 
 Validation covers ordered preparation, parallel and sequential execution,
 explicit completion, safety admission, result reuse, interruption and recovery,

@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import type { DesktopEventEnvelope } from "zpi-ui";
+import { shallow } from "zustand/shallow";
 import { deferred } from "../../../tests/fake-server.ts";
+import { selectAppState, selectTaskRecords } from "../src/renderer/app-state.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
 
 afterEach(() => {
@@ -77,6 +79,119 @@ async function setup() {
     },
   };
 }
+
+it("side-chat streaming keeps the main app selection stable without losing activity or deltas", async () => {
+  const f = await setup();
+  const child = { ...f.session, id: "side", parentSessionId: f.session.id };
+  f.store.useStore.setState({
+    selected: f.session.id,
+    sessions: new Map([
+      [f.session.id, f.session],
+      [child.id, child],
+    ]),
+    views: new Map([[child.id, { sessionId: child.id, title: "Side", seq: 0, runs: [] }]]),
+  });
+  const app = selectAppState(f.store.useStore.getState());
+  const tasks = selectTaskRecords(f.store.useStore.getState());
+  let broadChanges = 0;
+  let appChanges = 0;
+  const off = f.store.useStore.subscribe((state, previous) => {
+    if (state.sessions !== previous.sessions) broadChanges++;
+    if (!shallow(selectAppState(state), app) || !shallow(selectTaskRecords(state), tasks)) appChanges++;
+  });
+  let seq = 0;
+  const emit = (event: DesktopEventEnvelope["event"]) => {
+    f.emit({ sessionId: child.id, runId: "run", seq: ++seq, activityAt: seq * 10, event });
+    f.frame();
+  };
+  emit({ type: "started", text: "Side question", startedAt: 10, modelLabel: "model" });
+  emit({ type: "block_start", messageId: "message", contentIndex: 0, kind: "text" });
+  for (let i = 0; i < 100; i++)
+    emit({ type: "block_delta", messageId: "message", contentIndex: 0, delta: "x" });
+  expect(broadChanges).toBe(102);
+  expect(appChanges).toBe(0);
+  expect(f.store.useStore.getState().sessions.get(child.id)).toMatchObject({
+    updatedAt: 1020,
+    activitySeq: 102,
+    running: true,
+  });
+  expect(f.store.useStore.getState().views.get(child.id)?.runs[0].orderedBlocks[0]).toMatchObject({
+    text: "x".repeat(100),
+  });
+  off();
+  f.unsubscribe();
+});
+
+it("main app selectors retain active streaming, history, task metadata and unread updates", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    selected: f.session.id,
+    views: new Map([[f.session.id, f.snapshot.view]]),
+  });
+  const before = selectAppState(f.store.useStore.getState());
+  const tasks = selectTaskRecords(f.store.useStore.getState());
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 1,
+    activityAt: 10,
+    event: { type: "started", text: "hello", startedAt: 10, modelLabel: "model" },
+  });
+  f.frame();
+  expect(selectAppState(f.store.useStore.getState()).activeView).not.toBe(before.activeView);
+  expect(shallow(selectTaskRecords(f.store.useStore.getState()), tasks)).toBe(false);
+  f.emit({
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 2,
+    activityAt: 20,
+    event: { type: "settled", status: "completed", endedAt: 20, unreadAt: 20 },
+  });
+  f.frame();
+  expect(selectAppState(f.store.useStore.getState()).activeRecord).toMatchObject({
+    updatedAt: 20,
+    unreadAt: 20,
+    running: false,
+  });
+  f.store.useStore.setState({ historyCursors: new Map([["side", 50]]), historyLoading: new Set(["side"]) });
+  const selected = selectAppState(f.store.useStore.getState());
+  f.store.useStore.setState({ historyCursors: new Map([["side", 10]]), historyLoading: new Set() });
+  expect(shallow(selectAppState(f.store.useStore.getState()), selected)).toBe(true);
+  f.store.useStore.setState({
+    historyCursors: new Map([[f.session.id, 10]]),
+    historyLoading: new Set([f.session.id]),
+  });
+  expect(selectAppState(f.store.useStore.getState())).toMatchObject({
+    historyCursor: 10,
+    loadingEarlier: true,
+  });
+  f.unsubscribe();
+});
+
+it("ignores replayed and unknown events without replacing maps or notifying subscribers", async () => {
+  const f = await setup();
+  f.store.useStore.setState({ views: new Map([[f.session.id, f.snapshot.view]]) });
+  const event: DesktopEventEnvelope = {
+    sessionId: f.session.id,
+    runId: "run",
+    seq: 1,
+    activityAt: 10,
+    event: { type: "started", text: "hello", startedAt: 10, modelLabel: "model" },
+  };
+  f.emit(event);
+  f.frame();
+  const state = f.store.useStore.getState();
+  const changed = vi.fn();
+  const off = f.store.useStore.subscribe(changed);
+  f.emit(event);
+  f.frame();
+  f.emit({ ...event, sessionId: "closed" });
+  f.frame();
+  expect(f.store.useStore.getState()).toBe(state);
+  expect(changed).not.toHaveBeenCalled();
+  off();
+  f.unsubscribe();
+});
 
 it("late list snapshots preserve newer activity and running facts while applying metadata", async () => {
   const f = await setup();

@@ -538,8 +538,17 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
   if (response.stopReason === "error") {
     return `${label} failed: ${response.errorMessage || "Unknown error"}`;
   }
+  if (response.stopReason === "aborted") {
+    return `${label} failed: generation was aborted`;
+  }
   if (response.stopReason === "length") {
     return `${label} failed: generation hit the token cap and the summary is incomplete`;
+  }
+  if (response.content.some((block) => block.type === "toolCall")) {
+    return `${label} attempted to call a tool`;
+  }
+  if (!contentText(response.content).trim()) {
+    return `${label} failed: model returned an empty summary`;
   }
   return undefined;
 }
@@ -703,10 +712,6 @@ export async function generateSummaryWithUsage(
   if (failure) {
     throw new Error(failure);
   }
-  if (response.content.some((block) => block.type === "toolCall")) {
-    throw new Error("Summarization attempted to call a tool");
-  }
-
   const textContent = contentText(response.content);
 
   return { text: textContent, usage: response.usage };
@@ -985,10 +990,6 @@ async function generateTurnPrefixSummary(
   if (failure) {
     throw new Error(failure);
   }
-  if (response.content.some((block) => block.type === "toolCall")) {
-    throw new Error("Turn prefix summarization attempted to call a tool");
-  }
-
   return {
     text: contentText(response.content),
     usage: response.usage,
