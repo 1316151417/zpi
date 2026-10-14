@@ -519,3 +519,190 @@ it("a late read acknowledgement preserves a newer completion", async () => {
   expect(f.store.useStore.getState().sessions.get(f.session.id)?.unreadAt).toBe(20);
   f.unsubscribe();
 });
+
+it.each(["response", "event"])(
+  "late history pages cannot restore content removed by a %s reset",
+  async (mode) => {
+    const f = await setup();
+    const run = {
+      runId: "removed",
+      status: "completed" as const,
+      userMessage: "old message",
+      orderedBlocks: [],
+      finalAnswerBlockIds: [],
+      startedAt: 1,
+    };
+    f.store.useStore.setState({
+      views: new Map([[f.session.id, { ...f.snapshot.view, seq: 5, runs: [] }]]),
+      historyCursors: new Map([[f.session.id, 10]]),
+    });
+    const gate = deferred();
+    const getHistoryPage = vi.fn(async () => {
+      await gate.promise;
+      return { ok: true, value: { view: { ...f.snapshot.view, seq: 5, runs: [run] }, cursor: null } };
+    });
+    Object.assign(f.bridge, { getHistoryPage });
+    const loading = f.store.loadEarlier(f.session.id);
+    await f.store.loadEarlier(f.session.id);
+    expect(getHistoryPage).toHaveBeenCalledOnce();
+    const view = { ...f.snapshot.view, seq: 6, runs: [] };
+    if (mode === "response")
+      f.store.resetSession({
+        ...f.snapshot,
+        seq: 6,
+        view,
+        historyCursor: 3,
+        controls: {
+          selection: null,
+          presets: [],
+          selectionValid: false,
+          model: null,
+          thinkingLevel: "off",
+          lastThinkingLevel: "off",
+          thinkingLevels: [],
+          diagnostics: [],
+          usage: { contextWindow: 0, inputTokens: null, percent: null, timestamp: null, source: "unknown" },
+        },
+      });
+    else {
+      f.emit({ sessionId: f.session.id, runId: "reset", seq: 6, event: { type: "history_reset", view } });
+      f.frame();
+    }
+    gate.resolve();
+    await loading;
+    expect(f.store.useStore.getState().views.get(f.session.id)?.runs).toEqual([]);
+    expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBe(mode === "response" ? 3 : 10);
+    expect(f.store.useStore.getState().historyLoading.has(f.session.id)).toBe(false);
+    await f.store.loadEarlier(f.session.id);
+    expect(getHistoryPage).toHaveBeenCalledTimes(2);
+    f.unsubscribe();
+  },
+);
+
+it("history pages still merge while newer streaming events arrive", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, f.snapshot.view]]),
+    historyCursors: new Map([[f.session.id, 10]]),
+  });
+  const gate = deferred();
+  Object.assign(f.bridge, {
+    getHistoryPage: vi.fn(async () => {
+      await gate.promise;
+      return {
+        ok: true,
+        value: {
+          view: {
+            ...f.snapshot.view,
+            runs: [
+              {
+                runId: "old",
+                status: "completed",
+                userMessage: "old message",
+                orderedBlocks: [],
+                finalAnswerBlockIds: [],
+                startedAt: 1,
+              },
+            ],
+          },
+          cursor: null,
+        },
+      };
+    }),
+  });
+  const loading = f.store.loadEarlier(f.session.id);
+  f.emit({
+    sessionId: f.session.id,
+    runId: "live",
+    seq: 1,
+    event: { type: "started", text: "live message", startedAt: 2, modelLabel: "model" },
+  });
+  f.frame();
+  gate.resolve();
+  await loading;
+  expect(
+    f.store.useStore
+      .getState()
+      .views.get(f.session.id)
+      ?.runs.map((run) => run.runId),
+  ).toEqual(["old", "live"]);
+  expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBeNull();
+  f.unsubscribe();
+});
+
+it("a late cached-session selection acknowledgement preserves a newer completion", async () => {
+  const f = await setup();
+  await f.store.selectSession(f.session.id);
+  f.store.useStore.setState({ sessions: new Map([[f.session.id, { ...f.session, unreadAt: 10 }]]) });
+  const gate = deferred();
+  f.bridge.activateSession.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: { unreadAt: undefined } };
+  });
+  const selecting = f.store.selectSession(f.session.id);
+  f.store.useStore.setState({ sessions: new Map([[f.session.id, { ...f.session, unreadAt: 20 }]]) });
+  gate.resolve();
+  await selecting;
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.unreadAt).toBe(20);
+  expect(f.bridge.getSessionSnapshot).toHaveBeenCalledOnce();
+  f.unsubscribe();
+});
+
+it.each(["eviction", "replacement"])(
+  "authoritative snapshot after %s invalidates an earlier history request",
+  async (mode) => {
+    const f = await setup();
+    Object.assign(f.snapshot, { seq: 5, view: { ...f.snapshot.view, seq: 5 }, historyCursor: 10 });
+    if (mode === "eviction") await f.store.selectSession(f.session.id);
+    else
+      f.store.useStore.setState({
+        selected: f.session.id,
+        views: new Map([[f.session.id, f.snapshot.view]]),
+        historyCursors: new Map([[f.session.id, 10]]),
+      });
+    const gate = deferred();
+    Object.assign(f.bridge, {
+      getHistoryPage: vi.fn(async () => {
+        await gate.promise;
+        return {
+          ok: true,
+          value: {
+            view: {
+              ...f.snapshot.view,
+              seq: 5,
+              runs: [
+                {
+                  runId: "removed",
+                  status: "completed",
+                  userMessage: "obsolete",
+                  orderedBlocks: [],
+                  finalAnswerBlockIds: [],
+                  startedAt: 1,
+                },
+              ],
+            },
+            cursor: null,
+          },
+        };
+      }),
+    });
+    const loading = f.store.loadEarlier(f.session.id);
+    for (let index = 0; mode === "eviction" && index < 9; index++) {
+      const id = `other-${index}`;
+      f.bridge.getSessionSnapshot.mockResolvedValueOnce({
+        ok: true,
+        value: { ...f.snapshot, session: { ...f.session, id }, view: { ...f.snapshot.view, sessionId: id } },
+      });
+      await f.store.selectSession(id);
+    }
+    if (mode === "eviction") expect(f.store.useStore.getState().views.has(f.session.id)).toBe(false);
+    Object.assign(f.snapshot, { seq: 6, view: { ...f.snapshot.view, seq: 6 }, historyCursor: 3 });
+    await f.store.selectSession(f.session.id);
+    gate.resolve();
+    await loading;
+    expect(f.store.useStore.getState().views.get(f.session.id)?.runs).toEqual([]);
+    expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBe(3);
+    expect(f.store.useStore.getState().historyLoading.has(f.session.id)).toBe(false);
+    f.unsubscribe();
+  },
+);

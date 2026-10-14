@@ -44,6 +44,7 @@ import { modelFailure } from "../utils/model-retry.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
+import { redactProviderError } from "../utils/redact-error.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import {
@@ -847,7 +848,11 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         delete (block as { partialJson?: string }).partialJson;
       }
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(normalizeProviderError(error));
+      output.errorMessage = redactProviderError(formatProviderError(normalizeProviderError(error)), [
+        options?.apiKey,
+        ...Object.values(model.headers ?? {}),
+        ...Object.values(options?.headers ?? {}),
+      ]);
       output.errorDetails = modelFailure(error, options?.signal);
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();

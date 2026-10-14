@@ -291,12 +291,12 @@ export function ModelConfigDialog({
                     </button>
                   </div>
                 </div>
-                {(model.reasoning ?? true) && (
+                {((model.reasoning ?? true) || invalidMapping) && (
                   <>
                     <div className="model-option-group">
                       <span>
                         推理等级（从低到高）
-                        <Help text="点击编辑等级名称，拖动或按 Alt + 左右方向键排序；最后一级为自定义模型的默认值。" />
+                        <Help text="点击编辑等级名称，拖动或按 Alt + 左右方向键排序；默认等级按模型配置和可用等级自动选择。" />
                       </span>
                       <ReasoningLevelEditor
                         values={model.reasoningConfig.levels}

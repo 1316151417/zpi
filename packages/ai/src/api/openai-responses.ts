@@ -11,6 +11,7 @@ import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
+import { redactProviderError } from "../utils/redact-error.ts";
 import {
   assertSupportedOptions,
   emptyAssistant,
@@ -124,17 +125,15 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
   void consume(events).catch((error: unknown) => {
     output.content = output.content.filter((block) => block.type !== "toolCall" || complete.has(block));
     output.stopReason = options.signal?.aborted ? "aborted" : "error";
-    let message = formatProviderError(
+    const message = formatProviderError(
       normalizeProviderError(error),
       `${model.provider === "openai" ? "OpenAI" : model.provider} API error`,
     );
-    for (const secret of [
+    output.errorMessage = redactProviderError(message, [
       options.apiKey,
       ...Object.values(model.headers ?? {}),
       ...Object.values(options.headers ?? {}),
-    ])
-      if (secret) message = message.split(secret).join("[redacted]");
-    output.errorMessage = message;
+    ]);
     output.errorDetails = modelFailure(error, options.signal);
     events.push({ type: "error", reason: output.stopReason, error: output });
   });

@@ -34,7 +34,7 @@ export function SubagentPane({ tab }: { tab: Extract<PaneTab, { type: "subagent"
         onCopy={(text) => window.zpi.copyText(text).then(unwrap)}
         onChanges={(runId, path, toolCallId) => openChanges(tab.childSessionId, runId, path, toolCallId)}
         onLoadToolPatch={(runId, toolCallId) =>
-          window.zpi.readPatch(tab.childSessionId, runId, toolCallId).then(unwrap)
+          window.zpi.readPatch(tab.childSessionId, runId, `operation:${toolCallId}`).then(unwrap)
         }
         onFileAction={(path, action, location) =>
           window.zpi.fileAction(tab.childSessionId, path, action, location).then(unwrap)

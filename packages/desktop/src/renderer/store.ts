@@ -156,11 +156,13 @@ function trimViews(keep?: string): void {
       continue;
     size -= sessionViewBytes(view);
     views.delete(id);
+    historyGenerations.set(id, (historyGenerations.get(id) ?? 0) + 1);
     loadedSessions.delete(id);
   }
   useStore.setState({ views });
 }
 const loadedSessions = new Set<string>();
+const historyGenerations = new Map<string, number>();
 const snapshotRequests = new Map<string, Promise<void>>();
 const pendingSnapshots = new Map<string, DesktopEventEnvelope[]>();
 export async function closeSideChat(id: string): Promise<void> {
@@ -247,6 +249,8 @@ function apply(events: DesktopEventEnvelope[]): void {
     if (view) {
       const next = reduceSession(view, e);
       if (next !== view) {
+        if (e.event.type === "history_reset")
+          historyGenerations.set(e.sessionId, (historyGenerations.get(e.sessionId) ?? 0) + 1);
         if (views === state.views) views = new Map(views);
         views.set(e.sessionId, next);
       }
@@ -391,10 +395,11 @@ export async function selectSession(id: string): Promise<void> {
   if (previous && previous !== id) await saveDraft(previous);
   localStorage.setItem("zpi.selectedSession", id);
   useStore.setState({ selected: id });
+  const unreadAt = useStore.getState().sessions.get(id)?.unreadAt;
   const active = unwrap(await window.zpi.activateSession(id));
   const sessions = new Map(useStore.getState().sessions);
   const record = sessions.get(id);
-  if (record) {
+  if (record && record.unreadAt === unreadAt) {
     sessions.set(id, { ...record, unreadAt: active.unreadAt });
     useStore.setState({ sessions });
   }
@@ -437,6 +442,8 @@ export async function selectSession(id: string): Promise<void> {
       const views = new Map(state.views),
         historyCursors = new Map(state.historyCursors),
         sessions = new Map(state.sessions);
+      // 权威快照替换视图时，旧生命周期的分页响应必须失效。
+      historyGenerations.set(id, (historyGenerations.get(id) ?? 0) + 1);
       views.delete(id);
       views.set(id, view);
       historyCursors.set(id, cursor);
@@ -474,12 +481,15 @@ export async function loadEarlier(id: string): Promise<void> {
   const state = useStore.getState(),
     cursor = state.historyCursors.get(id);
   if (cursor == null || state.historyLoading.has(id)) return;
+  const generation = historyGenerations.get(id) ?? 0;
   useStore.setState({ historyLoading: new Set(state.historyLoading).add(id) });
   try {
     const page = unwrap(await window.zpi.getHistoryPage(id, cursor));
     const current = useStore.getState(),
       view = current.views.get(id);
-    if (!view) return;
+    // 编辑/重试会替换历史；旧分页响应不能把已移除的内容重新合并回来。
+    // 流式事件只增加 seq，不改变历史代次，因此仍可正常合并分页。
+    if (!view || (historyGenerations.get(id) ?? 0) !== generation) return;
     const views = new Map(current.views),
       cursors = new Map(current.historyCursors);
     views.set(id, mergeHistory(page.view, view));
@@ -578,6 +588,7 @@ export function addConversationSelection(
   }
 }
 export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnapshot): void {
+  historyGenerations.set(snapshot.session.id, (historyGenerations.get(snapshot.session.id) ?? 0) + 1);
   previewLoader.clear(snapshot.session.id);
   const state = useStore.getState();
   const views = new Map(state.views),

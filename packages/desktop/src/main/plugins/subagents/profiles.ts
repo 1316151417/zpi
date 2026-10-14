@@ -1,6 +1,8 @@
 // Profile scopes, built-in identities and model overrides follow ZCode (Apache-2.0).
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -233,8 +235,19 @@ export class SubagentProfiles {
       delete fields[key];
     if (modelSelection?.reasoning) fields.thoughtLevel = modelSelection.reasoning;
     if (!config.tools) delete fields.tools;
-    writeFileSync(`${path}.tmp`, `---\n${stringify(fields)}---\n\n${systemPrompt}\n`, { mode: 0o600 });
-    renameSync(`${path}.tmp`, path);
+    const temp = `${path}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temp, `---\n${stringify(fields)}---\n\n${systemPrompt}\n`, { mode: 0o600, flag: "wx" });
+      // 文件名可与 frontmatter 名称不同；新建或重命名必须原子拒绝覆盖其他已有文件。
+      if (previous?.path === path) renameSync(temp, path);
+      else linkSync(temp, path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+        throw new Error("invalid_input: 子智能体文件已存在，请选择其他名称");
+      throw error;
+    } finally {
+      rmSync(temp, { force: true });
+    }
     if (previous?.path && previous.path !== path) {
       rmSync(previous.path);
       this.state.disabled = this.state.disabled.map((key) => (key === id ? `${scope}:${config.name}` : key));
