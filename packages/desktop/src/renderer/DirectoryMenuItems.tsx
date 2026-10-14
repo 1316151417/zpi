@@ -5,16 +5,18 @@ import { report, unwrap } from "./store.ts";
 
 export function DirectoryMenuItems({
   getPath,
+  Item = Menu.Item,
   className = "menu-item",
 }: {
   getPath: () => Promise<string>;
+  Item?: typeof Menu.Item;
   className?: string;
 }) {
   const run = (action: (path: string) => Promise<Result<void>>) =>
     void getPath().then(action).then(unwrap).catch(report);
   return (
     <>
-      <Menu.Item className={className} onSelect={() => run(window.zpi.openDirectory)}>
+      <Item className={className} onSelect={() => run(window.zpi.openDirectory)}>
         <img
           src={new URL("./file-actions/finder.png", document.baseURI).href}
           width={16}
@@ -22,11 +24,11 @@ export function DirectoryMenuItems({
           alt=""
         />
         Finder
-      </Menu.Item>
-      <Menu.Item className={className} onSelect={() => run(window.zpi.copyText)}>
+      </Item>
+      <Item className={className} onSelect={() => run(window.zpi.copyText)}>
         <Copy size={14} />
         复制路径
-      </Menu.Item>
+      </Item>
     </>
   );
 }

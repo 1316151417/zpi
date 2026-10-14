@@ -282,3 +282,48 @@ test("grouped view shares pinned shortcuts and creates group drafts through Cmd/
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
+
+test("grouped task menu reuses header actions, icons and pin behavior", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-menu-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const task = seedHistory(dir, project, 1);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    await grouped(page);
+    const row = page.locator(`.task-groups [data-session-id="${task.id}"]`);
+    await row.click();
+    await page.getByRole("button", { name: "任务菜单", exact: true }).click();
+    const header = await page.locator(".task-menu [role=menuitem]").allTextContents();
+    await page.keyboard.press("Escape");
+    await row.click({ button: "right" });
+    const menu = page.locator(".grouped-task-context-menu");
+    await expect(menu.locator("[role=menuitem]")).toHaveText(["移动到分组", "移动到顶部", ...header]);
+    await expect(menu.getByRole("menuitem", { name: "移动到分组", exact: true }).locator("svg")).toHaveCount(
+      2,
+    );
+    await expect(menu.getByRole("menuitem", { name: "移动到顶部", exact: true }).locator("svg")).toHaveCount(
+      1,
+    );
+    await expect(menu.getByText("标记未读", { exact: true })).toHaveCount(0);
+    await menu.getByRole("menuitem", { name: "置顶", exact: true }).click();
+    await expect(page.locator(`.pinned-tasks [data-session-id="${task.id}"]`)).toBeVisible();
+    await page.reload();
+    await row.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "取消置顶", exact: true }).click();
+    await expect(page.locator(`.pinned-tasks [data-session-id="${task.id}"]`)).toHaveCount(0);
+    await row.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "重命名任务", exact: true }).click();
+    const input = page.getByRole("textbox", { name: "重命名任务", exact: true });
+    await expect(input).toBeFocused();
+    await input.fill("菜单重命名");
+    await input.press("Enter");
+    await expect(row).toContainText("菜单重命名");
+    await page.reload();
+    await expect(row).toContainText("菜单重命名");
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});

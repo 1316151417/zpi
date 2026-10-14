@@ -1,7 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import * as Context from "@radix-ui/react-context-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { ArrowUpToLine, ChevronRight, Folder, LoaderIcon, X } from "lucide-react";
+import { ArrowUpToLine, ChevronRight, Folder, FolderInput, LoaderIcon, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActionHint, TaskTitleOverflowText } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
@@ -19,6 +19,7 @@ import {
   selectSession,
   unwrap,
 } from "./store.ts";
+import { TaskMenuItems } from "./TaskMenuItems.tsx";
 import { TaskGroupColorMark } from "./task-group-colors.tsx";
 import { refreshTaskGroupChangeSummary } from "./task-group-tooltip.ts";
 
@@ -293,7 +294,7 @@ export function TaskGroupRow({
       {menuOpen && (
         <Context.Portal>
           <Context.Content
-            className="parity-menu grouped-task-context-menu"
+            className="selection-menu task-menu grouped-task-context-menu"
             onCloseAutoFocus={(event) => {
               if (pendingRename.current) {
                 event.preventDefault();
@@ -305,6 +306,7 @@ export function TaskGroupRow({
           >
             <Context.Sub>
               <Context.SubTrigger className="menu-item">
+                <FolderInput size={16} />
                 移动到分组
                 <ChevronRight size={14} className="menu-sub-arrow" />
               </Context.SubTrigger>
@@ -337,80 +339,18 @@ export function TaskGroupRow({
               </Context.Portal>
             </Context.Sub>
             <Context.Item className="menu-item" onSelect={moveTop}>
+              <ArrowUpToLine size={16} />
               移动到顶部
             </Context.Item>
             <Context.Separator className="menu-separator" />
-            <Context.Item
-              className="menu-item"
-              disabled={Boolean(record.diagnostic)}
-              onSelect={() => {
+            <TaskMenuItems
+              record={record}
+              Item={Context.Item}
+              Separator={Context.Separator}
+              onRename={() => {
                 pendingRename.current = true;
               }}
-            >
-              重命名
-            </Context.Item>
-            <Context.Item
-              className="menu-item"
-              disabled={record.running || Boolean(record.diagnostic)}
-              onSelect={close}
-            >
-              归档任务
-            </Context.Item>
-            <Context.Item
-              className="menu-item"
-              onSelect={() =>
-                run(async () => {
-                  unwrap(await window.zpi.setSessionUnread(record.id));
-                  await refresh();
-                })
-              }
-            >
-              标记未读
-            </Context.Item>
-            <Context.Separator className="menu-separator" />
-            <Context.Item
-              className="menu-item"
-              onSelect={() =>
-                run(async () => {
-                  const info = unwrap(await window.zpi.getWorkspaceInfo(record.id));
-                  unwrap(await window.zpi.openDirectory(info.cwd));
-                })
-              }
-            >
-              <Folder size={14} />
-              {window.zpi.platform === "darwin" ? "在 Finder 中显示" : "在文件管理器中显示"}
-            </Context.Item>
-            <Context.Item
-              className="menu-item"
-              onSelect={() =>
-                run(async () => {
-                  const info = unwrap(await window.zpi.getWorkspaceInfo(record.id));
-                  unwrap(await window.zpi.copyText(info.cwd));
-                })
-              }
-            >
-              复制路径
-            </Context.Item>
-            <Context.Item
-              className="menu-item"
-              onSelect={() =>
-                run(async () => {
-                  unwrap(await window.zpi.copySessionPath(record.id));
-                })
-              }
-            >
-              复制会话路径
-            </Context.Item>
-            <Context.Item
-              className="menu-item"
-              onSelect={() =>
-                run(async () => {
-                  unwrap(await window.zpi.copyText(record.id));
-                })
-              }
-            >
-              复制会话 ID
-            </Context.Item>
+            />
           </Context.Content>
         </Context.Portal>
       )}
