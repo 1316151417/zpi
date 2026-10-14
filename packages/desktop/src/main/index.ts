@@ -339,7 +339,7 @@ async function launch(): Promise<void> {
         importAttachment: 2,
         readAttachment: 2,
         removeAttachment: 2,
-        getChanges: 2,
+        getChanges: 3,
         readPatch: 3,
         previewPrompt: 0,
         listTools: 0,
@@ -615,7 +615,8 @@ async function launch(): Promise<void> {
           value = await host.removeAttachment(string(0), string(1));
           break;
         case "getChanges":
-          value = await host.getChanges(string(0), args[1] === null ? null : string(1));
+          if (typeof args[2] !== "boolean") throw new Error("invalid_input: 参数必须是布尔值");
+          value = await host.getChanges(string(0), args[1] === null ? null : string(1), args[2]);
           break;
         case "readPatch":
           value = await host.readPatch(string(0), args[1] === null ? null : string(1), string(2));

@@ -50,7 +50,7 @@ function byteLength(text: string): number {
 }
 
 /**
- * Incrementally tracks streaming output with bounded memory.
+ * Incrementally tracks streaming output with bounded memory when producers await `append`.
  *
  * Appends decode chunks with a streaming UTF-8 decoder, keeps only a decoded
  * tail for display snapshots, and opens a temp file when the full output needs
@@ -78,6 +78,7 @@ export class OutputAccumulator {
   private tempFilePath: string | undefined;
   private tempFileStream: WriteStream | undefined;
   private tempFileError: Error | undefined;
+  private tempFileDrain: Promise<void> | undefined;
 
   constructor(options: OutputAccumulatorOptions = {}) {
     this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -86,17 +87,21 @@ export class OutputAccumulator {
     this.tempFilePrefix = options.tempFilePrefix ?? "pi-output";
   }
 
-  append(data: Buffer): void {
+  /** Await the returned promise, when present, before appending another chunk. */
+  append(data: Buffer): void | Promise<void> {
     if (this.finished) {
       throw new Error("Cannot append to a finished output accumulator");
     }
+
+    if (this.tempFileError) throw this.tempFileError;
 
     this.totalRawBytes += data.length;
     this.appendDecodedText(this.decoder.decode(data, { stream: true }));
 
     if (this.tempFileStream || this.shouldUseTempFile()) {
       this.ensureTempFile();
-      this.tempFileStream?.write(data);
+      const stream = this.tempFileStream;
+      if (stream && !stream.write(data)) return this.waitForTempFileDrain(stream);
     } else if (data.length > 0) {
       this.rawChunks.push(data);
     }
@@ -262,6 +267,29 @@ export class OutputAccumulator {
       this.totalDecodedBytes > this.maxBytes ||
       this.totalLines > this.maxLines
     );
+  }
+
+  private waitForTempFileDrain(stream: WriteStream): Promise<void> {
+    if (this.tempFileDrain) return this.tempFileDrain;
+    const drain = new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        stream.removeListener("drain", finish);
+        stream.removeListener("error", finish);
+        stream.removeListener("close", finish);
+        this.tempFileDrain = undefined;
+        if (this.tempFileError) reject(this.tempFileError);
+        else if (stream.destroyed && !stream.writableFinished)
+          reject(new Error("Output file closed before draining"));
+        else resolve();
+      };
+      stream.once("drain", finish);
+      stream.once("error", finish);
+      stream.once("close", finish);
+    });
+    // Legacy synchronous producers can ignore the promise. closeTempFile still reports disk errors.
+    void drain.catch(() => {});
+    this.tempFileDrain = drain;
+    return drain;
   }
 
   private ensureTempFile(): void {

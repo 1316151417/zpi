@@ -208,6 +208,12 @@ export function createEditToolDefinition(
         throwIfAborted();
 
         const finalContent = bom + newContent;
+        // The queue covers ZPI writers only. Reject changes observed during edit preparation
+        // rather than overwrite them; this is not an atomic lock against external writers.
+        const current = await ops.readFile(absolutePath);
+        throwIfAborted();
+        if (!current.equals(buffer))
+          throw new Error(`File changed while preparing edits: ${path}. Read it again before retrying.`);
         await ops.writeFile(absolutePath, finalContent);
         options?.fileReadState?.recordEdit(absolutePath, rawContent, finalContent);
 

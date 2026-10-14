@@ -99,3 +99,54 @@ it("aborting before the mutation prevents both custom writes and edits", async (
   ).rejects.toThrow("Operation aborted");
   expect(operations.writeFile).not.toHaveBeenCalled();
 });
+
+it("edit preserves external changes detected before writing and allows a fresh retry", async () => {
+  let content = "agent_target=old\nuser_note=before\n";
+  let reads = 0;
+  const operations = {
+    access: async () => {},
+    readFile: async () => {
+      const original = Buffer.from(content);
+      if (++reads === 1) content = "agent_target=old\nuser_note=USER_SAVED\n";
+      return original;
+    },
+    writeFile: vi.fn(async (_path: string, next: string) => {
+      content = next;
+    }),
+  };
+  const edit = createEditToolDefinition(process.cwd(), { operations });
+  const input = {
+    path: "example.txt",
+    edits: [{ oldText: "agent_target=old", newText: "agent_target=new" }],
+  };
+  await expect(edit.execute("conflict", input)).rejects.toThrow("File changed while preparing edits");
+  expect(content).toBe("agent_target=old\nuser_note=USER_SAVED\n");
+  expect(operations.writeFile).not.toHaveBeenCalled();
+  await edit.execute("retry", input);
+  expect(content).toBe("agent_target=new\nuser_note=USER_SAVED\n");
+  expect(operations.writeFile).toHaveBeenCalledTimes(1);
+});
+
+it.each(["abort", "removed"] as const)("edit does not write when verification is %s", async (kind) => {
+  const controller = new AbortController();
+  let reads = 0;
+  const operations = {
+    access: async () => {},
+    readFile: async () => {
+      if (++reads === 2) {
+        if (kind === "removed") throw Object.assign(new Error("File removed"), { code: "ENOENT" });
+        controller.abort();
+      }
+      return Buffer.from("before");
+    },
+    writeFile: vi.fn(async () => {}),
+  };
+  await expect(
+    createEditToolDefinition(process.cwd(), { operations }).execute(
+      "edit",
+      { path: "example.txt", edits: [{ oldText: "before", newText: "after" }] },
+      controller.signal,
+    ),
+  ).rejects.toThrow(kind === "removed" ? "File removed" : "Operation aborted");
+  expect(operations.writeFile).not.toHaveBeenCalled();
+});

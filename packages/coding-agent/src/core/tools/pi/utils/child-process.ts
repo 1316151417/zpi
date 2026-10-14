@@ -36,6 +36,10 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
       child.stderr?.removeListener("end", onStderrEnd);
       child.stdout?.removeListener("data", onData);
       child.stderr?.removeListener("data", onData);
+      child.stdout?.removeListener("pause", onOutputPaused);
+      child.stderr?.removeListener("pause", onOutputPaused);
+      child.stdout?.removeListener("resume", onOutputResumed);
+      child.stderr?.removeListener("resume", onOutputResumed);
     };
 
     const finalize = (code: number | null) => {
@@ -54,9 +58,21 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
       }
     };
 
-    const armIdleTimer = () => {
+    const onOutputPaused = () => {
       if (postExitTimer) clearTimeout(postExitTimer);
+      postExitTimer = undefined;
+    };
+
+    const armIdleTimer = () => {
+      onOutputPaused();
+      // Backpressure is deliberate inactivity, not an idle inherited handle. Give the
+      // consumer time to drain before starting the grace period again.
+      if (child.stdout?.isPaused() || child.stderr?.isPaused()) return;
       postExitTimer = setTimeout(() => finalize(exitCode), EXIT_STDIO_GRACE_MS);
+    };
+
+    const onOutputResumed = () => {
+      if (exited && !settled) armIdleTimer();
     };
 
     const onData = () => {
@@ -99,6 +115,10 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
     child.stderr?.once("end", onStderrEnd);
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
+    child.stdout?.on("pause", onOutputPaused);
+    child.stderr?.on("pause", onOutputPaused);
+    child.stdout?.on("resume", onOutputResumed);
+    child.stderr?.on("resume", onOutputResumed);
     child.once("error", onError);
     child.once("exit", onExit);
     child.once("close", onClose);

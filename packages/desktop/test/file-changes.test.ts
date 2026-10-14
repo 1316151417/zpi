@@ -1,8 +1,10 @@
 import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, test } from "vitest";
-import type { SessionEntry } from "zpi-coding-agent";
+import { createTwoFilesPatch } from "diff";
+import { expect, test, vi } from "vitest";
+import type { FileChange, SessionEntry } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
+import * as changesModule from "../src/main/file-changes.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "../src/main/file-changes.ts";
 import { projectEvent } from "../src/main/projection.ts";
 import { SessionHost } from "../src/main/session-host.ts";
@@ -229,4 +231,158 @@ test("missing and out-of-bounds legacy patches retain diagnostics without droppi
   expect(changes[0].reason).toContain("文件快照不可用");
   expect(changes[1].reason).toContain("快照不属于此任务");
   expect(changes[2]).toMatchObject({ path: "valid.txt", patch });
+});
+
+test("metadata and inline-budget projections preserve grouping without computing deferred patches", async () => {
+  const f = await fixture();
+  const root = join(f.dir, "snapshots");
+  await mkdir(root);
+  const beforeFile = join(root, "before"),
+    afterFile = join(root, "after");
+  await writeFile(beforeFile, "before\n".repeat(10000));
+  await writeFile(afterFile, "after\n".repeat(10000));
+  const change: FileChange = {
+    path: "large.txt",
+    toolCallId: "first",
+    operation: "modified",
+    beforeHash: "before",
+    afterHash: "after",
+    beforeFile,
+    afterFile,
+  };
+  const changes: FileChange[] = [
+    change,
+    { ...change, toolCallId: "last", failed: true },
+    { ...change, path: "reverted.txt", afterFile: beforeFile, afterHash: "before" },
+    { ...change, path: "missing.txt", afterFile: join(root, "missing") },
+    { ...change, path: "legacy.txt", beforeFile: undefined, afterFile: undefined, patch: "+legacy" },
+  ];
+  for (const options of [{ includePatch: false }, { maxPatchBytes: 64 * 1024 }]) {
+    const items = await fileChanges(changes, root, "task", options);
+    expect(items.map((item) => item.path)).toEqual(["large.txt", "legacy.txt", "missing.txt"]);
+    expect(items[0]).toMatchObject({
+      id: "file:large.txt",
+      status: "modified",
+      failed: true,
+      patchAvailable: true,
+    });
+    expect(items[0].patch).toBeUndefined();
+    expect(items[0].reason).toBeUndefined();
+    expect(items[2].reason).toContain("文件快照不可用");
+    if (options.includePatch === false) {
+      expect(items[1].patch).toBeUndefined();
+      expect(items[1].patchAvailable).toBe(true);
+    } else expect(items[1].patch).toBe("+legacy");
+  }
+});
+
+test("real diff workers preserve large creation patches and remain responsive during expensive comparisons", async () => {
+  const f = await fixture();
+  const root = join(f.dir, "snapshots");
+  await mkdir(root);
+  const beforeFile = join(root, "before"),
+    afterFile = join(root, "after");
+  const before = Array.from({ length: 10000 }, (_, i) => `old row ${i}`).join("\n");
+  const after = Array.from({ length: 10000 }, (_, i) => `new row ${i}`).join("\n");
+  await writeFile(beforeFile, before);
+  await writeFile(afterFile, after);
+  const change: FileChange = {
+    path: "large.txt",
+    toolCallId: "write",
+    operation: "created",
+    beforeHash: null,
+    afterHash: "after",
+    afterFile,
+  };
+  const [created] = await fileChanges([change], root, "task");
+  expect(created.patch).toBe(
+    createTwoFilesPatch("/dev/null", "large.txt", "", after, "", "", { context: 3 }),
+  );
+  let ticks = 0;
+  const timer = setInterval(() => ticks++, 10);
+  try {
+    const [modified] = await fileChanges(
+      [{ ...change, operation: "modified", beforeHash: "before", beforeFile }],
+      root,
+      "task",
+    );
+    expect(modified.reason).toBe("文件已变化，比对超时");
+    expect(ticks).toBeGreaterThan(10);
+  } finally {
+    clearInterval(timer);
+  }
+});
+
+test("aborting an active diff releases its worker and allows the next request to complete", async () => {
+  const f = await fixture();
+  const root = join(f.dir, "snapshots");
+  await mkdir(root);
+  const beforeFile = join(root, "before"),
+    afterFile = join(root, "after");
+  await writeFile(beforeFile, "old row\n".repeat(10000));
+  await writeFile(afterFile, "new row\n".repeat(10000));
+  const change: FileChange = {
+    path: "large.txt",
+    toolCallId: "write",
+    operation: "modified",
+    beforeHash: "before",
+    afterHash: "after",
+    beforeFile,
+    afterFile,
+  };
+  const controller = new AbortController();
+  const job = fileChanges([change], root, "task", { signal: controller.signal });
+  const rejection = expect(job).rejects.toThrow("cancel diff");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  controller.abort(new Error("cancel diff"));
+  await rejection;
+  const [next] = await fileChanges([{ ...change, beforeHash: null, beforeFile: undefined }], root, "task");
+  expect(next.patch).toContain("+new row");
+});
+
+test("selected file patches only project that file and metadata previews omit patches", async () => {
+  const f = await fixture((_body, response, index) => {
+    if (index < 3) {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: `write-${index}`,
+              type: "function",
+              function: {
+                name: "write",
+                arguments: JSON.stringify({
+                  path: index === 1 ? "other.txt" : "selected.txt",
+                  content: `version ${index}\n`,
+                }),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: "done" }));
+      done(response);
+    }
+  });
+  await run(f, "write files");
+  const metadata = await f.host.getChanges(f.session.id, null, false);
+  expect(metadata).toHaveLength(2);
+  expect(metadata.every((entry) => !entry.patch && entry.patchAvailable)).toBe(true);
+  const selected = metadata.find((entry) => entry.path.endsWith("selected.txt"));
+  if (!selected) throw new Error("selected file missing");
+  const project = vi.spyOn(changesModule, "fileChanges");
+  try {
+    const patch = await f.host.readPatch(f.session.id, null, selected.id);
+    expect(patch).toContain("+version 2");
+    expect(patch).not.toContain("version 0");
+    expect(project).toHaveBeenCalledTimes(1);
+    expect(project.mock.calls[0][0]).toHaveLength(2);
+    expect(project.mock.calls[0][0].every((entry) => entry.path === selected.path)).toBe(true);
+  } finally {
+    project.mockRestore();
+  }
 });

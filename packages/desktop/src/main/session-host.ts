@@ -133,6 +133,8 @@ export class SessionHost {
   private listeners = new Set<(event: DesktopEventEnvelope) => void>();
   private blocked = new Map<string, string>();
   private closing = false;
+  private readonly diffAbort = new AbortController();
+  private readonly diffJobs = new Set<Promise<DiffItem[]>>();
   private deleting = new Set<string>();
   private updating = new Set<string>();
   private closingChildren = new Set<string>();
@@ -1625,19 +1627,28 @@ export class SessionHost {
       }),
     );
   }
-  private allChanges(id: string, runId: string | null): Promise<DiffItem[]> {
-    return fileChanges(
-      this.recordedChanges(id, runId),
+  private async allChanges(
+    id: string,
+    runId: string | null,
+    options: { includePatch?: boolean; maxPatchBytes?: number } = {},
+    path?: string,
+  ): Promise<DiffItem[]> {
+    const changes = this.recordedChanges(id, runId);
+    const job = fileChanges(
+      path === undefined ? changes : changes.filter((change) => change.path === path),
       join(this.dir, "agent", "tool-output", id),
       runId ? "本轮变更" : "任务变更",
+      { ...options, signal: this.diffAbort.signal },
     );
+    this.diffJobs.add(job);
+    try {
+      return await job;
+    } finally {
+      this.diffJobs.delete(job);
+    }
   }
-  async getChanges(id: string, runId: string | null): Promise<DiffItem[]> {
-    return (await this.allChanges(id, runId)).map((entry) =>
-      entry.patch && Buffer.byteLength(entry.patch) > 64 * 1024
-        ? { ...entry, patch: undefined, patchAvailable: true }
-        : entry,
-    );
+  getChanges(id: string, runId: string | null, includePatch = true): Promise<DiffItem[]> {
+    return this.allChanges(id, runId, { includePatch, maxPatchBytes: 64 * 1024 });
   }
   async readPatch(id: string, runId: string | null, key: string): Promise<string> {
     if (key.startsWith("operation:")) {
@@ -1655,7 +1666,10 @@ export class SessionHost {
         ).toString("utf8");
       return change.reason ?? "";
     }
-    const change = (await this.allChanges(id, runId)).find((entry) => entry.id === key);
+    if (!key.startsWith("file:")) throw new Error("not_found: 修改记录不存在");
+    const change = (await this.allChanges(id, runId, {}, key.slice("file:".length))).find(
+      (entry) => entry.id === key,
+    );
     if (!change) throw new Error("not_found: 修改记录不存在");
     return change.patch ?? change.reason ?? "";
   }
@@ -2653,6 +2667,8 @@ export class SessionHost {
   }
   async close(): Promise<void> {
     this.closing = true;
+    this.diffAbort.abort();
+    await Promise.allSettled([...this.diffJobs]);
     const errors: unknown[] = [];
     const cleanup = async (work: () => void | Promise<void>) => {
       try {

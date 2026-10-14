@@ -7,7 +7,7 @@ const unwrap = <T>(result: Result<T>): T => {
 };
 export const previewLoader = createPreviewLoader({
   getChangedPaths: async (id, runId) => {
-    const changes = unwrap(await window.zpi.getChanges(id, runId));
+    const changes = unwrap(await window.zpi.getChanges(id, runId, false));
     return changes
       .filter(
         (change) =>
