@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { providerBaseUrl } from "zpi-ai";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function expectAlignedFields(page: Page, count: number) {
@@ -47,8 +48,9 @@ async function expectAlignedFields(page: Page, count: number) {
 for (const theme of ["light", "dark"] as const) {
   test(`provider forms align fields, empty models and feedback in ${theme} mode`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "zpi-provider-layout-"));
-    const app = await launchDesktop({ dir, url: "" });
+    let app: Awaited<ReturnType<typeof launchDesktop>>;
     try {
+      app = await launchDesktop({ dir, url: "" });
       const page = await app.firstWindow();
       await page.emulateMedia({ colorScheme: theme });
       await page.evaluate(async (baseUrl) => {
@@ -97,8 +99,7 @@ for (const theme of ["light", "dark"] as const) {
           .evaluate((element) => element.scrollWidth - element.clientWidth),
       ).toBeLessThan(1);
     } finally {
-      await app.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
     }
   });
 }

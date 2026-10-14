@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("A/B background runs, sidebar indicators and hover pin; stop, reload and unread restart", async () => {
@@ -104,9 +105,11 @@ test("A/B background runs, sidebar indicators and hover pin; stop, reload and un
     await expect(page.locator('[data-unread-indicator="true"]')).toHaveCount(0);
   } finally {
     releaseB.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -217,8 +220,10 @@ test("draft workspace picker, contextual new tasks and per-project drafts persis
     await expect(page.locator(".answer")).toHaveText("ok");
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

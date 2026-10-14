@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("long user messages match ZCode collapse and preserve copying and find navigation", async () => {
@@ -11,8 +12,9 @@ test("long user messages match ZCode collapse and preserve copying and find navi
     send(response, chunk({ content: "完成。" }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     const text = `${"检查长消息的折叠和展开。\n".repeat(60)}末尾定位词`;
     const editor = page.getByLabel("消息", { exact: true });
@@ -60,9 +62,11 @@ test("long user messages match ZCode collapse and preserve copying and find navi
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     await expect(page.getByTestId("run").last().locator(".user-message-toggle")).toHaveCount(0);
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -72,8 +76,9 @@ test("side chats reuse the smallest free number and retain other conversations",
     send(response, chunk({ content: "完成。" }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByLabel("消息", { exact: true }).fill("主对话");
     await page.getByLabel("发送", { exact: true }).click();
@@ -103,9 +108,11 @@ test("side chats reuse the smallest free number and retain other conversations",
       .click();
     await expect(third.getByLabel("消息", { exact: true })).toHaveText("保留第三份草稿");
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -117,8 +124,9 @@ test("clicking inside the current task clears a completion dot and persists the 
     await finish.promise;
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByLabel("消息", { exact: true }).fill("清除当前任务的蓝点");
     await page.getByLabel("发送", { exact: true }).click();
@@ -148,9 +156,11 @@ test("clicking inside the current task clears a completion dot and persists the 
     await expect(dot).toHaveCount(0);
   } finally {
     finish.resolve();
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -182,8 +192,9 @@ test("an absolute HTML link previews the streamed write before the file exists a
       done(response);
     }
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByLabel("消息", { exact: true }).fill("生成 HTML 页面");
     await page.getByLabel("发送", { exact: true }).click();
@@ -203,8 +214,10 @@ test("an absolute HTML link previews the streamed write before the file exists a
     await expect(page.locator(".error-toast")).toHaveCount(0);
   } finally {
     finish.resolve();
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

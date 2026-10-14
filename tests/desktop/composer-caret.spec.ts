@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("native composer caret fades smoothly, resets on editing and stays visible during IME", async () => {
@@ -70,7 +71,6 @@ test("native composer caret fades smoothly, resets on editing and stays visible 
     await expect(editor).toHaveCSS("caret-animation", "manual");
     await expect(editor).toHaveCSS("caret-color", await editor.evaluate((el) => getComputedStyle(el).color));
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

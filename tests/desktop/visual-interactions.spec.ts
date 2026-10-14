@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("task menus and dialogs share ZCode surfaces, enter and exit without losing focus", async () => {
@@ -68,8 +69,10 @@ test("task menus and dialogs share ZCode surfaces, enter and exit without losing
     await expect(page.locator(".sidebar")).toBeVisible();
     await expect(page.locator(".sidebar")).toHaveCSS("transition-duration", "0s");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

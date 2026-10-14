@@ -5,6 +5,7 @@ import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import type { Notification } from "electron";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 // Exercise real Electron -> preload -> renderer delivery, intercepting only OS display.
@@ -53,8 +54,7 @@ test("ZCode notification settings, disabled sound state and independent preferen
     await page.getByRole("button", { name: "常规", exact: true }).click();
     await page.screenshot({ path: "test-results/task-notifications-settings-dark.png" });
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -220,8 +220,10 @@ test("live task completion, failure and interruption notify once, and clicking r
     await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
     expect(await count()).toBe(3);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -3,12 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and cancel or disconnect", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-chatgpt-ui-"));
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     const keys = await generateKeyPair("RS256", { extractable: true });
     const jwk = { ...(await exportJWK(keys.publicKey)), kid: "test", alg: "RS256" };
     await app.evaluate(({ net, shell }, publicKey) => {
@@ -152,7 +154,6 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
       ),
     ).toMatchObject({ models: 2, revokes: 1 });
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

@@ -1,7 +1,7 @@
 import { open, stat } from "node:fs/promises";
 import { extname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MEDIA_PREVIEW_FORMATS } from "../../../ui/src/preview/media-preview.ts";
+import { MEDIA_PREVIEW_FORMATS } from "zpi-ui/media-preview";
 import type { FilePreview } from "../shared/bridge.ts";
 import { resolveLocalFilePath, validateFileLocation } from "./local-file-path.ts";
 

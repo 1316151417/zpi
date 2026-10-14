@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("changed files start collapsed, group repeated edits, scroll within the card and open diffs", async () => {
@@ -210,9 +211,11 @@ test("changed files start collapsed, group repeated edits, scroll within the car
     await expect(page.locator(".changed-files-totals")).toHaveText("+21-21");
   } finally {
     release.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -283,8 +286,10 @@ test("changed HTML opens in the same built-in browser as conversation links, wit
       )
       .toEqual([path]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

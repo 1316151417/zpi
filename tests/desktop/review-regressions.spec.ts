@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { type ElectronApplication, expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { done, fakeServer } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -16,8 +17,9 @@ interface DraftSaveGate {
 for (const mode of ["scheduled", "in flight"] as const) {
   test(`quitting waits for ${mode} draft saves even after repeated quit requests`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "zpi-quit-draft-"));
-    const app = await launchDesktop({ dir, url: "" });
+    let app: Awaited<ReturnType<typeof launchDesktop>>;
     try {
+      app = await launchDesktop({ dir, url: "" });
       const page = await app.firstWindow();
       await app.evaluate(({ ipcMain }) => {
         const internal = ipcMain as unknown as {
@@ -62,19 +64,25 @@ for (const mode of ["scheduled", "in flight"] as const) {
       const draft = JSON.parse(await readFile(join(dir, "drafts", `${id}.json`), "utf8"));
       expect(draft.text).toBe("草稿必须保存后才能退出");
     } finally {
-      await app
-        .evaluate(() => (globalThis as unknown as { draftSaveGate?: DraftSaveGate }).draftSaveGate?.release())
-        .catch(() => {});
-      await app.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => app?.close(),
+        () =>
+          app
+            ?.evaluate(() =>
+              (globalThis as unknown as { draftSaveGate?: DraftSaveGate }).draftSaveGate?.release(),
+            )
+            .catch(() => {}),
+      ]);
     }
   });
 }
 
 test("draft save failure cancels quitting and allows a successful retry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quit-draft-failure-"));
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await app.evaluate(({ ipcMain }) => {
       const internal = ipcMain as unknown as {
@@ -111,18 +119,24 @@ test("draft save failure cancels quitting and allows a successful retry", async 
     const draft = JSON.parse(await readFile(join(dir, "drafts", `${id}.json`), "utf8"));
     expect(draft.text).toBe("保存失败后仍然保留的草稿");
   } finally {
-    await app
-      .evaluate(() => (globalThis as unknown as { restoreDraftHandler?: () => void }).restoreDraftHandler?.())
-      .catch(() => {});
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => app?.close(),
+      () =>
+        app
+          ?.evaluate(() =>
+            (globalThis as unknown as { restoreDraftHandler?: () => void }).restoreDraftHandler?.(),
+          )
+          .catch(() => {}),
+    ]);
   }
 });
 
 test("leaving the models tab during ChatGPT login restores settings controls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-login-unmount-"));
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     await app.evaluate(({ shell }) => {
       shell.openExternal = async () => {};
     });
@@ -144,8 +158,7 @@ test("leaving the models tab during ChatGPT login restores settings controls", a
     await page.getByLabel("提供商名称", { exact: true }).fill("After cancellation");
     await expect(page.getByLabel("提供商名称", { exact: true })).toHaveValue("After cancellation");
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -183,9 +196,11 @@ test("reading position survives immediate session switching and closing before t
       .poll(() => page.locator(".conversation").evaluate((element) => element.scrollTop))
       .toBe(last);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -196,8 +211,9 @@ for (const selection of [
   test(`mixed image and text paste keeps subsequent typing after the inserted text (${selection})`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "zpi-mixed-paste-"));
     const server = await fakeServer((_, response) => done(response));
-    const app = await launchDesktop({ dir, url: server.url });
+    let app: Awaited<ReturnType<typeof launchDesktop>>;
     try {
+      app = await launchDesktop({ dir, url: server.url });
       const bytes = await sharp({ create: { width: 1, height: 1, channels: 3, background: "white" } })
         .png()
         .toBuffer();
@@ -231,9 +247,11 @@ for (const selection of [
         })
         .toBe(expected);
     } finally {
-      await app.close();
-      await server.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => server.close(),
+        () => app?.close(),
+      ]);
     }
   });
 }

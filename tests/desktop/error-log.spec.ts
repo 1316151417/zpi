@@ -3,13 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import metadata from "../../package.json" with { type: "json" };
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("persists IPC, renderer and main-process errors, rejects malformed reports, and records renderer crashes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-error-log-desktop-"));
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   const file = join(dir, "agent", "logs", "error.log");
   try {
+    app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await expect(page.locator(".shell")).toBeVisible();
     await page.evaluate(async () => {
@@ -69,7 +71,6 @@ test("persists IPC, renderer and main-process errors, rejects malformed reports,
     );
     await expect.poll(async () => await readFile(file, "utf8")).toContain("renderer.process-gone");
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

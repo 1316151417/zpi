@@ -5,6 +5,7 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 const editor = (page: Page) => page.getByLabel("消息", { exact: true });
@@ -214,9 +215,11 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await expect(run).toHaveAttribute("data-status", "aborted");
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -278,9 +281,11 @@ test("archived and damaged groups, counted delete confirmation and batch deletio
     await page.getByRole("button", { name: "确认删除", exact: true }).click();
     await expect(page.locator(".archived-row")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -344,9 +349,11 @@ test("every new-task entry focuses the composer when creating or reusing a draft
     await expect(editor(page)).toHaveText("前XY尾");
     expect(server.requests).toHaveLength(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -409,8 +416,10 @@ test("composer focus restores per-task caret on switch/restart and terminal tabs
     await page.getByRole("tab", { name: "zsh", exact: true }).click();
     await expect(terminal).toBeFocused();
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

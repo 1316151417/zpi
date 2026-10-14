@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { ElectronApplication, Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 const exec = promisify(execFile);
@@ -120,9 +121,11 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
     await expect(questionTools.last().locator(".tool-parameters, .tool-detail-error")).toHaveCount(0);
     await page.screenshot({ path: "test-results/question-records.png", animations: "disabled" });
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -213,9 +216,11 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     await expect(proactive).toBeChecked();
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 async function selectText(paragraph: Locator) {
@@ -309,9 +314,11 @@ test("long question cards retain ZCode scroll bounds and responsive collapse in 
     await card.getByRole("button", { name: "忽略", exact: true }).click();
     await expect(card).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -434,9 +441,11 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
     expect(JSON.stringify(server.requests[1].messages)).toContain("也检查测试");
     expect(JSON.stringify(server.requests[0].tools)).toContain("AskUserQuestion");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -484,9 +493,11 @@ test("side chat launchers are hidden for drafts and appear after the first messa
     await expect(launcher).toBeVisible();
     await expect(launcher.getByRole("button", { name: "辅助对话", exact: true })).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -574,9 +585,11 @@ test("side chats route selected text to the active tab and preserve independent 
     await expect(main.getByLabel("消息", { exact: true })).toHaveText("");
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -656,9 +669,11 @@ test("selection disables only the auxiliary action while its active chat awaits 
       "1",
     );
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -699,9 +714,11 @@ test("Markdown preview selections open an auxiliary chat with their source path 
     expect(messages).toContain("notes.md");
     await expect(main.getByTestId("run")).toHaveCount(1);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -811,9 +828,11 @@ for (const remote of [false, true]) {
       expect(await git("branch", "--show-current")).toBe("main");
       expect(await readFile(join(project, "tracked.txt"), "utf8")).toBe("dirty source");
     } finally {
-      await app?.close();
-      await server.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => server.close(),
+        () => app?.close(),
+      ]);
     }
   });
 }
@@ -914,9 +933,11 @@ test("first-send worktree settings create a detached checkout and switch the pro
     }, childId);
     expect(workspace.cwd).toBe(record?.cwd);
   } finally {
-    await rm(checkoutGate, { force: true });
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+      () => rm(checkoutGate, { force: true }),
+    ]);
   }
 });

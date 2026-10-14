@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("packaged terminal starts a shell and runs commands outside the repository", async () => {
@@ -24,7 +25,6 @@ test("packaged terminal starts a shell and runs commands outside the repository"
     await page.getByLabel("关闭标签 zsh", { exact: true }).click();
     await expect(page.locator(".xterm-helper-textarea")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

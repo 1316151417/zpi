@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
@@ -43,8 +44,7 @@ test("scrolling near older messages loads one page, preserves the anchor and can
     await expect(page.getByTestId("run")).toHaveCount(30);
     await expect(page.locator(".load-history")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -88,7 +88,6 @@ test("automatic history failure reports an error without looping, and explicit r
     await expect(page.locator(".conversation").getByRole("alert")).toHaveCount(0);
     expect(await calls()).toBe(2);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

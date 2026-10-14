@@ -6,6 +6,7 @@ import { emptyAssistant, type ToolCall } from "zpi-ai";
 import { piTemplate, SessionManager } from "zpi-coding-agent";
 import { defaultCapabilities } from "../../packages/desktop/src/shared/config.ts";
 import { fakeModel } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("process summaries retain ZCode typography and single-line geometry when the right pane opens", async () => {
@@ -78,8 +79,9 @@ test("process summaries retain ZCode typography and single-line geometry when th
     status: "completed",
     endedAt: Date.now(),
   });
-  const app = await launchDesktop({ dir, url: "http://127.0.0.1:1/v1" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "http://127.0.0.1:1/v1" });
     const page = await app.firstWindow();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 900));
     const main = page.locator("main");
@@ -140,7 +142,6 @@ test("process summaries retain ZCode typography and single-line geometry when th
       }
     }
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

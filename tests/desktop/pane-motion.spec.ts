@@ -2,12 +2,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("right pane slides in both layouts, locks content during toggles and resizes without lag", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-pane-motion-"));
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "no-preference" });
     const panel = page.locator(".right-pane");
@@ -101,7 +103,6 @@ test("right pane slides in both layouts, locks content during toggles and resize
     await expect(panel).toHaveCSS("transition-duration", "0s");
     await expect(panel).toBeVisible();
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("Markdown links and streamed file citations share icons, preview locations and browser routing", async () => {
@@ -169,10 +170,12 @@ test("Markdown links and streamed file citations share icons, preview locations 
   } finally {
     partial.resolve();
     finish.resolve();
-    await app?.close();
-    await model.close();
-    site.closeAllConnections();
-    await new Promise<void>((resolve) => site.close(() => resolve()));
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => new Promise<void>((resolve) => site.close(() => resolve())),
+      () => site.closeAllConnections(),
+      () => model.close(),
+      () => app?.close(),
+    ]);
   }
 });

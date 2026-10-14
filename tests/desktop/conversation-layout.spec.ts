@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("ZCode turn actions stay near the composer and share the turn hover area at every column width", async () => {
@@ -15,8 +16,9 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
     send(response, chunk({ content: text }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByLabel("消息", { exact: true }).fill("检查消息布局");
     await page.getByLabel("发送", { exact: true }).click();
@@ -97,8 +99,10 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({ path: "test-results/conversation-footer-dark.png" });
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { defaultPreferences } from "../../packages/desktop/src/shared/config.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("desktop starts with saved notification preferences and preserves the settings", async () => {
@@ -39,8 +40,7 @@ test("desktop starts with saved notification preferences and preserves the setti
     expect(restored).toEqual(settings.interface);
     expect(JSON.parse(await readFile(file, "utf8"))).toEqual(settings);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -101,8 +101,7 @@ for (const fontSize of [14, 17]) {
       await expect(archivesTab).toHaveCSS("font-size", "16px");
       await expect(page.getByRole("heading", { name: "已归档任务", exact: true })).toBeVisible();
     } finally {
-      await app?.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
     }
   });
 }

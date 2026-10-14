@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -10,8 +11,9 @@ import { seedHistory } from "../history-fixture.ts";
 test("settings replace the workspace on the first frame without changing its layout or state", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-settings-first-frame-"));
   const session = seedHistory(dir, dir, 1);
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.locator(`[data-session-id="${session.id}"] .session-name`).click();
@@ -57,8 +59,7 @@ test("settings replace the workspace on the first frame without changing its lay
       await expect(page.getByRole("button", { name: "设置", exact: true })).toBeVisible();
     }
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -66,8 +67,9 @@ for (const timeline of [false, true]) {
   test(`settings preserve ${timeline ? "timeline" : "project"} task pagination and scroll while closing hints`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "zpi-settings-sidebar-state-"));
     for (let index = 0; index < 25; index++) seedHistory(dir, dir, 1);
-    const app = await launchDesktop({ dir, url: "" });
+    let app: Awaited<ReturnType<typeof launchDesktop>>;
     try {
+      app = await launchDesktop({ dir, url: "" });
       const page = await app.firstWindow();
       if (timeline) {
         await page.getByLabel("筛选和排序", { exact: true }).click();
@@ -101,8 +103,7 @@ for (const timeline of [false, true]) {
           .toBe(scroll);
       }
     } finally {
-      await app.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
     }
   });
 }
@@ -142,8 +143,7 @@ test("settings hide pinned task controls and restore the task sidebar on return"
     await row.hover();
     await expect(row.getByLabel("置顶任务 历史标题", { exact: true })).toBeVisible();
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -265,7 +265,6 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
     await expect(settings).toHaveCount(0);
     await expect(page.locator(".topbar")).toHaveCSS("font-size", "14px");
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function checkTaskMenuLayer(page: Page, panel: Locator, theme: string) {
@@ -169,9 +170,11 @@ test("one compact task panel manages agents and services and retains finished hi
     await expect(panel.locator('[data-status-section="terminal"] .task-ended')).toContainText("2");
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -318,8 +321,10 @@ test("terminal capsule matches ZCode and automatic layout follows the conversati
     await page.reload();
     await expect(capsule).toHaveText("1 已结束");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

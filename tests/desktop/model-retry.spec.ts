@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("shows Pi agent reconnect status, survives reload, recovers, stops waits and only then exposes terminal errors", async () => {
@@ -41,8 +42,9 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
       }),
     );
   });
-  const app = await launchDesktop({ dir, project, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     const submit = async (text: string) => {
@@ -105,9 +107,11 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
   } finally {
     finishRecoveredStream.resolve();
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -140,8 +144,9 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
       closed.push(prompt);
     });
   });
-  const app = await launchDesktop({ dir, project, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     const submit = async (text: string) => {
@@ -167,8 +172,10 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
     expect(counts.get("stop live request")).toBe(1);
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("default window, draft spacing and fixed sidebar footer match ZCode", async () => {
@@ -90,8 +91,10 @@ test("default window, draft spacing and fixed sidebar footer match ZCode", async
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(header).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0)");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

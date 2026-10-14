@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("task switching isolates files, terminals and browser guests and restores active/collapsed state", async () => {
@@ -119,9 +120,11 @@ test("task switching isolates files, terminals and browser guests and restores a
     );
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await new Promise<void>((resolve) => site.close(() => resolve()));
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => new Promise<void>((resolve) => site.close(() => resolve())),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

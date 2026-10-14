@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("native terminal shell, browser link/navigation isolation, tabs and responsive pane bounds", async () => {
@@ -230,10 +231,12 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await page.getByLabel("关闭标签 zsh", { exact: true }).click();
     await expect(page.getByRole("tab", { name: "zsh", exact: true })).toHaveCount(0);
   } finally {
-    await app?.close();
-    await model.close();
-    await new Promise<void>((resolve) => site.close(() => resolve()));
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => new Promise<void>((resolve) => site.close(() => resolve())),
+      () => model.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -301,9 +304,11 @@ test("local HTML links and address-bar paths load sandboxed pages, assets and re
     }, pathToFileURL(file).href);
     await writeFile("test-results/desktop-local-browser.png", Buffer.from(pixels, "base64"));
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -316,8 +321,9 @@ test("reasoning submenu keeps the native browser visible with long model names a
     '<html><meta charset="utf-8"><title>菜单预览</title><body>Browser stays visible</body></html>',
   );
   const url = pathToFileURL(file).href;
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await page.evaluate(async () => {
       const result = await window.zpi.saveProvider({
@@ -386,7 +392,6 @@ test("reasoning submenu keeps the native browser visible with long model names a
       await expect.poll(attached).toBe(1);
     }
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

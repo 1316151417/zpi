@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("an absolute Java link outside the task workspace can be sent, while a relative escape is rejected", async () => {
@@ -39,8 +40,10 @@ test("an absolute Java link outside the task workspace can be sent, while a rela
     await expect(page.getByTestId("run")).toHaveCount(1);
     expect(server.requests).toHaveLength(1);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
