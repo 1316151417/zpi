@@ -71,7 +71,7 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
   // Chromium net-stack transport failures (Electron net.fetch), which surface as
   // net::ERR_* strings instead of Node/undici text.
   "ERR_CONNECTION_(CLOSED|RESET|ABORTED|TIMED_?OUT)",
-  "ERR_(TIMED_OUT|NETWORK_CHANGED|NAME_NOT_RESOLVED|HTTP2_PROTOCOL_ERROR|EMPTY_RESPONSE|PROXY_CONNECTION_FAILED)",
+  "ERR_(TIMED_OUT|NETWORK_CHANGED|NAME_NOT_RESOLVED|(HTTP2|QUIC)_PROTOCOL_ERROR|EMPTY_RESPONSE|PROXY_CONNECTION_FAILED)",
 
   // WebSocket transports can report close/error text instead of HTTP/fetch text.
   "websocket.?closed",

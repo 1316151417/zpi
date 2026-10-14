@@ -36,11 +36,14 @@ it("uses Pi deterministic agent backoff and excludes subscription/billing limits
     "net::ERR_CONNECTION_RESET",
     "net::ERR_NETWORK_CHANGED",
     "net::ERR_HTTP2_PROTOCOL_ERROR",
+    "net::ERR_QUIC_PROTOCOL_ERROR",
+    "net::err_quic_protocol_error",
   ])
     expect(isRetryableAssistantError(failed(text))).toBe(true);
   for (const text of [
     "429 insufficient_quota",
     "429 billing limit",
+    "net::ERR_QUIC_PROTOCOL_ERROR: insufficient_quota",
     "GoUsageLimitError",
     "401 unauthorized",
     "Monthly usage limit reached",
@@ -54,40 +57,46 @@ it("uses Pi deterministic agent backoff and excludes subscription/billing limits
   ).toMatchObject({ status: 429, retryAfterMs: 120000 });
 });
 
-it("makes four agent attempts, reports 2/4/8 second waits, and leaves empty success alone", async () => {
-  vi.useFakeTimers();
-  const produce = vi.fn(async () => failed("503 busy"));
-  const delays: number[] = [];
-  const run = retryAssistantCall(produce, policy, undefined, {
-    onRetryScheduled: (_attempt, _max, delay) => {
-      delays.push(delay);
-    },
-  });
-  await vi.runAllTimersAsync();
-  expect((await run).stopReason).toBe("error");
-  expect(produce).toHaveBeenCalledTimes(4);
-  expect(delays).toEqual([2000, 4000, 8000]);
-  const empty = { ...emptyAssistant(fakeModel("")), stopReason: "stop" as const };
-  const success = vi.fn(async () => empty);
-  expect(await retryAssistantCall(success, policy, undefined)).toBe(empty);
-  expect(success).toHaveBeenCalledTimes(1);
-});
+it.each(["503 busy", "net::ERR_QUIC_PROTOCOL_ERROR"])(
+  "makes four agent attempts for %s, reports 2/4/8 second waits, and leaves empty success alone",
+  async (errorMessage) => {
+    vi.useFakeTimers();
+    const produce = vi.fn(async () => failed(errorMessage));
+    const delays: number[] = [];
+    const run = retryAssistantCall(produce, policy, undefined, {
+      onRetryScheduled: (_attempt, _max, delay) => {
+        delays.push(delay);
+      },
+    });
+    await vi.runAllTimersAsync();
+    expect((await run).stopReason).toBe("error");
+    expect(produce).toHaveBeenCalledTimes(4);
+    expect(delays).toEqual([2000, 4000, 8000]);
+    const empty = { ...emptyAssistant(fakeModel("")), stopReason: "stop" as const };
+    const success = vi.fn(async () => empty);
+    expect(await retryAssistantCall(success, policy, undefined)).toBe(empty);
+    expect(success).toHaveBeenCalledTimes(1);
+  },
+);
 
-it("cancels an agent backoff immediately and never retries terminal failures", async () => {
-  vi.useFakeTimers();
-  const controller = new AbortController();
-  const produce = vi.fn(async () => failed("terminated"));
-  const run = retryAssistantCall(produce, policy, controller.signal, {
-    onRetryScheduled: () => {
-      controller.abort();
-    },
-  });
-  expect((await run).stopReason).toBe("aborted");
-  expect(produce).toHaveBeenCalledTimes(1);
-  const terminal = vi.fn(async () => failed("429 insufficient_quota"));
-  await retryAssistantCall(terminal, policy, undefined);
-  expect(terminal).toHaveBeenCalledTimes(1);
-});
+it.each(["terminated", "net::ERR_QUIC_PROTOCOL_ERROR"])(
+  "cancels %s backoff immediately and never retries terminal failures",
+  async (errorMessage) => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const produce = vi.fn(async () => failed(errorMessage));
+    const run = retryAssistantCall(produce, policy, controller.signal, {
+      onRetryScheduled: () => {
+        controller.abort();
+      },
+    });
+    expect((await run).stopReason).toBe("aborted");
+    expect(produce).toHaveBeenCalledTimes(1);
+    const terminal = vi.fn(async () => failed("429 insufficient_quota"));
+    await retryAssistantCall(terminal, policy, undefined);
+    expect(terminal).toHaveBeenCalledTimes(1);
+  },
+);
 
 it.each(["openai-completions", "openai-responses", "anthropic-messages"] as const)(
   "uses two provider retries by default through %s",
