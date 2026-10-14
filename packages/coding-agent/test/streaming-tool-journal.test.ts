@@ -222,20 +222,20 @@ it.each(["error", "length", "aborted"] as const)(
         const stream = createAssistantMessageEventStream();
         // Immutable custom providers need not mutate or re-emit the initial partial.
         stream.push({ type: "start", partial: emptyAssistant(model) });
+        const firstResponse = requests++ === 0;
         stream.end({
           ...emptyAssistant(model),
-          stopReason: requests++ === 0 ? stopReason : "stop",
-          content:
-            requests === 1
-              ? ["first", "second"].map((id) => ({
-                  type: "toolCall" as const,
-                  id,
-                  name: "unexecuted",
-                  namespace: "custom-provider",
-                  thoughtSignature: "provider-signature",
-                  arguments: { input: id },
-                }))
-              : [{ type: "text", text: "Recovered normally" }],
+          stopReason: firstResponse ? stopReason : "stop",
+          content: firstResponse
+            ? ["first", "second"].map((id) => ({
+                type: "toolCall" as const,
+                id,
+                name: "unexecuted",
+                namespace: "custom-provider",
+                thoughtSignature: "provider-signature",
+                arguments: { input: id },
+              }))
+            : [{ type: "text", text: "Recovered normally" }],
         });
         return stream;
       },

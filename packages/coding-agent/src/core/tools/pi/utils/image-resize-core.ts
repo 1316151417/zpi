@@ -1,6 +1,6 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
-import { openImage } from "./image-source.ts";
+import { canPassThroughInline, openImage } from "./image-source.ts";
 
 export interface ImageResizeOptions {
   maxWidth?: number; // Default: 2000
@@ -69,15 +69,7 @@ export async function resizeImageInProcess(
     });
     const fits = (bytes: Uint8Array) => Math.ceil(bytes.byteLength / 3) * 4 <= opts.maxBytes;
 
-    if (
-      scale === 1 &&
-      fits(inputBytes) &&
-      !source.animated &&
-      !source.hasMetadata &&
-      source.orientation === 1 &&
-      source.mimeType !== "image/bmp" &&
-      source.mimeType !== "image/gif"
-    ) {
+    if (scale === 1 && fits(inputBytes) && canPassThroughInline(source)) {
       await source.pipeline.stats();
       return result(inputBytes, source.mimeType);
     }
