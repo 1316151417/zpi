@@ -13,7 +13,7 @@ test("bounded search obeys gitignore and cwd scope; relative escapes fail but ex
   await writeFile(join(f.workspace, ".gitignore"), "ignored.txt\n*.log\n");
   await writeFile(join(f.workspace, "sub", ".gitignore"), "!allowed.log\n");
   await writeFile(join(f.workspace, "sub", "allowed.log"), "allowed");
-  expect(await searchFiles(f.workspace, "allowed.log")).toHaveLength(1);
+  expect((await searchFiles(f.workspace, "allowed.log"))[0]).toMatchObject({ path: "sub/allowed.log" });
   await writeFile(join(f.workspace, "ignored.txt"), "ignored");
   await writeFile(join(f.workspace, "sub", "a 中文.ts"), "text");
   await writeFile(join(f.dir, "outside.txt"), "outside");
@@ -26,14 +26,15 @@ test("bounded search obeys gitignore and cwd scope; relative escapes fail but ex
       absolutePath: await realpath(join(f.workspace, "sub/a 中文.ts")),
     },
   ]);
-  expect((await searchFiles(f.workspace, "ignored")).length).toBe(0);
+  // Absolute-path fuzzy matches may include other files from a random temp directory.
+  expect((await searchFiles(f.workspace, "ignored")).map((file) => file.path)).not.toContain("ignored.txt");
   await expect(validatedReference(f.workspace, "escape.txt")).rejects.toThrow("不在");
   await expect(validatedReference(f.workspace, "../outside.txt")).rejects.toThrow("不在");
   expect(await validatedReference(f.workspace, join(f.dir, "outside.txt"))).toBe(
     await realpath(join(f.dir, "outside.txt")),
   );
   await promisify(execFile)("git", ["init"], { cwd: f.workspace });
-  expect((await searchFiles(f.workspace, "ignored")).length).toBe(0);
+  expect((await searchFiles(f.workspace, "ignored")).map((file) => file.path)).not.toContain("ignored.txt");
   expect(await validatedReference(f.workspace, "sub/a 中文.ts")).toBe(
     await realpath(join(f.workspace, "sub", "a 中文.ts")),
   );
@@ -122,7 +123,8 @@ test.each([false, true])(
     await writeFile(join(f.workspace, "skills", "know-base-update", "SKILL.md"), "skill");
     await writeFile(join(f.workspace, "update.py"), "update");
     await symlink(f.dir, join(f.workspace, "escape-folder"));
-    expect(await searchFiles(f.workspace, "update")).toMatchObject([
+    // Exact and project-relative matches rank before incidental absolute-path fuzzy matches.
+    expect((await searchFiles(f.workspace, "update")).slice(0, 4)).toMatchObject([
       { name: "update.py", type: "file" },
       { name: "know-base-update", type: "directory" },
       { name: "references", type: "directory" },
@@ -134,8 +136,15 @@ test.each([false, true])(
       absolutePath: await realpath(join(f.workspace, "skills", "know-base-update")),
       type: "directory",
     });
-    expect(await searchFiles(f.workspace, "empty-folder")).toMatchObject([{ type: "directory" }]);
-    expect(await searchFiles(f.workspace, "ignored-folder")).toEqual([]);
+    expect((await searchFiles(f.workspace, "empty-folder"))[0]).toMatchObject({
+      path: "empty-folder",
+      type: "directory",
+    });
+    expect(
+      (await searchFiles(f.workspace, "ignored-folder")).every(
+        ({ path }) => path !== "ignored-folder" && !path.startsWith("ignored-folder/"),
+      ),
+    ).toBe(true);
     // Absolute-path fuzzy matches can include valid folders in randomly named temporary directories.
     expect(
       (await searchFiles(f.workspace, "escape-folder")).every(

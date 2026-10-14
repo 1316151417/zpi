@@ -5,6 +5,8 @@ import { constants } from "node:fs";
 import { access as fsAccess, readFile as fsReadFile } from "node:fs/promises";
 import { Type } from "typebox";
 import type { ImageContent, Model, TextContent } from "zpi-ai";
+import { imageLimits } from "../../image-limits.ts";
+import { readFileBounded } from "../../read-file-bounded.ts";
 import type { ExtensionContext, ToolDefinition } from "./compat.ts";
 import { FileReadState } from "./file-read-state.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
@@ -51,8 +53,8 @@ export interface ReadToolDetails {
  * Override these to delegate file reading to remote systems (for example SSH).
  */
 export interface ReadOperations {
-  /** Read file contents as a Buffer */
-  readFile: (absolutePath: string) => Promise<Buffer>;
+  /** Read file contents as a Buffer. Bound source I/O to maxBytes + 1 when a limit is supplied. */
+  readFile: (absolutePath: string, maxBytes?: number) => Promise<Buffer>;
   /** Check if file is readable (throw if not) */
   access: (absolutePath: string) => Promise<void>;
   /** Detect image MIME type, return null or undefined for non-images */
@@ -60,7 +62,7 @@ export interface ReadOperations {
 }
 
 const defaultReadOperations: ReadOperations = {
-  readFile: (path) => fsReadFile(path),
+  readFile: (path, maxBytes) => (maxBytes === undefined ? fsReadFile(path) : readFileBounded(path, maxBytes)),
   access: (path) => fsAccess(path, constants.R_OK),
   detectImageMimeType: detectSupportedImageMimeTypeFromFile,
 };
@@ -102,7 +104,7 @@ export function createReadToolDefinition(
       sideEffectScope: "none",
     },
     label: "read",
-    description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
+    description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images up to 20 MiB are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     promptSnippet: readToolSystemPromptContribution.snippet,
     promptGuidelines: [...readToolSystemPromptContribution.guidelines],
     parameters: readSchema,
@@ -146,7 +148,10 @@ export function createReadToolDefinition(
               const nonVisionImageNote = getNonVisionImageNote(ctx?.model);
               if (mimeType) {
                 // Read image as binary.
-                const buffer = await ops.readFile(absolutePath);
+                const buffer = await ops.readFile(absolutePath, imageLimits.readSourceBytes);
+                // Older/custom readers may ignore the optional I/O limit. Never decode oversized results.
+                if (buffer.length > imageLimits.readSourceBytes)
+                  throw new Error(`Image exceeds the ${imageLimits.readSourceBytes} byte size limit`);
                 const processed = await processImage(buffer, mimeType, {
                   autoResizeImages,
                   resizeOptions: ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,

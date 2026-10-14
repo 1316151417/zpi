@@ -71,7 +71,8 @@ export async function processImage(
     if (!resized) {
       return {
         ok: false,
-        message: "[Image omitted: could not be resized below the inline image size limit.]",
+        message:
+          "[Image omitted: invalid or unsupported image, or could not be resized below the inline image size limit.]",
       };
     }
 

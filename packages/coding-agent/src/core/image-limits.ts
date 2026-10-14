@@ -1,5 +1,8 @@
 export const imageLimits = {
+  /** Imported and cached attachment originals. */
   sourceBytes: 10 * 1024 * 1024,
+  /** Local/remote read-tool image inputs; attachments retain their stricter import cap. */
+  readSourceBytes: 20 * 1024 * 1024,
   count: 8,
   pixels: 40_000_000,
   messagePixels: 80_000_000,

@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { afterEach } from "vitest";
 import type { PromptTemplate } from "zpi-coding-agent";
 import { chunk, done, fakeServer, send } from "../../../../tests/fake-server.ts";
+import { runCleanup } from "../../../../tests/helpers/cleanup.ts";
 import { SessionHost } from "../../src/main/session-host.ts";
 import { SettingsStore } from "../../src/main/storage.ts";
 export const codec = {
@@ -14,7 +15,7 @@ export const codec = {
 };
 export const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
-  for (const action of cleanup.splice(0).reverse()) await action();
+  await runCleanup(cleanup);
 });
 export async function fixture(
   handler: Parameters<typeof fakeServer>[0] = (_, r) => {
@@ -51,8 +52,8 @@ export async function fixture(
   const workspace = join(dir, "workspace"),
     resources = join(dir, "resources"),
     host = new SessionHost(dir, settings, resources, workspace, undefined);
-  await host.init();
   cleanup.push(() => host.close());
+  await host.init();
   const session = host.createSession(null);
   return { dir, workspace, resources, host, session, settings, server };
 }

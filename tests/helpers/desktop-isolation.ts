@@ -31,6 +31,9 @@ export function desktopEnvironment(
     XDG_DATA_HOME: join(dir, ".local", "share"),
     XDG_CACHE_HOME: join(dir, ".cache"),
     ZDOTDIR: dir,
+    TMPDIR: dir,
+    TMP: dir,
+    TEMP: dir,
   };
 }
 

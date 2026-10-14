@@ -10,7 +10,8 @@ import {
   imageLimits,
   isImageAttachment,
   prepareInlineImage,
-  processImage,
+  readFileBounded,
+  validateImageSource,
 } from "zpi-coding-agent";
 import { atomicJson } from "./storage.ts";
 
@@ -68,7 +69,7 @@ export class AttachmentStore {
     const name = basename(path);
     if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
       if (info.size > imageLimits.sourceBytes) throw new Error("invalid_input: 图片单张上限为 10 MiB");
-      return this.import(sessionId, name, await readFile(path));
+      return this.import(sessionId, name, await readFileBounded(path, imageLimits.sourceBytes));
     }
     return this.saveFile(sessionId, name, path, info.size);
   }
@@ -166,22 +167,23 @@ export class AttachmentStore {
     )
       throw new Error("invalid_input: 图片导入参数无效（单张最多 10 MiB）");
     return this.serial(sessionId, async () => {
-      const processed = await processImage(bytes);
+      const input = Buffer.from(bytes);
+      const processed = await validateImageSource(input);
       const entries = await this.list(sessionId);
       if (entries.filter((e) => !e.used && !e.queued).length >= imageLimits.count)
         throw new Error("invalid_input: 每个草稿最多 8 个附件");
       const item: Saved = {
         id: randomUUID(),
         name,
-        mimeType: processed.image.mimeType,
+        mimeType: processed.mimeType,
         width: processed.width,
         height: processed.height,
-        size: processed.bytes.length,
+        size: input.length,
         used: false,
         ...(processed.warning ? { warning: processed.warning } : {}),
       };
       await mkdir(this.directory(sessionId), { recursive: true });
-      await writeFile(this.imagePath(sessionId, item.id, item.mimeType), processed.bytes, { mode: 0o600 });
+      await writeFile(this.imagePath(sessionId, item.id, item.mimeType), input, { mode: 0o600 });
       try {
         atomicJson(join(this.directory(sessionId), "index.json"), [...entries, item]);
       } catch (e) {
@@ -211,14 +213,17 @@ export class AttachmentStore {
         throw new Error("invalid_input: 附件文件路径无效");
       return { metadata, data: Buffer.alloc(0) };
     }
-    const data = await readFile(this.imagePath(sessionId, item.id, item.mimeType));
+    const data = await readFileBounded(
+      this.imagePath(sessionId, item.id, item.mimeType),
+      imageLimits.sourceBytes,
+    );
     // Old indexes and interrupted writes must not bypass source validation or pixel limits.
-    const source = await processImage(data);
+    const source = await validateImageSource(data);
     const { warning: _warning, ...savedMetadata } = metadata;
     return {
       metadata: {
         ...savedMetadata,
-        mimeType: source.image.mimeType,
+        mimeType: source.mimeType,
         width: source.width,
         height: source.height,
         size: data.length,

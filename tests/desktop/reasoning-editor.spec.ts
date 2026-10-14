@@ -3,16 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { type CleanupAction, runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survive reload and reach inference", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-reasoning-editor-"));
-  const server = await fakeServer((_, response) => {
-    send(response, chunk({ content: "ok" }));
-    done(response);
-  });
-  const app = await launchDesktop({ dir, url: server.url });
+  const cleanup: CleanupAction[] = [() => rm(dir, { recursive: true, force: true })];
   try {
+    const server = await fakeServer((_, response) => {
+      send(response, chunk({ content: "ok" }));
+      done(response);
+    });
+    cleanup.push(server.close);
+    const app = await launchDesktop({ dir, url: server.url });
+    cleanup.push(() => app.close());
     const page = await app.firstWindow();
     await page.evaluate(async (url) => {
       const result = await window.zpi.saveProvider({
@@ -115,8 +119,6 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
     expect(server.requests.at(-1)?.thinking).toEqual({ type: "disabled" });
     expect(server.requests.at(-1)?.reasoning_effort).toBeUndefined();
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup(cleanup);
   }
 });

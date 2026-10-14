@@ -2277,7 +2277,10 @@ export class SessionHost {
         const execution = session.executeInput(prepared, inputContext);
         const inbox = this.pendingSubagentMessages.get(id) ?? [];
         this.pendingSubagentMessages.delete(id);
-        for (const message of inbox) session.steer(message.text);
+        // Manual compaction cannot consume steering. Keep rejected startup replies
+        // for settlement to deliver in a separate prompt turn.
+        const deferred = inbox.filter((message) => !session.steer(message.text));
+        if (deferred.length) this.pendingSubagentMessages.set(id, deferred);
         void execution
           .then(
             () => this.settle(id, run),

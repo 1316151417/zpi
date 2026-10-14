@@ -138,6 +138,8 @@ async function run(
         await coordinator.abandon();
         throw error;
       }
+      // Close every declared call on cancellation; the executor rejects aborted calls
+      // before tool hooks or execution, so durable history never keeps an orphan call.
       const results: ToolResultMessage[] = [];
       if (calls.length) {
         const executor = createToolExecutor(context, assistant, config, emit, signal);
@@ -149,7 +151,6 @@ async function run(
             const result = streamed.get(call.id) ?? (await (await executor.schedule(call))());
             results.push(result);
             await add(result);
-            if (signal?.aborted && !streamed.size) break;
           }
         } else {
           // Pi prepares every call in declaration order before launching the batch.
@@ -157,7 +158,6 @@ async function run(
           for (const call of calls) {
             const result = streamed.get(call.id);
             scheduled.push(result ? async () => result : await executor.schedule(call));
-            if (signal?.aborted && !streamed.size) break;
           }
           const outcomes = await Promise.allSettled(scheduled.map((execute) => execute()));
           for (const outcome of outcomes) {
