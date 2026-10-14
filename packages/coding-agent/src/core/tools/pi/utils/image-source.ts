@@ -19,7 +19,9 @@ function hasJpegMetadata(input: Buffer): boolean {
   let offset = 2; // Skip SOI, already checked by imageFormat.
   while (offset < input.length) {
     // After SOS, skip entropy-coded bytes and stuffed/restart markers too.
-    if (input[offset++] !== 0xff) continue;
+    offset = input.indexOf(0xff, offset);
+    if (offset < 0) return true;
+    offset++;
     while (input[offset] === 0xff) offset++;
     const marker = input[offset++];
     if (marker === 0xfe || (marker >= 0xe0 && marker <= 0xef)) return true;
@@ -80,4 +82,15 @@ export async function openImage(bytes: Uint8Array) {
     ),
     animated: (metadata.pages ?? 1) > 1 || (format === "png" && isAnimatedPng(input)),
   };
+}
+
+/** Source-only eligibility; callers apply their own dimensions and payload budgets. */
+export function canPassThroughInline(source: Awaited<ReturnType<typeof openImage>>): boolean {
+  return (
+    source.mimeType !== "image/bmp" &&
+    source.mimeType !== "image/gif" &&
+    !source.animated &&
+    source.orientation === 1 &&
+    !source.hasMetadata
+  );
 }

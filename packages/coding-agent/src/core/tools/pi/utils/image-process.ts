@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
 
 import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize.ts";
-import { openImage } from "./image-source.ts";
+import { canPassThroughInline, openImage } from "./image-source.ts";
 
 export interface ProcessImageOptions {
   /** Whether to resize images to inline provider limits. Default: true */
@@ -34,13 +34,7 @@ async function normalizeImage(bytes: Uint8Array): Promise<NormalizedImage | null
   try {
     const source = await openImage(bytes);
     // Inline providers receive one physically oriented frame, regardless of format or size.
-    if (
-      source.mimeType === "image/bmp" ||
-      source.mimeType === "image/gif" ||
-      source.animated ||
-      source.orientation !== 1 ||
-      source.hasMetadata
-    ) {
+    if (!canPassThroughInline(source)) {
       return {
         bytes: await source.pipeline.rotate().png().toBuffer(),
         mimeType: "image/png",

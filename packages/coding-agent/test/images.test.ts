@@ -14,6 +14,15 @@ async function image(width: number, height: number) {
     .toBuffer();
 }
 
+function pngChunk(type: string, data: Buffer) {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(data.length);
+  header.write(type, 4);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])));
+  return Buffer.concat([header, data, checksum]);
+}
+
 function bmpFixture(options: {
   width: number;
   height: number;
@@ -487,14 +496,6 @@ test("inline metadata is stripped without changing the saved original or dimensi
 });
 
 test("animated PNGs are recognized even when the decoder reports only their first frame", async () => {
-  const chunk = (type: string, data: Buffer) => {
-    const header = Buffer.alloc(8);
-    header.writeUInt32BE(data.length);
-    header.write(type, 4);
-    const checksum = Buffer.alloc(4);
-    checksum.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])));
-    return Buffer.concat([header, data, checksum]);
-  };
   const header = Buffer.alloc(13);
   header.writeUInt32BE(1, 0);
   header.writeUInt32BE(1, 4);
@@ -509,19 +510,19 @@ test("animated PNGs are recognized even when the decoder reports only their firs
     data.writeUInt32BE(1, 8);
     data.writeUInt16BE(1, 20);
     data.writeUInt16BE(10, 22);
-    return chunk("fcTL", data);
+    return pngChunk("fcTL", data);
   };
   const sequence = Buffer.alloc(4);
   sequence.writeUInt32BE(2);
   const original = Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", header),
-    chunk("acTL", animation),
+    pngChunk("IHDR", header),
+    pngChunk("acTL", animation),
     frame(0),
-    chunk("IDAT", deflateSync(Buffer.from([0, 255, 0, 0, 255]))),
+    pngChunk("IDAT", deflateSync(Buffer.from([0, 255, 0, 0, 255]))),
     frame(1),
-    chunk("fdAT", Buffer.concat([sequence, deflateSync(Buffer.from([0, 0, 255, 0, 255]))])),
-    chunk("IEND", Buffer.alloc(0)),
+    pngChunk("fdAT", Buffer.concat([sequence, deflateSync(Buffer.from([0, 0, 255, 0, 255]))])),
+    pngChunk("IEND", Buffer.alloc(0)),
   ]);
   expect(detectSupportedImageMimeType(original)).toBe("image/png");
   expect(await processImage(original)).toMatchObject({ warning: "动画图片仅发送首帧" });
@@ -544,13 +545,8 @@ test.each(["tEXt", "zTXt", "iTXt"])(
         : type === "zTXt"
           ? Buffer.concat([Buffer.from("Comment\0\0"), deflateSync(text)])
           : Buffer.concat([Buffer.from("Comment\0\0\0\0\0"), text]);
-    const header = Buffer.alloc(8);
-    header.writeUInt32BE(data.length);
-    header.write(type, 4);
-    const checksum = Buffer.alloc(4);
-    checksum.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])));
     const png = await image(3, 2);
-    const original = Buffer.concat([png.subarray(0, 33), header, data, checksum, png.subarray(33)]);
+    const original = Buffer.concat([png.subarray(0, 33), pngChunk(type, data), png.subarray(33)]);
     expect((await sharp(original).metadata()).comments).toContainEqual({
       keyword: "Comment",
       text: privateText,
