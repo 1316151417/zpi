@@ -4,7 +4,6 @@ import type { Input, WebContents } from "electron";
 export class ShortcutModifier {
   private source?: WebContents;
   private held = false;
-  private pressed = new Set<string>();
   private observers = new Set<() => void>();
   private platform: string;
   private enabled: () => boolean;
@@ -21,7 +20,6 @@ export class ShortcutModifier {
   }
   reset = () => {
     this.source = undefined;
-    this.pressed.clear();
     this.update(false);
   };
   resetFor(content: WebContents): void {
@@ -30,24 +28,21 @@ export class ShortcutModifier {
   observe(content: WebContents, isHost = false): void {
     // Reloading the host also replaces the IPC consumer, even when a guest owns input.
     const reset = () => (isHost ? this.reset() : this.resetFor(content));
-    const input = (_: unknown, input: Input) => {
-      if (input.type !== "keyDown" && input.type !== "keyUp") return;
+    const input = (
+      _: unknown,
+      input: Pick<Input, "type"> & Partial<Pick<Input, "meta" | "control" | "modifiers">>,
+    ) => {
+      if (input.type !== "rawKeyDown" && input.type !== "keyDown" && input.type !== "keyUp") return;
       if (!this.enabled()) return this.reset();
       this.source = content;
-      const key = this.platform === "darwin" ? "Meta" : "Control";
-      const primary = input.key === key || input.code === `${key}Left` || input.code === `${key}Right`;
-      let held = this.platform === "darwin" ? input.meta : input.control;
-      if (primary) {
-        const side = input.code || key;
-        if (input.type === "keyDown") this.pressed.add(side);
-        else this.pressed.delete(side);
-        // Modifier-only transitions are authoritative, even with stale modifier flags.
-        held = this.pressed.size > 0;
-      } else if (!held) this.pressed.clear();
+      const flag = this.platform === "darwin" ? "meta" : "control";
+      const held =
+        (this.platform === "darwin" ? input.meta : input.control) ?? input.modifiers?.includes(flag) ?? false;
       this.update(held);
     };
     const dispose = () => {
       content.removeListener("before-input-event", input);
+      content.removeListener("input-event", input);
       content.removeListener("did-start-loading", reset);
       content.removeListener("render-process-gone", reset);
       content.removeListener("destroyed", dispose);
@@ -55,6 +50,10 @@ export class ShortcutModifier {
       reset();
     };
     content.on("before-input-event", input);
+    // Chromium can bypass the pre-handler (e.g. input injected through CDP).
+    // input-event observes that path; keep before-input-event for consumed shortcuts.
+    // Both paths may deliver the same transition, so updates must remain idempotent.
+    content.on("input-event", input);
     content.on("did-start-loading", reset);
     content.on("render-process-gone", reset);
     content.on("destroyed", dispose);

@@ -889,6 +889,7 @@ export function App() {
           [
             settingsOpen,
             shortcuts,
+            shortcutModifierHeld,
             openSearch,
             collapsed,
             width,

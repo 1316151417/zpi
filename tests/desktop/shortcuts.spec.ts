@@ -40,6 +40,16 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
     );
     await page.keyboard.up(primary);
     await expect(pinned.locator(".task-row-shortcut")).toHaveCount(0);
+    // Switching tasks used to refresh a stale memoized sidebar, leaving hints stuck after release.
+    await page.keyboard.down(primary);
+    await page.keyboard.press("1");
+    await expect(pinned.first()).toHaveClass(/active/);
+    await expect(pinned.locator(".task-row-shortcut")).toHaveCount(2);
+    await page.keyboard.press("2");
+    await expect(pinned.last()).toHaveClass(/active/);
+    await expect(pinned.locator(".task-row-shortcut")).toHaveCount(2);
+    await page.keyboard.up(primary);
+    await expect(pinned.locator(".task-row-shortcut")).toHaveCount(0);
     await page.keyboard.press(`${primary}+1`);
     await expect(pinned.first()).toHaveClass(/active/);
     await page.keyboard.press(`${primary}+2`);
@@ -88,6 +98,16 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
     const url = pathToFileURL(site).href;
     const browser = await page.evaluate((url) => window.zpi.createBrowser(url), url);
     expect(browser.ok).toBe(true);
+    // Browser creation starts navigation asynchronously; wait for the guest URL before inspecting it.
+    await expect
+      .poll(() =>
+        app?.evaluate(
+          ({ webContents }, url) =>
+            webContents.getAllWebContents().some((contents) => contents.getURL() === url),
+          url,
+        ),
+      )
+      .toBe(true);
     const prevented = await app.evaluate(({ webContents }, url) => {
       const guest = webContents.getAllWebContents().find((contents) => contents.getURL() === url);
       if (!guest) throw new Error("Missing browser guest");
