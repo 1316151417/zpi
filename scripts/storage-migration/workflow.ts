@@ -340,7 +340,11 @@ function* cleanEntries(session: LegacySession, plan: MigrationPlan): Generator<R
         "zpi.notice",
       ].includes(String(entry.customType))
     )
-      output = { ...entry };
+      // v1 side-chat boundary anchors carry no payload; v2 facts require an object.
+      output = {
+        ...entry,
+        ...(entry.customType === "zpi.context_boundary" && !object(entry.data) ? { data: {} } : {}),
+      };
     // Retain all original IDs as neutral anchors, including metadata referenced by compaction.
     else
       output = {

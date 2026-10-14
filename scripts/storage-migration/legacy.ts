@@ -109,7 +109,7 @@ export async function* lines(path: string): AsyncGenerator<{ value: unknown; lin
 
 const customFields: Record<string, string[]> = {
   "zpi.session_meta": ["projectId", "pinnedAt", "archivedAt", "draft"],
-  "zpi.title": ["state"],
+  "zpi.title": ["state", "provider", "modelId"],
   "zpi.attention": ["unreadAt"],
   "zpi.environment": ["parentSessionId", "worktree", "newWorktree", "worktreeBaseRef"],
   "zpi.fork": ["parentSessionId", "runId"],
@@ -206,24 +206,27 @@ export async function readLegacySession(path: string): Promise<LegacySession> {
         const key = String(value.customType);
         if (!knownCustom.has(key) && !key.startsWith("zpi.background_task:"))
           throw new Error(`unknown custom semantic ${key} at line ${line}`);
-        if (!object(value.data)) throw new Error(`invalid ${key} data at line ${line}`);
+        // Side chats append boundary anchors as identity-only records without a payload.
+        if (!object(value.data) && !(key === "zpi.context_boundary" && value.data === undefined))
+          throw new Error(`invalid ${key} data at line ${line}`);
+        const data = object(value.data) ? value.data : {};
         if (
           key === "zpi.configuration" &&
-          value.data.communicationStyle !== undefined &&
-          typeof value.data.communicationStyle !== "boolean"
+          data.communicationStyle !== undefined &&
+          typeof data.communicationStyle !== "boolean"
         )
           throw new Error("invalid communication style capability");
         const fields = customFields[key];
-        if (fields && Object.keys(value.data).some((field) => !fields.includes(field)))
+        if (fields && Object.keys(data).some((field) => !fields.includes(field)))
           throw new Error(`unknown ${key} field at line ${line}`);
-        if (key !== "zpi.streaming_tools") saveState.run(key, JSON.stringify(value.data));
+        if (key !== "zpi.streaming_tools") saveState.run(key, JSON.stringify(data));
         if (key === "zpi.streaming_tools") {
-          if (typeof value.data.id !== "string") throw new Error("invalid streaming journal ID");
-          if (value.data.committed === true) journalDelete.run(value.data.id);
-          else journalInsert.run(value.data.id, entries.length + 1, JSON.stringify(value.data));
+          if (typeof data.id !== "string") throw new Error("invalid streaming journal ID");
+          if (data.committed === true) journalDelete.run(data.id);
+          else journalInsert.run(data.id, entries.length + 1, JSON.stringify(data));
         }
-        if (key === "zpi.run" && value.data.phase === "start" && typeof value.data.queueItemId === "string")
-          acceptedInsert.run(value.data.queueItemId);
+        if (key === "zpi.run" && data.phase === "start" && typeof data.queueItemId === "string")
+          acceptedInsert.run(data.queueItemId);
         const kind = key.startsWith("zpi.background_task:") ? "zpi.background_task" : key;
         counts[kind] = (counts[kind] ?? 0) + 1;
       } else {
