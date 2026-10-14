@@ -1611,16 +1611,12 @@ export class SessionHost {
         }
       await this.inputQueue.delete(id);
       this.settings.state.deleteTask(id);
-      await this.attachments.deleteSession(id);
-      await rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true });
-      await rm(join(this.dir, "agent", "session-context", id), { recursive: true, force: true });
-      this.drafts.delete(id);
-      await rm(file, { force: true });
+      // SQLite 删除提交后立即移除内存所有者，避免文件清理失败后 rename/upsert 复活墓碑。
+      this.records.delete(id);
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
       this.runtimes.delete(id);
-      this.records.delete(id);
       try {
         this.taskGroups.prune([...this.records.values()]);
       } catch (error) {
@@ -1637,6 +1633,19 @@ export class SessionHost {
       this.cursors.delete(id);
       this.sequences.delete(id);
       this.blocked.delete(id);
+      // 文件回收失败只记录诊断；逻辑删除已提交，不能让磁盘故障恢复可写任务。
+      for (const cleanup of [
+        () => this.attachments.deleteSession(id),
+        () => rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true }),
+        () => rm(join(this.dir, "agent", "session-context", id), { recursive: true, force: true }),
+        () => rm(file, { force: true }),
+      ]) {
+        try {
+          await cleanup();
+        } catch (error) {
+          this.errors.write("session.delete.cleanup", error, { sessionId: id });
+        }
+      }
     } finally {
       this.deleting.delete(id);
     }

@@ -12,7 +12,7 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEntry } from "zpi-coding-agent";
@@ -188,7 +188,9 @@ async function durableJson(path: string, value: unknown) {
   await rename(temp, path);
   await syncDirectory(dirname(path));
 }
-async function syncDirectory(path: string) {
+export async function syncDirectory(path: string) {
+  // Windows 不支持 Node 目录 fsync；迁移与运行时采用同一平台策略。
+  if (process.platform === "win32") return;
   const handle = await open(path, "r");
   try {
     await handle.sync();
@@ -271,28 +273,33 @@ const pathKeys = new Set([
   "patchFile",
   "fileReferences",
 ]);
-function rewritePaths(
+async function rewritePaths(
   value: unknown,
   source: string,
   destination: string,
   files: Fingerprint[],
   key = "",
-): unknown {
-  if (typeof value === "string" && pathKeys.has(key) && value.startsWith(`${source}${sep}`)) {
-    const path = relative(source, value);
-    if (!isPathInside(source, resolve(source, path)) || !files.some((file) => file.path === path))
-      throw new Error("missing or unsafe managed reference");
+): Promise<unknown> {
+  if (typeof value === "string" && pathKeys.has(key) && isAbsolute(value)) {
+    // 旧源可能通过 macOS /var 等别名访问，不能只比较原始字符串前缀。
+    const canonical = await canonicalDestination(value);
+    if (!isPathInside(source, canonical)) return value;
+    const path = relative(source, canonical);
+    if (!files.some((file) => file.path === path)) throw new Error("missing or unsafe managed reference");
     if (!/^agent[/\\](attachments|tool-output|file-changes|session-context)[/\\]/.test(path))
       throw new Error("unsupported managed reference");
     return join(destination, path);
   }
-  if (Array.isArray(value)) return value.map((item) => rewritePaths(item, source, destination, files, key));
+  if (Array.isArray(value))
+    return Promise.all(value.map((item) => rewritePaths(item, source, destination, files, key)));
   if (object(value))
     return Object.fromEntries(
-      Object.entries(value).map(([field, item]) => [
-        field,
-        rewritePaths(item, source, destination, files, field),
-      ]),
+      await Promise.all(
+        Object.entries(value).map(async ([field, item]) => [
+          field,
+          await rewritePaths(item, source, destination, files, field),
+        ]),
+      ),
     );
   return value;
 }
@@ -454,7 +461,7 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
             );
             for (const entry of entries) {
               const record = JSON.stringify(
-                encodeTranscriptEntry(relocate(entry) as unknown as SessionEntry, Number(entry.seq)),
+                encodeTranscriptEntry((await relocate(entry)) as unknown as SessionEntry, Number(entry.seq)),
               );
               if (Buffer.byteLength(record, "utf8") > 8 * 1024 * 1024)
                 throw new Error("generated v2 record exceeds 8 MiB; explicit format recovery required");
@@ -489,9 +496,9 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
         const queue = JSON.parse(String(row.queue)) as Row;
         pendingDb.prepare("DELETE FROM pending_tasks WHERE id=?").run(task.id);
         store.upsertTask(task);
-        store.setQueue(task.id, relocate(queue) as InputQueue);
+        store.setQueue(task.id, (await relocate(queue)) as InputQueue);
         const draft = await optionalJson(plan.source, join("drafts", `${task.id}.json`));
-        if (draft !== undefined) store.saveDraft(task.id, relocate(draft) as { revision: number });
+        if (draft !== undefined) store.saveDraft(task.id, (await relocate(draft)) as { revision: number });
         for (const saved of pendingDb
           .prepare("SELECT key,data FROM pending_runtime WHERE task_id=? ORDER BY key")
           .iterate(task.id)) {
@@ -508,7 +515,7 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
               task.id,
               kind,
               id,
-              relocate({
+              await relocate({
                 ...value,
                 status,
                 waitingForInput: false,
@@ -536,7 +543,10 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
       const output = join(stage, file.path);
       await mkdir(dirname(output), { recursive: true });
       if (/^agent[/\\]attachments[/\\][^/\\]+[/\\]index\.json$/.test(file.path)) {
-        await durableJson(output, relocate(JSON.parse(await readFile(join(plan.source, file.path), "utf8"))));
+        await durableJson(
+          output,
+          await relocate(JSON.parse(await readFile(join(plan.source, file.path), "utf8"))),
+        );
       } else await copyFile(join(plan.source, file.path), output);
       const handle = await open(output, "r+");
       try {
@@ -564,6 +574,12 @@ export async function validate(generation: string): Promise<void> {
     sourceFingerprint: string;
     relocation: { source: string; destination: string };
   };
+  // 绝对受控引用绑定转换时的 final 位置，搬迁后不得发布一个看似有效的 generation。
+  const final = resolve(generation).endsWith(".staging")
+    ? resolve(generation).slice(0, -".staging".length)
+    : resolve(generation);
+  if (manifest.relocation.destination !== final)
+    throw new Error("generation destination differs from conversion manifest");
   for (const file of manifest.files) {
     if (!isPathInside(resolve(generation), resolve(generation, file.path)))
       throw new Error("manifest path escapes generation");
@@ -597,7 +613,7 @@ export async function validate(generation: string): Promise<void> {
         const draft = await optionalJson(plan.source, join("drafts", `${item.id}.json`));
         if (draft !== undefined) {
           const saved = db.prepare("SELECT data FROM drafts WHERE task_id=?").get(item.id);
-          if (!saved || !isDeepStrictEqual(JSON.parse(String(saved.data)), relocate(draft)))
+          if (!saved || !isDeepStrictEqual(JSON.parse(String(saved.data)), await relocate(draft)))
             throw new Error("draft migration mismatch");
         }
         const expected = cleanEntries(legacy, plan);
@@ -615,7 +631,7 @@ export async function validate(generation: string): Promise<void> {
                 next.done ||
                 !isDeepStrictEqual(
                   value,
-                  encodeTranscriptEntry(relocate(next.value) as unknown as SessionEntry, ordinal + 1),
+                  encodeTranscriptEntry((await relocate(next.value)) as unknown as SessionEntry, ordinal + 1),
                 )
               )
                 throw new Error(`transcript semantic mismatch: ${item.path}:${ordinal + 2}`);
@@ -638,7 +654,7 @@ export async function validate(generation: string): Promise<void> {
                 .all(item.id)
                 .map((row) => JSON.parse(String(row.data))),
             },
-            relocate(recoveredQueue(legacy)),
+            await relocate(recoveredQueue(legacy)),
           )
         )
           throw new Error("queue recovery mismatch");

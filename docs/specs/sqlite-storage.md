@@ -98,7 +98,7 @@ npx tsx scripts/storage-migrate.ts activate --plan "$PLAN" --target "$TARGET" --
 
 迁移仅在此工具的旧格式解析器中发生，应用正常启动不调用它。工具不会解密凭据；复制的认证数据可能需要重新授权。必须核对设置、任务组织、草稿/队列、附件、上下文和模型实际请求，再允许切换真实数据。
 
-当前实现的受控文件路径重定位使用目标 final 目录的绝对路径，派生索引也以路径定位；不能把生成目录任意搬走后宣称仍可用。目标目录应从计划/转换到试用保持不变。旧 `agents-state.json` 转入 `app_settings.subagentProfiles`，个人 `agents/*.md` 保留为文件。工具复制旧 `agent/` 下非 sessions 的受控内容及认证文件；外部 profile/skills 和项目工作目录不属于数据库资产，按计划中的清单及 `omittedRootEntries` 单独核对。
+当前实现的受控文件路径重定位使用目标 final 目录的绝对路径，派生索引也以路径定位；不能把生成目录任意搬走后宣称仍可用。目标目录应从计划/转换到试用保持不变。validate/activate 必须拒绝实际 final 目录与 manifest relocation.destination 不一致的产物。受控路径按真实文件归属匹配清单，允许旧源的符号链接别名，但不得将外部项目文件误判为迁移资产；源内缺失或不支持的引用必须阻塞。迁移的异步目录同步遵循运行时相同的平台策略：Windows 跳过目录 fsync，其他平台传播同步失败。旧 `agents-state.json` 转入 `app_settings.subagentProfiles`，个人 `agents/*.md` 保留为文件。工具复制旧 `agent/` 下非 sessions 的受控内容及认证文件；外部 profile/skills 和项目工作目录不属于数据库资产，按计划中的清单及 `omittedRootEntries` 单独核对。
 
 ## 备份、失败与回滚限制
 

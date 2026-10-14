@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readLegacySession, recoveredQueue } from "../../../scripts/storage-migration/legacy.ts";
 import {
   activate,
@@ -467,4 +467,92 @@ it("blocks invalid UTF-8 instead of silently replacing source transcript bytes",
   await writeFile(f.path, content);
   expect((await inspect(f.source)).blockers[0]?.reason).toContain("UTF-8");
   expect(await readFile(f.path)).toEqual(content);
+});
+
+it("skips migration directory fsync on Windows", async () => {
+  const f = await fixture([userMessage]);
+  vi.stubGlobal("process", { ...process, platform: "win32" });
+  const { syncDirectory } = await import("../../../scripts/storage-migration/workflow.ts");
+  try {
+    await expect(syncDirectory(join(f.root, "nonexistent-directory"))).resolves.toBeUndefined();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("rejects a moved staging generation before validation or activation", async () => {
+  const f = await fixture([userMessage]);
+  const plan = await inspect(f.source);
+  await convert(plan, f.target, true);
+  const moved = join(f.root, "moved-target");
+  await rename(f.target, moved);
+  const stage = join(moved, "storage", `${plan.migrationId}.staging`);
+  await expect(validate(stage)).rejects.toThrow("destination");
+  await expect(activate(plan, moved, true)).rejects.toThrow("destination");
+  expect(readActiveGeneration(moved)).toBeUndefined();
+});
+
+it("relocates managed source aliases but preserves external project references", async () => {
+  const f = await fixture([userMessage]);
+  const alias = join(f.root, "source-alias");
+  await symlink(f.source, alias, "junction");
+  const relative = "agent/attachments/task/payload.file";
+  await mkdir(join(f.source, "agent/attachments/task"), { recursive: true });
+  await writeFile(join(f.source, relative), "payload");
+  const external = join(f.root, "project.txt");
+  await writeFile(external, "external");
+  await mkdir(join(f.source, "drafts"));
+  await writeFile(
+    join(f.source, "drafts/task.json"),
+    JSON.stringify({
+      revision: 1,
+      text: "draft",
+      fileReferences: [join(alias, relative), external],
+    }),
+  );
+  const before = await inventory(f.source);
+  const plan = await inspect(alias);
+  await convert(plan, f.target, true);
+  const ready = await activate(plan, f.target, true);
+  const store = new StateStore(join(ready, "state.sqlite"));
+  try {
+    expect(store.getDraft("task")).toMatchObject({ fileReferences: [join(ready, relative), external] });
+    expect(await readFile(join(ready, relative), "utf8")).toBe("payload");
+  } finally {
+    store.close();
+  }
+  expect(await inventory(f.source)).toEqual(before);
+});
+
+it("rejects missing managed references through source aliases without changing source", async () => {
+  const f = await fixture([userMessage]);
+  const alias = join(f.root, "source-alias");
+  await symlink(f.source, alias, "junction");
+  await mkdir(join(f.source, "drafts"));
+  await writeFile(
+    join(f.source, "drafts/task.json"),
+    JSON.stringify({
+      revision: 1,
+      fileReferences: [join(alias, "agent/attachments/task/missing.file")],
+    }),
+  );
+  const before = await inventory(f.source);
+  const plan = await inspect(alias);
+  await expect(convert(plan, f.target, true)).rejects.toThrow("missing or unsafe managed reference");
+  expect(await inventory(f.source)).toEqual(before);
+  expect(readActiveGeneration(f.target)).toBeUndefined();
+});
+
+it("recovers final-directory publication before the active pointer and rejects moving it afterward", async () => {
+  const f = await fixture([userMessage]);
+  const plan = await inspect(f.source);
+  const stage = await convert(plan, f.target, true);
+  const final = join(f.target, "storage", plan.migrationId);
+  await rename(stage, final);
+  expect(await activate(plan, f.target, true)).toBe(final);
+  expect(await activate(plan, f.target, true)).toBe(final);
+  const moved = join(f.root, "moved-target");
+  await rename(f.target, moved);
+  await expect(validate(join(moved, "storage", plan.migrationId))).rejects.toThrow("destination");
+  await expect(activate(plan, moved, true)).rejects.toThrow("destination");
 });

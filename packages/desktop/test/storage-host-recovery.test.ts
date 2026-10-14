@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { done } from "../../../tests/fake-server.ts";
@@ -112,4 +113,37 @@ it("does not resurrect an accepted queue item when a stale queue snapshot is sav
   await f.host.deleteSession(task.id);
   expect(f.settings.state.acceptedInputIds(task.id).size).toBe(0);
   expect(f.settings.state.listIntents()).toEqual([]);
+});
+
+it("keeps a committed task deletion deleted when attachment cleanup fails", async () => {
+  const f = await fixture((_, response) => done(response));
+  const task = f.host.createSession(f.a.id);
+  vi.spyOn(f.host.attachments, "deleteSession").mockRejectedValue(new Error("cleanup failed"));
+  await expect(f.host.deleteSession(task.id)).resolves.toBeUndefined();
+  expect(f.settings.state.getTask(task.id)).toBeUndefined();
+  expect(f.host.listSessions(f.a.id).some((entry) => entry.id === task.id)).toBe(false);
+  expect(() => f.host.renameSession(task.id, "resurrected")).toThrow();
+  expect(f.settings.state.getTask(task.id)).toBeUndefined();
+  expect(await readFile(join(f.dir, "agent", "logs", "error.log"), "utf8")).toContain(
+    '"source":"session.delete.cleanup"',
+  );
+  await f.host.close();
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"));
+  await reopened.init();
+  cleanup.push(() => reopened.close());
+  expect(reopened.listSessions(f.a.id)).toEqual([]);
+});
+
+it("retains the in-memory task when committing its deletion fails", async () => {
+  const f = await fixture((_, response) => done(response));
+  const task = f.host.createSession(f.a.id);
+  const before = f.settings.state.getTask(task.id);
+  const attachments = vi.spyOn(f.host.attachments, "deleteSession");
+  vi.spyOn(f.settings.state, "deleteTask").mockImplementation(() => {
+    throw new Error("delete commit failed");
+  });
+  await expect(f.host.deleteSession(task.id)).rejects.toThrow("delete commit failed");
+  expect(f.settings.state.getTask(task.id)).toEqual(before);
+  expect(f.host.listSessions(f.a.id).some((entry) => entry.id === task.id)).toBe(true);
+  expect(attachments).not.toHaveBeenCalled();
 });
