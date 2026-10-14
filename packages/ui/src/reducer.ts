@@ -90,6 +90,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   };
   const tool = (id: string) => run.orderedBlocks.find((b) => b.type === "tool" && b.toolCallId === id);
   if (event.type === "started") {
+    run.historyContinuation = event.historyContinuation;
     run.userMessage = event.text;
     run.subagentNotification = event.subagentNotification;
     run.fileReferences = event.fileReferences ?? [];
@@ -325,7 +326,18 @@ export function mergeHistory(older: SessionView, newer: SessionView): SessionVie
       for (const block of run.orderedBlocks) blocks.set(block.id, block);
       const compactions = new Map(runs[index].compactions?.map((marker) => [marker.id, marker]));
       for (const marker of run.compactions ?? []) compactions.set(marker.id, marker);
-      runs[index] = { ...run, orderedBlocks: [...blocks.values()], compactions: [...compactions.values()] };
+      const input = run.historyContinuation && !runs[index].historyContinuation ? runs[index] : run;
+      runs[index] = {
+        ...run,
+        historyContinuation: input.historyContinuation,
+        userMessage: input.userMessage,
+        fileReferences: input.fileReferences,
+        attachments: input.attachments,
+        subagentNotification: input.subagentNotification,
+        kind: input.kind,
+        orderedBlocks: [...blocks.values()],
+        compactions: [...compactions.values()],
+      };
     }
   }
   return { ...newer, runs };

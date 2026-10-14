@@ -1,22 +1,23 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { seedHistory } from "../../../tests/history-fixture.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { resolveSearchScope, taskSearchRows } from "../src/renderer/task-search-model.ts";
 import { buildTaskSearchSnippets } from "../src/shared/task-search.ts";
+import { seedHistory } from "./helpers/history-fixture.ts";
 import { cleanup, setup } from "./helpers/session-fixture.ts";
 
 describe("task list search", () => {
   it("finds unopened history, rebuilds old indexes, excludes drafts/children/archives and ignores tools/thinking", async () => {
     const f = await setup();
-    const seed = seedHistory(f.dir, f.cwd, 30);
+    const seed = seedHistory(f.settings.state, f.dir, f.cwd, 30);
     await f.host.close();
     const host = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.cwd);
     await host.init();
     cleanup.push(() => host.close());
-    const persisted = JSON.parse(await readFile(`${seed.file}.index.json`, "utf8"));
-    expect(persisted.searchText.length).toBeGreaterThan(0);
+    expect(
+      f.settings.state.db.prepare("SELECT count(*) AS n FROM transcript_search").get()?.n,
+    ).toBeGreaterThan(0);
     expect(host.searchTasks("完整第一条用户上下文")).toEqual([]); // The visible run input owns user text.
     expect(host.searchTasks("用户上下文 0")[0]).toMatchObject({
       id: seed.id,
@@ -34,9 +35,7 @@ describe("task list search", () => {
     host.restoreSession(seed.id);
     expect(host.searchTasks("needle")[0].id).toBe(seed.id);
     await host.close();
-    persisted.version = 9;
-    delete persisted.searchText;
-    await writeFile(`${seed.file}.index.json`, JSON.stringify(persisted));
+    f.settings.state.db.exec("DELETE FROM transcript_state");
     const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.cwd);
     await reopened.init();
     cleanup.push(() => reopened.close());
@@ -49,8 +48,8 @@ describe("task list search", () => {
     const other = join(f.dir, "other");
     await mkdir(other);
     const project = await f.host.addProject(other);
-    const first = seedHistory(f.dir, f.cwd, 2);
-    const second = seedHistory(f.dir, other, 1, { projectId: project.id });
+    const first = seedHistory(f.settings.state, f.dir, f.cwd, 2);
+    const second = seedHistory(f.settings.state, f.dir, other, 1, { projectId: project.id });
     await f.host.close();
     const host = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.cwd);
     await host.init();

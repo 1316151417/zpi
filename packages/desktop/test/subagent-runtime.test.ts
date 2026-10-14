@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const profiles = new SubagentProfiles("/unused");
+  const profiles = new SubagentProfiles("/unused", { getSetting: () => undefined, setSetting: () => {} });
   vi.spyOn(profiles, "list").mockReturnValue({
     agents: [
       {

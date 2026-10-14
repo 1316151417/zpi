@@ -18,6 +18,7 @@ export const mainBuild = {
   ],
   external: ["electron", "node-pty", "sharp"],
   target: "node24",
+  removeNodeProtocol: false,
   banner: {
     js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
   },
@@ -32,4 +33,5 @@ export const preloadBuild = {
   external: ["electron"],
   outExtension: () => ({ js: ".cjs" }),
   target: "node24",
+  removeNodeProtocol: false,
 };

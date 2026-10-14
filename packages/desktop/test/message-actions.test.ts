@@ -17,7 +17,7 @@ it("fork copies only the chosen completed boundary, retains context after restar
   await f.host.activeRuns.get(parent.id)?.done;
   await f.host.startRun({ sessionId: parent.id, text: "second" });
   await f.host.activeRuns.get(parent.id)?.done;
-  const path = join(f.dir, "agent", "sessions", f.a.id, `${parent.id}.jsonl`);
+  const path = f.host.sessionPath(parent.id);
   const before = await readFile(path, "utf8");
   const child = await f.host.forkSession(parent.id, first.runId);
   expect(child.projectId).toBe(parent.projectId);
@@ -101,7 +101,7 @@ it.each(["report.csv", "report.pdf"])(
       attachments: [attachment.id, external.id],
     });
     await f.host.activeRuns.get(parent.id)?.done;
-    const parentFile = join(f.dir, "agent", "sessions", f.a.id, `${parent.id}.jsonl`);
+    const parentFile = f.host.sessionPath(parent.id);
     const parentTranscript = await readFile(parentFile, "utf8");
     const child = await f.host.forkSession(parent.id, first.runId);
     const copied = (await f.host.readAttachment(child.id, attachment.id)).metadata;
@@ -109,7 +109,7 @@ it.each(["report.csv", "report.pdf"])(
     currentPath = copied.path;
     expect(currentPath).not.toBe(attachment.path);
     expect(await readFile(parentFile, "utf8")).toBe(parentTranscript);
-    const childFile = join(f.dir, "agent", "sessions", f.a.id, `${child.id}.jsonl`);
+    const childFile = f.host.sessionPath(child.id);
     const messages = (raw: string) =>
       raw
         .trim()

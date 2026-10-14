@@ -1,28 +1,27 @@
 import { randomUUID } from "node:crypto";
-import {
-  appendFileSync,
-  closeSync,
-  copyFileSync,
-  createReadStream,
-  existsSync,
-  openSync,
-  readFileSync,
-  readSync,
-  statSync,
-  truncateSync,
-} from "node:fs";
+import { closeSync, createReadStream, fsyncSync, openSync, readSync, statSync, writeSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { isJsonObject } from "zpi-ai";
-import {
-  isSessionEntry,
-  isSessionHeader,
-  maxSessionEntryBytes,
-  type SessionEntry,
-  type SessionHeader,
-} from "zpi-coding-agent";
+import { maxSessionEntryBytes, type SessionEntry, type SessionHeader } from "zpi-coding-agent";
+import type {
+  IndexedSessionEntry,
+  TranscriptContextPlan,
+  TranscriptSnapshot,
+  TranscriptState,
+  TranscriptStore,
+} from "../../../coding-agent/src/core/transcript-store.ts";
 import { entryFileChange } from "./file-changes.ts";
-import { atomicJson } from "./storage.ts";
+import { syncDirectory } from "./storage-generation.ts";
+import {
+  decodeTranscriptEntry,
+  encodeTranscriptEntry,
+  type TranscriptHeader,
+  validateTranscriptEntry,
+  validateTranscriptHeader,
+} from "./transcript-v2.ts";
 
-interface Span {
+export interface Span {
   start: number;
   end: number;
 }
@@ -30,416 +29,880 @@ export interface CallBoundary extends Span {
   runId: string;
   ordinal: number;
   complete: boolean;
-  legacy?: boolean;
 }
-interface RunBoundary {
+export interface GenerationHooks {
+  prepare(oldPath: string, newPath: string, header: SessionHeader): void;
+  commit(oldPath: string, newPath: string, header: SessionHeader, watermark: number): void;
+}
+export interface RunBoundary {
   start: Span;
   end?: Span;
   ordinal: number;
   auxiliary?: boolean;
+  runId: string;
 }
 interface IndexData {
-  version: 11;
-  searchText: import("../shared/task-search.ts").TaskSearchText[];
+  header: TranscriptHeader;
+  parentId: string | null;
   size: number;
   modified: number;
-  header: SessionHeader;
-  parentId: string | null;
-  calls: CallBoundary[];
-  runs: Record<string, RunBoundary>;
-  state: Record<string, SessionEntry>;
-  fileChanges: Span[];
   cacheRead: number;
   cacheInput: number;
   lastActivityAt?: number;
   diagnostic?: string;
 }
-/** Derived byte offsets only. JSONL remains authoritative and model restoration remains independent. */
-export class HistoryIndex {
+type Row = Record<string, string | number | null>;
+const initialState = (): TranscriptState => ({
+  model: null,
+  thinkingLevel: "off",
+  lastThinkingLevel: "medium",
+  hasThinkingEntry: false,
+  lastMessageSeq: 0,
+  lastCompactionSeq: 0,
+});
+const tables = [
+  "entries",
+  "runs",
+  "calls",
+  "projections",
+  "checkpoints",
+  "journals",
+  "search",
+  "anchors",
+  "pending_journals",
+];
+
+/** JSONL is authoritative. SQLite stores normalized offsets and small derived projections only. */
+export class HistoryIndex implements TranscriptStore {
   data!: IndexData;
   readBytes = 0;
+  private seq = 0;
   private currentRun = "";
   private searchChars = 0;
-  private dirty = false;
-  private ids = new Set<string>();
-  readonly path: string;
-  constructor(path: string) {
+  private writeError?: unknown;
+  private state = initialState();
+  path: string;
+  readonly db: DatabaseSync;
+  key: string;
+  private generationHooks?: GenerationHooks;
+  private missingDerivedTables = false;
+  constructor(path: string, db: DatabaseSync, generationHooks?: GenerationHooks) {
+    this.generationHooks = generationHooks;
     this.path = path;
+    this.db = db;
+    const location = db.location();
+    this.key = location ? relative(dirname(location), path) : path;
+    this.missingDerivedTables = ["state", ...tables].some(
+      (table) =>
+        !db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(`transcript_${table}`),
+    );
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS transcript_state(path TEXT PRIMARY KEY, generation TEXT NOT NULL, header TEXT NOT NULL, size INTEGER NOT NULL, modified REAL NOT NULL, inode TEXT NOT NULL, seq INTEGER NOT NULL, parent_id TEXT, current_run TEXT NOT NULL, cache_read INTEGER NOT NULL, cache_input INTEGER NOT NULL, activity REAL);
+      CREATE TABLE IF NOT EXISTS transcript_entries(path TEXT NOT NULL, seq INTEGER NOT NULL, entry_id TEXT NOT NULL, type TEXT NOT NULL, role TEXT, offset INTEGER NOT NULL, length INTEGER NOT NULL, run_id TEXT, file_change INTEGER NOT NULL, kept_seq INTEGER, PRIMARY KEY(path,seq), UNIQUE(path,entry_id));
+      CREATE INDEX IF NOT EXISTS transcript_entries_type ON transcript_entries(path,type,seq);
+      CREATE TABLE IF NOT EXISTS transcript_runs(path TEXT NOT NULL, run_id TEXT NOT NULL, start INTEGER NOT NULL, start_end INTEGER NOT NULL, end INTEGER, end_end INTEGER, ordinal INTEGER NOT NULL, auxiliary INTEGER NOT NULL, accepted_seq INTEGER, accepted_end INTEGER, queue_item_id TEXT, PRIMARY KEY(path,run_id));
+      CREATE TABLE IF NOT EXISTS transcript_calls(path TEXT NOT NULL, seq INTEGER NOT NULL, run_id TEXT NOT NULL, ordinal INTEGER NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, complete INTEGER NOT NULL, PRIMARY KEY(path,seq));
+      CREATE TABLE IF NOT EXISTS transcript_projections(path TEXT NOT NULL, key TEXT NOT NULL, seq INTEGER NOT NULL, value TEXT NOT NULL, PRIMARY KEY(path,key));
+      CREATE TABLE IF NOT EXISTS transcript_checkpoints(path TEXT NOT NULL, seq INTEGER NOT NULL, state TEXT NOT NULL, PRIMARY KEY(path,seq));
+      CREATE TABLE IF NOT EXISTS transcript_journals(path TEXT NOT NULL, journal_id TEXT NOT NULL, seq INTEGER NOT NULL, anchor_id TEXT, committed INTEGER NOT NULL, PRIMARY KEY(path,journal_id,seq));
+      CREATE TABLE IF NOT EXISTS transcript_anchors(path TEXT NOT NULL, offset INTEGER NOT NULL, value TEXT NOT NULL, PRIMARY KEY(path,offset));
+      CREATE TABLE IF NOT EXISTS transcript_pending_journals(path TEXT NOT NULL, journal_id TEXT NOT NULL, first_seq INTEGER NOT NULL, anchor_id TEXT, PRIMARY KEY(path,journal_id));
+      CREATE TABLE IF NOT EXISTS transcript_search(path TEXT NOT NULL, seq INTEGER NOT NULL, run_id TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY(path,seq));
+    `);
+    // Recreating a missing table invalidates every affected cached watermark,
+    // including tasks opened later after this constructor recreated the schema.
+    if (this.missingDerivedTables) db.exec("DELETE FROM transcript_state");
   }
-  static fresh(path: string): HistoryIndex {
-    const index = new HistoryIndex(path),
-      stat = statSync(path);
-    index.data = {
-      version: 11,
-      searchText: [],
-      size: stat.size,
-      modified: stat.mtimeMs,
-      header: JSON.parse(readFileSync(path, "utf8")) as SessionHeader,
-      parentId: null,
-      calls: [],
-      runs: {},
-      state: {},
-      fileChanges: [],
-      cacheRead: 0,
-      cacheInput: 0,
-    };
+  private all(sql: string, ...args: SQLInputValue[]): Row[] {
+    return this.db.prepare(sql).all(this.key, ...args) as Row[];
+  }
+  private one(sql: string, ...args: SQLInputValue[]): Row | undefined {
+    return this.db.prepare(sql).get(this.key, ...args) as Row | undefined;
+  }
+  private run(sql: string, ...args: SQLInputValue[]): void {
+    this.db.prepare(sql).run(this.key, ...args);
+  }
+  private transaction<T>(fn: () => T): T {
+    this.db.exec("SAVEPOINT transcript_write");
+    try {
+      const result = fn();
+      this.db.exec("RELEASE transcript_write");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK TO transcript_write; RELEASE transcript_write");
+      throw error;
+    }
+  }
+  static create(
+    path: string,
+    db: DatabaseSync,
+    header: SessionHeader,
+    generationHooks?: GenerationHooks,
+  ): HistoryIndex {
+    const value = validateTranscriptHeader({ ...header, version: 2, generation: randomUUID() });
+    const fd = openSync(path, "wx", 0o600);
+    try {
+      writeSync(fd, `${JSON.stringify(value)}\n`);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    syncDirectory(dirname(path));
+    const index = HistoryIndex.fresh(path, db);
+    index.generationHooks = generationHooks;
     return index;
+  }
+  static fresh(path: string, db: DatabaseSync): HistoryIndex {
+    const index = new HistoryIndex(path, db);
+    const stat = statSync(path);
+    if (stat.size > maxSessionEntryBytes) throw new Error("storage: fresh requires a header-only file");
+    const line = index.readBytesAt(0, stat.size).toString("utf8");
+    if (!line.endsWith("\n") || line.trim().includes("\n"))
+      throw new Error("storage: fresh requires a header-only file");
+    index.reset(validateTranscriptHeader(JSON.parse(line)), stat.size);
+    index.flush();
+    index.missingDerivedTables = false;
+    return index;
+  }
+  private reset(header: TranscriptHeader, size = 0): void {
+    this.transaction(() => {
+      for (const table of tables) this.run(`DELETE FROM transcript_${table} WHERE path=?`);
+      this.run("DELETE FROM transcript_state WHERE path=?");
+    });
+    this.seq = 0;
+    this.currentRun = "";
+    this.searchChars = 0;
+    this.state = initialState();
+    this.data = { header, parentId: null, size, modified: 0, cacheRead: 0, cacheInput: 0 };
   }
   async load(): Promise<void> {
     const stat = statSync(this.path);
-    try {
-      const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
-      if (
-        cached.version === 11 &&
-        cached.size === stat.size &&
-        cached.modified === stat.mtimeMs &&
-        cached.header &&
-        Array.isArray(cached.calls) &&
-        Array.isArray(cached.searchText)
-      ) {
-        this.data = cached;
-        this.searchChars = cached.searchText.reduce((size, segment) => size + segment.text.length + 1, 0);
-        this.currentRun = Object.keys(cached.runs).at(-1) ?? "";
-        return;
+    const cached = this.one("SELECT * FROM transcript_state WHERE path=?");
+    const indexedTail = this.one(
+      "SELECT seq,entry_id,offset,length FROM transcript_entries WHERE path=? ORDER BY seq DESC LIMIT 1",
+    );
+    if (
+      cached &&
+      !this.missingDerivedTables &&
+      Number(cached.seq) === Number(indexedTail?.seq ?? 0) &&
+      (cached.parent_id ?? null) === (indexedTail?.entry_id ?? null) &&
+      Number.isSafeInteger(cached.size) &&
+      Number(cached.size) > 0 &&
+      Number(cached.size) <= stat.size &&
+      (!indexedTail || Number(indexedTail.offset) + Number(indexedTail.length) === Number(cached.size)) &&
+      cached.inode === `${stat.dev}:${stat.ino}` &&
+      (Number(cached.size) < stat.size || Number(cached.modified) === stat.mtimeMs)
+    ) {
+      try {
+        this.data = {
+          header: validateTranscriptHeader(JSON.parse(String(cached.header))),
+          parentId: cached.parent_id as string | null,
+          size: Number(cached.size),
+          modified: Number(cached.modified),
+          cacheRead: Number(cached.cache_read),
+          cacheInput: Number(cached.cache_input),
+          lastActivityAt: cached.activity === null ? undefined : Number(cached.activity),
+        };
+        this.seq = Number(cached.seq);
+        this.currentRun = String(cached.current_run);
+        this.state = this.getStateAt(this.snapshot());
+        this.getState();
+        this.searchChars = Number(
+          this.one("SELECT COALESCE(SUM(length(text)),0) AS n FROM transcript_search WHERE path=?")?.n ?? 0,
+        );
+        // A small tail check detects truncation/replacement at the published boundary.
+        if (this.data.size && this.readBytesAt(this.data.size - 1, 1)[0] !== 10)
+          throw new Error("storage: Indexed boundary mismatch");
+        if (this.data.size === stat.size) return;
+      } catch {
+        // Malformed derived rows never justify changing or discarding JSONL authority.
+        this.reset(undefined as unknown as TranscriptHeader);
       }
-    } catch {
-      /* Missing/stale derived index is rebuilt with a bounded streaming scan. */
+    } else {
+      this.reset(undefined as unknown as TranscriptHeader);
     }
-    this.searchChars = 0;
-    this.currentRun = "";
-    this.data = {
-      version: 11,
-      searchText: [],
-      size: 0,
-      modified: 0,
-      header: undefined as unknown as SessionHeader,
-      parentId: null,
-      calls: [],
-      runs: {},
-      state: {},
-      fileChanges: [],
-      cacheRead: 0,
-      cacheInput: 0,
-    };
-    let pending = Buffer.alloc(0),
-      position = 0;
-    for await (const chunk of createReadStream(this.path, { highWaterMark: 64 * 1024 })) {
+    let position = this.data.size;
+    const pieces: Buffer[] = [];
+    let pendingSize = 0;
+    for await (const chunk of createReadStream(this.path, { start: position, highWaterMark: 64 * 1024 })) {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       this.readBytes += bytes.length;
-      pending = Buffer.concat([pending, bytes]);
-      let newline = pending.indexOf(10);
-      while (newline >= 0) {
-        const line = pending.subarray(0, newline);
-        this.consume(line, position, position + newline + 1);
-        position += newline + 1;
-        pending = pending.subarray(newline + 1);
-        newline = pending.indexOf(10);
-      }
-      if (pending.length > maxSessionEntryBytes) throw new Error("Session entry exceeds 8 MiB");
+      const previousPosition = position;
+      this.transaction(() => {
+        let start = 0;
+        for (;;) {
+          const newline = bytes.indexOf(10, start);
+          if (newline < 0) break;
+          const part = bytes.subarray(start, newline);
+          const length = pendingSize + part.length;
+          const record = pieces.length ? Buffer.concat([...pieces, part], length) : part;
+          this.consume(record, position, position + length + 1);
+          position += length + 1;
+          pieces.length = 0;
+          pendingSize = 0;
+          start = newline + 1;
+        }
+        if (start < bytes.length) {
+          pieces.push(bytes.subarray(start));
+          pendingSize += bytes.length - start;
+        }
+        if (pendingSize > maxSessionEntryBytes) throw new Error("storage: Entry exceeds 8 MiB");
+        if (position !== previousPosition && this.data.header) this.flush();
+      });
     }
-    if (pending.length) {
+    if (pendingSize) {
+      const pending = Buffer.concat(pieces, pendingSize);
+      // A complete valid final record may have lost only its newline. Validate and
+      // index it transactionally before repairing that delimiter; malformed bytes
+      // are preserved for explicit repair, never truncated or silently skipped.
       try {
         JSON.parse(pending.toString("utf8"));
-        this.consume(pending, position, stat.size + 1);
-        appendFileSync(this.path, "\n");
-      } catch (error) {
-        if (!position || !this.data.header) throw error;
-        copyFileSync(this.path, `${this.path}.corrupt-${Date.now()}-${randomUUID()}`);
-        truncateSync(this.path, position);
+      } catch {
+        throw new Error(
+          `storage: Unterminated transcript record at byte ${position}; recovery requires explicit repair`,
+        );
       }
+      this.transaction(() => {
+        this.consume(pending, position, position + pending.length + 1);
+        const fd = openSync(this.path, "a");
+        try {
+          writeSync(fd, "\n");
+          fsyncSync(fd);
+        } finally {
+          closeSync(fd);
+        }
+        this.flush();
+      });
     }
-    if (this.data.header?.format !== "zpi") throw new Error("Unsupported session header");
-    const finalStat = statSync(this.path);
-    this.data.size = finalStat.size;
-    this.data.modified = finalStat.mtimeMs;
-    this.dirty = true;
+    if (!this.data.header) throw new Error("storage: Missing transcript header");
     this.flush();
-    this.ids.clear();
+    this.missingDerivedTables = false;
   }
   private consume(bytes: Buffer, start: number, end: number): void {
+    if (bytes.length > maxSessionEntryBytes) throw new Error("storage: Entry exceeds 8 MiB");
+    let row: unknown;
     try {
-      if (bytes.length > maxSessionEntryBytes) throw new Error("Session entry exceeds 8 MiB");
-      const row = JSON.parse(bytes.toString("utf8"));
-      if (!isJsonObject(row)) throw new Error("Invalid session record");
-      if (row.type === "session") {
-        if (start !== 0 || !isSessionHeader(row)) throw new Error("Unsupported session header");
-        this.data.header = row;
-        return;
-      }
-      if (!isSessionEntry(row) || this.ids.has(row.id) || row.parentId !== this.data.parentId)
-        throw new Error("Invalid session entry chain/content");
-      this.ids.add(row.id);
-      this.ingest(row, start, end);
-    } catch (error) {
-      this.data.diagnostic ??= `storage: Invalid JSONL record at byte ${start}: ${String(error)}`;
+      row = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      throw new Error(`storage: Invalid JSONL at byte ${start}`);
     }
+    if (start === 0) {
+      this.data.header = validateTranscriptHeader(row);
+      this.data.size = end;
+      return;
+    }
+    const entry = decodeTranscriptEntry(row);
+    if (!isJsonObject(row) || row.seq !== this.seq + 1 || entry.parentId !== this.data.parentId)
+      throw new Error(`storage: Invalid transcript sequence/chain at byte ${start}`);
+    this.ingest(entry, start, end);
   }
   ingest(
     entry: SessionEntry,
     start = this.data.size,
-    end = start + Buffer.byteLength(JSON.stringify(entry)) + 1,
+    end = start + Buffer.byteLength(JSON.stringify(encodeTranscriptEntry(entry, this.seq + 1))) + 1,
   ): void {
-    const d = this.data;
-    // The bounded search projection is rebuilt from JSONL for old indexes and follows live appends.
-    // Index visible user input from run starts, rather than the expanded model prompt or tool output.
-    let searchText = "";
-    let searchRunId = this.currentRun;
+    validateTranscriptEntry(entry);
+    if (entry.parentId !== this.data.parentId) throw new Error("storage: Invalid append parent");
+    const seq = this.seq + 1;
+    const kept =
+      entry.type === "compaction"
+        ? this.one("SELECT seq FROM transcript_entries WHERE path=? AND entry_id=?", entry.firstKeptEntryId)
+        : undefined;
+    if (entry.type === "compaction" && !kept)
+      throw new Error("storage: Missing compaction retained boundary");
+    this.run(
+      "INSERT INTO transcript_entries VALUES(?,?,?,?,?,?,?,?,?,?)",
+      seq,
+      entry.id,
+      entry.type,
+      entry.type === "message" ? entry.message.role : null,
+      start,
+      end - start,
+      this.currentRun || null,
+      entryFileChange(entry) ? 1 : 0,
+      kept ? Number(kept.seq) : null,
+    );
+    this.seq = seq;
+    this.data.parentId = entry.id;
+    this.data.size = end;
+    if (entry.type === "compaction") {
+      this.state.lastCompactionSeq = seq;
+      this.data.cacheRead = this.data.cacheInput = 0;
+      this.run("DELETE FROM transcript_projections WHERE path=? AND key='usage'");
+    }
+    if (entry.type === "message") {
+      this.state.lastMessageSeq = seq;
+      const m = entry.message;
+      if (
+        m.role === "assistant" &&
+        !["error", "aborted"].includes(m.stopReason) &&
+        m.usageAvailable !== false &&
+        (m.usageAvailable === true || m.usage.totalTokens > 0)
+      ) {
+        this.project("usage", seq, { ...entry, message: { ...m, content: [] } });
+        if (m.cacheUsageAvailable === true) {
+          this.data.cacheRead += m.usage.cacheRead;
+          this.data.cacheInput += m.usage.input + m.usage.cacheRead + m.usage.cacheWrite;
+        }
+      }
+    }
+    if (entry.type === "compaction" || seq % 64 === 0)
+      this.run("INSERT INTO transcript_checkpoints VALUES(?,?,?)", seq, JSON.stringify(this.state));
+    if (entry.type === "custom" && isJsonObject(entry.data)) {
+      const value = entry.data;
+      if (entry.customType === "zpi.run")
+        this.project(entry.customType, seq, {
+          ...entry,
+          data: {
+            phase: value.phase ?? null,
+            runId: value.runId ?? null,
+            status: value.status ?? null,
+            startedAt: value.startedAt ?? null,
+            endedAt: value.endedAt ?? null,
+            queueItemId: value.queueItemId ?? null,
+          },
+        });
+      if (entry.customType === "zpi.run" && typeof value.runId === "string") {
+        this.currentRun = value.runId;
+        if (value.phase === "start") {
+          this.run(
+            "INSERT INTO transcript_anchors VALUES(?,?,?)",
+            start,
+            JSON.stringify({
+              ...entry,
+              data: {
+                phase: "start",
+                runId: value.runId,
+                historyContinuation: true,
+                startedAt: value.startedAt,
+                ordinalStart: value.ordinalStart,
+                modelLabel: typeof value.modelLabel === "string" ? value.modelLabel.slice(0, 512) : "",
+              },
+            }),
+          );
+          if (
+            isJsonObject(value.modelConfig) &&
+            typeof value.modelConfig.provider === "string" &&
+            typeof value.modelConfig.modelId === "string"
+          )
+            this.state.model = { provider: value.modelConfig.provider, modelId: value.modelConfig.modelId };
+          const level = value.thinkingLevel;
+          if (
+            level === "off" ||
+            level === "minimal" ||
+            level === "low" ||
+            level === "medium" ||
+            level === "high" ||
+            level === "xhigh"
+          ) {
+            this.state.thinkingLevel = level;
+            this.state.hasThinkingEntry = true;
+            if (level !== "off") this.state.lastThinkingLevel = level;
+          }
+          this.run(
+            "INSERT OR REPLACE INTO transcript_checkpoints VALUES(?,?,?)",
+            seq,
+            JSON.stringify(this.state),
+          );
+        }
+        if (value.phase === "start")
+          this.run(
+            "INSERT INTO transcript_runs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            value.runId,
+            start,
+            end,
+            null,
+            null,
+            typeof value.ordinal === "number" ? value.ordinal : 0,
+            value.local === true ? 1 : 0,
+            null,
+            null,
+            typeof value.queueItemId === "string" ? value.queueItemId : null,
+          );
+        else if (value.phase === "accepted")
+          this.db
+            .prepare("UPDATE transcript_runs SET accepted_seq=?,accepted_end=? WHERE path=? AND run_id=?")
+            .run(seq, end, this.key, value.runId);
+        else if (value.phase === "end")
+          this.db
+            .prepare("UPDATE transcript_runs SET end=?,end_end=? WHERE path=? AND run_id=?")
+            .run(start, end, this.key, value.runId);
+      }
+      if (
+        (entry.customType === "zpi.context_boundary" || entry.customType === "zpi.run") &&
+        isJsonObject(value.historyConfiguration)
+      ) {
+        const config = value.historyConfiguration;
+        const model = config.model;
+        if (
+          model === null ||
+          (isJsonObject(model) && typeof model.provider === "string" && typeof model.modelId === "string")
+        )
+          this.state.model = model as TranscriptState["model"];
+        const levels = ["off", "minimal", "low", "medium", "high", "xhigh"];
+        if (typeof config.thinkingLevel === "string" && levels.includes(config.thinkingLevel))
+          this.state.thinkingLevel = config.thinkingLevel as TranscriptState["thinkingLevel"];
+        if (typeof config.lastThinkingLevel === "string" && levels.includes(config.lastThinkingLevel))
+          this.state.lastThinkingLevel = config.lastThinkingLevel as TranscriptState["lastThinkingLevel"];
+        if (typeof config.hasThinkingEntry === "boolean")
+          this.state.hasThinkingEntry = config.hasThinkingEntry;
+        this.run(
+          "INSERT OR REPLACE INTO transcript_checkpoints VALUES(?,?,?)",
+          seq,
+          JSON.stringify(this.state),
+        );
+      }
+      if (entry.customType === "zpi.agent_call") {
+        if (value.phase === "start")
+          this.run(
+            "INSERT INTO transcript_calls VALUES(?,?,?,?,?,?,?)",
+            seq,
+            this.currentRun,
+            typeof value.ordinal === "number" ? value.ordinal : 0,
+            start,
+            end,
+            0,
+          );
+        else if (value.phase === "end")
+          this.db
+            .prepare(
+              "UPDATE transcript_calls SET end=?,complete=1 WHERE path=? AND seq=(SELECT MAX(seq) FROM transcript_calls WHERE path=? AND run_id=?)",
+            )
+            .run(end, this.key, this.key, this.currentRun);
+      }
+      if (entry.customType === "zpi.streaming_tools" && typeof value.id === "string") {
+        if (value.committed === true)
+          this.run("DELETE FROM transcript_pending_journals WHERE path=? AND journal_id=?", value.id);
+        else
+          this.run(
+            "INSERT INTO transcript_pending_journals VALUES(?,?,?,?) ON CONFLICT(path,journal_id) DO NOTHING",
+            value.id,
+            seq,
+            typeof value.anchorId === "string" ? value.anchorId : null,
+          );
+        this.run(
+          "INSERT INTO transcript_journals VALUES(?,?,?,?,?)",
+          value.id,
+          seq,
+          typeof value.anchorId === "string" ? value.anchorId : null,
+          value.committed === true ? 1 : 0,
+        );
+      }
+    }
+    this.db.prepare("UPDATE transcript_calls SET end=? WHERE path=? AND complete=0").run(end, this.key);
+    if (entry.type === "message" || (entry.type === "custom" && entry.customType === "zpi.run")) {
+      const at = Date.parse(entry.timestamp);
+      if (Number.isFinite(at)) this.data.lastActivityAt = Math.max(this.data.lastActivityAt ?? 0, at);
+    }
+    let text = "";
     if (
       entry.type === "custom" &&
       entry.customType === "zpi.run" &&
       isJsonObject(entry.data) &&
       entry.data.phase === "start" &&
-      typeof entry.data.runId === "string"
-    ) {
-      searchRunId = entry.data.runId;
-      if (typeof entry.data.text === "string") searchText = entry.data.text;
-    } else if (entry.type === "message" && entry.message.role === "assistant") {
-      searchText = entry.message.content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
+      typeof entry.data.text === "string"
+    )
+      text = entry.data.text;
+    if (entry.type === "message" && entry.message.role === "assistant")
+      text = entry.message.content
+        .filter((p) => p.type === "text")
+        .map((p) => p.text)
         .join("\n");
-    }
-    if (searchText) {
-      const bounded = searchText.slice(0, Math.max(0, 200000 - this.searchChars));
+    if (text) {
+      const bounded = text.slice(0, Math.max(0, 200000 - this.searchChars));
       if (bounded) {
-        d.searchText.push({ runId: searchRunId, text: bounded });
-        this.searchChars += bounded.length + 1;
+        this.run("INSERT INTO transcript_search VALUES(?,?,?,?)", seq, this.currentRun, bounded);
+        this.searchChars += bounded.length;
       }
     }
-    // JSONL is authoritative on restart; filesystem mtime and session metadata are not activity.
-    if (entry.type === "message" || (entry.type === "custom" && entry.customType === "zpi.run")) {
-      const data = entry.type === "custom" && isJsonObject(entry.data) ? entry.data : undefined;
-      const at = data?.phase === "end" ? data.endedAt : data?.phase === "start" ? data.startedAt : undefined;
-      const timestamp = typeof at === "number" && Number.isFinite(at) ? at : Date.parse(entry.timestamp);
-      if (Number.isFinite(timestamp)) d.lastActivityAt = Math.max(d.lastActivityAt ?? 0, timestamp);
-    }
-    if (entryFileChange(entry)) d.fileChanges.push({ start, end });
-    d.parentId = entry.id;
-    d.size = end;
-    this.dirty = true;
-    if (entry.type === "thinking_level_change" && entry.thinkingLevel !== "off")
-      d.state.thinking_last = entry;
-    if (entry.type !== "message") {
-      const key = entry.type === "custom" ? entry.customType : entry.type;
-      if (
-        [
-          "model_change",
-          "thinking_level_change",
-          "session_info",
-          "zpi.configuration",
-          "zpi.session_meta",
-          "zpi.title",
-          "zpi.queue",
-          "zpi.selection",
-          "zpi.attention",
-          "zpi.fork",
-          "zpi.environment",
-          "zpi.subagent_task",
-        ].includes(key) ||
-        key.startsWith("zpi.background_task:")
-      )
-        d.state[key] = entry;
-      if (entry.type === "model_change" || entry.type === "compaction") {
-        d.cacheRead = 0;
-        d.cacheInput = 0;
-      }
-      if (entry.type === "compaction") {
-        delete d.state.usage;
-      }
-    } else if (entry.message.role === "assistant") {
-      const m = entry.message;
-      if (
-        !["error", "aborted"].includes(m.stopReason) &&
-        m.usageAvailable !== false &&
-        (m.usageAvailable === true || m.usage.totalTokens > 0)
-      ) {
-        d.state.usage = { ...entry, message: { ...m, content: [] } };
-        if (m.cacheUsageAvailable === true) {
-          d.cacheRead += m.usage.cacheRead;
-          d.cacheInput += m.usage.input + m.usage.cacheRead + m.usage.cacheWrite;
-        }
-      }
-    }
-    if (entry.type === "custom" && isJsonObject(entry.data)) {
-      const value = entry.data;
-      if (entry.customType === "zpi.run" && typeof value.runId === "string") {
-        d.state["zpi.run"] = {
-          ...entry,
-          data: {
-            phase: value.phase ?? null,
-            runId: value.runId,
-            status: value.status ?? null,
-            startedAt: value.startedAt ?? null,
-            endedAt: value.endedAt ?? null,
-            queueItemId:
-              value.queueItemId ??
-              (value.phase === "end" &&
-              d.state["zpi.run"]?.type === "custom" &&
-              isJsonObject(d.state["zpi.run"].data)
-                ? (d.state["zpi.run"].data.queueItemId ?? null)
-                : null),
-          },
-        };
-        this.currentRun = value.runId;
-        if (value.phase === "start") {
-          d.runs[this.currentRun] = {
-            start: { start, end },
-            ordinal: 0,
-            auxiliary: value.agentBoundaries === true || value.local === true,
-          };
-          // Logs predating explicit Agent boundaries remain readable as legacy run groups.
-          if (value.agentBoundaries !== true && value.local !== true)
-            d.calls.push({
-              start: end,
-              end,
-              runId: this.currentRun,
-              ordinal: 0,
-              complete: false,
-              legacy: true,
-            });
-        } else if (value.phase === "end" && d.runs[this.currentRun]) {
-          if (
-            d.runs[this.currentRun].ordinal === 0 &&
-            d.calls.at(-1)?.legacy &&
-            d.calls.at(-1)?.runId === this.currentRun
-          ) {
-            d.calls.pop();
-            d.runs[this.currentRun].auxiliary = true;
-          }
-          d.runs[this.currentRun].end = { start, end };
-          const call = d.calls.at(-1);
-          if (call?.legacy && call.runId === this.currentRun) {
-            call.end = start;
-            call.complete = true;
-          }
-        }
-      }
-      if (entry.customType === "zpi.agent_call" && d.runs[this.currentRun]) {
-        const run = d.runs[this.currentRun],
-          last = d.calls.at(-1);
-        if (value.phase === "start") {
-          run.auxiliary = false;
-          if (typeof value.ordinal === "number") run.ordinal = value.ordinal;
-          if (last?.legacy && last.runId === this.currentRun && last.ordinal === 0) d.calls.pop();
-          d.calls.push({ start, end, runId: this.currentRun, ordinal: run.ordinal, complete: false });
-        } else if (value.phase === "end" && last && last.runId === this.currentRun) {
-          last.end = end;
-          last.complete = true;
-        }
-      }
-    }
-    const run = d.runs[this.currentRun];
-    const previousCall = d.calls.at(-1);
-    if (
-      entry.type === "message" &&
-      entry.message.role === "user" &&
-      run &&
-      previousCall?.legacy &&
-      previousCall.complete &&
-      previousCall.runId === this.currentRun
-    )
-      d.calls.push({
-        start,
-        end,
-        runId: this.currentRun,
-        ordinal: run.ordinal,
-        complete: false,
-        legacy: true,
+  }
+  private project(key: string, seq: number, entry: SessionEntry): void {
+    this.run(
+      "INSERT INTO transcript_projections VALUES(?,?,?,?) ON CONFLICT(path,key) DO UPDATE SET seq=excluded.seq,value=excluded.value",
+      key,
+      seq,
+      JSON.stringify(entry),
+    );
+  }
+  append(entry: SessionEntry): void {
+    if (this.writeError)
+      throw new Error("storage: Previous index write failed; reopen before writing", {
+        cause: this.writeError,
       });
-    if (entry.type === "message" && entry.message.role !== "system" && run) run.ordinal++;
-    const last = d.calls.at(-1);
-    if (last && !last.complete) last.end = end;
-    if (
-      last?.legacy &&
-      entry.type === "message" &&
-      entry.message.role === "assistant" &&
-      entry.message.stopReason !== "toolUse"
-    )
-      last.complete = true;
-  }
-  append(
-    fields:
-      | { type: "custom"; customType: string; data: import("zpi-ai").JsonValue }
-      | { type: "session_info"; name: string }
-      | { type: "model_change"; provider: string; modelId: string }
-      | { type: "thinking_level_change"; thinkingLevel: import("zpi-agent").ThinkingLevel },
-  ): void {
-    const entry = {
-      ...fields,
-      id: randomUUID(),
-      parentId: this.data.parentId,
-      timestamp: new Date().toISOString(),
-    } as SessionEntry;
-    appendFileSync(this.path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
-    this.ingest(entry);
-    this.flush();
-  }
-  read(span: Span): SessionEntry[] {
-    const length = span.end - span.start;
-    if (length <= 0) return [];
-    const fd = openSync(this.path, "r"),
-      buffer = Buffer.alloc(length);
+    validateTranscriptEntry(entry);
+    if (entry.parentId !== this.data.parentId) throw new Error("storage: Invalid append parent");
+    if (this.one("SELECT seq FROM transcript_entries WHERE path=? AND entry_id=?", entry.id))
+      throw new Error("storage: Duplicate entry ID");
+    if (entry.type === "compaction" && !this.readEntryById(entry.firstKeptEntryId, this.snapshot()))
+      throw new Error("storage: Missing compaction retained boundary");
+    if (statSync(this.path).size !== this.data.size)
+      throw new Error("storage: Unindexed transcript tail; reopen before writing");
+    const line = Buffer.from(`${JSON.stringify(encodeTranscriptEntry(entry, this.seq + 1))}\n`);
+    if (line.length - 1 > maxSessionEntryBytes) throw new Error("storage: Entry exceeds 8 MiB");
+    const fd = openSync(this.path, "a");
     try {
-      let used = 0;
-      while (used < length) {
-        const n = readSync(fd, buffer, used, length - used, span.start + used);
-        if (!n) throw new Error("storage: Truncated history segment");
-        used += n;
+      let offset = 0;
+      while (offset < line.length) offset += writeSync(fd, line, offset);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    try {
+      this.transaction(() => {
+        this.ingest(entry, this.data.size, this.data.size + line.length);
+        this.flush();
+      });
+    } catch (error) {
+      this.writeError = error;
+      throw error;
+    }
+  }
+  flush(): void {
+    const stat = statSync(this.path);
+    this.data.modified = stat.mtimeMs;
+    this.run(
+      "INSERT OR REPLACE INTO transcript_state VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+      this.data.header.generation,
+      JSON.stringify(this.data.header),
+      this.data.size,
+      stat.mtimeMs,
+      `${stat.dev}:${stat.ino}`,
+      this.seq,
+      this.data.parentId,
+      this.currentRun,
+      this.data.cacheRead,
+      this.data.cacheInput,
+      this.data.lastActivityAt ?? null,
+    );
+  }
+  getHeader(): SessionHeader {
+    return this.data.header;
+  }
+  getFile(): string {
+    return this.path;
+  }
+  snapshot(): TranscriptSnapshot {
+    return { generation: this.data.header.generation, endSeq: this.seq };
+  }
+  private check(snapshot: TranscriptSnapshot): void {
+    if (
+      snapshot.generation !== this.data.header.generation ||
+      snapshot.endSeq > this.seq ||
+      snapshot.endSeq < 0
+    )
+      throw new Error("storage: Stale transcript snapshot");
+  }
+  getStateAt(snapshot: TranscriptSnapshot): TranscriptState {
+    this.check(snapshot);
+    const row = this.one(
+      "SELECT seq,state FROM transcript_checkpoints WHERE path=? AND seq<=? ORDER BY seq DESC LIMIT 1",
+      snapshot.endSeq,
+    );
+    const state = row ? (JSON.parse(String(row.state)) as TranscriptState) : initialState();
+    if (
+      !state ||
+      typeof state !== "object" ||
+      !Number.isSafeInteger(state.lastCompactionSeq) ||
+      state.lastCompactionSeq < 0 ||
+      state.lastCompactionSeq > snapshot.endSeq ||
+      typeof state.hasThinkingEntry !== "boolean"
+    )
+      throw new Error("storage: Invalid transcript checkpoint");
+    const last = this.one(
+      "SELECT MAX(seq) AS seq FROM transcript_entries WHERE path=? AND type='message' AND seq<=?",
+      snapshot.endSeq,
+    );
+    state.lastMessageSeq = Number(last?.seq ?? 0);
+    return state;
+  }
+  getTail(snapshot: TranscriptSnapshot): IndexedSessionEntry | undefined {
+    this.check(snapshot);
+    return this.entryAt(snapshot.endSeq);
+  }
+  private entryAt(seq: number): IndexedSessionEntry | undefined {
+    const row = this.one("SELECT * FROM transcript_entries WHERE path=? AND seq=?", seq);
+    return row ? this.readIndexedEntry(row) : undefined;
+  }
+  private readIndexedEntry(row: Row): IndexedSessionEntry {
+    const seq = Number(row.seq);
+    const value = JSON.parse(this.readBytesAt(Number(row.offset), Number(row.length)).toString("utf8"));
+    const entry = decodeTranscriptEntry(value);
+    if (value.seq !== seq || entry.id !== row.entry_id)
+      throw new Error("storage: Transcript index boundary mismatch");
+    return { seq, entry };
+  }
+  private requiredEntryAt(seq: number): SessionEntry {
+    const indexed = this.entryAt(seq);
+    if (!indexed) throw new Error("storage: Missing transcript index entry");
+    return indexed.entry;
+  }
+  readEntryById(id: string, snapshot: TranscriptSnapshot): IndexedSessionEntry | undefined {
+    this.check(snapshot);
+    const row = this.one(
+      "SELECT seq FROM transcript_entries WHERE path=? AND entry_id=? AND seq<=?",
+      id,
+      snapshot.endSeq,
+    );
+    return row ? this.entryAt(Number(row.seq)) : undefined;
+  }
+  *readRange(
+    startSeq: number,
+    endSeq: number,
+    snapshot: TranscriptSnapshot,
+    types?: readonly SessionEntry["type"][],
+  ): Iterable<IndexedSessionEntry> {
+    this.check(snapshot);
+    if (types?.length === 0) return;
+    let seq = startSeq;
+    while (seq <= Math.min(endSeq, snapshot.endSeq)) {
+      this.check(snapshot);
+      const filter = types ? ` AND type IN (${types.map(() => "?").join(",")})` : "";
+      const rows = this.all(
+        `SELECT seq,entry_id,offset,length FROM transcript_entries WHERE path=? AND seq>=? AND seq<=?${filter} ORDER BY seq LIMIT 128`,
+        seq,
+        Math.min(endSeq, snapshot.endSeq),
+        ...(types ?? []),
+      );
+      if (!rows.length) return;
+      for (const row of rows) {
+        yield this.readIndexedEntry(row);
+        seq = Number(row.seq) + 1;
       }
-      this.readBytes += used;
-      return buffer
-        .toString("utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as SessionEntry);
+    }
+  }
+  getContextPlan(snapshot: TranscriptSnapshot): TranscriptContextPlan {
+    this.check(snapshot);
+    const row = this.one(
+      "SELECT seq,kept_seq FROM transcript_entries WHERE path=? AND type='compaction' AND seq<=? ORDER BY seq DESC LIMIT 1",
+      snapshot.endSeq,
+    );
+    return {
+      snapshot,
+      firstKeptSeq: row ? Number(row.kept_seq) : 1,
+      compaction: row ? this.entryAt(Number(row.seq)) : undefined,
+    };
+  }
+  *readUnresolvedToolJournals(snapshot: TranscriptSnapshot): Iterable<SessionEntry[]> {
+    this.check(snapshot);
+    const groups =
+      snapshot.endSeq === this.seq
+        ? this.db
+            .prepare("SELECT journal_id,first_seq,anchor_id FROM transcript_pending_journals WHERE path=?")
+            .all(this.key)
+        : this.db
+            .prepare(
+              "SELECT journal_id,MIN(seq) AS first_seq,MAX(anchor_id) AS anchor_id FROM transcript_journals WHERE path=? AND seq<=? GROUP BY journal_id HAVING MAX(committed)=0",
+            )
+            .all(this.key, snapshot.endSeq);
+    for (const item of groups) {
+      const row = item as Row;
+      const entries: SessionEntry[] = [];
+      const anchor = row.anchor_id ? this.readEntryById(String(row.anchor_id), snapshot) : undefined;
+      if (anchor) entries.push(anchor.entry);
+      const next = this.one(
+        "SELECT MIN(seq) AS seq FROM transcript_entries WHERE path=? AND type='message' AND role='user' AND seq>?",
+        Number(row.first_seq),
+      );
+      const end = Math.min(snapshot.endSeq, next?.seq ? Number(next.seq) - 1 : snapshot.endSeq);
+      for (const indexed of this.readRange(Number(row.first_seq), end, snapshot)) {
+        const e = indexed.entry;
+        if (
+          e.type === "message" ||
+          (e.type === "custom" &&
+            e.customType === "zpi.streaming_tools" &&
+            isJsonObject(e.data) &&
+            e.data.id === row.journal_id)
+        )
+          entries.push(e);
+      }
+      yield entries;
+    }
+  }
+  private readBytesAt(start: number, length: number): Buffer {
+    if (!Number.isSafeInteger(start) || start < 0 || !Number.isSafeInteger(length) || length < 0)
+      throw new Error("storage: Invalid transcript index span");
+    if (length > maxSessionEntryBytes + 1) throw new Error("storage: Read exceeds record budget");
+    const fd = openSync(this.path, "r");
+    const bytes = Buffer.alloc(length);
+    try {
+      let offset = 0;
+      while (offset < length) {
+        const n = readSync(fd, bytes, offset, length - offset, start + offset);
+        if (!n) throw new Error("storage: Truncated transcript");
+        offset += n;
+      }
+      this.readBytes += length;
+      return bytes;
     } finally {
       closeSync(fd);
     }
   }
-  page(
-    before = this.data.calls.length,
-    count = 10,
-  ): { entries: SessionEntry[]; cursor: number | null; calls: number } {
-    if (!Number.isSafeInteger(before) || before < 0 || before > this.data.calls.length)
+  read(span: Span): SessionEntry[] {
+    const rows = this.all(
+      "SELECT seq FROM transcript_entries WHERE path=? AND offset>=? AND offset<? ORDER BY seq",
+      span.start,
+      span.end,
+    );
+    return rows.map((row) => this.requiredEntryAt(Number(row.seq)));
+  }
+  getState(): Record<string, SessionEntry> {
+    const result: Record<string, SessionEntry> = {};
+    for (const row of this.all("SELECT key,value FROM transcript_projections WHERE path=?"))
+      result[String(row.key)] = JSON.parse(String(row.value)) as SessionEntry;
+    return result;
+  }
+  searchTextFor(query: string, limit = 80): { runId: string; text: string }[] {
+    return this.all(
+      "SELECT run_id,text FROM transcript_search WHERE path=? AND instr(lower(text),lower(?))>0 ORDER BY seq LIMIT ?",
+      query,
+      Math.min(80, Math.max(1, limit)),
+    ).map((row) => ({ runId: String(row.run_id), text: String(row.text) }));
+  }
+  hasSearchText(query: string): boolean {
+    return Boolean(
+      this.one(
+        "SELECT 1 AS found FROM transcript_search WHERE path=? AND instr(lower(text),lower(?))>0 LIMIT 1",
+        query,
+      ),
+    );
+  }
+  searchText(): { runId: string; text: string }[] {
+    return this.all("SELECT run_id,text FROM transcript_search WHERE path=? ORDER BY seq").map((row) => ({
+      runId: String(row.run_id),
+      text: String(row.text),
+    }));
+  }
+  countRuns(): number {
+    return Number(this.one("SELECT COUNT(*) AS n FROM transcript_runs WHERE path=?")?.n ?? 0);
+  }
+  findRun(runId: string): RunBoundary | undefined {
+    const row = this.one("SELECT * FROM transcript_runs WHERE path=? AND run_id=?", runId);
+    return row ? runBoundary(row) : undefined;
+  }
+  *listRuns(): Iterable<RunBoundary> {
+    for (const row of this.db
+      .prepare("SELECT * FROM transcript_runs WHERE path=? ORDER BY start DESC")
+      .iterate(this.key))
+      yield runBoundary(row as Row);
+  }
+  *fileChanges(): Iterable<Span> {
+    for (const row of this.db
+      .prepare("SELECT offset,length FROM transcript_entries WHERE path=? AND file_change=1 ORDER BY seq")
+      .iterate(this.key))
+      yield { start: Number(row.offset), end: Number(row.offset) + Number(row.length) };
+  }
+  page(before = this.seq + 1, count = 10): { entries: SessionEntry[]; cursor: number | null; calls: number } {
+    if (before === 0) return { entries: [], cursor: null, calls: 0 };
+    if (!Number.isSafeInteger(count) || count < 1 || count > 100)
+      throw new Error("invalid_input: 历史页大小无效");
+    if (!Number.isSafeInteger(before) || before < 1 || before > this.seq + 1)
       throw new Error("invalid_input: 历史游标无效");
-    const extra = before === this.data.calls.length && this.data.calls.at(-1)?.complete === false ? 1 : 0;
-    const start = Math.max(0, before - count - extra),
-      chunks: { start: number; entries: SessionEntry[] }[] = [];
-    const anchors = new Map<string, { start: SessionEntry | undefined; end: SessionEntry[] }>();
-    for (const call of this.data.calls.slice(start, before)) {
-      const run = this.data.runs[call.runId];
-      let cached = anchors.get(call.runId);
-      if (!cached) {
-        cached = { start: this.read(run.start)[0], end: run.end ? this.read(run.end) : [] };
-        anchors.set(call.runId, cached);
+    const selected: number[] = [];
+    let bytes = 0;
+    let calls = 0;
+    const rows = this.db.prepare(
+      "SELECT seq,length FROM transcript_entries WHERE path=? AND seq<? ORDER BY seq DESC",
+    );
+    for (const value of rows.iterate(this.key, before)) {
+      const row = value as Row;
+      if (selected.length && bytes + Number(row.length) > 2 * 1024 * 1024) break;
+      selected.push(Number(row.seq));
+      bytes += Number(row.length);
+      if (this.one("SELECT seq FROM transcript_calls WHERE path=? AND seq=?", Number(row.seq))) {
+        calls++;
+        if (calls >= count) break;
       }
-      const anchor = cached.start,
-        entries: SessionEntry[] = [];
-      if (anchor?.type === "custom" && isJsonObject(anchor.data)) {
-        entries.push({ ...anchor, data: { ...anchor.data, ordinalStart: call.ordinal } });
-      }
-      entries.push(...this.read(call));
-      entries.push(...cached.end);
-      chunks.push({ start: call.start, entries });
     }
-    const earliest = this.data.calls[start]?.start ?? 0;
-    const latest = this.data.calls[before]?.start ?? this.data.size;
-    for (const run of Object.values(this.data.runs))
-      if (run.auxiliary && run.start.start >= earliest && run.start.start < latest)
-        chunks.push({
-          start: run.start.start,
-          entries: this.read({ start: run.start.start, end: run.end?.end ?? this.data.size }),
-        });
-    return {
-      entries: chunks.sort((a, b) => a.start - b.start).flatMap((chunk) => chunk.entries),
-      cursor: start > 0 ? start : null,
-      calls: before - start,
-    };
+    selected.reverse();
+    const entries = selected.map((seq) => this.requiredEntryAt(seq));
+    const first = selected[0] ?? before;
+    // Prefix the enclosing run for UI grouping, without reading its complete body.
+    const offset = this.one("SELECT offset FROM transcript_entries WHERE path=? AND seq=?", first)?.offset;
+    if (offset !== undefined) {
+      const run = this.one(
+        "SELECT start,start_end FROM transcript_runs WHERE path=? AND start<=? ORDER BY start DESC LIMIT 1",
+        offset,
+      );
+      if (run && Number(run.start) < Number(offset)) {
+        // A continuation needs grouping, not another copy of a potentially 8 MiB input.
+        const anchor = this.one(
+          "SELECT value FROM transcript_anchors WHERE path=? AND offset=?",
+          Number(run.start),
+        );
+        if (!anchor) throw new Error("storage: Missing run continuation index; rebuild the transcript index");
+        const continuation = JSON.parse(String(anchor.value)) as SessionEntry;
+        if (continuation.type !== "custom" || !isJsonObject(continuation.data))
+          throw new Error("storage: Invalid run continuation index");
+        const preceding = this.one(
+          "SELECT COUNT(*) AS n FROM transcript_entries WHERE path=? AND type='message' AND role<>'system' AND offset>? AND offset<?",
+          Number(run.start),
+          Number(offset),
+        );
+        continuation.data.ordinalStart =
+          Number(continuation.data.ordinalStart ?? 0) + Number(preceding?.n ?? 0);
+        entries.unshift(continuation);
+      }
+    }
+    return { entries, cursor: first > 1 ? first : null, calls };
   }
-  flush(): void {
-    if (!this.dirty || !existsSync(this.path)) return;
-    this.data.modified = statSync(this.path).mtimeMs;
-    atomicJson(`${this.path}.index.json`, this.data);
-    this.dirty = false;
+  seqAtOffset(offset: number): number | undefined {
+    const row = this.one(
+      "SELECT seq FROM transcript_entries WHERE path=? AND offset>=? ORDER BY seq LIMIT 1",
+      offset,
+    );
+    return row ? Number(row.seq) : undefined;
   }
+  *readReverse(snapshot: TranscriptSnapshot): Iterable<IndexedSessionEntry> {
+    this.check(snapshot);
+    let before = snapshot.endSeq + 1;
+    while (before > 1) {
+      const rows = this.all(
+        "SELECT seq,entry_id,offset,length FROM transcript_entries WHERE path=? AND seq<? ORDER BY seq DESC LIMIT 128",
+        before,
+      );
+      if (!rows.length) return;
+      for (const row of rows) {
+        this.check(snapshot);
+        yield this.readIndexedEntry(row);
+        before = Number(row.seq);
+      }
+    }
+  }
+  findAcceptedRun(runId: string): { watermark: number; queueItemId?: string } | undefined {
+    const row = this.one(
+      "SELECT accepted_end,queue_item_id FROM transcript_runs WHERE path=? AND run_id=? AND accepted_seq IS NOT NULL",
+      runId,
+    );
+    return row
+      ? {
+          watermark: Number(row.accepted_end),
+          queueItemId: row.queue_item_id === null ? undefined : String(row.queue_item_id),
+        }
+      : undefined;
+  }
+  replace(header: SessionHeader, entries: Iterable<SessionEntry>): void {
+    const nextPath = join(dirname(this.path), `${header.id}.generation-${randomUUID()}.jsonl`);
+    this.generationHooks?.prepare(this.path, nextPath, header);
+    const staged = HistoryIndex.create(nextPath, this.db, header);
+    for (const entry of entries) staged.append(entry);
+    // Publication changes only the DB locator. The previous immutable generation survives every failure.
+    this.generationHooks?.commit(this.path, nextPath, staged.getHeader(), staged.data.size);
+    this.path = staged.path;
+    this.key = staged.key;
+    this.data = staged.data;
+    this.seq = staged.seq;
+    this.currentRun = staged.currentRun;
+    this.state = staged.state;
+    this.searchChars = staged.searchChars;
+    this.writeError = undefined;
+  }
+}
+function runBoundary(row: Row): RunBoundary {
+  return {
+    runId: String(row.run_id),
+    start: { start: Number(row.start), end: Number(row.start_end) },
+    end: row.end === null ? undefined : { start: Number(row.end), end: Number(row.end_end) },
+    ordinal: Number(row.ordinal),
+    auxiliary: row.auxiliary === 1,
+  };
 }

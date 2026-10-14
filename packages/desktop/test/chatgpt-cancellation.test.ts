@@ -119,9 +119,10 @@ it.each([false, true])(
       });
       settings.saveChatGPTCredential("chatgpt", credential("old"));
     }
-    const files = ["settings.json", "credentials.enc"].map((file) => join(dir, file));
+    const files = ["credentials.enc"].map((file) => join(dir, file));
     const before = await Promise.all(files.map((file) => (existsSync(file) ? readFile(file) : undefined)));
     const previous = settings.get();
+    const publicState = settings.state.getSetting("app");
     fail = true;
     login.wait.mockResolvedValue(credential("new"));
     const auth = new ChatGPTAuth(settings, async () =>
@@ -132,6 +133,7 @@ it.each([false, true])(
         const pending = await auth.begin(returning ? "chatgpt" : null);
         await expect(auth.complete(pending.loginId)).rejects.toThrow("Synthetic encryption failure");
         expect(settings.get()).toEqual(previous);
+        expect(settings.state.getSetting("app")).toEqual(publicState);
         expect(new SettingsStore(dir, codec).get()).toEqual(previous);
         expect(
           await Promise.all(files.map((file) => (existsSync(file) ? readFile(file) : undefined))),

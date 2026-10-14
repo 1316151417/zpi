@@ -17,7 +17,7 @@ import { isJsonObject } from "zpi-ai";
 import type { CombinedSelection } from "../../../shared/bridge.ts";
 import type { SubagentCatalog, SubagentConfig, SubagentProfile } from "../../../shared/subagents.ts";
 import { agentColors } from "../../../shared/subagents.ts";
-import { atomicJson } from "../../storage.ts";
+import type { StateStore } from "../../state-store.ts";
 import { buildExploreAgentPrompt, buildGeneralPurposeSystemPrompt } from "./built-in.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,28 +97,40 @@ export function validateSubagentConfig(value: unknown): asserts value is Subagen
     );
 }
 
+export interface SubagentProfileState {
+  disabled: string[];
+  overrides: Record<string, SubagentConfig["modelSelection"]>;
+}
+export function validateSubagentProfileState(value: unknown): asserts value is SubagentProfileState {
+  if (
+    !isJsonObject(value) ||
+    !Array.isArray(value.disabled) ||
+    value.disabled.some((id) => typeof id !== "string") ||
+    !isJsonObject(value.overrides) ||
+    Object.values(value.overrides).some(
+      (selection) =>
+        !isRecord(selection) ||
+        ["provider", "modelId", "reasoning"].some((key) => typeof selection[key] !== "string"),
+    )
+  )
+    throw new Error("storage: 子智能体状态无效");
+}
 export class SubagentProfiles {
-  private state: { disabled: string[]; overrides: Record<string, SubagentConfig["modelSelection"]> };
-  private statePath: string;
+  private state: SubagentProfileState = { disabled: [], overrides: {} };
   private root: string;
-  constructor(root: string) {
+  private stateStore: Pick<StateStore, "getSetting" | "setSetting">;
+  constructor(root: string, stateStore: Pick<StateStore, "getSetting" | "setSetting">) {
     this.root = root;
-    this.statePath = join(root, "agents-state.json");
-    this.state = { disabled: [], overrides: {} };
+    this.stateStore = stateStore;
     this.reloadState();
   }
   private reloadState() {
-    if (existsSync(this.statePath)) {
-      const state = JSON.parse(readFileSync(this.statePath, "utf8"));
-      if (
-        !isJsonObject(state) ||
-        !Array.isArray(state.disabled) ||
-        state.disabled.some((id) => typeof id !== "string") ||
-        !isJsonObject(state.overrides)
-      )
-        throw new Error("storage: 子智能体状态无效");
-      this.state = state as unknown as typeof this.state;
-    } else this.state = { disabled: [], overrides: {} };
+    const state = this.stateStore.getSetting<unknown>("subagentProfiles");
+    if (state === undefined) this.state = { disabled: [], overrides: {} };
+    else {
+      validateSubagentProfileState(state);
+      this.state = state;
+    }
   }
   private directory(scope: "user" | "workspace", cwd?: string) {
     if (scope === "workspace" && !cwd) throw new Error("invalid_input: 请先选择项目");
@@ -207,7 +219,8 @@ export class SubagentProfiles {
         ...this.state,
         overrides: { ...this.state.overrides, [id as string]: structuredClone(config.modelSelection) },
       };
-      atomicJson(this.statePath, state);
+      if (config.modelSelection === undefined) delete state.overrides[id as string];
+      this.stateStore.setSetting("subagentProfiles", state);
       this.state = state;
       return this.list(cwd);
     }
@@ -251,7 +264,7 @@ export class SubagentProfiles {
     if (previous?.path && previous.path !== path) {
       rmSync(previous.path);
       this.state.disabled = this.state.disabled.map((key) => (key === id ? `${scope}:${config.name}` : key));
-      atomicJson(this.statePath, this.state);
+      this.stateStore.setSetting("subagentProfiles", this.state);
     }
     return this.list(cwd);
   }
@@ -260,7 +273,7 @@ export class SubagentProfiles {
     if (!agent?.path || agent.scope === "built-in") throw new Error("invalid_input: 此子智能体不可删除");
     rmSync(agent.path);
     this.state.disabled = this.state.disabled.filter((key) => key !== id);
-    atomicJson(this.statePath, this.state);
+    this.stateStore.setSetting("subagentProfiles", this.state);
     return this.list(cwd);
   }
   enable(id: string, enabled: boolean, cwd?: string) {
@@ -269,7 +282,7 @@ export class SubagentProfiles {
       throw new Error("invalid_input: 此子智能体不可切换");
     const state = { ...this.state, disabled: this.state.disabled.filter((key) => key !== id) };
     if (!enabled) state.disabled.push(id);
-    atomicJson(this.statePath, state);
+    this.stateStore.setSetting("subagentProfiles", state);
     this.state = state;
     return this.list(cwd);
   }

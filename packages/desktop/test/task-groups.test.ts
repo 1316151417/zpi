@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { StateStore } from "../src/main/state-store.ts";
 import { TaskGroupsStore } from "../src/main/task-groups.ts";
 import { taskGroupDropCommand } from "../src/renderer/task-group-drag.ts";
 import { parseCollapsedTaskGroups, pruneCollapsedTaskGroups } from "../src/renderer/task-group-expansion.ts";
@@ -15,7 +16,10 @@ import {
 } from "../src/shared/task-groups.ts";
 
 const directories: string[] = [];
+const databases: StateStore[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
+  for (const database of databases.splice(0)) database.close();
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 const task = (id: string, createdAt = 1, patch: Partial<SessionRecord> = {}): SessionRecord => ({
@@ -142,14 +146,16 @@ it("retains collapsed IDs before hydration, prunes only after loading, and handl
 it("persists updates atomically and restores names, colors, membership and order after restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-groups-"));
   directories.push(dir);
-  const path = join(dir, "task-groups.json");
-  const store = new TaskGroupsStore(path);
+  const database = new StateStore(join(dir, "state.sqlite"));
+  databases.push(database);
+  for (const record of records) database.upsertTask(record);
+  const store = new TaskGroupsStore(database);
   const group = store.update({ type: "create" }, records).groups[0];
   store.update({ type: "rename", id: group.id, title: "持久组" }, records);
   store.update({ type: "color", id: group.id, color: "purple" }, records);
   store.update({ type: "moveTask", id: "a", groupId: group.id }, records);
-  expect(new TaskGroupsStore(path).get(records)).toEqual(store.get(records));
-  expect(JSON.parse(await readFile(path, "utf8")).groups[0]).toMatchObject({
+  expect(new TaskGroupsStore(database).get(records)).toEqual(store.get(records));
+  expect(database.getTaskGroups().groups[0]).toMatchObject({
     title: "持久组",
     color: "purple",
   });
@@ -157,8 +163,10 @@ it("persists updates atomically and restores names, colors, membership and order
 it("rejects malformed commands, unknown tasks/groups and corrupt data without resetting state", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-groups-invalid-"));
   directories.push(dir);
-  const path = join(dir, "task-groups.json");
-  const store = new TaskGroupsStore(path);
+  const database = new StateStore(join(dir, "state.sqlite"));
+  databases.push(database);
+  for (const record of records) database.upsertTask(record);
+  const store = new TaskGroupsStore(database);
   for (const input of [
     null,
     { type: "evil" },
@@ -169,15 +177,19 @@ it("rejects malformed commands, unknown tasks/groups and corrupt data without re
     { type: "moveTask", id: "a", groupId: "missing" },
   ])
     expect(() => store.update(input, records)).toThrow();
-  await writeFile(path, '{"version":99}');
-  expect(() => new TaskGroupsStore(path)).toThrow("storage:");
+  await writeFile(join(dir, "task-groups.json"), '{"version":99}');
+  expect(new TaskGroupsStore(database).get(records).groups).toEqual([]);
 });
 it("a failed disk write leaves the in-memory state unchanged", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-groups-write-"));
   directories.push(dir);
-  const path = join(dir, "task-groups.json");
-  const store = new TaskGroupsStore(path);
-  await mkdir(path);
+  const database = new StateStore(join(dir, "state.sqlite"));
+  databases.push(database);
+  for (const record of records) database.upsertTask(record);
+  const store = new TaskGroupsStore(database);
+  vi.spyOn(database, "setTaskGroups").mockImplementation(() => {
+    throw new Error("commit failed");
+  });
   expect(() => store.update({ type: "create" }, records)).toThrow();
   expect(store.get(records).groups).toEqual([]);
 });

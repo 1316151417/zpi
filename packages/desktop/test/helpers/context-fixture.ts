@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -41,12 +41,12 @@ export async function fixture(
   });
   settings.rememberSelection({ provider: "p", modelId: "vision", reasoning: "none" });
   if (legacyTemplate) {
-    const file = join(dir, "settings.json");
-    const data = JSON.parse(await readFile(file, "utf8"));
-    await writeFile(
-      file,
-      JSON.stringify({ ...data, templates: [legacyTemplate], selectedTemplateId: legacyTemplate.id }),
-    );
+    const data = settings.state.getSetting<Record<string, unknown>>("app");
+    settings.state.setSetting("app", {
+      ...data,
+      templates: [legacyTemplate],
+      selectedTemplateId: legacyTemplate.id,
+    });
     settings = new SettingsStore(dir, codec);
   }
   const workspace = join(dir, "workspace"),

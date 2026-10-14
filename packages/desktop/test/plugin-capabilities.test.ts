@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { SessionHost } from "../src/main/session-host.ts";
@@ -119,7 +119,7 @@ test("snapshots prompt plugins on first send and keeps them when global settings
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults all plugin capabilities on and preserves saved choices when filling missing settings", async () => {
+test("defaults all plugin capabilities on and preserves saved choices in SQLite", async () => {
   const f = await fixture();
   expect(f.settings.get().capabilities).toEqual({
     communicationStyle: true,
@@ -130,9 +130,8 @@ test("defaults all plugin capabilities on and preserves saved choices when filli
     fileContextReuse: true,
     proactiveExecution: true,
   });
-  const path = join(f.dir, "settings.json");
-  const settings = JSON.parse(await readFile(path, "utf8"));
-  await writeFile(path, JSON.stringify({ ...settings, capabilities: { askUserQuestion: false } }));
+  const settings = f.settings.state.getSetting<Record<string, unknown>>("app");
+  f.settings.setCapabilityEnabled("askUserQuestion", false);
   const restored = new SettingsStore(f.dir, codec);
   expect(restored.get().capabilities).toEqual({
     communicationStyle: true,
@@ -156,12 +155,12 @@ test("defaults all plugin capabilities on and preserves saved choices when filli
   expect(saved.capabilities.fileContextReuse).toBe(false);
   expect(saved.capabilities.proactiveExecution).toBe(false);
   expect(new SettingsStore(f.dir, codec).get().capabilities.fileLinks).toBe(false);
-  await writeFile(
-    path,
-    JSON.stringify({ ...settings, capabilities: { ...settings.capabilities, communicationStyle: "on" } }),
-  );
+  f.settings.state.setSetting("app", {
+    ...settings,
+    capabilities: { ...f.settings.get().capabilities, communicationStyle: "on" },
+  });
   expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");
-  await writeFile(path, JSON.stringify({ ...settings, capabilities: true }));
+  f.settings.state.setSetting("app", { ...settings, capabilities: true });
   expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");
 });
 
@@ -171,14 +170,12 @@ test.each(["communicationStyle", "fileContextReuse", "proactiveExecution"] as co
     const f = await fixture();
     f.settings.setCapabilityEnabled(capability, false);
     await run(f, "legacy conversation");
-    const path = f.host.sessionPath(f.session.id);
     await f.host.close();
-    const rows = (await readFile(path, "utf8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    for (const row of rows) if (row.customType === "zpi.configuration") delete row.data[capability];
-    await writeFile(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+    const task = f.settings.state.getTask(f.session.id);
+    if (!task) throw new Error("Missing task fixture");
+    const configuration = { ...(task.frozenConfiguration as Record<string, unknown>) };
+    delete configuration[capability];
+    f.settings.state.upsertTask({ ...task, frozenConfiguration: configuration });
     f.settings.setCapabilityEnabled(capability, true);
     const host = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace, undefined);
     await host.init();
@@ -207,14 +204,16 @@ test("session paths resolve to the real JSONL file and reject missing session ID
 test("rejects an invalid communication switch in a saved conversation before sending a model request", async () => {
   const f = await fixture();
   await run(f, "first send");
-  const path = f.host.sessionPath(f.session.id);
   await f.host.close();
-  const rows = (await readFile(path, "utf8"))
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  for (const row of rows) if (row.customType === "zpi.configuration") row.data.communicationStyle = "on";
-  await writeFile(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  const task = f.settings.state.getTask(f.session.id);
+  if (!task) throw new Error("Missing task fixture");
+  f.settings.state.upsertTask({
+    ...task,
+    frozenConfiguration: {
+      ...(task.frozenConfiguration as Record<string, unknown>),
+      communicationStyle: "on",
+    },
+  });
   const host = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace, undefined);
   cleanup.push(() => host.close());
   await host.init();

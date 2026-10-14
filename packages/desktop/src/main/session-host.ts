@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync as rmSyncFile, statSync } from "node:fs";
-import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import { Value } from "typebox/value";
 import { isJsonObject } from "zpi-ai";
 import {
@@ -21,7 +21,6 @@ import {
   parseMentions,
   patchLineCounts,
   piTemplate,
-  type SessionEntry,
   SessionManager,
   supportedThinkingLevels,
   type ToolDefinition,
@@ -70,10 +69,12 @@ import { SessionInputQueue } from "./input-queue.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
 import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
 import { projectEvent, restoreView } from "./projection.ts";
-import { sessionReferenceTranscript } from "./session-references.ts";
+import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
-import { atomicJson, resolveModel, type SettingsStore } from "./storage.ts";
+import type { StorageIntent, TaskState } from "./state-store.ts";
+import { resolveModel, type SettingsStore } from "./storage.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
+import { stageTranscript } from "./transcript-copy.ts";
 import { UserQuestions } from "./user-questions.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
@@ -164,11 +165,11 @@ export class SessionHost {
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
   ) {
-    this.taskGroups = new TaskGroupsStore(join(dir, "task-groups.json"));
+    this.taskGroups = new TaskGroupsStore(settings.state);
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
     this.errors = errors;
-    this.drafts = new DraftStore(join(dir, "drafts"));
+    this.drafts = new DraftStore(settings.state);
     this.requestFetch = requestFetch;
     this.attachments = new AttachmentStore(join(dir, "agent", "attachments"));
     this.inputQueue = new SessionInputQueue({
@@ -239,8 +240,7 @@ export class SessionHost {
         const run = this.activeRuns.get(id);
         if (run) await this.abortRun({ sessionId: id, runId: run.runId });
       },
-      save: (id, queue) =>
-        this.meta(id, { type: "custom", customType: "zpi.queue", data: JSON.parse(JSON.stringify(queue)) }),
+      save: (id, queue) => this.settings.state.setQueue(id, queue),
       publish: (id, queue) => {
         this.getSessionSnapshot(id);
         this.emit(id, "queue", { type: "queue_changed", queue });
@@ -252,11 +252,7 @@ export class SessionHost {
     this.backgroundTasks = new BackgroundTasks(dir, {
       publish: (task) => {
         if (!this.records.has(task.sessionId)) return;
-        this.meta(task.sessionId, {
-          type: "custom",
-          customType: `zpi.background_task:${task.taskId}`,
-          data: JSON.parse(JSON.stringify(task)),
-        });
+        this.settings.state.setRuntime(task.sessionId, "background", task.taskId, task, task.status);
         if (!this.views.has(task.sessionId)) this.getSessionSnapshot(task.sessionId);
         this.emit(task.sessionId, "background", { type: "background_task_changed", task });
         const parentId = this.records.get(task.sessionId)?.parentSessionId;
@@ -282,7 +278,7 @@ export class SessionHost {
       },
       error: (error) => this.errors.write("background.task", error),
     });
-    this.subagents = new SubagentPlugin(new SubagentProfiles(dir), {
+    this.subagents = new SubagentPlugin(new SubagentProfiles(dir, settings.state), {
       cwd: (id) => this.cwd(this.record(id)),
       selection: (id) => {
         const session = this.sessions.get(id);
@@ -327,13 +323,13 @@ export class SessionHost {
             subagentProfile: structuredClone(profile),
             subagentInstructions: this.parentInstructions.get(this.record(id).parentSessionId ?? "") ?? [],
           };
-          this.meta(id, {
-            type: "custom",
-            customType: "zpi.configuration",
-            data: JSON.parse(JSON.stringify(configuration)),
-          });
+          this.saveTask(id, { frozenConfiguration: configuration });
           this.configurations.set(id, configuration);
-          this.meta(id, { type: "custom", customType: "zpi.selection", data: { ...selection } });
+          const level = toThinking(selection.reasoning, this.settings.getModel(selection));
+          this.saveTask(id, {
+            currentSelection: selection,
+            ...(level !== "off" ? { lastThinkingLevel: level } : {}),
+          });
           this.sessions.get(id)?.dispose();
           this.sessions.delete(id);
         }
@@ -358,11 +354,7 @@ export class SessionHost {
       },
       publish: (task) => {
         if (!this.records.has(task.childSessionId) || !this.records.has(task.parentSessionId)) return;
-        this.meta(task.childSessionId, {
-          type: "custom",
-          customType: "zpi.subagent_task",
-          data: JSON.parse(JSON.stringify(task)),
-        });
+        this.settings.state.setRuntime(task.childSessionId, "subagent", task.agentId, task, task.status);
         if (!this.views.has(task.parentSessionId)) this.getSessionSnapshot(task.parentSessionId);
         this.emit(task.parentSessionId, "subagents", {
           type: "subagent_changed",
@@ -371,34 +363,7 @@ export class SessionHost {
       },
       notify: (task, message) => this.deliverSubagentMessage(task, message),
     });
-    const file = join(dir, "projects.json");
-    if (existsSync(file)) {
-      const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
-      if (
-        !Array.isArray(raw) ||
-        raw.some(
-          (p: unknown) =>
-            !isJsonObject(p) ||
-            typeof p.id !== "string" ||
-            !/^[a-zA-Z0-9_-]+$/.test(p.id) ||
-            typeof p.name !== "string" ||
-            !p.name.trim() ||
-            typeof p.path !== "string" ||
-            !isAbsolute(p.path) ||
-            typeof p.updatedAt !== "number" ||
-            !Number.isFinite(p.updatedAt) ||
-            (p.hidden !== undefined && typeof p.hidden !== "boolean"),
-        )
-      )
-        throw new Error("storage: Invalid project records");
-      const projects = raw as ProjectRecord[];
-      if (
-        new Set(projects.map((p) => p.id)).size !== projects.length ||
-        new Set(projects.map((p) => p.path)).size !== projects.length
-      )
-        throw new Error("storage: Duplicate project records");
-      this.projects = projects;
-    }
+    this.projects = settings.state.listProjects();
   }
   async init(): Promise<void> {
     try {
@@ -408,155 +373,95 @@ export class SessionHost {
     } catch (error) {
       this.errors.write("attachments.cleanup", error);
     }
-    const root = join(this.dir, "agent", "sessions");
-    await mkdir(root, { recursive: true });
-    for (const partition of await readdir(root, { withFileTypes: true })) {
-      if (!partition.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(partition.name)) continue;
-      const projectId = partition.name === "_unassigned" ? null : partition.name;
-      for (const name of await readdir(join(root, partition.name))) {
-        if (!/^[a-zA-Z0-9_-]+\.jsonl$/.test(name)) continue;
-        const id = name.slice(0, -6),
-          index = new HistoryIndex(join(root, partition.name, name));
-        try {
-          await index.load();
-        } catch (error) {
-          this.errors.write("session.history", error, { sessionId: id });
-          const diagnostic = `storage: ${String(error)}`;
-          this.records.set(id, {
-            id,
-            projectId,
-            title: "无法读取的会话",
-            createdAt: 0,
-            updatedAt: 0,
-            running: false,
-            diagnostic,
-          });
-          this.blocked.set(id, diagnostic);
-          continue;
-        }
-        this.indexes.set(id, index);
-        const state = index.data.state;
-        const info = state.session_info;
-        const title = info?.type === "session_info" ? info.name : "新对话";
-        const meta = state["zpi.session_meta"];
-        let pinnedAt: number | null = null,
-          archivedAt: number | null = null;
-        let diagnostic = index.data.diagnostic;
-        if (meta?.type === "custom" && isJsonObject(meta.data)) {
-          if (
-            meta.data.projectId !== projectId ||
-            (meta.data.pinnedAt !== null && !Number.isFinite(meta.data.pinnedAt))
-          )
-            diagnostic = "会话归属元数据与存储目录不一致";
-          else {
-            pinnedAt = meta.data.pinnedAt as number | null;
-            archivedAt =
-              typeof meta.data.archivedAt === "number" && Number.isFinite(meta.data.archivedAt)
-                ? meta.data.archivedAt
-                : null;
-          }
-        }
-        const latest = state["zpi.run"];
-        const data = latest?.type === "custom" && isJsonObject(latest.data) ? latest.data : undefined;
-        const status = data
-          ? ((data.phase === "start" ? "interrupted" : data.status) as RunStatus)
-          : undefined;
-        const createdAt = Date.parse(index.data.header.timestamp);
-        const updatedAt = index.data.lastActivityAt ?? createdAt;
-        const attention = state["zpi.attention"];
-        const environment = state["zpi.environment"];
-        const environmentData =
-          environment?.type === "custom" && isJsonObject(environment.data) ? environment.data : undefined;
-        const unreadAt =
-          attention?.type === "custom" &&
-          isJsonObject(attention.data) &&
-          typeof attention.data.unreadAt === "number" &&
-          Number.isFinite(attention.data.unreadAt)
-            ? attention.data.unreadAt
-            : undefined;
-        if (this.records.has(id)) throw new Error("storage: Duplicate session IDs");
-        if (diagnostic) this.errors.write("session.history", diagnostic, { sessionId: id });
-        this.records.set(id, {
-          id,
-          projectId,
-          title,
-          status,
-          createdAt,
-          updatedAt,
-          running: false,
-          pinnedAt,
-          archivedAt,
-          unreadAt,
-          cwd:
-            environmentData?.worktree || typeof environmentData?.parentSessionId === "string"
-              ? index.data.header.cwd
-              : undefined,
-          newWorktree: environmentData?.newWorktree === true,
-          ...(typeof environmentData?.worktreeBaseRef === "string"
-            ? { worktreeBaseRef: environmentData.worktreeBaseRef }
-            : {}),
-          ...(isJsonObject(environmentData?.worktree)
-            ? { worktree: environmentData.worktree as unknown as NonNullable<SessionRecord["worktree"]> }
-            : {}),
-          ...(typeof environmentData?.parentSessionId === "string"
-            ? { parentSessionId: environmentData.parentSessionId }
-            : {}),
-          draft:
-            meta?.type === "custom" &&
-            isJsonObject(meta.data) &&
-            meta.data.draft === true &&
-            Object.keys(index.data.runs).length === 0,
-          ...(diagnostic ? { diagnostic } : {}),
-        });
-        const savedQueue = state["zpi.queue"];
+    this.settings.state.pruneAudit();
+    this.settings.state.recoverRuntime();
+    // The database owns task identity and location. Unreferenced files are never adopted.
+    for (const task of this.settings.state.listTasks()) {
+      const record = this.taskRecord(task);
+      if (record.status === "running") {
+        record.status = "interrupted";
+        this.settings.state.upsertTask({ ...task, status: "interrupted" });
+      }
+      this.records.set(task.id, { ...record, running: false });
+      const index = this.historyIndex(this.path(record));
+      try {
+        await index.load();
+        if (index.data.header.id !== task.id) throw new Error("Session identity mismatch");
+        this.indexes.set(task.id, index);
+      } catch (error) {
+        const diagnostic = `storage: ${String(error)}`;
+        this.blocked.set(task.id, diagnostic);
+        this.record(task.id).diagnostic = diagnostic;
+        this.errors.write("session.history", error, { sessionId: task.id });
+      }
+      this.inputQueue.restore(
+        task.id,
+        this.settings.state.getQueue(task.id) ?? { items: [], autoDrain: true },
+      );
+    }
+    // Resolve only explicit intents. Never replay a tool or automatically resend an input.
+    for (const intent of this.settings.state.listIntents()) {
+      if (!this.records.has(intent.taskId)) continue;
+      if (intent.kind === "accept-input" && intent.runId) {
+        const recoveredRunId = intent.runId;
+        const index = this.indexes.get(intent.taskId);
+        const accepted = index?.findAcceptedRun(intent.runId);
         if (
-          savedQueue?.type === "custom" &&
-          isJsonObject(savedQueue.data) &&
-          Array.isArray(savedQueue.data.items)
+          accepted &&
+          accepted.queueItemId === intent.queueItemId &&
+          (!intent.watermark || intent.watermark === accepted.watermark)
         ) {
-          const queue = savedQueue.data as unknown as InputQueue;
-          const pendingIds = new Set(queue.items.map((item) => item.id));
-          const acceptedIds = new Set<string>();
-          // Dequeue persistence can fail before a later turn replaces the latest run marker.
-          // Reconcile every durable acceptance, not only the most recent turn.
-          for (const run of Object.values(index.data.runs).reverse()) {
-            if (!pendingIds.size) break;
-            for (const entry of index.read(run.start)) {
-              if (entry.type !== "custom" || !isJsonObject(entry.data)) continue;
-              const itemId = entry.data.queueItemId;
-              if (typeof itemId === "string" && pendingIds.delete(itemId)) acceptedIds.add(itemId);
-            }
-          }
-          this.inputQueue.restore(id, queue, acceptedIds);
+          this.settings.state.putIntent({ ...intent, stage: "durable", watermark: accepted.watermark });
+          const finalize = () => {
+            this.saveTask(intent.taskId, { draft: false, status: "interrupted" });
+            this.settings.state.setRuntime(
+              intent.taskId,
+              "run",
+              recoveredRunId,
+              { runId: intent.runId },
+              "interrupted",
+            );
+          };
+          if (intent.queueItemId) this.settings.state.completeQueuedInput(intent.operationId, finalize);
+          else this.settings.state.completeIntent(intent.operationId, finalize);
+        } else {
+          this.settings.state.putIntent({ ...intent, stage: "blocked" });
+          this.blocked.set(intent.taskId, "storage: Incomplete input acceptance retained for recovery");
+        }
+      } else if (intent.kind === "replace" || intent.kind === "fork") {
+        // The committed task still points at its old generation; preserve both files for inspection.
+        this.settings.state.putIntent({ ...intent, stage: "blocked" });
+        this.blocked.set(intent.taskId, "storage: Uncommitted generation retained for recovery");
+        this.errors.write("session.generation", "Uncommitted generation preserved", {
+          sessionId: intent.taskId,
+        });
+      }
+    }
+    for (const task of this.records.values()) {
+      this.inputQueue.restore(
+        task.id,
+        this.settings.state.getQueue(task.id) ?? { items: [], autoDrain: true },
+        this.settings.state.acceptedInputIds(task.id),
+      );
+      for (const runtime of this.settings.state.getRuntime(task.id)) {
+        if (runtime.kind === "background") {
+          const value = runtime.data as BackgroundTask;
+          this.backgroundTasks.restore({
+            ...value,
+            status: runtime.status === "interrupted" ? "lost" : value.status,
+          });
+        }
+        if (runtime.kind === "subagent") {
+          const value = runtime.data as SubagentTask;
+          this.subagents.restore({
+            ...value,
+            ...(runtime.status === "interrupted"
+              ? { status: "interrupted" as const, waitingForInput: false }
+              : {}),
+          });
         }
       }
     }
-    for (const [id, index] of this.indexes) {
-      for (const [key, saved] of Object.entries(index.data.state))
-        if (
-          key.startsWith("zpi.background_task:") &&
-          saved.type === "custom" &&
-          isJsonObject(saved.data) &&
-          saved.data.sessionId === id &&
-          typeof saved.data.taskId === "string"
-        )
-          this.backgroundTasks.restore(saved.data as unknown as BackgroundTask);
-      const entry = index.data.state["zpi.subagent_task"];
-      if (
-        entry?.type === "custom" &&
-        isJsonObject(entry.data) &&
-        entry.data.childSessionId === id &&
-        typeof entry.data.agentId === "string" &&
-        this.records.get(id)?.parentSessionId === entry.data.parentSessionId
-      )
-        this.subagents.restore(entry.data as unknown as SubagentTask);
-    }
-    // Keep the earliest pins when migrating older versions without a pin limit.
-    const excessPins = [...this.records.values()]
-      .filter((record) => record.pinnedAt != null && record.archivedAt == null)
-      .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0))
-      .slice(taskPinLimit);
-    for (const record of excessPins) this.setSessionPinned(record.id, false);
     // Validate saved configuration before exposing restored sessions.
     for (const id of this.records.keys()) {
       try {
@@ -580,10 +485,8 @@ export class SessionHost {
     const cached = this.configurations.get(id);
     if (cached) return cached;
     if (this.record(id).draft) return this.defaultConfiguration();
-    const entry = this.indexes.get(id)?.data.state["zpi.configuration"];
-    if (entry?.type !== "custom" || !isJsonObject(entry.data))
-      throw new Error("Invalid session configuration");
-    const config = entry.data as unknown as SessionConfiguration;
+    const config = this.settings.state.getTask(id)?.frozenConfiguration as SessionConfiguration | undefined;
+    if (!config) throw new Error("Invalid session configuration");
     validateTemplate(config.template);
     if (config.communicationStyle !== undefined && typeof config.communicationStyle !== "boolean")
       throw new Error("Invalid communication style capability");
@@ -626,7 +529,7 @@ export class SessionHost {
     if (p) p = { ...p, hidden: false, updatedAt: Date.now() };
     else p = { id: randomUUID(), name: basename(canonical), path: canonical, updatedAt: Date.now() };
     const next = this.projects.filter((o) => o.id !== p?.id).concat(p);
-    atomicJson(join(this.dir, "projects.json"), next);
+    this.settings.state.upsertProject(p);
     this.projects = next;
     return structuredClone(p);
   }
@@ -639,7 +542,7 @@ export class SessionHost {
   }
   private saveProject(project: ProjectRecord): void {
     const next = this.projects.map((p) => (p.id === project.id ? project : p));
-    atomicJson(join(this.dir, "projects.json"), next);
+    this.settings.state.upsertProject(project);
     this.projects = next;
   }
   private name(name: string): string {
@@ -657,8 +560,15 @@ export class SessionHost {
     if (!r) throw new Error("not_found: 会话不存在");
     return r;
   }
+  private requiredIndex(id: string): HistoryIndex {
+    const index = this.indexes.get(id);
+    if (!index) throw new Error("storage: Missing history index");
+    return index;
+  }
   private path(record: SessionRecord): string {
-    return join(this.dir, "agent", "sessions", record.projectId ?? "_unassigned", `${record.id}.jsonl`);
+    const file = this.settings.state.getTask(record.id)?.sessionFile;
+    if (!file) throw new Error("storage: Missing task transcript location");
+    return isAbsolute(file) ? file : join(this.dir, file);
   }
   sessionPath(id: string): string {
     return this.path(this.record(id));
@@ -698,18 +608,13 @@ export class SessionHost {
       .map((record) => {
         const path = record.projectId === null ? this.cwd(record) : this.project(record.projectId).path;
         const name = record.title.replace(/^#sess_[a-zA-Z0-9._-]+\s*/, "").trim() || "Untitled session";
-        const model = this.indexes.get(record.id)?.data.state.model_change;
+        const model = this.settings.state.getTask(record.id)?.currentSelection;
         return {
           sessionId: record.id,
           name,
           description: basename(path),
           workspaceKey: workspaceKey(record),
-          keywords: [
-            record.title,
-            record.id,
-            path,
-            ...(model?.type === "model_change" ? [model.provider, model.modelId] : []),
-          ],
+          keywords: [record.title, record.id, path, ...(model ? [model.provider, model.modelId] : [])],
           insert: `${buildSessionMentionMarkdown(record.id, name)} `,
           group: "对话",
         };
@@ -750,29 +655,23 @@ export class SessionHost {
         (record) =>
           !needle ||
           record.title.toLocaleLowerCase().includes(needle) ||
-          this.indexes
-            .get(record.id)
-            ?.data.searchText.map((segment) => segment.text)
-            .join("\n")
-            .toLocaleLowerCase()
-            .includes(needle),
+          this.indexes.get(record.id)?.hasSearchText(needle),
       )
       .slice(0, 80)
       .map((record) => ({
         ...record,
-        snippets: buildTaskSearchSnippets(this.indexes.get(record.id)?.data.searchText ?? [], needle),
+        snippets: buildTaskSearchSnippets(this.indexes.get(record.id)?.searchTextFor(needle) ?? [], needle),
       }));
   }
   async getTaskSearchChanges(id: string): Promise<TaskSearchChange[]> {
     const writes = this.recordedChanges(id, null);
     const summaries = new Map<string, TaskSearchChange>();
     const index = this.indexes.get(id);
-    const turns = Object.values(index?.data.runs ?? {})
-      .map((run) => run.start.start)
-      .sort((a, b) => a - b);
+    const turns = [...(index?.listRuns() ?? [])].map((run) => run.start.start).sort((a, b) => a - b);
+    const spans = [...(index?.fileChanges() ?? [])];
     writes.forEach((write, position) => {
       const previous = summaries.get(write.path);
-      const offset = index?.data.fileChanges[position]?.start ?? 0;
+      const offset = spans[position]?.start ?? 0;
       summaries.set(write.path, {
         path: write.path,
         added: 0,
@@ -819,58 +718,67 @@ export class SessionHost {
     const cwd = options.cwd ?? (projectId === null ? this.defaultWorkspace : this.project(projectId).path);
     if (projectId === null) mkdirSync(cwd, { recursive: true });
     if (!statSync(cwd).isDirectory()) throw new Error("configuration: 工作目录不可用");
-    const manager = SessionManager.create(
+    const id = randomUUID();
+    mkdirSync(join(this.dir, "agent", "sessions", projectId ?? "_unassigned"), { recursive: true });
+    const file = join(this.dir, "agent", "sessions", projectId ?? "_unassigned", `${id}.jsonl`);
+    const operationId = randomUUID();
+    const createdAt = Date.now();
+    const record: SessionRecord = {
+      id,
+      projectId,
+      title: "新对话",
+      draft: true,
+      createdAt,
+      updatedAt: createdAt,
+      running: false,
+      pinnedAt: null,
       cwd,
-      join(this.dir, "agent", "sessions", projectId ?? "_unassigned"),
-    );
-    const id = manager.getSessionId();
+      ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+    };
+    this.settings.state.putIntent({
+      operationId,
+      taskId: id,
+      kind: "create",
+      stage: "prepared",
+      targetFile: relative(this.dir, file),
+    });
     try {
-      const index = HistoryIndex.fresh(manager.getSessionFile() as string);
-      this.indexes.set(id, index);
-      manager.subscribeEntries((entry) => index.ingest(entry));
-      manager.appendSessionInfo("新对话");
-      manager.appendCustomEntry("zpi.title", { state: "new" });
-      manager.appendCustomEntry("zpi.session_meta", { projectId, pinnedAt: null, draft: true });
-      if (options.parentSessionId)
-        manager.appendCustomEntry("zpi.environment", { parentSessionId: options.parentSessionId });
-      const selected = this.settings.get().lastSelection;
-      if (selected && this.settings.isSelectionValid(selected)) {
-        manager.appendModelChange(selected.provider, selected.modelId);
-        manager.appendThinkingLevelChange(toThinking(selected.reasoning, this.settings.getModel(selected)));
-      }
-      const record: SessionRecord = {
-        id,
-        projectId,
-        title: "新对话",
-        draft: true,
-        createdAt: Date.parse(index.data.header.timestamp),
-        updatedAt: Date.parse(index.data.header.timestamp),
-        running: false,
-        pinnedAt: null,
-        cwd,
-        ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
-      };
+      const index = HistoryIndex.create(
+        file,
+        this.settings.state.db,
+        {
+          type: "session",
+          format: "zpi",
+          version: 2,
+          id,
+          cwd,
+          timestamp: new Date(createdAt).toISOString(),
+        },
+        this.generationHooks(),
+      );
+      this.settings.state.completeIntent(operationId, () => {
+        this.settings.state.upsertTask({
+          ...record,
+          sessionFile: relative(this.dir, file),
+          titleState: "new",
+          currentSelection: this.settings.get().lastSelection ?? undefined,
+        });
+        if (!record.parentSessionId)
+          this.taskGroups.update({ type: "moveTask", id, groupId: options.groupId ?? null, start: true }, [
+            ...this.records.values(),
+            record,
+          ]);
+      });
       this.records.set(id, record);
-      this.managers.set(id, manager);
-      index.flush();
-      if (!record.parentSessionId)
-        this.taskGroups.update({ type: "moveTask", id, groupId: options.groupId ?? null, start: true }, [
-          ...this.records.values(),
-        ]);
+      this.indexes.set(id, index);
       return structuredClone(record);
     } catch (error) {
-      // 分组与会话必须一起创建成功；分组写盘失败时清掉刚创建的草稿，避免 IPC 报错却留下幽灵会话。
-      this.records.delete(id);
-      this.managers.delete(id);
-      this.indexes.delete(id);
-      const file = manager.getSessionFile();
-      if (file) {
-        rmSyncFile(file, { force: true });
-        rmSyncFile(`${file}.index.json`, { force: true });
-      }
+      // Leave the intent and file for deterministic recovery; never adopt an orphan by scanning.
+      this.errors.write("session.create", error, { sessionId: id });
       throw error;
     }
   }
+
   async getGitEnvironment(id: string) {
     return gitEnvironment(this.cwd(this.record(id)));
   }
@@ -885,11 +793,7 @@ export class SessionHost {
     const worktreeBaseRef = baseRef ?? record.worktreeBaseRef ?? environment.currentRef ?? "HEAD";
     if (enabled) await resolveWorktreeBase(this.cwd(record), worktreeBaseRef);
     if (!record.draft || this.activeRuns.has(id)) throw new Error("busy: 会话已开始");
-    this.meta(id, {
-      type: "custom",
-      customType: "zpi.environment",
-      data: { newWorktree: enabled, worktreeBaseRef },
-    });
+    this.saveTask(id, { newWorktree: enabled, worktreeBaseRef });
     record.newWorktree = enabled;
     record.worktreeBaseRef = worktreeBaseRef;
     return structuredClone(record);
@@ -1027,15 +931,11 @@ export class SessionHost {
         subagentInstructions: structuredClone(this.parentInstructions.get(parentId) ?? []),
       };
       this.configurations.set(child.id, configuration);
-      const manager = this.manager(child.id);
-      manager.appendCustomEntry("zpi.configuration", JSON.parse(JSON.stringify(configuration)));
-      manager.appendCustomEntry("zpi.selection", { ...selection });
-      manager.appendCustomEntry("zpi.title", { state: "manual" });
-      manager.appendSessionInfo(description);
-      Object.assign(this.record(child.id), { title: description, draft: false });
-      manager.appendCustomEntry("zpi.session_meta", {
-        projectId: parent.projectId,
-        pinnedAt: null,
+      this.saveTask(child.id, {
+        frozenConfiguration: configuration,
+        currentSelection: selection,
+        titleState: "manual",
+        title: description,
         draft: false,
       });
       return child.id;
@@ -1113,91 +1013,108 @@ export class SessionHost {
       this.deleting.has(id)
     )
       throw new Error("busy: 此会话无法创建辅助对话");
-    const entries = this.manager(id).getEntries();
+    this.manager(id); // Recover durable tool facts before taking the stable inherited snapshot.
+    const source = this.indexes.get(id);
+    if (!source) throw new Error("storage: Missing transcript index");
+    const snapshot = source.snapshot();
+    let cutoff = snapshot.endSeq;
     const active = this.activeRuns.get(id);
-    const userIndex = active
-      ? entries.findIndex(
-          (entry) =>
-            entry.type === "custom" &&
-            entry.customType === "zpi.run" &&
-            isJsonObject(entry.data) &&
-            entry.data.runId === active.runId &&
-            entry.data.phase === "start",
-        )
-      : -1;
-    const activeUser =
-      userIndex < 0
-        ? -1
-        : entries.findIndex(
-            (entry, index) => index > userIndex && entry.type === "message" && entry.message.role === "user",
-          );
-    const stable = userIndex < 0 ? entries : entries.slice(0, activeUser >= 0 ? activeUser + 1 : userIndex);
+    if (active) {
+      const run = source.findRun(active.runId);
+      if (run) {
+        const start = source.seqAtOffset(run.start.start);
+        if (start !== undefined) {
+          cutoff = start - 1;
+          for (const item of source.readRange(start + 1, snapshot.endSeq, snapshot, ["message"])) {
+            if (item.entry.type === "message" && item.entry.message.role === "user") {
+              cutoff = item.seq;
+              break;
+            }
+          }
+        }
+      }
+    }
+    const stable = { ...snapshot, endSeq: cutoff };
+    const inherited = source.getStateAt(stable);
     const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
+    const operationId = randomUUID();
+    const originalFile = relative(this.dir, this.path(child));
+    this.settings.state.putIntent({
+      operationId,
+      taskId: child.id,
+      kind: "fork",
+      stage: "prepared",
+      targetFile: originalFile,
+    });
     try {
-      const manager = this.manager(child.id);
-      // Keep provider history and compaction boundaries, without projecting inherited messages into the pane.
-      const boundaries = new Set(
-        stable.flatMap((entry) => (entry.type === "compaction" ? [entry.firstKeptEntryId] : [])),
-      );
-      const transcript = stable.flatMap((entry): SessionEntry[] => {
-        if (
-          entry.type === "message" ||
-          entry.type === "compaction" ||
-          entry.type === "model_change" ||
-          entry.type === "thinking_level_change"
-        )
-          return [entry];
-        // Compaction may start at a run marker or streaming journal. Preserve its identity
-        // without inheriting desktop lifecycle state or replaying tool journals in the child.
-        return boundaries.has(entry.id)
-          ? [
-              {
-                id: entry.id,
-                parentId: entry.parentId,
-                timestamp: entry.timestamp,
-                type: "custom",
-                customType: "zpi.context_boundary",
+      const entries = function* () {
+        for (const { seq, entry } of source.readRange(1, cutoff, snapshot)) {
+          if (entry.type === "message" || entry.type === "compaction") yield entry;
+          else {
+            const state = source.getStateAt({ ...snapshot, endSeq: seq });
+            yield {
+              id: entry.id,
+              parentId: entry.parentId,
+              timestamp: entry.timestamp,
+              type: "custom" as const,
+              customType: "zpi.context_boundary",
+              data: {
+                historyConfiguration: {
+                  model: state.model,
+                  thinkingLevel: state.thinkingLevel,
+                  lastThinkingLevel: state.lastThinkingLevel,
+                  hasThinkingEntry: state.hasThinkingEntry,
+                },
               },
-            ]
-          : [];
-      });
-      manager.replaceEntries(
-        await copyFileChangeSnapshots(
-          transcript,
-          join(this.dir, "agent", "tool-output", id),
-          join(this.dir, "agent", "tool-output", child.id),
-        ),
+            };
+          }
+        }
+      };
+      const staged = await stageTranscript(
+        entries(),
+        async (entry) =>
+          (
+            await copyFileChangeSnapshots(
+              [entry],
+              join(this.dir, "agent", "tool-output", id),
+              join(this.dir, "agent", "tool-output", child.id),
+            )
+          )[0],
       );
+      const manager = this.manager(child.id);
+      try {
+        manager.replaceEntries(staged.entries());
+      } finally {
+        staged.close();
+      }
       manager.appendMessage({
         role: "user",
         timestamp: Date.now(),
         content:
           "The preceding conversation was inherited from the parent task for reference only. Do not continue the parent's active work automatically; answer only new questions sent in this side chat. Modify the workspace only when the user explicitly asks you to do so in this side chat.",
       });
-      const title = "辅助对话";
-      manager.appendSessionInfo(title);
-      manager.appendCustomEntry("zpi.session_meta", {
-        projectId: parent.projectId,
-        pinnedAt: null,
-        draft: false,
+      const model = inherited.model ? this.settings.getModel(inherited.model) : undefined;
+      this.settings.state.putIntent({
+        operationId,
+        taskId: child.id,
+        kind: "fork",
+        stage: "durable",
+        resultFile: relative(this.dir, this.path(child)),
+        targetFile: originalFile,
+        watermark: this.requiredIndex(child.id).snapshot().endSeq,
       });
-      manager.appendCustomEntry("zpi.title", { state: "manual" });
-      manager.appendCustomEntry("zpi.environment", { parentSessionId: id });
-      manager.appendCustomEntry("zpi.configuration", JSON.parse(JSON.stringify(this.configuration(id))));
-      const inherited = manager.buildSessionContext();
-      if (inherited.model) {
-        const model = this.settings.getModel(inherited.model);
-        manager.appendCustomEntry("zpi.selection", {
-          ...inherited.model,
-          reasoning: toPreset(inherited.thinkingLevel, model),
+      this.settings.state.completeIntent(operationId, () => {
+        this.saveTask(child.id, {
+          title: "辅助对话",
+          titleState: "manual",
+          draft: false,
+          frozenConfiguration: this.configuration(id),
+          currentSelection: inherited.model
+            ? { ...inherited.model, reasoning: toPreset(inherited.thinkingLevel, model) }
+            : this.settings.state.getTask(id)?.currentSelection,
+          lastThinkingLevel: inherited.lastThinkingLevel,
         });
-      }
-      this.managers.delete(child.id);
-      const index = new HistoryIndex(this.path(child));
-      await index.load();
-      this.indexes.set(child.id, index);
-      index.flush();
-      Object.assign(this.record(child.id), { title, draft: false });
+      });
       return structuredClone(this.record(child.id));
     } catch (error) {
       await this.deleteSession(child.id);
@@ -1253,7 +1170,7 @@ export class SessionHost {
     this.saveUnread(id, Date.now());
   }
   private saveUnread(id: string, unreadAt: number | undefined): void {
-    this.meta(id, { type: "custom", customType: "zpi.attention", data: { unreadAt: unreadAt ?? null } });
+    this.saveTask(id, { unreadAt });
     this.record(id).unreadAt = unreadAt;
   }
   setSessionPinned(id: string, pinned: boolean): SessionRecord {
@@ -1271,16 +1188,7 @@ export class SessionHost {
       const pinnedAt = pinned
         ? Math.max(Date.now(), ...[...this.records.values()].map((r) => (r.pinnedAt ?? 0) + 1))
         : null;
-      const prior = this.indexes.get(id)?.data.state["zpi.session_meta"];
-      this.meta(id, {
-        type: "custom",
-        customType: "zpi.session_meta",
-        data: {
-          ...(prior?.type === "custom" && isJsonObject(prior.data) ? prior.data : {}),
-          projectId: record.projectId,
-          pinnedAt,
-        },
-      });
+      this.saveTask(id, { pinnedAt });
       record.pinnedAt = pinnedAt;
     }
     return structuredClone(record);
@@ -1294,18 +1202,8 @@ export class SessionHost {
         await this.backgroundTasks.stopAll(id);
         for (const child of this.records.values())
           if (child.parentSessionId === id) await this.closeChildSession(child.id);
-        const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
         const archivedAt = Date.now();
-        this.meta(id, {
-          type: "custom",
-          customType: "zpi.session_meta",
-          data: {
-            ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
-            projectId: record.projectId,
-            pinnedAt: null,
-            archivedAt,
-          },
-        });
+        this.saveTask(id, { archivedAt, pinnedAt: null });
         Object.assign(record, { archivedAt, pinnedAt: null });
         if (this.visibleSessionId === id) this.visibleSessionId = undefined;
       } finally {
@@ -1331,48 +1229,53 @@ export class SessionHost {
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
     if (record.diagnostic || this.blocked.has(id)) throw new Error("storage: 无法读取的任务只能删除");
-    const previous = this.indexes.get(id)?.data.state["zpi.session_meta"];
     if (record.projectId !== null) {
       const project = this.project(record.projectId);
       if (project.hidden) this.saveProject({ ...project, hidden: false });
     }
-    this.meta(id, {
-      type: "custom",
-      customType: "zpi.session_meta",
-      data: {
-        ...(previous?.type === "custom" && isJsonObject(previous.data) ? previous.data : {}),
-        projectId: record.projectId,
-        pinnedAt: null,
-        archivedAt: null,
-      },
-    });
+    this.saveTask(id, { pinnedAt: null, archivedAt: null });
     Object.assign(record, { archivedAt: null, pinnedAt: null });
     return structuredClone(record);
   }
   private manager(id: string): SessionManager {
-    let m = this.managers.get(id);
-    if (!m) {
-      const r = this.record(id);
-      try {
-        m = SessionManager.open(this.path(r));
-        if (m.getCwd() !== this.cwd(r)) throw new Error("Session cwd does not match its ownership");
-        if (m.getSessionId() !== id) throw new Error("Session id does not match its file name");
-      } catch (e) {
-        throw new Error(`storage: ${String(e)}`);
-      }
+    let manager = this.managers.get(id);
+    if (!manager) {
       const index = this.indexes.get(id);
-      if (index) {
-        // Opening an interrupted stream can append recovered tool pairs before
-        // the live subscription is installed. Keep byte offsets authoritative.
-        const entries = m.getEntries();
-        const parent = entries.findIndex((entry) => entry.id === index.data.parentId);
-        for (const entry of entries.slice(parent + 1)) index.ingest(entry);
-        index.flush();
-        m.subscribeEntries((entry) => index.ingest(entry));
-      }
-      this.managers.set(id, m);
+      if (!index) throw new Error("storage: Missing transcript index");
+      manager = SessionManager.fromStore(index, {
+        get: () => {
+          const task = this.settings.state.getTask(id);
+          if (!task) throw new Error("storage: Missing task state");
+          const selection = task.currentSelection;
+          return {
+            model: selection ? { provider: selection.provider, modelId: selection.modelId } : null,
+            thinkingLevel: selection
+              ? toThinking(selection.reasoning, this.settings.getModel(selection))
+              : "off",
+            lastThinkingLevel: task.lastThinkingLevel ?? "medium",
+            name: task.title,
+          };
+        },
+        setModel: (provider, modelId) => {
+          const current = this.settings.state.getTask(id)?.currentSelection;
+          this.saveTask(id, {
+            currentSelection: { provider, modelId, reasoning: current?.reasoning ?? "off" },
+          });
+        },
+        setThinkingLevel: (level) => {
+          const current = this.settings.state.getTask(id)?.currentSelection;
+          if (!current) throw new Error("configuration: Missing task model");
+          this.saveTask(id, {
+            currentSelection: { ...current, reasoning: toPreset(level, this.settings.getModel(current)) },
+            ...(level !== "off" ? { lastThinkingLevel: level } : {}),
+          });
+        },
+        setName: (title) => this.saveTask(id, { title }),
+      });
+      if (manager.getSessionId() !== id) throw new Error("storage: Session identity mismatch");
+      this.managers.set(id, manager);
     }
-    return m;
+    return manager;
   }
   getSessionSnapshot(id: string): SessionSnapshot {
     const record = this.record(id),
@@ -1389,14 +1292,7 @@ export class SessionHost {
       this.views.set(id, view);
     }
     const controls = this.getControls(id);
-    const origin = index.data.state["zpi.fork"];
-    const forkOrigin =
-      origin?.type === "custom" &&
-      isJsonObject(origin.data) &&
-      typeof origin.data.parentSessionId === "string" &&
-      typeof origin.data.runId === "string"
-        ? { sessionId: origin.data.parentSessionId, runId: origin.data.runId }
-        : undefined;
+    const forkOrigin = this.settings.state.getTask(id)?.fork;
     view = {
       ...view,
       title: record.title,
@@ -1445,29 +1341,9 @@ export class SessionHost {
   private getControls(id: string): SessionControls {
     const index = this.indexes.get(id);
     if (!index) throw new Error("not_found: 会话不存在");
-    const entries = Object.entries(index.data.state)
-      .filter(([key]) => key !== "thinking_last")
-      .map(([, entry]) => entry);
-    const context = SessionManager.inMemory(this.cwd(this.record(id)), { id }, entries).buildSessionContext();
-    const saved = index.data.state["zpi.selection"];
-    const data = saved?.type === "custom" && isJsonObject(saved.data) ? saved.data : undefined;
-    const selection: CombinedSelection | null =
-      data &&
-      typeof data.provider === "string" &&
-      typeof data.modelId === "string" &&
-      typeof data.reasoning === "string" &&
-      data.reasoning.trim()
-        ? {
-            provider: data.provider,
-            modelId: data.modelId,
-            reasoning: data.reasoning as CombinedSelection["reasoning"],
-          }
-        : context.model
-          ? {
-              ...context.model,
-              reasoning: toPreset(context.thinkingLevel, this.settings.getModel(context.model)),
-            }
-          : null;
+    const entries = Object.values(index.getState());
+    const task = this.settings.state.getTask(id);
+    const selection = task?.currentSelection ?? null;
     const model = selection ? this.settings.getModel(selection) : undefined;
     const usageModel = this.activeRuns.get(id)?.session?.model ?? model;
     const presets = model ? availablePresets(model) : [];
@@ -1476,11 +1352,8 @@ export class SessionHost {
       presets,
       selectionValid: Boolean(selection && this.settings.isSelectionValid(selection)),
       model: selection ? { provider: selection.provider, modelId: selection.modelId } : null,
-      thinkingLevel: selection ? toThinking(selection.reasoning, model) : context.thinkingLevel,
-      lastThinkingLevel:
-        index.data.state.thinking_last?.type === "thinking_level_change"
-          ? index.data.state.thinking_last.thinkingLevel
-          : context.lastThinkingLevel,
+      thinkingLevel: selection ? toThinking(selection.reasoning, model) : "off",
+      lastThinkingLevel: task?.lastThinkingLevel ?? "medium",
       thinkingLevels: model ? supportedThinkingLevels(model) : ["off"],
       usage: usageModel
         ? {
@@ -1626,37 +1499,24 @@ export class SessionHost {
     if (!skills.skills.some((s) => s.path === path)) throw new Error("invalid_input: 技能不属于全局目录");
     return this.settings.setSkillEnabled(path, enabled);
   }
-  private runChanges(id: string, runId: string): FileChange[] {
-    let current = "";
-    const changes: FileChange[] = [];
-    const index = this.indexes.get(id),
-      boundary = index?.data.runs[runId];
-    if (!index || !boundary) return changes;
-    for (const e of index.read({ start: boundary.start.start, end: boundary.end?.end ?? index.data.size })) {
-      if (
-        e.type === "custom" &&
-        e.customType === "zpi.run" &&
-        isJsonObject(e.data) &&
-        e.data.phase === "start" &&
-        typeof e.data.runId === "string"
-      )
-        current = e.data.runId;
-      const change = current === runId ? entryFileChange(e) : undefined;
-      if (change) changes.push(change);
-    }
-    return changes;
-  }
   private recordedChanges(id: string, runId: string | null): FileChange[] {
     this.record(id);
-    if (runId) return this.runChanges(id, runId);
-    const index = this.indexes.get(id);
-    if (!index) throw new Error("not_found: 任务不存在");
-    return index.data.fileChanges.flatMap((span) =>
-      index.read(span).flatMap((entry) => {
+    const index = this.requiredIndex(id);
+    const boundary = runId ? index.findRun(runId) : undefined;
+    if (runId && !boundary) return [];
+    const changes: FileChange[] = [];
+    for (const span of index.fileChanges()) {
+      if (
+        boundary &&
+        (span.start < boundary.start.start || span.start >= (boundary.end?.end ?? index.data.size))
+      )
+        continue;
+      for (const entry of index.read(span)) {
         const change = entryFileChange(entry);
-        return change ? [change] : [];
-      }),
-    );
+        if (change) changes.push(change);
+      }
+    }
+    return changes;
   }
   private async allChanges(
     id: string,
@@ -1712,7 +1572,11 @@ export class SessionHost {
     if (!selection || !this.settings.isSelectionValid(selection))
       throw new Error("configuration: 模型已删除、关闭或思考程度不可用，请重新选择");
     // Composer selection is independent of the current SDK run's immutable configuration.
-    this.meta(id, { type: "custom", customType: "zpi.selection", data: { ...selection } });
+    const level = toThinking(selection.reasoning, this.settings.getModel(selection));
+    this.saveTask(id, {
+      currentSelection: selection,
+      ...(level !== "off" ? { lastThinkingLevel: level } : {}),
+    });
     this.settings.rememberSelection(selection);
     this.getSessionSnapshot(id);
     this.emit(id, "controls", { type: "controls_changed", controls: this.getControls(id) });
@@ -1724,8 +1588,7 @@ export class SessionHost {
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
     if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
     const title = this.name(name);
-    this.meta(id, { type: "session_info", name: title });
-    this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "manual" } });
+    this.saveTask(id, { title, titleState: "manual" });
     record.title = title;
     const view = this.views.get(id);
     if (view) this.views.set(id, { ...view, title });
@@ -1736,6 +1599,7 @@ export class SessionHost {
     if (this.activeRuns.has(id) || this.updating.has(id) || this.deleting.has(id))
       throw new Error("busy: 请先停止运行");
     const record = this.record(id);
+    const file = this.path(record);
     this.deleting.add(id);
     this.titleJobs.get(id)?.controller.abort();
     try {
@@ -1746,17 +1610,13 @@ export class SessionHost {
           await this.deleteSession(child.id);
         }
       await this.inputQueue.delete(id);
-      await this.attachments.deleteSession(id);
-      await rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true });
-      await rm(join(this.dir, "agent", "session-context", id), { recursive: true, force: true });
-      await rm(`${this.path(record)}.index.json`, { force: true });
-      this.drafts.delete(id);
-      await rm(this.path(record), { force: true });
+      this.settings.state.deleteTask(id);
+      // SQLite 删除提交后立即移除内存所有者，避免文件清理失败后 rename/upsert 复活墓碑。
+      this.records.delete(id);
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
       this.runtimes.delete(id);
-      this.records.delete(id);
       try {
         this.taskGroups.prune([...this.records.values()]);
       } catch (error) {
@@ -1773,6 +1633,19 @@ export class SessionHost {
       this.cursors.delete(id);
       this.sequences.delete(id);
       this.blocked.delete(id);
+      // 文件回收失败只记录诊断；逻辑删除已提交，不能让磁盘故障恢复可写任务。
+      for (const cleanup of [
+        () => this.attachments.deleteSession(id),
+        () => rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true }),
+        () => rm(join(this.dir, "agent", "session-context", id), { recursive: true, force: true }),
+        () => rm(file, { force: true }),
+      ]) {
+        try {
+          await cleanup();
+        } catch (error) {
+          this.errors.write("session.delete.cleanup", error, { sessionId: id });
+        }
+      }
     } finally {
       this.deleting.delete(id);
     }
@@ -1842,11 +1715,13 @@ export class SessionHost {
         continue;
       }
       try {
-        const transcript = sessionReferenceTranscript(
-          record.title,
-          target,
-          this.manager(target).getEntries(),
-        );
+        const index = this.indexes.get(target);
+        if (!index) throw new Error("storage: Missing transcript index");
+        const snapshot = index.snapshot();
+        const newestFirst = function* () {
+          for (const { entry } of index.readReverse(snapshot)) yield entry;
+        };
+        const transcript = sessionReferenceTranscriptReverse(record.title, target, newestFirst());
         const hash = createHash("sha256").update(transcript).digest("hex");
         // The referenced session owns its immutable snapshots. Forks share them safely,
         // and deleting the source removes every exported copy of its history.
@@ -1907,106 +1782,118 @@ export class SessionHost {
       throw new Error("invalid_input: 子智能体会话只读");
     return this.inputQueue.submit(input, disposition);
   }
-  private runStart(entries: SessionEntry[], runId: string): number {
-    const index = entries.findIndex(
-      (entry) =>
-        entry.type === "custom" &&
-        entry.customType === "zpi.run" &&
-        isJsonObject(entry.data) &&
-        entry.data.phase === "start" &&
-        entry.data.runId === runId,
-    );
-    if (index < 0) throw new Error("not_found: 消息已失效，请重新加载任务");
-    return index;
+  private runBoundary(id: string, runId: string) {
+    const index = this.indexes.get(id);
+    const run = index?.findRun(runId);
+    if (!index || !run) throw new Error("not_found: 消息已失效，请重新加载任务");
+    const start = index.seqAtOffset(run.start.start);
+    const end = run.end ? index.seqAtOffset(run.end.start) : undefined;
+    if (start === undefined) throw new Error("storage: Missing run boundary");
+    return { index, run, start, end };
   }
   async forkSession(id: string, runId: string): Promise<SessionRecord> {
     const parent = this.record(id);
     if (parent.parentSessionId) throw new Error("invalid_input: 辅助对话不支持分叉");
     if (this.closing || this.deleting.has(id) || this.updating.has(id)) throw new Error("busy: 任务正在更新");
-    const entries = this.manager(id).getEntries();
-    const start = this.runStart(entries, runId);
-    const end = entries.findIndex(
-      (entry) =>
+    this.manager(id);
+    const { index, start, end } = this.runBoundary(id, runId);
+    if (end === undefined) throw new Error("busy: 只能分叉已结束的回复");
+    const snapshot = { ...index.snapshot(), endSeq: end };
+    let hasAnswer = false;
+    let status: RunStatus | undefined;
+    for (const { entry } of index.readRange(start, end, snapshot)) {
+      if (entry.type === "message" && entry.message.role === "assistant")
+        hasAnswer =
+          !entry.message.content.some((part) => part.type === "toolCall") &&
+          entry.message.content.some((part) => part.type === "text" && part.text.trim());
+      if (
         entry.type === "custom" &&
         entry.customType === "zpi.run" &&
         isJsonObject(entry.data) &&
-        entry.data.phase === "end" &&
-        entry.data.runId === runId,
-    );
-    if (end < 0) throw new Error("busy: 只能分叉已结束的回复");
-    const prefix = entries.slice(0, end + 1);
-    const turn = restoreView(id, parent.title, entries.slice(start, end + 1)).runs[0];
-    if (!turn?.finalAnswerBlockIds.length) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
+        entry.data.phase === "end"
+      )
+        status = entry.data.status as RunStatus;
+    }
+    if (!hasAnswer) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
+    const inherited = index.getStateAt(snapshot);
     const child = this.createSession(parent.projectId, { cwd: this.cwd(parent) });
+    const operationId = randomUUID();
+    const originalFile = relative(this.dir, this.path(child));
+    this.settings.state.putIntent({
+      operationId,
+      taskId: child.id,
+      kind: "fork",
+      stage: "prepared",
+      targetFile: originalFile,
+    });
     try {
-      const transcript = prefix.filter(
-        (entry) =>
-          entry.type !== "session_info" &&
-          !(
-            entry.type === "custom" &&
-            ["zpi.session_meta", "zpi.title", "zpi.queue", "zpi.attention"].includes(entry.customType)
-          ),
-      );
-      const relocated = await this.attachments.copyTo(
-        id,
-        child.id,
-        prefix.flatMap((entry) =>
-          entry.type === "custom" &&
-          entry.customType === "zpi.run" &&
-          isJsonObject(entry.data) &&
-          Array.isArray(entry.data.attachments)
-            ? entry.data.attachments.flatMap((image) =>
-                isJsonObject(image) && typeof image.id === "string" ? [image.id] : [],
-              )
-            : [],
-        ),
-      );
-      const copied = await copyFileChangeSnapshots(
-        transcript,
-        join(this.dir, "agent", "tool-output", id),
-        join(this.dir, "agent", "tool-output", child.id),
-      );
-      for (const entry of copied) {
-        if (entry.type !== "custom" || entry.customType !== "zpi.run" || !isJsonObject(entry.data)) continue;
-        if (!Array.isArray(entry.data.attachments)) continue;
-        for (const attachment of entry.data.attachments) {
-          if (isJsonObject(attachment) && typeof attachment.path === "string")
-            attachment.path = relocated.get(attachment.path) ?? attachment.path;
+      const relocated = new Map<string, string>();
+      const source = function* () {
+        for (const { entry } of index.readRange(1, end, snapshot)) yield entry;
+      };
+      const staged = await stageTranscript(source(), async (entry) => {
+        const copied = (
+          await copyFileChangeSnapshots(
+            [entry],
+            join(this.dir, "agent", "tool-output", id),
+            join(this.dir, "agent", "tool-output", child.id),
+          )
+        )[0];
+        if (
+          copied.type === "custom" &&
+          copied.customType === "zpi.run" &&
+          isJsonObject(copied.data) &&
+          Array.isArray(copied.data.attachments)
+        ) {
+          const ids = copied.data.attachments.flatMap((image) =>
+            isJsonObject(image) && typeof image.id === "string" ? [image.id] : [],
+          );
+          const paths = await this.attachments.copyTo(id, child.id, ids);
+          for (const [from, to] of paths) relocated.set(from, to);
+          for (const image of copied.data.attachments)
+            if (isJsonObject(image) && typeof image.path === "string")
+              image.path = paths.get(image.path) ?? image.path;
         }
-      }
+        return copied;
+      });
       const manager = this.manager(child.id);
-      manager.replaceEntries(copied);
-      // Preserve original provider history and signatures; publish new child-owned paths as context.
+      try {
+        manager.replaceEntries(staged.entries());
+      } finally {
+        staged.close();
+      }
       if (relocated.size)
         manager.appendMessage({
           role: "user",
           timestamp: Date.now(),
-          content: `File attachments were copied for this fork. Use these current paths instead of the historical paths:\n${[
-            ...relocated,
-          ]
-            .map(([from, to]) => `${JSON.stringify(from)} -> ${JSON.stringify(to)}`)
-            .join("\n")}`,
+          content: `File attachments were copied for this fork. Use these current paths instead of the historical paths:\n${[...relocated].map(([from, to]) => `${JSON.stringify(from)} -> ${JSON.stringify(to)}`).join("\n")}`,
         });
-      manager.appendSessionInfo(`Fork of ${parent.title}`.slice(0, 200));
-      manager.appendCustomEntry("zpi.session_meta", {
-        projectId: child.projectId,
-        pinnedAt: null,
-        draft: false,
+      const model = inherited.model ? this.settings.getModel(inherited.model) : undefined;
+      this.settings.state.putIntent({
+        operationId,
+        taskId: child.id,
+        kind: "fork",
+        stage: "durable",
+        resultFile: relative(this.dir, this.path(child)),
+        targetFile: originalFile,
+        watermark: this.requiredIndex(child.id).snapshot().endSeq,
       });
-      manager.appendCustomEntry("zpi.title", { state: "manual" });
-      manager.appendCustomEntry("zpi.fork", { parentSessionId: id, runId });
-      this.managers.delete(child.id);
-      const index = new HistoryIndex(this.path(child));
-      await index.load();
-      this.indexes.set(child.id, index);
-      index.flush();
-      Object.assign(this.record(child.id), {
-        title: `Fork of ${parent.title}`.slice(0, 200),
-        draft: false,
-        status: turn.status,
-        ...(parent.worktree
-          ? { worktree: structuredClone(parent.worktree), newWorktree: parent.newWorktree }
-          : {}),
+      this.settings.state.completeIntent(operationId, () => {
+        this.saveTask(child.id, {
+          title: `Fork of ${parent.title}`.slice(0, 200),
+          titleState: "manual",
+          draft: false,
+          status,
+          frozenConfiguration: this.configuration(id),
+          fork: { sessionId: id, runId },
+          currentSelection: inherited.model
+            ? { ...inherited.model, reasoning: toPreset(inherited.thinkingLevel, model) }
+            : this.settings.state.getTask(id)?.currentSelection,
+          lastThinkingLevel: inherited.lastThinkingLevel,
+          ...(parent.worktree
+            ? { worktree: structuredClone(parent.worktree), newWorktree: parent.newWorktree }
+            : {}),
+        });
       });
       return structuredClone(this.record(child.id));
     } catch (error) {
@@ -2019,19 +1906,9 @@ export class SessionHost {
     if (record.parentSessionId) throw new Error("invalid_input: 辅助对话不支持编辑历史");
     if (this.closing || this.deleting.has(id) || this.updating.has(id) || record.archivedAt != null)
       throw new Error("busy: 任务正在关闭或更新");
-    const entries = this.manager(id).getEntries();
-    const start = this.runStart(entries, runId);
-    if (
-      entries
-        .slice(start + 1)
-        .some(
-          (entry) =>
-            entry.type === "custom" &&
-            entry.customType === "zpi.run" &&
-            isJsonObject(entry.data) &&
-            entry.data.phase === "start",
-        )
-    )
+    const { index, start } = this.runBoundary(id, runId);
+    const latest = index.listRuns()[Symbol.iterator]().next().value;
+    if (latest && latest.start.start !== index.findRun(runId)?.start.start)
       throw new Error("invalid_input: 只能编辑最新一轮用户消息");
     if (input.workspaceMode !== undefined && !["preserve", "rewind"].includes(input.workspaceMode))
       throw new Error("invalid_input: 文件重置参数无效");
@@ -2042,15 +1919,13 @@ export class SessionHost {
     if (!selection || !this.settings.isSelectionValid(selection))
       throw new Error("configuration: 请先选择有效模型");
     this.updating.add(id);
+    let recoveryQueued = false;
+    let recoveryItemId: string | undefined;
     try {
       // Validate before stopping or changing durable history. A failed edit keeps the existing turn.
       const { loaded, parsed } = await this.loadInput(next);
       const configuredModel = this.settings.getModel(selection);
-      const context = SessionManager.inMemory(
-        this.cwd(record),
-        {},
-        entries.slice(0, start),
-      ).buildSessionContext();
+      const context = this.manager(id).buildSessionContext({ ...index.snapshot(), endSeq: start - 1 });
       if (
         parsed.kind !== "compact" &&
         !configuredModel?.input.includes("image") &&
@@ -2071,64 +1946,84 @@ export class SessionHost {
       if (active) await this.abortRun({ sessionId: id, runId: active.runId });
       if (this.closing) throw new Error("busy: 应用正在关闭");
       const manager = this.manager(id);
-      const current = manager.getEntries();
-      const boundary = this.runStart(current, runId);
-      const remaining = new Set([
-        "zpi.session_meta",
-        "zpi.title",
-        "zpi.selection",
-        "zpi.configuration",
-        "zpi.environment",
-        "zpi.queue",
-      ]);
-      const metadata: SessionEntry[] = [];
-      for (let i = current.length - 1; i >= 0 && remaining.size; i--) {
-        const entry = current[i];
-        if (entry.type === "custom" && remaining.delete(entry.customType)) metadata.push(entry);
-      }
-      metadata.reverse();
-      const title = current.findLast((entry) => entry.type === "session_info");
-      if (title) metadata.push(title);
-      const prefix = current.slice(0, boundary);
-      const prefixIds = new Set(prefix.map((entry) => entry.id));
-      const transcript = [...prefix, ...metadata.filter((entry) => !prefixIds.has(entry.id))];
+      const current = this.runBoundary(id, runId);
+      const snapshot = current.index.snapshot();
+      const transcript = function* () {
+        for (const { entry } of current.index.readRange(1, current.start - 1, snapshot)) yield entry;
+      };
+      const preserveEditedInput = async () => {
+        const queue = this.inputQueue.get(id);
+        recoveryItemId = randomUUID();
+        const item = {
+          id: recoveryItemId,
+          state: "queued" as const,
+          text: next.text,
+          fileReferences: next.fileReferences ?? [],
+          attachments: loaded.metadata,
+          selection,
+        };
+        await this.attachments.markQueued(
+          id,
+          loaded.metadata.map((attachment) => attachment.id),
+          true,
+        );
+        const saved: InputQueue = {
+          ...queue,
+          items: [item, ...queue.items],
+          autoDrain: false,
+          pauseReason: "restart",
+        };
+        this.settings.state.setQueue(id, saved);
+        this.inputQueue.restore(id, saved);
+        recoveryQueued = true;
+      };
       if (workspaceMode === "rewind") {
         // Shell side effects have no write/edit checkpoints; never present a partial restore as complete.
-        if (
-          current
-            .slice(boundary)
-            .some(
-              (entry) =>
-                entry.type === "message" &&
-                entry.message.role === "toolResult" &&
-                entry.message.toolName === "bash",
-            )
-        )
+        let shellEffects = false;
+        for (const { entry } of current.index.readRange(current.start, snapshot.endSeq, snapshot, [
+          "message",
+        ]))
+          if (
+            entry.type === "message" &&
+            entry.message.role === "toolResult" &&
+            entry.message.toolName === "bash"
+          ) {
+            shellEffects = true;
+            break;
+          }
+        if (shellEffects)
           return { conflicts: [{ path: "bash/shell", reason: "bash/shell 修改已忽略", ignored: true }] };
         const plan = await planFileRewind(
           this.recordedChanges(id, runId),
           join(this.dir, "agent", "tool-output", id),
           this.cwd(record),
         );
-        const conflicts = applyFileRewind(plan, () => manager.replaceEntries(transcript));
+        if (plan.conflicts.length) return { conflicts: plan.conflicts };
+        await preserveEditedInput();
+        const conflicts = applyFileRewind(plan, () => manager.replaceEntries(transcript()));
         if (conflicts.length) return { conflicts };
-      } else manager.replaceEntries(transcript);
+      } else {
+        await preserveEditedInput();
+        manager.replaceEntries(transcript());
+      }
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
       this.views.delete(id);
       this.cursors.delete(id);
-      const index = new HistoryIndex(this.path(record));
-      await index.load();
-      this.indexes.set(id, index);
-      index.flush();
-      const snapshot = this.getSessionSnapshot(id);
-      this.emit(id, runId, { type: "history_reset", view: snapshot.view });
+      await current.index.load();
+      current.index.flush();
+      const restored = this.getSessionSnapshot(id);
+      this.emit(id, runId, { type: "history_reset", view: restored.view });
       this.updating.delete(id);
-      await this.startRun(next);
+      await this.startRun(next, recoveryItemId);
       return this.getSessionSnapshot(id);
     } finally {
       this.updating.delete(id);
+      if (recoveryQueued) {
+        const queue = this.settings.state.getQueue(id);
+        if (queue) this.inputQueue.restore(id, queue);
+      }
     }
   }
   async editQueuedInput(id: string, itemId: string) {
@@ -2171,6 +2066,7 @@ export class SessionHost {
     this.activeRuns.set(id, run);
     const needsWorktree = Boolean(record.newWorktree && !record.worktree);
     let started = false;
+    let acceptance: StorageIntent | undefined;
     try {
       const manager = this.manager(id);
       const loadedInput = await this.loadInput(input);
@@ -2206,11 +2102,21 @@ export class SessionHost {
         const modelLabel = `${config.name} / ${model.name}`;
         const childTask = this.subagents.taskForChild(id);
         if (childTask) this.subagents.update(childTask.agentId, { modelLabel });
-        if (record.draft)
-          manager.appendCustomEntry(
-            "zpi.configuration",
-            configuration as unknown as import("zpi-ai").JsonObject,
-          );
+        acceptance = {
+          operationId: randomUUID(),
+          taskId: id,
+          kind: "accept-input",
+          stage: "prepared",
+          targetFile: relative(this.dir, this.path(record)),
+          runId: run.runId,
+          ...(queueItemId ? { queueItemId } : {}),
+        };
+        const preparedAcceptance = acceptance;
+        this.settings.state.transaction("run.prepare", id, () => {
+          this.saveTask(id, { frozenConfiguration: configuration });
+          if (queueItemId) this.settings.state.reserveQueuedInput(preparedAcceptance);
+          else this.settings.state.putIntent(preparedAcceptance);
+        });
         manager.appendCustomEntry("zpi.run", {
           phase: "start",
           runId: run.runId,
@@ -2220,6 +2126,8 @@ export class SessionHost {
           startedAt,
           modelLabel,
           agentBoundaries: true,
+          thinkingLevel: toThinking(selection.reasoning, model),
+          lastThinkingLevel: this.settings.state.getTask(id)?.lastThinkingLevel ?? "medium",
           ...(input.subagentNotification ? { subagentNotification: { ...input.subagentNotification } } : {}),
           ...(queueItemId ? { queueItemId } : {}),
           modelConfig: {
@@ -2232,18 +2140,25 @@ export class SessionHost {
             supportsImages: model.input.includes("image"),
           },
         });
-        started = true;
-        if (record.draft) {
-          const prior = this.indexes.get(id)?.data.state["zpi.session_meta"];
-          manager.appendCustomEntry("zpi.session_meta", {
-            ...(prior?.type === "custom" && isJsonObject(prior.data) ? prior.data : {}),
-            projectId: record.projectId,
-            pinnedAt: record.pinnedAt ?? null,
+        manager.appendCustomEntry("zpi.run", {
+          phase: "accepted",
+          runId: run.runId,
+          ...(queueItemId ? { queueItemId } : {}),
+        });
+        acceptance = { ...acceptance, stage: "durable", watermark: this.requiredIndex(id).data.size };
+        this.settings.state.putIntent(acceptance);
+        const finalize = () => {
+          this.saveTask(id, {
             draft: false,
+            frozenConfiguration: configuration,
+            status: "running",
+            updatedAt: startedAt,
           });
-          record.draft = false;
-        }
-        record.status = "running";
+          this.settings.state.setRuntime(id, "run", run.runId, { runId: run.runId, startedAt }, "running");
+        };
+        if (queueItemId) this.settings.state.completeQueuedInput(acceptance.operationId, finalize);
+        else this.settings.state.completeIntent(acceptance.operationId, finalize);
+        started = true;
         this.emit(id, run.runId, {
           type: "started",
           subagentNotification: input.subagentNotification,
@@ -2267,15 +2182,7 @@ export class SessionHost {
           manager.setCwd(worktree.path);
           Object.assign(record, { cwd: worktree.path, worktree });
           await this.indexes.get(id)?.load();
-          this.meta(id, {
-            type: "custom",
-            customType: "zpi.environment",
-            data: {
-              newWorktree: true,
-              ...(record.worktreeBaseRef ? { worktreeBaseRef: record.worktreeBaseRef } : {}),
-              worktree,
-            },
-          });
+          this.saveTask(id, { cwd: worktree.path, worktree, newWorktree: true });
           this.emit(id, run.runId, {
             type: "environment_changed",
             cwd: worktree.path,
@@ -2429,6 +2336,11 @@ export class SessionHost {
       } else await initialize();
       return { runId: run.runId };
     } catch (error) {
+      if (acceptance && !started) {
+        const diagnostic = "storage: Input acceptance was interrupted; reopen to reconcile before retrying";
+        this.blocked.set(id, diagnostic);
+        this.errors.write("run.accept", error, { sessionId: id, runId: run.runId });
+      }
       if (started) {
         record.draft = false;
         this.settle(id, run, error);
@@ -2444,17 +2356,57 @@ export class SessionHost {
       throw error;
     }
   }
-  private meta(id: string, fields: Parameters<HistoryIndex["append"]>[0]): void {
-    const manager = this.managers.get(id);
-    if (!manager) this.indexes.get(id)?.append(fields);
-    else {
-      if (fields.type === "session_info") manager.appendSessionInfo(fields.name);
-      else if (fields.type === "model_change") manager.appendModelChange(fields.provider, fields.modelId);
-      else if (fields.type === "thinking_level_change")
-        manager.appendThinkingLevelChange(fields.thinkingLevel);
-      else manager.appendCustomEntry(fields.customType, fields.data);
-      this.indexes.get(id)?.flush();
-    }
+  private taskRecord(task: TaskState): SessionRecord {
+    const {
+      sessionFile: _file,
+      currentSelection: _selection,
+      frozenConfiguration: _configuration,
+      titleState: _titleState,
+      lastThinkingLevel: _thinking,
+      fork: _fork,
+      groupId: _group,
+      sortKey: _sort,
+      queuePaused: _paused,
+      revision: _revision,
+      ...record
+    } = task;
+    return record;
+  }
+  private saveTask(id: string, patch: Partial<TaskState>): void {
+    const record = this.record(id);
+    const saved = this.settings.state.upsertTask({ ...record, ...patch });
+    Object.assign(record, this.taskRecord(saved));
+  }
+  private generationHooks(): NonNullable<ConstructorParameters<typeof HistoryIndex>[2]> {
+    let operation: StorageIntent | undefined;
+    return {
+      prepare: (_oldPath, newPath, header) => {
+        operation = {
+          operationId: randomUUID(),
+          taskId: header.id,
+          kind: "replace",
+          stage: "prepared",
+          targetFile: relative(this.dir, newPath),
+        };
+        this.settings.state.putIntent(operation);
+      },
+      commit: (_oldPath, newPath, header, watermark) => {
+        if (
+          !operation ||
+          operation.taskId !== header.id ||
+          operation.targetFile !== relative(this.dir, newPath)
+        )
+          throw new Error("storage: Generation intent mismatch");
+        this.settings.state.putIntent({ ...operation, stage: "durable", watermark });
+        this.settings.state.completeIntent(operation.operationId, () => {
+          this.saveTask(header.id, { sessionFile: relative(this.dir, newPath), cwd: header.cwd });
+        });
+        operation = undefined;
+      },
+    };
+  }
+  private historyIndex(path: string): HistoryIndex {
+    return new HistoryIndex(path, this.settings.state.db, this.generationHooks());
   }
   async getDraft(id: string) {
     this.record(id);
@@ -2483,16 +2435,15 @@ export class SessionHost {
     this.drafts.save(id, draft);
   }
   private titleFromInput(id: string, text: string): void {
-    const record = this.record(id),
-      state = this.indexes.get(id)?.data.state["zpi.title"];
-    if (state?.type !== "custom" || !isJsonObject(state.data) || state.data.state !== "new") return;
+    const record = this.record(id);
+    if (this.settings.state.getTask(id)?.titleState !== "new") return;
     const visible = text.trim().replace(/\s+/g, " ");
     const characters = Array.from(
       new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(visible),
       (part) => part.segment,
     );
     const title = characters.length > 20 ? `${characters.slice(0, 20).join("")}…` : visible;
-    this.meta(id, { type: "session_info", name: title || "图片消息" });
+    this.saveTask(id, { title: title || "图片消息" });
     record.title = title || "图片消息";
     const view = this.views.get(id);
     if (view) this.views.set(id, { ...view, title: record.title });
@@ -2504,13 +2455,8 @@ export class SessionHost {
     config: ReturnType<SettingsStore["snapshot"]>,
     model: import("zpi-ai").Model,
   ): void {
-    const state = this.indexes.get(id)?.data.state["zpi.title"];
-    if (state?.type !== "custom" || !isJsonObject(state.data) || state.data.state !== "new") return;
-    this.meta(id, {
-      type: "custom",
-      customType: "zpi.title",
-      data: { state: "pending", provider: model.provider, modelId: model.id },
-    });
+    if (this.settings.state.getTask(id)?.titleState !== "new") return;
+    this.saveTask(id, { titleState: "pending" });
     const controller = new AbortController();
     const done = (async () => {
       try {
@@ -2523,31 +2469,15 @@ export class SessionHost {
           images,
           controller.signal,
         );
-        const latest = this.indexes.get(id)?.data.state["zpi.title"];
-        if (
-          this.closing ||
-          this.deleting.has(id) ||
-          !this.records.has(id) ||
-          latest?.type !== "custom" ||
-          !isJsonObject(latest.data) ||
-          latest.data.state !== "pending"
-        )
-          return;
-        this.meta(id, { type: "session_info", name: title });
-        this.record(id).title = title;
-        this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "generated" } });
+        const latest = this.settings.state.getTask(id)?.titleState;
+        if (this.closing || this.deleting.has(id) || !this.records.has(id) || latest !== "pending") return;
+        this.saveTask(id, { title, titleState: "generated" });
         this.emit(id, "title", { type: "session_changed", title });
       } catch (error) {
         if (!controller.signal.aborted) this.errors.write("session.title", error, { sessionId: id });
-        const latest = this.indexes.get(id)?.data.state["zpi.title"];
-        if (
-          this.records.has(id) &&
-          !this.deleting.has(id) &&
-          latest?.type === "custom" &&
-          isJsonObject(latest.data) &&
-          latest.data.state === "pending"
-        )
-          this.meta(id, { type: "custom", customType: "zpi.title", data: { state: "failed" } });
+        const latest = this.settings.state.getTask(id)?.titleState;
+        if (this.records.has(id) && !this.deleting.has(id) && latest === "pending")
+          this.saveTask(id, { titleState: "failed" });
       } finally {
         this.titleJobs.delete(id);
       }
@@ -2657,6 +2587,12 @@ export class SessionHost {
     const record = this.record(id);
     record.status = status;
     try {
+      this.saveTask(id, { status, updatedAt: endedAt });
+      this.settings.state.setRuntime(id, "run", run.runId, { runId: run.runId, endedAt }, status);
+    } catch (error) {
+      storageFailure(error, "agent.state");
+    }
+    try {
       this.emit(id, run.runId, {
         type: "settled",
         status,
@@ -2701,7 +2637,16 @@ export class SessionHost {
     ]);
     await run.done;
   }
-  async close(): Promise<void> {
+  private closePromise?: Promise<void>;
+  close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
+    this.closePromise = this.closeResources().catch((error) => {
+      this.closePromise = undefined;
+      throw error;
+    });
+    return this.closePromise;
+  }
+  private async closeResources(): Promise<void> {
     this.closing = true;
     this.diffAbort.abort();
     await Promise.allSettled([...this.diffJobs]);

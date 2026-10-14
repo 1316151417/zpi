@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
@@ -39,7 +39,7 @@ it("keeps cross-project membership through pin/archive/restore and restart, then
     expect(await readFile(reopened.sessionPath(record.id), "utf8")).toContain(record.id);
 });
 it("puts newly created and forked public tasks at root top without moving existing nodes; child sessions never enter groups", async () => {
-  const { host, dir, a } = await fixture((_, response) => {
+  const { host, settings, a } = await fixture((_, response) => {
     send(response, chunk({ content: "forkable answer" }));
     done(response);
   });
@@ -65,21 +65,22 @@ it("puts newly created and forked public tasks at root top without moving existi
   const group = host.updateTaskGroups({ type: "create" }).groups[0];
   host.updateTaskGroups({ type: "moveTask", id: second.id, groupId: group.id });
   await host.deleteSession(second.id);
-  const saved = JSON.parse(await readFile(join(dir, "task-groups.json"), "utf8"));
+  const saved = settings.state.getTaskGroups();
+  if (!saved) throw new Error("Missing groups fixture");
   expect(saved.members[group.id]).toEqual([]);
   expect(JSON.stringify(saved)).not.toContain(second.id);
 });
-it("rolls back a newly created session and its index when the group file cannot be committed", async () => {
-  const { mkdir, readdir } = await import("node:fs/promises");
-  const { host, dir, a } = await fixture((_, response) => {
-    done(response);
+it("rolls back task publication when group commit fails and preserves the recovery intent", async () => {
+  const { host, settings, a } = await fixture((_, response) => done(response));
+  const failure = vi.spyOn(settings.state, "setTaskGroups").mockImplementation(() => {
+    throw new Error("group commit failed");
   });
-  // A directory at the destination deterministically makes the atomic rename fail, without OS permission assumptions.
-  await mkdir(join(dir, "task-groups.json"));
-  expect(() => host.createSession(a.id)).toThrow();
+  expect(() => host.createSession(a.id)).toThrow("group commit failed");
+  failure.mockRestore();
   expect(host.listRecentSessions()).toEqual([]);
+  expect(settings.state.listTasks()).toEqual([]);
   expect(host.getTaskGroups().roots).toEqual([]);
-  expect(await readdir(join(dir, "agent", "sessions", a.id))).toEqual([]);
+  expect(settings.state.listIntents()).toHaveLength(1);
 });
 it("creates a draft inside its chosen group in one operation, and rejects a stale group without leaving a session", async () => {
   const { host, a } = await fixture((_, response) => {

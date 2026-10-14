@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   appendFileSync,
   copyFileSync,
@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { ThinkingLevel } from "zpi-agent";
 import type { JsonValue, Message, SystemMessage, Usage } from "zpi-ai";
-import { assertSupportedOptions, getCurrentTools } from "zpi-ai";
+import { assertSupportedOptions, getCurrentTools, isJsonObject } from "zpi-ai";
 import {
   isSessionEntry,
   isSessionHeader,
@@ -21,9 +21,16 @@ import {
   validateMessage,
 } from "./record-validation.ts";
 import { recoverStreamedToolJournal } from "./streaming-tool-journal.ts";
+import type {
+  SessionCurrentState,
+  TranscriptSnapshot,
+  TranscriptState,
+  TranscriptStore,
+} from "./transcript-store.ts";
+import { getMessageProvenance, setMessageProvenance } from "./transcript-store.ts";
 export interface SessionHeader {
   type: "session";
-  version: 1;
+  version: 1 | 2;
   format: "zpi";
   id: string;
   timestamp: string;
@@ -59,6 +66,9 @@ export interface SessionContext {
 }
 export class SessionManager {
   private header: SessionHeader;
+  private store?: TranscriptStore;
+  private currentState?: SessionCurrentState;
+  private contextCache?: { generation: string; endSeq: number; context: SessionContext };
   private entries: SessionEntry[] = [];
   private file?: string;
   private storageError?: Error;
@@ -78,6 +88,81 @@ export class SessionManager {
       timestamp: new Date().toISOString(),
       cwd: resolve(cwd),
     };
+  }
+  /** Open an already validated indexed store without reading historical message bodies. */
+  static fromStore(store: TranscriptStore, currentState?: SessionCurrentState): SessionManager {
+    const header = store.getHeader();
+    const manager = new SessionManager(header.cwd, header.id);
+    manager.header = header;
+    manager.file = store.getFile();
+    manager.store = store;
+    manager.currentState = currentState;
+    recoverStreamedToolJournal(manager);
+    return manager;
+  }
+  static async openAsync(
+    store: TranscriptStore,
+    currentState?: SessionCurrentState,
+  ): Promise<SessionManager> {
+    return SessionManager.fromStore(store, currentState);
+  }
+  hasCurrentState(): boolean {
+    return this.currentState !== undefined;
+  }
+  getCurrentState(): Pick<TranscriptState, "model" | "thinkingLevel" | "lastThinkingLevel" | "name"> {
+    if (this.store && !this.currentState) throw new Error("Indexed session requires current-state reader");
+    return this.currentState?.get() ?? this.getStateAt();
+  }
+  getStateAt(snapshot?: TranscriptSnapshot): TranscriptState {
+    if (this.store) return this.store.getStateAt(snapshot ?? this.store.snapshot());
+    const context = buildSessionContext(this.entries);
+    return {
+      model: context.model,
+      thinkingLevel: context.thinkingLevel,
+      lastThinkingLevel: context.lastThinkingLevel,
+      hasThinkingEntry: this.entries.some((e) => e.type === "thinking_level_change"),
+      lastMessageSeq: this.entries.findLastIndex((e) => e.type === "message") + 1,
+      lastCompactionSeq: this.entries.findLastIndex((e) => e.type === "compaction") + 1,
+      name: this.entries.findLast((e) => e.type === "session_info")?.name,
+    };
+  }
+  *iterateEntries(): Iterable<SessionEntry> {
+    if (!this.store) {
+      yield* this.entries;
+      return;
+    }
+    const snapshot = this.store.snapshot();
+    for (const { entry } of this.store.readRange(1, snapshot.endSeq, snapshot)) yield entry;
+  }
+  readEntryById(id: string): SessionEntry | undefined {
+    return this.store
+      ? this.store.readEntryById(id, this.store.snapshot())?.entry
+      : this.entries.find((e) => e.id === id);
+  }
+  *unresolvedToolJournals(): Iterable<SessionEntry[]> {
+    if (this.store) yield* this.store.readUnresolvedToolJournals(this.store.snapshot());
+    else yield this.entries;
+  }
+  /** Only effective retained entries, suitable for compaction and current usage. */
+  getContextEntries(): SessionEntry[] {
+    if (!this.store) return this.entries.slice();
+    const snapshot = this.store.snapshot();
+    const plan = this.store.getContextPlan(snapshot);
+    const result: SessionEntry[] = [];
+    for (const { entry } of this.store.readRange(plan.firstKeptSeq, snapshot.endSeq, snapshot, [
+      "message",
+      "compaction",
+      "model_change",
+    ]))
+      result.push(entry);
+    return result;
+  }
+  precedesCompaction(message: Message): boolean {
+    const source = getMessageProvenance(message);
+    return source !== undefined && source.seq < this.getStateAt().lastCompactionSeq;
+  }
+  async materializeContext(snapshot?: TranscriptSnapshot): Promise<SessionContext> {
+    return this.buildSessionContext(snapshot);
   }
   static create(
     cwd: string,
@@ -145,7 +230,7 @@ export class SessionManager {
     return this.header.id;
   }
   getSessionFile(): string | undefined {
-    return this.file;
+    return this.store ? this.store.getFile() : this.file;
   }
   getCwd(): string {
     return this.header.cwd;
@@ -153,25 +238,54 @@ export class SessionManager {
   /** Move a draft into its worktree before any model messages are committed. */
   setCwd(cwd: string): void {
     if (this.storageError) throw this.storageError;
-    if (this.entries.some((entry) => entry.type === "message" || entry.type === "compaction"))
+    if (this.getStateAt().lastMessageSeq || this.getStateAt().lastCompactionSeq)
       throw new Error("Cannot move a session with messages");
     const header = { ...this.header, cwd: resolve(cwd) };
-    this.writeTranscript(header, this.entries);
+    if (this.store) this.store.replace(header, this.iterateEntries());
+    else this.writeTranscript(header, this.entries);
     this.header = header;
   }
   getEntries(): SessionEntry[] {
+    if (this.store) throw new Error("Indexed sessions require iterateEntries or getContextEntries");
     return this.entries.slice();
   }
   getLastEntry(): SessionEntry | undefined {
-    return this.entries.at(-1);
+    return this.store ? this.store.getTail(this.store.snapshot())?.entry : this.entries.at(-1);
   }
   /** Atomically replace a transcript after a stable fork or conversation rewind. */
-  replaceEntries(source: SessionEntry[]): void {
+  replaceEntries(source: Iterable<SessionEntry>): void {
     if (this.storageError) throw this.storageError;
-    const ids = new Map(source.map((entry) => [entry.id, randomUUID()]));
-    if (ids.size !== source.length) throw new Error("Duplicate session entry IDs");
+    if (this.store) {
+      const nonce = randomUUID();
+      const remap = (id: string) =>
+        createHash("sha256").update(nonce).update("\0").update(id).digest("hex").slice(0, 32);
+      function* rewritten(): Iterable<SessionEntry> {
+        let parentId: string | null = null;
+        for (const entry of source) {
+          const next: SessionEntry = { ...structuredClone(entry), id: remap(entry.id), parentId };
+          if (next.type === "compaction") next.firstKeptEntryId = remap(next.firstKeptEntryId);
+          if (
+            next.type === "custom" &&
+            next.customType === "zpi.streaming_tools" &&
+            isJsonObject(next.data) &&
+            typeof next.data.anchorId === "string"
+          )
+            next.data.anchorId = remap(next.data.anchorId);
+          if (!isSessionEntry(next) || Buffer.byteLength(JSON.stringify(next)) > maxSessionEntryBytes)
+            throw new Error("Invalid session entry");
+          parentId = next.id;
+          yield next;
+        }
+      }
+      this.store.replace(this.header, rewritten());
+      this.contextCache = undefined;
+      return;
+    }
+    const materialized: SessionEntry[] = Array.isArray(source) ? source : Array.from(source);
+    const ids = new Map(materialized.map((entry) => [entry.id, randomUUID()]));
+    if (ids.size !== materialized.length) throw new Error("Duplicate session entry IDs");
     let parentId: string | null = null;
-    const entries = source.map((entry) => {
+    const entries = materialized.map((entry) => {
       const id = ids.get(entry.id);
       if (!id) throw new Error("Invalid session entry identity");
       const next = { ...structuredClone(entry), id, parentId };
@@ -180,6 +294,16 @@ export class SessionManager {
         if (!boundary) throw new Error("Invalid compaction boundary");
         next.firstKeptEntryId = boundary;
       }
+      if (
+        next.type === "custom" &&
+        next.customType === "zpi.streaming_tools" &&
+        isJsonObject(next.data) &&
+        typeof next.data.anchorId === "string"
+      ) {
+        const anchor = ids.get(next.data.anchorId);
+        if (!anchor) throw new Error("Invalid tool journal anchor");
+        next.data.anchorId = anchor;
+      }
       if (!isSessionEntry(next) || Buffer.byteLength(JSON.stringify(next)) > maxSessionEntryBytes)
         throw new Error("Invalid session entry");
       parentId = next.id;
@@ -187,6 +311,7 @@ export class SessionManager {
     });
     this.writeTranscript(this.header, entries);
     this.entries = entries;
+    this.contextCache = undefined;
   }
   private writeTranscript(header: SessionHeader, entries: SessionEntry[]): void {
     if (!this.file) return;
@@ -200,20 +325,89 @@ export class SessionManager {
       rmSync(temporary, { force: true });
     }
   }
-  buildSessionContext(): SessionContext {
-    return buildSessionContext(this.entries);
+  buildSessionContext(snapshot?: TranscriptSnapshot): SessionContext {
+    if (!this.store) return buildSessionContext(this.entries);
+    const view = snapshot ?? this.store.snapshot();
+    if (this.contextCache?.generation === view.generation && this.contextCache.endSeq === view.endSeq)
+      return this.contextCache.context;
+    const state = this.store.getStateAt(view);
+    const plan = this.store.getContextPlan(view);
+    const messages: Message[] = [];
+    const compaction = plan.compaction;
+    let start = 1;
+    if (compaction) {
+      const entry = compaction.entry;
+      if (entry.type !== "compaction" || !entry.systemMessage)
+        throw new Error("Invalid compaction: system snapshot is required");
+      const boundary = this.store.readEntryById(entry.firstKeptEntryId, view);
+      if (!boundary || boundary.seq !== plan.firstKeptSeq || boundary.seq >= compaction.seq)
+        throw new Error("Invalid compaction boundary");
+      if (boundary.entry.type === "message" && boundary.entry.message.role === "toolResult")
+        throw new Error("Compaction boundary splits a tool turn");
+      const summary: Message = {
+        role: "user",
+        content: `Summary of earlier conversation:\n${entry.summary}`,
+        timestamp: Date.parse(entry.timestamp),
+      };
+      setMessageProvenance(entry.systemMessage, {
+        entryId: entry.id,
+        seq: compaction.seq,
+        kind: "compaction-system",
+      });
+      setMessageProvenance(summary, { entryId: entry.id, seq: compaction.seq, kind: "compaction-summary" });
+      messages.push(entry.systemMessage, summary);
+      start = boundary.seq;
+    }
+    const retainedCalls = new Set<string>();
+    for (const { seq, entry } of this.store.readRange(start, view.endSeq, view, ["message"])) {
+      if (entry.type !== "message") continue;
+      if (compaction && seq < compaction.seq && entry.message.role === "system") continue;
+      if (compaction) {
+        if (entry.message.role === "assistant") {
+          retainedCalls.clear();
+          for (const part of entry.message.content) if (part.type === "toolCall") retainedCalls.add(part.id);
+        } else if (entry.message.role === "toolResult" && !retainedCalls.delete(entry.message.toolCallId)) {
+          throw new Error("Compaction boundary splits a tool turn: missing retained declaration");
+        }
+      }
+      setMessageProvenance(entry.message, { entryId: entry.id, seq, kind: "message" });
+      messages.push(entry.message);
+    }
+    const context = {
+      messages,
+      model: state.model,
+      thinkingLevel: state.thinkingLevel,
+      lastThinkingLevel: state.lastThinkingLevel,
+    };
+    this.contextCache = { ...view, context };
+    return context;
   }
   appendMessage(message: Message): string {
     validateMessage(message);
     return this.append({ type: "message", message });
   }
   appendModelChange(provider: string, modelId: string): string {
+    if (this.store) {
+      if (!this.currentState) throw new Error("Indexed session requires current-state writer");
+      this.currentState.setModel(provider, modelId);
+      return "";
+    }
     return this.append({ type: "model_change", provider, modelId });
   }
   appendThinkingLevelChange(thinkingLevel: ThinkingLevel): string {
+    if (this.store) {
+      if (!this.currentState) throw new Error("Indexed session requires current-state writer");
+      this.currentState.setThinkingLevel(thinkingLevel);
+      return "";
+    }
     return this.append({ type: "thinking_level_change", thinkingLevel });
   }
   appendSessionInfo(name: string): string {
+    if (this.store) {
+      if (!this.currentState) throw new Error("Indexed session requires current-state writer");
+      this.currentState.setName(name);
+      return "";
+    }
     return this.append({ type: "session_info", name });
   }
   appendCustomEntry(customType: string, data?: JsonValue): string {
@@ -226,7 +420,7 @@ export class SessionManager {
     details?: { readFiles: string[]; modifiedFiles: string[] },
     usage?: Usage,
   ): string {
-    if (!summary.trim() || !this.entries.some((e) => e.id === firstKeptEntryId))
+    if (!summary.trim() || !this.readEntryById(firstKeptEntryId))
       throw new Error("Invalid compaction boundary or summary");
     const current = this.buildSessionContext().messages;
     const systemMessage = collapseSystemMessages(current, Date.now());
@@ -253,14 +447,15 @@ export class SessionManager {
     const entry = {
       ...fields,
       id: randomUUID(),
-      parentId: this.entries.at(-1)?.id ?? null,
+      parentId: this.getLastEntry()?.id ?? null,
       timestamp: new Date().toISOString(),
     } as SessionEntry;
     if (!isSessionEntry(entry)) throw new Error("Invalid session entry");
     const line = JSON.stringify(entry);
     if (Buffer.byteLength(line) > maxSessionEntryBytes) throw new Error("Session entry exceeds 8 MiB");
     try {
-      if (this.file) {
+      if (this.store) this.store.append(entry);
+      else if (this.file) {
         if (!existsSync(dirname(this.file))) throw new Error("Session directory no longer exists");
         appendFileSync(this.file, `${line}\n`, { mode: 0o600 });
       }
@@ -269,7 +464,8 @@ export class SessionManager {
       throw this.storageError;
     }
     const saved = entry;
-    this.entries.push(saved);
+    if (!this.store) this.entries.push(saved);
+    this.contextCache = undefined;
     for (const listener of this.appendListeners) listener(structuredClone(saved));
     return entry.id;
   }
@@ -307,6 +503,8 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
   let compactionIndex = -1;
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
+    if (entry.type === "message")
+      setMessageProvenance(entry.message, { entryId: entry.id, seq: i + 1, kind: "message" });
     if (entry.type === "compaction") compactionIndex = i;
     if (entry.type === "model_change") context.model = { provider: entry.provider, modelId: entry.modelId };
     else if (entry.type === "message" && entry.message.role === "assistant")

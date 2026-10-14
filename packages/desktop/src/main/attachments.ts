@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join } from "node:path";
 import {
   type Attachment,
@@ -349,21 +349,21 @@ export class AttachmentStore {
     if (!ids.length) return relocated;
     const entries = new Map((await this.list(sourceId)).map((item) => [item.id, item]));
     await this.serial(targetId, async () => {
-      const metadata: Saved[] = [];
+      const metadata = new Map((await this.list(targetId)).map((item) => [item.id, item]));
       await mkdir(this.directory(targetId), { recursive: true });
       for (const id of new Set(ids)) {
         const image = await this.readSavedBytes(sourceId, entries.get(id));
         if (isImageAttachment(image.metadata)) {
           await writeFile(this.imagePath(targetId, id, image.metadata.mimeType), image.data, { mode: 0o600 });
-          metadata.push({ ...image.metadata, used: true });
+          metadata.set(id, { ...image.metadata, used: true });
         } else if (entries.get(id)?.cached) {
           const path = this.filePath(targetId, id);
-          await writeFile(path, await readFile(this.filePath(sourceId, id)), { mode: 0o600 });
-          metadata.push({ ...image.metadata, path, used: true, cached: true });
+          await copyFile(this.filePath(sourceId, id), path);
+          metadata.set(id, { ...image.metadata, path, used: true, cached: true });
           relocated.set(image.metadata.path, path);
-        } else metadata.push({ ...image.metadata, used: true });
+        } else metadata.set(id, { ...image.metadata, used: true });
       }
-      atomicJson(join(this.directory(targetId), "index.json"), metadata);
+      atomicJson(join(this.directory(targetId), "index.json"), [...metadata.values()]);
     });
     return relocated;
   }

@@ -108,7 +108,7 @@ it("credential values never leave settings reader or metadata and hidden project
   const session = f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: session.id, text: "hello" });
   await Promise.all([...f.host.activeRuns.values()].map((r) => r.done));
-  const saved = await readFile(join(f.dir, "settings.json"), "utf8");
+  const saved = JSON.stringify(f.settings.state.getSetting("app"));
   const record = await readFile(join(f.dir, "agent", "sessions", f.a.id, `${session.id}.jsonl`), "utf8");
   expect(saved + record + JSON.stringify(f.settings.get())).not.toContain("secret-host");
   expect(saved + record + JSON.stringify(f.settings.get())).not.toContain("secret-header");

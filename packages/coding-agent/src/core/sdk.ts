@@ -9,6 +9,7 @@ import { ModelRuntime } from "./model-runtime.ts";
 import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
+import { unresolvedCanonicalToolCalls } from "./streaming-tool-journal.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
 import type { ResourceLoader, ToolDefinition } from "./types.ts";
@@ -69,37 +70,33 @@ export async function createAgentSession(
   if (options.compaction) settingsManager.applyOverrides({ compaction: options.compaction });
   const runtime = options.modelRuntime ?? (await ModelRuntime.create());
   const manager = options.sessionManager ?? SessionManager.create(cwd, join(agentDir, "sessions"));
-  const restored = manager.buildSessionContext();
+  const restored = await manager.materializeContext();
+  const selection = manager.getCurrentState();
   const available = await runtime.getAvailable();
   const model =
     options.model ??
-    (restored.model ? runtime.getModel(restored.model.provider, restored.model.modelId) : available[0]);
+    (selection.model ? runtime.getModel(selection.model.provider, selection.model.modelId) : available[0]);
   if (!model)
-    throw new Error(restored.model ? "Recorded model is not configured" : "No callable model configured");
+    throw new Error(selection.model ? "Recorded model is not configured" : "No callable model configured");
   if (!available.some((m) => m.provider === model.provider && m.id === model.id))
     throw new Error("Model authentication or provider is not configured");
-  if (!restored.model || restored.model.modelId !== model.id || restored.model.provider !== model.provider)
+  if (!selection.model || selection.model.modelId !== model.id || selection.model.provider !== model.provider)
     manager.appendModelChange(model.provider, model.id);
-  const paired = new Set(restored.messages.filter((m) => m.role === "toolResult").map((m) => m.toolCallId));
-  for (const m of restored.messages)
-    if (m.role === "assistant")
-      for (const c of m.content)
-        if (c.type === "toolCall" && c.id && c.name && !paired.has(c.id)) {
-          manager.appendMessage({
-            role: "toolResult",
-            toolCallId: c.id,
-            toolName: c.name,
-            content: [
-              {
-                type: "text",
-                text: "Interrupted: prior execution outcome and side effects are unknown. This tool was not re-executed.",
-              },
-            ],
-            isError: true,
-            timestamp: Date.now(),
-          });
-          paired.add(c.id);
-        }
+  for (const call of unresolvedCanonicalToolCalls(restored.messages)) {
+    manager.appendMessage({
+      role: "toolResult",
+      toolCallId: call.id,
+      toolName: call.name,
+      content: [
+        {
+          type: "text",
+          text: "Interrupted: prior execution outcome and side effects are unknown. This tool was not re-executed.",
+        },
+      ],
+      isError: true,
+      timestamp: Date.now(),
+    });
+  }
   let session: AgentSession;
   const fileReadState = new FileReadState();
   const builtin = createCodingTools(
@@ -182,20 +179,21 @@ export async function createAgentSession(
       tools: session?.state.tools ?? active,
       loader,
     });
-  const hasThinkingEntry = manager.getEntries().some((entry) => entry.type === "thinking_level_change");
-  const hasExistingSession = restored.messages.length > 0;
-  const thinking = clampThinkingLevel(
-    model,
-    options.thinkingLevel ??
-      (hasExistingSession
-        ? hasThinkingEntry
-          ? restored.thinkingLevel
-          : (settingsManager.getDefaultThinkingLevel() ?? "medium")
-        : (settingsManager.getModelThinkingLevel(model.provider, model.id) ??
-          settingsManager.getDefaultThinkingLevel() ??
-          "medium")),
-  );
-  if (thinking !== restored.thinkingLevel) manager.appendThinkingLevelChange(thinking);
+  let requestedThinking = options.thinkingLevel;
+  if (requestedThinking == null) {
+    const hasExistingSession = restored.messages.length > 0;
+    const useRecordedThinking =
+      manager.hasCurrentState() || (hasExistingSession && manager.getStateAt().hasThinkingEntry);
+    requestedThinking = useRecordedThinking
+      ? selection.thinkingLevel
+      : ((!hasExistingSession
+          ? settingsManager.getModelThinkingLevel(model.provider, model.id)
+          : undefined) ??
+        settingsManager.getDefaultThinkingLevel() ??
+        "medium");
+  }
+  const thinking = clampThinkingLevel(model, requestedThinking);
+  if (thinking !== selection.thinkingLevel) manager.appendThinkingLevelChange(thinking);
   session = new AgentSession(model, runtime, manager, all, active, buildPrompt(), thinking, {
     loader,
     buildPrompt,

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import type { SessionRecord } from "../shared/bridge.ts";
 import {
   applyTaskGroupCommand,
@@ -10,7 +9,7 @@ import {
   type TaskGroupState,
   taskGroupColors,
 } from "../shared/task-groups.ts";
-import { atomicJson } from "./storage.ts";
+import type { StateStore } from "./state-store.ts";
 
 function object(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -49,10 +48,10 @@ function validState(value: unknown): value is TaskGroupState {
 }
 export class TaskGroupsStore {
   private state: TaskGroupState;
-  private path: string;
-  constructor(path: string) {
-    this.path = path;
-    const value: unknown = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : emptyTaskGroups();
+  private stateStore: StateStore;
+  constructor(stateStore: StateStore) {
+    this.stateStore = stateStore;
+    const value: unknown = stateStore.getTaskGroups() ?? emptyTaskGroups();
     if (!validState(value)) throw new Error("storage: 无效任务分组数据");
     this.state = value;
   }
@@ -62,7 +61,7 @@ export class TaskGroupsStore {
   prune(records: readonly SessionRecord[]): void {
     const next = this.get(records);
     if (JSON.stringify(next) === JSON.stringify(this.state)) return;
-    atomicJson(this.path, next);
+    this.stateStore.setTaskGroups(next);
     this.state = next;
   }
   update(input: unknown, records: readonly SessionRecord[]): TaskGroupState {
@@ -105,7 +104,7 @@ export class TaskGroupsStore {
         ? { type: "create", id: randomUUID(), createdAt: Date.now() }
         : (input as unknown as TaskGroupCommand);
     const next = applyTaskGroupCommand(this.get(records), command);
-    atomicJson(this.path, next);
+    this.stateStore.setTaskGroups(next);
     this.state = next;
     return structuredClone(next);
   }

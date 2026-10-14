@@ -199,8 +199,7 @@ async function fixture(holdText?: string) {
     expect(owner.getSessionSnapshot(id).view.runs.at(-1)?.status).toBe("completed");
     return result;
   };
-  const transcript = (id: string) =>
-    readFile(join(dir, "agent", "sessions", project.id, `${id}.jsonl`), "utf8");
+  const transcript = (id: string) => readFile(host.sessionPath(id), "utf8");
   return { host, open, requests, select, run, task, file, transcript };
 }
 
