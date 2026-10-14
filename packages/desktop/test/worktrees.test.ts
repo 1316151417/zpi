@@ -300,6 +300,134 @@ it("defers creation until sending and restores the actual worktree for prompts, 
   expect(restored.workspaceInfo(fork.id).cwd).toBe(record.cwd);
 });
 
+it("resolves relative line references in the new worktree while preserving explicit absolute references", async () => {
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  await repo(f.a.path);
+  await f.host.close();
+  const host = new SessionHost(
+    f.dir,
+    f.settings,
+    f.dir,
+    undefined,
+    undefined,
+    undefined,
+    join(f.dir, "trees"),
+  );
+  await host.init();
+  cleanup.push(() => host.close());
+  const session = host.createSession(f.a.id);
+  await host.setNewWorktree(session.id, true);
+  const sourceFile = join(f.a.path, "tracked.txt");
+  const references = ["tracked.txt", "tracked.txt:1", "tracked.txt#L1", `${sourceFile}:1`];
+  await host.startRun({ sessionId: session.id, text: "check references", fileReferences: references });
+  await host.activeRuns.get(session.id)?.done;
+  const snapshot = host.getSessionSnapshot(session.id);
+  const messages = f.server.requests[0]?.messages as unknown as { role: string; content: string }[];
+  const user = messages.find((message) => message.role === "user");
+  expect(user?.content).toContain(
+    ["tracked.txt", join(snapshot.session.cwd as string, "tracked.txt"), sourceFile]
+      .map((path) => `- ${JSON.stringify(path)}`)
+      .join("\n"),
+  );
+  expect(snapshot.view.runs[0].fileReferences).toEqual(references);
+});
+
+for (const reference of ["tracked.txt", "tracked.txt:1"]) {
+  it(`rejects ${reference} when absent from the selected worktree branch before calling the model`, async () => {
+    const f = await fixture((_, response) => done(response));
+    await repo(f.a.path);
+    await git(f.a.path, "checkout", "-b", "without-file");
+    await git(f.a.path, "rm", "tracked.txt");
+    await git(f.a.path, "commit", "-m", "Remove file");
+    await git(f.a.path, "checkout", "main");
+    await f.host.close();
+    const host = new SessionHost(
+      f.dir,
+      f.settings,
+      f.dir,
+      undefined,
+      undefined,
+      undefined,
+      join(f.dir, "trees"),
+    );
+    await host.init();
+    cleanup.push(() => host.close());
+    const session = host.createSession(f.a.id);
+    await host.setNewWorktree(session.id, true, "refs/heads/without-file");
+    await host.startRun({ sessionId: session.id, text: "read reference", fileReferences: [reference] });
+    await host.activeRuns.get(session.id)?.done;
+    expect(f.server.requests).toHaveLength(0);
+    expect(host.getSessionSnapshot(session.id).view.runs[0].status).toBe("error");
+  });
+}
+
+for (const workspaceMode of ["preserve", "rewind"] as const) {
+  it(`preserves worktree ownership after editing the first turn with ${workspaceMode} and restarting`, async () => {
+    const f = await fixture((_, response, index) => {
+      send(
+        response,
+        chunk(
+          index === 0
+            ? {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "write",
+                    type: "function",
+                    function: {
+                      name: "write",
+                      arguments: JSON.stringify({ path: "tracked.txt", content: "agent result" }),
+                    },
+                  },
+                ],
+              }
+            : { content: "ok" },
+        ),
+      );
+      done(response, index === 0 ? "tool_calls" : "stop");
+    });
+    await repo(f.a.path);
+    await f.host.close();
+    const root = join(f.dir, "trees");
+    const host = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, undefined, root);
+    await host.init();
+    cleanup.push(() => host.close());
+    const session = host.createSession(f.a.id);
+    await host.setNewWorktree(session.id, true);
+    const first = await host.startRun({ sessionId: session.id, text: "first message" });
+    await host.activeRuns.get(session.id)?.done;
+    const before = host.getSessionSnapshot(session.id).session;
+    expect(before.worktree?.path).toBe(before.cwd);
+    const edited = await host.editUserMessage(session.id, first.runId, {
+      text: "replacement message",
+      workspaceMode,
+    });
+    expect(edited).not.toHaveProperty("conflicts");
+    await host.activeRuns.get(session.id)?.done;
+    expect(await readFile(join(before.cwd as string, "tracked.txt"), "utf8")).toBe(
+      workspaceMode === "rewind" ? "committed" : "agent result",
+    );
+    await host.close();
+    const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, undefined, root);
+    await restored.init();
+    cleanup.push(() => restored.close());
+    expect(restored.getSessionSnapshot(session.id).session).toMatchObject({
+      cwd: before.cwd,
+      worktree: before.worktree,
+      newWorktree: true,
+      worktreeBaseRef: "refs/heads/main",
+    });
+    await restored.startRun({ sessionId: session.id, text: "continue after restart" });
+    await restored.activeRuns.get(session.id)?.done;
+    expect(restored.getSessionSnapshot(session.id).session.cwd).toBe(before.cwd);
+    expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain(before.cwd);
+    expect((await git(f.a.path, "worktree", "list", "--porcelain")).match(/^worktree /gm)).toHaveLength(2);
+  });
+}
+
 it("acknowledges a send and publishes preparation before checkout while keeping other tasks usable", async () => {
   const gate = deferred();
   const f = await fixture((_, response) => {

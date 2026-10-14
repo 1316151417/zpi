@@ -59,6 +59,32 @@ function sse(events: unknown[]) {
 }
 
 describe("Responses protocol and portable transcripts", () => {
+  it("counts text accompanying image input in the request context breakdown", async () => {
+    const result = await streamSimple(
+      responsesModel(),
+      normalizeContext({
+        systemPrompt: "instructions",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe this screenshot" },
+              { type: "image", data: "aA==", mimeType: "image/png" },
+            ],
+            timestamp: 0,
+          },
+        ],
+      }),
+      { apiKey: "fake", fetch: (async () => sse([terminal([textItem])])) as typeof fetch },
+    ).result();
+    expect(result.stopReason).toBe("stop");
+    expect(result.contextBreakdown?.find((item) => item.source === "messages")?.chars).toBe(
+      "Describe this screenshot".length,
+    );
+    expect(result.contextBreakdown?.find((item) => item.source === "system_prompt")?.chars).toBe(
+      "instructions".length,
+    );
+  });
   it("keeps Responses cache affinity stable across retries and repeated requests", async () => {
     const sessionId = "b8aef346-bf4b-43b0-9b0d-d437054d9418";
     const requests: { body: Record<string, unknown>; headers: Headers }[] = [];

@@ -13,7 +13,7 @@ interface Journal {
   results: ToolResultMessage[];
 }
 
-/** The streamed call is durable before execute; its result is durable before drain. */
+/** Calls are durable before execute; results are durable before the batch settles. */
 export class StreamingToolJournal {
   private partial?: AssistantMessage;
   private journal?: Journal;
@@ -40,9 +40,20 @@ export class StreamingToolJournal {
     if (event.type === "message_update" && event.message.role === "assistant") this.partial = event.message;
     const journal = this.journal;
     if (!journal) return;
-    if (event.type === "tool_execution_start" && event.executionTiming === "during_stream") {
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      this.partial = event.message;
+      const calls = event.message.content.filter((c) => c.type === "toolCall");
+      if (calls.length) {
+        // The final declaration includes deferred calls and restores their order
+        // when a later read has already run during streaming. Persist it before
+        // the canonical assistant, including calls not yet prepared/executed.
+        journal.assistant = structuredClone({ ...event.message, content: calls });
+        this.save({ ...journal, results: [], responseComplete: true });
+      }
+    }
+    if (event.type === "tool_execution_start") {
       const call = this.partial?.content.find((c) => c.type === "toolCall" && c.id === event.toolCallId);
-      if (call?.type !== "toolCall") throw new Error("Missing closed streaming tool call");
+      if (call?.type !== "toolCall") throw new Error("Missing closed tool call");
       if (!journal.assistant.content.some((c) => c.type === "toolCall" && c.id === call.id)) {
         journal.assistant.content.push(structuredClone(call));
         this.save({ ...journal, assistant: { ...journal.assistant, content: [call] }, results: [] });
@@ -75,7 +86,8 @@ export class StreamingToolJournal {
 /** Missing canonical messages after a crash; never rerun a pending tool. */
 function interruptedMessages(entries: SessionEntry[]): { index: number; id: string; messages: Message[] }[] {
   // Read only unresolved journals. Completed calls do not add validation or
-  // cloning work to every history load, and each record carries only one call.
+  // cloning work to every history load. Completion records carry only one call;
+  // the response checkpoint carries the full declaration once, in model order.
   const records = new Map<string, { index: number; data: JsonValue }[]>();
   for (const [index, entry] of entries.entries()) {
     if (entry.type !== "custom" || entry.customType !== JOURNAL_TYPE || !isJsonObject(entry.data)) continue;
@@ -115,6 +127,7 @@ function interruptedMessages(entries: SessionEntry[]): { index: number; id: stri
         };
         pending.set(id, previous);
       }
+      if (data.responseComplete === true) previous.journal.assistant = { ...update.assistant, content: [] };
       for (const call of update.assistant.content) {
         if (call.type !== "toolCall") throw new Error("Invalid streaming tool call");
         if (!previous.journal.assistant.content.some((c) => c.type === "toolCall" && c.id === call.id))
@@ -129,7 +142,7 @@ function interruptedMessages(entries: SessionEntry[]): { index: number; id: stri
   }
   return [...pending.values()].map(({ index, journal }) => {
     const anchor = entries.findIndex((entry) => entry.id === journal.anchorId);
-    const calls = journal.assistant.content.filter((c) => c.type === "toolCall");
+    let calls = journal.assistant.content.filter((c) => c.type === "toolCall");
     const canonical = entries.findIndex(
       (entry, i) =>
         i > anchor &&
@@ -141,13 +154,21 @@ function interruptedMessages(entries: SessionEntry[]): { index: number; id: stri
             entry.message.content.some((c) => c.type === "toolCall" && c.id === call.id),
         ),
     );
-    const paired = new Set(
-      entries
-        .slice(anchor + 1)
-        .flatMap((entry) =>
-          entry.type === "message" && entry.message.role === "toolResult" ? [entry.message.toolCallId] : [],
-        ),
-    );
+    const declaration = entries[canonical];
+    if (declaration?.type === "message" && declaration.message.role === "assistant")
+      calls = declaration.message.content.filter((c) => c.type === "toolCall");
+    const paired = new Set<string>();
+    let insertion = Math.max(index, canonical);
+    for (let i = Math.max(anchor, canonical) + 1; i < entries.length; i++) {
+      const entry = entries[i];
+      if (entry.type !== "message") continue;
+      const message = entry.message;
+      if (message.role === "assistant") break;
+      if (message.role === "toolResult" && calls.some((call) => call.id === message.toolCallId)) {
+        paired.add(message.toolCallId);
+        insertion = Math.max(insertion, i);
+      }
+    }
     const messages: Message[] = canonical < 0 ? [journal.assistant] : [];
     for (const call of calls) {
       if (paired.has(call.id)) continue;
@@ -168,7 +189,7 @@ function interruptedMessages(entries: SessionEntry[]): { index: number; id: stri
         },
       );
     }
-    return { index: Math.max(index, canonical), id: journal.id, messages };
+    return { index: insertion, id: journal.id, messages };
   });
 }
 

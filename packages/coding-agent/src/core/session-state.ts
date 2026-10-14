@@ -38,7 +38,7 @@ export function contextUsage(entries: SessionEntry[], model: Model): ContextUsag
     )
       continue;
     cacheRead += m.usage.cacheRead;
-    totalInput += m.usage.input + m.usage.cacheRead;
+    totalInput += m.usage.input + m.usage.cacheRead + m.usage.cacheWrite;
   }
   for (const entry of [...entries].reverse()) {
     if (entry.type === "compaction") break;
@@ -46,7 +46,7 @@ export function contextUsage(entries: SessionEntry[], model: Model): ContextUsag
     const m = entry.message;
     if (m.stopReason === "error" || m.stopReason === "aborted") continue;
     if (m.usageAvailable === false || (m.usageAvailable !== true && m.usage.totalTokens === 0)) continue;
-    const inputTokens = m.usage.input + m.usage.cacheRead;
+    const inputTokens = m.usage.input + m.usage.cacheRead + m.usage.cacheWrite;
     return {
       contextWindow: model.contextWindow,
       inputTokens,

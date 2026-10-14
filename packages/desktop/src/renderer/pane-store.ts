@@ -15,7 +15,7 @@ import {
   unwrap,
   useStore,
 } from "./store.ts";
-export type PaneTab =
+export type PaneTab = (
   | { id: string; type: "background-task"; title: string; sessionId: string; taskId: string }
   | {
       id: string;
@@ -44,7 +44,8 @@ export type PaneTab =
     }
   | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string }
   | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview }
-  | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState };
+  | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState }
+) & { ownerSessionId?: string };
 interface PanePreference {
   open: boolean;
   active?: string;
@@ -55,6 +56,7 @@ interface PaneState {
   active?: string;
   ratio: number;
   preferences: Map<string | undefined, PanePreference>;
+  deletedSessionIds: Set<string>;
 }
 let savedRatio = 0.45;
 try {
@@ -68,6 +70,7 @@ export const usePane = create<PaneState>(() => ({
   tabs: [],
   ratio: savedRatio,
   preferences: new Map(),
+  deletedSessionIds: new Set(),
 }));
 export function useSideChatBlocked(parentId: string | undefined) {
   const childId = usePane((state) => {
@@ -84,10 +87,16 @@ export function canOpenSideChat(record: SessionRecord | undefined) {
   );
 }
 export function visiblePaneTabs(sessionId: string | undefined, tabs = usePane.getState().tabs) {
-  return tabs.filter((tab) => paneOwner(tab.sessionId) === sessionId);
+  return tabs.filter((tab) => tabOwner(tab) === sessionId);
 }
 function paneOwner(id: string | undefined) {
   return useStore.getState().sessions.get(id ?? "")?.parentSessionId ?? id;
+}
+function tabOwner(tab: PaneTab) {
+  return tab.ownerSessionId ?? paneOwner(tab.sessionId);
+}
+function ownerDeleted(id: string | undefined) {
+  return id !== undefined && usePane.getState().deletedSessionIds.has(id);
 }
 function restorePane() {
   const sessionId = useStore.getState().selected;
@@ -135,7 +144,7 @@ export function listenPanes() {
   const offSelection = useStore.subscribe((state, previous) => {
     if (state.sessions !== previous.sessions) {
       for (const tab of usePane.getState().tabs) {
-        const parent = state.sessions.get(paneOwner(tab.sessionId) ?? "");
+        const parent = state.sessions.get(tabOwner(tab) ?? "");
         if (
           (!parent || parent.archivedAt != null) &&
           (tab.type === "side-chat" ||
@@ -169,9 +178,13 @@ export function listenPanes() {
   };
 }
 function showTab(tab: PaneTab) {
+  const ownerSessionId = tabOwner(tab);
+  if (ownerDeleted(ownerSessionId)) return;
+  // Archival removes child records from the session list; retain their original owner.
+  tab = { ...tab, ownerSessionId };
   const current = usePane.getState();
   const preferences = new Map(current.preferences);
-  preferences.set(paneOwner(tab.sessionId), { open: true, active: tab.id });
+  preferences.set(ownerSessionId, { open: true, active: tab.id });
   usePane.setState({
     preferences,
     tabs: current.tabs.some((item) => item.id === tab.id)
@@ -179,7 +192,7 @@ function showTab(tab: PaneTab) {
       : [...current.tabs, tab],
   });
   // 异步打开时冻结来源任务；迟到结果只更新来源任务，不能展开或激活当前任务的侧栏。
-  if (paneOwner(tab.sessionId) === useStore.getState().selected) restorePane();
+  if (ownerSessionId === useStore.getState().selected) restorePane();
 }
 const pendingSideChats = new Map<string, Promise<string>>();
 export async function loadSideChat(id: string) {
@@ -286,13 +299,29 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
   });
 }
 export async function openTerminal(sessionId: string) {
+  const ownerSessionId = paneOwner(sessionId);
   const cwd = unwrap(await window.zpi.getWorkspaceInfo(sessionId)).cwd;
+  if (ownerDeleted(ownerSessionId)) return;
   const created = unwrap(await window.zpi.createTerminal(sessionId));
-  showTab({ type: "terminal", id: created.id, title: created.shell, sessionId, cwd });
+  if (ownerDeleted(ownerSessionId)) {
+    unwrap(await window.zpi.closeTerminal(created.id));
+    terminalOutput.delete(created.id);
+    return;
+  }
+  showTab({ type: "terminal", id: created.id, title: created.shell, sessionId, ownerSessionId, cwd });
 }
-export async function openBrowser(url = "", sessionId = useStore.getState().selected) {
+export async function openBrowser(
+  url = "",
+  sessionId = useStore.getState().selected,
+  ownerSessionId = paneOwner(sessionId),
+) {
+  if (ownerDeleted(ownerSessionId)) return;
   const created = unwrap(await window.zpi.createBrowser(url));
-  showTab({ type: "browser", id: created.id, title: "浏览器", sessionId, state: created });
+  if (ownerDeleted(ownerSessionId)) {
+    unwrap(await window.zpi.closeBrowser(created.id));
+    return;
+  }
+  showTab({ type: "browser", id: created.id, title: "浏览器", sessionId, ownerSessionId, state: created });
 }
 export async function openWebLink(
   url: string,
@@ -303,6 +332,7 @@ export async function openWebLink(
   else unwrap(await window.zpi.openExternal(url));
 }
 export async function openFile(sessionId: string, path: string, location?: FileLocation) {
+  const ownerSessionId = paneOwner(sessionId);
   const state = useStore.getState();
   const cwd = state.sessions.get(sessionId)?.cwd;
   const target = resolveLinkTarget(path, { cwd });
@@ -329,12 +359,13 @@ export async function openFile(sessionId: string, path: string, location?: FileL
     }
   }
   const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
+  if (ownerDeleted(ownerSessionId)) return;
   if (preview.kind === "directory") {
     unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
     return;
   }
   if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
-    await openBrowser(location?.fileUrl ?? preview.path, sessionId);
+    await openBrowser(location?.fileUrl ?? preview.path, sessionId, ownerSessionId);
     return;
   }
   if (/\.pptx$/i.test(preview.path)) {
@@ -347,8 +378,25 @@ export async function openFile(sessionId: string, path: string, location?: FileL
     type: "file",
     title: preview.path.split("/").at(-1) ?? preview.path,
     sessionId,
+    ownerSessionId,
     preview,
   });
+}
+/** Only a successful explicit deletion proves that retained native panes must be closed. */
+export async function deleteSessionWithPanes(sessionId: string) {
+  unwrap(await window.zpi.deleteSession(sessionId));
+  const state = usePane.getState();
+  usePane.setState({ deletedSessionIds: new Set(state.deletedSessionIds).add(sessionId) });
+  await Promise.all(
+    state.tabs
+      .filter((tab) => tabOwner(tab) === sessionId)
+      .map((tab) =>
+        closeTab(tab.id).catch((error) => report(new Error(`任务已删除，但侧栏清理失败：${String(error)}`))),
+      ),
+  );
+  const preferences = new Map(usePane.getState().preferences);
+  preferences.delete(sessionId);
+  usePane.setState({ preferences });
 }
 export async function closeTab(id: string) {
   const state = usePane.getState(),
@@ -366,7 +414,7 @@ export async function closeTab(id: string) {
   const current = usePane.getState();
   const tabs = current.tabs.filter((item) => item.id !== id);
   const preferences = new Map(current.preferences);
-  const owner = paneOwner(tab.sessionId);
+  const owner = tabOwner(tab);
   const saved = preferences.get(owner);
   if (saved) {
     const visible = visiblePaneTabs(owner, tabs);

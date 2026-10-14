@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   activatePaneTab,
   closeTab,
+  deleteSessionWithPanes,
   listenPanes,
   openBrowser,
   openChanges,
@@ -13,14 +14,17 @@ import {
   usePane,
   visiblePaneTabs,
 } from "../src/renderer/pane-store.ts";
-import { useStore } from "../src/renderer/store.ts";
+import { report, useStore } from "../src/renderer/store.ts";
 import type { BrowserState, FilePreview, PaneEvent, Result } from "../src/shared/bridge.ts";
 
 vi.mock("../src/renderer/store.ts", async () => {
   const { create } = await import("zustand");
+  const actual = await vi.importActual<typeof import("../src/renderer/store.ts")>("../src/renderer/store.ts");
   return {
     useStore: create(() => ({ selected: undefined, sessions: new Map(), views: new Map(), projects: [] })),
     report: vi.fn(),
+    closeSideChat: actual.closeSideChat,
+    retainedSessionViews: actual.retainedSessionViews,
     unwrap: <T>(result: Result<T>) => {
       if (!result.ok) throw new Error(result.error.message);
       return result.value;
@@ -51,6 +55,8 @@ const bridge = {
   createTerminal: vi.fn(async () => ok({ id: `terminal-${++serial}`, shell: "zsh" })),
   closeBrowser: vi.fn(async (): Promise<Result<void>> => ok(undefined)),
   closeTerminal: vi.fn(async (): Promise<Result<void>> => ok(undefined)),
+  deleteSession: vi.fn(async (): Promise<Result<void>> => ok(undefined)),
+  closeSideChat: vi.fn(async (): Promise<Result<void>> => ok(undefined)),
 };
 function select(selected: string | undefined) {
   useStore.setState({ selected });
@@ -59,7 +65,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   serial = 0;
   vi.stubGlobal("window", { zpi: bridge });
-  usePane.setState({ open: false, active: undefined, tabs: [], preferences: new Map() });
+  usePane.setState({
+    open: false,
+    active: undefined,
+    tabs: [],
+    preferences: new Map(),
+    deletedSessionIds: new Set(),
+  });
   useStore.setState({
     selected: "A",
     sessions: new Map(
@@ -221,6 +233,144 @@ it("does not remove a tab when native cleanup fails", async () => {
   await expect(closeTab(id)).rejects.toThrow("close failed");
   expect(usePane.getState()).toMatchObject({ open: true, active: id });
   expect(visiblePaneTabs("A")).toHaveLength(1);
+});
+
+it("retains ordinary panes when a session is archived or omitted from a refreshed list", async () => {
+  await openTerminal("A");
+  await openBrowser();
+  await openFile("A", file.path);
+  const tabs = visiblePaneTabs("A");
+  const record = useStore.getState().sessions.get("A");
+  if (!record) throw new Error("missing session");
+  useStore.setState({
+    sessions: new Map(useStore.getState().sessions).set("A", { ...record, archivedAt: 1 }),
+  });
+  const sessions = new Map(useStore.getState().sessions);
+  sessions.delete("A");
+  useStore.setState({ sessions });
+  select("B");
+  expect(visiblePaneTabs("A")).toEqual(tabs);
+  expect(bridge.closeTerminal).not.toHaveBeenCalled();
+  expect(bridge.closeBrowser).not.toHaveBeenCalled();
+  useStore.setState({ sessions: new Map(sessions).set("A", record) });
+  select("A");
+  expect(visiblePaneTabs("A")).toEqual(tabs);
+});
+
+it("closes permanently deleted task panes and their retained child panes without touching another task", async () => {
+  await openTerminal("A");
+  const terminalId = visiblePaneTabs("A")[0].id;
+  event({ type: "terminal", id: terminalId, data: "retained output" });
+  await openBrowser();
+  const browserId = usePane.getState().active;
+  await openFile("A", file.path);
+  const record = useStore.getState().sessions.get("A");
+  if (!record) throw new Error("missing session");
+  useStore.setState({
+    sessions: new Map(useStore.getState().sessions).set("child-a", {
+      ...record,
+      id: "child-a",
+      parentSessionId: "A",
+    }),
+  });
+  await openBrowser("https://example.test/child", "child-a");
+  const childBrowserId = usePane.getState().active;
+  const sessions = new Map(useStore.getState().sessions);
+  sessions.delete("A");
+  sessions.delete("child-a");
+  useStore.setState({ sessions });
+  select("B");
+  await openBrowser();
+  const otherTabs = visiblePaneTabs("B");
+  await deleteSessionWithPanes("A");
+  expect(bridge.deleteSession).toHaveBeenCalledWith("A");
+  expect(bridge.closeTerminal).toHaveBeenCalledExactlyOnceWith(terminalId);
+  expect(bridge.closeBrowser).toHaveBeenCalledTimes(2);
+  expect(bridge.closeBrowser).toHaveBeenCalledWith(browserId);
+  expect(bridge.closeBrowser).toHaveBeenCalledWith(childBrowserId);
+  expect(visiblePaneTabs("A")).toEqual([]);
+  expect(usePane.getState().tabs).toEqual(otherTabs);
+  expect(terminalOutput.has(terminalId)).toBe(false);
+  expect(usePane.getState().preferences.has("A")).toBe(false);
+  expect(usePane.getState().active).toBe(otherTabs[0].id);
+});
+
+it("does not close task panes when permanent deletion fails", async () => {
+  await openTerminal("A");
+  await openBrowser();
+  const tabs = visiblePaneTabs("A");
+  bridge.deleteSession.mockResolvedValueOnce({
+    ok: false,
+    error: { code: "storage", message: "delete failed" },
+  });
+  await expect(deleteSessionWithPanes("A")).rejects.toThrow("delete failed");
+  expect(visiblePaneTabs("A")).toEqual(tabs);
+  expect(usePane.getState().deletedSessionIds.has("A")).toBe(false);
+  expect(bridge.closeTerminal).not.toHaveBeenCalled();
+  expect(bridge.closeBrowser).not.toHaveBeenCalled();
+});
+
+it("cleans side-chat and terminal panes when the deleted child already returns not_found", async () => {
+  await openTerminal("A");
+  usePane.setState({
+    tabs: [
+      ...usePane.getState().tabs,
+      {
+        type: "side-chat",
+        id: "side-chat:deleted-child",
+        sessionId: "A",
+        childSessionId: "deleted-child",
+        title: "Side chat",
+        ordinal: 1,
+      },
+    ],
+  });
+  bridge.closeSideChat.mockResolvedValueOnce({
+    ok: false,
+    error: { code: "not_found", message: "child already deleted" },
+  });
+  await deleteSessionWithPanes("A");
+  expect(bridge.closeSideChat).toHaveBeenCalledExactlyOnceWith("deleted-child");
+  expect(bridge.closeTerminal).toHaveBeenCalledTimes(1);
+  expect(visiblePaneTabs("A")).toEqual([]);
+  expect(report).not.toHaveBeenCalled();
+});
+
+it("reports cleanup failures separately after successful deletion and still closes other panes", async () => {
+  await openTerminal("A");
+  await openBrowser();
+  bridge.closeBrowser.mockResolvedValueOnce({
+    ok: false,
+    error: { code: "storage", message: "native close failed" },
+  });
+  await expect(deleteSessionWithPanes("A")).resolves.toBeUndefined();
+  expect(bridge.closeTerminal).toHaveBeenCalledTimes(1);
+  expect(report).toHaveBeenCalledWith(
+    expect.objectContaining({ message: expect.stringContaining("任务已删除") }),
+  );
+});
+
+it("disposes native panes whose creation finishes after their task is deleted", async () => {
+  const browserResult = Promise.withResolvers<Result<BrowserState>>();
+  const terminalResult = Promise.withResolvers<Result<{ id: string; shell: string }>>();
+  const fileResult = Promise.withResolvers<Result<FilePreview>>();
+  bridge.createBrowser.mockReturnValueOnce(browserResult.promise);
+  bridge.createTerminal.mockReturnValueOnce(terminalResult.promise);
+  bridge.readFilePreview.mockReturnValueOnce(fileResult.promise);
+  const pendingBrowser = openBrowser();
+  const pendingTerminal = openTerminal("A");
+  const pendingFile = openFile("A", "/shared/page.html");
+  await Promise.resolve();
+  expect(bridge.createTerminal).toHaveBeenCalledWith("A");
+  await deleteSessionWithPanes("A");
+  browserResult.resolve(ok(browser("late-browser")));
+  terminalResult.resolve(ok({ id: "late-terminal", shell: "zsh" }));
+  fileResult.resolve(ok({ ...file, path: "/shared/page.html" }));
+  await Promise.all([pendingBrowser, pendingTerminal, pendingFile]);
+  expect(bridge.closeBrowser).toHaveBeenCalledExactlyOnceWith("late-browser");
+  expect(bridge.closeTerminal).toHaveBeenCalledExactlyOnceWith("late-terminal");
+  expect(bridge.createBrowser).toHaveBeenCalledTimes(1);
+  expect(visiblePaneTabs("A")).toEqual([]);
 });
 
 it("opens streamed file operations from their parameters without reading an unfinished file", async () => {

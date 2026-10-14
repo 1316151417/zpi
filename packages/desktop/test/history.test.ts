@@ -1,14 +1,39 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { emptyAssistant } from "zpi-ai";
 import { SessionManager } from "zpi-coding-agent";
 import { mergeHistory } from "zpi-ui";
-import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
+import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { seedHistory } from "../../../tests/history-fixture.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { fixture } from "./helpers/host-fixture.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
+
+it("includes cache writes in indexed usage and rebuilds indexes with the old denominator", async () => {
+  const { host, dir, cwd } = await setup();
+  const seed = seedHistory(dir, cwd, 0);
+  await host.close();
+  const manager = SessionManager.open(seed.file);
+  const reply = emptyAssistant(fakeModel(""));
+  reply.usageAvailable = reply.cacheUsageAvailable = true;
+  reply.usage = { ...reply.usage, input: 10, cacheRead: 100, cacheWrite: 890, totalTokens: 1000 };
+  manager.appendMessage(reply);
+  const index = new HistoryIndex(seed.file);
+  await index.load();
+  expect(index.data.cacheRead).toBe(100);
+  expect(index.data.cacheInput).toBe(1000);
+  await writeFile(`${seed.file}.index.json`, JSON.stringify({ ...index.data, version: 9, cacheInput: 110 }));
+  const rebuilt = new HistoryIndex(seed.file);
+  await rebuilt.load();
+  expect(rebuilt.readBytes).toBeGreaterThan(0);
+  expect(rebuilt.data.cacheInput).toBe(1000);
+  const cached = new HistoryIndex(seed.file);
+  await cached.load();
+  expect(cached.readBytes).toBe(0);
+  expect(cached.data.cacheRead / cached.data.cacheInput).toBe(0.1);
+});
 
 it("legacy tool declarations preserve block identity between streaming and paged history", async () => {
   const release = deferred(),

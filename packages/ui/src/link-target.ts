@@ -1,6 +1,8 @@
 export interface LinkContext {
   cwd?: string;
   home?: string;
+  /** Previewed file; relative links otherwise start at the workspace cwd. */
+  documentPath?: string;
 }
 export interface FileLocation {
   line?: number;
@@ -105,11 +107,22 @@ export function resolveLinkTarget(raw: string, context: LinkContext = {}): LinkT
     !/^(?:README|LICENSE|Makefile|Dockerfile|Gemfile)$/i.test(path)
   )
     return null;
-  const tail = normalize(path, true),
-    cwd = context.cwd?.replace(/\\/g, "/").replace(/\/$/, "");
-  return tail && cwd && absolute(cwd)
-    ? { kind: "file", path: `${cwd}/${tail}`, ...location, relative: true }
-    : null;
+  const cwd = context.cwd && normalize(context.cwd.replace(/\\/g, "/"));
+  if (!cwd || !absolute(cwd)) return null;
+  const root = `${cwd.replace(/\/$/, "")}/`;
+  let base = "";
+  if (context.documentPath) {
+    const document = normalize(context.documentPath.replace(/\\/g, "/"));
+    if (!document || !absolute(document)) return null;
+    const directory = document.slice(0, document.lastIndexOf("/") + 1);
+    const windows = /^(?:[a-z]:|\/\/)/i.test(root);
+    if (!(windows ? directory.toLowerCase() : directory).startsWith(windows ? root.toLowerCase() : root))
+      return null;
+    base = directory.slice(root.length);
+  }
+  // Resolve against the document's directory, but keep traversal bounded by the workspace.
+  const tail = normalize(`${base}${path}`, true);
+  return tail ? { kind: "file", path: `${root}${tail}`, ...location, relative: true } : null;
 }
 
 export function webOpenTarget(url: string, options: WebOpenOptions = {}): "app-browser" | "external-browser" {
