@@ -39,7 +39,8 @@ interface RunBoundary {
   auxiliary?: boolean;
 }
 interface IndexData {
-  version: 9;
+  version: 10;
+  searchText: import("../shared/task-search.ts").TaskSearchText[];
   size: number;
   modified: number;
   header: SessionHeader;
@@ -58,6 +59,7 @@ export class HistoryIndex {
   data!: IndexData;
   readBytes = 0;
   private currentRun = "";
+  private searchChars = 0;
   private dirty = false;
   private ids = new Set<string>();
   readonly path: string;
@@ -68,7 +70,8 @@ export class HistoryIndex {
     const index = new HistoryIndex(path),
       stat = statSync(path);
     index.data = {
-      version: 9,
+      version: 10,
+      searchText: [],
       size: stat.size,
       modified: stat.mtimeMs,
       header: JSON.parse(readFileSync(path, "utf8")) as SessionHeader,
@@ -87,21 +90,26 @@ export class HistoryIndex {
     try {
       const cached = JSON.parse(readFileSync(`${this.path}.index.json`, "utf8")) as IndexData;
       if (
-        cached.version === 9 &&
+        cached.version === 10 &&
         cached.size === stat.size &&
         cached.modified === stat.mtimeMs &&
         cached.header &&
-        Array.isArray(cached.calls)
+        Array.isArray(cached.calls) &&
+        Array.isArray(cached.searchText)
       ) {
         this.data = cached;
+        this.searchChars = cached.searchText.reduce((size, segment) => size + segment.text.length + 1, 0);
         this.currentRun = Object.keys(cached.runs).at(-1) ?? "";
         return;
       }
     } catch {
       /* Missing/stale derived index is rebuilt with a bounded streaming scan. */
     }
+    this.searchChars = 0;
+    this.currentRun = "";
     this.data = {
-      version: 9,
+      version: 10,
+      searchText: [],
       size: 0,
       modified: 0,
       header: undefined as unknown as SessionHeader,
@@ -172,6 +180,32 @@ export class HistoryIndex {
     end = start + Buffer.byteLength(JSON.stringify(entry)) + 1,
   ): void {
     const d = this.data;
+    // The bounded search projection is rebuilt from JSONL for old indexes and follows live appends.
+    // Index visible user input from run starts, rather than the expanded model prompt or tool output.
+    let searchText = "";
+    let searchRunId = this.currentRun;
+    if (
+      entry.type === "custom" &&
+      entry.customType === "zpi.run" &&
+      isJsonObject(entry.data) &&
+      entry.data.phase === "start" &&
+      typeof entry.data.runId === "string"
+    ) {
+      searchRunId = entry.data.runId;
+      if (typeof entry.data.text === "string") searchText = entry.data.text;
+    } else if (entry.type === "message" && entry.message.role === "assistant") {
+      searchText = entry.message.content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+    }
+    if (searchText) {
+      const bounded = searchText.slice(0, Math.max(0, 200000 - this.searchChars));
+      if (bounded) {
+        d.searchText.push({ runId: searchRunId, text: bounded });
+        this.searchChars += bounded.length + 1;
+      }
+    }
     // JSONL is authoritative on restart; filesystem mtime and session metadata are not activity.
     if (entry.type === "message" || (entry.type === "custom" && entry.customType === "zpi.run")) {
       const data = entry.type === "custom" && isJsonObject(entry.data) ? entry.data : undefined;

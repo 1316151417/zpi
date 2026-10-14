@@ -43,6 +43,10 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   expect(entries[0].patch).toContain("-original");
   expect(entries[0].patch).toContain("+final");
   expect(entries[0].patch).not.toContain("intermediate");
+  const searchChanges = await f.host.getTaskSearchChanges(f.session.id);
+  expect(searchChanges).toEqual([
+    { path: entries[0].path, added: 1, removed: 1, lastTurnIndex: 0, writeCount: 2 },
+  ]);
   const runId = f.host.getSessionSnapshot(f.session.id).view.runs[0].runId;
   expect((await f.host.getChanges(f.session.id, runId))[0].patch).toBe(entries[0].patch);
   expect(await f.host.readPatch(f.session.id, null, entries[0].id)).toBe(entries[0].patch);
@@ -67,6 +71,7 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   expect(reopened.listRecentSessions().some((record) => record.id === f.session.id)).toBe(false);
   expect((await reopened.getDraft(f.session.id)).text).toBe("未发送草稿");
   expect((await reopened.getChanges(f.session.id, null))[0].patch).toBe(entries[0].patch);
+  expect(await reopened.getTaskSearchChanges(f.session.id)).toEqual(searchChanges);
   expect(await reopened.readPatch(f.session.id, runId, "operation:write-1")).toBe(second);
 });
 

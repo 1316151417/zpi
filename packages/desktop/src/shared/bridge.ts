@@ -23,6 +23,16 @@ export interface ProjectRecord {
   updatedAt: number;
   hidden?: boolean;
 }
+export interface TaskSearchChange {
+  path: string;
+  added: number;
+  removed: number;
+  lastTurnIndex: number;
+  writeCount: number;
+}
+export interface TaskSearchResult extends SessionRecord {
+  snippets: import("./task-search.ts").TaskSearchSnippet[];
+}
 export interface SessionRecord {
   parentSessionId?: string;
   newWorktree?: boolean;
@@ -306,6 +316,11 @@ export interface DesktopBridge {
   addProject(): Promise<Result<ProjectRecord | null>>;
   removeProject(id: string): Promise<Result<void>>;
   listSessions(projectId: string): Promise<Result<SessionRecord[]>>;
+  getTaskSearchChanges(sessionId: string): Promise<Result<TaskSearchChange[]>>;
+  searchTasks(query: string, workspaceKey: string | null): Promise<Result<TaskSearchResult[]>>;
+  listTaskFiles(
+    sessionId: string | null,
+  ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
   listRecentSessions(): Promise<Result<SessionRecord[]>>;
   listSessionMentions(sessionId: string): Promise<Result<SessionMentionSuggestion[]>>;
   createSession(projectId: string | null): Promise<Result<SessionRecord>>;
@@ -414,6 +429,9 @@ export const methods = [
   "addProject",
   "removeProject",
   "listSessions",
+  "getTaskSearchChanges",
+  "searchTasks",
+  "listTaskFiles",
   "listRecentSessions",
   "listSessionMentions",
   "setSessionPinned",

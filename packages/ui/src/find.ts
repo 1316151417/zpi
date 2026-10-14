@@ -2,6 +2,9 @@ export interface FindRequest {
   query: string;
   activeIndex: number;
   navigationId: number;
+  targetRunId?: string;
+  matchBefore?: string;
+  matchAfter?: string;
 }
 export interface FindState {
   total: number;
@@ -64,4 +67,31 @@ export function moveFindIndex(state: FindState, direction: "previous" | "next"):
 export function findKeyDirection(key: string, shift: boolean): "previous" | "next" | undefined {
   if (key === "ArrowUp" || (key === "Enter" && shift)) return "previous";
   if (key === "ArrowDown" || key === "Enter") return "next";
+}
+
+/** Resolve the selected search snippet after older turns finish loading. */
+export function findSearchTargetIndex(matches: readonly FindMatch[], request: FindRequest): number {
+  if (!request.targetRunId) return -1;
+  const normalize = (text: string) =>
+    text
+      .replace(/[*_`~]/g, "")
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase();
+  const before = normalize(request.matchBefore ?? "");
+  const after = normalize(request.matchAfter ?? "");
+  let best = -1;
+  let bestScore = -1;
+  matches.forEach((match, index) => {
+    if (!match.key.startsWith(`${request.targetRunId}:`)) return;
+    const left = normalize(match.text.slice(0, match.start));
+    const right = normalize(match.text.slice(match.end));
+    let score = 0;
+    for (let i = 1; i <= before.length && i <= left.length && before.at(-i) === left.at(-i); i++) score++;
+    for (let i = 0; i < after.length && i < right.length && after[i] === right[i]; i++) score++;
+    if (score > bestScore) {
+      best = index;
+      bestScore = score;
+    }
+  });
+  return best;
 }

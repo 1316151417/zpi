@@ -56,12 +56,44 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
       window.removeEventListener("keydown", keydown);
     };
   }, [enabled, sessionId, open, close]);
+  const start = useCallback(
+    (query: string, targetRunId?: string, matchBefore?: string, matchAfter?: string) => {
+      opener.current = document.querySelector('[aria-label="消息"]') ?? document.activeElement;
+      setScope("conversation");
+      setOpen(true);
+      setRequest((current) => ({
+        query,
+        targetRunId,
+        matchBefore,
+        matchAfter,
+        activeIndex: query.trim() ? 0 : -1,
+        navigationId: current.navigationId + 1,
+      }));
+      setState(emptyState());
+      setFocusRequestId((id) => id + 1);
+    },
+    [],
+  );
   const change = useCallback((query: string) => {
-    setRequest((current) => ({ ...current, query, activeIndex: query.trim() ? 0 : -1 }));
+    setRequest((current) => ({
+      ...current,
+      targetRunId: undefined,
+      matchBefore: undefined,
+      matchAfter: undefined,
+      query,
+      activeIndex: query.trim() ? 0 : -1,
+    }));
     setState(emptyState());
   }, []);
   const navigate = useCallback((activeIndex: number) => {
-    setRequest((current) => ({ ...current, activeIndex, navigationId: current.navigationId + 1 }));
+    setRequest((current) => ({
+      ...current,
+      targetRunId: undefined,
+      matchBefore: undefined,
+      matchAfter: undefined,
+      activeIndex,
+      navigationId: current.navigationId + 1,
+    }));
   }, []);
   const update = useCallback((next: FindState) => {
     setState((current) =>
@@ -76,6 +108,9 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
     setScope(next);
     setRequest((current) => ({
       ...current,
+      targetRunId: undefined,
+      matchBefore: undefined,
+      matchAfter: undefined,
       activeIndex: current.query.trim() ? 0 : -1,
       navigationId: current.navigationId + 1,
     }));
@@ -83,5 +118,5 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
     if (next === "changes" && sessionId) openChanges(sessionId, null);
     setFocusRequestId((id) => id + 1);
   }, [scope, sessionId]);
-  return { open, scope, request, state, focusRequestId, change, navigate, update, toggleScope, close };
+  return { start, open, scope, request, state, focusRequestId, change, navigate, update, toggleScope, close };
 }
