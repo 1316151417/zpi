@@ -19,6 +19,7 @@ import {
   type PromptTemplate,
   parseInput,
   parseMentions,
+  patchLineCounts,
   piTemplate,
   type SessionEntry,
   SessionManager,
@@ -51,9 +52,12 @@ import type {
   SessionControls,
   SessionRecord,
   SessionSnapshot,
+  TaskSearchChange,
+  TaskSearchResult,
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
+import { buildTaskSearchSnippets } from "../shared/task-search.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { BackgroundTasks } from "./background-tasks.ts";
 import { pluginSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
@@ -690,6 +694,62 @@ export class SessionHost {
           }
         }),
     );
+  }
+  searchTasks(query: string, workspaceKey: string | null = null): TaskSearchResult[] {
+    if (typeof query !== "string" || query.length > 500) throw new Error("invalid_input: 任务查询无效");
+    const needle = query.trim().toLocaleLowerCase();
+    return this.listRecentSessions()
+      .filter((record) => !record.draft && (!workspaceKey || record.cwd === workspaceKey))
+      .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id))
+      .filter(
+        (record) =>
+          !needle ||
+          record.title.toLocaleLowerCase().includes(needle) ||
+          this.indexes
+            .get(record.id)
+            ?.data.searchText.map((segment) => segment.text)
+            .join("\n")
+            .toLocaleLowerCase()
+            .includes(needle),
+      )
+      .slice(0, 80)
+      .map((record) => ({
+        ...record,
+        snippets: buildTaskSearchSnippets(this.indexes.get(record.id)?.data.searchText ?? [], needle),
+      }));
+  }
+  async getTaskSearchChanges(id: string): Promise<TaskSearchChange[]> {
+    const writes = this.recordedChanges(id, null);
+    const summaries = new Map<string, TaskSearchChange>();
+    const index = this.indexes.get(id);
+    const turns = Object.values(index?.data.runs ?? {})
+      .map((run) => run.start.start)
+      .sort((a, b) => a - b);
+    writes.forEach((write, position) => {
+      const previous = summaries.get(write.path);
+      const offset = index?.data.fileChanges[position]?.start ?? 0;
+      summaries.set(write.path, {
+        path: write.path,
+        added: 0,
+        removed: 0,
+        lastTurnIndex: turns.findLastIndex((start) => start <= offset),
+        writeCount: (previous?.writeCount ?? 0) + 1,
+      });
+    });
+    for (const file of await this.allChanges(id, null)) {
+      const summary = summaries.get(file.path);
+      if (!summary) continue;
+      const counts = file.patch ? patchLineCounts(file.patch) : { additions: 0, deletions: 0 };
+      summary.added += counts.additions;
+      summary.removed += counts.deletions;
+    }
+    return [...summaries.values()].sort(
+      (a, b) =>
+        b.lastTurnIndex - a.lastTurnIndex || b.writeCount - a.writeCount || a.path.localeCompare(b.path),
+    );
+  }
+  async listTaskFiles(id: string | null) {
+    return searchFiles(this.workspaceInfo(id).cwd, "", undefined, 15000);
   }
   listArchivedSessions() {
     return structuredClone(
