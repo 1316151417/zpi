@@ -23,22 +23,6 @@ export function pinnedTaskShortcut(index: number, settings: ShortcutSettings, pl
   return binding ? formatShortcut(binding, platform) : "";
 }
 
-/** Observe without consuming input, including keyup events consumed by editors. */
-export function listenShortcutModifier(platform: string, onChange: (held: boolean) => void): () => void {
-  const update = (event: KeyboardEvent) => onChange(platform === "darwin" ? event.metaKey : event.ctrlKey);
-  const reset = () => onChange(false);
-  window.addEventListener("keydown", update, { capture: true });
-  window.addEventListener("keyup", update, { capture: true });
-  window.addEventListener("blur", reset);
-  document.addEventListener("visibilitychange", reset);
-  return () => {
-    window.removeEventListener("keydown", update, { capture: true });
-    window.removeEventListener("keyup", update, { capture: true });
-    window.removeEventListener("blur", reset);
-    document.removeEventListener("visibilitychange", reset);
-  };
-}
-
 export function workspaceShortcutBlocked(command: ShortcutCommand): boolean {
   const dialogs = command === "find" ? '[role="dialog"]:not(.task-find-bar)' : '[role="dialog"]';
   return hasVisibleShortcutBlocker(

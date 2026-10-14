@@ -5,6 +5,7 @@ import type { IPty } from "node-pty";
 import type { BrowserState, PaneBounds, PaneEvent } from "../shared/bridge.ts";
 import type { ShortcutKeyEvent } from "../shared/shortcuts.ts";
 import { browserUrl } from "./browser-url.ts";
+import type { ShortcutModifier } from "./shortcut-modifier.ts";
 import { terminalShell } from "./terminal-shell.ts";
 export class PaneServices {
   private terminals = new Map<string, IPty>();
@@ -13,14 +14,17 @@ export class PaneServices {
   private window: BrowserWindow;
   private emit: (event: PaneEvent) => void;
   private shortcut: (event: ShortcutKeyEvent) => boolean;
+  private modifier?: ShortcutModifier;
   constructor(
     window: BrowserWindow,
     emit: (event: PaneEvent) => void,
     shortcut: (event: ShortcutKeyEvent) => boolean = () => false,
+    modifier?: ShortcutModifier,
   ) {
     this.window = window;
     this.emit = emit;
     this.shortcut = shortcut;
+    this.modifier = modifier;
   }
   async createTerminal(cwd: string) {
     if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
@@ -91,6 +95,7 @@ export class PaneServices {
     });
     this.browsers.set(id, { view });
     const content = view.webContents;
+    this.modifier?.observe(content);
     content.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown") return;
       if (
@@ -216,6 +221,7 @@ export class PaneServices {
     const { view } = this.browser(id);
     if (bounds === null) {
       if (this.shown === id) {
+        this.modifier?.resetFor(view.webContents);
         this.window.contentView.removeChildView(view);
         this.shown = undefined;
       }
@@ -232,8 +238,10 @@ export class PaneServices {
       bounds.height < 0
     )
       throw new Error("invalid_input: 浏览器视口无效");
-    if (this.shown && this.shown !== id)
+    if (this.shown && this.shown !== id) {
+      this.modifier?.resetFor(this.browser(this.shown).view.webContents);
       this.window.contentView.removeChildView(this.browser(this.shown).view);
+    }
     if (this.shown !== id) this.window.contentView.addChildView(view);
     this.shown = id;
     const zoom = this.window.webContents.getZoomFactor();
@@ -254,6 +262,7 @@ export class PaneServices {
     const entry = this.browsers.get(id);
     if (!entry) return;
     if (this.shown === id) {
+      this.modifier?.resetFor(entry.view.webContents);
       this.window.contentView.removeChildView(entry.view);
       this.shown = undefined;
     }
