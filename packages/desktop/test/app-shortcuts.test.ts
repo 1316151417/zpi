@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   captureWorkspaceShortcut,
+  listenShortcutModifier,
+  pinnedTaskShortcut,
   visiblePinnedTasks,
   workspaceShortcutForEvent,
 } from "../src/renderer/app-shortcuts.ts";
@@ -128,5 +130,66 @@ describe.each(["darwin", "linux"])("focus composer capture on %s", (platform) =>
     );
     expect(Object.keys(event)).toEqual([]);
     expect(workspaceShortcutForEvent(event, platform, defaultShortcuts(platform))).toBe("focus-composer");
+  });
+});
+
+describe.each(["darwin", "linux", "win32"])("pinned shortcut hints on %s", (platform) => {
+  it("uses the actual configured bindings for only the first five displayed tasks", () => {
+    const settings = defaultShortcuts(platform);
+    for (let index = 0; index < 5; index++) {
+      expect(pinnedTaskShortcut(index, settings, platform)).toBe(
+        `${platform === "darwin" ? "⌘" : "Ctrl+"}${index + 1}`,
+      );
+    }
+    for (const index of [-1, 5, 6]) expect(pinnedTaskShortcut(index, settings, platform)).toBe("");
+    settings.bindings["pin-2"] = "Alt+Shift+Q";
+    expect(pinnedTaskShortcut(1, settings, platform)).toBe(platform === "darwin" ? "⌥⇧Q" : "Alt+Shift+Q");
+    settings.bindings["pin-2"] = null;
+    expect(pinnedTaskShortcut(1, settings, platform)).toBe("");
+    settings.enabled = false;
+    expect(pinnedTaskShortcut(0, settings, platform)).toBe("");
+  });
+
+  it("tracks held modifiers without consuming input and resets on release, blur and visibility", () => {
+    const target = new EventTarget();
+    const document = new EventTarget();
+    vi.stubGlobal("window", target);
+    vi.stubGlobal("document", document);
+    const change = vi.fn();
+    const dispose = listenShortcutModifier(platform, change);
+    const dispatch = (type: string, held: boolean, overrides = {}) => {
+      const event = new Event(type, { cancelable: true });
+      Object.assign(event, {
+        metaKey: platform === "darwin" && held,
+        ctrlKey: platform !== "darwin" && held,
+        ...overrides,
+      });
+      target.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(event.cancelBubble).toBe(false);
+    };
+    dispatch("keydown", true);
+    expect(change).toHaveBeenLastCalledWith(true);
+    // Repeat, IME and other key releases must not clear a modifier that remains held.
+    dispatch("keydown", true, { repeat: true, isComposing: true });
+    dispatch("keyup", true);
+    expect(change).toHaveBeenLastCalledWith(true);
+    dispatch("keyup", false);
+    expect(change).toHaveBeenLastCalledWith(false);
+    dispatch("keydown", true);
+    target.dispatchEvent(new Event("blur"));
+    expect(change).toHaveBeenLastCalledWith(false);
+    dispatch("keydown", true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(change).toHaveBeenLastCalledWith(false);
+    dispatch("keydown", false, platform === "darwin" ? { ctrlKey: true } : { metaKey: true });
+    expect(change).toHaveBeenLastCalledWith(false);
+    dispose();
+    change.mockClear();
+    dispatch("keydown", true);
+    dispatch("keyup", false);
+    target.dispatchEvent(new Event("blur"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(change).not.toHaveBeenCalled();
   });
 });

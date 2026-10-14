@@ -613,8 +613,8 @@ export class SessionHost {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  listProjects(): ProjectRecord[] {
-    return structuredClone(this.projects.filter((p) => !p.hidden));
+  listProjects(includeHidden = false): ProjectRecord[] {
+    return structuredClone(this.projects.filter((p) => includeHidden || !p.hidden));
   }
   async addProject(path: string): Promise<ProjectRecord> {
     const canonical = await realpath(path);

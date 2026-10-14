@@ -32,7 +32,14 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
     const pinned = page.locator(".pinned-tasks [data-session-id]");
     await expect(pinned).toHaveCount(2);
     await expect(pinned.first()).toHaveAttribute("data-session-id", second);
+    await expect(pinned.locator(".task-row-shortcut")).toHaveCount(0);
+    await page.keyboard.down(primary);
     await expect(pinned.locator(".task-row-shortcut")).toHaveCount(2);
+    await expect(pinned.first().locator(".task-row-time")).toHaveText(
+      process.platform === "darwin" ? "⌘1" : "Ctrl+1",
+    );
+    await page.keyboard.up(primary);
+    await expect(pinned.locator(".task-row-shortcut")).toHaveCount(0);
     await page.keyboard.press(`${primary}+1`);
     await expect(pinned.first()).toHaveClass(/active/);
     await page.keyboard.press(`${primary}+2`);

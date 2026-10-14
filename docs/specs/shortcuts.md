@@ -54,3 +54,12 @@ Electron 的窗口恢复与 WebContents 焦点保留用于正常路径；本次�
 - [项目依赖版本 41.10.7 的 WebContents focus 文档](https://github.com/electron/electron/blob/v41.10.7/docs/api/web-contents.md#event-focus)：macOS 的 WebContents focus 表示窗口 first responder，切换应用/窗口不改变每个窗口的 first responder。此处复用该既有行为，不承诺 Node 测试验证了真实 OS 窗口恢复。
 - [41.10.7 的窗口 show / focus / hide 文档](https://github.com/electron/electron/blob/v41.10.7/docs/api/base-window.md#winshow)：窗口层的显示聚焦与页面内编辑器聚焦分离。
 - [41.10.7 的 WebContents focus / isFocused 文档](https://github.com/electron/electron/blob/v41.10.7/docs/api/web-contents.md#contentsfocus)：显式 Cmd/Ctrl+I 从浏览器 guest 交回宿主时使用页面焦点 API。
+
+## 置顶任务按住显示提示
+
+- 平时仅保留右侧时间；macOS 按住 Command、其他平台按住 Ctrl 时，前五个可切换置顶任务以实际配置的快捷键替换同一位置的时间。松开恢复；提示与时间共用右边界，不并排展示。
+- 置顶顺序复用 `visiblePinnedTasks`，与实际 `pin-1` 至 `pin-5` 分派一致。自定义键位使用共享 formatter；总开关关闭、绑定为 null、无对应命令的任务不显示提示，不回退伪造默认键。
+- 提示显示期间鼠标悬停/键盘焦点不将其替换为归档操作；松开后恢复原有 hover 行为。等待确认/停止计时的问题徽章优先，按住修饰键不卸载徽章，也不改变其 hover 行为。
+- renderer 捕获阶段观察 keydown/keyup，不消费或重派输入，不影响真实任务切换、终端输入、重复事件、IME 或快捷键录制。窗口 blur、文档 visibilitychange 均清除提示，卸载移除监听。
+- 作用范围为主应用 renderer（包括终端）。原生浏览器 guest 持有焦点且未向 renderer 派发键盘事件时，不能保证按住提示出现；本次不扩展原生事件转发或 IPC。窗口恢复时若修饰键已按住，收到下一次带有修饰状态的 renderer 键盘事件后才更新，不推断系统全局按键状态。
+- Node 回归覆盖平台修饰键、释放/失焦/可见性变化/清理、实际映射及禁用边界、普通与时间线行的时间/提示互斥和问题徽章优先。已有 Electron 用例更新为默认隐藏、按住显示、松开隐藏；本次未执行 GUI，视觉与原生窗口/guest 行为仍需目标平台烟测。

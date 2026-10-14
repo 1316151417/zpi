@@ -82,19 +82,24 @@ export function ShortcutSettings() {
             <strong>启用快捷键</strong>
             <small>控制下列应用命令和全局窗口快捷键；复制、粘贴、撤销与常规导航仍可使用。</small>
           </span>
-          <input
-            type="checkbox"
-            aria-label="启用快捷键"
-            checked={draft.enabled}
-            disabled={busy || Boolean(recording)}
-            onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-          />
+          <span className="settings-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="启用快捷键"
+              aria-checked={draft.enabled}
+              checked={draft.enabled}
+              disabled={busy || Boolean(recording)}
+              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+            />
+            <span aria-hidden="true" />
+          </span>
         </label>
       </div>
-      <p className="settings-help">
-        点击快捷键后按下新组合，Esc
-        取消录入。修改后点击保存。全局快捷键可能与其他应用或系统设置冲突；注册失败时会保留原设置。
-      </p>
+      <div className="settings-hint shortcut-settings-hint">
+        <p>点击快捷键后按下新组合，Esc 取消录入。修改后点击保存。</p>
+        <p>全局快捷键可能与其他应用或系统设置冲突；注册失败时会保留原设置。</p>
+      </div>
       <div className="settings-group">
         {shortcutCommands.map(({ id, label, scope }) => (
           <div className="settings-row shortcut-setting-row" key={id} data-shortcut-command={id}>
