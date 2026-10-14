@@ -43,7 +43,12 @@ export function WindowChrome({
             </button>
           </ActionHint>
           {leftCollapsed && (
-            <ActionHint label="新建任务" appearance="control" side="bottom">
+            <ActionHint
+              label="新建任务"
+              shortcut={window.zpi.platform === "darwin" ? "⌘ N" : "Ctrl+N"}
+              appearance="control"
+              side="bottom"
+            >
               <button className="window-chrome-button" aria-label="新建任务" onClick={onNewTask}>
                 <MessageCirclePlus size={16} />
               </button>

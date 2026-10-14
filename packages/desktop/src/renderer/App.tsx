@@ -87,6 +87,7 @@ import { type SearchCommand, TaskSearchDialog } from "./TaskSearchDialog.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { PanelLeftClose, PanelLeftOpen, SquareTerminal } from "./task-search-icons.ts";
+import { taskShortcut } from "./task-shortcut.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
@@ -293,19 +294,15 @@ export function App() {
   const openSearch = useCallback(() => setSearchOpen(true), []);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.keyCode === 229 ||
-        !(event.metaKey || event.ctrlKey) ||
-        event.altKey ||
-        event.shiftKey ||
-        event.key.toLowerCase() !== "k"
-      )
-        return;
+      const shortcut = taskShortcut(event, window.zpi.platform);
+      if (!shortcut) return;
       if (document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
       event.preventDefault();
-      setSearchOpen(true);
+      if (shortcut === "search") setSearchOpen(true);
+      else {
+        setSettingsOpen(false);
+        void newSession().catch(report);
+      }
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
@@ -561,12 +558,15 @@ export function App() {
               <div className="sidebar-global">
                 <button aria-label="新建任务" onClick={() => task(() => newSession())}>
                   <MessageCirclePlus size={16} />
-                  新建任务
+                  <span className="sidebar-action-label">新建任务</span>
+                  <span className="sidebar-action-shortcut">
+                    {window.zpi.platform === "darwin" ? "⌘ N" : "Ctrl+N"}
+                  </span>
                 </button>
                 <button aria-label="搜索" onClick={openSearch}>
                   <Search size={16} />
-                  <span className="sidebar-search-label">搜索</span>
-                  <span className="sidebar-search-shortcut">
+                  <span className="sidebar-action-label">搜索</span>
+                  <span className="sidebar-action-shortcut">
                     {window.zpi.platform === "darwin" ? "⌘ K" : "Ctrl+K"}
                   </span>
                 </button>
