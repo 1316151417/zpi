@@ -21,7 +21,7 @@ function event(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
 
 describe("composer shortcut routing", () => {
   beforeEach(() => {
-    querySelectorAll.mockReturnValue([]);
+    querySelectorAll.mockClear().mockReturnValue([]);
     vi.stubGlobal("document", { querySelectorAll });
     vi.stubGlobal("getComputedStyle", () => ({ visibility: "visible" }));
   });
@@ -39,6 +39,16 @@ describe("composer shortcut routing", () => {
       expect(
         composerShortcutCommand(event({ key, code: undefined }), "linux", defaultShortcuts("linux")),
       ).toBeUndefined();
+  });
+
+  it("does not scan overlay layout for ordinary, disabled, or unmatched input", () => {
+    const settings = defaultShortcuts("linux");
+    expect(
+      composerShortcutCommand(event({ key: "a", code: "KeyA", ctrlKey: false }), "linux", settings),
+    ).toBeUndefined();
+    expect(composerShortcutCommand(event(), "linux", { ...settings, enabled: false })).toBeUndefined();
+    expect(composerShortcutCommand(event({ key: "b", code: "KeyB" }), "linux", settings)).toBeUndefined();
+    expect(querySelectorAll).not.toHaveBeenCalled();
   });
 
   it("recognizes repeats for consumption without allowing them to fall through as normal Enter", () => {

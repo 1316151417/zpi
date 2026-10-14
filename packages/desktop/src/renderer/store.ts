@@ -330,9 +330,9 @@ export async function refreshSuggestions(id: string): Promise<void> {
   ]);
   useStore.setState({ resourceDiagnostics, suggestions });
 }
-let taskGroupGeneration = 0;
+let appliedTaskGroupRequest = 0;
 export async function refresh(): Promise<void> {
-  const groupGeneration = taskGroupGeneration;
+  const groupRequest = appliedTaskGroupRequest;
   const [projects, records, settings, taskGroups] = await Promise.all([
     window.zpi.listProjects().then(unwrap),
     window.zpi.listRecentSessions().then(unwrap),
@@ -346,7 +346,7 @@ export async function refresh(): Promise<void> {
     ),
   );
   useStore.setState({
-    taskGroups: groupGeneration === taskGroupGeneration ? taskGroups : useStore.getState().taskGroups,
+    taskGroups: groupRequest === appliedTaskGroupRequest ? taskGroups : useStore.getState().taskGroups,
     taskGroupsHydrated: true,
     projects,
     sessions: new Map(
@@ -654,7 +654,6 @@ export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnap
 }
 
 let taskGroupRequest = 0;
-let appliedTaskGroupRequest = 0;
 export async function changeTaskGroups(
   command: Parameters<DesktopBridge["updateTaskGroups"]>[0],
 ): Promise<TaskGroupState> {
@@ -663,7 +662,6 @@ export async function changeTaskGroups(
   if (request > appliedTaskGroupRequest) {
     // 失败写入不能废弃首屏读取；只有成功落地的新状态才阻止旧刷新或旧命令回包覆盖。
     appliedTaskGroupRequest = request;
-    ++taskGroupGeneration;
     useStore.setState({ taskGroups });
   }
   return taskGroups;

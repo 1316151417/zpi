@@ -6,16 +6,7 @@ export function composerShortcutCommand(
   platform: string,
   settings: ShortcutSettings | undefined,
 ): "send-next" | "select-model" | undefined {
-  if (
-    !settings ||
-    event.defaultPrevented ||
-    event.isComposing ||
-    event.keyCode === 229 ||
-    hasVisibleShortcutBlocker(
-      'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen, [data-shortcut-recording="true"]',
-    )
-  )
-    return;
+  if (!settings || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
   // Repeated shortcuts must still be consumed before the editor's own handlers;
   // ChatComposer suppresses dispatch for those events.
   const command = shortcutForEvent(
@@ -31,5 +22,12 @@ export function composerShortcutCommand(
     platform,
     settings,
   );
-  if (command === "send-next" || command === "select-model") return command;
+  if (command !== "send-next" && command !== "select-model") return;
+  if (
+    hasVisibleShortcutBlocker(
+      'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen, [data-shortcut-recording="true"]',
+    )
+  )
+    return;
+  return command;
 }
