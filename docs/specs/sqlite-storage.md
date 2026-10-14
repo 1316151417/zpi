@@ -92,13 +92,15 @@ npx tsx scripts/storage-migrate.ts activate --plan "$PLAN" --target "$TARGET" --
 
 旧 JSONL 按 64 KiB chunk 读取，每条记录上限 8 MiB；记录、ID 与 journal 工作集存入可丢弃的临时 SQLite spool，转换按条迭代，不构造整份历史数组。spool 以磁盘空间换取受控正文工作集，并非零额外磁盘需求或整段迁移严格常量内存的承诺（文件清单、任务列表和单条载荷仍有成本）。它关闭同步保障仅因为是临时派生数据，不改变目标权威数据库的 FULL/WAL 配置。
 
+适配器接受当前 main 分支写出的记录形态：`zpi.title` 允许 `provider`/`modelId` 字段（标题生成任务写入，迁移时仅 `state` 进入任务标题状态）；侧聊继承产生的无 `data` 载荷 `zpi.context_boundary` 锚点按原 ID 保留并补成空对象载荷，因为 v2 事实记录要求对象载荷。
+
 `validate` 校验目标文件哈希、manifest/plan 一致性、仍可访问的旧源指纹、任务数量/归属/字段、草稿、队列、公共设置与智能体状态；重新按相同固定适配器转换旧源，并逐条比较 JSONL v2 内容与条数，最后检查数据库 integrity/foreign keys。因此 validate 和 activate 都要求原离线源仍存在且未变化。这里的逐条语义对照使用同一个迁移适配器，并不是独立旧/新算法的全 cutoff 模型请求等价证明，也不替代实际应用验收。
 
 `activate` 再校验、发布 ready、重命名 staging 并原子切换目标活动指针，不覆盖旧源。
 
 迁移仅在此工具的旧格式解析器中发生，应用正常启动不调用它。工具不会解密凭据；复制的认证数据可能需要重新授权。必须核对设置、任务组织、草稿/队列、附件、上下文和模型实际请求，再允许切换真实数据。
 
-当前实现的受控文件路径重定位使用目标 final 目录的绝对路径，派生索引也以路径定位；不能把生成目录任意搬走后宣称仍可用。目标目录应从计划/转换到试用保持不变。validate/activate 必须拒绝实际 final 目录与 manifest relocation.destination 不一致的产物。受控路径按真实文件归属匹配清单，允许旧源的符号链接别名，但不得将外部项目文件误判为迁移资产；源内缺失或不支持的引用必须阻塞。迁移的异步目录同步遵循运行时相同的平台策略：Windows 跳过目录 fsync，其他平台传播同步失败。旧 `agents-state.json` 转入 `app_settings.subagentProfiles`，个人 `agents/*.md` 保留为文件。工具复制旧 `agent/` 下非 sessions 的受控内容及认证文件；外部 profile/skills 和项目工作目录不属于数据库资产，按计划中的清单及 `omittedRootEntries` 单独核对。
+当前实现的受控文件路径重定位使用目标 final 目录的绝对路径，派生索引也以路径定位；不能把生成目录任意搬走后宣称仍可用。目标目录应从计划/转换到试用保持不变。validate/activate 必须拒绝实际 final 目录与 manifest relocation.destination 不一致的产物。受控路径按真实文件归属匹配清单，允许旧源的符号链接别名，但不得将外部项目文件误判为迁移资产；源内缺失或不支持的引用必须阻塞。从路径不同的离线副本迁移时，记录内指向原数据根 `agent/(attachments|tool-output|file-changes|session-context)` 的绝对引用不在源内、保持不变，若目标就是原数据根，需保留原根下这些受管目录旧引用才可读。迁移的异步目录同步遵循运行时相同的平台策略：Windows 跳过目录 fsync，其他平台传播同步失败。旧 `agents-state.json` 转入 `app_settings.subagentProfiles`，个人 `agents/*.md` 保留为文件。工具复制旧 `agent/` 下非 sessions 的受控内容及认证文件；外部 profile/skills 和项目工作目录不属于数据库资产，按计划中的清单及 `omittedRootEntries` 单独核对。
 
 ## 备份、失败与回滚限制
 
