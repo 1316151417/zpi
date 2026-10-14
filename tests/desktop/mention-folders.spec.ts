@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -97,8 +98,10 @@ test("folder mentions share ZCode file search, parent paths, icons, keyboard scr
     await expect(page.getByRole("listbox", { name: "引用文件" })).toHaveCount(0);
     await expect(editor).toHaveText("@kbupd");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

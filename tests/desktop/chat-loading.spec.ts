@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("loading keeps ZCode spacing before content, during shell execution and until the turn ends", async () => {
@@ -46,8 +47,9 @@ test("loading keeps ZCode spacing before content, during shell execution and unt
       done(response);
     }
   });
-  const app = await launchDesktop({ dir, project, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByLabel("消息", { exact: true }).fill("检查加载布局");
@@ -105,8 +107,10 @@ test("loading keeps ZCode spacing before content, during shell execution and unt
     prepare.resolve();
     execute.resolve();
     finish.resolve();
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

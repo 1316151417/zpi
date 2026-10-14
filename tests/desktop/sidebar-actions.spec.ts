@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -262,9 +263,11 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     }
     await projectHeader.screenshot({ path: "test-results/sidebar-project-heading-dark.png" });
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -308,8 +311,7 @@ test("project directory actions preserve literal paths and report Finder failure
     await expect(page.getByRole("alert")).toContainText("无法打开项目目录");
     await expect(row).toHaveCount(1);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -404,9 +406,11 @@ test("tasks appear in one section and return to their original group after unpin
     await expectGroup("独立任务", ".recent-sessions");
     await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-exclusive-groups.png" });
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -459,8 +463,7 @@ test("sidebar section handles reorder with keyboard and pointer and preserve ord
     await page.reload();
     await expect.poll(order).toEqual(["projects", "tasks"]);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -511,7 +514,6 @@ test("task controls follow native hover even when React misses mouseleave, and r
     await expect(archive).toBeHidden();
     await expect(time).toBeVisible();
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

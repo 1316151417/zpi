@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 
@@ -143,8 +144,10 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
     await page.getByRole("menuitemradio", { name: "时间线" }).click();
     await expect(page.locator(".task-list-empty")).toHaveText("暂无任务");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

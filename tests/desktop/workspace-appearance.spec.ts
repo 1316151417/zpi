@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication, Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function bounds(locator: Locator) {
@@ -18,8 +19,9 @@ test("drafts and completed tasks retain ZCode's four corner insets with both sid
     send(response, chunk({ content: "完成" }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByLabel("收起侧边栏", { exact: true }).click();
     await expect(page.locator(".sidebar")).toBeHidden();
@@ -62,9 +64,11 @@ test("drafts and completed tasks retain ZCode's four corner insets with both sid
       }
     }
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -220,7 +224,6 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS("height", "48px");
     await page.screenshot({ path: "test-results/workspace-rounded-panels-narrow-dark.png" });
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

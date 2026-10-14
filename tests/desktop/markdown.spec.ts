@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("streaming code, formulas and Mermaid follow both themes; IPC copy reports success and failure without browser clipboard", async () => {
@@ -51,8 +52,9 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     send(r, chunk({ content: "```\n" }));
     done(r);
   });
-  let app = await launchDesktop({ dir, project, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow(),
       errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -240,8 +242,10 @@ test("streaming code, formulas and Mermaid follow both themes; IPC copy reports 
     reasoning.resolve();
     first.resolve();
     second.resolve();
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

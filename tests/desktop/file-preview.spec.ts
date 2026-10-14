@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("conversation files and folders share ZCode menus; folders open in Finder and files use the sidebar", async () => {
@@ -134,9 +135,11 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
     await expect(page.getByRole("alert")).toContainText("文件不存在");
     expect(await calls()).toHaveLength(6);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -212,9 +215,11 @@ test("file references share icons and canonical text; chat files open reusable s
     await page.screenshot({ path: "test-results/desktop-references-dark.png" });
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -251,8 +256,10 @@ test("embedded file images retain their preview across theme changes and reload 
     await page.getByRole("button", { name: "刷新文件", exact: true }).click();
     await expect.poll(width).toBe(60);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

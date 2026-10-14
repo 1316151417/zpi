@@ -5,6 +5,7 @@ import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { clipboardText, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -124,9 +125,11 @@ test("add panel shares the composer width, lists files and preserves the inserti
     await page.screenshot({ path: "test-results/desktop-composer-add-small.png" });
     expect(server.requests).toHaveLength(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -205,9 +208,11 @@ test("add panel imports multiple attachments and retains the draft when the pick
     await expect(page.locator(".composer .image-chip")).toHaveCount(1);
     expect(server.requests).toHaveLength(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -334,9 +339,11 @@ test("mixed file attachments work through picker, paste and drop, and file menti
     expect(body).toContain(await realpath(files[3]));
     expect(body).not.toContain("binary office payload");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -388,9 +395,11 @@ test("Shift+Enter moves the caret to a visible empty line and preserves repeated
       .toBe("\n中文");
     expect(server.requests).toHaveLength(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -450,9 +459,11 @@ test("Shift+Enter keeps the caret visible in a long pasted draft", async () => {
     expect(await clipboardText(page)).toBe(`${pasted}\n\n\nlast line`);
     expect(server.requests).toHaveLength(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -554,9 +565,11 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
     expect(JSON.stringify(server.requests[count + 1])).toContain(join(cwd, "main.txt"));
     await expect(editor).toHaveText("");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -734,9 +747,11 @@ test("canonical reference editing, IME, selection, undo/redo, cross-session care
     await select(page, b);
     await expect(page.getByLabel("消息", { exact: true })).toHaveText("会话 B 草稿");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -791,9 +806,11 @@ test("accepted submit clears only submitted content, rejects duplicates and pres
     await expect(editor).toHaveText("实际提交的完整内容");
     expect(server.requests).toHaveLength(1);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -925,8 +942,10 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(1);
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
@@ -257,9 +258,11 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
     expect((await calls())?.filter((path) => path.endsWith("slides.pptx"))).toHaveLength(1);
   } finally {
     release.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -378,7 +381,6 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
       "true",
     );
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

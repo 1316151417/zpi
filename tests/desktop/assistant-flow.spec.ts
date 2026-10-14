@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("assistant prose stays in order with reasoning and tools, then only the last answer leaves history", async () => {
@@ -107,9 +108,11 @@ test("assistant prose stays in order with reasoning and tools, then only the las
   } finally {
     callTool.resolve();
     finish.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -168,9 +171,11 @@ for (const ending of ["completed", "aborted", "error"] as const) {
       await expect(run.locator(".process-text")).toHaveText("先读取说明。");
     } finally {
       finish.resolve();
-      await app?.close();
-      await server.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => server.close(),
+        () => app?.close(),
+      ]);
     }
   });
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { presetModels } from "zpi-ai";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("GPT models offer five or six efforts with medium default; Chinese models show only their controls", async () => {
@@ -12,8 +13,9 @@ test("GPT models offer five or six efforts with medium default; Chinese models s
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.evaluate(
       async ({ url, modelsJson }) => {
@@ -103,8 +105,10 @@ test("GPT models offer five or six efforts with medium default; Chinese models s
     await expect(page.getByRole("menuitem", { name: "默认", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: /^(中|极高|最高)$/ })).toHaveCount(0);
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

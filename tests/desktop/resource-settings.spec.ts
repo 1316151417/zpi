@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function configureModels(page: Page) {
@@ -275,8 +276,10 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     await expect(page.getByTestId("compaction-divider")).toHaveText("上下文已自动压缩");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

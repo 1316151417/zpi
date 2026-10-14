@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
 
@@ -102,8 +103,7 @@ test("sidebar search matches ZCode scopes, keyboard navigation, history, geometr
     await expect(search(page)).toHaveCount(0);
     await expect(page.locator(".settings-screen")).toBeVisible();
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -157,7 +157,6 @@ test("task search previews three results, expands, searches workspace files and 
     await expect(search(page)).toHaveCount(0);
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

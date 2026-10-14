@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { type ElectronApplication, expect, type Page, test } from "@playwright/test";
 import { piTemplate, SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { clipboardText } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -133,8 +134,10 @@ test("hash references search across workspaces, preserve surrounding text, undo 
     expect(result.ok && result.value.view.runs.at(-1)?.fileReferences).toEqual([]);
     expect(result.ok && result.value.view.runs.at(-1)?.userMessage).toBe(canonical);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

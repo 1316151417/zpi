@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { done, fakeServer } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -123,8 +124,10 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     await expect(editor).toHaveText("前文 ke-db 后文");
     expect(server.requests).toHaveLength(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

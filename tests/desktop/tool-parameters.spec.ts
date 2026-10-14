@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("write Parameters follow ZCode's empty input, partial input, content and result stages", async () => {
@@ -132,8 +133,10 @@ test("write Parameters follow ZCode's empty input, partial input, content and re
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
   } finally {
     for (const gate of [path, content, complete, finish]) gate.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

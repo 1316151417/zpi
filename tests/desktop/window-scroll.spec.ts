@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("wheel and editor focus scroll only their viewport across drafts, conversations and side panes", async () => {
@@ -14,8 +15,9 @@ test("wheel and editor focus scroll only their viewport across drafts, conversat
     send(response, chunk({ content: "Long answer\n\n".repeat(100) }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url, project: cwd });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url, project: cwd });
     const page = await app.firstWindow();
     const editor = page.getByLabel("消息", { exact: true });
     await expect(editor).toBeVisible();
@@ -83,8 +85,10 @@ test("wheel and editor focus scroll only their viewport across drafts, conversat
     await assertFixedWindow();
     await page.screenshot({ path: "test-results/window-scroll-contained.png" });
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -5,6 +5,7 @@ import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 // Inspect rendered pixels: native scrollbar fade/hover states have no DOM attributes.
@@ -133,8 +134,10 @@ test("native conversation scrollbar matches ZCode alpha compositing, expands, fa
     await expect(area).toHaveCSS("scrollbar-color", "rgba(255, 255, 255, 0.1) rgba(0, 0, 0, 0)");
     await expect(area).toHaveCSS("scrollbar-width", "auto");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

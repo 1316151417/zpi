@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { create, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { seedHistory } from "../history-fixture.ts";
@@ -115,9 +116,11 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     await expect(bar(page)).toHaveCount(0);
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -155,9 +158,11 @@ test("search loads older history, preserves the active message and ignores tools
     await select(page, seed.id);
     await expect.poll(() => highlight(page)).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -296,8 +301,10 @@ test("file scope searches lazy patches across files, highlights split diffs and 
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     release.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 async function selectText(locator: Locator) {
@@ -93,9 +94,11 @@ test("scrolling then opening a conversation reference dismisses the old text sel
     await page.keyboard.press("Shift");
     await expect(add).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -185,9 +188,11 @@ test("selections inside or crossing Markdown file and web links can be added to 
     await expect(page.getByRole("button", { name: "添加到当前任务", exact: true })).toBeVisible();
     await page.screenshot({ path: "test-results/markdown-link-selection.png" });
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -375,9 +380,11 @@ test("message hover actions, inline editing, selection wire format, draft restar
     await expect(page.getByTestId("run").last().getByLabel("编辑", { exact: true })).toHaveCount(1);
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -481,8 +488,10 @@ test("Markdown selections use source paths, cross-message selections are exclude
     expect(await readFile(changed, "utf8")).toBe("external\n");
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

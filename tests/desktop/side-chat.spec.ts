@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 for (const streamingPane of ["main", "side"] as const) {
@@ -23,8 +24,9 @@ for (const streamingPane of ["main", "side"] as const) {
       }
       done(response);
     });
-    const app = await launchDesktop({ dir, url: server.url });
+    let app: Awaited<ReturnType<typeof launchDesktop>>;
     try {
+      app = await launchDesktop({ dir, url: server.url });
       const page = await app.firstWindow();
       const main = page.locator("main");
       await main.getByLabel("消息", { exact: true }).fill("主问题");
@@ -82,9 +84,11 @@ for (const streamingPane of ["main", "side"] as const) {
     } finally {
       for (const step of steps) step.resolve();
       finish.resolve();
-      await app.close();
-      await server.close();
-      await rm(dir, { recursive: true, force: true });
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => server.close(),
+        () => app?.close(),
+      ]);
     }
   });
 }
@@ -95,8 +99,9 @@ test("side chats fit narrow panes, add references to their own draft and copy on
     send(response, chunk({ content: "可以引用的辅助回答" }));
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     const main = page.locator("main");
     await main.getByLabel("消息", { exact: true }).fill("主问题");
@@ -184,16 +189,19 @@ test("side chats fit narrow panes, add references to their own draft and copy on
       side.getByTestId("run").last().locator(".user-message-actions").getByLabel("复制", { exact: true }),
     ).toBeDisabled();
   } finally {
-    await app.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
 test("window drag regions never overlap floating toggles or header buttons while find is open", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-titlebar-find-"));
-  const app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator("main").getByLabel("消息", { exact: true }).press("Control+f");
@@ -255,7 +263,6 @@ test("window drag regions never overlap floating toggles or header buttons while
     await assertDisjointRegions();
     await find.getByRole("button", { name: "关闭查找", exact: true }).click();
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

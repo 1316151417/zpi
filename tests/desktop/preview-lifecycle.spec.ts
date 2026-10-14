@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("references from earlier assistant segments produce one card below the final answer", async () => {
@@ -52,9 +53,11 @@ test("references from earlier assistant segments produce one card below the fina
     expect(a).not.toBeNull();
     expect(c?.y).toBeGreaterThanOrEqual((a?.y ?? 0) + (a?.height ?? 0));
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -150,9 +153,11 @@ test("delayed file checks stay with their task, stable projections share checks 
       .toBe(7);
     await expect(page.locator(".assistant-preview-card")).toHaveCount(0);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -227,8 +232,10 @@ test("rewind removes old turn cards and failed change reads suppress only gated 
     await page.reload();
     await expect(page.locator(".assistant-preview-title")).toHaveText("ok.pdf");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

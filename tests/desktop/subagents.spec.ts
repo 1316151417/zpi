@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("subagent plugin manages profiles/models and opens complete read-only child status in an isolated side tab", async () => {
@@ -165,9 +166,11 @@ test("subagent plugin manages profiles/models and opens complete read-only child
     await expect(page.locator(".right-pane")).toBeHidden();
     expect(errors).toEqual([]);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -319,9 +322,11 @@ test("background child streams into the side pane, updates status live and retur
     await page.locator(".task-ended").click();
     await expect(page.locator(".task-directory:visible")).toContainText("已停止");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -390,9 +395,11 @@ test("TaskOutput waits for the child and shows a clean result without duplicate 
     await expect(output).not.toContainText("retrieval_status");
     await expect(page.locator("main .user-message")).toHaveCount(1);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -474,8 +481,10 @@ test("message tools match ZCode summaries and keep coordinator inbox bodies out 
     await expect(page.getByRole("tab", { name: "Stable research title", exact: true })).toBeVisible();
     await expect(page.locator(".subagent-pane")).toContainText("Revised findings");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

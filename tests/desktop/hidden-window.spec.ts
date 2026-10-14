@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("desktop automation renders and accepts input without showing or focusing its window", async () => {
@@ -34,8 +35,7 @@ test("desktop automation renders and accepts input without showing or focusing i
     await app.evaluate(({ app }) => app.emit("activate", {}, false));
     expect(await presentation()).toEqual({ visible: false, focused: false, throttled: false, dock: false });
   } finally {
-    await app?.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 
@@ -121,8 +121,10 @@ test("closing the macOS window keeps the task alive through tool execution and c
     expect(child.exitCode).toBe(0);
     await expect.poll(() => quitRequestClosed).toBe(true);
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

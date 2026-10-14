@@ -3,13 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { providerBaseUrl, providerPresets } from "zpi-ai";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("preset connection protocol changes update endpoints, preserve keys and survive restarting", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-provider-protocol-ui-"));
-  let app = await launchDesktop({ dir, url: "" });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   const presets = providerPresets.filter((preset) => preset.id !== "openai-chatgpt");
   try {
+    app = await launchDesktop({ dir, url: "" });
     let page = await app.firstWindow();
     await page.evaluate(async (presets) => {
       for (const preset of presets) {
@@ -81,7 +83,6 @@ test("preset connection protocol changes update endpoints, preserve keys and sur
     await page.getByRole("combobox", { name: "API 格式", exact: true }).click();
     await expect(page.getByRole("option", { name: /OpenAI Responses/ })).toBeVisible();
   } finally {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });

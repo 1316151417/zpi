@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("default Java opening launches the associated IDE and preserves the Markdown line", async () => {
@@ -89,8 +90,10 @@ test("default Java opening launches the associated IDE and preserves the Markdow
     expect(failed.error.message).toContain("ENOENT");
     expect(failed.error.message).toContain("没有可用的默认应用程序");
   } finally {
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

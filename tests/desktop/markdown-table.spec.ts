@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 test("tables use theme borders and support Markdown copy, CSV, preview and horizontal scrolling; prose and image previews remain interactive", async () => {
@@ -31,8 +32,9 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     send(response, chunk({ content: markdown }));
     done(response);
   });
-  const app = await launchDesktop({ dir, project, url: server.url });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
+    app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -162,10 +164,12 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     await wide.getByRole("button", { name: "收回表格滚动区域", exact: true }).click();
     expect(errors).toEqual([]);
   } finally {
-    await app.close();
-    await server.close();
-    images.closeAllConnections();
-    await new Promise<void>((resolve) => images.close(() => resolve()));
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => new Promise<void>((resolve) => images.close(() => resolve())),
+      () => images.closeAllConnections(),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
 const call = (id: string, name: string, args: Record<string, unknown>, index = 0) => ({
@@ -121,11 +122,13 @@ test("long grouped commands keep the running label separate while rolling and at
     await expect(page.locator('.process [data-stream-entrance="true"]')).toHaveCount(0);
   } finally {
     finish.resolve();
-    await writeFile(join(project, "explore-release"), "");
-    await writeFile(join(project, "execute-release"), "");
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+      () => writeFile(join(project, "execute-release"), ""),
+      () => writeFile(join(project, "explore-release"), ""),
+    ]);
   }
 });
 
@@ -311,9 +314,11 @@ test("ZCode tool summaries group by phase, preserve expansion and open per-opera
     await expect(terminalSummary).toHaveText("终端·2 个命令");
   } finally {
     for (const gate of [second, third, execute, edit, finish]) gate.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -397,10 +402,12 @@ test("terminal output follows live data, freezes while reading and preserves com
     await expect(historicalOutput).toHaveAttribute("data-scroll-mask", "bottom");
   } finally {
     finish.resolve();
-    await writeFile(join(project, "release"), "");
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+      () => writeFile(join(project, "release"), ""),
+    ]);
   }
 });
 
@@ -459,8 +466,10 @@ test("write previews load large per-operation patches and failed edits retain re
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
   } finally {
     finish.resolve();
-    await app?.close();
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
