@@ -71,15 +71,18 @@ export class ChatGPTAuth {
       if (!attempt.providerId) {
         const preset = getProviderPreset("openai-chatgpt");
         if (!preset) throw new Error("configuration: 缺少 ChatGPT 提供商");
-        this.settings.saveProvider({
-          id: providerId,
-          preset: preset.id,
-          name: credential.email ? `${preset.name} · ${credential.email}` : preset.name,
-          baseUrl: preset.baseUrl,
-          models: [],
-        });
-      }
-      this.settings.saveChatGPTCredential(providerId, credential);
+        // Commit the provider and its credentials together; a failed login must not leave an empty row.
+        this.settings.saveProvider(
+          {
+            id: providerId,
+            preset: preset.id,
+            name: credential.email ? `${preset.name} · ${credential.email}` : preset.name,
+            baseUrl: preset.baseUrl,
+            models: [],
+          },
+          credential,
+        );
+      } else this.settings.saveChatGPTCredential(providerId, credential);
       if (discovered) {
         try {
           const { apiKey: _key, ...saved } = this.settings.snapshot(providerId);

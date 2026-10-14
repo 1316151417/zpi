@@ -197,6 +197,64 @@ it("updates inactive browser state and terminal output without revealing that ta
   expect(visiblePaneTabs("A")[0]).toMatchObject({ state: { url: "https://example.test/next" } });
 });
 
+it.each([file.path, "./readme.md", "/shared/readme-link.md"])(
+  "keeps the newer file contents and line target when an earlier read of %s finishes last",
+  async (path) => {
+    const earlier = Promise.withResolvers<Result<FilePreview>>();
+    const later = Promise.withResolvers<Result<FilePreview>>();
+    bridge.readFilePreview.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(later.promise);
+    const first = openFile("A", path, { line: 10 });
+    const second = openFile("A", file.path, { line: 100 });
+    const latest = { ...file, text: "new contents", location: { line: 100 } };
+    later.resolve(ok(latest));
+    await second;
+    earlier.resolve(ok({ ...file, text: "old contents", location: { line: 10 } }));
+    await first;
+    expect(visiblePaneTabs("A")).toEqual([expect.objectContaining({ type: "file", preview: latest })]);
+  },
+);
+
+it("closing a file invalidates pending refreshes but allows a later explicit reopen", async () => {
+  await openFile("A", file.path);
+  const id = usePane.getState().active ?? "";
+  const earlier = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(earlier.promise);
+  const refresh = openFile("A", file.path);
+  await closeTab(id);
+  earlier.resolve(ok({ ...file, text: "late refresh" }));
+  await refresh;
+  expect(visiblePaneTabs("A")).toEqual([]);
+  expect(usePane.getState()).toMatchObject({ open: false, active: undefined });
+  await openFile("A", file.path);
+  expect(visiblePaneTabs("A")).toHaveLength(1);
+  expect(usePane.getState().open).toBe(true);
+});
+
+it("closing a file also invalidates an in-flight read through a symlink alias", async () => {
+  await openFile("A", file.path);
+  const earlier = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(earlier.promise);
+  const opening = openFile("A", "/shared/readme-link.md");
+  await closeTab(usePane.getState().active ?? "");
+  earlier.resolve(ok(file));
+  await opening;
+  expect(visiblePaneTabs("A")).toEqual([]);
+});
+
+it("ignores a stale file failure and still allows independent file opens", async () => {
+  const earlier = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(earlier.promise);
+  const opening = openFile("A", file.path);
+  await openFile("A", file.path);
+  const other = { ...file, path: "/shared/other.md" };
+  bridge.readFilePreview.mockResolvedValueOnce(ok(other));
+  await openFile("A", other.path);
+  earlier.resolve({ ok: false, error: { code: "not_found", message: "old read failed" } });
+  await expect(opening).resolves.toBeUndefined();
+  expect(visiblePaneTabs("A")).toHaveLength(2);
+  expect(visiblePaneTabs("A")[1]).toMatchObject({ preview: other });
+});
+
 it("closes and reorders only the intended tabs even when selection changes during native cleanup", async () => {
   await openBrowser();
   const aFirst = usePane.getState().active ?? "";

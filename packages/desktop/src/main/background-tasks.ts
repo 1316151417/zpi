@@ -295,8 +295,8 @@ export class BackgroundTasks {
                 return;
               }
               const size = (await stat(outputPath)).size;
-              if (execution.background && size >= 5 * 1024 ** 3) {
-                execution.task.error = "Background output exceeded 5 GiB.";
+              if (size >= 5 * 1024 ** 3) {
+                execution.task.error = "Command output exceeded 5 GiB.";
                 execution.stop();
               }
               if (!execution.background && update) {
@@ -396,7 +396,8 @@ export class BackgroundTasks {
       let output = preview.output;
       const limit = outputLimit();
       const truncated = preview.truncated || output.length > limit;
-      output = output.slice(0, limit);
+      // Running tasks expose their startup output; finished tasks must retain final errors and summaries.
+      output = task.status === "running" ? output.slice(0, limit) : output.slice(-limit);
       if (truncated) output += `\n[Output truncated. Full output: ${task.outputPath}]`;
       if (status === "success" && execution) execution.notified = true;
       return {

@@ -321,7 +321,7 @@ export class SettingsStore {
       ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
     });
   }
-  saveProvider(input: ProviderInput): PublicSettings {
+  saveProvider(input: ProviderInput, chatgptCredential?: ChatGPTCredential): PublicSettings {
     if (!isJsonObject(input)) throw new Error("configuration: 提供商配置必须为对象");
     assertSupportedOptions(
       input,
@@ -343,18 +343,22 @@ export class SettingsStore {
     this.validateProvider(provider);
     if (usesChatGPTAuth(input.preset) && input.apiKey !== undefined)
       throw new Error("configuration: ChatGPT 提供商需要登录授权");
+    if (
+      chatgptCredential !== undefined &&
+      (!usesChatGPTAuth(input.preset) || !isChatGPTCredential(chatgptCredential))
+    )
+      throw new Error("configuration: 无效 ChatGPT 凭据");
     if (input.apiKey !== undefined && typeof input.apiKey !== "string")
       throw new Error("configuration: 无效凭据");
     if (this.unreadCredentials && input.apiKey === undefined)
       throw new Error("configuration: 保存的凭据尚未解锁");
+    const chatgpt = chatgptCredential ?? this.credentials[id]?.chatgpt;
     const credentials = {
       ...this.credentials,
       [id]: {
         baseUrl: provider.baseUrl,
         apiKey: input.apiKey ?? this.credentials[id]?.apiKey ?? "",
-        ...(usesChatGPTAuth(input.preset) && this.credentials[id]?.chatgpt
-          ? { chatgpt: this.credentials[id].chatgpt }
-          : {}),
+        ...(usesChatGPTAuth(input.preset) && chatgpt ? { chatgpt: structuredClone(chatgpt) } : {}),
       },
     };
     const providers = this.data.providers.some((p) => p.id === id)

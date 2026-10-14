@@ -46,7 +46,7 @@ SDK 原生 `bash.timeout` 使用**秒**，不传时没有默认超时；超时�
 
 后台进程跨主任务回合保留。中断主任务当前回合不会清理已转后台的命令；`TaskStop`、停止子智能体、归档/删除会话和正常退出应用会清理相应进程树。异常退出后不能保证子进程已清理；重启仅恢复历史并把原运行中任务标记为失联，不重启任务，也不凭历史 PID 杀进程。
 
-输出直接落盘，模型输出预览有长度上限，侧栏按需读取末尾 64 KiB。后台输出达到 5 GiB 时停止；子智能体命令转后台后最多运行一小时。`TaskOutput` 默认等待 30,000 ms，最长 600,000 ms；`block=false` 立即返回。完成结果会自动回传，避免反复轮询。
+输出直接落盘，模型输出预览有长度上限，侧栏按需读取末尾 64 KiB。前台与后台命令的输出文件都受 5 GiB 软上限保护（每秒检查，可能短暂超出）；子智能体命令转后台后最多运行一小时。`TaskOutput` 默认等待 30,000 ms，最长 600,000 ms；`block=false` 立即返回。运行中的输出预览保留开头，已结束任务保留末尾，避免漏掉最终错误。完成结果会自动回传，避免反复轮询。
 
 实现入口：[SDK](../packages/coding-agent/src/core/sdk.ts)、[默认能力](../packages/desktop/src/shared/config.ts)、[会话装配](../packages/desktop/src/main/session-host.ts)、[后台命令](../packages/desktop/src/main/background-tasks.ts)。
 

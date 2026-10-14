@@ -390,9 +390,13 @@ export async function markSessionRead(id: string): Promise<void> {
     readingSessions.delete(id);
   }
 }
+let selectionGeneration = 0;
 export async function selectSession(id: string): Promise<void> {
+  const generation = ++selectionGeneration;
   const previous = useStore.getState().selected;
   if (previous && previous !== id) await saveDraft(previous);
+  // 保存草稿期间用户可能已重新选择任务，迟到的导航不能覆盖最新意图。
+  if (generation !== selectionGeneration) return;
   localStorage.setItem("zpi.selectedSession", id);
   useStore.setState({ selected: id });
   const unreadAt = useStore.getState().sessions.get(id)?.unreadAt;

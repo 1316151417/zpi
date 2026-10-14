@@ -1897,15 +1897,7 @@ export class SessionHost {
             ["zpi.session_meta", "zpi.title", "zpi.queue", "zpi.attention"].includes(entry.customType)
           ),
       );
-      const manager = this.manager(child.id);
-      manager.replaceEntries(
-        await copyFileChangeSnapshots(
-          transcript,
-          join(this.dir, "agent", "tool-output", id),
-          join(this.dir, "agent", "tool-output", child.id),
-        ),
-      );
-      await this.attachments.copyTo(
+      const relocated = await this.attachments.copyTo(
         id,
         child.id,
         prefix.flatMap((entry) =>
@@ -1919,6 +1911,32 @@ export class SessionHost {
             : [],
         ),
       );
+      const copied = await copyFileChangeSnapshots(
+        transcript,
+        join(this.dir, "agent", "tool-output", id),
+        join(this.dir, "agent", "tool-output", child.id),
+      );
+      for (const entry of copied) {
+        if (entry.type !== "custom" || entry.customType !== "zpi.run" || !isJsonObject(entry.data)) continue;
+        if (!Array.isArray(entry.data.attachments)) continue;
+        for (const attachment of entry.data.attachments) {
+          if (isJsonObject(attachment) && typeof attachment.path === "string")
+            attachment.path = relocated.get(attachment.path) ?? attachment.path;
+        }
+      }
+      const manager = this.manager(child.id);
+      manager.replaceEntries(copied);
+      // Preserve original provider history and signatures; publish new child-owned paths as context.
+      if (relocated.size)
+        manager.appendMessage({
+          role: "user",
+          timestamp: Date.now(),
+          content: `File attachments were copied for this fork. Use these current paths instead of the historical paths:\n${[
+            ...relocated,
+          ]
+            .map(([from, to]) => `${JSON.stringify(from)} -> ${JSON.stringify(to)}`)
+            .join("\n")}`,
+        });
       manager.appendSessionInfo(`Fork of ${parent.title}`.slice(0, 200));
       manager.appendCustomEntry("zpi.session_meta", {
         projectId: child.projectId,

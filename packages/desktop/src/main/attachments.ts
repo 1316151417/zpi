@@ -344,8 +344,9 @@ export class AttachmentStore {
       else if (item.cached) await rm(this.filePath(sessionId, id), { force: true });
     });
   }
-  async copyTo(sourceId: string, targetId: string, ids: string[]): Promise<void> {
-    if (!ids.length) return;
+  async copyTo(sourceId: string, targetId: string, ids: string[]): Promise<Map<string, string>> {
+    const relocated = new Map<string, string>();
+    if (!ids.length) return relocated;
     const entries = new Map((await this.list(sourceId)).map((item) => [item.id, item]));
     await this.serial(targetId, async () => {
       const metadata: Saved[] = [];
@@ -359,10 +360,12 @@ export class AttachmentStore {
           const path = this.filePath(targetId, id);
           await writeFile(path, await readFile(this.filePath(sourceId, id)), { mode: 0o600 });
           metadata.push({ ...image.metadata, path, used: true, cached: true });
+          relocated.set(image.metadata.path, path);
         } else metadata.push({ ...image.metadata, used: true });
       }
       atomicJson(join(this.directory(targetId), "index.json"), metadata);
     });
+    return relocated;
   }
   async deleteSession(id: string) {
     await this.operations.get(id)?.catch(() => {});

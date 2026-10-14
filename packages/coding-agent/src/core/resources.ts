@@ -1,4 +1,4 @@
-import { open, readdir, readFile, realpath } from "node:fs/promises";
+import { open, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { parseDocument } from "yaml";
@@ -37,6 +37,8 @@ function frontmatter(text: string): { yaml: string; bodyOffset: number } {
   return { yaml: match[1], bodyOffset: match[0].length };
 }
 async function metadataText(path: string): Promise<string> {
+  // Skip devices and pipes before opening: a FIFO without a writer blocks discovery indefinitely.
+  if (!(await stat(path)).isFile()) throw new Error("SKILL.md must be a regular file");
   const file = await open(path, "r");
   try {
     let text = "";
@@ -168,6 +170,7 @@ export class FileResourceLoader implements ResourceLoader {
     const diagnostics: ResourceDiagnostic[] = [];
     for (const file of files) {
       try {
+        if (!(await stat(file)).isFile()) throw new Error("AGENTS.md must be a regular file");
         append.push(
           `<project_instructions path="${xml(file)}">\n${await readFile(file, "utf8")}\n</project_instructions>`,
         );

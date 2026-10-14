@@ -60,6 +60,87 @@ it("forked images remain independently readable even when history contains more 
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("data:image/png;base64,");
 });
 
+it.each(["report.csv", "report.pdf"])(
+  "forked cached attachment %s stays usable after parent deletion and restart without rewriting provider history",
+  async (name) => {
+    let currentPath = "";
+    const f = await fixture((_, res, index) => {
+      if (index === 1) {
+        send(
+          res,
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "read-copied-file",
+                type: "function",
+                function: { name: "read", arguments: JSON.stringify({ path: currentPath }) },
+              },
+            ],
+          }),
+        );
+        done(res, "tool_calls");
+      } else {
+        send(res, chunk({ content: "answer" }));
+        done(res);
+      }
+    });
+    const parent = f.host.createSession(f.a.id);
+    const attachment = await f.host.importAttachment(
+      parent.id,
+      name,
+      Buffer.from("copied attachment content"),
+    );
+    if (!("path" in attachment)) throw new Error("Expected file attachment");
+    const externalPath = join(f.a.path, "external.txt");
+    await writeFile(externalPath, "external content");
+    const external = await f.host.importFile(parent.id, externalPath);
+    const first = await f.host.startRun({
+      sessionId: parent.id,
+      text: "inspect files",
+      attachments: [attachment.id, external.id],
+    });
+    await f.host.activeRuns.get(parent.id)?.done;
+    const parentFile = join(f.dir, "agent", "sessions", f.a.id, `${parent.id}.jsonl`);
+    const parentTranscript = await readFile(parentFile, "utf8");
+    const child = await f.host.forkSession(parent.id, first.runId);
+    const copied = (await f.host.readAttachment(child.id, attachment.id)).metadata;
+    if (!("path" in copied)) throw new Error("Expected copied file attachment");
+    currentPath = copied.path;
+    expect(currentPath).not.toBe(attachment.path);
+    expect(await readFile(parentFile, "utf8")).toBe(parentTranscript);
+    const childFile = join(f.dir, "agent", "sessions", f.a.id, `${child.id}.jsonl`);
+    const messages = (raw: string) =>
+      raw
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+        .filter((entry) => entry.type === "message")
+        .map((entry) => entry.message);
+    const originalMessages = messages(parentTranscript);
+    expect(messages(await readFile(childFile, "utf8")).slice(0, originalMessages.length)).toEqual(
+      originalMessages,
+    );
+    await f.host.deleteSession(parent.id);
+    expect(existsSync(attachment.path)).toBe(false);
+    await f.host.close();
+    const restored = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
+    cleanup.push(() => restored.close());
+    await restored.init();
+    expect(restored.getSessionSnapshot(child.id).view.runs[0].attachments).toEqual([
+      expect.objectContaining({ id: attachment.id, path: currentPath }),
+      expect.objectContaining({ id: external.id, path: externalPath }),
+    ]);
+    await restored.startRun({ sessionId: child.id, text: "read the copied file" });
+    await restored.activeRuns.get(child.id)?.done;
+    const request = JSON.stringify(f.server.requests.at(-1)?.messages);
+    expect(request).toContain("Use these current paths instead of the historical paths");
+    expect(request).toContain(currentPath);
+    expect(request).toContain("copied attachment content");
+    expect(await readFile(externalPath, "utf8")).toBe("external content");
+  },
+);
+
 it("file reset rejects external changes without pruning history, restores original files and keeps fork snapshots independent", async () => {
   const f = await fixture((_, res, index) => {
     if (index === 0) {
