@@ -199,7 +199,7 @@ function reduceSessionRecord(
   envelope?: DesktopEventEnvelope,
 ): SessionRecord {
   if (envelope?.activityAt !== undefined) {
-    if ((record.activitySeq ?? 0) > envelope.seq) return record;
+    if ((record.activitySeq ?? 0) >= envelope.seq) return record;
     record = { ...record, updatedAt: envelope.activityAt, activitySeq: envelope.seq };
   }
   switch (event.type) {
@@ -229,10 +229,9 @@ function reduceSessionRecord(
   }
 }
 function apply(events: DesktopEventEnvelope[]): void {
-  const state = useStore.getState(),
-    views = new Map(state.views),
-    records = new Map(state.sessions);
-  let recordsChanged = false;
+  const state = useStore.getState();
+  let views = state.views,
+    records = state.sessions;
   for (const e of events) {
     const pending = pendingSnapshots.get(e.sessionId);
     if (pending) {
@@ -245,17 +244,23 @@ function apply(events: DesktopEventEnvelope[]): void {
       if (e.event.type === "settled") questionDrafts.delete(e.sessionId);
       if (e.event.type === "history_reset") retainQuestionDraft(e.sessionId, e.event.view.question?.id);
     }
-    if (view) views.set(e.sessionId, reduceSession(view, e));
+    if (view) {
+      const next = reduceSession(view, e);
+      if (next !== view) {
+        if (views === state.views) views = new Map(views);
+        views.set(e.sessionId, next);
+      }
+    }
     const record = records.get(e.sessionId);
     if (record) {
       const next = reduceSessionRecord(record, e.event, e);
       if (next !== record) {
-        recordsChanged = true;
+        if (records === state.sessions) records = new Map(records);
         records.set(e.sessionId, next);
       }
     }
   }
-  useStore.setState({ views, ...(recordsChanged ? { sessions: records } : {}) });
+  if (views !== state.views || records !== state.sessions) useStore.setState({ views, sessions: records });
 }
 export function report(error: unknown): void {
   logRendererError("reported", error);

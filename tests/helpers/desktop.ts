@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { cp } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { _electron as electron } from "@playwright/test";
+import { desktopEnvironment, isolateDesktop } from "./desktop-isolation.ts";
 export async function launchDesktop({
   dir,
   url,
@@ -15,20 +16,7 @@ export async function launchDesktop({
   images?: string[];
   packaged?: boolean;
 }) {
-  const env: Record<string, string> = {
-    ...Object.fromEntries(
-      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-    ),
-    ZPI_TEST_MODE: "1",
-    ZPI_TEST_AUTO_SELECTION: url ? "1" : "0",
-    ZPI_TEST_DATA_DIR: dir,
-    ZPI_TEST_BASE_URL: url,
-    ZPI_TEST_IMAGE_FILES: JSON.stringify(images),
-    ZDOTDIR: dir,
-  };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.ZPI_TEST_PROJECT_DIR;
-  if (project) env.ZPI_TEST_PROJECT_DIR = project;
+  const env = desktopEnvironment({ dir, url, project, images });
   let executablePath: string | undefined;
   if (packaged) {
     const source = process.env.ZPI_TEST_PACKAGED_APP || resolve("release/mac-arm64/ZPI.app");
@@ -46,12 +34,11 @@ export async function launchDesktop({
     ...(executablePath ? { executablePath } : {}),
     env,
   });
-  // Native open actions are mocked by each test. Never launch an actual IDE
-  // based on the developer machine's file associations.
-  await application.evaluate(({ app }) => {
-    app.getApplicationInfoForProtocol = async () => {
-      throw new Error("No default application in desktop tests");
-    };
-  });
+  try {
+    await application.evaluate(isolateDesktop);
+  } catch (error) {
+    await application.close().catch(() => {});
+    throw error;
+  }
   return application;
 }

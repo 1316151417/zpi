@@ -1,7 +1,8 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
-import { convertImageBytesToPng } from "./image-convert.ts";
+
 import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize.ts";
+import { openImage } from "./image-source.ts";
 
 export interface ProcessImageOptions {
   /** Whether to resize images to inline provider limits. Default: true */
@@ -26,44 +27,31 @@ interface NormalizedImage {
   bytes: Uint8Array;
   mimeType: string;
   convertedFrom?: string;
+  animated?: boolean;
 }
 
-function baseMimeType(mimeType: string): string {
-  return mimeType.split(";")[0]?.trim().toLowerCase() ?? mimeType.toLowerCase();
-}
-
-function normalizeSupportedImageMimeType(mimeType: string): string | null {
-  switch (baseMimeType(mimeType)) {
-    case "image/png":
-      return "image/png";
-    case "image/jpeg":
-    case "image/jpg":
-      return "image/jpeg";
-    case "image/gif":
-      return "image/gif";
-    case "image/webp":
-      return "image/webp";
-    default:
-      return null;
-  }
-}
-
-async function normalizeImage(bytes: Uint8Array, mimeType: string): Promise<NormalizedImage | null> {
-  const normalizedMimeType = normalizeSupportedImageMimeType(mimeType);
-  if (normalizedMimeType) {
-    return { bytes, mimeType: normalizedMimeType };
-  }
-
-  const pngBytes = await convertImageBytesToPng(bytes);
-  if (!pngBytes) {
+async function normalizeImage(bytes: Uint8Array): Promise<NormalizedImage | null> {
+  try {
+    const source = await openImage(bytes);
+    // Inline providers receive one physically oriented frame, regardless of format or size.
+    if (
+      source.mimeType === "image/bmp" ||
+      source.animated ||
+      source.orientation !== 1 ||
+      source.hasMetadata
+    ) {
+      return {
+        bytes: await source.pipeline.rotate().png().toBuffer(),
+        mimeType: "image/png",
+        convertedFrom: source.mimeType,
+        ...(source.animated ? { animated: true } : {}),
+      };
+    }
+    await source.pipeline.stats();
+    return { bytes, mimeType: source.mimeType };
+  } catch {
     return null;
   }
-
-  return {
-    bytes: pngBytes,
-    mimeType: "image/png",
-    convertedFrom: baseMimeType(mimeType),
-  };
 }
 
 function conversionHint(from: string | undefined, to: string): string | undefined {
@@ -77,16 +65,9 @@ export async function processImage(
   options?: ProcessImageOptions,
 ): Promise<ProcessImageResult> {
   const autoResizeImages = options?.autoResizeImages ?? true;
-  const normalized = await normalizeImage(bytes, mimeType);
-  if (!normalized) {
-    return {
-      ok: false,
-      message: "[Image omitted: could not be converted to a supported inline image format.]",
-    };
-  }
 
   if (autoResizeImages) {
-    const resized = await resizeImage(normalized.bytes, normalized.mimeType, options?.resizeOptions);
+    const resized = await resizeImage(bytes, mimeType, options?.resizeOptions);
     if (!resized) {
       return {
         ok: false,
@@ -94,8 +75,8 @@ export async function processImage(
       };
     }
 
-    const hints: string[] = [];
-    const convertedHint = conversionHint(normalized.convertedFrom, resized.mimeType);
+    const hints: string[] = resized.animated ? ["[Animated image: only the first frame is sent.]"] : [];
+    const convertedHint = conversionHint(resized.originalMimeType, resized.mimeType);
     if (convertedHint) hints.push(convertedHint);
     const dimensionNote = formatDimensionNote(resized);
     if (dimensionNote) hints.push(dimensionNote);
@@ -108,7 +89,14 @@ export async function processImage(
     };
   }
 
-  const hints: string[] = [];
+  const normalized = await normalizeImage(bytes);
+  if (!normalized) {
+    return {
+      ok: false,
+      message: "[Image omitted: could not be converted to a supported inline image format.]",
+    };
+  }
+  const hints: string[] = normalized.animated ? ["[Animated image: only the first frame is sent.]"] : [];
   const convertedHint = conversionHint(normalized.convertedFrom, normalized.mimeType);
   if (convertedHint) hints.push(convertedHint);
 

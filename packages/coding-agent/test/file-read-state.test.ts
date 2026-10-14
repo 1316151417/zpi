@@ -117,7 +117,7 @@ it("does not learn contents from failed writes or reads, and keeps image reads i
       access: async () => {},
       readFile: async () =>
         Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
           "base64",
         ),
       detectImageMimeType: async () => "image/png",

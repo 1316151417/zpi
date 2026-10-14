@@ -32,7 +32,6 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     done(response);
   });
   const app = await launchDesktop({ dir, project, url: server.url });
-  const oldClipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
   try {
     const page = await app.firstWindow();
     const errors: string[] = [];
@@ -163,7 +162,6 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     await wide.getByRole("button", { name: "收回表格滚动区域", exact: true }).click();
     expect(errors).toEqual([]);
   } finally {
-    await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), oldClipboard);
     await app.close();
     await server.close();
     images.closeAllConnections();

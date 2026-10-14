@@ -1,172 +1,100 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
-import { applyExifOrientation } from "./exif-orientation.ts";
-import { loadPhoton } from "./photon.ts";
+import { openImage } from "./image-source.ts";
 
 export interface ImageResizeOptions {
   maxWidth?: number; // Default: 2000
   maxHeight?: number; // Default: 2000
-  maxBytes?: number; // Default: 4.5MB of base64 payload (below Anthropic's 5MB limit)
+  maxBytes?: number; // Default: 4.5 MiB of base64 payload
   jpegQuality?: number; // Default: 80
 }
 
 export interface ResizedImage {
-  data: string; // base64
+  data: string;
   mimeType: string;
   originalWidth: number;
   originalHeight: number;
   width: number;
   height: number;
   wasResized: boolean;
+  originalMimeType?: string;
+  animated?: boolean;
 }
 
-// 4.5MB of base64 payload. Provides headroom below Anthropic's 5MB limit.
-const DEFAULT_MAX_BYTES = 4.5 * 1024 * 1024;
-
+// A conservative shared inline budget. Providers may impose additional request-wide limits.
 const DEFAULT_OPTIONS: Required<ImageResizeOptions> = {
   maxWidth: 2000,
   maxHeight: 2000,
-  maxBytes: DEFAULT_MAX_BYTES,
+  maxBytes: 4.5 * 1024 * 1024,
   jpegQuality: 80,
 };
 
-interface EncodedCandidate {
-  data: string;
-  encodedSize: number;
-  mimeType: string;
-}
-
-function encodeCandidate(buffer: Uint8Array, mimeType: string): EncodedCandidate {
-  const data = Buffer.from(buffer).toString("base64");
-  return {
-    data,
-    encodedSize: Buffer.byteLength(data, "utf-8"),
-    mimeType,
-  };
-}
-
-/**
- * Resize an image to fit within the specified max dimensions and encoded file size.
- * Returns null if the image cannot be resized below maxBytes.
- *
- * Uses Photon (Rust/WASM) for image processing. If Photon is not available,
- * returns null.
- *
- * Strategy for staying under maxBytes:
- * 1. First resize to maxWidth/maxHeight
- * 2. Try both PNG and JPEG formats, pick the smaller one
- * 3. If still too large, try JPEG with decreasing quality
- * 4. If still too large, progressively reduce dimensions until 1x1
- */
+/** Preserve fitting originals; otherwise try lossless PNG, then JPEG, then smaller dimensions. */
 export async function resizeImageInProcess(
   inputBytes: Uint8Array,
-  mimeType: string,
+  _mimeType: string,
   options?: ImageResizeOptions,
 ): Promise<ResizedImage | null> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
-  const inputBase64Size = Math.ceil(inputBytes.byteLength / 3) * 4;
-
-  const photon = await loadPhoton();
-  if (!photon) {
+  const opts = {
+    maxWidth: options?.maxWidth ?? DEFAULT_OPTIONS.maxWidth,
+    maxHeight: options?.maxHeight ?? DEFAULT_OPTIONS.maxHeight,
+    maxBytes: options?.maxBytes ?? DEFAULT_OPTIONS.maxBytes,
+    jpegQuality: options?.jpegQuality ?? DEFAULT_OPTIONS.jpegQuality,
+  };
+  if (
+    ![opts.maxWidth, opts.maxHeight, opts.maxBytes, opts.jpegQuality].every(
+      (value) => Number.isSafeInteger(value) && value > 0,
+    ) ||
+    opts.jpegQuality > 100
+  )
     return null;
-  }
 
-  let image: ReturnType<typeof photon.PhotonImage.new_from_byteslice> | undefined;
   try {
-    const rawImage = photon.PhotonImage.new_from_byteslice(inputBytes);
-    image = applyExifOrientation(photon, rawImage, inputBytes);
-    if (image !== rawImage) rawImage.free();
+    const source = await openImage(inputBytes);
+    const originalWidth = source.width;
+    const originalHeight = source.height;
+    const scale = Math.min(1, opts.maxWidth / originalWidth, opts.maxHeight / originalHeight);
+    let width = Math.max(1, Math.round(originalWidth * scale));
+    let height = Math.max(1, Math.round(originalHeight * scale));
+    const result = (bytes: Uint8Array, mimeType: string): ResizedImage => ({
+      data: Buffer.from(bytes).toString("base64"),
+      mimeType,
+      originalMimeType: source.mimeType,
+      animated: source.animated,
+      originalWidth,
+      originalHeight,
+      width,
+      height,
+      wasResized: width !== originalWidth || height !== originalHeight,
+    });
+    const fits = (bytes: Uint8Array) => Math.ceil(bytes.byteLength / 3) * 4 <= opts.maxBytes;
 
-    const sourceImage = image;
-    const imageLibrary = photon;
-    const originalWidth = image.get_width();
-    const originalHeight = image.get_height();
-    const format = mimeType.split("/")[1] ?? "png";
-
-    // Check if already within all limits (dimensions AND encoded size)
     if (
-      originalWidth <= opts.maxWidth &&
-      originalHeight <= opts.maxHeight &&
-      inputBase64Size < opts.maxBytes
+      scale === 1 &&
+      fits(inputBytes) &&
+      !source.animated &&
+      !source.hasMetadata &&
+      source.orientation === 1 &&
+      source.mimeType !== "image/bmp"
     ) {
-      return {
-        data: Buffer.from(inputBytes).toString("base64"),
-        mimeType: mimeType || `image/${format}`,
-        originalWidth,
-        originalHeight,
-        width: originalWidth,
-        height: originalHeight,
-        wasResized: false,
-      };
+      await source.pipeline.stats();
+      return result(inputBytes, source.mimeType);
     }
 
-    // Calculate initial dimensions respecting max limits
-    let targetWidth = originalWidth;
-    let targetHeight = originalHeight;
-
-    if (targetWidth > opts.maxWidth) {
-      targetHeight = Math.round((targetHeight * opts.maxWidth) / targetWidth);
-      targetWidth = opts.maxWidth;
-    }
-    if (targetHeight > opts.maxHeight) {
-      targetWidth = Math.round((targetWidth * opts.maxHeight) / targetHeight);
-      targetHeight = opts.maxHeight;
-    }
-
-    function tryEncodings(width: number, height: number, jpegQualities: number[]): EncodedCandidate[] {
-      const resized = imageLibrary.resize(sourceImage, width, height, imageLibrary.SamplingFilter.Lanczos3);
-
-      try {
-        const candidates: EncodedCandidate[] = [encodeCandidate(resized.get_bytes(), "image/png")];
-        for (const quality of jpegQualities) {
-          candidates.push(encodeCandidate(resized.get_bytes_jpeg(quality), "image/jpeg"));
-        }
-        return candidates;
-      } finally {
-        resized.free();
-      }
-    }
-
-    const qualitySteps = Array.from(new Set([opts.jpegQuality, 85, 70, 55, 40]));
-    let currentWidth = targetWidth;
-    let currentHeight = targetHeight;
-
+    const qualities = [opts.jpegQuality, ...[85, 70, 55, 40].filter((quality) => quality < opts.jpegQuality)];
     while (true) {
-      const candidates = tryEncodings(currentWidth, currentHeight, qualitySteps);
-      for (const candidate of candidates) {
-        if (candidate.encodedSize < opts.maxBytes) {
-          return {
-            data: candidate.data,
-            mimeType: candidate.mimeType,
-            originalWidth,
-            originalHeight,
-            width: currentWidth,
-            height: currentHeight,
-            wasResized: true,
-          };
-        }
+      const resized = source.pipeline.clone().rotate().resize(width, height, { fit: "fill" });
+      const png = await resized.clone().png().toBuffer();
+      if (fits(png)) return result(png, "image/png");
+      for (const quality of qualities) {
+        const jpeg = await resized.clone().flatten({ background: "white" }).jpeg({ quality }).toBuffer();
+        if (fits(jpeg)) return result(jpeg, "image/jpeg");
       }
-
-      if (currentWidth === 1 && currentHeight === 1) {
-        break;
-      }
-
-      const nextWidth = currentWidth === 1 ? 1 : Math.max(1, Math.floor(currentWidth * 0.75));
-      const nextHeight = currentHeight === 1 ? 1 : Math.max(1, Math.floor(currentHeight * 0.75));
-      if (nextWidth === currentWidth && nextHeight === currentHeight) {
-        break;
-      }
-
-      currentWidth = nextWidth;
-      currentHeight = nextHeight;
+      if (width === 1 && height === 1) return null;
+      width = Math.max(1, Math.floor(width * 0.75));
+      height = Math.max(1, Math.floor(height * 0.75));
     }
-
-    return null;
   } catch {
     return null;
-  } finally {
-    if (image) {
-      image.free();
-    }
   }
 }

@@ -28,9 +28,10 @@ import {
   type WebOpenOptions,
 } from "zpi-ui";
 import { useShallow } from "zustand/react/shallow";
-import type { InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
+import type { EditUserInput, InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
+import { selectAppState, selectTaskRecords } from "./app-state.ts";
 import { inputContext } from "./composer-context.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
@@ -174,21 +175,8 @@ function showSubagent(task: SubagentTask) {
   paneTask(openSubagent(task));
 }
 export function App() {
-  const state = useStore(
-    useShallow((s) => ({
-      projects: s.projects,
-      sessions: s.sessions,
-      selected: s.selected,
-      settings: s.settings,
-      error: s.error,
-      ready: s.ready,
-      activeView: s.selected ? s.views.get(s.selected) : undefined,
-      activeSuggestions: s.suggestions.get(s.selected ?? ""),
-      activeDiagnostics: s.resourceDiagnostics.get(s.selected ?? ""),
-      historyCursors: s.historyCursors,
-      historyLoading: s.historyLoading,
-    })),
-  );
+  const state = useStore(useShallow(selectAppState));
+  const records = useStore(useShallow(selectTaskRecords));
 
   const paneOpen = usePane((s) => s.open),
     paneRatio = usePane((s) => s.ratio);
@@ -290,8 +278,7 @@ export function App() {
     [selected],
   );
   const workspace = useWorkspace(selected);
-  const views = useStore.getState().views;
-  const view = selected ? views.get(selected) : undefined;
+  const view = state.activeView;
   const find = useTaskFind(selected, Boolean(view) && !settingsOpen && !action);
   useEffect(() => {
     if (!pendingSearch || selected !== pendingSearch.id || !view) return;
@@ -323,11 +310,7 @@ export function App() {
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, []);
-  const records = useMemo(
-    () => [...state.sessions.values()].filter((record) => !record.draft && !record.parentSessionId),
-    [state.sessions],
-  );
-  const record = selected ? state.sessions.get(selected) : undefined;
+  const record = state.activeRecord;
   const taskTitle = record?.draft ? "新任务" : (record?.title ?? view?.title ?? "新任务");
   const diagnostics = [
     ...new Map(
@@ -380,6 +363,24 @@ export function App() {
     [selected],
   );
   const earlier = useCallback(() => (selected ? loadEarlier(selected) : Promise.resolve()), [selected]);
+  const editMessage = useCallback(
+    async (runId: string, input: EditUserInput) => {
+      if (!selected) throw new Error("任务未选中");
+      const result = unwrap(await window.zpi.editUserMessage(selected, runId, input));
+      if ("conflicts" in result) return result;
+      resetSession(result);
+    },
+    [selected],
+  );
+  const forkMessage = useCallback(
+    async (runId: string) => {
+      if (!selected) throw new Error("任务未选中");
+      const child = unwrap(await window.zpi.forkSession(selected, runId));
+      await refresh();
+      await selectSession(child.id);
+    },
+    [selected],
+  );
   const addProject = async () => {
     try {
       const p = unwrap(await window.zpi.addProject());
@@ -937,19 +938,11 @@ export function App() {
                     : undefined
                 }
                 sideChatDisabled={sideChatBlocked}
-                onEdit={async (runId, input) => {
-                  const result = unwrap(await window.zpi.editUserMessage(view.sessionId, runId, input));
-                  if ("conflicts" in result) return result;
-                  resetSession(result);
-                }}
-                onFork={async (runId) => {
-                  const child = unwrap(await window.zpi.forkSession(view.sessionId, runId));
-                  await refresh();
-                  await selectSession(child.id);
-                }}
-                historyCursor={state.historyCursors.get(view.sessionId)}
-                hasEarlier={state.historyCursors.get(view.sessionId) != null}
-                loadingEarlier={state.historyLoading.has(view.sessionId)}
+                onEdit={editMessage}
+                onFork={forkMessage}
+                historyCursor={state.historyCursor}
+                hasEarlier={state.historyCursor != null}
+                loadingEarlier={state.loadingEarlier}
                 onLoadEarlier={earlier}
                 onLink={openLink}
                 context={inputContext}

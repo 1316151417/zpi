@@ -1,6 +1,8 @@
 # Assistant previews and sidebar parity
 
-Reference: ZCode `872ad960de7ec172591f7e1952f7849229f94521` (3.14.0), checked out at `/Users/jiezhou/VSCodeProjects/ZCode`. Reference files are read-only. ZPI starts with a clean worktree, Node 24.12.0, npm. This spec precedes tests and implementation.
+Historical design and acceptance record. Reference: ZCode `872ad960de7ec172591f7e1952f7849229f94521` (3.14.0), originally checked out at `/path/to/ZCode` and read without modification. The initial implementation used a clean ZPI worktree, Node 24.12.0 and npm.
+
+The follow-ups below record subsequent scope and validation decisions. They are not current worktree status or instructions to skip checks for new changes. Follow [AGENTS.md](../../AGENTS.md) and the [development guide](../development.md) for current boundaries and validation.
 
 Implementation and recorded acceptance results: [delivery report, screenshots and limitations](../evidence/preview-sidebar/README.md). The table below records the original acceptance contract; the report maps it to the completed test cases.
 
@@ -86,7 +88,7 @@ flowchart LR
 - The requested `packages/ui/src/TaskTitleOverflowText.tsx` is actually `packages/ui/src/components/TaskTitleOverflowText.tsx`. It also includes a 1-second hover marquee (40px/s, minimum 6s, 24px repeat gap, 2s pause); replicate it.
 - Timeline label is `2 天前` / `3 天前` (with a space). Group order follows first encounter even when running-first puts an older group ahead of today.
 - Bare Home-relative prose is intentionally ignored; explicit balanced quote/link/citation handling differs. Preserve source behavior rather than expanding the accepted grammar.
-- Source Web remote cards and remote editor targets require platform services absent from ZPI. There is no remote execution or background-work orchestration to copy.
+- Source Web remote cards and remote editor targets require platform services absent from this implementation. Remote execution and background orchestration were outside this preview/sidebar change; current desktop background commands are described in the development guide.
 - ZPI already previews DOCX/XLSX/media and uses BrowserPane for HTML/PDF. PPTX currently lacks an embedded viewer; preserve the requested native-open boundary and document the platform-dependent visible result.
 
 ## Verification plan
@@ -109,14 +111,14 @@ flowchart LR
 - Baseline saved in commit `223b4b1` before this trial. Replace only the plain toolbar label with a 28px rounded capsule: Folder + “按项目” + ChevronDown, or Clock3 + “时间线” + ChevronDown.
 - Clicking the capsule opens the existing radio-menu UI with only the two view choices, aligned to its left edge. Reuse `TaskViewMenu` and the existing `taskPreferences` owner; keep sort selection intact. The right filter/sort menu retains its current contents.
 - Keep the expand/collapse control beside the capsule, subject to its existing project-view visibility rules. Keyboard behavior and dismissal use the existing Radix menu. No new persistence or IPC path.
-- This trial remains uncommitted for user review. Per request, do not run tests, builds or visual comparisons; previous evidence describes the saved baseline, not this new capsule.
+- At this trial's review point, tests, builds and visual comparisons were not run. Previous evidence describes the saved baseline, not this capsule change.
 
 ## Follow-up: capsule tooltip and focus appearance
 
 - Remove the capsule's hover tooltip while retaining its accessible name and normal menu behavior. Keep the icon-only filter button's existing tooltip.
 - Reference `styles.css:115–134` globally suppresses focus outlines/shadows. ZPI's former 2px global focus-visible outline and local focus rings explain the persistent gray halo after menu focus restoration.
 - Remove those outline/shadow rings, including the changed-file pseudo-element and settings-switch sibling rings. Clear Tailwind focus-ring layers without deleting ordinary menu/dialog elevation shadows. Preserve DOM focus, keyboard navigation, highlighted menu items and normal input border states; do not blur controls or use delayed focus changes.
-- Continue the user's requested implementation-only workflow: no tests/build/visual rerun for this follow-up.
+- This follow-up was implementation-only; tests, builds and visual comparisons were not rerun at that time.
 
 ## Follow-up: sidebar control hints
 
@@ -125,7 +127,7 @@ flowchart LR
 - Match the simple source hint: 8px radius, 1px theme border, 10px horizontal / 4px vertical padding, 12px text at the default UI size, 1.5 line height, medium label, 8px gap, maximum width `min(28rem, 100vw - 1rem)`. Use existing matching light/dark tooltip tokens, no arrow and no shadow. Preserve the source animation selectors: delayed/open entry fades and scales from .95 with an 8px side-dependent slide; closed exit fades/scales over 150ms. Instant-open follows the reference's actual Radix state rather than adding an entry animation.
 - Apply to “置顶任务”, “取消置顶任务”, “归档任务”, “筛选和排序”, “展开全部”, and “收起全部” in pinned, project, task and timeline rows. Remove native `title` hints to prevent duplicate/system tooltips. Retain ZPI's existing disabled-state reasons and guards; wrap the archive trigger as in the source so its disabled reason remains hoverable. Archive uses the same 14px Lucide asset as the source.
 - State owner / event order: pointer enters or keyboard focuses trigger → Radix opens the hint → Portal positions it; leave, blur, Escape or activation → Radix closes it. No application state, IPC or timer is added. Existing task and preference handlers remain authoritative.
-- Acceptance mapping: source control dimensions/colors → shared control appearance; source top placement/dismissal → existing Radix tooltip; source row/toolbar labels → their actual buttons; source icons → existing Lucide assets. Inspect the scoped diff; continue the user's implementation-only workflow without tests/builds or a new visual comparison. Prior evidence does not validate this follow-up.
+- Acceptance mapping: source control dimensions/colors → shared control appearance; source top placement/dismissal → existing Radix tooltip; source row/toolbar labels → their actual buttons; source icons → existing Lucide assets. Validation at this stage was scoped diff inspection, without tests/builds or a new visual comparison. Prior evidence does not validate this follow-up.
 
 ## Follow-up: workbench hint audit
 
@@ -145,7 +147,7 @@ Use the same reference SHA and shared control appearance, without keyboard-short
 | `ConversationQueuePanel`: drag/edit/remove, top | Queue actions keep sortable refs/listeners, text-only “立即” stays without a hint |
 | `EmbeddedBrowserPaneParts`: back/forward/reload, top | Browser actions get source labels; retain ZPI's stop-loading capability with its actual action label |
 
-The reference's main new-task text button, task-header more trigger and side-pane add-tab/close triggers have no control hint: do not blanket-wrap every button; remove ZPI's native task-menu/add-tab titles to match that absence. Keep rich context usage, file-path/title and settings-specific information separate from simple action hints. ZPI has a combined model/reasoning selector and a browser stop action; do not copy unrelated ZCode platform or selector architecture just to add hints. Update the existing stop-hover assertions for the requested absence of shortcut badges and shared padding. Run static checks only, following the user's existing no-test request; this audit is not a new pixel-comparison result.
+The reference's main new-task text button, task-header more trigger and side-pane add-tab/close triggers have no control hint: do not blanket-wrap every button; remove ZPI's native task-menu/add-tab titles to match that absence. Keep rich context usage, file-path/title and settings-specific information separate from simple action hints. ZPI has a combined model/reasoning selector and a browser stop action; do not copy unrelated ZCode platform or selector architecture just to add hints. Update the existing stop-hover assertions for the requested absence of shortcut badges and shared padding. This stage used static checks only and did not produce a new pixel-comparison result.
 
 ## Follow-up: project label and pagination spacing
 

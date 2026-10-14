@@ -14,8 +14,6 @@
       content="给 Agent 更少的工具，给你更多的模型选择。一个做减法的 AI 编码桌面客户端。"
     >
     <meta property="og:type" content="website">
-    <meta property="og:url" content="http://101.200.240.206/zpi/">
-    <link rel="canonical" href="http://101.200.240.206/zpi/">
     <title>ZPI — 少一点干扰，多一点自由</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./styles.css">
@@ -128,12 +126,13 @@
           </article>
           <article class="philosophy-card">
             <span class="card-number">03</span>
-            <h3>不做复杂的任务编排</h3>
+            <h3>极简内核，按需扩展</h3>
             <p>
-              没有子 Agent
-              或后台任务编排。保留清晰的对话和执行过程，让你知道当前在做什么，方便检查，也方便修改客户端本身。
+              内核与 SDK 默认保留四个基础工具。桌面端通过扩展提供结构化提问、子智能体和后台命令，方便分工、查看结果和停止任务。
             </p>
-            <p class="small-note">可选用户提问能力默认关闭，内核仍只有四个基础工具。</p>
+            <p class="small-note">
+              提问和子智能体默认开启，可在设置中关闭，新对话首次发送时生效。后台命令独立可用。
+            </p>
           </article>
         </div>
         <aside class="clarification">
@@ -270,7 +269,7 @@
           <article>
             <span class="workspace-icon" aria-hidden="true">⑂</span>
             <h3>项目与 Git 工作树</h3>
-            <p>置顶、归档、恢复任务；按项目或时间线浏览。新任务可创建独立分支和工作目录。</p>
+            <p>置顶、归档、恢复任务；按项目或时间线浏览。新任务可创建独立工作树，默认不新增分支。</p>
           </article>
           <article>
             <span class="workspace-icon" aria-hidden="true">@</span>
@@ -280,7 +279,9 @@
           <article>
             <span class="workspace-icon" aria-hidden="true">⌕</span>
             <h3>搜索与消息排队</h3>
-            <p>⌘F / Ctrl+F 查找消息和变更。执行中继续补充需求，编辑或调整排队消息。</p>
+            <p>
+              ⌘K / Ctrl+K 查找任务、文件和操作，⌘F / Ctrl+F 搜索任务内消息与变更。执行中也能补充需求、调整排队消息。
+            </p>
           </article>
           <article>
             <span class="workspace-icon" aria-hidden="true">◷</span>
@@ -353,8 +354,8 @@
           <details>
             <summary>辅助对话是不是子 Agent？</summary>
             <p>
-              不是。它由你手动开启，继承创建时的稳定上下文，独立回答后续问题，不自动承接主任务。它与主任务共享目录，并非文件隔离；如要隔离修改，可使用独立任务的
-              Git 工作树。
+              不是。它由你手动开启，继承创建时的稳定上下文，独立回答后续问题，不自动承接主任务。辅助对话和子智能体都共享父任务目录；如要分开代码修改，可使用独立任务的
+              Git 工作树。工作树提供独立检出目录，不是权限沙箱。
             </p>
           </details>
           <details>
