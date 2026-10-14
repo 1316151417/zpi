@@ -302,7 +302,13 @@ test("every new-task entry focuses the composer when creating or reusing a draft
     await expect(editor(page)).toBeFocused();
     const unassigned = await selected();
     const globalNew = page.locator(".sidebar-global").getByLabel("新建任务", { exact: true });
+    const mac = process.platform === "darwin";
+    await expect(globalNew.locator(".sidebar-action-shortcut")).toHaveText(mac ? "⌘ N" : "Ctrl+N");
     await globalNew.click();
+    await expect(editor(page)).toBeFocused();
+    expect(await selected()).toBe(unassigned);
+    await globalNew.focus();
+    await page.keyboard.press(mac ? "Meta+n" : "Control+n");
     await expect(editor(page)).toBeFocused();
     expect(await selected()).toBe(unassigned);
     await page.keyboard.type("前尾");

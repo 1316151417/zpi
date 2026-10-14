@@ -4829,12 +4829,12 @@
   align-items: stretch;
   gap: 4px;
 }
-.sidebar-search-label {
+.sidebar-action-label {
   flex: 1;
   min-width: 0;
   text-align: left;
 }
-.sidebar-search-shortcut {
+.sidebar-action-shortcut {
   color: var(--color-text-subtlest);
   font-size: var(--text-xs);
   white-space: nowrap;
