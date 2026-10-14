@@ -75,7 +75,10 @@ test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survi
     await dialog.getByRole("button", { name: "添加推理等级", exact: true }).click();
     await name.fill("balanced");
     await name.press("Enter");
-    await dialog.getByRole("button", { name: "balanced", exact: true }).press("Alt+ArrowLeft");
+    await dialog
+      .locator(".model-reasoning-chip")
+      .filter({ hasText: "balanced" })
+      .dragTo(dialog.locator(".model-reasoning-chip").filter({ hasText: "high" }));
     await expect(chips).toHaveText(["disabled", "balanced", "high"]);
     await dialog
       .locator(".model-reasoning-chip")

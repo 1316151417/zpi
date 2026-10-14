@@ -59,11 +59,6 @@ export function ReasoningLevelEditor({
     onChange(next);
   };
   const handleChipKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-      event.preventDefault();
-      move(index, event.key === "ArrowLeft" ? index - 1 : index + 1);
-      return;
-    }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       beginEdit(index);
