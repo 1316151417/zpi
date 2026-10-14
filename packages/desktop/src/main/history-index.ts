@@ -12,6 +12,7 @@ import type {
   TranscriptStore,
 } from "../../../coding-agent/src/core/transcript-store.ts";
 import { entryFileChange } from "./file-changes.ts";
+import { syncDirectory } from "./storage-generation.ts";
 import {
   decodeTranscriptEntry,
   encodeTranscriptEntry,
@@ -146,7 +147,7 @@ export class HistoryIndex implements TranscriptStore {
     } finally {
       closeSync(fd);
     }
-    syncDirectory(path);
+    syncDirectory(dirname(path));
     const index = HistoryIndex.fresh(path, db);
     index.generationHooks = generationHooks;
     return index;
@@ -221,24 +222,36 @@ export class HistoryIndex implements TranscriptStore {
       this.reset(undefined as unknown as TranscriptHeader);
     }
     let position = this.data.size;
-    let pending = Buffer.alloc(0);
+    const pieces: Buffer[] = [];
+    let pendingSize = 0;
     for await (const chunk of createReadStream(this.path, { start: position, highWaterMark: 64 * 1024 })) {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       this.readBytes += bytes.length;
-      pending = Buffer.concat([pending, bytes]);
+      const previousPosition = position;
       this.transaction(() => {
+        let start = 0;
         for (;;) {
-          const newline = pending.indexOf(10);
+          const newline = bytes.indexOf(10, start);
           if (newline < 0) break;
-          this.consume(pending.subarray(0, newline), position, position + newline + 1);
-          position += newline + 1;
-          pending = pending.subarray(newline + 1);
+          const part = bytes.subarray(start, newline);
+          const length = pendingSize + part.length;
+          const record = pieces.length ? Buffer.concat([...pieces, part], length) : part;
+          this.consume(record, position, position + length + 1);
+          position += length + 1;
+          pieces.length = 0;
+          pendingSize = 0;
+          start = newline + 1;
         }
-        if (pending.length > maxSessionEntryBytes) throw new Error("storage: Entry exceeds 8 MiB");
-        if (this.data.header) this.flush();
+        if (start < bytes.length) {
+          pieces.push(bytes.subarray(start));
+          pendingSize += bytes.length - start;
+        }
+        if (pendingSize > maxSessionEntryBytes) throw new Error("storage: Entry exceeds 8 MiB");
+        if (position !== previousPosition && this.data.header) this.flush();
       });
     }
-    if (pending.length) {
+    if (pendingSize) {
+      const pending = Buffer.concat(pieces, pendingSize);
       // A complete valid final record may have lost only its newline. Validate and
       // index it transactionally before repairing that delimiter; malformed bytes
       // are preserved for explicit repair, never truncated or silently skipped.
@@ -312,15 +325,6 @@ export class HistoryIndex implements TranscriptStore {
     this.seq = seq;
     this.data.parentId = entry.id;
     this.data.size = end;
-    if (entry.type === "model_change") {
-      this.state.model = { provider: entry.provider, modelId: entry.modelId };
-      this.data.cacheRead = this.data.cacheInput = 0;
-    }
-    if (entry.type === "thinking_level_change") {
-      this.state.thinkingLevel = entry.thinkingLevel;
-      this.state.hasThinkingEntry = true;
-      if (entry.thinkingLevel !== "off") this.state.lastThinkingLevel = entry.thinkingLevel;
-    }
     if (entry.type === "compaction") {
       this.state.lastCompactionSeq = seq;
       this.data.cacheRead = this.data.cacheInput = 0;
@@ -342,12 +346,7 @@ export class HistoryIndex implements TranscriptStore {
         }
       }
     }
-    if (
-      entry.type === "model_change" ||
-      entry.type === "thinking_level_change" ||
-      entry.type === "compaction" ||
-      seq % 64 === 0
-    )
+    if (entry.type === "compaction" || seq % 64 === 0)
       this.run("INSERT INTO transcript_checkpoints VALUES(?,?,?)", seq, JSON.stringify(this.state));
     if (entry.type === "custom" && isJsonObject(entry.data)) {
       const value = entry.data;
@@ -622,7 +621,10 @@ export class HistoryIndex implements TranscriptStore {
   }
   private entryAt(seq: number): IndexedSessionEntry | undefined {
     const row = this.one("SELECT * FROM transcript_entries WHERE path=? AND seq=?", seq);
-    if (!row) return undefined;
+    return row ? this.readIndexedEntry(row) : undefined;
+  }
+  private readIndexedEntry(row: Row): IndexedSessionEntry {
+    const seq = Number(row.seq);
     const value = JSON.parse(this.readBytesAt(Number(row.offset), Number(row.length)).toString("utf8"));
     const entry = decodeTranscriptEntry(value);
     if (value.seq !== seq || entry.id !== row.entry_id)
@@ -656,15 +658,14 @@ export class HistoryIndex implements TranscriptStore {
       this.check(snapshot);
       const filter = types ? ` AND type IN (${types.map(() => "?").join(",")})` : "";
       const rows = this.all(
-        `SELECT seq FROM transcript_entries WHERE path=? AND seq>=? AND seq<=?${filter} ORDER BY seq LIMIT 128`,
+        `SELECT seq,entry_id,offset,length FROM transcript_entries WHERE path=? AND seq>=? AND seq<=?${filter} ORDER BY seq LIMIT 128`,
         seq,
         Math.min(endSeq, snapshot.endSeq),
         ...(types ?? []),
       );
       if (!rows.length) return;
       for (const row of rows) {
-        const item = this.entryAt(Number(row.seq));
-        if (item) yield item;
+        yield this.readIndexedEntry(row);
         seq = Number(row.seq) + 1;
       }
     }
@@ -856,14 +857,13 @@ export class HistoryIndex implements TranscriptStore {
     let before = snapshot.endSeq + 1;
     while (before > 1) {
       const rows = this.all(
-        "SELECT seq FROM transcript_entries WHERE path=? AND seq<? ORDER BY seq DESC LIMIT 128",
+        "SELECT seq,entry_id,offset,length FROM transcript_entries WHERE path=? AND seq<? ORDER BY seq DESC LIMIT 128",
         before,
       );
       if (!rows.length) return;
       for (const row of rows) {
         this.check(snapshot);
-        const entry = this.entryAt(Number(row.seq));
-        if (entry) yield entry;
+        yield this.readIndexedEntry(row);
         before = Number(row.seq);
       }
     }
@@ -905,13 +905,4 @@ function runBoundary(row: Row): RunBoundary {
     ordinal: Number(row.ordinal),
     auxiliary: row.auxiliary === 1,
   };
-}
-function syncDirectory(path: string): void {
-  if (process.platform === "win32") return;
-  const fd = openSync(dirname(path), "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }

@@ -1,13 +1,17 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { emptyAssistant } from "zpi-ai";
 import {
+  createAgentSession,
+  ModelRuntime,
   type SessionEntry,
   SessionManager,
+  SettingsManager,
+  StaticResourceLoader,
   type TranscriptSnapshot,
   type TranscriptState,
   type TranscriptStore,
 } from "zpi-coding-agent";
-import { fakeModel } from "../../../tests/fake-server.ts";
+import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { buildSessionContext } from "../src/core/session-manager.ts";
 
 function fixture() {
@@ -333,4 +337,74 @@ it("preserves signed multimodal content and reused tool IDs across retained turn
   const expected = buildSessionContext(entries);
   expect(manager.buildSessionContext()).toEqual(expected);
   expect(JSON.stringify(manager.buildSessionContext().messages)).toBe(JSON.stringify(expected.messages));
+});
+
+it.each([
+  { name: "explicit override", indexed: true, history: true, override: "high", expected: "high" },
+  { name: "indexed empty current state", indexed: true, history: false, expected: "off" },
+  { name: "indexed restored current state", indexed: true, history: true, expected: "off" },
+  { name: "legacy recorded thinking", history: true, recorded: "minimal", expected: "minimal" },
+  {
+    name: "legacy missing thinking uses global",
+    history: true,
+    modelDefault: "high",
+    global: "low",
+    expected: "low",
+  },
+  { name: "legacy missing thinking uses medium", history: true, expected: "medium" },
+  { name: "new session uses model default", modelDefault: "high", global: "low", expected: "high" },
+  { name: "new session uses global default", global: "low", expected: "low" },
+  { name: "new session uses medium", expected: "medium" },
+])("chooses SDK thinking from $name without reading unused defaults", async (row) => {
+  const runtime = await ModelRuntime.create();
+  const model = { ...fakeModel("http://local"), compat: { supportsReasoningEffort: true } };
+  runtime.registerProvider("fake", {
+    apiKey: "local",
+    models: [{ ...fakeConfig("http://local"), compat: model.compat }],
+  });
+  const source = SessionManager.inMemory("/tmp");
+  if (row.history) source.appendMessage({ role: "user", content: "restored", timestamp: 1 });
+  if (row.recorded) source.appendThinkingLevelChange(row.recorded);
+  const manager = row.indexed
+    ? SessionManager.fromStore(indexed(source.getEntries()).store, {
+        get: () => ({
+          model: { provider: model.provider, modelId: model.id },
+          thinkingLevel: "off",
+          lastThinkingLevel: "high",
+        }),
+        setModel: () => {},
+        setThinkingLevel: () => {},
+        setName: () => {},
+      })
+    : source;
+  const stateRead = vi.spyOn(manager, "getStateAt");
+  if (row.indexed)
+    stateRead.mockImplementation(() => {
+      throw new Error("Indexed current state must not fall back to historical state");
+    });
+  const settings = SettingsManager.inMemory({
+    defaultThinkingLevel: row.global,
+    modelThinkingLevels: row.modelDefault ? { "fake/fake": row.modelDefault } : {},
+  });
+  const modelDefault = vi.spyOn(settings, "getModelThinkingLevel");
+  const globalDefault = vi.spyOn(settings, "getDefaultThinkingLevel");
+  const { session } = await createAgentSession({
+    modelRuntime: runtime,
+    model,
+    sessionManager: manager,
+    settingsManager: settings,
+    thinkingLevel: row.override,
+    noTools: "all",
+    resourceLoader: new StaticResourceLoader(),
+  });
+  try {
+    expect(session.thinkingLevel).toBe(row.expected);
+    const usesDefaults = !row.override && !row.indexed && !row.recorded;
+    expect(modelDefault).toHaveBeenCalledTimes(usesDefaults && !row.history ? 1 : 0);
+    expect(globalDefault).toHaveBeenCalledTimes(usesDefaults && (row.history || !row.modelDefault) ? 1 : 0);
+    if (row.indexed) expect(stateRead).not.toHaveBeenCalled();
+  } finally {
+    session.dispose();
+    vi.restoreAllMocks();
+  }
 });

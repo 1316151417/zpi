@@ -90,8 +90,6 @@ export function migrateLegacySettings(value: unknown): SettingsData {
     shortcuts: raw.shortcuts ?? defaultShortcuts(process.platform),
     shortcutDefaultsVersion,
   } as unknown as SettingsData;
-  if (!Object.hasOwn(data.capabilities, "communicationStyle"))
-    Object.assign(data.capabilities, { communicationStyle: true });
   if (
     isJsonObject(raw.capabilities) &&
     raw.capabilities.communicationStyle !== undefined &&

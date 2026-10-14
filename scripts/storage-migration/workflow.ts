@@ -12,12 +12,13 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEntry } from "zpi-coding-agent";
 import type { InputQueue } from "zpi-ui";
 import { HistoryIndex } from "../../packages/desktop/src/main/history-index.ts";
+import { isPathInside } from "../../packages/desktop/src/main/path-bounds.ts";
 import { validateSubagentProfileState } from "../../packages/desktop/src/main/plugins/subagents/profiles.ts";
 import { StateStore, type TaskState } from "../../packages/desktop/src/main/state-store.ts";
 import {
@@ -217,14 +218,10 @@ async function checkPlan(plan: MigrationPlan) {
 }
 export async function savePlan(source: string, destination: string) {
   const plan = await inspect(source);
-  if (inside(plan.source, await canonicalDestination(destination)))
+  if (isPathInside(plan.source, await canonicalDestination(destination)))
     throw new Error("plan must be outside read-only source");
   await durableJson(destination, plan);
   return plan;
-}
-function inside(root: string, path: string) {
-  const rel = relative(root, path);
-  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
 async function canonicalDestination(path: string): Promise<string> {
   path = resolve(path);
@@ -246,7 +243,8 @@ async function withMaintenance<T>(
   const canonicalTarget = await canonicalDestination(target);
   if (canonicalTarget !== resolve(target)) throw new Error("target must not traverse symbolic links");
   target = canonicalTarget;
-  if (inside(source, target) || inside(target, source)) throw new Error("source and target must be disjoint");
+  if (isPathInside(source, target) || isPathInside(target, source))
+    throw new Error("source and target must be disjoint");
   await mkdir(target, { recursive: true });
   if ((await realpath(target)) !== target) throw new Error("target must not traverse symbolic links");
   // Legacy runtimes do not honor this lock. The explicit offline prerequisite is mandatory.
@@ -282,7 +280,7 @@ function rewritePaths(
 ): unknown {
   if (typeof value === "string" && pathKeys.has(key) && value.startsWith(`${source}${sep}`)) {
     const path = relative(source, value);
-    if (!inside(source, resolve(source, path)) || !files.some((file) => file.path === path))
+    if (!isPathInside(source, resolve(source, path)) || !files.some((file) => file.path === path))
       throw new Error("missing or unsafe managed reference");
     if (!/^agent[/\\](attachments|tool-output|file-changes|session-context)[/\\]/.test(path))
       throw new Error("unsupported managed reference");
@@ -504,24 +502,19 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
             const id = String(value.taskId ?? value.agentId ?? "");
             if (!id || (kind === "background" && key !== `zpi.background_task:${id}`))
               throw new Error("invalid runtime identity");
+            const status =
+              value.status === "running" ? (kind === "background" ? "lost" : "interrupted") : value.status;
             store.setRuntime(
               task.id,
               kind,
               id,
               relocate({
                 ...value,
-                status:
-                  value.status === "running"
-                    ? kind === "background"
-                      ? "lost"
-                      : "interrupted"
-                    : value.status,
+                status,
                 waitingForInput: false,
                 recoveryAt: plan.recoveryAt,
               }),
-              String(
-                value.status === "running" ? (kind === "background" ? "lost" : "interrupted") : value.status,
-              ),
+              String(status),
             );
           }
         }
@@ -572,7 +565,7 @@ export async function validate(generation: string): Promise<void> {
     relocation: { source: string; destination: string };
   };
   for (const file of manifest.files) {
-    if (!inside(resolve(generation), resolve(generation, file.path)))
+    if (!isPathInside(resolve(generation), resolve(generation, file.path)))
       throw new Error("manifest path escapes generation");
     if ((await fileHash(join(generation, file.path))) !== file.sha256)
       throw new Error(`target fingerprint mismatch: ${file.path}`);

@@ -46,6 +46,111 @@ afterEach(() => {
   for (const path of paths.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 describe("authoritative SQLite state", () => {
+  it("lists tasks with one query and the same authoritative column overrides as getTask", () => {
+    const { value: s } = store();
+    s.upsertProject({ id: "project", name: "Project", path: "/work", updatedAt: 1 });
+    s.upsertTask({ ...task("older"), updatedAt: 1 });
+    s.upsertTask({ ...task("b"), projectId: "project", parentSessionId: "older", sortKey: 3 });
+    s.upsertTask({ ...task("a"), projectId: "project", parentSessionId: "older" });
+    s.upsertTask({ ...task("deleted"), updatedAt: 10 });
+    s.deleteTask("deleted");
+    s.db.exec(`INSERT INTO task_groups(id,title,color,created_at) VALUES ('group','Group','blue',1);
+      UPDATE tasks SET group_id='group' WHERE id='b';
+      UPDATE tasks SET project_id=NULL,parent_task_id=NULL,sort_key=42,revision=9 WHERE id='a';`);
+    const expected = [s.getTask("a"), s.getTask("b"), s.getTask("older")];
+    const prepare = vi.spyOn(s.db, "prepare");
+    try {
+      const listed = s.listTasks();
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(listed).toEqual(expected);
+      expect(listed.map((item) => item.id)).toEqual(["a", "b", "older"]);
+      expect(listed[0]).toMatchObject({
+        projectId: null,
+        parentSessionId: undefined,
+        groupId: null,
+        sortKey: 42,
+        revision: 9,
+      });
+      expect(listed[1]).toMatchObject({
+        projectId: "project",
+        parentSessionId: "older",
+        groupId: "group",
+        sortKey: 3,
+        revision: 1,
+      });
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+  it("reads accepted IDs once while preserving queue order and reserved states", () => {
+    const { value: s } = store();
+    s.upsertTask(task());
+    s.db.prepare("INSERT INTO accepted_inputs VALUES (?,?,?)").run("task", "accepted", "run");
+    const input = queue();
+    input.items = ["first", "accepted", "last"].map((id) => ({
+      ...input.items[0],
+      id,
+      state: id === "last" ? "dispatching" : "queued",
+    }));
+    const readAccepted = vi.spyOn(s, "acceptedInputIds");
+    s.setQueue("task", input);
+    expect(readAccepted).toHaveBeenCalledExactlyOnceWith("task");
+    expect(s.getQueue("task")).toEqual({
+      ...input,
+      items: [input.items[0], input.items[2]],
+    });
+    expect(s.db.prepare("SELECT id,position,state FROM queue_items ORDER BY position").all()).toEqual([
+      { id: "first", position: 0, state: "queued" },
+      { id: "last", position: 1, state: "reserved" },
+    ]);
+    readAccepted.mockClear();
+    s.setQueue("task", { autoDrain: true, items: [] });
+    expect(readAccepted).not.toHaveBeenCalled();
+    expect(s.getQueue("task")).toEqual({ autoDrain: true, items: [] });
+  });
+  it("reads recovery intents once and reserves only matching task and input pairs", () => {
+    const { value: s } = store();
+    for (const id of ["task", "other", "empty"]) s.upsertTask(task(id));
+    const input = queue();
+    input.items = ["prepared", "durable", "blocked", "unreserved"].map((id) => ({
+      ...input.items[0],
+      id,
+    }));
+    s.setQueue("task", input);
+    s.setQueue("other", { ...queue(), items: [{ ...queue().items[0], id: "other-input" }] });
+    s.setQueue("empty", { autoDrain: true, items: [] });
+    for (const stage of ["prepared", "durable", "blocked"] as const)
+      s.putIntent({
+        operationId: stage,
+        taskId: "task",
+        kind: "accept-input",
+        stage,
+        targetFile: "task.jsonl",
+        queueItemId: stage,
+      });
+    s.putIntent({
+      operationId: "wrong-task",
+      taskId: "other",
+      kind: "accept-input",
+      stage: "prepared",
+      targetFile: "other.jsonl",
+      queueItemId: "unreserved",
+    });
+    const readIntents = vi.spyOn(s, "listIntents");
+    s.recoverRuntime();
+    expect(readIntents).toHaveBeenCalledTimes(1);
+    expect(s.getQueue("task")).toEqual({
+      ...input,
+      autoDrain: false,
+      pauseReason: "restart",
+      items: input.items.map((item) => ({
+        ...item,
+        state: item.id === "unreserved" ? "queued" : "dispatching",
+      })),
+    });
+    expect(s.getQueue("other")?.items[0].state).toBe("queued");
+    expect(s.getQueue("empty")).toEqual({ autoDrain: true, items: [] });
+  });
   it("uses explicit schema, durable WAL and foreign keys", () => {
     const { value: s } = store();
     expect(s.db.prepare("PRAGMA user_version").get()?.user_version).toBe(STATE_SCHEMA_VERSION);

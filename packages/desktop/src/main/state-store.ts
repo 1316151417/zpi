@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import type { InputQueue, SessionControls } from "zpi-ui";
 import type { CombinedSelection, ProjectRecord, SessionRecord } from "../shared/bridge.ts";
@@ -200,6 +200,16 @@ function changedFields(before: unknown, after: unknown, fields: readonly string[
   const next = after as Record<string, unknown> | undefined;
   return fields.filter((field) => !isDeepStrictEqual(old?.[field], next?.[field]));
 }
+function taskFromRow(row: Record<string, SQLOutputValue>): TaskState {
+  return {
+    ...JSON.parse(String(row.data)),
+    revision: Number(row.revision),
+    groupId: row.group_id,
+    sortKey: row.sort_key,
+    projectId: row.project_id,
+    parentSessionId: row.parent_task_id ?? undefined,
+  };
+}
 /** Authoritative desktop state. Transcript projections may share db, never rebuild these tables. */
 export class StateStore {
   readonly db: DatabaseSync;
@@ -331,23 +341,15 @@ export class StateStore {
         "SELECT data,revision,group_id,sort_key,project_id,parent_task_id FROM tasks WHERE id=? AND deleted_at IS NULL",
       )
       .get(id);
-    return row
-      ? {
-          ...JSON.parse(String(row.data)),
-          revision: Number(row.revision),
-          groupId: row.group_id,
-          sortKey: row.sort_key,
-          projectId: row.project_id,
-          parentSessionId: row.parent_task_id ?? undefined,
-        }
-      : undefined;
+    return row ? taskFromRow(row) : undefined;
   }
   listTasks(): TaskState[] {
     return this.db
-      .prepare("SELECT id FROM tasks WHERE deleted_at IS NULL ORDER BY updated_at DESC,id")
+      .prepare(
+        "SELECT data,revision,group_id,sort_key,project_id,parent_task_id FROM tasks WHERE deleted_at IS NULL ORDER BY updated_at DESC,id",
+      )
       .all()
-      .map((row) => this.getTask(String(row.id)))
-      .filter((task): task is TaskState => task !== undefined);
+      .map(taskFromRow);
   }
   upsertTask(value: TaskState): TaskState {
     const summary: AuditSummary = { changedFields: [] };
@@ -571,9 +573,9 @@ export class StateStore {
         )
         .run(taskId, encode(state));
       this.db.prepare("DELETE FROM queue_items WHERE task_id=?").run(taskId);
-      for (const [position, item] of items
-        .filter((item) => !this.acceptedInputIds(taskId).has(item.id))
-        .entries())
+      if (!items.length) return;
+      const acceptedIds = this.acceptedInputIds(taskId);
+      for (const [position, item] of items.filter((item) => !acceptedIds.has(item.id)).entries())
         this.db
           .prepare("INSERT INTO queue_items(id,task_id,position,state,data) VALUES (?,?,?,?,?)")
           .run(item.id, taskId, position, item.state === "dispatching" ? "reserved" : "queued", encode(item));
@@ -616,6 +618,13 @@ export class StateStore {
           "UPDATE task_runtime SET status='interrupted' WHERE status IN ('running','pending','starting','accepted') AND owner_epoch<>?",
         )
         .run(this.ownerEpoch);
+      const reservedInputs = new Map<string, Set<string>>();
+      for (const intent of this.listIntents()) {
+        if (intent.queueItemId === undefined) continue;
+        const ids = reservedInputs.get(intent.taskId) ?? new Set<string>();
+        ids.add(intent.queueItemId);
+        reservedInputs.set(intent.taskId, ids);
+      }
       for (const row of this.db.prepare("SELECT task_id FROM queue_state").all()) {
         const id = String(row.task_id),
           queue = this.getQueue(id);
@@ -626,11 +635,7 @@ export class StateStore {
             pauseReason: "restart",
             items: queue.items.map((item) => ({
               ...item,
-              state: this.listIntents().some(
-                (intent) => intent.taskId === id && intent.queueItemId === item.id,
-              )
-                ? "dispatching"
-                : "queued",
+              state: reservedInputs.get(id)?.has(item.id) ? "dispatching" : "queued",
             })),
           });
       }

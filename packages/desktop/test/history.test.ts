@@ -2,9 +2,9 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { emptyAssistant } from "zpi-ai";
-import type { SessionEntry } from "zpi-coding-agent";
+import { maxSessionEntryBytes, type SessionEntry } from "zpi-coding-agent";
 import { mergeHistory } from "zpi-ui";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
@@ -308,4 +308,73 @@ it("repeated rewrites keep a bounded generation filename and preserve the prior 
     expect(index.path.split("generation-")).toHaveLength(2);
   }
   expect(readFileSync(path, "utf8")).toBe(original);
+});
+
+it.each([true, false])(
+  "rebuilds chunk-spanning UTF-8 records without flushing partial chunks (newline=%s)",
+  async (newline) => {
+    const { db, path, append } = fixture();
+    const content = "汉🙂".repeat(180000);
+    const large = append({ type: "message", message: { role: "user", content, timestamp: 1 } });
+    const small = append({ type: "message", message: { role: "user", content: "tail", timestamp: 2 } });
+    const original = readFileSync(path);
+    if (!newline) writeFileSync(path, original.subarray(0, -1));
+    db.exec("DELETE FROM transcript_state");
+    const rebuilt = new HistoryIndex(path, db);
+    const flush = vi.spyOn(rebuilt, "flush");
+    await rebuilt.load();
+    const restored = [...rebuilt.readRange(1, 2, rebuilt.snapshot())].map(({ entry }) => entry);
+    expect(restored.map(({ id }) => id)).toEqual([large.id, small.id]);
+    for (const [n, expected] of [large, small].entries()) {
+      expect(restored[n].type).toBe("message");
+      if (restored[n].type !== "message" || expected.type !== "message") throw new Error("message expected");
+      expect(restored[n].message.content === expected.message.content).toBe(true);
+    }
+    expect(flush.mock.calls.length).toBeLessThanOrEqual(newline ? 3 : 4);
+    expect(readFileSync(path).equals(original)).toBe(true);
+  },
+);
+
+it.each([true, false])(
+  "preserves oversized chunk-spanning input when rebuilding fails (newline=%s)",
+  async (newline) => {
+    const { db, path } = fixture();
+    appendFileSync(
+      path,
+      `${JSON.stringify({ text: "x".repeat(maxSessionEntryBytes) })}${newline ? "\n" : ""}`,
+    );
+    const original = readFileSync(path);
+    await expect(new HistoryIndex(path, db).load()).rejects.toThrow(/exceeds 8 MiB/);
+    expect(readFileSync(path).equals(original)).toBe(true);
+  },
+);
+
+it("reads indexed batches without per-entry SQL lookups and still validates record identities", () => {
+  const { db, index, append } = fixture();
+  for (let n = 1; n <= 130; n++)
+    append({ type: "message", message: { role: "user", content: `message ${n}`, timestamp: n } });
+  const snapshot = index.snapshot();
+  const prepare = vi.spyOn(db, "prepare");
+  try {
+    expect([...index.readRange(1, 130, snapshot, ["message"])].map(({ seq }) => seq)).toEqual(
+      Array.from({ length: 130 }, (_, n) => n + 1),
+    );
+    expect(prepare).toHaveBeenCalledTimes(2);
+    prepare.mockClear();
+    expect([...index.readReverse(snapshot)].map(({ seq }) => seq)).toEqual(
+      Array.from({ length: 130 }, (_, n) => 130 - n),
+    );
+    expect(prepare).toHaveBeenCalledTimes(2);
+    prepare.mockClear();
+    for (const entry of index.readRange(1, 130, snapshot)) {
+      expect(entry.seq).toBe(1);
+      break;
+    }
+    expect(prepare).toHaveBeenCalledTimes(1);
+  } finally {
+    prepare.mockRestore();
+  }
+  db.exec("UPDATE transcript_entries SET entry_id='wrong-id' WHERE seq=130");
+  expect(() => [...index.readRange(130, 130, snapshot)]).toThrow(/boundary mismatch/);
+  expect(() => index.readReverse(snapshot)[Symbol.iterator]().next()).toThrow(/boundary mismatch/);
 });

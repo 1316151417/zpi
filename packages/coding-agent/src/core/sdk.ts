@@ -179,21 +179,20 @@ export async function createAgentSession(
       tools: session?.state.tools ?? active,
       loader,
     });
-  const hasThinkingEntry = manager.hasCurrentState() || manager.getStateAt().hasThinkingEntry;
-  const hasExistingSession = restored.messages.length > 0;
-  const thinking = clampThinkingLevel(
-    model,
-    options.thinkingLevel ??
-      (manager.hasCurrentState()
-        ? selection.thinkingLevel
-        : hasExistingSession
-          ? hasThinkingEntry
-            ? selection.thinkingLevel
-            : (settingsManager.getDefaultThinkingLevel() ?? "medium")
-          : (settingsManager.getModelThinkingLevel(model.provider, model.id) ??
-            settingsManager.getDefaultThinkingLevel() ??
-            "medium")),
-  );
+  let requestedThinking = options.thinkingLevel;
+  if (requestedThinking == null) {
+    const hasExistingSession = restored.messages.length > 0;
+    const useRecordedThinking =
+      manager.hasCurrentState() || (hasExistingSession && manager.getStateAt().hasThinkingEntry);
+    requestedThinking = useRecordedThinking
+      ? selection.thinkingLevel
+      : ((!hasExistingSession
+          ? settingsManager.getModelThinkingLevel(model.provider, model.id)
+          : undefined) ??
+        settingsManager.getDefaultThinkingLevel() ??
+        "medium");
+  }
+  const thinking = clampThinkingLevel(model, requestedThinking);
   if (thinking !== selection.thinkingLevel) manager.appendThinkingLevelChange(thinking);
   session = new AgentSession(model, runtime, manager, all, active, buildPrompt(), thinking, {
     loader,
