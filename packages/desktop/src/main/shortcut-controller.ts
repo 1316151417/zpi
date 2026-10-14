@@ -111,6 +111,7 @@ export class ShortcutController {
     return result;
   }
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
     this.capturing = false;
     try {
@@ -122,6 +123,19 @@ export class ShortcutController {
     }
   }
 }
+/** A destroyed BrowserWindow can throw even when reading its webContents property. */
+export function setWindowMenuShortcutsIgnored(
+  window: {
+    isDestroyed(): boolean;
+    readonly webContents: { isDestroyed(): boolean; setIgnoreMenuShortcuts(ignore: boolean): void };
+  },
+  ignore: boolean,
+): void {
+  if (window.isDestroyed()) return;
+  const contents = window.webContents;
+  if (!contents.isDestroyed()) contents.setIgnoreMenuShortcuts(ignore);
+}
+
 export interface ShortcutWindow {
   isDestroyed(): boolean;
   isVisible(): boolean;
