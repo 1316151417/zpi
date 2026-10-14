@@ -136,6 +136,74 @@ test("long grouped/root lists virtualize, sticky headers remain usable, and draf
   }
 });
 
+test("long group names stay beside their color dot and truncate in menus and drag overlays", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-task-group-long-title-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const seeded = seedHistory(dir, project, 1);
+  const title = "这是一个需要单行省略且不挤压计数的长分组名称".repeat(4);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    await grouped(page);
+    await createGroup(page, title);
+    await page.locator(`.task-groups [data-session-id="${seeded.id}"]`).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "移动到分组", exact: true }).hover();
+    const menuTitle = page.locator(".task-group-move-title");
+    await expect(menuTitle).toBeVisible();
+    const menuLayout = await menuTitle.evaluate((element) => {
+      const dot = element.parentElement?.querySelector(".task-group-color-dot");
+      if (!dot) throw new Error("missing group color dot");
+      const style = getComputedStyle(element);
+      return {
+        gap: element.getBoundingClientRect().left - dot.getBoundingClientRect().right,
+        overflowing: element.scrollWidth > element.clientWidth,
+        whiteSpace: style.whiteSpace,
+        textOverflow: style.textOverflow,
+      };
+    });
+    expect(menuLayout).toMatchObject({ overflowing: true, whiteSpace: "nowrap", textOverflow: "ellipsis" });
+    expect(menuLayout.gap).toBeGreaterThanOrEqual(7);
+    expect(menuLayout.gap).toBeLessThanOrEqual(9);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    const header = page.getByRole("button", { name: `分组 ${title}`, exact: true });
+    const titleBounds = await header.locator(".task-group-title").boundingBox();
+    if (!titleBounds) throw new Error("missing group title bounds");
+    await page.mouse.move(titleBounds.x + 8, titleBounds.y + titleBounds.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(titleBounds.x + 8, titleBounds.y + titleBounds.height / 2 + 12, { steps: 3 });
+    const overlay = page.locator(".task-group-drag-overlay.task-group-header");
+    await expect(overlay).toBeVisible();
+    const overlayLayout = await overlay.evaluate((element) => {
+      const name = element.querySelector<HTMLElement>(".task-group-overlay-title");
+      const count = element.querySelector<HTMLElement>(".task-group-count");
+      if (!name || !count) throw new Error("missing group overlay content");
+      const style = getComputedStyle(name);
+      const bounds = element.getBoundingClientRect();
+      return {
+        overflowing: name.scrollWidth > name.clientWidth,
+        whiteSpace: style.whiteSpace,
+        textOverflow: style.textOverflow,
+        countFits: count.getBoundingClientRect().right <= bounds.right,
+        height: bounds.height,
+      };
+    });
+    expect(overlayLayout).toEqual({
+      overflowing: true,
+      whiteSpace: "nowrap",
+      textOverflow: "ellipsis",
+      countFits: true,
+      height: 32,
+    });
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
+
 test("grouped view shares pinned shortcuts and creates group drafts through Cmd/Ctrl+N; J/K and search hints stay synchronized", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-task-group-shortcuts-"));
   const cwd = join(dir, "workspace");
@@ -170,12 +238,22 @@ test("grouped view shares pinned shortcuts and creates group drafts through Cmd/
     await page.keyboard.press(`${primary}+2`);
     await expect(pinned.last()).toHaveClass(/active/);
     await page.locator(`.task-groups [data-session-id="${groupedTask}"]`).click();
+    const group = page.locator(`[data-grouped-group-item-id="${groupId}"]`);
+    const header = group.locator(".task-group-header");
+    await header.click();
+    await expect(header).toHaveAttribute("aria-expanded", "false");
     await page.keyboard.press(`${primary}+n`);
+    await expect(header).toHaveAttribute("aria-expanded", "true");
+    await expect(group.getByTestId("grouped-draft-row")).toBeVisible();
     await expect(
       page.locator(`[data-grouped-group-item-id="${groupId}"] [data-testid=grouped-draft-row]`),
     ).toHaveCount(1);
     const draftId = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+    await header.click();
+    await expect(header).toHaveAttribute("aria-expanded", "false");
     await page.keyboard.press(`${primary}+n`);
+    await expect(header).toHaveAttribute("aria-expanded", "true");
+    await expect(group.getByTestId("grouped-draft-row")).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(draftId);
     await expect
       .poll(async () => {

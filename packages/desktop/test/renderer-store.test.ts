@@ -54,7 +54,7 @@ async function setup() {
     })),
     getSessionSnapshot: vi.fn(async (_id?: string) => ({ ok: true, value: snapshot })),
     listCommands: vi.fn(async () => ({ ok: true, value: [] })),
-    listSessionSkills: vi.fn(async () => ({ ok: true, value: { skills: [], diagnostics: [] } })),
+    listSessionSkills: vi.fn(async (_id?: string) => ({ ok: true, value: { skills: [], diagnostics: [] } })),
     onEvent: vi.fn((listener: typeof emit) => {
       emit = listener;
       return () => {};
@@ -816,5 +816,220 @@ it("new-task shortcut uses the shared draft path, inheriting the active visible 
   });
   await f.store.newSession();
   expect(f.store.useStore.getState().selected).toBe(rootDraft.id);
+  f.unsubscribe();
+});
+
+async function groupedDraftNavigation() {
+  const f = await setup();
+  const first = { ...f.session, id: "draft-a", draft: true };
+  const second = { ...f.session, id: "draft-b", draft: true };
+  const sessions = new Map([first, second].map((record) => [record.id, record]));
+  const taskGroups = {
+    ...emptyTaskGroups(),
+    groups: ["a", "b"].map((id) => ({ id, title: id, color: "gray" as const, createdAt: 1 })),
+    roots: ["a", "b"].map((id) => ({ type: "group" as const, id })),
+    members: { a: [first.id], b: [second.id] },
+  };
+  f.store.useStore.setState({ sessions, taskGroups });
+  f.bridge.getSessionSnapshot.mockImplementation(async (id) => ({
+    ok: true,
+    value: {
+      ...f.snapshot,
+      session: sessions.get(id ?? "") ?? f.session,
+      view: { ...f.snapshot.view, sessionId: id ?? f.session.id },
+    },
+  }));
+  return { ...f, first, second, sessions, taskGroups };
+}
+
+it("A-B-A new-task navigation honors the last click while the first draft's resources are still loading", async () => {
+  const f = await groupedDraftNavigation();
+  const started = deferred(),
+    gate = deferred();
+  f.bridge.listSessionSkills.mockImplementationOnce(async () => {
+    started.resolve();
+    await gate.promise;
+    return { ok: true, value: { skills: [], diagnostics: [] } };
+  });
+  const first = f.store.newSession(null, "a");
+  await started.promise;
+  expect(f.store.useStore.getState().selected).toBe(f.first.id);
+  await f.store.newSession(null, "b");
+  const last = f.store.newSession(null, "a");
+  await vi.waitFor(() => expect(f.store.useStore.getState().selected).toBe(f.first.id));
+  gate.resolve();
+  expect(await first).toBeUndefined();
+  expect(await last).toBe(f.first.id);
+  expect(f.store.useStore.getState().selected).toBe(f.first.id);
+  expect(f.bridge.createSession).not.toHaveBeenCalled();
+  f.unsubscribe();
+});
+
+it.each(["creation", "resources"] as const)(
+  "a late new-task %s cannot steal a newer manual selection or return its ID for expansion",
+  async (phase) => {
+    const f = await groupedDraftNavigation();
+    const started = deferred(),
+      gate = deferred();
+    if (phase === "creation") {
+      f.store.useStore.setState({ sessions: new Map([[f.second.id, f.second]]) });
+      f.bridge.createSession.mockImplementationOnce(async () => {
+        started.resolve();
+        await gate.promise;
+        return { ok: true, value: f.first };
+      });
+      f.bridge.listRecentSessions.mockResolvedValue({ ok: true, value: [...f.sessions.values()] });
+      f.bridge.getTaskGroups.mockResolvedValue({ ok: true, value: f.taskGroups });
+    } else {
+      f.bridge.listSessionSkills.mockImplementationOnce(async () => {
+        started.resolve();
+        await gate.promise;
+        return { ok: true, value: { skills: [], diagnostics: [] } };
+      });
+    }
+    const opening = f.store.newSession(null, "a");
+    await started.promise;
+    await f.store.selectSession(f.second.id);
+    gate.resolve();
+    expect(await opening).toBeUndefined();
+    expect(f.store.useStore.getState().selected).toBe(f.second.id);
+    f.unsubscribe();
+  },
+);
+
+it("deduplicates pending draft creation while allowing the latest same-group request to navigate", async () => {
+  const f = await groupedDraftNavigation();
+  f.store.useStore.setState({ sessions: new Map([[f.second.id, f.second]]) });
+  const gate = deferred();
+  f.bridge.createSession.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: f.first };
+  });
+  f.bridge.listRecentSessions.mockResolvedValue({ ok: true, value: [...f.sessions.values()] });
+  f.bridge.getTaskGroups.mockResolvedValue({ ok: true, value: f.taskGroups });
+  const first = f.store.newSession(null, "a");
+  await f.store.newSession(null, "b");
+  const last = f.store.newSession(null, "a");
+  gate.resolve();
+  expect(await first).toBeUndefined();
+  expect(await last).toBe(f.first.id);
+  expect(f.bridge.createSession).toHaveBeenCalledOnce();
+  expect(f.store.useStore.getState().selected).toBe(f.first.id);
+  f.unsubscribe();
+});
+
+it("a slower earlier group creation preserves the newer group's selection and keeps its draft reusable", async () => {
+  const f = await groupedDraftNavigation();
+  f.store.useStore.setState({ sessions: new Map([[f.second.id, f.second]]) });
+  const gate = deferred();
+  f.bridge.createSession.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: f.first };
+  });
+  f.bridge.listRecentSessions.mockResolvedValue({ ok: true, value: [...f.sessions.values()] });
+  f.bridge.getTaskGroups.mockResolvedValue({ ok: true, value: f.taskGroups });
+  const first = f.store.newSession(null, "a");
+  expect(await f.store.newSession(null, "b")).toBe(f.second.id);
+  gate.resolve();
+  expect(await first).toBeUndefined();
+  expect(f.store.useStore.getState().selected).toBe(f.second.id);
+  expect(await f.store.newSession(null, "a")).toBe(f.first.id);
+  expect(f.bridge.createSession).toHaveBeenCalledOnce();
+  f.unsubscribe();
+});
+
+it("a failed draft creation releases its deduplication entry so the next request can retry", async () => {
+  const f = await groupedDraftNavigation();
+  f.store.useStore.setState({ sessions: new Map([[f.second.id, f.second]]) });
+  f.bridge.createSession.mockRejectedValueOnce(new Error("disk full"));
+  await expect(f.store.newSession(null, "a")).rejects.toThrow("disk full");
+  f.bridge.createSession.mockResolvedValueOnce({ ok: true, value: f.first });
+  f.bridge.listRecentSessions.mockResolvedValue({ ok: true, value: [...f.sessions.values()] });
+  f.bridge.getTaskGroups.mockResolvedValue({ ok: true, value: f.taskGroups });
+  expect(await f.store.newSession(null, "a")).toBe(f.first.id);
+  expect(f.bridge.createSession).toHaveBeenCalledTimes(2);
+  f.unsubscribe();
+});
+
+it.each([true, false])(
+  "new-task focus ignores hidden retained dialogs but respects visible ones (hidden=%s)",
+  async (hidden) => {
+    const f = await groupedDraftNavigation();
+    const blocker = {
+      closest: () => (hidden ? {} : null),
+      getClientRects: () => [{}],
+    };
+    const editor = { closest: () => null, focus: vi.fn() };
+    Object.assign(f.document, {
+      querySelectorAll: () => [blocker],
+      querySelector: (selector: string) => (selector.includes('[role="dialog"]') ? blocker : editor),
+    });
+    vi.stubGlobal("getComputedStyle", () => ({ visibility: "visible" }));
+    expect(await f.store.newSession(null, "a")).toBe(f.first.id);
+    f.frame();
+    expect(editor.focus).toHaveBeenCalledTimes(hidden ? 1 : 0);
+    f.unsubscribe();
+  },
+);
+
+it("a failed group command does not invalidate initial hydration or prune saved collapsed groups", async () => {
+  const f = await groupedDraftNavigation();
+  const { pruneCollapsedTaskGroups } = await import("../src/renderer/task-group-expansion.ts");
+  f.store.useStore.setState({ taskGroups: emptyTaskGroups(), taskGroupsHydrated: false });
+  const gate = deferred();
+  f.bridge.getTaskGroups.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: f.taskGroups };
+  });
+  const refreshing = f.store.refresh();
+  f.bridge.updateTaskGroups.mockRejectedValueOnce(new Error("disk full"));
+  await expect(f.store.changeTaskGroups({ type: "create" })).rejects.toThrow("disk full");
+  gate.resolve();
+  await refreshing;
+  const state = f.store.useStore.getState();
+  expect(state.taskGroups).toEqual(f.taskGroups);
+  expect(
+    pruneCollapsedTaskGroups(
+      ["a"],
+      state.taskGroups.groups.map((g) => g.id),
+      state.taskGroupsHydrated,
+    ),
+  ).toEqual(["a"]);
+  f.unsubscribe();
+});
+
+it("an older successful group response cannot overwrite a newer completed command", async () => {
+  const f = await groupedDraftNavigation();
+  const gate = deferred();
+  const later = structuredClone(f.taskGroups);
+  later.groups[0].title = "latest";
+  f.bridge.updateTaskGroups.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: f.taskGroups };
+  });
+  f.bridge.updateTaskGroups.mockResolvedValueOnce({ ok: true, value: later });
+  const first = f.store.changeTaskGroups({ type: "rename", id: "a", title: "a" });
+  await f.store.changeTaskGroups({ type: "rename", id: "a", title: "latest" });
+  gate.resolve();
+  await first;
+  expect(f.store.useStore.getState().taskGroups).toEqual(later);
+  f.unsubscribe();
+});
+
+it("a later failed group command does not suppress an earlier successful response", async () => {
+  const f = await groupedDraftNavigation();
+  const gate = deferred();
+  const saved = structuredClone(f.taskGroups);
+  saved.groups[0].title = "saved";
+  f.bridge.updateTaskGroups.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: saved };
+  });
+  const first = f.store.changeTaskGroups({ type: "rename", id: "a", title: "saved" });
+  f.bridge.updateTaskGroups.mockRejectedValueOnce(new Error("disk full"));
+  await expect(f.store.changeTaskGroups({ type: "create" })).rejects.toThrow("disk full");
+  gate.resolve();
+  await first;
+  expect(f.store.useStore.getState().taskGroups).toEqual(saved);
   f.unsubscribe();
 });

@@ -20,6 +20,7 @@ import type {
 import { emptyTaskGroups, type TaskGroupState, taskGroupFor } from "../shared/task-groups.ts";
 import { logRendererError } from "./error-log.ts";
 import { previewLoader } from "./preview-loader.ts";
+import { hasVisibleShortcutBlocker } from "./shortcut-context.ts";
 import { readTaskPreferences, taskPreferencesKey } from "./sidebar-task-model.ts";
 
 declare global {
@@ -403,7 +404,10 @@ export async function markSessionRead(id: string): Promise<void> {
 }
 let selectionGeneration = 0;
 export async function selectSession(id: string): Promise<void> {
-  const generation = ++selectionGeneration;
+  return selectSessionForNavigation(id, ++selectionGeneration);
+}
+async function selectSessionForNavigation(id: string, generation: number): Promise<void> {
+  if (generation !== selectionGeneration) return;
   const previous = useStore.getState().selected;
   if (previous && previous !== id) await saveDraft(previous);
   // 保存草稿期间用户可能已重新选择任务，迟到的导航不能覆盖最新意图。
@@ -516,14 +520,14 @@ export async function loadEarlier(id: string): Promise<void> {
     useStore.setState({ historyLoading: loading });
   }
 }
-const openingDrafts = new Map<string, Promise<void>>();
+const openingDrafts = new Map<string, Promise<SessionRecord>>();
 export function focusComposer(sessionId: string): void {
   requestAnimationFrame(() => {
     const state = useStore.getState();
     const parentId = state.sessions.get(sessionId)?.parentSessionId;
     if (
       state.selected !== (parentId ?? sessionId) ||
-      document.querySelector(
+      hasVisibleShortcutBlocker(
         'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
       )
     )
@@ -540,7 +544,9 @@ export async function newSession(
   projectId: string | null = useStore.getState().sessions.get(useStore.getState().selected ?? "")
     ?.projectId ?? null,
   groupId?: string | null,
-): Promise<void> {
+): Promise<string | undefined> {
+  // 创建去重与导航意图分开；A → B → A 的最后一次点击不能被 A 的在途资源读取吞掉。
+  const generation = ++selectionGeneration;
   if (groupId === undefined) {
     let grouped = false;
     try {
@@ -554,32 +560,37 @@ export async function newSession(
   }
   const targetGroup = groupId;
   const key = `${projectId ?? "_unassigned"}:${targetGroup ?? "root"}`;
-  const pending = openingDrafts.get(key);
-  if (pending) return pending;
-  const open = (async () => {
-    const draft = [...useStore.getState().sessions.values()]
-      .filter(
-        (record) =>
-          record.draft &&
-          !record.parentSessionId &&
-          record.projectId === projectId &&
-          record.archivedAt == null &&
-          taskGroupFor(useStore.getState().taskGroups, record.id) === targetGroup,
-      )
-      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    const record = draft ?? unwrap(await window.zpi.createSession(projectId, targetGroup));
-    if (!draft) {
-      await refresh();
-    }
-    await selectSession(record.id);
-    focusComposer(record.id);
-  })();
-  openingDrafts.set(key, open);
-  try {
-    await open;
-  } finally {
-    openingDrafts.delete(key);
+  let opening = openingDrafts.get(key);
+  if (!opening) {
+    opening = (async () => {
+      const draft = [...useStore.getState().sessions.values()]
+        .filter(
+          (record) =>
+            record.draft &&
+            !record.parentSessionId &&
+            record.projectId === projectId &&
+            record.archivedAt == null &&
+            taskGroupFor(useStore.getState().taskGroups, record.id) === targetGroup,
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const record = draft ?? unwrap(await window.zpi.createSession(projectId, targetGroup));
+      if (!draft) {
+        await refresh();
+      }
+      return record;
+    })();
+    openingDrafts.set(key, opening);
+    const cleanup = () => {
+      if (openingDrafts.get(key) === opening) openingDrafts.delete(key);
+    };
+    void opening.then(cleanup, cleanup);
   }
+  const record = await opening;
+  if (generation !== selectionGeneration) return;
+  await selectSessionForNavigation(record.id, generation);
+  if (generation !== selectionGeneration || useStore.getState().selected !== record.id) return;
+  focusComposer(record.id);
+  return record.id;
 }
 export async function archiveSession(id: string): Promise<void> {
   unwrap(await window.zpi.archiveSession(id));
@@ -642,12 +653,19 @@ export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnap
   useStore.setState({ views, sessions, historyCursors: cursors });
 }
 
+let taskGroupRequest = 0;
+let appliedTaskGroupRequest = 0;
 export async function changeTaskGroups(
   command: Parameters<DesktopBridge["updateTaskGroups"]>[0],
 ): Promise<TaskGroupState> {
-  ++taskGroupGeneration;
+  const request = ++taskGroupRequest;
   const taskGroups = unwrap(await window.zpi.updateTaskGroups(command));
-  useStore.setState({ taskGroups });
+  if (request > appliedTaskGroupRequest) {
+    // 失败写入不能废弃首屏读取；只有成功落地的新状态才阻止旧刷新或旧命令回包覆盖。
+    appliedTaskGroupRequest = request;
+    ++taskGroupGeneration;
+    useStore.setState({ taskGroups });
+  }
   return taskGroups;
 }
 

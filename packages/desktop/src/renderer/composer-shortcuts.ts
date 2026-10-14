@@ -1,4 +1,5 @@
 import { type ShortcutSettings, shortcutForEvent } from "../shared/shortcuts.ts";
+import { hasVisibleShortcutBlocker } from "./shortcut-context.ts";
 
 export function composerShortcutCommand(
   event: KeyboardEvent,
@@ -10,7 +11,7 @@ export function composerShortcutCommand(
     event.defaultPrevented ||
     event.isComposing ||
     event.keyCode === 229 ||
-    document.querySelector(
+    hasVisibleShortcutBlocker(
       'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen, [data-shortcut-recording="true"]',
     )
   )

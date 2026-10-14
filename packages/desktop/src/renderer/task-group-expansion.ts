@@ -1,4 +1,7 @@
 export const taskGroupCollapsedKey = "zpi.collapsedTaskGroups";
+export function expandTaskGroup(current: string[], groupId: string | null): string[] {
+  return groupId && current.includes(groupId) ? current.filter((id) => id !== groupId) : current;
+}
 export function parseCollapsedTaskGroups(raw: string | null): string[] {
   try {
     const value: unknown = JSON.parse(raw ?? "[]");

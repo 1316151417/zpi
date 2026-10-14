@@ -5474,6 +5474,23 @@
 .task-group-move-menu {
   width: 208px;
 }
+.task-group-move-menu .menu-item {
+  justify-content: flex-start;
+}
+.task-group-move-title,
+.task-group-overlay-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-group-overlay-title {
+  flex: 1;
+  padding: 0 4px;
+}
+.task-group-drag-overlay .task-group-count {
+  flex-shrink: 0;
+}
 .menu-sub-arrow {
   margin-left: auto;
 }

@@ -330,7 +330,7 @@ export function TaskGroupRow({
                       }
                     >
                       <TaskGroupColorMark color={group.color} dot />
-                      {group.title}
+                      <span className="task-group-move-title">{group.title}</span>
                     </Context.Item>
                   ))}
                 </Context.SubContent>
