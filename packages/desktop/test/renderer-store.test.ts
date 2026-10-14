@@ -959,7 +959,7 @@ it.each([true, false])(
       closest: () => (hidden ? {} : null),
       getClientRects: () => [{}],
     };
-    const editor = { closest: () => null, focus: vi.fn() };
+    const editor = { isConnected: true, closest: () => null, getClientRects: () => [{}], focus: vi.fn() };
     Object.assign(f.document, {
       querySelectorAll: () => [blocker],
       querySelector: (selector: string) => (selector.includes('[role="dialog"]') ? blocker : editor),

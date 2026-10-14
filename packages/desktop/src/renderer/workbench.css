@@ -3212,7 +3212,7 @@
   color: var(--color-text-subtle);
 }
 .sidebar .task-view-trigger:hover,
-.sidebar .task-group-toggle:hover,
+.sidebar .task-group-toggle:hover:not(:disabled),
 .sidebar .task-view-trigger[aria-expanded="true"] {
   background: var(--preview-hover);
   color: var(--color-foreground);
@@ -5180,7 +5180,8 @@
   height: 28px;
   padding: 2px;
   border-radius: 999px;
-  background: var(--color-surface);
+  /* ZCode surface 是半透明填充；ZPI 同名 surface 是面板白色，须映射到 fill。 */
+  background: var(--color-fill);
 }
 .sidebar .task-primary-tabs button {
   display: inline-flex;
@@ -5201,6 +5202,9 @@
 .sidebar .task-primary-tabs button[aria-pressed="true"] {
   color: var(--color-foreground);
   background: var(--color-bg);
+}
+.sidebar .task-primary-tabs button:hover {
+  color: var(--color-foreground);
 }
 .sidebar .task-group-create {
   margin-left: auto;

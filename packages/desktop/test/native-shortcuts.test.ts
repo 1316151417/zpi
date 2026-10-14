@@ -10,12 +10,15 @@ vi.mock("electron", () => ({
   WebContentsView: class {
     webContents = Object.assign(new EventEmitter(), {
       setWindowOpenHandler: vi.fn(),
-      isDestroyed: () => false,
+      isDestroyed: vi.fn(() => false),
+      isFocused: vi.fn(() => false),
+      close: vi.fn(),
       getURL: () => "",
       getTitle: () => "",
       isLoading: () => false,
       navigationHistory: { getActiveIndex: () => 0, getAllEntries: () => [] },
     });
+    setBounds = vi.fn();
     constructor() {
       fake.contents.push(this.webContents);
     }
@@ -75,5 +78,43 @@ describe("native browser keyboard boundary", () => {
     });
     expect(shortcut).toHaveBeenCalledWith(expect.objectContaining({ repeat: true, isComposing: true }));
     expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe("native browser focus retention", () => {
+  function setup() {
+    const window = {
+      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
+      getContentBounds: () => ({ width: 800, height: 600 }),
+      webContents: { getZoomFactor: () => 1 },
+    };
+    const services = new PaneServices(window as never, vi.fn());
+    const { id } = services.createBrowser("");
+    const content = fake.contents.at(-1) as EventEmitter & {
+      isFocused: ReturnType<typeof vi.fn>;
+      isDestroyed: ReturnType<typeof vi.fn>;
+    };
+    const show = () => services.bounds(id, { x: 300, y: 0, width: 500, height: 600 });
+    return { services, id, content, show };
+  }
+
+  it("preserves a visible live guest's existing focus without moving host or guest focus", () => {
+    const f = setup();
+    f.show();
+    expect(f.services.hasFocusedBrowser()).toBe(false);
+    f.content.isFocused.mockReturnValue(true);
+    expect(f.services.hasFocusedBrowser()).toBe(true);
+    expect(f.services.hasFocusedBrowser()).toBe(true);
+  });
+
+  it.each(["hidden", "closed", "destroyed", "unfocused"])("allows fallback when the guest is %s", (mode) => {
+    const f = setup();
+    f.show();
+    f.content.isFocused.mockReturnValue(true);
+    if (mode === "hidden") f.services.bounds(f.id, null);
+    if (mode === "closed") f.services.closeBrowser(f.id);
+    if (mode === "destroyed") f.content.isDestroyed.mockReturnValue(true);
+    if (mode === "unfocused") f.content.isFocused.mockReturnValue(false);
+    expect(f.services.hasFocusedBrowser()).toBe(false);
   });
 });

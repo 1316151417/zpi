@@ -112,7 +112,7 @@ ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npm run test:desktop
 
 ## 快捷键实现与回归
 
-桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 `settings.json` 的 `shortcuts` 字段。平台默认值使用明确的 Command/Ctrl 映射；没有该字段的旧设置自动采用默认值。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建和查找命令，xterm 焦点由 renderer 捕获阶段处理。模型选择和队列发送由当前 composer 自己处理。
+桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 `settings.json` 的 `shortcuts` 字段。平台默认值使用明确的 Command/Ctrl 映射；没有该字段的旧设置自动采用默认值。默认左栏 J、右栏 L、任务搜索 K、模型选择 ;、任务输入框聚焦 I，均使用平台主修饰键。内部 `shortcutDefaultsVersion` 标记一次性迁移：仅替换仍为旧默认的 K / L / Shift+F，保留自定义、清空项和总开关；整个候选存在冲突时保留全部旧绑定。旧记录缺少输入框聚焦命令时补 I，若 I 已被自定义占用则补空绑定。迁移版本与结果原子保存，后续主动改回旧组合不会再次迁移。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建、查找和显式输入框聚焦命令，xterm 焦点由 renderer 捕获阶段处理。模型选择和队列发送由当前 composer 自己处理。
 
 全局改键先注册候选键，再保存设置并注销旧键；注册或保存失败不会覆盖原设置。退出只有在草稿确认保存后才注销，取消退出仍保留原绑定。`ZPI_TEST_MODE=1` 从不向系统注册全局快捷键，注册冲突、回滚及窗口切换使用假 registry/window 单元测试。
 

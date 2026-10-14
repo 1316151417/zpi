@@ -29,7 +29,7 @@ import type {
   RunInput,
 } from "../shared/bridge.ts";
 import { methods } from "../shared/bridge.ts";
-import { type ShortcutSettings, shortcutForEvent } from "../shared/shortcuts.ts";
+import type { ShortcutSettings } from "../shared/shortcuts.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { defaultFileOpener } from "./default-file-open.ts";
@@ -39,9 +39,10 @@ import { readFilePreview } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { PaneServices } from "./pane-services.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
+import { openProjectFromDialog } from "./project-picker.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
-import { ShortcutController, toggleShortcutWindow } from "./shortcut-controller.ts";
+import { forwardBrowserShortcut, ShortcutController, toggleShortcutWindow } from "./shortcut-controller.ts";
 import { SettingsStore } from "./storage.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
@@ -261,7 +262,10 @@ async function launch(): Promise<void> {
     globalShortcut,
     process.platform,
     () => {
-      if (!ending && !hiddenTestMode) toggleShortcutWindow(window);
+      if (ending || hiddenTestMode || !toggleShortcutWindow(window)) return;
+      // Native guests and DOM controls normally retain focus; notify only for a lost-target fallback.
+      if (!window.webContents.isDestroyed() && !panes.hasFocusedBrowser())
+        window.webContents.send("zpi:shortcut", "toggle-window");
     },
     testMode,
     (ignore) => {
@@ -300,27 +304,15 @@ async function launch(): Promise<void> {
       if (!window.isDestroyed()) window.webContents.send("zpi:pane-event", event);
     },
     (event) => {
-      if (ending || shortcuts.isCapturing || window.isDestroyed()) return false;
-      const command = shortcutForEvent({ ...event, repeat: false }, process.platform, shortcutSettings);
-      // Browser page editing, address selection and Escape stay with the focused page.
-      if (
-        !command ||
-        ![
-          "toggle-sidebar",
-          "toggle-pane",
-          "new-task",
-          "search",
-          "find",
-          "pin-1",
-          "pin-2",
-          "pin-3",
-          "pin-4",
-          "pin-5",
-        ].includes(command)
-      )
+      if (ending || shortcuts.isCapturing || window.isDestroyed() || window.webContents.isDestroyed())
         return false;
-      if (!event.repeat) window.webContents.send("zpi:shortcut", command);
-      return true;
+      return forwardBrowserShortcut(
+        event,
+        process.platform,
+        shortcutSettings,
+        (command) => window.webContents.send("zpi:shortcut", command),
+        () => window.webContents.focus(),
+      );
     },
   );
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -416,7 +408,7 @@ async function launch(): Promise<void> {
         readSkill: 1,
         setSkillEnabled: 2,
         listProjects: 0,
-        addProject: 0,
+        addProject: 1,
         removeProject: 1,
         listSessions: 1,
         listRecentSessions: 0,
@@ -714,13 +706,12 @@ async function launch(): Promise<void> {
           value = host.listProjects();
           break;
         case "addProject": {
-          let path: string | undefined;
-          if (testMode) path = process.env.ZPI_TEST_PROJECT_DIR;
-          else {
-            const selected = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
-            path = selected.canceled ? undefined : selected.filePaths[0];
-          }
-          value = path ? await host.addProject(path) : null;
+          const id = sessionContext();
+          value = testMode
+            ? process.env.ZPI_TEST_PROJECT_DIR
+              ? await host.addProject(process.env.ZPI_TEST_PROJECT_DIR)
+              : null
+            : await openProjectFromDialog(id, host, (options) => dialog.showOpenDialog(window, options));
           break;
         }
         case "removeProject":

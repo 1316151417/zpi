@@ -88,20 +88,22 @@ export function TaskGroupToolbar({
   onToggleAll(): void;
   onCreate(): void;
 }) {
-  const allExpanded = state.groups.every((group) => !collapsed.includes(group.id));
+  const hasGroups = state.groups.length > 0;
+  const allExpanded = hasGroups && state.groups.every((group) => !collapsed.includes(group.id));
+  const toggleLabel = allExpanded ? "收起全部" : "展开全部";
   return (
     <>
-      {state.groups.length > 0 && (
-        <ActionHint label={allExpanded ? "收起全部" : "展开全部"} appearance="control">
-          <button
-            className="task-group-toggle"
-            aria-label={allExpanded ? "收起全部" : "展开全部"}
-            onClick={onToggleAll}
-          >
-            {allExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-        </ActionHint>
-      )}
+      {/* 空组仍保留切换器旁的入口，避免分组/项目切换时箭头消失；无目标时禁用。 */}
+      <ActionHint label={toggleLabel} appearance="control">
+        <button
+          className="task-group-toggle"
+          aria-label={toggleLabel}
+          disabled={!hasGroups}
+          onClick={onToggleAll}
+        >
+          {allExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        </button>
+      </ActionHint>
       <ActionHint label="新建分组" appearance="control">
         <button className="task-group-create task-group-toggle" aria-label="新建分组" onClick={onCreate}>
           <Hash size={14} />

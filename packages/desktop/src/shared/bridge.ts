@@ -320,7 +320,7 @@ export interface DesktopBridge {
   readSkill(path: string): Promise<Result<string>>;
   setSkillEnabled(path: string, enabled: boolean): Promise<Result<PublicSettings>>;
   listProjects(): Promise<Result<ProjectRecord[]>>;
-  addProject(): Promise<Result<ProjectRecord | null>>;
+  addProject(sessionId: string | null): Promise<Result<ProjectRecord | null>>;
   removeProject(id: string): Promise<Result<void>>;
   listSessions(projectId: string): Promise<Result<SessionRecord[]>>;
   getTaskSearchChanges(sessionId: string): Promise<Result<TaskSearchChange[]>>;

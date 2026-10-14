@@ -36,13 +36,21 @@ it("still blocks when a visible dialog follows a hidden retained question", () =
 
 it("allows workspace and focused composer shortcuts while an auxiliary question is hidden", () => {
   querySelectorAll.mockReturnValue([blocker({ hiddenTree: true })]);
-  for (const command of ["toggle-sidebar", "toggle-pane", "new-task", "pin-1", "search", "find"] as const)
+  for (const command of [
+    "toggle-sidebar",
+    "toggle-pane",
+    "focus-composer",
+    "new-task",
+    "pin-1",
+    "search",
+    "find",
+  ] as const)
     expect(workspaceShortcutBlocked(command)).toBe(false);
   for (const [key, command] of [
     ["Enter", "send-next"],
-    ["l", "select-model"],
+    [";", "select-model"],
   ]) {
-    const event = { key, ctrlKey: true, keyCode: key === "Enter" ? 13 : 76 } as KeyboardEvent;
+    const event = { key, ctrlKey: true, keyCode: key === "Enter" ? 13 : 186 } as KeyboardEvent;
     expect(composerShortcutCommand(event, "linux", defaultShortcuts("linux"))).toBe(command);
   }
 });

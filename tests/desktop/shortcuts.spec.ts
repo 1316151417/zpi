@@ -69,7 +69,7 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
     await expect(page.locator(".shell")).toHaveClass(/left-collapsed/);
     await page.keyboard.press(`${primary}+j`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed/);
-    await page.keyboard.press(`${primary}+Shift+f`);
+    await page.keyboard.press(`${primary}+k`);
     await expect(page.getByRole("dialog", { name: "搜索任务", exact: true })).toBeVisible();
     await page.keyboard.press(`${primary}+j`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed/);
@@ -165,8 +165,8 @@ test("shortcut recording validates conflicts, persists custom keys and disables 
     await expect(page.getByRole("status")).toHaveText("快捷键已保存。");
     await page.getByLabel("关闭设置", { exact: true }).click();
     await page.keyboard.press(`${primary}+Shift+j`);
+    await page.keyboard.press(`${primary}+l`);
     await page.keyboard.press(`${primary}+k`);
-    await page.keyboard.press(`${primary}+Shift+f`);
     await expect(page.locator(".shell")).not.toHaveClass(/left-collapsed|pane-open/);
     await expect(page.getByRole("dialog", { name: "搜索任务", exact: true })).toHaveCount(0);
     const editor = page.getByLabel("消息", { exact: true });
@@ -206,7 +206,7 @@ test("pane shortcuts escape xterm without sending terminal input", async () => {
     });
     await input.press(`${primary}+j`);
     await expect(page.locator(".shell")).toHaveClass(/left-collapsed/);
-    await input.press(`${primary}+k`);
+    await input.press(`${primary}+l`);
     await expect(page.locator(".shell")).not.toHaveClass(/pane-open/);
     expect(
       await app.evaluate(

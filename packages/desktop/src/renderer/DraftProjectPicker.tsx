@@ -26,7 +26,7 @@ export function DraftProjectPicker({ projectId }: { projectId: string | null }) 
   const openFolder = async () => {
     setPending(true);
     try {
-      const project = unwrap(await window.zpi.addProject());
+      const project = unwrap(await window.zpi.addProject(useStore.getState().selected ?? null));
       if (project) {
         await refresh();
         await newSession(project.id);

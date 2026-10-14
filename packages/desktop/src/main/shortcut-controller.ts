@@ -1,5 +1,11 @@
 import type { PublicSettings } from "../shared/bridge.ts";
-import { normalizeShortcuts, type ShortcutSettings } from "../shared/shortcuts.ts";
+import {
+  normalizeShortcuts,
+  type ShortcutCommand,
+  type ShortcutKeyEvent,
+  type ShortcutSettings,
+} from "../shared/shortcuts.ts";
+import { workspaceShortcutForEvent } from "../shared/workspace-shortcuts.ts";
 
 export interface GlobalShortcutRegistry {
   register(accelerator: string, callback: () => void): boolean;
@@ -127,13 +133,33 @@ export interface ShortcutWindow {
   focus(): void;
 }
 /** Hiding a window never touches the session host or its running work. */
-export function toggleShortcutWindow(window: ShortcutWindow): void {
-  if (window.isDestroyed()) return;
+export function toggleShortcutWindow(window: ShortcutWindow): boolean {
+  if (window.isDestroyed()) return false;
   if (window.isVisible() && window.isFocused() && !window.isMinimized()) {
     window.hide();
-    return;
+    return false;
   }
   if (window.isMinimized()) window.restore();
+  if (window.isDestroyed()) return false;
   window.show();
+  if (window.isDestroyed()) return false;
   window.focus();
+  return !window.isDestroyed() && window.isVisible() && window.isFocused() && !window.isMinimized();
+}
+
+/** Native browser guests use the same application command matcher as renderer capture. */
+export function forwardBrowserShortcut(
+  event: ShortcutKeyEvent,
+  platform: string,
+  settings: ShortcutSettings,
+  send: (command: ShortcutCommand) => void,
+  focusHost: () => void,
+): boolean {
+  const command = workspaceShortcutForEvent(event, platform, settings);
+  if (!command) return false;
+  if (!event.repeat) {
+    if (command === "focus-composer") focusHost();
+    send(command);
+  }
+  return true;
 }

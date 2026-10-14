@@ -33,12 +33,27 @@ describe("composer shortcut routing", () => {
       composerShortcutCommand(event({ ctrlKey: false, metaKey: true }), "darwin", defaultShortcuts("darwin")),
     ).toBe("send-next");
     expect(
-      composerShortcutCommand(event({ key: "l", code: "KeyL" }), "linux", defaultShortcuts("linux")),
+      composerShortcutCommand(event({ key: ";", code: "Semicolon" }), "linux", defaultShortcuts("linux")),
     ).toBe("select-model");
-    for (const key of ["j", "k", "n", "f", "1"])
+    for (const key of ["j", "k", "l", "i", "n", "f", "1"])
       expect(
         composerShortcutCommand(event({ key, code: undefined }), "linux", defaultShortcuts("linux")),
       ).toBeUndefined();
+  });
+
+  it.each(["darwin", "win32", "linux"])("keeps model selection local and repeat-safe on %s", (platform) => {
+    const settings = defaultShortcuts(platform);
+    const modelEvent = event({
+      key: "；",
+      code: "Semicolon",
+      keyCode: 186,
+      ctrlKey: platform !== "darwin",
+      metaKey: platform === "darwin",
+    });
+    expect(composerShortcutCommand(modelEvent, platform, settings)).toBe("select-model");
+    expect(composerShortcutCommand({ ...modelEvent, repeat: true }, platform, settings)).toBe("select-model");
+    expect(composerShortcutCommand({ ...modelEvent, isComposing: true }, platform, settings)).toBeUndefined();
+    expect(composerShortcutCommand({ ...modelEvent, shiftKey: true }, platform, settings)).toBeUndefined();
   });
 
   it("does not scan overlay layout for ordinary, disabled, or unmatched input", () => {

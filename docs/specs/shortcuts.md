@@ -1,5 +1,13 @@
 # 快捷键事件路由与弹层边界
 
+## 默认映射与升级
+
+- Command/Ctrl+J 切换左栏，Command/Ctrl+L 切换右栏，Command/Ctrl+K 搜索任务，Command/Ctrl+; 打开模型选择。模型菜单内 → 选择思考档位等现有行为不变。
+- Command/Ctrl+I 主动聚焦当前主任务输入框；全局窗口快捷键恢复有效原焦点，只有原目标失效时回退主输入。隐藏窗口与可见设置/弹窗期间不抢焦点。
+- 旧配置只替换仍等于旧默认的三个绑定，保留自定义、null 及总开关。候选整体校验失败时保留全部旧绑定，不做部分迁移。
+- 新增 focus-composer 缺项先补平台 I；已有自定义占用 I 时补 null，不覆盖旧键。迁移版本只存于内部 settings.json，原子写入后不再重新迁移。
+- 提示继续由共享 formatter 根据实际配置生成。Semicolon 物理键及分号字符都能匹配模型选择；Shift/Alt、IME 和重复触发边界不变。
+
 ## 停止回复
 
 - Shortcut settings remain the only binding owner. The current stop callback continues to choose the main or focused auxiliary conversation.
@@ -14,3 +22,35 @@
 - Only rendered, visible blockers count. A pending assistant question in a hidden or inert pane/tab must not disable shortcuts in the active conversation or workspace.
 - Hidden/inert/aria-hidden ancestors, absent layout boxes and CSS visibility:hidden/collapse exclude a blocker. Visible dialogs, menus, suggestions and settings continue to block commands, including during their exit animation.
 - Node regressions cover hidden and visible blockers, mixed candidate order and the real workspace/composer routing functions. Hidden Electron regression exercises an inactive auxiliary question alongside the active main composer.
+
+## 当前任务输入框与窗口焦点
+
+### 行为
+
+- `focus-composer` 是可配置的应用命令，默认 macOS Command+I，其他平台 Control+I；显式聚焦任务列表当前选中的主任务输入框，不创建或切换任务。
+- 捕获阶段消费命令和重复按键，避免 contentEditable 原生斜体或终端 Control+I 的 Tab 输入。组合输入、额外修饰键、停用/清空绑定不触发。
+- 原生浏览器 guest 复用现有 workspace shortcut 转发；只有显式聚焦命令把焦点交回宿主 WebContents。终端继续走 renderer 捕获路由。
+- 全局窗口快捷键隐藏窗口时不改变焦点；显示/恢复窗口沿用 Electron 原生窗口和 WebContents 焦点恢复。主输入、辅助输入、终端、浏览器、其他控件保留原目标与光标，不强行回主输入。
+- 显示后仅在原目标失效时兜底当前主输入：存活且可见的浏览器 guest 仍有焦点则保留；renderer 的有效 activeElement 保留；节点被移除、隐藏、禁用或退回 body 时才兜底。
+- 设置、真正可见的对话框/问题卡、菜单、候选列表、命令面板与快捷键录制阻止聚焦穿透。隐藏保留的弹层不阻塞。
+- 没有当前任务、窗口隐藏/销毁、不再是请求发起时的任务时不聚焦；不修改草稿或发送内容。清空 Command+I 不影响窗口恢复兜底，窗口命令与总开关继续按其自身设置生效。
+
+### 机制与边界
+
+复用 `zpi:shortcut` / `onShortcut`、workspace command 解析和 `store.focusComposer`。不新增全局焦点历史框架，不主动重建已关闭的控件。窗口显示通知只作有效性检查；隐藏不发显示通知。每次异步帧重新检查当前任务、文档可见性、阻塞弹层和恢复目标，避免延迟响应抢走新焦点。
+
+Electron 的窗口恢复与 WebContents 焦点保留用于正常路径；本次验证限制为 Node 测试，不运行 GUI、不连接用户 Mac。实际 macOS 全局快捷键、跨应用恢复与浏览器 guest first responder 恢复仍需目标平台烟测。
+
+### 定向验证
+
+- Cmd/Ctrl+I 正常、重复、组合输入、额外修饰、停用/改键/清空；已有编辑器与终端捕获。
+- 窗口显示、后台、最小化、隐藏、销毁及显示中销毁；通知只能在成功显示之后。
+- 主/辅编辑器、终端 textarea、按钮保留焦点；原目标不存在、隐藏或禁用回退；无任务与任务切换不误聚焦。
+- visible/hidden/inert/aria-hidden/layout/CSS 弹层与控件；设置、菜单、问题卡阻止穿透。
+- native browser guest 显式命令转发与重复消费；有效 guest 恢复保留，关闭/隐藏 guest 不阻止兜底。
+
+## Electron 依据
+
+- [项目依赖版本 41.10.7 的 WebContents focus 文档](https://github.com/electron/electron/blob/v41.10.7/docs/api/web-contents.md#event-focus)：macOS 的 WebContents focus 表示窗口 first responder，切换应用/窗口不改变每个窗口的 first responder。此处复用该既有行为，不承诺 Node 测试验证了真实 OS 窗口恢复。
+- [41.10.7 的窗口 show / focus / hide 文档](https://github.com/electron/electron/blob/v41.10.7/docs/api/base-window.md#winshow)：窗口层的显示聚焦与页面内编辑器聚焦分离。
+- [41.10.7 的 WebContents focus / isFocused 文档](https://github.com/electron/electron/blob/v41.10.7/docs/api/web-contents.md#contentsfocus)：显式 Cmd/Ctrl+I 从浏览器 guest 交回宿主时使用页面焦点 API。
