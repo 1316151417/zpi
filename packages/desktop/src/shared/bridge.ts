@@ -354,6 +354,7 @@ export interface DesktopBridge {
   getSettings(): Promise<Result<PublicSettings>>;
   updateShortcuts(input: ShortcutSettings): Promise<Result<PublicSettings>>;
   setShortcutCapture(capturing: boolean): Promise<Result<void>>;
+  onShortcutModifier(listener: (held: boolean) => void): () => void;
   onShortcut(listener: (command: ShortcutCommand) => void): () => void;
   beginChatGPTLogin(providerId: string | null): Promise<Result<{ loginId: string; url: string }>>;
   completeChatGPTLogin(

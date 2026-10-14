@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { PaneServices } from "../src/main/pane-services.ts";
+import { ShortcutModifier } from "../src/main/shortcut-modifier.ts";
 
 const fake = vi.hoisted(() => ({ contents: [] as EventEmitter[] }));
 vi.mock("electron", () => ({
@@ -116,5 +117,46 @@ describe("native browser focus retention", () => {
     if (mode === "destroyed") f.content.isDestroyed.mockReturnValue(true);
     if (mode === "unfocused") f.content.isFocused.mockReturnValue(false);
     expect(f.services.hasFocusedBrowser()).toBe(false);
+  });
+});
+
+describe("guest modifier hint wiring", () => {
+  it("observes modifier-only keyup before the command keydown filter and clears hidden guests", () => {
+    const send = vi.fn();
+    const modifier = new ShortcutModifier("darwin", () => true, send);
+    const shortcut = vi.fn(() => false);
+    const window = {
+      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
+      getContentBounds: () => ({ width: 800, height: 600 }),
+      webContents: { getZoomFactor: () => 1 },
+    };
+    const services = new PaneServices(window as never, vi.fn(), shortcut, modifier);
+    const { id } = services.createBrowser("");
+    services.bounds(id, { x: 0, y: 0, width: 500, height: 600 });
+    const content = fake.contents.at(-1);
+    const event = { preventDefault: vi.fn() };
+    const input = {
+      type: "keyDown",
+      key: "Meta",
+      code: "MetaLeft",
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+      isAutoRepeat: false,
+      isComposing: false,
+      location: 1,
+      modifiers: [],
+    };
+    content?.emit("before-input-event", event, input);
+    expect(send).toHaveBeenLastCalledWith(true);
+    content?.emit("before-input-event", event, { ...input, type: "keyUp", meta: true });
+    expect(send).toHaveBeenLastCalledWith(false);
+    expect(shortcut).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    content?.emit("before-input-event", event, input);
+    services.bounds(id, null);
+    expect(send).toHaveBeenLastCalledWith(false);
+    modifier.dispose();
   });
 });

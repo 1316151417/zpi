@@ -48,6 +48,7 @@ import {
   setWindowMenuShortcutsIgnored,
   toggleShortcutWindow,
 } from "./shortcut-controller.ts";
+import { ShortcutModifier } from "./shortcut-modifier.ts";
 import { SettingsStore } from "./storage.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
@@ -276,6 +277,19 @@ async function launch(): Promise<void> {
     (ignore) => setWindowMenuShortcutsIgnored(window, ignore),
   );
   let shortcutSettings = settings.get().shortcuts;
+  const shortcutModifier = new ShortcutModifier(
+    process.platform,
+    () => !ending && shortcutSettings.enabled && !shortcuts.isCapturing,
+    (held) => {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed())
+        window.webContents.send("zpi:shortcut-modifier", held);
+    },
+  );
+  shortcutModifier.observe(window.webContents, true);
+  window.on("blur", shortcutModifier.reset);
+  window.on("hide", shortcutModifier.reset);
+  window.on("minimize", shortcutModifier.reset);
+  window.on("closed", () => shortcutModifier.dispose());
   let shortcutStartupError: Error | undefined;
   try {
     shortcuts.initialize(shortcutSettings);
@@ -317,6 +331,7 @@ async function launch(): Promise<void> {
         () => window.webContents.focus(),
       );
     },
+    shortcutModifier,
   );
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -764,11 +779,13 @@ async function launch(): Promise<void> {
             (input) => settings.updateShortcuts(input),
           );
           shortcutSettings = updated.shortcuts;
+          shortcutModifier.reset();
           value = updated;
           window.webContents.send("zpi:settings", updated);
           break;
         }
         case "setShortcutCapture":
+          shortcutModifier.reset();
           shortcuts.setCapture(args[0] as boolean);
           break;
         case "updatePreferences":

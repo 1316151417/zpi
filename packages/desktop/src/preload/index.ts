@@ -123,6 +123,11 @@ const bridge: DesktopBridge = {
   getSettings: () => call("getSettings"),
   updateShortcuts: (input) => call("updateShortcuts", input),
   setShortcutCapture: (capturing) => call("setShortcutCapture", capturing),
+  onShortcutModifier(listener) {
+    const handler = (_: Electron.IpcRendererEvent, held: boolean) => listener(held);
+    ipcRenderer.on("zpi:shortcut-modifier", handler);
+    return () => ipcRenderer.removeListener("zpi:shortcut-modifier", handler);
+  },
   onShortcut(listener) {
     const handler = (_: Electron.IpcRendererEvent, command: ShortcutCommand) => listener(command);
     ipcRenderer.on("zpi:shortcut", handler);

@@ -35,7 +35,6 @@ import { taskGroupFor } from "../shared/task-groups.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import {
   captureWorkspaceShortcut,
-  listenShortcutModifier,
   pinnedTaskShortcut,
   visiblePinnedTasks,
   workspaceShortcutBlocked,
@@ -211,7 +210,7 @@ export function App() {
   const prefs = state.settings?.interface;
   const shortcuts = state.settings?.shortcuts ?? defaultShortcuts(window.zpi.platform);
   const [shortcutModifierHeld, setShortcutModifierHeld] = useState(false);
-  useEffect(() => listenShortcutModifier(window.zpi.platform, setShortcutModifierHeld), []);
+  useEffect(() => window.zpi.onShortcutModifier(setShortcutModifierHeld), []);
   const shortcutHint = (command: ShortcutCommand) =>
     shortcuts.enabled && shortcuts.bindings[command]
       ? formatShortcut(shortcuts.bindings[command], window.zpi.platform)
