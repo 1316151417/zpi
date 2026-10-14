@@ -246,6 +246,10 @@ export class PaneServices {
       height: Math.max(0, Math.min(height - y, Math.floor(bounds.height * zoom))),
     });
   }
+  hasFocusedBrowser(): boolean {
+    const content = this.shown ? this.browsers.get(this.shown)?.view.webContents : undefined;
+    return Boolean(content && !content.isDestroyed() && content.isFocused());
+  }
   closeBrowser(id: string) {
     const entry = this.browsers.get(id);
     if (!entry) return;

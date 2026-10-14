@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { ShortcutController, toggleShortcutWindow } from "../src/main/shortcut-controller.ts";
+import {
+  forwardBrowserShortcut,
+  ShortcutController,
+  toggleShortcutWindow,
+} from "../src/main/shortcut-controller.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
 function fixture(testMode = false) {
@@ -168,15 +172,27 @@ describe("window shortcut", () => {
       isFocused: () => focused,
       isMinimized: () => minimized,
       isDestroyed: () => destroyed,
-      hide: vi.fn(),
-      show: vi.fn(),
-      restore: vi.fn(),
-      focus: vi.fn(),
+      hide: vi.fn(() => {
+        visible = false;
+        focused = false;
+      }),
+      show: vi.fn(() => {
+        visible = true;
+      }),
+      restore: vi.fn(() => {
+        minimized = false;
+      }),
+      focus: vi.fn(() => {
+        focused = true;
+      }),
+      destroy: () => {
+        destroyed = true;
+      },
     };
   }
   it("hides the foreground window", () => {
     const target = window();
-    toggleShortcutWindow(target);
+    expect(toggleShortcutWindow(target)).toBe(false);
     expect(target.hide).toHaveBeenCalledOnce();
     expect(target.show).not.toHaveBeenCalled();
   });
@@ -186,16 +202,73 @@ describe("window shortcut", () => {
     [true, true, true],
   ])("shows and focuses hidden/background/minimized windows: %s, %s, %s", (visible, focused, minimized) => {
     const target = window(visible, focused, minimized);
-    toggleShortcutWindow(target);
+    expect(toggleShortcutWindow(target)).toBe(true);
     expect(target.show).toHaveBeenCalledOnce();
     expect(target.focus).toHaveBeenCalledOnce();
     expect(target.restore).toHaveBeenCalledTimes(minimized ? 1 : 0);
     expect(target.hide).not.toHaveBeenCalled();
   });
+  it.each(["show", "restore", "focus"] as const)(
+    "does not report a successful show when destroyed during %s",
+    (phase) => {
+      const target = window(false, false, phase === "restore");
+      target[phase].mockImplementationOnce(() => target.destroy());
+      expect(toggleShortcutWindow(target)).toBe(false);
+    },
+  );
+  it("requires a visible focused window before allowing a lost-target fallback", () => {
+    const target = window(false, false);
+    target.focus.mockImplementationOnce(() => {});
+    expect(toggleShortcutWindow(target)).toBe(false);
+  });
   it("ignores a destroyed window", () => {
     const target = window(true, true, false, true);
-    toggleShortcutWindow(target);
+    expect(toggleShortcutWindow(target)).toBe(false);
     expect(target.hide).not.toHaveBeenCalled();
     expect(target.show).not.toHaveBeenCalled();
+  });
+});
+
+describe("native browser workspace command dispatch", () => {
+  it.each(["darwin", "linux"])("hands focus back to the host once before dispatch on %s", (platform) => {
+    const order: string[] = [];
+    const focusHost = vi.fn(() => order.push("host"));
+    const send = vi.fn((command: string) => order.push(command));
+    const event = { key: "i", metaKey: platform === "darwin", ctrlKey: platform !== "darwin" };
+    const settings = defaultShortcuts(platform);
+    expect(forwardBrowserShortcut(event, platform, settings, send, focusHost)).toBe(true);
+    expect(order).toEqual(["host", "focus-composer"]);
+    expect(forwardBrowserShortcut({ ...event, repeat: true }, platform, settings, send, focusHost)).toBe(
+      true,
+    );
+    expect(focusHost).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("does not steal guest focus for other commands or intercept its disabled/unbound/IME input", () => {
+    const focusHost = vi.fn(),
+      send = vi.fn();
+    const settings = defaultShortcuts("darwin");
+    expect(forwardBrowserShortcut({ key: "j", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
+      true,
+    );
+    expect(send).toHaveBeenCalledExactlyOnceWith("toggle-sidebar");
+    expect(focusHost).not.toHaveBeenCalled();
+    send.mockClear();
+    for (const event of [
+      { key: "i", metaKey: true, isComposing: true },
+      { key: "i", metaKey: true, altKey: true },
+    ])
+      expect(forwardBrowserShortcut(event, "darwin", settings, send, focusHost)).toBe(false);
+    settings.bindings["focus-composer"] = null;
+    expect(forwardBrowserShortcut({ key: "i", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
+      false,
+    );
+    settings.enabled = false;
+    expect(forwardBrowserShortcut({ key: "j", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
+      false,
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(focusHost).not.toHaveBeenCalled();
   });
 });

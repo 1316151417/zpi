@@ -269,14 +269,14 @@ test("grouped view shares pinned shortcuts and creates group drafts through Cmd/
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
     await page.keyboard.press(`${primary}+j`);
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
-    await page.keyboard.press(`${primary}+k`);
+    await page.keyboard.press(`${primary}+l`);
     await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
-    await page.keyboard.press(`${primary}+k`);
+    await page.keyboard.press(`${primary}+l`);
     await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
     await expect(
       page.locator('.sidebar-global button[aria-label="搜索"] .sidebar-action-shortcut'),
-    ).toContainText(process.platform === "darwin" ? "⇧" : "Shift");
-    await page.keyboard.press(`${primary}+Shift+f`);
+    ).toHaveText(process.platform === "darwin" ? "⌘K" : "Ctrl+K");
+    await page.keyboard.press(`${primary}+k`);
     await expect(page.getByRole("dialog")).toBeVisible();
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);

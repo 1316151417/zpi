@@ -1,5 +1,9 @@
-import { expect, it } from "vitest";
-import { visiblePinnedTasks, workspaceShortcutForEvent } from "../src/renderer/app-shortcuts.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  captureWorkspaceShortcut,
+  visiblePinnedTasks,
+  workspaceShortcutForEvent,
+} from "../src/renderer/app-shortcuts.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
@@ -22,11 +26,107 @@ it("reserves held workspace commands from terminals but leaves composer commands
     "toggle-sidebar",
   );
   expect(workspaceShortcutForEvent({ key: "Enter", ctrlKey: true }, "linux", settings)).toBeUndefined();
-  expect(workspaceShortcutForEvent({ key: "l", ctrlKey: true }, "linux", settings)).toBeUndefined();
+  expect(workspaceShortcutForEvent({ key: "l", ctrlKey: true }, "linux", settings)).toBe("toggle-pane");
+  expect(workspaceShortcutForEvent({ key: "k", ctrlKey: true }, "linux", settings)).toBe("search");
+  expect(
+    workspaceShortcutForEvent({ key: ";", code: "Semicolon", ctrlKey: true }, "linux", settings),
+  ).toBeUndefined();
   expect(
     workspaceShortcutForEvent({ key: "j", ctrlKey: true, isComposing: true }, "linux", settings),
   ).toBeUndefined();
   expect(
     workspaceShortcutForEvent({ key: "j", ctrlKey: true }, "linux", { ...settings, enabled: false }),
   ).toBeUndefined();
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+function focusKey(platform: string, overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
+  const event = new Event("keydown", { cancelable: true });
+  Object.assign(event, {
+    key: "i",
+    code: "KeyI",
+    keyCode: 73,
+    metaKey: platform === "darwin",
+    ctrlKey: platform !== "darwin",
+    altKey: false,
+    shiftKey: false,
+    isComposing: false,
+    repeat: false,
+    ...overrides,
+  });
+  return event as KeyboardEvent;
+}
+
+describe.each(["darwin", "linux"])("focus composer capture on %s", (platform) => {
+  it("consumes the command before editor italic or terminal Tab input, and consumes held keys once", () => {
+    vi.stubGlobal("document", { querySelectorAll: () => [] });
+    const run = vi.fn();
+    const settings = defaultShortcuts(platform);
+    for (const repeat of [false, true]) {
+      const event = focusKey(platform, { repeat });
+      captureWorkspaceShortcut(event, platform, settings, run);
+      expect(event.defaultPrevented).toBe(true);
+      expect(event.cancelBubble).toBe(true);
+    }
+    expect(run).toHaveBeenCalledExactlyOnceWith("focus-composer");
+  });
+
+  it.each([
+    "disabled",
+    "unbound",
+    "remapped",
+    "ime",
+    "229",
+    "composing",
+    "handled",
+    "alt",
+    "shift",
+    "blocked",
+  ])("preserves local input without dispatch when %s", (mode) => {
+    vi.stubGlobal("document", {
+      querySelectorAll: () =>
+        mode === "blocked" ? [{ closest: () => null, getClientRects: () => [{}] }] : [],
+    });
+    vi.stubGlobal("getComputedStyle", () => ({ visibility: "visible" }));
+    const settings = defaultShortcuts(platform);
+    if (mode === "disabled") settings.enabled = false;
+    if (mode === "unbound") settings.bindings["focus-composer"] = null;
+    if (mode === "remapped")
+      settings.bindings["focus-composer"] = platform === "darwin" ? "Command+U" : "Control+U";
+    const event = focusKey(platform, {
+      isComposing: mode === "ime",
+      keyCode: mode === "229" ? 229 : 73,
+      altKey: mode === "alt",
+      shiftKey: mode === "shift",
+    });
+    if (mode === "handled") event.preventDefault();
+    const run = vi.fn();
+    captureWorkspaceShortcut(event, platform, settings, run, mode === "composing");
+    expect(run).not.toHaveBeenCalled();
+    expect(event.cancelBubble).toBe(false);
+    expect(event.defaultPrevented).toBe(mode === "handled");
+    if (mode === "remapped") {
+      const remapped = focusKey(platform, { key: "u", code: "KeyU" });
+      captureWorkspaceShortcut(remapped, platform, settings, run);
+      expect(run).toHaveBeenCalledExactlyOnceWith("focus-composer");
+      expect(remapped.defaultPrevented).toBe(true);
+    }
+  });
+
+  it("reads native KeyboardEvent prototype properties rather than spreading them", () => {
+    const event = Object.create(
+      Object.defineProperties(
+        {},
+        {
+          key: { get: () => "i" },
+          code: { get: () => "KeyI" },
+          metaKey: { get: () => platform === "darwin" },
+          ctrlKey: { get: () => platform !== "darwin" },
+        },
+      ),
+    );
+    expect(Object.keys(event)).toEqual([]);
+    expect(workspaceShortcutForEvent(event, platform, defaultShortcuts(platform))).toBe("focus-composer");
+  });
 });

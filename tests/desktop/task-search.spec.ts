@@ -59,7 +59,7 @@ test("sidebar search matches ZCode scopes, keyboard navigation, history, geometr
     await input(page).press("Escape");
     await expect(search(page)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "搜索", exact: true })).toBeFocused();
-    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+k`);
     await input(page).fill("#最终回复 0");
     await expect(search(page).getByRole("option")).toHaveCount(2);
     await page.screenshot({ path: "test-results/task-search-light.png" });
@@ -83,7 +83,7 @@ test("sidebar search matches ZCode scopes, keyboard navigation, history, geometr
       .toEqual(["最终回复 0"]);
     await expect(page.getByTestId("run").first()).toHaveAttribute("data-run-id", "run-0");
     await page.keyboard.press("Escape");
-    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+k`);
     await expect(input(page)).toHaveValue("");
     await expect(search(page).getByText("搜索历史", { exact: true })).toBeVisible();
     await search(page)
@@ -97,7 +97,7 @@ test("sidebar search matches ZCode scopes, keyboard navigation, history, geometr
     await expect(search(page).getByText("搜索历史", { exact: true })).toHaveCount(0);
     await input(page).fill(">设置");
     await expect(search(page).getByRole("option")).toHaveCount(1);
-    await input(page).press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
+    await input(page).press(`${process.platform === "darwin" ? "Meta" : "Control"}+k`);
     await expect(input(page)).toBeFocused();
     await input(page).press("Enter");
     await expect(search(page)).toHaveCount(0);
@@ -142,7 +142,7 @@ test("task search previews three results, expands, searches workspace files and 
     await input(page).press("Enter");
     await expect(search(page)).toHaveCount(0);
     await expect(page.locator(".pane-tabs")).toContainText("example-24.ts");
-    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+k`);
     await input(page).fill("#历史标题");
     const chosen = await search(page).locator('[data-selected="true"]').getAttribute("data-value");
     await input(page).press("ArrowUp");

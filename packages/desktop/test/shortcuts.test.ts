@@ -20,6 +20,14 @@ describe("shortcut contract", () => {
       expect(settings.bindings["toggle-window"]).toBe(
         platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
       );
+      const primary = platform === "darwin" ? "Command" : "Control";
+      expect(settings.bindings).toMatchObject({
+        "toggle-sidebar": `${primary}+J`,
+        "toggle-pane": `${primary}+L`,
+        search: `${primary}+K`,
+        "select-model": `${primary}+;`,
+        "focus-composer": `${primary}+I`,
+      });
       settings.bindings["toggle-sidebar"] = null;
       expect(defaultShortcuts(platform).bindings["toggle-sidebar"]).not.toBeNull();
     },
@@ -30,8 +38,34 @@ describe("shortcut contract", () => {
     expect(normalizeShortcut("Option+Ctrl+return", "darwin")).toBe("Control+Alt+Enter");
     expect(normalizeShortcut("Meta+Cmd+J", "darwin")).toBeUndefined();
     expect(normalizeShortcut("CmdOrCtrl+Control+J", "linux")).toBeUndefined();
-    expect(normalizeShortcuts(defaultShortcuts("darwin"), "darwin").bindings.search).toBe("Shift+Command+F");
+    expect(normalizeShortcuts(defaultShortcuts("darwin"), "darwin").bindings.search).toBe("Command+K");
+    expect(normalizeShortcut("CmdOrCtrl+;", "darwin")).toBe("Command+;");
   });
+  it.each(["darwin", "win32", "linux"])(
+    "routes the new default map and physical semicolon on %s",
+    (platform) => {
+      const settings = defaultShortcuts(platform);
+      const modifiers = { metaKey: platform === "darwin", ctrlKey: platform !== "darwin" };
+      for (const [key, command] of [
+        ["j", "toggle-sidebar"],
+        ["l", "toggle-pane"],
+        ["k", "search"],
+        [";", "select-model"],
+        ["i", "focus-composer"],
+      ])
+        expect(shortcutForEvent({ key, ...modifiers }, platform, settings)).toBe(command);
+      const semicolon = { key: "；", code: "Semicolon", ...modifiers };
+      const binding = platform === "darwin" ? "Command+;" : "Control+;";
+      expect(shortcutFromEvent(semicolon, platform)).toBe(binding);
+      expect(shortcutForEvent(semicolon, platform, settings)).toBe("select-model");
+      for (const extra of [{ shiftKey: true }, { altKey: true }, { repeat: true }, { isComposing: true }])
+        expect(shortcutForEvent({ ...semicolon, ...extra }, platform, settings)).toBeUndefined();
+      expect(
+        shortcutForEvent({ key: "f", shiftKey: true, ...modifiers }, platform, settings),
+      ).toBeUndefined();
+      expect(formatShortcut(binding, platform)).toBe(platform === "darwin" ? "⌘;" : "Ctrl+;");
+    },
+  );
   it.each(["Command", "Command++J", "Command+Unknown", "J+Control", "Control+A+B", "", "Control+F25"])(
     "rejects malformed accelerator %s",
     (binding) => expect(normalizeShortcut(binding, "darwin")).toBeUndefined(),

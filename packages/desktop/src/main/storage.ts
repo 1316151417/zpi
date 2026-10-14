@@ -57,10 +57,12 @@ import {
 } from "../shared/config.ts";
 import {
   defaultShortcuts,
+  normalizeShortcut,
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
 } from "../shared/shortcuts.ts";
+import { migrateShortcutDefaults, shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
 export function atomicJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   const temp = `${path}.${randomUUID()}.tmp`;
@@ -84,6 +86,7 @@ interface Credentials {
 }
 interface SettingsData {
   shortcuts: ShortcutSettings;
+  shortcutDefaultsVersion: typeof shortcutDefaultsVersion;
   capabilities: PluginCapabilities;
   version: 4;
   templates: PromptTemplate[];
@@ -118,6 +121,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
 export class SettingsStore {
   private data: SettingsData = {
     shortcuts: defaultShortcuts(process.platform),
+    shortcutDefaultsVersion,
     capabilities: { ...defaultCapabilities },
     version: 4,
     templates: [],
@@ -140,6 +144,7 @@ export class SettingsStore {
       creds = join(dir, "credentials.enc");
     let oldVersion: 1 | 2 | 3 | undefined;
     let migratedFontSize = false;
+    let migratedShortcuts = false;
     let clearedSelection = false;
     if (existsSync(file)) {
       const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
@@ -206,8 +211,27 @@ export class SettingsStore {
         this.data.lastSelection = null;
         clearedSelection = true;
       }
+      const hadShortcuts = this.data.shortcuts != null;
       this.data.shortcuts ??= defaultShortcuts(process.platform);
+      const migrateShortcuts = this.data.shortcutDefaultsVersion === undefined;
+      if (migrateShortcuts) {
+        this.data.shortcutDefaultsVersion = shortcutDefaultsVersion;
+        const bindings = this.data.shortcuts.bindings;
+        if (isJsonObject(bindings) && !Object.hasOwn(bindings, "focus-composer")) {
+          const focus = defaultShortcuts(process.platform).bindings["focus-composer"];
+          bindings["focus-composer"] = Object.values(bindings).some(
+            (binding) =>
+              typeof binding === "string" && normalizeShortcut(binding, process.platform) === focus,
+          )
+            ? null
+            : focus;
+        }
+      }
       this.validateData(this.data);
+      if (migrateShortcuts && hadShortcuts) {
+        this.data.shortcuts = migrateShortcutDefaults(this.data.shortcuts, process.platform);
+        migratedShortcuts = true;
+      }
     }
     if (existsSync(creds)) {
       if (!encryption.isEncryptionAvailable()) this.unreadCredentials = true;
@@ -234,7 +258,7 @@ export class SettingsStore {
         if (existsSync(path) && !existsSync(`${path}.v${oldVersion}.bak`))
           copyFileSync(path, `${path}.v${oldVersion}.bak`);
       this.writeConfiguration(this.data, encryption.isEncryptionAvailable() ? this.credentials : undefined);
-    } else if (migratedFontSize || clearedSelection) atomicJson(file, this.data);
+    } else if (migratedFontSize || clearedSelection || migratedShortcuts) atomicJson(file, this.data);
   }
   private recoverLastSelection(): CombinedSelection | null {
     const root = join(this.dir, "agent", "sessions");
@@ -599,6 +623,7 @@ export class SettingsStore {
     );
     return {
       shortcuts: defaultShortcuts(process.platform),
+      shortcutDefaultsVersion,
       version: 4,
       templates: [],
       selectedTemplateId: "pi",
@@ -638,11 +663,14 @@ export class SettingsStore {
         "disabledSkillPaths",
         "capabilities",
         "shortcuts",
+        "shortcutDefaultsVersion",
       ],
       "settings",
     );
     const shortcutError = validateShortcuts(data.shortcuts, process.platform);
     if (shortcutError) throw new Error(`storage: ${shortcutError}`);
+    if (data.shortcutDefaultsVersion !== shortcutDefaultsVersion)
+      throw new Error("storage: Unsupported shortcut defaults version");
     if (data.version !== 4 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");
     if (
       !isJsonObject(data.capabilities) ||

@@ -33,7 +33,7 @@ import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
 import { defaultShortcuts, formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
 import { taskGroupFor } from "../shared/task-groups.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
-import { visiblePinnedTasks, workspaceShortcutBlocked, workspaceShortcutForEvent } from "./app-shortcuts.ts";
+import { captureWorkspaceShortcut, visiblePinnedTasks, workspaceShortcutBlocked } from "./app-shortcuts.ts";
 import { selectAppState, selectTaskRecords } from "./app-state.ts";
 import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
@@ -73,6 +73,7 @@ import {
   archiveSession,
   changeTaskGroups,
   drafts,
+  focusComposer,
   initialize,
   loadEarlier,
   markSessionRead,
@@ -391,7 +392,7 @@ export function App() {
   );
   const addProject = async () => {
     try {
-      const p = unwrap(await window.zpi.addProject());
+      const p = unwrap(await window.zpi.addProject(useStore.getState().selected ?? null));
       if (p) {
         await refresh();
         if (![...useStore.getState().sessions.values()].some((r) => r.projectId === p.id))
@@ -420,7 +421,10 @@ export function App() {
       else if (command === "search") setSearchOpen(true);
       else if (command === "new-task") void newTask().catch(report);
       else if (command === "find") find.show();
-      else if (command.startsWith("pin-")) {
+      else if (command === "focus-composer" || command === "toggle-window") {
+        const id = useStore.getState().selected;
+        if (id) focusComposer(id, { onlyIfFocusLost: command === "toggle-window" });
+      } else if (command.startsWith("pin-")) {
         const record = pinned[Number(command.slice(4)) - 1];
         if (record) {
           setModelOpen(false);
@@ -428,14 +432,8 @@ export function App() {
         }
       }
     };
-    const keydown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || composing || event.isComposing || event.keyCode === 229) return;
-      const command = workspaceShortcutForEvent(event, window.zpi.platform, shortcuts);
-      if (!command || workspaceShortcutBlocked(command)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (!event.repeat) run(command);
-    };
+    const keydown = (event: KeyboardEvent) =>
+      captureWorkspaceShortcut(event, window.zpi.platform, shortcuts, run, composing);
     // Capture before xterm consumes Ctrl combinations. Composer and question commands stay local.
     window.addEventListener("keydown", keydown, true);
     window.addEventListener("compositionstart", begin, true);

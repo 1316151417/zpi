@@ -97,7 +97,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     const editor = page.getByLabel("消息", { exact: true });
     const trigger = page.getByLabel("模型选择", { exact: true });
     await editor.fill("preserved draft");
-    await editor.press(`${primary}+l`);
+    await editor.press(`${primary}+;`);
     await expect(page.getByRole("menuitem", { name: "fake", exact: true })).toBeFocused();
     await page.keyboard.press("ArrowDown");
     const firstModel = page.getByRole("menuitem", { name: models[0].name, exact: true });
@@ -128,7 +128,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     await expect(trigger).toContainText(modelReasoningLabel(models[0], supported[1]));
     await expect(editor).toBeFocused();
     await expect(editor).toHaveText("preserved draft");
-    await editor.press(`${primary}+l`);
+    await editor.press(`${primary}+;`);
     await expect(firstModel).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await expect(page.getByRole("menuitem", { name: models[1].name, exact: true })).toBeFocused();
@@ -188,7 +188,7 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
     await expect(mainEditor).toHaveText("main draft");
     await expect(sideEditor).toHaveText("side draft");
-    await sideEditor.press(`${primary}+l`);
+    await sideEditor.press(`${primary}+;`);
     await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
     await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "closed");
     await page.keyboard.press("Escape");
@@ -284,7 +284,7 @@ test("a retained question in a hidden auxiliary pane does not block active works
     await editor.press("Enter");
     await expect(main.getByTestId("queue-item")).toHaveCount(1);
     await editor.fill("preserved main draft");
-    await editor.press(`${primary}+l`);
+    await editor.press(`${primary}+;`);
     await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);

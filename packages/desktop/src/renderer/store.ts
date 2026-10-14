@@ -18,9 +18,10 @@ import type {
   SessionRecord,
 } from "../shared/bridge.ts";
 import { emptyTaskGroups, type TaskGroupState, taskGroupFor } from "../shared/task-groups.ts";
+import { workspaceShortcutBlocked } from "./app-shortcuts.ts";
 import { logRendererError } from "./error-log.ts";
 import { previewLoader } from "./preview-loader.ts";
-import { hasVisibleShortcutBlocker } from "./shortcut-context.ts";
+import { hasRestorableFocus, isVisibleShortcutTarget } from "./shortcut-context.ts";
 import { readTaskPreferences, taskPreferencesKey } from "./sidebar-task-model.ts";
 
 declare global {
@@ -521,15 +522,17 @@ export async function loadEarlier(id: string): Promise<void> {
   }
 }
 const openingDrafts = new Map<string, Promise<SessionRecord>>();
-export function focusComposer(sessionId: string): void {
+export function focusComposer(sessionId: string, options: { onlyIfFocusLost?: boolean } = {}): void {
   requestAnimationFrame(() => {
     const state = useStore.getState();
-    const parentId = state.sessions.get(sessionId)?.parentSessionId;
+    const record = state.sessions.get(sessionId);
+    const parentId = record?.parentSessionId;
     if (
+      !record ||
       state.selected !== (parentId ?? sessionId) ||
-      hasVisibleShortcutBlocker(
-        'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
-      )
+      document.visibilityState === "hidden" ||
+      workspaceShortcutBlocked("focus-composer") ||
+      (options.onlyIfFocusLost && hasRestorableFocus())
     )
       return;
     const editor = document.querySelector<HTMLElement>(
@@ -537,7 +540,7 @@ export function focusComposer(sessionId: string): void {
         ? `[data-side-chat-session="${sessionId}"] .mention-editor[contenteditable=true]`
         : "main .composer-container .mention-editor[contenteditable=true]",
     );
-    if (editor && !editor.closest("[hidden]")) editor.focus();
+    if (editor?.isConnected && isVisibleShortcutTarget(editor)) editor.focus();
   });
 }
 export async function newSession(
