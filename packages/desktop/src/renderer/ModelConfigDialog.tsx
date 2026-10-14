@@ -296,7 +296,7 @@ export function ModelConfigDialog({
                     <div className="model-option-group">
                       <span>
                         推理等级（从低到高）
-                        <Help text="点击编辑等级名称，拖动或按 Alt + 左右方向键排序；默认等级按模型配置和可用等级自动选择。" />
+                        <Help text="点击编辑等级名称，拖动排序；默认等级按模型配置和可用等级自动选择。" />
                       </span>
                       <ReasoningLevelEditor
                         values={model.reasoningConfig.levels}
