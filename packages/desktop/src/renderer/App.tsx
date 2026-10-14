@@ -70,6 +70,7 @@ import {
 import {
   addConversationSelection,
   archiveSession,
+  changeTaskGroups,
   drafts,
   initialize,
   loadEarlier,
@@ -85,6 +86,7 @@ import {
   useStore,
 } from "./store.ts";
 import { TaskActivity } from "./TaskActivity.tsx";
+import { TaskGroups, TaskGroupToolbar, useTaskGroupExpansion } from "./TaskGroups.tsx";
 import { TaskMenu } from "./TaskMenu.tsx";
 import { type SearchCommand, TaskSearchDialog } from "./TaskSearchDialog.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
@@ -211,6 +213,11 @@ export function App() {
       return readTaskPreferences(null);
     }
   });
+  const { collapsed: collapsedGroups, setCollapsed: setCollapsedGroups } = useTaskGroupExpansion(
+    state.taskGroups.groups.map((group) => group.id),
+    state.taskGroupsHydrated,
+  );
+  const [newGroupId, setNewGroupId] = useState<string>();
   const [projectLimits, setProjectLimits] = useState<Record<string, number>>({});
   useEffect(() => {
     try {
@@ -610,6 +617,25 @@ export function App() {
                 <div className="sidebar-task-toolbar">
                   <div className="sidebar-task-toolbar-main">
                     <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} viewOnly />
+                    {taskPreferences.organizeBy === "grouped" && (
+                      <TaskGroupToolbar
+                        state={state.taskGroups}
+                        collapsed={collapsedGroups}
+                        onToggleAll={() =>
+                          setCollapsedGroups(
+                            state.taskGroups.groups.every((group) => !collapsedGroups.includes(group.id))
+                              ? state.taskGroups.groups.map((group) => group.id)
+                              : [],
+                          )
+                        }
+                        onCreate={() =>
+                          task(async () => {
+                            const next = await changeTaskGroups({ type: "create" });
+                            setNewGroupId(next.groups.at(-1)?.id);
+                          })
+                        }
+                      />
+                    )}
                     {taskPreferences.organizeBy === "project" && state.projects.length > 0 && (
                       <ActionHint label={toggleProjectGroupsLabel} appearance="control">
                         <button
@@ -629,7 +655,9 @@ export function App() {
                       </ActionHint>
                     )}
                   </div>
-                  <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} />
+                  {taskPreferences.organizeBy !== "grouped" && (
+                    <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} />
+                  )}
                 </div>
                 {pinned.length > 0 && (
                   <section className="pinned-tasks" aria-label="置顶任务">
@@ -637,7 +665,17 @@ export function App() {
                     {pinned.map((record) => renderRow(record))}
                   </section>
                 )}
-                {taskPreferences.organizeBy === "chronological" ? (
+                {taskPreferences.organizeBy === "grouped" ? (
+                  <TaskGroups
+                    state={state.taskGroups}
+                    records={records}
+                    selected={selected}
+                    collapsed={collapsedGroups}
+                    setCollapsed={setCollapsedGroups}
+                    newGroupId={newGroupId}
+                    onSetup={() => setNewGroupId(undefined)}
+                  />
+                ) : taskPreferences.organizeBy === "chronological" ? (
                   <SidebarTaskList
                     key={`timeline:${taskPreferences.sortBy}:${scopeKey}`}
                     tasks={unpinned}
@@ -839,6 +877,9 @@ export function App() {
             prefs,
             taskPreferences,
             projectLimits,
+            state.taskGroups,
+            collapsedGroups,
+            newGroupId,
           ],
         )}
         {!collapsed && (

@@ -2,7 +2,7 @@
 // sidebarTaskPreferences and workspaceTaskPagination (Apache-2.0), 872ad960.
 export type TaskSortBy = "created" | "updated";
 export interface TaskPreferences {
-  organizeBy: "project" | "chronological";
+  organizeBy: "grouped" | "project" | "chronological";
   sortBy: TaskSortBy;
 }
 export const taskPreferencesKey = "zpi.sidebarTaskPreferences";
@@ -14,7 +14,8 @@ export function readTaskPreferences(raw: string | null): TaskPreferences {
     /* Optional preferences. */
   }
   return {
-    organizeBy: value?.organizeBy === "chronological" ? "chronological" : "project",
+    organizeBy:
+      value?.organizeBy === "grouped" || value?.organizeBy === "chronological" ? value.organizeBy : "project",
     sortBy: value?.sortBy === "created" ? "created" : "updated",
   };
 }

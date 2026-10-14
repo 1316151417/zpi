@@ -1,0 +1,206 @@
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ElectronApplication, Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
+import { launchDesktop } from "../helpers/desktop.ts";
+import { seedHistory } from "../history-fixture.ts";
+
+async function grouped(page: Page) {
+  await page.getByRole("button", { name: "分组", exact: true }).click();
+  await expect(page.getByRole("button", { name: "新建分组", exact: true })).toBeVisible();
+}
+async function createGroup(page: Page, name: string) {
+  await page.getByRole("button", { name: "新建分组", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "重命名分组", exact: true });
+  await expect(input).toBeFocused();
+  await expect(page.getByRole("menuitemradio", { name: "灰色", exact: true })).toBeVisible();
+  await input.fill(name);
+  await input.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: `分组 ${name}`, exact: true })).toBeVisible();
+}
+
+test("group menus preserve focus/expansion, names/IME and colors survive reload, and ungroup keeps tasks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-task-groups-ui-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const seeded = seedHistory(dir, project, 1);
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await grouped(page);
+    await createGroup(page, "设计组");
+    const header = page.getByRole("button", { name: "分组 设计组", exact: true });
+    await expect(header).toHaveAttribute("aria-expanded", "true");
+    for (const expanded of [true, false]) {
+      if (!expanded) await header.click();
+      await page.getByRole("button", { name: "分组颜色 设计组", exact: true }).click();
+      await page.getByRole("menuitemradio", { name: expanded ? "紫色" : "绿色", exact: true }).click();
+      await expect(header).toHaveAttribute("aria-expanded", String(expanded));
+    }
+    await header.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
+    const input = page.getByRole("textbox", { name: "重命名分组" });
+    await expect(input).toBeFocused();
+    await input.fill("中文输入中");
+    await input.dispatchEvent("compositionstart");
+    await input.press("Enter");
+    await expect(input).toBeVisible();
+    await input.dispatchEvent("compositionend");
+    await input.press("Escape");
+    await expect(header).toBeVisible();
+    await page.reload();
+    await expect(header).toHaveAttribute("aria-expanded", "false");
+    await expect(header.locator(".task-group-color-mark")).toHaveAttribute("data-group-color", "green");
+    const row = page.locator(`.task-groups [data-session-id="${seeded.id}"]`);
+    await row.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "移动到分组", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "设计组", exact: true }).click();
+    await header.click();
+    await expect(header.locator(".task-group-count")).toHaveText("1");
+    await expect(page.locator(".task-group-content").getByTestId("session-row")).toHaveCount(1);
+    await header.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "取消分组并删除", exact: true }).click();
+    await expect(header).toHaveCount(0);
+    await expect(row).toBeVisible();
+    await page.reload();
+    await expect(row).toBeVisible();
+    await expect(page.locator(".task-group")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("long grouped/root lists virtualize, sticky headers remain usable, and drafts keep their group", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-task-groups-long-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const ids = Array.from(
+    { length: 170 },
+    (_, index) => seedHistory(dir, project, 0, { id: `group-task-${index}` }).id,
+  );
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await grouped(page);
+    const groupId = await page.evaluate(async (tasks) => {
+      const created = await window.zpi.updateTaskGroups({ type: "create" });
+      if (!created.ok) throw new Error(created.error.message);
+      const id = created.value.groups.at(-1)?.id;
+      if (!id) throw new Error("missing group");
+      await window.zpi.updateTaskGroups({ type: "rename", id, title: "长列表" });
+      for (const taskId of tasks.slice(0, 85)) {
+        const result = await window.zpi.updateTaskGroups({ type: "moveTask", id: taskId, groupId: id });
+        if (!result.ok) throw new Error(result.error.message);
+      }
+      return id;
+    }, ids);
+    await page.reload();
+    const group = page.locator(`[data-grouped-group-item-id="${groupId}"]`);
+    await expect(group.locator(".task-group-count")).toHaveText("85");
+    await expect(page.locator(".task-group-virtual-list")).toHaveCount(2);
+    expect(await page.locator(".task-groups [data-testid=session-row]").count()).toBeLessThan(85);
+    await page.locator(".sidebar-sections").evaluate((element) => {
+      element.scrollTop = 800;
+    });
+    await expect(group.locator(".task-group-header")).toHaveClass(/task-group-header-sticky/);
+    await group.getByRole("button", { name: "新建任务 长列表", exact: true }).click();
+    await expect(page.locator(".task-group-content [data-testid=grouped-draft-row]")).toHaveCount(1);
+    await page.getByRole("button", { name: "新建任务", exact: true }).first().click();
+    await expect(page.locator(".task-group-content [data-testid=grouped-draft-row]")).toHaveCount(1);
+    await page.getByRole("button", { name: "关闭新任务", exact: true }).click();
+    await expect(page.getByTestId("grouped-draft-row")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("grouped view shares pinned shortcuts and creates group drafts through Cmd/Ctrl+N; J/K and search hints stay synchronized", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-task-group-shortcuts-"));
+  const cwd = join(dir, "workspace");
+  await mkdir(cwd);
+  const first = seedHistory(dir, cwd, 1).id,
+    second = seedHistory(dir, cwd, 1).id,
+    groupedTask = seedHistory(dir, cwd, 1).id;
+  const primary = process.platform === "darwin" ? "Meta" : "Control";
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    await grouped(page);
+    const groupId = await page.evaluate(
+      async ({ first, second, groupedTask }) => {
+        const result = await window.zpi.updateTaskGroups({ type: "create" });
+        if (!result.ok) throw new Error(result.error.message);
+        const groupId = result.value.groups[0].id;
+        for (const id of [first, second, groupedTask])
+          await window.zpi.updateTaskGroups({ type: "moveTask", id, groupId });
+        await window.zpi.setSessionPinned(second, true);
+        await window.zpi.setSessionPinned(first, true);
+        return groupId;
+      },
+      { first, second, groupedTask },
+    );
+    await page.reload();
+    const pinned = page.locator(".pinned-tasks [data-session-id]");
+    await expect(pinned.first()).toHaveAttribute("data-session-id", second);
+    await page.keyboard.press(`${primary}+1`);
+    await expect(pinned.first()).toHaveClass(/active/);
+    await page.keyboard.press(`${primary}+2`);
+    await expect(pinned.last()).toHaveClass(/active/);
+    await page.locator(`.task-groups [data-session-id="${groupedTask}"]`).click();
+    await page.keyboard.press(`${primary}+n`);
+    await expect(
+      page.locator(`[data-grouped-group-item-id="${groupId}"] [data-testid=grouped-draft-row]`),
+    ).toHaveCount(1);
+    const draftId = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+    await page.keyboard.press(`${primary}+n`);
+    expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(draftId);
+    await expect
+      .poll(async () => {
+        const result = await page.evaluate(() => window.zpi.listRecentSessions());
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value.filter((record) => record.draft && !record.parentSessionId).length;
+      })
+      .toBe(1);
+    await expect(
+      page.locator(`[data-grouped-group-item-id="${groupId}"] [data-testid=grouped-draft-row]`),
+    ).toHaveCount(1);
+    await page.keyboard.press(`${primary}+j`);
+    await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press(`${primary}+j`);
+    await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press(`${primary}+k`);
+    await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press(`${primary}+k`);
+    await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      page.locator('.sidebar-global button[aria-label="搜索"] .sidebar-action-shortcut'),
+    ).toContainText(process.platform === "darwin" ? "⇧" : "Shift");
+    await page.keyboard.press(`${primary}+Shift+f`);
+    await expect(page.getByRole("dialog")).toBeVisible();
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});

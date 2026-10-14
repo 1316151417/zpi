@@ -154,7 +154,7 @@ export function SidebarTaskRow({
   );
 }
 
-function QuestionBadge({ record }: { record: SessionRecord }) {
+export function QuestionBadge({ record }: { record: SessionRecord }) {
   const question = record.pendingQuestion;
   if (!question) return null;
   const state = question.autoResolution;

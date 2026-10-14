@@ -4,6 +4,7 @@ import { shallow } from "zustand/shallow";
 import { deferred } from "../../../tests/fake-server.ts";
 import { selectAppState, selectTaskRecords } from "../src/renderer/app-state.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
+import { emptyTaskGroups } from "../src/shared/task-groups.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -16,6 +17,7 @@ async function setup() {
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
   });
   const frames: FrameRequestCallback[] = [];
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
@@ -36,6 +38,8 @@ async function setup() {
   const bridge = {
     listProjects: vi.fn(async () => ({ ok: true, value: [] })),
     listRecentSessions: vi.fn(async () => ({ ok: true, value: [session] })),
+    getTaskGroups: vi.fn(async () => ({ ok: true, value: emptyTaskGroups() })),
+    updateTaskGroups: vi.fn(async () => ({ ok: true, value: emptyTaskGroups() })),
     getSettings: vi.fn(async () => ({ ok: true, value: {} })),
     activateSession: vi.fn(async () => ({ ok: true, value: { unreadAt: undefined } })),
     getDraft: vi.fn(async () => ({
@@ -44,7 +48,11 @@ async function setup() {
     })),
     saveDraft: vi.fn(async () => ({ ok: true, value: undefined })),
     closeSideChat: vi.fn(async () => ({ ok: true, value: undefined })),
-    getSessionSnapshot: vi.fn(async () => ({ ok: true, value: snapshot })),
+    createSession: vi.fn(async (_projectId: string | null, _groupId?: string | null) => ({
+      ok: true,
+      value: { ...session, id: "created", draft: true },
+    })),
+    getSessionSnapshot: vi.fn(async (_id?: string) => ({ ok: true, value: snapshot })),
     listCommands: vi.fn(async () => ({ ok: true, value: [] })),
     listSessionSkills: vi.fn(async () => ({ ok: true, value: { skills: [], diagnostics: [] } })),
     onEvent: vi.fn((listener: typeof emit) => {
@@ -732,3 +740,81 @@ it.each(["eviction", "replacement"])(
     f.unsubscribe();
   },
 );
+
+it("a late group refresh cannot overwrite a completed grouping mutation", async () => {
+  const f = await setup();
+  const gate = deferred();
+  f.bridge.getTaskGroups.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: emptyTaskGroups() };
+  });
+  const refreshing = f.store.refresh();
+  const next = {
+    ...emptyTaskGroups(),
+    groups: [{ id: "g", title: "New Group", color: "gray" as const, createdAt: 1 }],
+    roots: [{ type: "group" as const, id: "g" }],
+    members: { g: [] },
+  };
+  f.bridge.updateTaskGroups.mockResolvedValueOnce({ ok: true, value: next });
+  await f.store.changeTaskGroups({ type: "create" });
+  gate.resolve();
+  await refreshing;
+  expect(f.store.useStore.getState().taskGroups).toEqual(next);
+  expect(f.store.useStore.getState().taskGroupsHydrated).toBe(true);
+  f.unsubscribe();
+});
+
+it("new-task shortcut uses the shared draft path, inheriting the active visible group without reusing another group's or child draft", async () => {
+  const f = await setup();
+  const groupedDraft = { ...f.session, id: "group-draft", draft: true };
+  const rootDraft = { ...f.session, id: "root-draft", draft: true, updatedAt: 99 };
+  const childDraft = {
+    ...f.session,
+    id: "child-draft",
+    draft: true,
+    parentSessionId: f.session.id,
+    updatedAt: 100,
+  };
+  const sessions = new Map(
+    [f.session, groupedDraft, rootDraft, childDraft].map((record) => [record.id, record]),
+  );
+  f.store.useStore.setState({
+    sessions,
+    selected: f.session.id,
+    taskGroups: {
+      version: 1,
+      groups: [{ id: "g", title: "G", color: "gray", createdAt: 1 }],
+      roots: [
+        { type: "group", id: "g" },
+        { type: "task", id: rootDraft.id },
+      ],
+      members: { g: [f.session.id, groupedDraft.id] },
+    },
+  });
+  localStorage.setItem(
+    "zpi.sidebarTaskPreferences",
+    JSON.stringify({ organizeBy: "grouped", sortBy: "updated" }),
+  );
+  f.bridge.getSessionSnapshot.mockImplementation(async (id) => ({
+    ok: true,
+    value: {
+      ...f.snapshot,
+      session: sessions.get(id ?? "") ?? f.session,
+      view: { ...f.snapshot.view, sessionId: id ?? f.session.id },
+    },
+  }));
+  await f.store.newSession();
+  expect(f.store.useStore.getState().selected).toBe(groupedDraft.id);
+  await f.store.newSession();
+  expect(f.store.useStore.getState().selected).toBe(groupedDraft.id);
+  await f.store.newSession(null, null);
+  expect(f.store.useStore.getState().selected).toBe(rootDraft.id);
+  expect(f.bridge.createSession).not.toHaveBeenCalled();
+  f.store.useStore.setState({
+    selected: f.session.id,
+    sessions: new Map(sessions).set(f.session.id, { ...f.session, pinnedAt: 1 }),
+  });
+  await f.store.newSession();
+  expect(f.store.useStore.getState().selected).toBe(rootDraft.id);
+  f.unsubscribe();
+});

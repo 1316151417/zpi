@@ -5,6 +5,8 @@ type Store = ReturnType<typeof useStore.getState>;
 export function selectAppState(state: Store) {
   const id = state.selected ?? "";
   return {
+    taskGroups: state.taskGroups,
+    taskGroupsHydrated: state.taskGroupsHydrated,
     projects: state.projects,
     selected: state.selected,
     settings: state.settings,

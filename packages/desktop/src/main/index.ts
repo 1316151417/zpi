@@ -363,6 +363,9 @@ async function launch(): Promise<void> {
         return value;
       };
       const count: Record<(typeof methods)[number], number> = {
+        setSessionUnread: 1,
+        getTaskGroups: 0,
+        updateTaskGroups: 1,
         listSubagents: 1,
         saveSubagent: 1,
         deleteSubagent: 2,
@@ -426,7 +429,7 @@ async function launch(): Promise<void> {
         updatePreferences: 1,
         setSessionSelection: 2,
         listSessionSkills: 1,
-        createSession: 1,
+        createSession: 2,
         getSessionSnapshot: 1,
         renameSession: 2,
         deleteSession: 1,
@@ -723,6 +726,15 @@ async function launch(): Promise<void> {
         case "removeProject":
           value = host.removeProject(string(0));
           break;
+        case "setSessionUnread":
+          host.setSessionUnread(string(0));
+          break;
+        case "getTaskGroups":
+          value = host.getTaskGroups();
+          break;
+        case "updateTaskGroups":
+          value = host.updateTaskGroups(args[0]);
+          break;
         case "listSessions":
           value = host.listSessions(string(0));
           break;
@@ -793,7 +805,11 @@ async function launch(): Promise<void> {
           value = await host.listSessionSkills(string(0));
           break;
         case "createSession":
-          value = host.createSession(args[0] === null ? null : string(0));
+          if (args[1] !== undefined && args[1] !== null && typeof args[1] !== "string")
+            throw new Error("invalid_input: 无效分组 ID");
+          value = host.createSession(args[0] === null ? null : string(0), {
+            groupId: args[1] as string | null | undefined,
+          });
           break;
         case "getSessionSnapshot":
           value = host.getSessionSnapshot(string(0));

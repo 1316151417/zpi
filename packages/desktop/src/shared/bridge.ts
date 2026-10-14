@@ -230,6 +230,11 @@ export interface PaneBounds {
   height: number;
 }
 export interface DesktopBridge {
+  setSessionUnread(id: string): Promise<Result<void>>;
+  getTaskGroups(): Promise<Result<import("./task-groups.ts").TaskGroupState>>;
+  updateTaskGroups(
+    command: Exclude<import("./task-groups.ts").TaskGroupCommand, { type: "create" }> | { type: "create" },
+  ): Promise<Result<import("./task-groups.ts").TaskGroupState>>;
   listSubagents(sessionId: string | null): Promise<Result<SubagentCatalog>>;
   saveSubagent(input: SaveSubagentInput): Promise<Result<SubagentCatalog>>;
   deleteSubagent(id: string, sessionId: string | null): Promise<Result<SubagentCatalog>>;
@@ -325,7 +330,7 @@ export interface DesktopBridge {
   ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
   listRecentSessions(): Promise<Result<SessionRecord[]>>;
   listSessionMentions(sessionId: string): Promise<Result<SessionMentionSuggestion[]>>;
-  createSession(projectId: string | null): Promise<Result<SessionRecord>>;
+  createSession(projectId: string | null, groupId?: string | null): Promise<Result<SessionRecord>>;
   activateSession(sessionId: string): Promise<Result<SessionRecord>>;
   setSessionPinned(sessionId: string, pinned: boolean): Promise<Result<SessionRecord>>;
   getSessionSnapshot(sessionId: string): Promise<Result<SessionSnapshot>>;
@@ -377,6 +382,9 @@ export interface DesktopBridge {
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
 export const methods = [
+  "setSessionUnread",
+  "getTaskGroups",
+  "updateTaskGroups",
   "listSubagents",
   "saveSubagent",
   "deleteSubagent",
