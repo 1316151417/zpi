@@ -225,8 +225,8 @@ it("keeps the last valid group preview and drop when reordered content collides 
   });
   expect(first.command).toBeDefined();
   if (!first.command) throw new Error("missing initial group move");
-  let lastCommand = first.command;
-  let preview = applyTaskGroupCommand(origin, lastCommand);
+  const lastCommand = first.command;
+  const preview = applyTaskGroupCommand(origin, lastCommand);
   const expected = ["group:h", "task:b", "task:c", "group:g"];
   expect(roots(preview)).toEqual(expected);
   for (const target of [
@@ -239,10 +239,6 @@ it("keeps the last valid group preview and drop when reordered content collides 
   ] as const) {
     const self = taskGroupDragEvent(origin, active, first.motion, 75, target);
     expect(self.command).toBeUndefined();
-    if (self.command) {
-      lastCommand = self.command;
-      preview = applyTaskGroupCommand(origin, lastCommand);
-    }
     expect(roots(preview)).toEqual(expected);
   }
   expect(roots(applyTaskGroupCommand(origin, lastCommand))).toEqual(expected);
