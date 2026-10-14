@@ -29,6 +29,17 @@ import { ProviderLogo } from "./ProviderLogo.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { unwrap, useStore } from "./store.ts";
 
+const agentColorLabels: Record<(typeof agentColors)[number], string> = {
+  blue: "蓝色",
+  cyan: "青色",
+  green: "绿色",
+  orange: "橙色",
+  pink: "粉色",
+  purple: "紫色",
+  red: "红色",
+  yellow: "黄色",
+};
+
 function AgentModelSelect({
   value,
   disabled,
@@ -373,7 +384,7 @@ export function SubagentSettings() {
                       type="radio"
                       name="subagent-color"
                       value={color}
-                      aria-label={color}
+                      aria-label={agentColorLabels[color]}
                       checked={config.color === color}
                       disabled={busy}
                       onChange={() => setConfig({ ...config, color })}

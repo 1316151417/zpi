@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { SubagentTaskToolBlock } from "../src/components/SubagentTaskToolBlock.tsx";
+import { SubagentToolBlock } from "../src/components/SubagentToolBlock.tsx";
 import type { ToolView } from "../src/components/tool-presentation.ts";
 import { emptySession, reduceSession } from "../src/reducer.ts";
 import type { SubagentTask } from "../src/types.ts";
@@ -24,6 +25,30 @@ const render = (fields: Partial<ToolView>) =>
       toggle: () => {},
     }),
   );
+
+test("Agent summaries localize the label without changing protocol or agent names", () => {
+  for (const status of ["preparing", "running", "completed", "error"] as const) {
+    for (const agentType of ["Explore", "general-purpose", "Custom helper"]) {
+      const markup = renderToStaticMarkup(
+        createElement(SubagentToolBlock, {
+          block: {
+            ...block,
+            name: "Agent",
+            status,
+            argsText: JSON.stringify({ subagent_type: agentType, description: "Inspect source" }),
+          },
+          expanded: false,
+          toggle: () => {},
+        }),
+      );
+      expect(markup).toContain(">子智能体</strong>");
+      expect(markup).not.toContain("SubAgent");
+      expect(markup).toContain('data-tool-name="Agent"');
+      expect(markup).toContain(agentType);
+      expect(markup).toContain("Inspect source");
+    }
+  }
+});
 
 test.each([
   ["not_ready", "running", "运行中"],

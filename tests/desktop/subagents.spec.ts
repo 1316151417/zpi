@@ -88,7 +88,7 @@ test("subagent plugin manages profiles/models and opens complete read-only child
     await page.getByLabel("子智能体名称", { exact: true }).fill("code-reviewer");
     await page.getByLabel("子智能体描述", { exact: true }).fill("Review requested code");
     await page.getByLabel("子智能体系统提示词", { exact: true }).fill("Review only the requested code.");
-    await page.getByRole("radio", { name: "purple", exact: true }).check();
+    await page.getByRole("radio", { name: "紫色", exact: true }).check();
     await page.getByRole("button", { name: "保存", exact: true }).click();
     await expect(page.getByTestId("subagent-row-code-reviewer")).toBeVisible();
     const row = page.getByTestId("subagent-row-code-reviewer");
