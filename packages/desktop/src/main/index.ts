@@ -42,7 +42,12 @@ import { checkPreviewFiles } from "./preview-files.ts";
 import { openProjectFromDialog } from "./project-picker.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
-import { forwardBrowserShortcut, ShortcutController, toggleShortcutWindow } from "./shortcut-controller.ts";
+import {
+  forwardBrowserShortcut,
+  ShortcutController,
+  setWindowMenuShortcutsIgnored,
+  toggleShortcutWindow,
+} from "./shortcut-controller.ts";
 import { SettingsStore } from "./storage.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
@@ -268,9 +273,7 @@ async function launch(): Promise<void> {
         window.webContents.send("zpi:shortcut", "toggle-window");
     },
     testMode,
-    (ignore) => {
-      if (!window.webContents.isDestroyed()) window.webContents.setIgnoreMenuShortcuts(ignore);
-    },
+    (ignore) => setWindowMenuShortcutsIgnored(window, ignore),
   );
   let shortcutSettings = settings.get().shortcuts;
   let shortcutStartupError: Error | undefined;
@@ -1026,6 +1029,7 @@ async function launch(): Promise<void> {
 
 let draftFlushRequest = 0;
 function flushDraftsBeforeQuit(window: BrowserWindow): Promise<void> {
+  if (window.isDestroyed()) return Promise.resolve();
   const contents = window.webContents;
   if (contents.isDestroyed() || contents.isCrashed() || !contents.getURL()) return Promise.resolve();
   const request = ++draftFlushRequest;

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   forwardBrowserShortcut,
   ShortcutController,
+  setWindowMenuShortcutsIgnored,
   toggleShortcutWindow,
 } from "../src/main/shortcut-controller.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
@@ -148,13 +149,14 @@ describe("global shortcut transaction", () => {
     expect(controller.isCapturing).toBe(false);
   });
   it("cleans up only its own shortcut and ignores stale callbacks after disposal", () => {
-    const { controller, callbacks, registry, execute, original } = fixture();
+    const { controller, callbacks, registry, execute, original, ignoreMenuShortcuts } = fixture();
     const callback = callbacks.get(original);
     controller.dispose();
     controller.dispose();
     callback?.();
     expect(execute).not.toHaveBeenCalled();
     expect(registry.unregister).toHaveBeenCalledExactlyOnceWith(original);
+    expect(ignoreMenuShortcuts).toHaveBeenCalledExactlyOnceWith(false);
   });
   it("never registers system shortcuts in test mode", () => {
     const { controller, settings, registry } = fixture(true);
@@ -270,5 +272,73 @@ describe("native browser workspace command dispatch", () => {
     );
     expect(send).not.toHaveBeenCalled();
     expect(focusHost).not.toHaveBeenCalled();
+  });
+});
+
+describe("menu shortcut window lifecycle", () => {
+  function window() {
+    const contents = {
+      isDestroyed: vi.fn(() => false),
+      setIgnoreMenuShortcuts: vi.fn(),
+    };
+    const target = {
+      isDestroyed: vi.fn(() => false),
+      get webContents() {
+        if (target.isDestroyed()) throw new TypeError("Object has been destroyed");
+        return contents;
+      },
+    };
+    const getContents = vi.spyOn(target, "webContents", "get");
+    return { target, contents, getContents };
+  }
+
+  it.each([true, false])("updates live menu capture state to %s", (ignore) => {
+    const { target, contents } = window();
+    setWindowMenuShortcutsIgnored(target, ignore);
+    expect(contents.setIgnoreMenuShortcuts).toHaveBeenCalledExactlyOnceWith(ignore);
+  });
+
+  it("does not read webContents after its window is destroyed", () => {
+    const { target, contents, getContents } = window();
+    target.isDestroyed.mockReturnValue(true);
+    expect(() => setWindowMenuShortcutsIgnored(target, false)).not.toThrow();
+    expect(getContents).not.toHaveBeenCalled();
+    expect(contents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
+  });
+
+  it("does not update destroyed webContents in a live window", () => {
+    const { target, contents } = window();
+    contents.isDestroyed.mockReturnValue(true);
+    expect(() => setWindowMenuShortcutsIgnored(target, false)).not.toThrow();
+    expect(contents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("disposes safely after window destruction with recording %s", (recording) => {
+    const { target, contents, getContents } = window();
+    const registry = { register: vi.fn(() => true), unregister: vi.fn() };
+    const controller = new ShortcutController(registry, "darwin", vi.fn(), false, (ignore) =>
+      setWindowMenuShortcutsIgnored(target, ignore),
+    );
+    controller.initialize(defaultShortcuts("darwin"));
+    if (recording) controller.setCapture(true);
+    target.isDestroyed.mockReturnValue(true);
+    getContents.mockClear();
+    contents.setIgnoreMenuShortcuts.mockClear();
+    expect(() => controller.dispose()).not.toThrow();
+    expect(() => controller.dispose()).not.toThrow();
+    controller.setCapture(false);
+    expect(controller.isCapturing).toBe(false);
+    expect(getContents).not.toHaveBeenCalled();
+    expect(contents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
+    expect(registry.register).toHaveBeenCalledOnce();
+    expect(registry.unregister).toHaveBeenCalledOnce();
+  });
+
+  it("does not hide unexpected errors from live webContents", () => {
+    const { target, contents } = window();
+    contents.setIgnoreMenuShortcuts.mockImplementation(() => {
+      throw new Error("unexpected failure");
+    });
+    expect(() => setWindowMenuShortcutsIgnored(target, false)).toThrow("unexpected failure");
   });
 });
