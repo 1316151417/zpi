@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChatComposer, Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
+import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { loadSideChat, openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { SessionToolbar } from "./SessionToolbar.tsx";
@@ -93,6 +94,10 @@ export function SideChatPane({
             sentMessages={view.runs.map((run) => run.userMessage)}
             queue={view.queue}
             queueActions={queueActions(sessionId)}
+            shortcutCommand={(event) =>
+              composerShortcutCommand(event, window.zpi.platform, settings?.shortcuts)
+            }
+            onSelectModel={() => setModelOpen(true)}
             onFile={(path, location) => openFile(sessionId, path, location)}
             toolbar={
               <SessionToolbar

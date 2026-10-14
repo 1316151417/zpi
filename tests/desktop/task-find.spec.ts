@@ -42,7 +42,7 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     await editor.press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await editor.focus();
-    await editor.press("Control+f");
+    await editor.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     const input = bar(page).getByRole("textbox");
     await expect(input).toBeFocused();
     await expect(count(page)).toHaveText("0/0");
@@ -62,7 +62,7 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     await expect(count(page)).toHaveText("1/2");
     await editor.click();
     await expect(bar(page)).toBeVisible();
-    await editor.press("Meta+f");
+    await editor.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     await expect(input).toBeFocused();
     await expect(input).toHaveValue("项目");
     const geometry = await bar(page).evaluate((element) => {
@@ -106,7 +106,7 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     await expect(bar(page)).toHaveCount(0);
     await expect(editor).toBeFocused();
     await expect.poll(() => highlight(page)).toEqual([]);
-    await editor.press("Control+f");
+    await editor.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     await expect(bar(page).getByRole("textbox")).toHaveValue("");
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(840, 720));
     await expect
@@ -138,7 +138,7 @@ test("search loads older history, preserves the active message and ignores tools
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await expect(page.getByTestId("run")).toHaveCount(10);
-    await page.keyboard.press("Control+f");
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     const input = bar(page).getByRole("textbox");
     await input.fill("最终回复 0");
     await expect(page.getByTestId("run")).toHaveCount(30);
@@ -222,7 +222,7 @@ test("file scope searches lazy patches across files, highlights split diffs and 
     await editor.fill("更新两个文件");
     await editor.press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
-    await page.keyboard.press("Control+f");
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     let input = bar(page).getByRole("textbox");
     await input.fill("needle");
     await expect(count(page)).toHaveText("1/2");
@@ -285,7 +285,7 @@ test("file scope searches lazy patches across files, highlights split diffs and 
     await editor.fill("继续工作");
     await editor.press("Enter");
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
-    await editor.press("Control+f");
+    await editor.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     input = bar(page).getByRole("textbox");
     await input.fill("needle");
     await expect(count(page)).toHaveText("1/3");

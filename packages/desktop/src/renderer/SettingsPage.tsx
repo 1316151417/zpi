@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   Info,
+  Keyboard,
   Monitor,
   Moon,
   MoreHorizontal,
@@ -44,12 +45,14 @@ import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
+import { ShortcutSettings } from "./ShortcutSettings.tsx";
 import { SubagentSettings } from "./SubagentSettings.tsx";
 import { refresh, unwrap, useStore } from "./store.ts";
 
 const sections = [
   ["general", "常规", Settings2],
   ["interface", "界面设置", Monitor],
+  ["shortcuts", "快捷键", Keyboard],
   ["prompt", "系统提示词", Sparkles],
   ["tools", "工具", Wrench],
   ["skills", "技能", Puzzle],
@@ -377,6 +380,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             <div className="settings-page">
               {tab === "archived" ? (
                 <ArchivedTasks />
+              ) : tab === "shortcuts" ? (
+                <ShortcutSettings />
               ) : tab === "general" ? (
                 <div className="general-settings">
                   <div className="settings-group">

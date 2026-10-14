@@ -20,6 +20,12 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
     opener.current = null;
   }, []);
   useEffect(close, [sessionId, enabled, close]);
+  const show = useCallback(() => {
+    if (!enabled || !sessionId) return;
+    if (!open) opener.current = document.activeElement;
+    setOpen(true);
+    setFocusRequestId((id) => id + 1);
+  }, [enabled, sessionId, open]);
   useEffect(() => {
     let composing = false;
     const begin = () => {
@@ -29,20 +35,8 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
       composing = false;
     };
     const keydown = (event: KeyboardEvent) => {
-      if (composing || event.isComposing || event.keyCode === 229 || !enabled || !sessionId) return;
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === "f"
-      ) {
-        if (document.querySelector('[role="dialog"]:not(.task-find-bar),[role="alertdialog"],[role="menu"]'))
-          return;
-        event.preventDefault();
-        if (!open) opener.current = document.activeElement;
-        setOpen(true);
-        setFocusRequestId((id) => id + 1);
-      } else if (open && event.key === "Escape" && !event.defaultPrevented) {
+      if (composing || event.isComposing || event.keyCode === 229) return;
+      if (open && event.key === "Escape" && !event.defaultPrevented) {
         event.preventDefault();
         close();
       }
@@ -55,7 +49,7 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
       window.removeEventListener("compositionend", end);
       window.removeEventListener("keydown", keydown);
     };
-  }, [enabled, sessionId, open, close]);
+  }, [open, close]);
   const start = useCallback(
     (query: string, targetRunId?: string, matchBefore?: string, matchAfter?: string) => {
       opener.current = document.querySelector('[aria-label="消息"]') ?? document.activeElement;
@@ -118,5 +112,18 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
     if (next === "changes" && sessionId) openChanges(sessionId, null);
     setFocusRequestId((id) => id + 1);
   }, [scope, sessionId]);
-  return { start, open, scope, request, state, focusRequestId, change, navigate, update, toggleScope, close };
+  return {
+    start,
+    show,
+    open,
+    scope,
+    request,
+    state,
+    focusRequestId,
+    change,
+    navigate,
+    update,
+    toggleScope,
+    close,
+  };
 }

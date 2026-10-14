@@ -5,6 +5,7 @@ import { ChevronDown, File, List, MessageSquare, MessagesSquare, Rocket, Search 
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FileIcon } from "zpi-ui";
 import type { ProjectRecord, SessionRecord, TaskSearchChange, TaskSearchResult } from "../shared/bridge.ts";
+import { defaultShortcuts, shortcutForEvent } from "../shared/shortcuts.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import { HighlightedMatchText } from "./HighlightedMatchText.tsx";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
@@ -267,10 +268,11 @@ export function TaskSearchDialog({
             }}
             onKeyDown={(event) => {
               if (
-                (event.metaKey || event.ctrlKey) &&
-                !event.altKey &&
-                !event.shiftKey &&
-                event.key.toLowerCase() === "k"
+                shortcutForEvent(
+                  event.nativeEvent,
+                  window.zpi.platform,
+                  useStore.getState().settings?.shortcuts ?? defaultShortcuts(window.zpi.platform),
+                ) === "search"
               ) {
                 event.preventDefault();
                 event.stopPropagation();

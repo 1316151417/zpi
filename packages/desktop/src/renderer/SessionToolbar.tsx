@@ -1,9 +1,10 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActionHint, type SessionView } from "zpi-ui";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
+import { formatShortcut } from "../shared/shortcuts.ts";
 import { accept, focusComposer, refresh, report, unwrap, useStore } from "./store.ts";
 export function SessionToolbar({
   view,
@@ -24,12 +25,23 @@ export function SessionToolbar({
   const mainMenu = useRef<HTMLDivElement>(null);
   const menuOpen = useRef(open);
   menuOpen.current = open;
-  const focusAfterSelect = useRef<string>(undefined);
+  const selectionLock = useRef(false);
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const menuBoundary = toolbar?.closest("main");
   const [active, setActive] = useState<string>();
   const [updating, setUpdating] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const menu = mainMenu.current;
+      const selected = menu?.querySelector<HTMLElement>('[data-selected="true"]');
+      (selected ?? menu?.querySelector<HTMLElement>('[role="menuitem"]'))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   const select = (provider: string, modelId: string, reasoning: string) => {
+    if (selectionLock.current) return;
+    selectionLock.current = true;
     setUpdating(true);
     void window.zpi
       .setSessionSelection(view.sessionId, { provider, modelId, reasoning })
@@ -38,12 +50,15 @@ export function SessionToolbar({
         accept(snapshot);
         await refresh();
         if (mainMenu.current) {
-          focusAfterSelect.current = view.sessionId;
+          setActive(undefined);
           onOpenChange(false);
         } else focusComposer(view.sessionId);
       })
       .catch(report)
-      .finally(() => setUpdating(false));
+      .finally(() => {
+        selectionLock.current = false;
+        setUpdating(false);
+      });
   };
   const usage = controls?.usage,
     percent = usage?.percent;
@@ -156,6 +171,11 @@ export function SessionToolbar({
               ? `${provider?.name?.trim() || chosen.provider}/${configured?.name || chosen.modelId}`
               : "模型选择"
           }
+          shortcut={
+            settings?.shortcuts.enabled && settings.shortcuts.bindings["select-model"]
+              ? formatShortcut(settings.shortcuts.bindings["select-model"], window.zpi.platform)
+              : undefined
+          }
           open={open ? false : undefined}
         >
           <Menu.Trigger className="model-trigger" aria-label="模型选择" disabled={updating}>
@@ -180,6 +200,7 @@ export function SessionToolbar({
             align="end"
             collisionBoundary={menuBoundary}
             collisionPadding={8}
+            loop
             onInteractOutside={(event) => {
               // The closing layer is still mounted during its 100ms exit. A trigger
               // click belongs to Root's toggle, rather than the old layer's dismiss.
@@ -188,17 +209,11 @@ export function SessionToolbar({
               }
             }}
             onCloseAutoFocus={(event) => {
+              event.preventDefault();
               if (menuOpen.current) {
-                event.preventDefault();
-                focusAfterSelect.current = undefined;
                 return;
               }
-              const sessionId = focusAfterSelect.current;
-              if (sessionId) {
-                event.preventDefault();
-                focusAfterSelect.current = undefined;
-                focusComposer(sessionId);
-              }
+              focusComposer(view.sessionId);
             }}
           >
             {settings?.providers
@@ -224,8 +239,13 @@ export function SessionToolbar({
                           <Menu.SubTrigger
                             className="menu-item"
                             disabled={updating}
-                            onFocus={() => {
-                              if (menuOpen.current) setActive(id);
+                            data-selected={chosen?.provider === p.id && chosen.modelId === m.id}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (!event.repeat && !event.nativeEvent.isComposing && event.keyCode !== 229)
+                                select(p.id, m.id, defaultPreset(m));
                             }}
                             onClick={() => select(p.id, m.id, defaultPreset(m))}
                           >
@@ -237,6 +257,7 @@ export function SessionToolbar({
                               className="selection-menu reasoning-menu"
                               collisionBoundary={menuBoundary}
                               collisionPadding={8}
+                              loop
                               onFocusOutside={(event) => {
                                 if (event.target === mainMenu.current) event.preventDefault();
                               }}
@@ -246,6 +267,13 @@ export function SessionToolbar({
                                   key={reasoning}
                                   className="menu-item"
                                   disabled={updating}
+                                  onKeyDown={(event) => {
+                                    if (
+                                      event.key === "Enter" &&
+                                      (event.repeat || event.nativeEvent.isComposing || event.keyCode === 229)
+                                    )
+                                      event.preventDefault();
+                                  }}
                                   onSelect={(event) => {
                                     event.preventDefault();
                                     select(p.id, m.id, reasoning);

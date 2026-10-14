@@ -7,6 +7,7 @@ import {
   BrowserWindow,
   clipboard,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   Notification,
@@ -28,6 +29,7 @@ import type {
   RunInput,
 } from "../shared/bridge.ts";
 import { methods } from "../shared/bridge.ts";
+import { type ShortcutSettings, shortcutForEvent } from "../shared/shortcuts.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { defaultFileOpener } from "./default-file-open.ts";
@@ -39,6 +41,7 @@ import { PaneServices } from "./pane-services.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
+import { ShortcutController, toggleShortcutWindow } from "./shortcut-controller.ts";
 import { SettingsStore } from "./storage.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 
@@ -254,9 +257,72 @@ async function launch(): Promise<void> {
         /* Keep the usable catalog; settings offers explicit retry. */
       });
   }
-  const panes = new PaneServices(window, (event) => {
-    if (!window.isDestroyed()) window.webContents.send("zpi:pane-event", event);
-  });
+  const shortcuts = new ShortcutController(
+    globalShortcut,
+    process.platform,
+    () => {
+      if (!ending && !hiddenTestMode) toggleShortcutWindow(window);
+    },
+    testMode,
+    (ignore) => {
+      if (!window.webContents.isDestroyed()) window.webContents.setIgnoreMenuShortcuts(ignore);
+    },
+  );
+  let shortcutSettings = settings.get().shortcuts;
+  let shortcutStartupError: Error | undefined;
+  try {
+    shortcuts.initialize(shortcutSettings);
+  } catch (error) {
+    shortcutStartupError = error instanceof Error ? error : new Error(String(error));
+    errors.write("shortcuts.registration", error);
+  }
+  // A reload/crash must never leave recording mode active indefinitely.
+  const resetShortcutCapture = () => {
+    try {
+      shortcuts.setCapture(false);
+    } catch (error) {
+      errors.write("shortcuts.capture-reset", error);
+      if (!testMode && !ending && !window.isDestroyed())
+        void dialog.showMessageBox(window, {
+          type: "warning",
+          title: "全局快捷键不可用",
+          message: String(error),
+          detail: "录制已结束，但无法恢复全局快捷键。请在快捷键设置中更换组合并保存。",
+        });
+    }
+  };
+  window.on("blur", resetShortcutCapture);
+  window.webContents.on("did-start-loading", resetShortcutCapture);
+  window.webContents.on("render-process-gone", resetShortcutCapture);
+  const panes = new PaneServices(
+    window,
+    (event) => {
+      if (!window.isDestroyed()) window.webContents.send("zpi:pane-event", event);
+    },
+    (event) => {
+      if (ending || shortcuts.isCapturing || window.isDestroyed()) return false;
+      const command = shortcutForEvent({ ...event, repeat: false }, process.platform, shortcutSettings);
+      // Browser page editing, address selection and Escape stay with the focused page.
+      if (
+        !command ||
+        ![
+          "toggle-sidebar",
+          "toggle-pane",
+          "new-task",
+          "search",
+          "find",
+          "pin-1",
+          "pin-2",
+          "pin-3",
+          "pin-4",
+          "pin-5",
+        ].includes(command)
+      )
+        return false;
+      if (!event.repeat) window.webContents.send("zpi:shortcut", command);
+      return true;
+    },
+  );
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
   window.webContents.on("will-redirect", (e) => e.preventDefault());
@@ -375,6 +441,8 @@ async function launch(): Promise<void> {
         editUserMessage: 3,
         abortRun: 1,
         getSettings: 0,
+        updateShortcuts: 1,
+        setShortcutCapture: 1,
         beginChatGPTLogin: 1,
         completeChatGPTLogin: 1,
         submitChatGPTCallback: 2,
@@ -684,6 +752,19 @@ async function launch(): Promise<void> {
         case "getProviderCredentials":
           value = settings.getProviderCredentials(string(0));
           break;
+        case "updateShortcuts": {
+          const updated = shortcuts.update(
+            object(0, ["enabled", "bindings"]) as unknown as ShortcutSettings,
+            (input) => settings.updateShortcuts(input),
+          );
+          shortcutSettings = updated.shortcuts;
+          value = updated;
+          window.webContents.send("zpi:settings", updated);
+          break;
+        }
+        case "setShortcutCapture":
+          shortcuts.setCapture(args[0] as boolean);
+          break;
         case "updatePreferences":
           value = settings.updatePreferences(
             object(0, [
@@ -924,8 +1005,16 @@ async function launch(): Promise<void> {
   };
   app.on("activate", showWindow);
   app.on("second-instance", showWindow);
+  app.on("will-quit", () => shortcuts.dispose());
   const devUrl = process.env.ZPI_DEV_URL;
   await loadRenderer(window, devUrl ?? pathToFileURL(join(dir, "../renderer/index.html")).href);
+  if (shortcutStartupError && !testMode && !ending)
+    void dialog.showMessageBox(window, {
+      type: "warning",
+      title: "全局快捷键不可用",
+      message: shortcutStartupError.message,
+      detail: "应用内快捷键仍可使用。请在设置的快捷键页面更换全局组合或关闭它。",
+    });
 }
 
 let draftFlushRequest = 0;

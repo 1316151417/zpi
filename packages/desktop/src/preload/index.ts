@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopEventEnvelope } from "zpi-ui";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
+import type { ShortcutCommand } from "../shared/shortcuts.ts";
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
 let beforeQuit: (() => Promise<void>) | undefined;
@@ -117,6 +118,13 @@ const bridge: DesktopBridge = {
   editUserMessage: (id, runId, input) => call("editUserMessage", id, runId, input),
   abortRun: (input) => call("abortRun", input),
   getSettings: () => call("getSettings"),
+  updateShortcuts: (input) => call("updateShortcuts", input),
+  setShortcutCapture: (capturing) => call("setShortcutCapture", capturing),
+  onShortcut(listener) {
+    const handler = (_: Electron.IpcRendererEvent, command: ShortcutCommand) => listener(command);
+    ipcRenderer.on("zpi:shortcut", handler);
+    return () => ipcRenderer.removeListener("zpi:shortcut", handler);
+  },
   onSettings(listener) {
     const handler = (
       _event: Electron.IpcRendererEvent,

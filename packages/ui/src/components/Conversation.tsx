@@ -1144,7 +1144,11 @@ export function ChatComposer({
   onCancel,
   resetFiles,
   onCommand,
+  shortcutCommand,
+  onSelectModel,
 }: {
+  shortcutCommand?: (event: KeyboardEvent) => "send-next" | "select-model" | undefined;
+  onSelectModel?: () => void;
   onCommand?: (name: string) => void;
   onCancel?: () => void;
   resetFiles?: { disabled: boolean; description: string };
@@ -1194,6 +1198,7 @@ export function ChatComposer({
   }, [sessionId]);
   const [queueConfirmation, setQueueConfirmation] = useState(false);
   const submitLock = useRef(false);
+  const queueSendLocks = useRef(new Set<string>());
   const composing = useRef(false);
   const textarea = useRef<MentionEditorHandle>(null);
   const root = useRef<HTMLFieldSetElement>(null);
@@ -1585,10 +1590,46 @@ export function ChatComposer({
       setEditing(false);
     }
   };
+  const sendQueuedNow = async (itemId: string) => {
+    const id = sessionId;
+    if (!queueActions || editing || submitLock.current || queueSendLocks.current.has(id)) return;
+    queueSendLocks.current.add(id);
+    try {
+      await queueActions.sendNow(itemId);
+    } finally {
+      queueSendLocks.current.delete(id);
+    }
+  };
   return (
     <form
       onSubmit={(event) => event.preventDefault()}
       className={`composer-stack${header ? " with-header" : ""}`}
+      onKeyDownCapture={(event) => {
+        // Capture before the editor's Enter handling. Portal menus belong to the
+        // React tree too, but only keys from this focused composer are commands.
+        if (
+          event.defaultPrevented ||
+          composing.current ||
+          event.nativeEvent.isComposing ||
+          event.keyCode === 229 ||
+          !root.current?.contains(event.target as Node) ||
+          !root.current.contains(document.activeElement)
+        )
+          return;
+        const command = shortcutCommand?.(event.nativeEvent);
+        if (!command) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        if (command === "select-model") onSelectModel?.();
+        else {
+          const first = queue?.items[0];
+          if (first?.state === "queued")
+            void sendQueuedNow(first.id).catch((error) =>
+              updateValue(sessionId, (old) => ({ ...old, error: String(error) })),
+            );
+        }
+      }}
       onKeyDown={(event) => {
         if (
           onCancel &&
@@ -1607,7 +1648,7 @@ export function ChatComposer({
         <ConversationQueuePanel
           key={sessionId}
           queue={queue}
-          actions={{ ...queueActions, edit: editQueued }}
+          actions={{ ...queueActions, edit: editQueued, sendNow: sendQueuedNow }}
           onError={(error) => updateValue(sessionId, (old) => ({ ...old, error: String(error) }))}
         />
       )}
@@ -1923,7 +1964,11 @@ export function ChatComposer({
                 );
                 return;
               }
-              if (options.length && ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab")) {
+              if (
+                options.length &&
+                ((e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) ||
+                  e.key === "Tab")
+              ) {
                 e.preventDefault();
                 if (fileQuery) chooseFileOption();
                 else {
@@ -1965,7 +2010,7 @@ export function ChatComposer({
               textarea.current?.setSelectionRange(text.length, text.length);
               return;
             }
-            if (e.key === "Enter" && !e.shiftKey && !isComposing) {
+            if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !isComposing) {
               e.preventDefault();
               void submit();
             }
