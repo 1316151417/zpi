@@ -215,6 +215,39 @@ it("recomputes on drag-move direction reversal even when the target ID does not 
   expect(headerUp.command).toMatchObject({ groupId: null, before: { type: "group", id: "g" } });
 });
 
+it("keeps the last valid group preview and drop when reordered content collides with itself", async () => {
+  const { taskGroupDragEvent } = await import("../src/renderer/task-group-drag.ts");
+  const origin = fixture();
+  const active = { type: "group", id: "g" } as const;
+  const first = taskGroupDragEvent(origin, active, { deltaY: 0, position: "after" }, 80, {
+    type: "task",
+    id: "c",
+  });
+  expect(first.command).toBeDefined();
+  if (!first.command) throw new Error("missing initial group move");
+  let lastCommand = first.command;
+  let preview = applyTaskGroupCommand(origin, lastCommand);
+  const expected = ["group:h", "task:b", "task:c", "group:g"];
+  expect(roots(preview)).toEqual(expected);
+  for (const target of [
+    { type: "header", id: "g" },
+    { type: "collapsed", id: "g" },
+    { type: "footer", id: "g" },
+    { type: "empty", id: "g" },
+    { type: "group", id: "g" },
+    { type: "task", id: "a" },
+  ] as const) {
+    const self = taskGroupDragEvent(origin, active, first.motion, 75, target);
+    expect(self.command).toBeUndefined();
+    if (self.command) {
+      lastCommand = self.command;
+      preview = applyTaskGroupCommand(origin, lastCommand);
+    }
+    expect(roots(preview)).toEqual(expected);
+  }
+  expect(roots(applyTaskGroupCommand(origin, lastCommand))).toEqual(expected);
+});
+
 it("limits drag activation to the primary left pointer, without stealing color, menu, or input controls", async () => {
   const { canStartTaskGroupDrag } = await import("../src/renderer/task-group-drag.ts");
   for (const button of [1, 2]) expect(canStartTaskGroupDrag({ isPrimary: true, button }, false)).toBe(false);

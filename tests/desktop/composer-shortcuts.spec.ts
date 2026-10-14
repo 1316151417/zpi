@@ -195,6 +195,112 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(sideEditor).toBeFocused();
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await page.evaluate(async () => {
+      const settings = await window.zpi.getSettings();
+      if (!settings.ok) throw Error(settings.error.message);
+      settings.value.shortcuts.bindings["stop-run"] =
+        window.zpi.platform === "darwin" ? "Shift+Command+Enter" : "Control+Shift+Enter";
+      const result = await window.zpi.updateShortcuts(settings.value.shortcuts);
+      if (!result.ok) throw Error(result.error.message);
+    });
+    await sideEditor.press(`${primary}+Shift+Enter`);
+    await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "aborted");
+    await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await expect(sideEditor).toHaveText("side draft");
+    await mainEditor.press(`${primary}+Shift+Enter`);
+    await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "aborted");
+    await expect(mainEditor).toHaveText("main draft");
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("a retained question in a hidden auxiliary pane does not block active workspace or composer shortcuts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-hidden-question-shortcuts-"));
+  const server = await fakeServer((_, response, index) => {
+    if (index === 1) {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "hidden-side-question",
+              type: "function",
+              function: {
+                name: "AskUserQuestion",
+                arguments: JSON.stringify({
+                  questions: [
+                    {
+                      header: "方案",
+                      question: "选择一个方案？",
+                      multiSelect: false,
+                      options: [
+                        { label: "A", description: "第一种方案" },
+                        { label: "B", description: "第二种方案" },
+                      ],
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: "reply" }));
+      if (index === 0) done(response);
+    }
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const primary = await page.evaluate(() => (window.zpi.platform === "darwin" ? "Meta" : "Control"));
+    const main = page.locator("main");
+    const editor = main.getByLabel("消息", { exact: true });
+    await editor.fill("initial");
+    await editor.press("Enter");
+    await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
+    const side = page.getByRole("region", { name: "辅助对话", exact: true });
+    await side.getByLabel("消息", { exact: true }).fill("ask me");
+    await side.getByLabel("消息", { exact: true }).press("Enter");
+    const question = page.locator(".right-pane .user-question-card");
+    await expect(question).toBeVisible();
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
+    await expect(question).toBeAttached();
+    await expect(question).toBeHidden();
+    await editor.fill("main running");
+    await editor.press("Enter");
+    await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await editor.fill("main queued");
+    await editor.press("Enter");
+    await expect(main.getByTestId("queue-item")).toHaveCount(1);
+    await editor.fill("preserved main draft");
+    await editor.press(`${primary}+l`);
+    await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(editor).toBeFocused();
+    await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await editor.press(`${primary}+Enter`);
+    await expect(main.getByTestId("queue-item")).toHaveCount(0);
+    await expect(editor).toHaveText("preserved main draft");
+    await expect.poll(() => server.requests.length).toBe(4);
+    await page.keyboard.press(`${primary}+j`);
+    await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press(`${primary}+j`);
+    await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press(`${primary}+n`);
+    await expect(page.locator("main")).toHaveClass(/draft-main/);
+    await expect(question).toBeAttached();
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

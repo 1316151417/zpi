@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { composerShortcutCommand } from "../src/renderer/composer-shortcuts.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
-const querySelector = vi.fn(() => null as unknown);
+const querySelectorAll = vi.fn(() => [] as unknown[]);
 function event(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
   return {
     key: "Enter",
@@ -21,8 +21,9 @@ function event(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
 
 describe("composer shortcut routing", () => {
   beforeEach(() => {
-    querySelector.mockReturnValue(null);
-    vi.stubGlobal("document", { querySelector });
+    querySelectorAll.mockReturnValue([]);
+    vi.stubGlobal("document", { querySelectorAll });
+    vi.stubGlobal("getComputedStyle", () => ({ visibility: "visible" }));
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -54,9 +55,9 @@ describe("composer shortcut routing", () => {
   );
 
   it("does not steal commands from dialogs, menus, listboxes, or settings", () => {
-    querySelector.mockReturnValue({});
+    querySelectorAll.mockReturnValue([{ closest: () => null, getClientRects: () => [{}] }]);
     expect(composerShortcutCommand(event(), "linux", defaultShortcuts("linux"))).toBeUndefined();
-    expect(querySelector).toHaveBeenCalledWith(
+    expect(querySelectorAll).toHaveBeenCalledWith(
       'dialog[open], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen, [data-shortcut-recording="true"]',
     );
   });

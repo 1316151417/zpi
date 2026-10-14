@@ -31,6 +31,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { EditUserInput, InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
 import { defaultShortcuts, formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
+import { taskGroupFor } from "../shared/task-groups.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import { visiblePinnedTasks, workspaceShortcutBlocked, workspaceShortcutForEvent } from "./app-shortcuts.ts";
 import { selectAppState, selectTaskRecords } from "./app-state.ts";
@@ -90,6 +91,7 @@ import { TaskGroups, TaskGroupToolbar, useTaskGroupExpansion } from "./TaskGroup
 import { TaskMenu } from "./TaskMenu.tsx";
 import { type SearchCommand, TaskSearchDialog } from "./TaskSearchDialog.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
+import { expandTaskGroup } from "./task-group-expansion.ts";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { PanelLeftClose, PanelLeftOpen, SquareTerminal } from "./task-search-icons.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
@@ -218,6 +220,16 @@ export function App() {
     state.taskGroupsHydrated,
   );
   const [newGroupId, setNewGroupId] = useState<string>();
+  const newTask = useCallback(async () => {
+    const id = await newSession();
+    if (!id || taskPreferences.organizeBy !== "grouped") return;
+    const current = useStore.getState();
+    const draft = current.sessions.get(id);
+    if (current.selected !== id || !draft?.draft || draft.parentSessionId) return;
+    // 普通新建也要显露组内草稿；仅响应新建操作，不覆盖用户在运行期间的手动折叠。
+    const groupId = taskGroupFor(current.taskGroups, draft.id);
+    setCollapsedGroups((collapsed) => expandTaskGroup(collapsed, groupId));
+  }, [taskPreferences.organizeBy, setCollapsedGroups]);
   const [projectLimits, setProjectLimits] = useState<Record<string, number>>({});
   useEffect(() => {
     try {
@@ -406,7 +418,7 @@ export function App() {
       if (command === "toggle-sidebar") updatePrefs({ sidebarCollapsed: !collapsed });
       else if (command === "toggle-pane") setPaneOpen(!usePane.getState().open);
       else if (command === "search") setSearchOpen(true);
-      else if (command === "new-task") void newSession().catch(report);
+      else if (command === "new-task") void newTask().catch(report);
       else if (command === "find") find.show();
       else if (command.startsWith("pin-")) {
         const record = pinned[Number(command.slice(4)) - 1];
@@ -435,7 +447,7 @@ export function App() {
       window.removeEventListener("compositionend", end, true);
       offNative();
     };
-  }, [shortcuts, collapsed, pinned.map((record) => record.id).join(":"), find.show]);
+  }, [shortcuts, collapsed, pinned.map((record) => record.id).join(":"), find.show, newTask]);
   const unpinned = records
     .filter((r) => r.pinnedAt == null && r.archivedAt == null)
     .sort((a, b) => compareTasks(a, b, taskPreferences.sortBy));
@@ -493,7 +505,7 @@ export function App() {
       section: "建议",
       keywords: "new task 任务 新任务",
       icon: MessageCirclePlus,
-      run: () => newSession(),
+      run: newTask,
     },
     {
       id: "open-workspace",
@@ -593,7 +605,7 @@ export function App() {
           leftCollapsed={collapsed}
           rightOpen={paneOpen}
           hidden={settingsOpen}
-          onNewTask={() => task(() => newSession())}
+          onNewTask={() => task(newTask)}
           onToggleLeft={() => updatePrefs({ sidebarCollapsed: !collapsed })}
           onToggleRight={() => setPaneOpen(!paneOpen)}
           shortcutHint={shortcutHint}
@@ -602,7 +614,7 @@ export function App() {
           () => (
             <aside className="sidebar" hidden={collapsed} inert={collapsed}>
               <div className="sidebar-global">
-                <button aria-label="新建任务" onClick={() => task(() => newSession())}>
+                <button aria-label="新建任务" onClick={() => task(newTask)}>
                   <MessageCirclePlus size={16} />
                   <span className="sidebar-action-label">新建任务</span>
                   <span className="sidebar-action-shortcut">{shortcutHint("new-task")}</span>
@@ -880,6 +892,7 @@ export function App() {
             state.taskGroups,
             collapsedGroups,
             newGroupId,
+            newTask,
           ],
         )}
         {!collapsed && (

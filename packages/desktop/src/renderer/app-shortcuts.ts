@@ -5,6 +5,7 @@ import {
   type ShortcutSettings,
   shortcutForEvent,
 } from "../shared/shortcuts.ts";
+import { hasVisibleShortcutBlocker } from "./shortcut-context.ts";
 
 export function visiblePinnedTasks(records: readonly SessionRecord[]): SessionRecord[] {
   return records
@@ -47,9 +48,7 @@ export function workspaceShortcutForEvent(
 
 export function workspaceShortcutBlocked(command: ShortcutCommand): boolean {
   const dialogs = command === "find" ? '[role="dialog"]:not(.task-find-bar)' : '[role="dialog"]';
-  return Boolean(
-    document.querySelector(
-      `dialog[open], ${dialogs}, [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen, [data-shortcut-recording="true"]`,
-    ),
+  return hasVisibleShortcutBlocker(
+    `dialog[open], ${dialogs}, [role="alertdialog"], [role="menu"], [role="listbox"], .command-panel, .settings-screen, [data-shortcut-recording="true"]`,
   );
 }

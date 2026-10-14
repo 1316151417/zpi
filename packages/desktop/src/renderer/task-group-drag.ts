@@ -7,7 +7,7 @@ import {
 export type GroupDropTarget =
   | TaskGroupNode
   | { type: "header" | "footer" | "empty" | "collapsed"; id: string };
-/** ZCode: expanded header upper half = root-before, lower half = group-start; footer is the inverse. */
+/** ZCode: upward over a header = root-before, downward = group-start; footer is the inverse. */
 export function taskGroupDropCommand(
   state: TaskGroupState,
   active: TaskGroupNode,
@@ -16,6 +16,9 @@ export function taskGroupDropCommand(
 ): TaskGroupCommand | undefined {
   if (active.type === "group") {
     const target: TaskGroupNode = over.type === "task" ? over : { type: "group", id: over.id };
+    const targetGroupId = target.type === "group" ? target.id : taskGroupFor(state, target.id);
+    // 重排后自身目标会跟到指针下；忽略它，保留最后有效预览，避免用 origin 重算而跳回原位。
+    if (targetGroupId === active.id) return;
     return { type: "moveGroup", id: active.id, target, position };
   }
   if (over.type === "task") {

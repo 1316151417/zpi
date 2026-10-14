@@ -48,6 +48,7 @@ import {
 } from "./task-group-drag.ts";
 
 import {
+  expandTaskGroup,
   parseCollapsedTaskGroups,
   pruneCollapsedTaskGroups,
   taskGroupCollapsedKey,
@@ -657,7 +658,7 @@ export function TaskGroups({
                       : [...current, group.id],
                   )
                 }
-                onExpand={() => setCollapsed((current) => current.filter((id) => id !== group.id))}
+                onExpand={() => setCollapsed((current) => expandTaskGroup(current, group.id))}
                 newGroup={group.id === newGroupId}
                 onSetup={onSetup}
                 dragging={dragging}
@@ -674,7 +675,7 @@ export function TaskGroups({
           ) : overlayGroup ? (
             <div className="task-group-header task-group-drag-overlay">
               <TaskGroupColorMark color={overlayGroup.color} />
-              <span className="task-group-title">{overlayGroup.title}</span>
+              <span className="task-group-overlay-title">{overlayGroup.title}</span>
               <span className="task-group-count">
                 {(state.members[overlayGroup.id] ?? []).filter((id) => rows.has(id)).length}
               </span>
