@@ -65,6 +65,7 @@ export async function searchFiles(
   cwd: string,
   query: string,
   signal?: AbortSignal,
+  resultLimit?: number,
 ): Promise<FileCandidate[]> {
   if (typeof query !== "string" || query.length > 500) throw new Error("invalid_input: 文件查询无效");
   const paths = new Map<string, FileCandidate["type"]>();
@@ -154,7 +155,7 @@ export async function searchFiles(
     .filter(({ score }) => Number.isFinite(score))
     .sort((a, b) => a.score - b.score);
   const results: FileCandidate[] = [];
-  const limit = normalized ? 1000 : 10;
+  const limit = resultLimit ?? (normalized ? 1000 : 10);
   for (const { path, type } of candidates) {
     signal?.throwIfAborted();
     try {

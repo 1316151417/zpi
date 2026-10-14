@@ -24,7 +24,7 @@ it("includes cache writes in indexed usage and rebuilds indexes with the old den
   await index.load();
   expect(index.data.cacheRead).toBe(100);
   expect(index.data.cacheInput).toBe(1000);
-  await writeFile(`${seed.file}.index.json`, JSON.stringify({ ...index.data, version: 9, cacheInput: 110 }));
+  await writeFile(`${seed.file}.index.json`, JSON.stringify({ ...index.data, version: 10, cacheInput: 110 }));
   const rebuilt = new HistoryIndex(seed.file);
   await rebuilt.load();
   expect(rebuilt.readBytes).toBeGreaterThan(0);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFindMatches, findKeyDirection, moveFindIndex } from "../src/find.ts";
+import { buildFindMatches, findKeyDirection, findSearchTargetIndex, moveFindIndex } from "../src/find.ts";
 import { patchFindTargets } from "../src/patch-find.ts";
 
 describe("task find", () => {
@@ -47,4 +47,27 @@ describe("task find", () => {
     expect(buildFindMatches(targets, "project")).toHaveLength(3);
     expect(buildFindMatches(targets, "header")).toHaveLength(0);
   });
+});
+
+it("locates the chosen snippet among repeated hits in a single turn after history loads", () => {
+  const text = "first needle apple and second needle orange and third needle pear";
+  const matches = buildFindMatches([{ key: "run:answer", text }], "needle");
+  expect(
+    findSearchTargetIndex(matches, {
+      query: "needle",
+      activeIndex: 0,
+      navigationId: 1,
+      targetRunId: "run",
+      matchBefore: "second ",
+      matchAfter: " orange",
+    }),
+  ).toBe(1);
+  expect(
+    findSearchTargetIndex(matches, {
+      query: "needle",
+      activeIndex: 0,
+      navigationId: 1,
+      targetRunId: "other",
+    }),
+  ).toBe(-1);
 });

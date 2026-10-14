@@ -351,6 +351,9 @@ async function launch(): Promise<void> {
         removeProject: 1,
         listSessions: 1,
         listRecentSessions: 0,
+        searchTasks: 2,
+        getTaskSearchChanges: 1,
+        listTaskFiles: 1,
         listSessionMentions: 1,
         setSessionPinned: 2,
         getProviderCredentials: 1,
@@ -653,6 +656,15 @@ async function launch(): Promise<void> {
           break;
         case "listSessions":
           value = host.listSessions(string(0));
+          break;
+        case "getTaskSearchChanges":
+          value = await host.getTaskSearchChanges(string(0));
+          break;
+        case "searchTasks":
+          value = host.searchTasks(string(0), args[1] === null ? null : string(1));
+          break;
+        case "listTaskFiles":
+          value = await host.listTaskFiles(sessionContext());
           break;
         case "listRecentSessions":
           value = host.listRecentSessions();

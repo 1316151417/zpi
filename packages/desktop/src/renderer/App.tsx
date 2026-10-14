@@ -2,13 +2,18 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Ellipsis,
+  FileDiff,
   Folder,
   FolderOpen,
+  Globe,
   Maximize2,
   MessageCirclePlus,
   Minimize2,
+  Moon,
   Plus,
+  Search,
   Settings,
+  Sun,
   X,
 } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,14 +30,17 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import type { InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
+import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import { inputContext } from "./composer-context.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
 import {
   canOpenSideChat,
   listenPanes,
+  openBrowser,
   openSideChat,
   openSubagent,
+  openTerminal,
   openWebLink,
   paneTask,
   setPaneOpen,
@@ -74,8 +82,10 @@ import {
 } from "./store.ts";
 import { TaskActivity } from "./TaskActivity.tsx";
 import { TaskMenu } from "./TaskMenu.tsx";
+import { type SearchCommand, TaskSearchDialog } from "./TaskSearchDialog.tsx";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
+import { PanelLeftClose, PanelLeftOpen, SquareTerminal } from "./task-search-icons.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
@@ -183,6 +193,12 @@ export function App() {
   const paneOpen = usePane((s) => s.open),
     paneRatio = usePane((s) => s.ratio);
   const sideChatBlocked = useSideChatBlocked(state.selected);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pendingSearch, setPendingSearch] = useState<{
+    id: string;
+    query: string;
+    snippet?: TaskSearchSnippet;
+  }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [action, setAction] = useState<ActionDialog>();
@@ -277,6 +293,36 @@ export function App() {
   const views = useStore.getState().views;
   const view = selected ? views.get(selected) : undefined;
   const find = useTaskFind(selected, Boolean(view) && !settingsOpen && !action);
+  useEffect(() => {
+    if (!pendingSearch || selected !== pendingSearch.id || !view) return;
+    find.start(
+      pendingSearch.query,
+      pendingSearch.snippet?.runId,
+      pendingSearch.snippet?.matchBefore,
+      pendingSearch.snippet?.matchAfter,
+    );
+    setPendingSearch(undefined);
+  }, [pendingSearch, selected, view, find.start]);
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "k"
+      )
+        return;
+      if (document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
+      event.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, []);
   const records = useMemo(
     () => [...state.sessions.values()].filter((record) => !record.draft && !record.parentSessionId),
     [state.sessions],
@@ -396,6 +442,77 @@ export function App() {
     300,
     Math.min((viewport - width) * paneRatio, viewport - width - (viewport >= 1100 ? 380 : 60)),
   );
+  const darkTheme = document.documentElement.dataset.theme === "dark";
+  const searchCommands: SearchCommand[] = [
+    {
+      id: "new-task",
+      title: "新任务",
+      section: "建议",
+      keywords: "new task 任务 新任务",
+      icon: MessageCirclePlus,
+      run: () => newSession(),
+    },
+    {
+      id: "open-workspace",
+      title: "打开工作区",
+      section: "建议",
+      keywords: "open workspace folder project 打开 文件夹 项目",
+      icon: FolderOpen,
+      run: addProject,
+    },
+    {
+      id: "settings",
+      title: "设置",
+      section: "建议",
+      keywords: "settings preferences 配置 设置",
+      icon: Settings,
+      run: () => setSettingsOpen(true),
+    },
+    {
+      id: "sidebar",
+      title: "切换侧边栏",
+      section: "面板",
+      keywords: "sidebar left toggle 侧栏 侧边栏",
+      icon: collapsed ? PanelLeftOpen : PanelLeftClose,
+      run: () => updatePrefs({ sidebarCollapsed: !collapsed }),
+    },
+    {
+      id: "terminal",
+      title: "添加终端标签",
+      section: "面板",
+      keywords: "terminal shell console 终端",
+      icon: SquareTerminal,
+      disabled: !selected,
+      run: () => (selected ? openTerminal(selected) : undefined),
+    },
+    {
+      id: "browser",
+      title: "添加浏览器标签",
+      section: "面板",
+      keywords: "browser preview web 浏览器 预览",
+      icon: Globe,
+      run: () => openBrowser(),
+    },
+    {
+      id: "review",
+      title: "添加审查标签",
+      section: "面板",
+      keywords: "review git diff changes 文件变更",
+      icon: FileDiff,
+      disabled: !selected,
+      run: () => {
+        if (selected) showChanges(selected, null);
+      },
+    },
+    {
+      id: "theme",
+      title: darkTheme ? "切换主题到浅色" : "切换主题到深色",
+      section: "配置",
+      keywords: "theme appearance light dark 主题 外观 浅色 深色",
+      icon: darkTheme ? Sun : Moon,
+      run: () => updatePrefs({ theme: darkTheme ? "light" : "dark" }),
+    },
+  ];
   return (
     <div
       className={`shell ${window.zpi.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""}`}
@@ -408,6 +525,26 @@ export function App() {
         } as CSSProperties
       }
     >
+      {searchOpen && (
+        <TaskSearchDialog
+          selected={selected}
+          workspaceKey={workspace?.cwd ?? record?.cwd ?? "ZPI"}
+          projects={state.projects}
+          commands={searchCommands}
+          onClose={() => setSearchOpen(false)}
+          onSelectTask={async (task, query, snippet) => {
+            setSettingsOpen(false);
+            setModelOpen(false);
+            await selectSession(task.id);
+            if (query) setPendingSearch({ id: task.id, query, snippet });
+          }}
+          onOpenFile={async (path) => {
+            if (!selected) await newSession();
+            const id = selected ?? useStore.getState().selected;
+            if (id) await showFile(id, path);
+          }}
+        />
+      )}
       <div className="workspace-surface" aria-hidden={settingsOpen} inert={settingsOpen}>
         <WindowChrome
           leftCollapsed={collapsed}
@@ -424,6 +561,13 @@ export function App() {
                 <button aria-label="新建任务" onClick={() => task(() => newSession())}>
                   <MessageCirclePlus size={16} />
                   新建任务
+                </button>
+                <button aria-label="搜索" onClick={openSearch}>
+                  <Search size={16} />
+                  <span className="sidebar-search-label">搜索</span>
+                  <span className="sidebar-search-shortcut">
+                    {window.zpi.platform === "darwin" ? "⌘ K" : "Ctrl+K"}
+                  </span>
                 </button>
               </div>
               <div className="sidebar-sections">
@@ -649,6 +793,7 @@ export function App() {
           ),
           [
             settingsOpen,
+            openSearch,
             collapsed,
             width,
             records,

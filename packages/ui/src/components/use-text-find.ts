@@ -6,6 +6,7 @@ import {
   type FindState,
   type FindTarget,
   findMatchKey,
+  findSearchTargetIndex,
   normalizeFindQuery,
 } from "../find.ts";
 
@@ -144,13 +145,16 @@ export function useTextFind({
         request.activeIndex !== last.index ||
         request.navigationId !== last.navigation;
       const rebased = explicit ? -1 : matches.findIndex((match) => findMatchKey(match) === last.key);
+      const targetIndex = findSearchTargetIndex(matches, request);
       const index = !matches.length
         ? -1
-        : rebased >= 0
-          ? rebased
-          : request.activeIndex >= 0 && request.activeIndex < matches.length
-            ? request.activeIndex
-            : 0;
+        : targetIndex >= 0
+          ? targetIndex
+          : rebased >= 0
+            ? rebased
+            : request.activeIndex >= 0 && request.activeIndex < matches.length
+              ? request.activeIndex
+              : 0;
       const active = matches[index];
       const key = active ? findMatchKey(active) : undefined;
       const ranges: Range[] = [],

@@ -1,3 +1,7 @@
+# ZCode task search
+
+The sidebar search entry, top-positioned Command Center, scope tabs/prefixes, keyboard navigation, result rows, snippets, highlights and workspace search history in `packages/desktop/src/renderer/{TaskSearchDialog,HighlightedMatchText}.tsx`, `task-search-{model,history,icons}.ts`, and `workbench.css` follow ZCode commit `aac4755666d09fdcd70272fcf063c077a639015f`, `packages/ui/src/{WorkspaceSidebar.tsx,command-center/{CommandCenterDialog,commandCenterSearchHistory}.ts*,quickpick/{quickPickStyles,HighlightedMatchText}.ts*,components/ui/command.tsx}`. The bounded 200000-character text index and four 20/72-character context snippets adapt `packages/services/src/session/taskIndexRepo.ts`. Adapted to ZPI's JSONL history index and Electron IPC. The original Lucide and Material Icon Theme assets are reused; no new bitmap artwork or remote services are imported. Apache-2.0 and the icon licenses reproduced below apply.
+
 # ZCode subagent plugin
 
 The task status UI directly adapts `v4/ConversationStatusPanel.tsx`, `v4/conversationLayout.ts`, `BackgroundTaskElapsedLabel.tsx`, `components/ui/{button,collapsible,dropdown-menu}.tsx` and `i18n/locales/zh-CN.ts` at ZCode commit `aac4755666d09fdcd70272fcf063c077a639015f`: content-sized capsule, hover icon swap, independently collapsible terminal/agent sections, elapsed labels, inline Stop, automatic 1280px container layout, and matching spacing, colors, shadows and Lucide assets. Completed-command history remains a ZPI extension; task execution uses the existing Electron IPC.
@@ -857,3 +861,29 @@ Automatic assistant preview parsing, change gates, candidate limits, stat valida
 Context compaction timeline dividers in packages/ui/src/components/CompactionDivider.tsx follow ZCode `v4/ConversationRowView.tsx` (`MarkerDividerRow`, compact status labels) and `styles.css` at commit 872ad960de7ec172591f7e1952f7849229f94521: 14px Lucide Archive, centered label, 1px border at 50% opacity, 12px outer gap, 6px icon gap, 8px/16px padding and the existing four-second gradient text animation. Adapted to ZPI's Pi compaction lifecycle and local session history. Existing ZCode Apache-2.0 and Lucide ISC attributions above apply; the compaction prompt is unchanged.
 
 Question transcript presentation in `AskQuestionToolBlock.tsx` and `user-question-presentation.ts` adapts ZCode `ToolCallBlocks/renderers/ask-question.tsx` and `lib/askUserQuestion.ts`. `UserQuestionCard.tsx` and its styles follow `ElicitationDialog.tsx` and the Badge, Button and Textarea primitives, including option descriptions, paging, focus restoration, keyboard/IME handling, responsive collapse and scroll bounds. Adapted to ZPI’s optional question tool, Pi text results and local IPC. CircleHelp, Check, Chevron and Info reuse the Lucide assets attributed above. Existing ZCode Apache-2.0 and Lucide ISC attributions apply.
+
+# cmdk
+
+The search palette uses cmdk 1.1.1 for the same keyboard and selection behavior as ZCode.
+
+MIT License
+
+Copyright (c) 2022 Paco Coursey
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
