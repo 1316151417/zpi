@@ -17,6 +17,9 @@ import type { FileReadState } from "./file-read-state.ts";
 import { resolveToCwd } from "./path-utils.ts";
 import { splitBom } from "./utils/text.ts";
 
+const MAX_EDIT_DETAIL_BYTES = 64 * 1024;
+const OMITTED_EDIT_DIFF = "[Diff omitted: exceeds the inline display limit.]";
+
 const replaceEditSchema = Type.Object(
   {
     oldText: Type.String({
@@ -210,6 +213,10 @@ export function createEditToolDefinition(
 
         const diffResult = generateDiffString(baseContent, newContent);
         const patch = generateUnifiedPatch(path, baseContent, newContent);
+        // Long changed lines appear in both display formats. Bound only these
+        // previews, not the independent fileChange snapshots used for rewind.
+        const diffTooLarge = Buffer.byteLength(diffResult.diff) > MAX_EDIT_DETAIL_BYTES;
+        const patchTooLarge = Buffer.byteLength(patch) > MAX_EDIT_DETAIL_BYTES;
         return {
           content: [
             {
@@ -219,7 +226,11 @@ export function createEditToolDefinition(
                 "No read-back needed while the edited text remains in context; re-read if it is missing or may have changed.",
             },
           ],
-          details: { diff: diffResult.diff, patch, firstChangedLine: diffResult.firstChangedLine },
+          details: {
+            diff: diffTooLarge || patchTooLarge ? OMITTED_EDIT_DIFF : diffResult.diff,
+            patch: patchTooLarge ? "" : patch,
+            firstChangedLine: diffResult.firstChangedLine,
+          },
         };
       });
     },

@@ -1,29 +1,55 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
-import { realpath } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readlink, realpath } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 
 const fileMutationQueues = new Map<string, Promise<void>>();
 let registrationQueue = Promise.resolve();
+const MAX_SYMLINK_EXPANSIONS = 40;
 
 function isMissingPathError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 async function getMutationQueueKey(filePath: string): Promise<string> {
-  const resolvedPath = resolve(filePath);
-  try {
-    return await realpath(resolvedPath);
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return resolvedPath;
+  let ancestor = resolve(filePath);
+  const missing: string[] = [];
+  let symlinks = 0;
+  while (true) {
+    try {
+      return join(await realpath(ancestor), ...missing);
+    } catch (error) {
+      if (!isMissingPathError(error)) throw error;
+      let target: string | undefined;
+      try {
+        target = await readlink(ancestor);
+      } catch (linkError) {
+        if (
+          !isMissingPathError(linkError) &&
+          !(
+            typeof linkError === "object" &&
+            linkError !== null &&
+            "code" in linkError &&
+            linkError.code === "EINVAL"
+          )
+        )
+          throw linkError;
+      }
+      if (target !== undefined) {
+        if (++symlinks > MAX_SYMLINK_EXPANSIONS)
+          throw Object.assign(new Error(`Too many symbolic links: ${filePath}`), { code: "ELOOP" });
+        // realpath cannot resolve dangling links. Follow their relative target
+        // without losing the missing suffix collected below a directory link.
+        ancestor = resolve(dirname(ancestor), target);
+        continue;
+      }
+      const parent = dirname(ancestor);
+      if (parent === ancestor) throw error;
+      // A missing file can still have symlinked parents. Canonicalize the
+      // existing ancestor so aliases share a lock before and after creation.
+      missing.unshift(basename(ancestor));
+      ancestor = parent;
     }
-    throw error;
   }
 }
 

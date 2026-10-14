@@ -135,6 +135,7 @@ export class SessionHost {
   private closing = false;
   private deleting = new Set<string>();
   private updating = new Set<string>();
+  private closingSideChats = new Set<string>();
   private homeDir: string;
   private defaultWorkspace: string;
   readonly attachments: AttachmentStore;
@@ -481,12 +482,22 @@ export class SessionHost {
           savedQueue?.type === "custom" &&
           isJsonObject(savedQueue.data) &&
           Array.isArray(savedQueue.data.items)
-        )
-          this.inputQueue.restore(
-            id,
-            savedQueue.data as unknown as InputQueue,
-            typeof data?.queueItemId === "string" ? data.queueItemId : undefined,
-          );
+        ) {
+          const queue = savedQueue.data as unknown as InputQueue;
+          const pendingIds = new Set(queue.items.map((item) => item.id));
+          const acceptedIds = new Set<string>();
+          // Dequeue persistence can fail before a later turn replaces the latest run marker.
+          // Reconcile every durable acceptance, not only the most recent turn.
+          for (const run of Object.values(index.data.runs).reverse()) {
+            if (!pendingIds.size) break;
+            for (const entry of index.read(run.start)) {
+              if (entry.type !== "custom" || !isJsonObject(entry.data)) continue;
+              const itemId = entry.data.queueItemId;
+              if (typeof itemId === "string" && pendingIds.delete(itemId)) acceptedIds.add(itemId);
+            }
+          }
+          this.inputQueue.restore(id, queue, acceptedIds);
+        }
       }
     }
     for (const [id, index] of this.indexes) {
@@ -852,6 +863,7 @@ export class SessionHost {
       this.closing ||
       !this.records.has(parentId) ||
       this.deleting.has(parentId) ||
+      this.closingSideChats.has(parentId) ||
       this.record(parentId).archivedAt != null
     )
       throw new Error("busy: 父会话已关闭");
@@ -955,6 +967,7 @@ export class SessionHost {
       parent.archivedAt != null ||
       this.closing ||
       this.deleting.has(parentId) ||
+      this.closingSideChats.has(parentId) ||
       this.activeRuns.get(parentId)?.aborted
     )
       throw new Error("busy: 父会话已停止或关闭");
@@ -1145,16 +1158,25 @@ export class SessionHost {
     }
   }
   async closeSideChat(id: string): Promise<void> {
-    if (!this.record(id).parentSessionId) throw new Error("invalid_input: 不是辅助对话");
-    const run = this.activeRuns.get(id);
-    if (run) await this.abortRun({ sessionId: id, runId: run.runId });
-    await this.inputQueue.archive(id, () => {});
-    this.sessions.get(id)?.dispose();
-    this.sessions.delete(id);
-    this.runtimes.delete(id);
-    this.managers.delete(id);
-    this.views.delete(id);
-    this.drafts.delete(id);
+    const record = this.record(id);
+    if (!record.parentSessionId) throw new Error("invalid_input: 不是辅助对话");
+    if (this.closingSideChats.has(id)) throw new Error("busy: 辅助对话正在关闭");
+    this.closingSideChats.add(id);
+    try {
+      const run = this.activeRuns.get(id);
+      if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+      // Closing discards this tab; opening another side chat creates a new child.
+      // Retain its history, but stop all owned work and durably reject late wakeups.
+      if (record.archivedAt == null) await this.archiveSession(id);
+      this.sessions.get(id)?.dispose();
+      this.sessions.delete(id);
+      this.runtimes.delete(id);
+      this.managers.delete(id);
+      this.views.delete(id);
+      this.drafts.delete(id);
+    } finally {
+      this.closingSideChats.delete(id);
+    }
   }
   activateSession(id: string): SessionRecord {
     const record = this.record(id);
@@ -2014,7 +2036,8 @@ export class SessionHost {
     if (this.configuration(id).subagentProfile && !internalSubagent)
       throw new Error("invalid_input: 子智能体会话只读");
     if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
-    if (this.closing || this.deleting.has(id)) throw new Error("busy: 应用正在关闭或会话正在删除");
+    if (this.closing || this.deleting.has(id) || this.closingSideChats.has(id))
+      throw new Error("busy: 应用正在关闭或会话正在删除");
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 此会话正在运行或更新");
     if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
     validateRunInputText(input);
@@ -2459,6 +2482,12 @@ export class SessionHost {
     if (status === "error")
       this.errors.write("agent.run", error ?? message ?? "Task failed", { sessionId: id, runId: run.runId });
     const endedAt = Date.now();
+    const storageFailure = (error: unknown, source: string) => {
+      this.errors.write(source, error, { sessionId: id, runId: run.runId });
+      status = "error";
+      message = `storage: ${error instanceof Error ? error.message : String(error)}`;
+      this.blocked.set(id, message);
+    };
     try {
       this.manager(id).appendCustomEntry("zpi.run", {
         phase: "end",
@@ -2471,13 +2500,18 @@ export class SessionHost {
       if ((status === "completed" || status === "error") && this.visibleSessionId !== id)
         this.saveUnread(id, endedAt);
     } catch (e) {
-      this.errors.write("agent.persist", e, { sessionId: id, runId: run.runId });
-      status = "error";
-      message = `storage: ${e instanceof Error ? e.message : String(e)}`;
-      this.blocked.set(id, message);
+      storageFailure(e, "agent.persist");
+    }
+    // Derived-index persistence and child publication must not strand run.done,
+    // which cancellation and application close both await.
+    try {
+      this.indexes.get(id)?.flush();
+    } catch (error) {
+      storageFailure(error, "agent.index");
     }
     const inbox = this.pendingSubagentMessages.get(id) ?? [];
-    const continueInbox = inbox.length > 0 && !run.aborted && !this.closing && !this.deleting.has(id);
+    const continueInbox =
+      inbox.length > 0 && !run.aborted && !this.closing && !this.deleting.has(id) && !this.blocked.has(id);
     const childTask = this.subagents.taskForChild(id);
     if (childTask) {
       const messages = run.session?.messages ?? [];
@@ -2485,52 +2519,63 @@ export class SessionHost {
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("\n");
-      this.subagents.update(childTask.agentId, {
-        status: continueInbox ? "running" : status,
-        endedAt: continueInbox ? undefined : endedAt,
-        error: message,
-        result: continueInbox ? undefined : result,
-        waitingForInput: false,
-        totalToolUseCount: messages.filter((message) => message.role === "toolResult").length,
-        totalTokens: messages.reduce(
-          (total, message) => total + (message.role === "assistant" ? message.usage.totalTokens : 0),
-          0,
-        ),
-      });
+      try {
+        this.subagents.update(childTask.agentId, {
+          status: continueInbox ? "running" : status,
+          endedAt: continueInbox ? undefined : endedAt,
+          error: message,
+          result: continueInbox ? undefined : result,
+          waitingForInput: false,
+          totalToolUseCount: messages.filter((message) => message.role === "toolResult").length,
+          totalTokens: messages.reduce(
+            (total, message) => total + (message.role === "assistant" ? message.usage.totalTokens : 0),
+            0,
+          ),
+        });
+      } catch (error) {
+        storageFailure(error, "subagent.persist");
+        try {
+          this.subagents.update(childTask.agentId, { status: "error", error: message, endedAt });
+        } catch {
+          // The in-memory terminal owner was updated before publication failed.
+        }
+      }
     }
     if (message?.includes("storage:")) this.blocked.set(id, message);
     this.activeRuns.delete(id);
     this.pendingSubagentMessages.delete(id);
     const record = this.record(id);
     record.status = status;
-    this.emit(id, run.runId, {
-      type: "settled",
-      status,
-      endedAt,
-      error: message,
-      unreadAt: record.unreadAt,
-    });
-    this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
-    this.indexes.get(id)?.flush();
-    this.trimCaches(id);
-    // A reply may arrive after the SDK closes its steering inbox but before settle runs.
-    // Reserve the next turn before the user-input queue drains, keeping that reply model-only.
-    if (continueInbox) {
-      const [first, ...remaining] = inbox;
-      if (remaining.length) this.pendingSubagentMessages.set(id, remaining);
-      void this.startRun(first, undefined, !!childTask).catch((error) => {
-        this.pendingSubagentMessages.delete(id);
-        this.errors.write("subagent.delivery", error, { sessionId: id });
-        if (childTask)
-          this.subagents.update(childTask.agentId, {
-            status: "error",
-            error: String(error),
-            endedAt: Date.now(),
-          });
+    try {
+      this.emit(id, run.runId, {
+        type: "settled",
+        status,
+        endedAt,
+        error: message,
+        unreadAt: record.unreadAt,
       });
+      this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
+      this.trimCaches(id);
+      // A reply may arrive after the SDK closes its steering inbox but before settle runs.
+      // Reserve the next turn before the user-input queue drains, keeping that reply model-only.
+      if (continueInbox && !this.blocked.has(id)) {
+        const [first, ...remaining] = inbox;
+        if (remaining.length) this.pendingSubagentMessages.set(id, remaining);
+        void this.startRun(first, undefined, !!childTask).catch((error) => {
+          this.pendingSubagentMessages.delete(id);
+          this.errors.write("subagent.delivery", error, { sessionId: id });
+          if (childTask)
+            this.subagents.update(childTask.agentId, {
+              status: "error",
+              error: String(error),
+              endedAt: Date.now(),
+            });
+        });
+      }
+    } finally {
+      run.finish();
+      this.inputQueue.settled(id, status);
     }
-    run.finish();
-    this.inputQueue.settled(id, status);
   }
   async abortRun(input: { sessionId: string; runId: string }): Promise<void> {
     const run = this.activeRuns.get(input.sessionId);
@@ -2548,24 +2593,38 @@ export class SessionHost {
   }
   async close(): Promise<void> {
     this.closing = true;
-    await this.subagents.close();
-    await this.backgroundTasks.close();
-    const queueClose = this.inputQueue.close();
+    const errors: unknown[] = [];
+    const cleanup = async (work: () => void | Promise<void>) => {
+      try {
+        await work();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+    // One owner's persistence failure must not leave unrelated processes or
+    // model runs alive. Drain each existing owner, then surface every failure.
+    await cleanup(() => this.subagents.close());
+    await cleanup(() => this.backgroundTasks.close());
+    const queueClose = cleanup(() => this.inputQueue.close());
     for (const job of this.titleJobs.values()) job.controller.abort();
     await Promise.allSettled([...this.titleJobs.values()].map((job) => job.done));
     const runs = [...this.activeRuns.values()];
-    await Promise.allSettled(
-      runs.map(async (r) => {
-        r.aborted = true;
-        try {
-          await r.session?.abort();
-        } finally {
-          await r.done;
-        }
-      }),
+    await Promise.all(
+      runs.map((r) =>
+        cleanup(async () => {
+          r.aborted = true;
+          try {
+            await r.session?.abort();
+          } finally {
+            await r.done;
+          }
+        }),
+      ),
     );
-    for (const s of this.sessions.values()) s.dispose();
+    for (const s of this.sessions.values()) await cleanup(() => s.dispose());
     await queueClose;
-    for (const index of this.indexes.values()) index.flush();
+    for (const index of this.indexes.values()) await cleanup(() => index.flush());
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, "Failed to close all session resources cleanly");
   }
 }

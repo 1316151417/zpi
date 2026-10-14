@@ -82,3 +82,44 @@ it("archive waits for process cleanup and prevents queued submissions from resta
   expect(runtime.save).toHaveBeenCalledOnce();
   expect(runtime.start).not.toHaveBeenCalled();
 });
+
+it("restart removes only durably accepted IDs and retains unexecuted inputs paused", () => {
+  const runtime: ConstructorParameters<typeof SessionInputQueue>[0] = {
+    check: () => {},
+    running: () => false,
+    prepare: vi.fn(),
+    retain: vi.fn(),
+    discard: vi.fn(),
+    withdraw: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+    save: vi.fn(),
+    publish: vi.fn(),
+  };
+  const queue = new SessionInputQueue(runtime);
+  const item = {
+    state: "dispatching" as const,
+    text: "input",
+    attachments: [],
+    fileReferences: [],
+    selection: { provider: "p", modelId: "m", reasoning: "none" as const },
+  };
+  queue.restore(
+    "owner",
+    {
+      items: [
+        { ...item, id: "accepted" },
+        { ...item, id: "waiting" },
+      ],
+      autoDrain: true,
+    },
+    new Set(["accepted", "different-owner"]),
+  );
+  expect(queue.get("owner")).toMatchObject({
+    items: [{ id: "waiting", state: "queued" }],
+    autoDrain: false,
+    pauseReason: "restart",
+  });
+  expect(queue.get("owner").items).toHaveLength(1);
+  expect(runtime.discard).not.toHaveBeenCalled();
+});

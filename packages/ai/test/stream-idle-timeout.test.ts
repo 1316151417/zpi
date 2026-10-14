@@ -245,3 +245,20 @@ it("keeps stop distinct from timeout when a provider never responds to abort", a
   expect(await output.result()).toMatchObject({ stopReason: "aborted", errorDetails: { retryable: false } });
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("still stops an abort-ignoring provider when the event deadline is disabled", async () => {
+  vi.useFakeTimers();
+  const parent = new AbortController();
+  const source = createAssistantMessageEventStream();
+  const output = guardModelStream(fakeModel(""), () => source, {
+    signal: parent.signal,
+    streamIdleTimeoutMs: 0,
+  });
+  await vi.advanceTimersByTimeAsync(900_000);
+  expect(vi.getTimerCount()).toBe(0);
+  parent.abort();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(await output.result()).toMatchObject({ stopReason: "aborted", errorDetails: { retryable: false } });
+  source.end(emptyAssistant(fakeModel("")));
+  expect(vi.getTimerCount()).toBe(0);
+});

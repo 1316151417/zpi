@@ -27,9 +27,9 @@ export class SessionInputQueue {
   get(id: string): InputQueue {
     return this.states.get(id) ?? { items: [], autoDrain: true };
   }
-  restore(id: string, state: InputQueue, acceptedId?: string): void {
+  restore(id: string, state: InputQueue, acceptedIds: ReadonlySet<string> = new Set()): void {
     const items = state.items
-      .filter((item) => item.id !== acceptedId)
+      .filter((item) => !acceptedIds.has(item.id))
       .map((item) => ({ ...item, state: "queued" as const }));
     this.states.set(id, {
       ...state,

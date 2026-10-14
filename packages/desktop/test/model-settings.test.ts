@@ -44,3 +44,20 @@ it("preserves the original custom draft and its unsaved fields when discovery ma
   const discovered = { ...draft, contextWindow: 16_000, samplingText: "" };
   expect(mergeDiscoveredModels([draft], [discovered])[0]).toBe(draft);
 });
+
+it("keeps disabled reasoning configuration intact when invalid mapping is rejected", async () => {
+  const { draftModel, serializeModel } = await import("../src/renderer/ModelConfigDialog.tsx");
+  const draft = draftModel({
+    id: "custom",
+    reasoning: false,
+    reasoningConfig: { levels: [], map: "" },
+  });
+  const original = structuredClone(draft);
+  expect(() => serializeModel(draft)).toThrow("推理等级不能为空");
+  expect(draft).toEqual(original);
+  const repaired = { ...draft, reasoningConfig: { levels: ["none"], map: "{}" } };
+  expect(serializeModel(repaired)).toMatchObject({
+    reasoning: false,
+    reasoningConfig: repaired.reasoningConfig,
+  });
+});

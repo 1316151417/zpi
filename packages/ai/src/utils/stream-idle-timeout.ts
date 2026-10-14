@@ -55,12 +55,13 @@ export async function readNextWithStreamIdleTimeout<T>(
     timeoutMs: number;
   },
 ): Promise<IteratorResult<T>> {
-  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) return iterator.next();
   const readStartedAt = Date.now();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let removeAbortListener: (() => void) | undefined;
   let timeoutError: ModelStreamIdleTimeoutError | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
+    // Disabling the deadline must not disable Stop for an abort-ignoring provider.
+    if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) return;
     timeout = setTimeout(() => {
       if (options.abortController.signal.aborted) {
         reject(options.abortController.signal.reason ?? new Error("Model stream aborted."));

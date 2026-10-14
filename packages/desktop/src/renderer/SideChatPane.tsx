@@ -65,7 +65,7 @@ export function SideChatPane({
         }
         onChanges={(runId, path, toolCallId) => openChanges(sessionId, runId, path, toolCallId)}
         onLoadToolPatch={(runId, toolCallId) =>
-          window.zpi.readPatch(sessionId, runId, toolCallId).then(unwrap)
+          window.zpi.readPatch(sessionId, runId, `operation:${toolCallId}`).then(unwrap)
         }
         historyCursor={cursor}
         hasEarlier={cursor != null}

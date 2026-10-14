@@ -7,6 +7,7 @@ import { build } from "tsup";
 import { createServer } from "vite";
 import { buildAppIcon } from "./app-icon.mjs";
 import { mainBuild, preloadBuild } from "./desktop-build.mjs";
+import { stopDesktopProcess } from "./dev-process.ts";
 import { prepareTerminal } from "./prepare-terminal.ts";
 
 await prepareTerminal();
@@ -35,14 +36,6 @@ const server = await createServer({
 await server.listen();
 const devUrl = server.resolvedUrls?.local[0];
 if (!devUrl) throw new Error("Vite did not expose a local URL");
-async function stopDesktop() {
-  if (!child || child.exitCode !== null) return;
-  const current = child;
-  await new Promise((resolve) => {
-    current.once("exit", resolve);
-    current.kill("SIGTERM");
-  });
-}
 await build({
   ...mainBuild,
   watch: [
@@ -56,7 +49,7 @@ await build({
   onSuccess: async () => {
     if (shuttingDown) return;
     await build(preloadBuild);
-    await stopDesktop();
+    await stopDesktopProcess(child);
     if (shuttingDown) return;
     const env = { ...process.env, ZPI_DEV_URL: devUrl };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -75,9 +68,16 @@ await build({
 async function close() {
   if (shuttingDown) return;
   shuttingDown = true;
-  await stopDesktop();
-  await server.close();
-  process.exit(0);
+  let code = 0;
+  try {
+    await stopDesktopProcess(child);
+  } catch (error) {
+    console.error(error);
+    code = 1;
+  } finally {
+    await server.close();
+  }
+  process.exit(code);
 }
 process.on("SIGINT", close);
 process.on("SIGTERM", close);

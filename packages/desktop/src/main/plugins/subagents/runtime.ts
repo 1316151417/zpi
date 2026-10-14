@@ -177,10 +177,14 @@ export class SubagentPlugin {
     if (Object.entries(fields).every(([key, value]) => previous[key as keyof SubagentTask] === value)) return;
     const next = { ...previous, ...fields };
     this.tasks.set(agentId, next);
-    this.port.publish(next);
-    this.outputWaiters.get(agentId)?.forEach((wake) => {
-      wake();
-    });
+    try {
+      this.port.publish(next);
+    } finally {
+      // Readers observe the terminal in-memory owner even if persistence failed.
+      this.outputWaiters.get(agentId)?.forEach((wake) => {
+        wake();
+      });
+    }
   }
   private owned(parentId: string, agentId: string) {
     const task = this.tasks.get(agentId);
@@ -193,12 +197,34 @@ export class SubagentPlugin {
     if (stopping) return stopping;
     if (task.status !== "running") throw new Error("busy: 子智能体已结束");
     this.cancellations.set(agentId, (this.cancellations.get(agentId) ?? 0) + 1);
-    // Mark before cancelling so background completion cannot wake the stopped parent.
-    this.update(agentId, { status: "aborted", endedAt: Date.now(), waitingForInput: false });
     const job = this.jobs.get(agentId);
-    const stopped = this.port
-      .stop(task.childSessionId)
-      .then(() => job?.catch(() => {}))
+    const stopped = Promise.resolve()
+      .then(async () => {
+        let publicationError: unknown;
+        // Mark before cancelling so completion cannot wake the stopped parent, but
+        // a failed persistence/UI publication must never skip actual cancellation.
+        try {
+          this.update(agentId, { status: "aborted", endedAt: Date.now(), waitingForInput: false });
+        } catch (error) {
+          publicationError = error;
+        }
+        try {
+          await this.port.stop(task.childSessionId);
+        } catch (error) {
+          // Cancellation is unconfirmed. Keep the owner retryable rather than
+          // treating potentially live work as terminal forever.
+          if (this.tasks.get(agentId)?.status === "aborted") {
+            try {
+              this.update(agentId, { status: "running", endedAt: undefined });
+            } catch {
+              // update changes the in-memory owner before publishing.
+            }
+          }
+          throw error;
+        }
+        await job?.catch(() => {});
+        if (publicationError) throw publicationError;
+      })
       .finally(() => {
         this.stopping.delete(agentId);
       });

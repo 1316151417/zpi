@@ -206,3 +206,34 @@ test("identical progress updates do not persist or publish redundant snapshots",
   expect(f.port.publish).toHaveBeenCalledTimes(1);
   await f.plugin.close();
 });
+
+test("a failed terminal publication cannot skip or duplicate runtime cancellation", async () => {
+  const f = fixture();
+  const task = await f.launch();
+  vi.mocked(f.port.publish).mockImplementation(() => {
+    throw new Error("storage: terminal publication failed");
+  });
+  const first = f.plugin.stop("parent", task.agentId);
+  const second = f.plugin.stop("parent", task.agentId);
+  await expect(first).rejects.toThrow("terminal publication failed");
+  await expect(second).rejects.toThrow("terminal publication failed");
+  expect(f.port.stop).toHaveBeenCalledTimes(1);
+  expect(f.plugin.list("parent")[0].status).toBe("aborted");
+  await f.plugin.close();
+  expect(f.port.stop).toHaveBeenCalledTimes(1);
+});
+
+test("failed runtime cancellation remains retryable and concurrent retries share one drain", async () => {
+  const f = fixture();
+  const task = await f.launch();
+  const actualStop = f.port.stop;
+  vi.mocked(f.port.stop).mockRejectedValueOnce(new Error("process cancellation failed"));
+  await expect(f.plugin.stop("parent", task.agentId)).rejects.toThrow("process cancellation failed");
+  expect(f.plugin.list("parent")[0].status).toBe("running");
+  const first = f.plugin.stop("parent", task.agentId);
+  const second = f.plugin.stop("parent", task.agentId);
+  await Promise.all([first, second]);
+  expect(actualStop).toHaveBeenCalledTimes(2);
+  expect(f.plugin.list("parent")[0].status).toBe("aborted");
+  await f.plugin.close();
+});

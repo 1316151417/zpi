@@ -54,6 +54,20 @@ export class ChatGPTAuth {
       const credential = await attempt.login.wait();
       if (this.pending.get(loginId) !== attempt) throw new Error("provider: 登录已取消");
       const providerId = attempt.providerId ?? randomUUID();
+      let warning: string | undefined;
+      let discovered: Awaited<ReturnType<typeof fetchProviderModels>> | undefined;
+      try {
+        discovered = await fetchProviderModels(
+          { preset: "openai-chatgpt", apiKey: credential.access },
+          this.fetcher,
+        );
+        warning = discovered.warning;
+      } catch (error) {
+        this.errors?.write("chatgpt.models", error, { providerId });
+        warning = "ChatGPT 已登录，模型列表获取失败，请点击获取模型列表重试。";
+      }
+      // 模型发现期间仍可取消登录；确认流程有效后再同步落盘，避免取消后留下已登录账号。
+      if (this.pending.get(loginId) !== attempt) throw new Error("provider: 登录已取消");
       if (!attempt.providerId) {
         const preset = getProviderPreset("openai-chatgpt");
         if (!preset) throw new Error("configuration: 缺少 ChatGPT 提供商");
@@ -66,24 +80,17 @@ export class ChatGPTAuth {
         });
       }
       this.settings.saveChatGPTCredential(providerId, credential);
-      let warning: string | undefined;
-      try {
-        const discovered = await fetchProviderModels(
-          {
-            preset: "openai-chatgpt",
-            apiKey: await this.settings.getRequestApiKey(providerId, this.fetcher),
-          },
-          this.fetcher,
-        );
-        warning = discovered.warning;
-        const { apiKey: _key, ...saved } = this.settings.snapshot(providerId);
-        this.settings.saveProvider({
-          ...saved,
-          models: mergeDiscoveredModels(saved.models, discovered.models),
-        });
-      } catch (error) {
-        this.errors?.write("chatgpt.models", error, { providerId });
-        warning = "ChatGPT 已登录，模型列表获取失败，请点击获取模型列表重试。";
+      if (discovered) {
+        try {
+          const { apiKey: _key, ...saved } = this.settings.snapshot(providerId);
+          this.settings.saveProvider({
+            ...saved,
+            models: mergeDiscoveredModels(saved.models, discovered.models),
+          });
+        } catch (error) {
+          this.errors?.write("chatgpt.models", error, { providerId });
+          warning = "ChatGPT 已登录，模型列表获取失败，请点击获取模型列表重试。";
+        }
       }
       return { settings: this.settings.get(), providerId, ...(warning ? { warning } : {}) };
     } finally {
