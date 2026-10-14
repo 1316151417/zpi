@@ -327,7 +327,7 @@ export class SubagentPlugin {
     return [
       {
         name: "Agent",
-        label: "SubAgent",
+        label: "子智能体",
         parameters: launchParameters,
         description:
           "Launch an autonomous agent for complex, multi-step tasks. Select subagent_type (default general-purpose). Use Explore for read-only codebase searches. Send independent tasks in one response to run concurrently. Agents receive only your prompt and their own instructions; provide all necessary context. Models are controlled by user settings. For background agents, continue with other work; completion is delivered automatically. Do not poll or duplicate their work. Use SendMessage with the returned agentId to continue an agent.",

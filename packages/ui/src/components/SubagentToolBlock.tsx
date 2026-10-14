@@ -35,7 +35,7 @@ export function SubagentToolBlock({ block, onCopy }: ToolBlockProps) {
     <div className="tool-block subagent-tool-block" data-testid="tool-block" data-tool-name="Agent">
       <ToolLayout
         icon={Bot}
-        label="SubAgent"
+        label="子智能体"
         running={running}
         expanded={false}
         kindDetail={
