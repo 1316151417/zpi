@@ -394,3 +394,77 @@ it("spools record identity and accepted queue IDs on disk and removes the spool 
   await expect(readFile(join(spool, "records.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
   session.close();
 });
+
+it.each(["missing", "changed"])(
+  "rejects %s transcript headers even when file hashes are internally consistent",
+  async (damage) => {
+    const f = await fixture();
+    const plan = await inspect(f.source);
+    const stage = await convert(plan, f.target, true);
+    const file = "agent/sessions/_unassigned/task.jsonl";
+    const header = JSON.parse((await readFile(join(stage, file), "utf8")).trim());
+    const content = damage === "missing" ? "" : `${JSON.stringify({ ...header, cwd: "/wrong" })}\n`;
+    await writeFile(join(stage, file), content);
+    const manifest = JSON.parse(await readFile(join(stage, "manifest.json"), "utf8"));
+    const { createHash } = await import("node:crypto");
+    const record = manifest.files.find((item: { path: string }) => item.path === file);
+    record.sha256 = createHash("sha256").update(content).digest("hex");
+    record.size = Buffer.byteLength(content);
+    await writeFile(join(stage, "manifest.json"), JSON.stringify(manifest));
+    await expect(validate(stage)).rejects.toThrow("header");
+  },
+);
+
+it("defaults legacy global communication style on but frozen existing sessions off", async () => {
+  const f = await fixture([
+    { type: "custom", customType: "zpi.configuration", data: { askUserQuestion: false } },
+  ]);
+  await writeFile(join(f.source, "settings.json"), JSON.stringify({ version: 4, providers: [] }));
+  const stage = await convert(await inspect(f.source), f.target, true);
+  const store = new StateStore(join(stage, "state.sqlite"));
+  try {
+    expect(store.getSetting("app")).toMatchObject({ capabilities: { communicationStyle: true } });
+    expect(store.getTask("task")?.frozenConfiguration).toEqual({
+      askUserQuestion: false,
+      communicationStyle: false,
+    });
+  } finally {
+    store.close();
+  }
+});
+
+it("keeps last background-instance state in the disk spool instead of a JavaScript history map", async () => {
+  const f = await fixture(
+    Array.from({ length: 80 }, (_, index) => ({
+      type: "custom",
+      customType: `zpi.background_task:b${index}`,
+      data: { taskId: `b${index}`, sessionId: "task", status: "running" },
+    })),
+  );
+  const session = await readLegacySession(f.path);
+  try {
+    expect(session.entries.db.prepare("SELECT COUNT(*) AS n FROM current_state").get()?.n).toBe(80);
+    expect(session.state.get("zpi.background_task:b79")).toMatchObject({ taskId: "b79" });
+    expect(session.counts).toEqual({ "zpi.background_task": 80 });
+  } finally {
+    session.close();
+  }
+  const stage = await convert(await inspect(f.source), f.target, true);
+  const store = new StateStore(join(stage, "state.sqlite"));
+  try {
+    expect(store.getRuntime("task", "background")).toHaveLength(80);
+    expect(store.getRuntime("task", "background").every((item) => item.status === "lost")).toBe(true);
+  } finally {
+    store.close();
+  }
+});
+
+it("blocks invalid UTF-8 instead of silently replacing source transcript bytes", async () => {
+  const f = await fixture([userMessage]);
+  const content = await readFile(f.path);
+  const at = content.indexOf(Buffer.from("hello"));
+  content[at] = 255;
+  await writeFile(f.path, content);
+  expect((await inspect(f.source)).blockers[0]?.reason).toContain("UTF-8");
+  expect(await readFile(f.path)).toEqual(content);
+});

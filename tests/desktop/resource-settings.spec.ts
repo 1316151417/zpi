@@ -100,6 +100,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".settings-tabs button")).toHaveText([
       "常规",
       "界面设置",
+      "快捷键",
       "系统提示词",
       "工具",
       "技能",
@@ -114,6 +115,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     );
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     await expect(page.locator(".capability-settings .settings-row strong")).toHaveText([
+      "提示词-交互方式",
       "提示词-多工具调用",
       "提示词-文件链接格式",
       "提示词-文件内容复用",
@@ -122,7 +124,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "子智能体",
     ]);
     const pluginSwitches = page.locator(".capability-settings input[type=checkbox]");
-    await expect(pluginSwitches).toHaveCount(6);
+    await expect(pluginSwitches).toHaveCount(7);
     await expect(page.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toHaveCount(0);
     for (const toggle of await pluginSwitches.all()) await expect(toggle).toBeChecked();
     await page.screenshot({ path: "test-results/desktop-settings-capabilities.png" });
@@ -141,6 +143,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       page.getByRole("heading", { name: "插件提示词 按启用能力生成 · 只读", exact: true }),
     ).toBeVisible();
     const rules = page.locator(".system-rules-preview");
+    await expect(rules).toContainText("all answers, conclusions, and deliverables");
     await expect(rules).toContainText("Return web URLs as Markdown links");
     await expect(rules).toContainText("return local file references as Markdown links");
     const systemRules = await rules.textContent();
@@ -167,7 +170,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".tool-resource-row")).toHaveCount(9);
     await page.screenshot({ path: "test-results/desktop-settings-tools-list.png" });
     await page.getByRole("button", { name: /read 已启用/ }).click();
-    await expect(page.locator(".tool-resource-detail")).toContainText("Images are sent as attachments");
+    await expect(page.locator(".tool-resource-detail")).toContainText(
+      "Images up to 20 MiB are sent as attachments",
+    );
     await page.screenshot({ path: "test-results/desktop-settings-tool-detail.png" });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({ path: "test-results/desktop-settings-tools-dark.png" });

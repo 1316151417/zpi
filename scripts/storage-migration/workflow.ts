@@ -34,6 +34,7 @@ import {
 import type { ProjectRecord } from "../../packages/desktop/src/shared/bridge.ts";
 import type { TaskGroupState } from "../../packages/desktop/src/shared/task-groups.ts";
 import {
+  LegacyEntries,
   type LegacySession,
   lines,
   object,
@@ -143,8 +144,8 @@ export async function inspect(source: string): Promise<MigrationPlan> {
           throw new Error("session ID differs from filename");
         const project = file.path.split(sep).at(-2);
         if (
-          session.state["zpi.session_meta"]?.projectId !== undefined &&
-          (session.state["zpi.session_meta"].projectId ?? "_unassigned") !== project
+          session.state.get("zpi.session_meta")?.projectId !== undefined &&
+          (session.state.get("zpi.session_meta")?.projectId ?? "_unassigned") !== project
         )
           throw new Error("project ownership differs from directory");
         recoveredQueue(session);
@@ -365,16 +366,16 @@ function migratedTask(
   session: LegacySession,
   item: MigrationPlan["sessions"][number],
 ): TaskState & { sessionFile: string } {
-  const environment = session.state["zpi.environment"] ?? {},
-    meta = session.state["zpi.session_meta"] ?? {};
+  const environment = session.state.get("zpi.environment") ?? {},
+    meta = session.state.get("zpi.session_meta") ?? {};
   const sessionFile = item.path;
-  const latestRun = session.state["zpi.run"];
+  const latestRun = session.state.get("zpi.run");
   const historicalSelection = session.historicalSelection;
   return {
     id: item.id,
     projectId: (meta.projectId ??
       (item.path.split(sep).at(-2) === "_unassigned" ? null : item.path.split(sep).at(-2))) as string | null,
-    title: String(session.state.session_info?.name ?? "新对话"),
+    title: String(session.state.get("session_info")?.name ?? "新对话"),
     createdAt: Date.parse(String(session.header.timestamp)),
     updatedAt: Date.parse(String(session.lastTimestamp ?? session.header.timestamp)),
     cwd: String(session.header.cwd),
@@ -383,18 +384,21 @@ function migratedTask(
     running: false,
     draft: meta.draft === true && !session.counts["zpi.run"],
     status: latestRun?.phase === "start" ? "interrupted" : latestRun?.status,
-    unreadAt: session.state["zpi.attention"]?.unreadAt ?? undefined,
+    unreadAt: session.state.get("zpi.attention")?.unreadAt ?? undefined,
     sessionFile,
-    titleState: session.state["zpi.title"]?.state,
+    titleState: session.state.get("zpi.title")?.state,
     lastThinkingLevel: historicalSelection.lastThinkingLevel,
-    fork: session.state["zpi.fork"]
-      ? { sessionId: session.state["zpi.fork"].parentSessionId, runId: session.state["zpi.fork"].runId }
-      : undefined,
-    currentSelection: session.state["zpi.selection"] ?? historicalSelection.selection,
-    frozenConfiguration: session.state["zpi.configuration"]
+    fork: session.state.get("zpi.fork")
       ? {
-          ...session.state["zpi.configuration"],
-          communicationStyle: session.state["zpi.configuration"].communicationStyle ?? false,
+          sessionId: session.state.get("zpi.fork")?.parentSessionId,
+          runId: session.state.get("zpi.fork")?.runId,
+        }
+      : undefined,
+    currentSelection: session.state.get("zpi.selection") ?? historicalSelection.selection,
+    frozenConfiguration: session.state.get("zpi.configuration")
+      ? {
+          ...session.state.get("zpi.configuration"),
+          communicationStyle: session.state.get("zpi.configuration")?.communicationStyle ?? false,
         }
       : undefined,
   } as unknown as TaskState & { sessionFile: string };
@@ -416,6 +420,7 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
     await mkdir(stage);
     await durableJson(join(stage, "plan.json"), plan);
     const store = new StateStore(join(stage, "state.sqlite"));
+    let pending: LegacyEntries | undefined;
     try {
       const projects = (await optionalJson(plan.source, "projects.json")) ?? [];
       if (!Array.isArray(projects)) throw new Error("invalid projects");
@@ -427,11 +432,12 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
         validateSubagentProfileState(profiles);
         store.setSetting("subagentProfiles", profiles);
       }
-      const pending: {
-        task: TaskState & { sessionFile: string };
-        state: LegacySession["state"];
-        queue: Row;
-      }[] = [];
+      pending = new LegacyEntries();
+      const pendingDb = pending.db;
+      pendingDb.exec(`CREATE TABLE pending_tasks(id TEXT PRIMARY KEY,parent_id TEXT,task TEXT NOT NULL,queue TEXT NOT NULL);
+        CREATE TABLE pending_runtime(task_id TEXT,key TEXT,data TEXT,PRIMARY KEY(task_id,key));`);
+      const savePending = pendingDb.prepare("INSERT INTO pending_tasks VALUES (?,?,?,?)");
+      const saveRuntime = pendingDb.prepare("INSERT INTO pending_runtime VALUES (?,?,?)");
       for (const item of plan.sessions) {
         const session = await readLegacySession(join(plan.source, item.path));
         try {
@@ -448,33 +454,51 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
             await handle.writeFile(
               `${JSON.stringify({ ...session.header, version: 2, generation: plan.migrationId })}\n`,
             );
-            for (const entry of entries)
-              await handle.writeFile(
-                `${JSON.stringify(encodeTranscriptEntry(relocate(entry) as unknown as SessionEntry, Number(entry.seq)))}\n`,
+            for (const entry of entries) {
+              const record = JSON.stringify(
+                encodeTranscriptEntry(relocate(entry) as unknown as SessionEntry, Number(entry.seq)),
               );
+              if (Buffer.byteLength(record, "utf8") > 8 * 1024 * 1024)
+                throw new Error("generated v2 record exceeds 8 MiB; explicit format recovery required");
+              await handle.writeFile(`${record}\n`);
+            }
             await handle.sync();
           } finally {
             await handle.close();
           }
           const task = migratedTask(session, item);
           // Only recovery state is needed after this transcript is written.
-          pending.push({ task, state: session.state, queue: recoveredQueue(session) });
+          savePending.run(
+            task.id,
+            task.parentSessionId ?? null,
+            JSON.stringify(task),
+            JSON.stringify(recoveredQueue(session)),
+          );
+          for (const [key, value] of session.state)
+            if (key.startsWith("zpi.background_task:") || key === "zpi.subagent_task")
+              saveRuntime.run(task.id, key, JSON.stringify(value));
         } finally {
           session.close();
         }
       }
-      while (pending.length) {
-        const at = pending.findIndex(
-          ({ task }) =>
-            !task.parentSessionId || !pending.some((other) => other.task.id === task.parentSessionId),
-        );
-        if (at < 0) throw new Error("cyclic parent task references");
-        const { task, state, queue } = pending.splice(at, 1)[0];
+      const nextPending =
+        pendingDb.prepare(`SELECT * FROM pending_tasks p WHERE parent_id IS NULL OR NOT EXISTS
+        (SELECT 1 FROM pending_tasks parent WHERE parent.id=p.parent_id) ORDER BY id LIMIT 1`);
+      while (pendingDb.prepare("SELECT 1 FROM pending_tasks LIMIT 1").get()) {
+        const row = nextPending.get();
+        if (!row) throw new Error("cyclic parent task references");
+        const task = JSON.parse(String(row.task)) as TaskState & { sessionFile: string };
+        const queue = JSON.parse(String(row.queue)) as Row;
+        pendingDb.prepare("DELETE FROM pending_tasks WHERE id=?").run(task.id);
         store.upsertTask(task);
         store.setQueue(task.id, relocate(queue) as InputQueue);
         const draft = await optionalJson(plan.source, join("drafts", `${task.id}.json`));
         if (draft !== undefined) store.saveDraft(task.id, relocate(draft) as { revision: number });
-        for (const [key, value] of Object.entries(state)) {
+        for (const saved of pendingDb
+          .prepare("SELECT key,data FROM pending_runtime WHERE task_id=? ORDER BY key")
+          .iterate(task.id)) {
+          const key = String(saved.key),
+            value = JSON.parse(String(saved.data)) as Row;
           if (key.startsWith("zpi.background_task:") || key === "zpi.subagent_task") {
             const kind = key === "zpi.subagent_task" ? "subagent" : "background";
             const id = String(value.taskId ?? value.agentId ?? "");
@@ -501,6 +525,7 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
             );
           }
         }
+        pendingDb.prepare("DELETE FROM pending_runtime WHERE task_id=?").run(task.id);
         const index = new HistoryIndex(join(stage, task.sessionFile), store.db);
         await index.load();
       }
@@ -508,6 +533,7 @@ export async function convert(plan: MigrationPlan, target: string, stopped = fal
       if (groups !== undefined) store.setTaskGroups(groups as TaskGroupState);
       store.checkpoint();
     } finally {
+      pending?.close();
       store.close();
     }
     // Copy managed payloads byte-for-byte. Authentication blobs are never parsed or decrypted.
@@ -583,26 +609,31 @@ export async function validate(generation: string): Promise<void> {
         }
         const expected = cleanEntries(legacy, plan);
         let ordinal = -1;
-        for await (const { value } of lines(join(generation, item.path))) {
-          if (ordinal === -1) {
-            const header = validateTranscriptHeader(value);
-            if (header.id !== item.id || header.generation !== plan.migrationId)
-              throw new Error("transcript header mismatch");
-          } else {
-            decodeTranscriptEntry(value);
-            const next = expected.next();
-            if (
-              next.done ||
-              !isDeepStrictEqual(
-                value,
-                encodeTranscriptEntry(relocate(next.value) as unknown as SessionEntry, ordinal + 1),
+        try {
+          for await (const { value } of lines(join(generation, item.path))) {
+            if (ordinal === -1) {
+              const header = validateTranscriptHeader(value);
+              if (!isDeepStrictEqual(header, { ...legacy.header, version: 2, generation: plan.migrationId }))
+                throw new Error("transcript header mismatch");
+            } else {
+              decodeTranscriptEntry(value);
+              const next = expected.next();
+              if (
+                next.done ||
+                !isDeepStrictEqual(
+                  value,
+                  encodeTranscriptEntry(relocate(next.value) as unknown as SessionEntry, ordinal + 1),
+                )
               )
-            )
-              throw new Error(`transcript semantic mismatch: ${item.path}:${ordinal + 2}`);
+                throw new Error(`transcript semantic mismatch: ${item.path}:${ordinal + 2}`);
+            }
+            ordinal++;
           }
-          ordinal++;
+          if (ordinal < 0) throw new Error("missing transcript header");
+          if (!expected.next().done) throw new Error("transcript count mismatch");
+        } finally {
+          expected.return(undefined);
         }
-        if (!expected.next().done) throw new Error("transcript count mismatch");
         const queue = db.prepare("SELECT data FROM queue_state WHERE task_id=?").get(item.id);
         if (
           !queue ||

@@ -97,7 +97,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     const editor = page.getByLabel("消息", { exact: true });
     const trigger = page.getByLabel("模型选择", { exact: true });
     await editor.fill("preserved draft");
-    await editor.press(`${primary}+;`);
+    await editor.press(`${primary}+l`);
     await expect(page.getByRole("menuitem", { name: "fake", exact: true })).toBeFocused();
     await page.keyboard.press("ArrowDown");
     const firstModel = page.getByRole("menuitem", { name: models[0].name, exact: true });
@@ -128,7 +128,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     await expect(trigger).toContainText(modelReasoningLabel(models[0], supported[1]));
     await expect(editor).toBeFocused();
     await expect(editor).toHaveText("preserved draft");
-    await editor.press(`${primary}+;`);
+    await editor.press(`${primary}+l`);
     await expect(firstModel).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await expect(page.getByRole("menuitem", { name: models[1].name, exact: true })).toBeFocused();
@@ -137,6 +137,16 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(editor).toBeFocused();
     await expect(trigger).toContainText(models[0].name ?? models[0].id);
+    await editor.press(`${primary}+l`);
+    await expect(firstModel).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: models[1].name, exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(trigger).toContainText(models[1].name ?? models[1].id);
+    await expect(trigger).toContainText(modelReasoningLabel(models[1], defaultPreset(models[1])));
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveText("preserved draft");
     expect(server.requests).toHaveLength(0);
   } finally {
     await runCleanup([
@@ -188,7 +198,7 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
     await expect(mainEditor).toHaveText("main draft");
     await expect(sideEditor).toHaveText("side draft");
-    await sideEditor.press(`${primary}+;`);
+    await sideEditor.press(`${primary}+l`);
     await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
     await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "closed");
     await page.keyboard.press("Escape");
@@ -284,7 +294,7 @@ test("a retained question in a hidden auxiliary pane does not block active works
     await editor.press("Enter");
     await expect(main.getByTestId("queue-item")).toHaveCount(1);
     await editor.fill("preserved main draft");
-    await editor.press(`${primary}+;`);
+    await editor.press(`${primary}+l`);
     await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
@@ -294,9 +304,9 @@ test("a retained question in a hidden auxiliary pane does not block active works
     await expect(main.getByTestId("queue-item")).toHaveCount(0);
     await expect(editor).toHaveText("preserved main draft");
     await expect.poll(() => server.requests.length).toBe(4);
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
-    await page.keyboard.press(`${primary}+j`);
+    await page.keyboard.press(`${primary}+[`);
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press(`${primary}+n`);
     await expect(page.locator("main")).toHaveClass(/draft-main/);

@@ -9,6 +9,11 @@ const capabilities: {
   description: string;
 }[] = [
   {
+    name: "communicationStyle",
+    label: "提示词-交互方式",
+    description: "简要说明进展，在最终回复中完整交付结论；按问题和用户经验调整表达，保持代码风格一致。",
+  },
+  {
     name: "toolBatching",
     label: "提示词-多工具调用",
     description: "提示助手在一次请求中调用多个工具，独立调用可并行执行。",

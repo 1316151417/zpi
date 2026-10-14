@@ -1,6 +1,14 @@
 import type { FileResourceLoader, ResourceLoader } from "zpi-coding-agent";
 import type { PluginCapabilities } from "../shared/bridge.ts";
 
+const communicationStyleRules = [
+  "Before the first tool call, briefly state your next action; during work, report meaningful findings or changes in direction.",
+  "End with a self-contained text message containing all answers, conclusions, and deliverables, with the outcome first and no tool calls afterward.",
+  "Write for a teammate who has not seen your reasoning or tool results: use clear, complete sentences, familiar terms, and only details that matter.",
+  "Match detail to the user's expertise and question: answer simple questions directly in prose, and reserve tables for short lists of facts, with explanations outside the cells.",
+  "Match the surrounding code's naming, style, and comment density; add comments only for constraints the code cannot express.",
+];
+
 const fileLinkRules = [
   "Your responses are displayed as GitHub-flavored Markdown in the ZPI desktop app.",
   "Return web URLs as Markdown links (e.g., [preview](http://127.0.0.1:8080)).",
@@ -20,11 +28,12 @@ const proactiveExecutionRules = [
 
 type PromptCapabilities = Pick<
   PluginCapabilities,
-  "toolBatching" | "fileLinks" | "fileContextReuse" | "proactiveExecution"
+  "communicationStyle" | "toolBatching" | "fileLinks" | "fileContextReuse" | "proactiveExecution"
 >;
 
 export function pluginSystemRules(capabilities: PromptCapabilities) {
   const rules = [
+    ...(capabilities.communicationStyle ? communicationStyleRules : []),
     ...(capabilities.toolBatching ? ["Independent tool calls can run in parallel in one response."] : []),
     ...(capabilities.fileLinks ? fileLinkRules : []),
     ...(capabilities.fileContextReuse

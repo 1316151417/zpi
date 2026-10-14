@@ -2,7 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
-import { SettingsStore } from "../src/main/storage.ts";
+import { shortcutDefaultsVersion } from "../src/main/shortcut-defaults-migration.ts";
+import { type SettingsData, SettingsStore } from "../src/main/storage.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
 const encryption = {
@@ -39,3 +40,57 @@ it("persists custom shortcuts and master disable in the shared state database", 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it("uses current menu defaults and preserves explicitly restored old keys or cleared shortcuts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-shortcut-current-"));
+  const store = new SettingsStore(dir, encryption);
+  try {
+    store.updatePreferences({ theme: "dark" });
+    expect(store.state.getSetting<SettingsData>("app")?.shortcutDefaultsVersion).toBe(
+      shortcutDefaultsVersion,
+    );
+    const defaults = defaultShortcuts(process.platform);
+    expect(store.get().shortcuts).toEqual(defaults);
+    const custom = store.get().shortcuts;
+    custom.enabled = false;
+    Object.assign(custom.bindings, {
+      "configure-environment": null,
+      "toggle-sidebar": "CmdOrCtrl+J",
+      "toggle-pane": "CmdOrCtrl+Shift+T",
+      "select-model": "CmdOrCtrl+;",
+      "focus-composer": null,
+    });
+    store.updateShortcuts(custom);
+    const saved = store.state.getSetting<SettingsData>("app");
+    const reopened = new SettingsStore(dir, encryption, store.state);
+    expect(reopened.get().shortcuts).toEqual(store.get().shortcuts);
+    expect(reopened.get().interface.theme).toBe("dark");
+    expect(store.state.getSetting("app")).toEqual(saved);
+    reopened.updateShortcuts(defaults);
+    expect(reopened.get().shortcuts).toEqual(defaults);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each([undefined, null, 0, 1, 3, "1"])(
+  "rejects shortcut defaults version %s without online migration or state mutation",
+  async (version) => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-shortcut-version-"));
+    const store = new SettingsStore(dir, encryption);
+    try {
+      store.updatePreferences({ theme: "dark" });
+      const raw = store.state.getSetting<SettingsData>("app");
+      store.state.setSetting("app", { ...raw, shortcutDefaultsVersion: version });
+      const saved = store.state.getSetting("app");
+      expect(() => new SettingsStore(dir, encryption, store.state)).toThrow(
+        "Unsupported shortcut defaults version",
+      );
+      expect(store.state.getSetting("app")).toEqual(saved);
+    } finally {
+      store.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);

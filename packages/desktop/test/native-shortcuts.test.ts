@@ -139,7 +139,7 @@ describe("guest modifier hint wiring", () => {
       type: "keyDown",
       key: "Meta",
       code: "MetaLeft",
-      meta: false,
+      meta: true,
       control: false,
       alt: false,
       shift: false,
@@ -150,7 +150,7 @@ describe("guest modifier hint wiring", () => {
     };
     content?.emit("before-input-event", event, input);
     expect(send).toHaveBeenLastCalledWith(true);
-    content?.emit("before-input-event", event, { ...input, type: "keyUp", meta: true });
+    content?.emit("before-input-event", event, { ...input, type: "keyUp", meta: false });
     expect(send).toHaveBeenLastCalledWith(false);
     expect(shortcut).toHaveBeenCalledTimes(1);
     expect(event.preventDefault).not.toHaveBeenCalled();

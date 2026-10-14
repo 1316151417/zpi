@@ -10,7 +10,7 @@ export interface LegacySession {
   header: Row;
   entries: LegacyEntries;
   close(): void;
-  state: Record<string, Row>;
+  state: LegacyState;
   acceptedQueueIds: { has(id: string): boolean };
   counts: Record<string, number>;
   historicalSelection: { selection?: Row; lastThinkingLevel: unknown };
@@ -27,7 +27,8 @@ export class LegacyEntries implements Iterable<Row> {
       CREATE TABLE entries(seq INTEGER PRIMARY KEY,id TEXT UNIQUE NOT NULL,data TEXT NOT NULL);
       CREATE TABLE journal_updates(journal_id TEXT NOT NULL,seq INTEGER NOT NULL,data TEXT NOT NULL);
       CREATE INDEX journal_lookup ON journal_updates(journal_id,seq);
-      CREATE TABLE accepted_queue(id TEXT PRIMARY KEY);`);
+      CREATE TABLE accepted_queue(id TEXT PRIMARY KEY);
+      CREATE TABLE current_state(key TEXT PRIMARY KEY,data TEXT NOT NULL);`);
   }
   *[Symbol.iterator](): Generator<Row> {
     for (const row of this.db.prepare("SELECT data FROM entries ORDER BY seq").iterate())
@@ -48,12 +49,27 @@ export class LegacyEntries implements Iterable<Row> {
     }
   }
 }
+export class LegacyState implements Iterable<[string, Row]> {
+  private db: DatabaseSync;
+  constructor(db: DatabaseSync) {
+    this.db = db;
+  }
+  get(key: string): Row | undefined {
+    const row = this.db.prepare("SELECT data FROM current_state WHERE key=?").get(key);
+    return row ? JSON.parse(String(row.data)) : undefined;
+  }
+  *[Symbol.iterator](): Generator<[string, Row]> {
+    for (const row of this.db.prepare("SELECT key,data FROM current_state ORDER BY key").iterate())
+      yield [String(row.key), JSON.parse(String(row.data))];
+  }
+}
 export function object(value: unknown): value is Row {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 export async function* lines(path: string): AsyncGenerator<{ value: unknown; line: number }> {
   // Buffer each record once, with a hard bound independent of total history size.
   const pieces: Buffer[] = [];
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0,
     line = 0;
   const append = (piece: Buffer) => {
@@ -62,7 +78,12 @@ export async function* lines(path: string): AsyncGenerator<{ value: unknown; lin
     pieces.push(piece);
   };
   const parse = (tail: boolean) => {
-    const text = Buffer.concat(pieces, size).toString("utf8");
+    let text: string;
+    try {
+      text = decoder.decode(Buffer.concat(pieces, size));
+    } catch {
+      throw new Error(`invalid UTF-8 at line ${line + 1}`);
+    }
     pieces.length = 0;
     size = 0;
     line++;
@@ -124,8 +145,11 @@ export async function readLegacySession(path: string): Promise<LegacySession> {
   const acceptedQueueIds = {
     has: (id: string) => Boolean(db.prepare("SELECT 1 FROM accepted_queue WHERE id=?").get(id)),
   };
-  const state: Record<string, Row> = {},
-    counts: Record<string, number> = {};
+  const state = new LegacyState(db);
+  const saveState = db.prepare(
+    "INSERT INTO current_state(key,data) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET data=excluded.data",
+  );
+  const counts: Record<string, number> = {};
   try {
     db.exec("BEGIN");
     for await (const { value, line } of lines(path)) {
@@ -192,7 +216,7 @@ export async function readLegacySession(path: string): Promise<LegacySession> {
         const fields = customFields[key];
         if (fields && Object.keys(value.data).some((field) => !fields.includes(field)))
           throw new Error(`unknown ${key} field at line ${line}`);
-        if (key !== "zpi.streaming_tools") state[key] = value.data;
+        if (key !== "zpi.streaming_tools") saveState.run(key, JSON.stringify(value.data));
         if (key === "zpi.streaming_tools") {
           if (typeof value.data.id !== "string") throw new Error("invalid streaming journal ID");
           if (value.data.committed === true) journalDelete.run(value.data.id);
@@ -200,10 +224,11 @@ export async function readLegacySession(path: string): Promise<LegacySession> {
         }
         if (key === "zpi.run" && value.data.phase === "start" && typeof value.data.queueItemId === "string")
           acceptedInsert.run(value.data.queueItemId);
-        counts[key] = (counts[key] ?? 0) + 1;
+        const kind = key.startsWith("zpi.background_task:") ? "zpi.background_task" : key;
+        counts[kind] = (counts[kind] ?? 0) + 1;
       } else {
         counts[String(value.type)] = (counts[String(value.type)] ?? 0) + 1;
-        if (value.type === "session_info") state.session_info = value;
+        if (value.type === "session_info") saveState.run("session_info", JSON.stringify(value));
       }
       if (value.type === "compaction") {
         if (typeof value.firstKeptEntryId !== "string" || !hasId.get(value.firstKeptEntryId))
@@ -232,7 +257,7 @@ export async function readLegacySession(path: string): Promise<LegacySession> {
   }
 }
 export function recoveredQueue(session: LegacySession): Row {
-  const queue = session.state["zpi.queue"] ?? { items: [] };
+  const queue = session.state.get("zpi.queue") ?? { items: [] };
   if (!Array.isArray(queue.items)) throw new Error("invalid queue");
   const seen = new Set<string>();
   const items = queue.items
@@ -268,6 +293,10 @@ class LegacySystemSnapshot {
     if (text) this.snapshot.content += `${text}\n\n`;
     Object.assign(this.snapshot.sections ?? {}, message.sections);
     this.snapshot.toolsAdded = getCurrentTools([this.snapshot, message]);
+    if (Buffer.byteLength(JSON.stringify(this.snapshot), "utf8") > 8 * 1024 * 1024)
+      throw new Error(
+        "generated compaction system snapshot exceeds the v2 8 MiB record limit; explicit format recovery required",
+      );
   }
   at(timestamp: number): SystemMessage {
     return { ...this.snapshot, sections: { ...this.snapshot.sections }, timestamp };

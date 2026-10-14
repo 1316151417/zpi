@@ -187,6 +187,124 @@ describe("disk-backed offline journal recovery", () => {
     expect(() => [...recover(invalid.session)]).toThrow("Invalid streaming tool call");
   });
 
+  it("spools result bodies larger than the record limit in aggregate and emits them one at a time", async () => {
+    const size = 512 * 1024;
+    const { session } = await fixture([
+      user,
+      ...Array.from({ length: 20 }, (_, i) =>
+        journal("j", [`call-${i}`], { results: [result(`call-${i}`, "x".repeat(size))] }),
+      ),
+    ]);
+    const stream = recover(session);
+    expect(stream.next().value).toMatchObject({ id: "e0" });
+    const stored = session.entries.db
+      .prepare("SELECT COUNT(*) AS count, SUM(length(data)) AS bytes FROM recovery_results")
+      .get();
+    expect(stored?.count).toBe(20);
+    expect(Number(stored?.bytes)).toBeGreaterThan(8 * 1024 * 1024);
+    let recovered = 0;
+    for (const row of stream) {
+      const value = row.message as ToolResultMessage | undefined;
+      if (value?.role !== "toolResult") continue;
+      expect(value.toolCallId).toBe(`call-${recovered++}`);
+      expect(value.content).toEqual([{ type: "text", text: "x".repeat(size) }]);
+    }
+    expect(recovered).toBe(20);
+  });
+
+  it("clears spooled results between journals with the same call ID", async () => {
+    const { session } = await fixture([
+      user,
+      journal("first", ["a"], { results: [result("a", "first journal only")] }),
+      journal("second", ["a"]),
+    ]);
+    const added = additions(recover(session));
+    expect(added[1].message).toEqual(result("a", "first journal only"));
+    expect(added[4].message).toMatchObject({
+      toolCallId: "a",
+      details: { reason: "unknown_execution_state" },
+    });
+    expect(session.entries.db.prepare("SELECT COUNT(*) AS count FROM recovery_results").get()?.count).toBe(0);
+  });
+
+  it("rejects cross-update call accumulation before retaining an oversized declaration", async () => {
+    const { session } = await fixture([
+      user,
+      ...Array.from({ length: 9 }, (_, i) =>
+        journal("j", [], {
+          assistant: {
+            ...assistant(),
+            content: [{ ...call(`call-${i}`), arguments: { command: "界".repeat(400_000) } }],
+          },
+        }),
+      ),
+    ]);
+    expect(() => recover(session).next()).toThrow("Recovered streaming assistant exceeds 8 MiB record limit");
+  });
+
+  it("accepts oversized intermediate calls when responseComplete replaces them with a small declaration", async () => {
+    const { session } = await fixture([
+      user,
+      ...Array.from({ length: 5 }, (_, i) =>
+        journal("j", [], {
+          assistant: {
+            ...assistant(),
+            content: [{ ...call(`call-${i}`), arguments: { command: "x".repeat(2 * 1024 * 1024) } }],
+          },
+        }),
+      ),
+      journal("j", ["final"], { responseComplete: true }),
+    ]);
+    const added = additions(recover(session));
+    expect((added[0].message as AssistantMessage).content).toEqual([call("final")]);
+    expect(added).toHaveLength(3);
+    expect(session.entries.db.prepare("SELECT COUNT(*) AS count FROM recovery_calls").get()?.count).toBe(1);
+  });
+
+  it("accepts oversized pending calls when a canonical declaration supersedes them", async () => {
+    const { session } = await fixture([
+      user,
+      ...Array.from({ length: 5 }, (_, i) =>
+        journal("j", [], {
+          assistant: {
+            ...assistant(),
+            content: [{ ...call(`call-${i}`), arguments: { command: "x".repeat(2 * 1024 * 1024) } }],
+          },
+        }),
+      ),
+      message(assistant("call-0")),
+    ]);
+    const added = additions(recover(session));
+    expect(added).toHaveLength(2);
+    expect(added[0].message).toMatchObject({
+      role: "toolResult",
+      toolCallId: "call-0",
+      details: { reason: "unknown_execution_state" },
+    });
+    expect(
+      Number(
+        session.entries.db.prepare("SELECT SUM(length(data)) AS bytes FROM recovery_calls").get()?.bytes,
+      ),
+    ).toBeGreaterThan(8 * 1024 * 1024);
+  });
+
+  it("checks the full recovered record size after bounding individual calls", async () => {
+    const { session } = await fixture([
+      user,
+      ...Array.from({ length: 2 }, (_, i) =>
+        journal("j", [], {
+          assistant: {
+            ...assistant(),
+            content: [{ ...call(`call-${i}`), arguments: { command: "x".repeat(4 * 1024 * 1024 - 120) } }],
+          },
+        }),
+      ),
+    ]);
+    expect(() => recover(session).next()).toThrow(
+      "Recovered streaming journal entry exceeds 8 MiB record limit",
+    );
+  });
+
   it("passes committed-only histories through without allocating a recovery table", async () => {
     const { session, entries } = await fixture([
       user,

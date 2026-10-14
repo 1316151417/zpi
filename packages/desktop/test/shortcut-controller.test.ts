@@ -251,7 +251,7 @@ describe("native browser workspace command dispatch", () => {
     const focusHost = vi.fn(),
       send = vi.fn();
     const settings = defaultShortcuts("darwin");
-    expect(forwardBrowserShortcut({ key: "j", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
+    expect(forwardBrowserShortcut({ key: "[", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
       true,
     );
     expect(send).toHaveBeenCalledExactlyOnceWith("toggle-sidebar");
@@ -267,7 +267,7 @@ describe("native browser workspace command dispatch", () => {
       false,
     );
     settings.enabled = false;
-    expect(forwardBrowserShortcut({ key: "j", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
+    expect(forwardBrowserShortcut({ key: "[", metaKey: true }, "darwin", settings, send, focusHost)).toBe(
       false,
     );
     expect(send).not.toHaveBeenCalled();

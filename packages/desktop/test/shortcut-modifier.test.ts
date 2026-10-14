@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { Input, WebContents } from "electron";
+import type { Input, InputEvent, WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { ShortcutModifier } from "../src/main/shortcut-modifier.ts";
 
@@ -28,19 +28,50 @@ function setup(platform = "darwin") {
     guest = new EventEmitter();
   modifier.observe(host as WebContents, true);
   modifier.observe(guest as WebContents);
-  const emit = (event: Input, content = host) => {
+  const emit = (event: Input | InputEvent, content = host, channel = "before-input-event") => {
     const native = { preventDefault: vi.fn() };
-    content.emit("before-input-event", native, event);
+    content.emit(channel, native, event);
     expect(native.preventDefault).not.toHaveBeenCalled();
   };
   return { modifier, host, guest, send, enabled, emit };
 }
 describe("native shortcut modifier hints", () => {
-  it.each(["MetaLeft", "MetaRight"])("shows on %s alone and hides on release despite stale flags", (code) => {
+  it("tracks Command alone and release when Chromium bypasses before-input-event", () => {
     const f = setup();
-    f.emit(input({ code, meta: false, modifiers: [] }));
+    f.emit({ ...input(), type: "rawKeyDown" }, f.host, "input-event");
+    expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
+    f.emit(input({ key: "1", code: "Digit1" }));
+    f.emit(input({ type: "keyUp", meta: false }), f.host, "input-event");
+    expect(f.send.mock.calls).toEqual([[true], [false]]);
+  });
+  it("deduplicates both event paths while retaining the other Command key", () => {
+    const f = setup();
+    for (const code of ["MetaLeft", "MetaRight"]) {
+      f.emit(input({ code }));
+      f.emit({ ...input({ code }), type: "rawKeyDown" }, f.host, "input-event");
+    }
+    for (const code of ["MetaLeft", "MetaRight"]) {
+      const meta = code === "MetaLeft";
+      f.emit(input({ code, type: "keyUp", meta }), f.guest);
+      f.emit(input({ code, type: "keyUp", meta }), f.guest, "input-event");
+    }
+    expect(f.send.mock.calls).toEqual([[true], [false]]);
+  });
+  it("reads modifier snapshots without keyboard fields and ignores mouse/character events", () => {
+    const f = setup();
+    f.emit({ type: "rawKeyDown", modifiers: ["meta"] }, f.guest, "input-event");
+    for (const type of ["mouseMove", "char"] as const) {
+      f.emit({ type, modifiers: [] }, f.guest, "input-event");
+    }
+    expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
+    f.emit({ type: "keyUp", modifiers: [] }, f.host, "input-event");
+    expect(f.send.mock.calls).toEqual([[true], [false]]);
+  });
+  it.each(["MetaLeft", "MetaRight"])("shows on %s alone and hides on release", (code) => {
+    const f = setup();
+    f.emit(input({ code }));
     expect(f.send).toHaveBeenLastCalledWith(true);
-    f.emit(input({ type: "keyUp", code, meta: true }));
+    f.emit(input({ type: "keyUp", code, meta: false }));
     expect(f.send).toHaveBeenLastCalledWith(false);
   });
   it("keeps hints when the other Command key remains held", () => {
@@ -50,6 +81,13 @@ describe("native shortcut modifier hints", () => {
     f.emit(input({ type: "keyUp" }));
     expect(f.send).toHaveBeenLastCalledWith(true);
     f.emit(input({ type: "keyUp", code: "MetaRight", meta: false, modifiers: [] }));
+    expect(f.send).toHaveBeenLastCalledWith(false);
+  });
+  it("uses the aggregate state when a Command key was pressed outside the observed contents", () => {
+    const f = setup();
+    f.emit(input({ type: "keyUp", code: "MetaLeft", meta: true }));
+    expect(f.send).toHaveBeenLastCalledWith(true);
+    f.emit(input({ type: "keyUp", code: "MetaRight", meta: false }));
     expect(f.send).toHaveBeenLastCalledWith(false);
   });
   it("shares host and guest transitions, observes handled chords and does not dispatch commands", () => {
@@ -75,7 +113,7 @@ describe("native shortcut modifier hints", () => {
       f.emit(input());
       f.guest.emit(event);
       expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
-      f.emit(input({ type: "keyUp" }));
+      f.emit(input({ type: "keyUp", meta: false }));
       expect(f.send).toHaveBeenLastCalledWith(false);
     },
   );
@@ -87,7 +125,7 @@ describe("native shortcut modifier hints", () => {
     expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
     f.emit(input({ type: "keyUp" }), f.guest);
     expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
-    f.emit(input({ type: "keyUp", code: "MetaRight" }), f.guest);
+    f.emit(input({ type: "keyUp", code: "MetaRight", meta: false }), f.guest);
     expect(f.send).toHaveBeenLastCalledWith(false);
   });
   it.each(["did-start-loading", "render-process-gone"])(
@@ -102,7 +140,7 @@ describe("native shortcut modifier hints", () => {
       f.send.mockClear();
       f.emit(input({ key: "1", code: "Digit1" }), f.guest);
       expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
-      f.emit(input({ type: "keyUp" }), f.guest);
+      f.emit(input({ type: "keyUp", meta: false }), f.guest);
       expect(f.send).toHaveBeenLastCalledWith(false);
     },
   );
@@ -115,7 +153,7 @@ describe("native shortcut modifier hints", () => {
     f.emit(input({ key: "1", code: "Digit1" }));
     f.emit(input({ key: "1", code: "Digit1", type: "keyUp" }));
     expect(f.send).toHaveBeenCalledExactlyOnceWith(true);
-    f.emit(input({ type: "keyUp" }));
+    f.emit(input({ type: "keyUp", meta: false }));
     expect(f.send.mock.calls).toEqual([[true], [false]]);
   });
   it("ignores disabled/recording input and cleans listeners on disposal", () => {
@@ -129,6 +167,8 @@ describe("native shortcut modifier hints", () => {
     f.send.mockClear();
     f.emit(input());
     f.emit(input(), f.guest);
+    f.emit({ ...input(), type: "rawKeyDown" }, f.host, "input-event");
+    f.emit({ ...input(), type: "rawKeyDown" }, f.guest, "input-event");
     f.host.emit("blur");
     expect(f.send).not.toHaveBeenCalled();
   });
@@ -136,9 +176,9 @@ describe("native shortcut modifier hints", () => {
     const f = setup(platform);
     f.emit(input());
     expect(f.send).not.toHaveBeenCalled();
-    f.emit(input({ key: "Control", code: "ControlLeft", meta: false, control: false }));
+    f.emit(input({ key: "Control", code: "ControlLeft", meta: false, control: true }));
     expect(f.send).toHaveBeenLastCalledWith(true);
-    f.emit(input({ type: "keyUp", key: "Control", code: "ControlLeft", control: true }));
+    f.emit(input({ type: "keyUp", key: "Control", code: "ControlLeft", control: false }));
     expect(f.send).toHaveBeenLastCalledWith(false);
   });
 });

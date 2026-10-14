@@ -88,7 +88,7 @@ export function migrateLegacySettings(value: unknown): SettingsData {
     capabilities: { ...defaultCapabilities, ...(isJsonObject(raw.capabilities) ? raw.capabilities : {}) },
     interface: preferences,
     shortcuts: raw.shortcuts ?? defaultShortcuts(process.platform),
-    shortcutDefaultsVersion: raw.shortcutDefaultsVersion ?? shortcutDefaultsVersion,
+    shortcutDefaultsVersion,
   } as unknown as SettingsData;
   if (!Object.hasOwn(data.capabilities, "communicationStyle"))
     Object.assign(data.capabilities, { communicationStyle: true });
@@ -98,11 +98,17 @@ export function migrateLegacySettings(value: unknown): SettingsData {
     typeof raw.capabilities.communicationStyle !== "boolean"
   )
     throw new Error("storage: Invalid communication style capability");
-  if (raw.shortcutDefaultsVersion !== undefined && raw.shortcutDefaultsVersion !== shortcutDefaultsVersion)
+  if (
+    raw.shortcutDefaultsVersion !== undefined &&
+    raw.shortcutDefaultsVersion !== 1 &&
+    raw.shortcutDefaultsVersion !== shortcutDefaultsVersion
+  )
     throw new Error("storage: Unsupported shortcut defaults version");
-  const migrateShortcuts = raw.shortcutDefaultsVersion === undefined;
+  const migrateShortcuts = raw.shortcutDefaultsVersion === undefined || raw.shortcutDefaultsVersion === 1;
   if (migrateShortcuts) {
     const bindings = data.shortcuts.bindings;
+    if (isJsonObject(bindings) && !Object.hasOwn(bindings, "configure-environment"))
+      bindings["configure-environment"] = null;
     if (isJsonObject(bindings) && !Object.hasOwn(bindings, "focus-composer")) {
       const focus = defaultShortcuts(process.platform).bindings["focus-composer"];
       bindings["focus-composer"] = Object.values(bindings).some(
@@ -115,7 +121,11 @@ export function migrateLegacySettings(value: unknown): SettingsData {
   const shortcutError = validateShortcuts(data.shortcuts, process.platform);
   if (shortcutError) throw new Error(`storage: ${shortcutError}`);
   if (migrateShortcuts && raw.shortcuts != null)
-    data.shortcuts = migrateShortcutDefaults(data.shortcuts, process.platform);
+    data.shortcuts = migrateShortcutDefaults(
+      data.shortcuts,
+      process.platform,
+      raw.shortcutDefaultsVersion === 1 ? 1 : 0,
+    );
   const selection = data.lastSelection;
   if (isJsonObject(selection)) {
     const model = data.providers

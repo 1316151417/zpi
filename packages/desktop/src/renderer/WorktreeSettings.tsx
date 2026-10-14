@@ -1,16 +1,36 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, GitBranch, Search, Settings, Shuffle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ActionHint } from "zpi-ui";
 import type { GitEnvironment, SessionRecord } from "../shared/bridge.ts";
-import { report, unwrap, useStore } from "./store.ts";
+import { formatShortcut } from "../shared/shortcuts.ts";
+import { focusComposer, report, unwrap, useStore } from "./store.ts";
 
-export function WorktreeSettings({ record }: { record: SessionRecord }) {
+export function WorktreeSettings({
+  record,
+  open,
+  onOpenChange,
+}: {
+  record: SessionRecord;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const shortcuts = useStore((state) => state.settings?.shortcuts);
   const [environment, setEnvironment] = useState<GitEnvironment | null>(null);
   const [saving, setSaving] = useState(false);
-  const [open, setOpen] = useState(false);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [query, setQuery] = useState("");
   const menu = useRef<HTMLDivElement>(null);
+  const available = Boolean(environment);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() =>
+      menu.current
+        ?.querySelector<HTMLElement>('[role="menuitemcheckbox"]:not([aria-disabled="true"])')
+        ?.focus(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [open, available]);
   useEffect(() => {
     let active = true;
     void window.zpi
@@ -44,6 +64,11 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
         useStore.setState({ sessions });
         setBranchesOpen(false);
         setQuery("");
+        if (branchesOpen) {
+          requestAnimationFrame(() =>
+            menu.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus(),
+          );
+        }
       })
       .catch(report)
       .finally(() => setSaving(false));
@@ -53,16 +78,27 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
       <Menu.Root
         open={open}
         onOpenChange={(value) => {
-          setOpen(value);
+          onOpenChange(value);
           if (!value) {
             setBranchesOpen(false);
             setQuery("");
           }
         }}
       >
-        <Menu.Trigger className="environment-trigger" aria-label="配置本地环境">
-          <Settings size={17} />
-        </Menu.Trigger>
+        <ActionHint
+          label="配置本地环境"
+          appearance="control"
+          shortcut={
+            shortcuts?.enabled && shortcuts.bindings["configure-environment"]
+              ? formatShortcut(shortcuts.bindings["configure-environment"], window.zpi.platform)
+              : undefined
+          }
+          open={open ? false : undefined}
+        >
+          <Menu.Trigger className="environment-trigger" aria-label="配置本地环境">
+            <Settings size={17} />
+          </Menu.Trigger>
+        </ActionHint>
         <Menu.Portal>
           <Menu.Content
             ref={menu}
@@ -70,6 +106,11 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
             side="top"
             align="end"
             sideOffset={4}
+            loop
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              focusComposer(record.id);
+            }}
           >
             <Menu.Label className="environment-label">配置本地环境</Menu.Label>
             <div className="draft-project-options">
@@ -110,6 +151,7 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
                     <Menu.SubContent
                       className="draft-project-menu environment-menu worktree-branch-menu"
                       sideOffset={4}
+                      loop
                       onFocusOutside={(event) => {
                         if (event.target === menu.current) event.preventDefault();
                       }}
@@ -122,6 +164,15 @@ export function WorktreeSettings({ record }: { record: SessionRecord }) {
                           value={query}
                           onChange={(event) => setQuery(event.target.value)}
                           onKeyDown={(event) => {
+                            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                              event.preventDefault();
+                              const items = event.currentTarget
+                                .closest('[role="menu"]')
+                                ?.querySelectorAll<HTMLElement>(
+                                  '[role="menuitem"]:not([aria-disabled="true"])',
+                                );
+                              (event.key === "ArrowDown" ? items?.[0] : items?.[items.length - 1])?.focus();
+                            }
                             if (event.key !== "Escape" && event.key !== "Tab") event.stopPropagation();
                           }}
                         />

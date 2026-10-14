@@ -127,6 +127,7 @@ export interface InterfacePreferences {
   tasksCollapsed: boolean;
 }
 export interface PluginCapabilities {
+  communicationStyle: boolean;
   subagents: boolean;
   askUserQuestion: boolean;
   toolBatching: boolean;

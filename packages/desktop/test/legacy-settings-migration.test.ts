@@ -103,7 +103,7 @@ it("migrates only eligible default bindings, keeping custom and cleared shortcut
   });
 });
 it("rejects unsupported versions, conflicting bindings and plaintext legacy credentials", () => {
-  for (const version of [null, 0, 2, "1"])
+  for (const version of [null, 0, 3, "1"])
     expect(() => migrateLegacySettings({ ...fixture(), shortcutDefaultsVersion: version })).toThrow(
       "Unsupported shortcut defaults version",
     );
@@ -136,4 +136,43 @@ it("converts single-provider and version 2/3 settings to the complete current sh
     disabledSkillPaths: [],
     lastSelection: null,
   });
+});
+
+it("upgrades v1 shortcut defaults to v2 and adds configure-environment without replaying the v0 upgrade", () => {
+  const raw = { ...fixture(), shortcutDefaultsVersion: 1 };
+  const bindings = raw.shortcuts.bindings as Record<string, string | null>;
+  delete bindings["configure-environment"];
+  Object.assign(bindings, {
+    "toggle-sidebar": "CmdOrCtrl+J",
+    "toggle-pane": "CmdOrCtrl+L",
+    "select-model": "CmdOrCtrl+;",
+    search: "CmdOrCtrl+K",
+  });
+  const before = JSON.stringify(raw);
+  const migrated = migrateLegacySettings(raw);
+  expect(migrated.shortcutDefaultsVersion).toBe(2);
+  const defaults = defaultShortcuts(process.platform).bindings;
+  for (const key of ["toggle-sidebar", "toggle-pane", "select-model", "configure-environment"] as const)
+    expect(migrated.shortcuts.bindings[key]).toBe(defaults[key]);
+  expect(migrated.shortcuts.bindings.search).toBe("CmdOrCtrl+K");
+  expect(JSON.stringify(raw)).toBe(before);
+  expect(migrateLegacySettings(migrated)).toEqual(migrated);
+});
+
+it("preserves a conflicting custom v1 layout and explicit cleared bindings during shortcut upgrade", () => {
+  const raw = { ...fixture(), shortcutDefaultsVersion: 1 };
+  const bindings = raw.shortcuts.bindings as Record<string, string | null>;
+  delete bindings["configure-environment"];
+  Object.assign(bindings, {
+    "toggle-sidebar": "CmdOrCtrl+J",
+    "toggle-pane": "CmdOrCtrl+L",
+    "select-model": "CmdOrCtrl+;",
+    search: "CmdOrCtrl+K",
+    "new-task": "CmdOrCtrl+[",
+    "focus-composer": null,
+  });
+  const migrated = migrateLegacySettings(raw);
+  expect(migrated.shortcuts.bindings).toEqual({ ...bindings, "configure-environment": null });
+  expect(migrated.shortcutDefaultsVersion).toBe(2);
+  expect(migrateLegacySettings(migrated)).toEqual(migrated);
 });

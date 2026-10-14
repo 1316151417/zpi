@@ -2,7 +2,10 @@
 import { createHash } from "node:crypto";
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "zpi-ai";
 import { isJsonObject } from "zpi-ai";
-import { validateMessage } from "../../packages/coding-agent/src/core/record-validation.ts";
+import {
+  maxSessionEntryBytes,
+  validateMessage,
+} from "../../packages/coding-agent/src/core/record-validation.ts";
 import type { LegacyEntries, Row } from "./legacy.ts";
 
 const JOURNAL_TYPE = "zpi.streaming_tools";
@@ -13,7 +16,7 @@ interface Journal {
   results: ToolResultMessage[];
 }
 
-/** Only one unfinished response is materialized at a time; history and additions stay on disk. */
+/** History, results and additions stay on disk; each declaration is bounded by the record limit. */
 export function* recoverLegacyJournals(
   entries: LegacyEntries,
   migrationId: string,
@@ -32,6 +35,9 @@ export function* recoverLegacyJournals(
       after_seq INTEGER NOT NULL, ordinal INTEGER PRIMARY KEY, data TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS recovery_additions_order ON recovery_additions(after_seq, ordinal);
+    CREATE TABLE IF NOT EXISTS recovery_results(call_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS recovery_calls(call_id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL, data TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS recovery_calls_order ON recovery_calls(ordinal);
   `);
   const updates = db.prepare("SELECT seq, data FROM journal_updates WHERE journal_id = ? ORDER BY seq");
   const anchorEntry = db.prepare("SELECT seq FROM entries WHERE id = ?");
@@ -41,7 +47,7 @@ export function* recoverLegacyJournals(
       AND json_extract(data, '$.message.role') = 'assistant'
       AND EXISTS (
         SELECT 1 FROM json_each(entries.data, '$.message.content') AS declaration
-        JOIN json_each(?) AS pending ON json_extract(declaration.value, '$.id') = pending.value
+        JOIN recovery_calls AS pending ON json_extract(declaration.value, '$.id') = pending.call_id
         WHERE json_extract(declaration.value, '$.type') = 'toolCall'
       )
     ORDER BY seq LIMIT 1
@@ -57,6 +63,14 @@ export function* recoverLegacyJournals(
       AND json_extract(data, '$.message.toolCallId') IN (SELECT value FROM json_each(?))
     ORDER BY seq
   `);
+  const saveCall = db.prepare(
+    "INSERT OR IGNORE INTO recovery_calls(call_id, ordinal, data) VALUES (?, ?, ?)",
+  );
+  const savedCalls = db.prepare("SELECT data FROM recovery_calls ORDER BY ordinal");
+  const saveResult = db.prepare(
+    "INSERT INTO recovery_results(call_id, data) VALUES (?, ?) ON CONFLICT(call_id) DO UPDATE SET data=excluded.data",
+  );
+  const savedResult = db.prepare("SELECT data FROM recovery_results WHERE call_id = ?");
   const insertionEntry = db.prepare("SELECT id FROM entries WHERE seq = ?");
   const add = db.prepare("INSERT INTO recovery_additions(after_seq, ordinal, data) VALUES (?, ?, ?)");
   const stableId = (id: string, ordinal: number) =>
@@ -73,8 +87,8 @@ export function* recoverLegacyJournals(
       .iterate()) {
       let journal: Journal | undefined;
       let insertion = 0;
-      const callsById = new Map<string, ToolCall>();
-      const resultsById = new Map<string, ToolResultMessage>();
+      let callOrdinal = 0;
+      db.exec("DELETE FROM recovery_results; DELETE FROM recovery_calls");
       for (const record of updates.iterate(String(pending.journal_id))) {
         const data: unknown = JSON.parse(String(record.data));
         if (!isJsonObject(data) || typeof data.id !== "string")
@@ -94,26 +108,38 @@ export function* recoverLegacyJournals(
         journal ??= { ...update, assistant: { ...update.assistant, content: [] }, results: [] };
         if (data.responseComplete === true) {
           journal.assistant = { ...update.assistant, content: [] };
-          callsById.clear();
+          db.exec("DELETE FROM recovery_calls");
+          callOrdinal = 0;
         }
         for (const call of update.assistant.content) {
           if (call.type !== "toolCall") throw new Error("Invalid streaming tool call");
-          if (!callsById.has(call.id)) callsById.set(call.id, call);
+          saveCall.run(call.id, callOrdinal++, JSON.stringify(call));
         }
-        for (const result of update.results) resultsById.set(result.toolCallId, result);
+        for (const result of update.results) saveResult.run(result.toolCallId, JSON.stringify(result));
         insertion = Number(record.seq);
       }
       if (!journal) continue;
-      let calls = [...callsById.values()];
-      journal.assistant.content = calls;
       const anchor = journal.anchorId === null ? undefined : anchorEntry.get(journal.anchorId);
       if (journal.anchorId !== null && !anchor) throw new Error("Missing streaming journal anchor");
       const anchorSeq = anchor ? Number(anchor.seq) : 0;
-      const canonical = canonicalEntry.get(anchorSeq, JSON.stringify(calls.map((call) => call.id)));
+      const canonical = canonicalEntry.get(anchorSeq);
       const canonicalSeq = canonical ? Number(canonical.seq) : 0;
+      let calls: ToolCall[] = [];
       if (canonical) {
         const declaration = JSON.parse(String(canonical.data)) as { message: AssistantMessage };
         calls = declaration.message.content.filter((call) => call.type === "toolCall");
+      } else {
+        // Intermediate checkpoints can exceed a record and later reset or be superseded by canonical history.
+        // Bound only the final declaration that must actually be synthesized.
+        let callBytes = 2;
+        for (const row of savedCalls.iterate()) {
+          const data = String(row.data);
+          callBytes += Buffer.byteLength(data) + (calls.length ? 1 : 0);
+          if (callBytes > maxSessionEntryBytes)
+            throw new Error("Recovered streaming assistant exceeds 8 MiB record limit");
+          calls.push(JSON.parse(data) as ToolCall);
+        }
+        journal.assistant.content = calls;
       }
       const start = Math.max(anchorSeq, canonicalSeq);
       const end = nextAssistant.get(start);
@@ -131,29 +157,37 @@ export function* recoverLegacyJournals(
       if (!parent) throw new Error("Missing streaming journal insertion point");
       const parentId = String(parent.id);
       let ordinal = 0;
-      const emit = (row: Row) =>
-        add.run(
-          insertion,
-          order++,
-          JSON.stringify({ ...row, id: stableId(journal.id, ordinal++), parentId, timestamp: recoveryAt }),
-        );
+      const emit = (row: Row) => {
+        const data = JSON.stringify({
+          ...row,
+          id: stableId(journal.id, ordinal++),
+          parentId,
+          timestamp: recoveryAt,
+        });
+        if (Buffer.byteLength(data) > maxSessionEntryBytes)
+          throw new Error("Recovered streaming journal entry exceeds 8 MiB record limit");
+        add.run(insertion, order++, data);
+      };
       if (!canonical) emit({ type: "message", message: journal.assistant });
       for (const call of calls) {
         if (paired.has(call.id)) continue;
-        const message: Message = resultsById.get(call.id) ?? {
-          role: "toolResult",
-          toolCallId: call.id,
-          toolName: call.name,
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: "Tool execution was interrupted before a result was committed. Side effects may be unknown; inspect current state before retrying.",
-            },
-          ],
-          details: { type: "stream_recovery_interrupted_tool", reason: "unknown_execution_state" },
-          timestamp: recoveredTimestamp,
-        };
+        const saved = savedResult.get(call.id);
+        const message: Message = saved
+          ? (JSON.parse(String(saved.data)) as ToolResultMessage)
+          : {
+              role: "toolResult",
+              toolCallId: call.id,
+              toolName: call.name,
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "Tool execution was interrupted before a result was committed. Side effects may be unknown; inspect current state before retrying.",
+                },
+              ],
+              details: { type: "stream_recovery_interrupted_tool", reason: "unknown_execution_state" },
+              timestamp: recoveredTimestamp,
+            };
         emit({ type: "message", message });
       }
       emit({ type: "custom", customType: JOURNAL_TYPE, data: { id: journal.id, committed: true } });

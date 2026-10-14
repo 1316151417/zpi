@@ -2,11 +2,11 @@
 
 ## 默认映射与升级
 
-- Command/Ctrl+J 切换左栏，Command/Ctrl+L 切换右栏，Command/Ctrl+K 搜索任务，Command/Ctrl+; 打开模型选择。模型菜单内 → 选择思考档位等现有行为不变。
+- Command/Ctrl+[ 切换左栏，Command/Ctrl+] 切换右栏，Command/Ctrl+K 搜索任务，Command/Ctrl+J 打开草稿输入框的本地环境菜单，Command/Ctrl+L 打开当前输入框的模型选择。两种菜单内 ↑↓ 移动、→ 进入子菜单、← 返回、Enter 确认、Esc 关闭后返回原输入框。
 - Command/Ctrl+I 主动聚焦当前主任务输入框；全局窗口快捷键恢复有效原焦点，只有原目标失效时回退主输入。隐藏窗口与可见设置/弹窗期间不抢焦点。
-- 旧配置只替换仍等于旧默认的三个绑定，保留自定义、null 及总开关。候选整体校验失败时保留全部旧绑定，不做部分迁移。
-- 新增 focus-composer 缺项先补平台 I；已有自定义占用 I 时补 null，不覆盖旧键。迁移版本只存于内部 settings.json，原子写入后不再重新迁移。
-- 提示继续由共享 formatter 根据实际配置生成。Semicolon 物理键及分号字符都能匹配模型选择；Shift/Alt、IME 和重复触发边界不变。
+- 旧配置按历史版本只替换仍等于旧默认的绑定，保留自定义、null 及总开关。候选整体校验失败时保留全部旧绑定，不做部分迁移。
+- 新增 focus-composer 缺项先补平台 I；已有自定义占用 I 时补 null，不覆盖旧键。新增 configure-environment 缺项补平台 J，被自定义占用时补 null。迁移版本只存于内部 settings.json，原子写入后不再重新迁移。
+- 提示继续由共享 formatter 根据实际配置生成。自定义分号及方括号组合按物理键匹配；Shift/Alt、IME 和重复触发边界不变。
 
 ## 停止回复
 
@@ -60,10 +60,10 @@ Electron 的窗口恢复与 WebContents 焦点保留用于正常路径；本次�
 - 平时仅保留右侧时间；macOS 按住 Command、其他平台按住 Ctrl 时，前五个可切换置顶任务以实际配置的快捷键替换同一位置的时间。松开恢复；提示与时间共用右边界，不并排展示。
 - 置顶顺序复用 `visiblePinnedTasks`，与实际 `pin-1` 至 `pin-5` 分派一致。自定义键位使用共享 formatter；总开关关闭、绑定为 null、无对应命令的任务不显示提示，不回退伪造默认键。
 - 提示显示期间鼠标悬停/键盘焦点不将其替换为归档操作；松开后恢复原有 hover 行为。等待确认/停止计时的问题徽章优先，按住修饰键不卸载徽章，也不改变其 hover 行为。
-- main 统一观察主窗口（包括终端）和原生浏览器 guest 的 `before-input-event`，通过独立 preload 订阅传送修饰键状态；renderer 不再以 DOM 键盘事件维护第二份状态。观察器不消费输入、不分派命令，不影响真实任务切换或录制。
-- 修饰键本身的左右 key/code 与 keyDown/keyUp 是优先状态边沿，即使 down 的 meta=false、up 的 meta=true 也正确切换；左右同时按住时释放一个仍显示。普通按键 flags 可校正状态。窗口 blur/hide/minimize、当前输入源 loading/crash/destroy、guest 隐藏/关闭、禁用和录制切换清除提示；后台 guest 生命周期和 host/guest 内部切焦点不会清空前台状态；卸载取消订阅。
-- 窗口恢复时若修饰键已按住，收到下一次原生键盘事件后才更新，不推断系统全局按键状态。`before-input-event` 仍来自 Chromium 键盘事件，不是独立 OS hook；若系统没有送入该事件，不能保证恢复其状态。
-- Node 回归覆盖 Electron Input 事件形状、左右单键及异常 flags、双键释放、host/guest 共享状态、guest keyUp 过滤前观察、生命周期清理、preload 订阅销毁、实际映射和禁用边界。没有运行 GUI 或在用户 Mac 复现，桥接回归通过不代表已证实其 OS 层根因。
+- main 统一观察主窗口（包括终端）和原生浏览器 guest 的 `before-input-event` 与 `input-event`，通过独立 preload 订阅传送修饰键状态；后者覆盖绕过 Chromium pre-handler 的输入，包括 `rawKeyDown`。重复边沿幂等处理。renderer 不再以 DOM 键盘事件维护第二份状态；侧栏缓存依赖修饰键状态，单独按下/松开即可刷新。观察器不消费输入、不分派命令，不影响真实任务切换或录制。
+- 直接使用事件中的聚合 meta/control 状态（或 modifiers 快照），不另行维护左右按键集合；左右同时按住时释放一个仍显示。窗口 blur/hide/minimize、当前输入源 loading/crash/destroy、guest 隐藏/关闭、禁用和录制切换清除提示；后台 guest 生命周期和 host/guest 内部切焦点不会清空前台状态；卸载取消订阅。
+- 窗口恢复时若修饰键已按住，收到下一次原生键盘事件后才更新，不推断系统全局按键状态。两条事件路径仍来自 Chromium 键盘事件，不是独立 OS hook；若系统没有送入键盘事件，不能保证恢复其状态。
+- Node 回归覆盖 Electron Input 事件形状、左右单键、双键释放、两条事件路径去重、host/guest 共享状态、guest keyUp 过滤前观察、生命周期清理、preload 订阅销毁、实际映射和禁用边界。Electron 桌面回归覆盖单独按下/松开，以及保持 Command 按住连续切换任务后的提示恢复；macOS Cocoa 修饰键事件模拟也验证了显示与恢复，物理键盘仍需手工验收。
 
 ### macOS 手工验收（待目标平台执行）
 

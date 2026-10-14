@@ -48,7 +48,8 @@ it("allows workspace and focused composer shortcuts while an auxiliary question 
     expect(workspaceShortcutBlocked(command)).toBe(false);
   for (const [key, command] of [
     ["Enter", "send-next"],
-    [";", "select-model"],
+    ["l", "select-model"],
+    ["j", "configure-environment"],
   ]) {
     const event = { key, ctrlKey: true, keyCode: key === "Enter" ? 13 : 186 } as KeyboardEvent;
     expect(composerShortcutCommand(event, "linux", defaultShortcuts("linux"))).toBe(command);

@@ -373,6 +373,7 @@ export class SessionHost {
     } catch (error) {
       this.errors.write("attachments.cleanup", error);
     }
+    this.settings.state.pruneAudit();
     this.settings.state.recoverRuntime();
     // The database owns task identity and location. Unreferenced files are never adopted.
     for (const task of this.settings.state.listTasks()) {
@@ -487,6 +488,8 @@ export class SessionHost {
     const config = this.settings.state.getTask(id)?.frozenConfiguration as SessionConfiguration | undefined;
     if (!config) throw new Error("Invalid session configuration");
     validateTemplate(config.template);
+    if (config.communicationStyle !== undefined && typeof config.communicationStyle !== "boolean")
+      throw new Error("Invalid communication style capability");
     if (config.subagents !== undefined && typeof config.subagents !== "boolean")
       throw new Error("Invalid subagent capability");
     if (config.fileContextReuse !== undefined && typeof config.fileContextReuse !== "boolean")
@@ -503,6 +506,7 @@ export class SessionHost {
       throw new Error("Invalid session configuration");
     const snapshot = {
       ...structuredClone(config),
+      communicationStyle: config.communicationStyle ?? false,
       subagents: config.subagents ?? false,
       fileContextReuse: config.fileContextReuse ?? false,
       proactiveExecution: config.proactiveExecution ?? false,
@@ -1495,37 +1499,24 @@ export class SessionHost {
     if (!skills.skills.some((s) => s.path === path)) throw new Error("invalid_input: 技能不属于全局目录");
     return this.settings.setSkillEnabled(path, enabled);
   }
-  private runChanges(id: string, runId: string): FileChange[] {
-    let current = "";
-    const changes: FileChange[] = [];
-    const index = this.indexes.get(id),
-      boundary = index?.findRun(runId);
-    if (!index || !boundary) return changes;
-    for (const e of index.read({ start: boundary.start.start, end: boundary.end?.end ?? index.data.size })) {
-      if (
-        e.type === "custom" &&
-        e.customType === "zpi.run" &&
-        isJsonObject(e.data) &&
-        e.data.phase === "start" &&
-        typeof e.data.runId === "string"
-      )
-        current = e.data.runId;
-      const change = current === runId ? entryFileChange(e) : undefined;
-      if (change) changes.push(change);
-    }
-    return changes;
-  }
   private recordedChanges(id: string, runId: string | null): FileChange[] {
     this.record(id);
-    if (runId) return this.runChanges(id, runId);
-    const index = this.indexes.get(id);
-    if (!index) throw new Error("not_found: 任务不存在");
-    return [...index.fileChanges()].flatMap((span) =>
-      index.read(span).flatMap((entry) => {
+    const index = this.requiredIndex(id);
+    const boundary = runId ? index.findRun(runId) : undefined;
+    if (runId && !boundary) return [];
+    const changes: FileChange[] = [];
+    for (const span of index.fileChanges()) {
+      if (
+        boundary &&
+        (span.start < boundary.start.start || span.start >= (boundary.end?.end ?? index.data.size))
+      )
+        continue;
+      for (const entry of index.read(span)) {
         const change = entryFileChange(entry);
-        return change ? [change] : [];
-      }),
-    );
+        if (change) changes.push(change);
+      }
+    }
+    return changes;
   }
   private async allChanges(
     id: string,
