@@ -27,6 +27,9 @@ test("desktop launches isolate inherited dev and test settings while preserving 
     ZPI_TEST_IMAGE_FILES: '["/real/image"]',
     ZPI_TEST_PACKAGED_APP: "/real/ZPI.app",
     ZDOTDIR: "/real/shell-config",
+    TMPDIR: "/real/tmp",
+    TMP: "/real/tmp",
+    TEMP: "/real/tmp",
   };
   expect(desktopEnvironment({ dir: "/tmp/test", url: "" }, inherited)).toEqual({
     PATH: "/bin",
@@ -45,6 +48,9 @@ test("desktop launches isolate inherited dev and test settings while preserving 
     ZPI_TEST_BASE_URL: "",
     ZPI_TEST_IMAGE_FILES: "[]",
     ZDOTDIR: "/tmp/test",
+    TMPDIR: "/tmp/test",
+    TMP: "/tmp/test",
+    TEMP: "/tmp/test",
   });
   expect(inherited.ZPI_TEST_PROJECT_DIR).toBe("/real/project");
 });

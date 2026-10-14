@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
 import { chunk, done, fakeServer, send } from "../../../../tests/fake-server.ts";
+import { runCleanup } from "../../../../tests/helpers/cleanup.ts";
 import { SessionHost } from "../../src/main/session-host.ts";
 import { SettingsStore } from "../../src/main/storage.ts";
 export const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
-  for (const f of cleanup.splice(0).reverse()) await f();
+  await runCleanup(cleanup);
 });
 export async function setup(title?: Parameters<typeof fakeServer>[1]) {
   const dir = await mkdtemp(join(tmpdir(), "zpi-session-metadata-"));
@@ -35,8 +36,8 @@ export async function setup(title?: Parameters<typeof fakeServer>[1]) {
   });
   settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
   const host = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined);
-  await host.init();
   cleanup.push(() => host.close());
+  await host.init();
   return { dir, cwd, host, settings, server };
 }
 export async function idle(host: SessionHost, id: string) {

@@ -249,3 +249,30 @@ test("the provider receives a bounded encoding while the attachment cache keeps 
   expect(await sharp(Buffer.from(payload, "base64")).metadata()).toMatchObject({ width: 1600, height: 1600 });
   expect((await f.host.readAttachment(f.session.id, image.id)).data).toBe(original.toString("base64"));
 });
+
+test("image imports and cached reads bound source bytes and preserve originals", async () => {
+  const f = await fixture();
+  const root = join(f.dir, "agent", "attachments");
+  const store = new AttachmentStore(root);
+  const original = await png();
+  const path = join(f.workspace, "source.png");
+  await writeFile(path, original);
+  const image = await store.importFile(f.session.id, path);
+  const cached = join(root, f.session.id, `${image.id}.png`);
+  expect(await readFile(cached)).toEqual(original);
+  expect(Buffer.from((await store.read(f.session.id, image.id)).data, "base64")).toEqual(original);
+  const loaded = await store.load(f.session.id, [image.id]);
+  expect(loaded.images).toHaveLength(1);
+  expect(Buffer.from(loaded.images[0].data, "base64").length).toBeLessThan(5 * 1024 * 1024);
+  const oversized = Buffer.alloc(11 * 1024 * 1024);
+  original.copy(oversized);
+  await writeFile(path, oversized);
+  await expect(store.importFile(f.session.id, path)).rejects.toThrow("10 MiB");
+  // Cached index sizes are not trusted: the actual file may have changed after import.
+  await writeFile(cached, oversized);
+  await expect(store.read(f.session.id, image.id)).rejects.toThrow("byte size limit");
+  await expect(store.load(f.session.id, [image.id])).rejects.toThrow("byte size limit");
+  await expect(store.copyTo(f.session.id, "copy-target", [image.id])).rejects.toThrow("byte size limit");
+  await writeFile(cached, original.subarray(0, 40));
+  await expect(store.read(f.session.id, image.id)).rejects.toThrow();
+});

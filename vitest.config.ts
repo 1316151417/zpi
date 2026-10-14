@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["packages/*/test/**/*.test.ts"],
-    environment: "node",
+    environment: "./tests/unit-environment.ts",
     isolate: true,
     unstubEnvs: true,
     // Leave capacity for the desktop; dedicated runs can pass --maxWorkers=100%.

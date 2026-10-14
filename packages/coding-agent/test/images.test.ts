@@ -14,6 +14,37 @@ async function image(width: number, height: number) {
     .toBuffer();
 }
 
+function bmpFixture(options: {
+  width: number;
+  height: number;
+  bits: number;
+  compression: number;
+  pixels: number[];
+  palette?: number[][];
+  headerSize?: number;
+  gap?: number;
+}) {
+  const { width, height, bits, compression, pixels, palette = [], headerSize = 40, gap = 0 } = options;
+  const offset = 14 + headerSize + palette.length * 4 + gap;
+  const bytes = Buffer.alloc(offset + pixels.length);
+  bytes.write("BM");
+  bytes.writeUInt32LE(bytes.length, 2);
+  bytes.writeUInt32LE(offset, 10);
+  bytes.writeUInt32LE(headerSize, 14);
+  bytes.writeInt32LE(width, 18);
+  bytes.writeInt32LE(height, 22);
+  bytes.writeUInt16LE(1, 26);
+  bytes.writeUInt16LE(bits, 28);
+  bytes.writeUInt32LE(compression, 30);
+  bytes.writeUInt32LE(pixels.length, 34);
+  bytes.writeUInt32LE(palette.length, 46);
+  palette.forEach(([red, green, blue], index) => {
+    bytes.set([blue, green, red, 0], 14 + headerSize + index * 4);
+  });
+  bytes.set(pixels, offset);
+  return bytes;
+}
+
 test("source validation preserves JPEG bytes while inline preparation shares the read tool budget", async () => {
   const original = await sharp(randomFillSync(Buffer.alloc(1600 * 1600 * 3)), {
     raw: { width: 1600, height: 1600, channels: 3 },
@@ -212,7 +243,7 @@ test("BMP validation rejects truncated, malformed and unsupported layouts before
       return bytes;
     },
     (bytes) => {
-      bytes.writeUInt16LE(16, 28);
+      bytes.writeUInt16LE(2, 28);
       return bytes;
     },
     (bytes) => {
@@ -239,6 +270,126 @@ test("BMP validation rejects truncated, malformed and unsupported layouts before
       expect(await prepareInlineImage(malformed, "image/bmp", { autoResizeImages })).toMatchObject({
         ok: false,
       });
+    }
+  }
+});
+
+test("BMP RLE4 and RLE8 preserve golden pixels across rows, gaps, deltas and padded absolute runs", async () => {
+  const palette = [
+    [0, 0, 0],
+    [255, 0, 0],
+    [0, 255, 0],
+    [0, 0, 255],
+    [255, 255, 0],
+  ];
+  const cases = [
+    {
+      width: 5,
+      height: 3,
+      bits: 8,
+      compression: 1,
+      pixels: [0, 5, 1, 2, 3, 4, 1, 0, 0, 0, 0, 2, 1, 0, 3, 2, 0, 0, 0, 2, 2, 0, 2, 3, 0, 1],
+      expected: [0, 0, 3, 3, 0, 0, 2, 2, 2, 0, 1, 2, 3, 4, 1],
+    },
+    {
+      width: 4,
+      height: 3,
+      bits: 8,
+      compression: 1,
+      pixels: [1, 1, 0, 2, 1, 1, 1, 2, 0, 0, 1, 3, 0, 1],
+      expected: [3, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0],
+    },
+    {
+      width: 5,
+      height: 2,
+      bits: 4,
+      compression: 2,
+      pixels: [0, 5, 0x12, 0x34, 0x10, 0, 0, 0, 5, 0x21, 0, 0, 0, 1],
+      expected: [2, 1, 2, 1, 2, 1, 2, 3, 4, 1],
+    },
+    {
+      width: 5,
+      height: 1,
+      bits: 4,
+      compression: 2,
+      pixels: [3, 0x12, 2, 0x34, 0, 1],
+      expected: [1, 2, 1, 3, 4],
+    },
+  ];
+  for (const fixture of cases) {
+    const original = bmpFixture({ ...fixture, palette, headerSize: 108, gap: 8 });
+    expect((await processImage(original)).bytes.equals(original)).toBe(true);
+    for (const autoResizeImages of [true, false]) {
+      const prepared = await prepareInlineImage(original, "image/bmp", { autoResizeImages });
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) continue;
+      expect(await sharp(Buffer.from(prepared.data, "base64")).raw().toBuffer()).toEqual(
+        Buffer.from(fixture.expected.flatMap((index) => [...palette[index], 255])),
+      );
+    }
+  }
+});
+
+test("BMP BI_RGB16 expands RGB555 correctly with padded rows and either row direction", async () => {
+  const bottom = [0x7c00, 0x03e0, 0x001f];
+  const top = [0x7fff, 0, (3 << 10) | (15 << 5) | 27];
+  for (const height of [2, -2]) {
+    const rows = height > 0 ? [bottom, top] : [top, bottom];
+    const pixels = rows.flatMap((row) => [...row.flatMap((word) => [word & 255, word >> 8]), 0, 0]);
+    const original = bmpFixture({ width: 3, height, bits: 16, compression: 0, pixels, gap: 4 });
+    expect((await processImage(original)).bytes.equals(original)).toBe(true);
+    const prepared = await prepareInlineImage(original, "image/bmp");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) continue;
+    expect(await sharp(Buffer.from(prepared.data, "base64")).raw().toBuffer()).toEqual(
+      Buffer.from([
+        255, 255, 255, 255, 0, 0, 0, 255, 24, 123, 222, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
+      ]),
+    );
+  }
+});
+
+test("BMP RLE rejects malformed runs, deltas, palettes, truncation and invalid compression layouts", async () => {
+  const palette = [
+    [0, 0, 0],
+    [255, 0, 0],
+  ];
+  const cases = [
+    { pixels: [5, 1, 0, 1] }, // Run crosses the row.
+    { pixels: [0, 5, 1, 1, 1, 1, 1, 0, 0, 1] }, // Absolute run crosses the row.
+    { pixels: [0, 2, 4, 0, 0, 1] }, // Horizontal delta outside image.
+    { pixels: [0, 2, 0, 2, 0, 1] }, // Vertical delta outside image.
+    { pixels: [0, 0, 0, 0, 1, 1, 0, 1] }, // Run below the last row.
+    { pixels: [1, 2, 0, 1] }, // Invalid encoded palette index.
+    { pixels: [0, 3, 1, 2, 1, 0, 0, 1] }, // Invalid absolute palette index.
+    { pixels: [1] }, // Truncated encoded pair.
+    { pixels: [0, 2, 1] }, // Truncated delta.
+    { pixels: [0, 3, 1, 1, 1] }, // Missing absolute padding.
+    { pixels: [4, 1] }, // Missing end marker.
+    { pixels: [0, 0, 0, 0, 0, 0, 0, 1] }, // Too many row terminators.
+    { pixels: [1, 1, 0, 1], height: -2 }, // RLE cannot be top-down.
+    { pixels: [1, 1, 0, 1], bits: 4 }, // Compression and bit depth disagree.
+    { pixels: [1, 0x20, 0, 1], bits: 4, compression: 2 }, // Invalid RLE4 palette index.
+    { pixels: [0, 3, 0x11], bits: 4, compression: 2 }, // Truncated RLE4 absolute run.
+  ];
+  const malformed = cases.map((fixture) =>
+    bmpFixture({ width: 4, height: 2, bits: 8, compression: 1, palette, ...fixture }),
+  );
+  const valid = bmpFixture({ width: 4, height: 2, bits: 8, compression: 1, palette, pixels: [4, 1, 0, 1] });
+  for (const [offset, value] of [
+    [34, 2],
+    [34, 10],
+    [2, valid.length - 1],
+    [18, imageLimits.pixels + 1],
+  ]) {
+    const bytes = Buffer.from(valid);
+    bytes.writeUInt32LE(value, offset);
+    malformed.push(bytes);
+  }
+  for (const bytes of malformed) {
+    await expect(processImage(bytes)).rejects.toThrow();
+    for (const autoResizeImages of [true, false]) {
+      expect(await prepareInlineImage(bytes, "image/bmp", { autoResizeImages })).toMatchObject({ ok: false });
     }
   }
 });
