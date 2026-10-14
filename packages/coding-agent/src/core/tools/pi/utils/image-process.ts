@@ -36,6 +36,7 @@ async function normalizeImage(bytes: Uint8Array): Promise<NormalizedImage | null
     // Inline providers receive one physically oriented frame, regardless of format or size.
     if (
       source.mimeType === "image/bmp" ||
+      source.mimeType === "image/gif" ||
       source.animated ||
       source.orientation !== 1 ||
       source.hasMetadata

@@ -104,6 +104,134 @@ it("closing an idle side chat stops its background work and blocks late notifica
   await expect(restored.startRun({ sessionId: child.id, text: "late wake" })).rejects.toThrow("已归档");
 });
 
+async function launchCompletedChild(f: Awaited<ReturnType<typeof fixture>>) {
+  await run(f, "parent seed");
+  const launch = f.host.subagents.tools(f.session.id).find((tool) => tool.name === "Agent");
+  if (!launch) throw new Error("missing Agent tool");
+  await launch.execute(
+    "launch-child",
+    { description: "Inspect source", prompt: "Remember original child instructions" },
+    undefined,
+    undefined,
+    undefined as never,
+  );
+  return f.host.subagents.list(f.session.id)[0];
+}
+
+it.each([
+  { restart: false, legacy: false, alreadyRestored: false },
+  { restart: true, legacy: false, alreadyRestored: false },
+  { restart: true, legacy: true, alreadyRestored: false },
+  { restart: true, legacy: true, alreadyRestored: true },
+])(
+  "restores reusable agents without reopening closed side chats ($restart, $legacy, $alreadyRestored)",
+  async ({ restart, legacy, alreadyRestored }) => {
+    const f = await fixture();
+    const task = await launchCompletedChild(f);
+    const sideChat = await f.host.createSideChat(f.session.id);
+    await f.host.closeSideChat(sideChat.id);
+    await f.host.archiveSession(f.session.id);
+    expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
+    if (alreadyRestored) f.host.restoreSession(f.session.id);
+    // Reproduce the durable child state created by the 0.2.33–0.2.34 cascade.
+    if (legacy) await f.host.archiveSession(task.childSessionId);
+    let host = f.host;
+    if (restart) {
+      await f.host.close();
+      host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
+      cleanup.push(() => host.close());
+      await host.init();
+    }
+    if (!alreadyRestored) {
+      host.restoreSession(f.session.id);
+      expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
+    } else {
+      // An active parent has no Restore action in the UI; SendMessage must repair it lazily.
+      expect(host.getSessionSnapshot(f.session.id).session.archivedAt).toBeNull();
+      expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt).toEqual(expect.any(Number));
+    }
+    expect(host.getSessionSnapshot(sideChat.id).session.archivedAt).toEqual(expect.any(Number));
+    await expect(host.closeSideChat(task.childSessionId)).rejects.toThrow("不是辅助对话");
+    host.subagents.prepare(f.session.id);
+    const followup = host.subagents.tools(f.session.id).find((tool) => tool.name === "SendMessage");
+    if (!followup) throw new Error("missing SendMessage tool");
+    await followup.execute(
+      "resume-child",
+      { to: task.agentId, summary: "Continue", message: "Check the next file" },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    await expect.poll(() => host.subagents.list(f.session.id)[0].status).toBe("completed");
+    await expect.poll(() => host.activeRuns.size).toBe(0);
+    expect(host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(2);
+    expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
+    const resumed = f.server.requests.find((request) =>
+      JSON.stringify(request.messages).includes("Check the next file"),
+    );
+    expect(JSON.stringify(resumed?.messages)).toContain("Remember original child instructions");
+    expect(host.getSessionSnapshot(sideChat.id).session.archivedAt).toEqual(expect.any(Number));
+  },
+);
+
+it("archiving a parent drains a running reusable agent and its background commands", async () => {
+  const childStarted = deferred();
+  const f = await fixture((_, response, index) => {
+    send(response, chunk({ content: "working" }));
+    if (index === 0) done(response);
+    else childStarted.resolve();
+  });
+  await run(f, "parent seed");
+  const launch = f.host.subagents.tools(f.session.id).find((tool) => tool.name === "Agent");
+  if (!launch) throw new Error("missing Agent tool");
+  await launch.execute(
+    "launch-child",
+    { description: "Inspect source", prompt: "Keep working", run_in_background: true },
+    undefined,
+    undefined,
+    undefined as never,
+  );
+  await childStarted.promise;
+  const task = f.host.subagents.list(f.session.id)[0];
+  await f.host.backgroundTasks
+    .tool(task.childSessionId, f.workspace, true)
+    .execute(
+      "child-service",
+      { command: "sleep 30", run_in_background: true },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+  await f.host.archiveSession(f.session.id);
+  expect(f.host.activeRuns.size).toBe(0);
+  expect(f.host.subagents.list(f.session.id)[0].status).toBe("aborted");
+  expect(f.host.backgroundTasks.list(task.childSessionId)[0].status).toBe("cancelled");
+  expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
+  expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toEqual(expect.any(Number));
+});
+
+it("surfaces child restore persistence failures and permits retry after the parent was restored", async () => {
+  const f = await fixture();
+  const task = await launchCompletedChild(f);
+  await f.host.archiveSession(f.session.id);
+  await f.host.archiveSession(task.childSessionId);
+  const owner = f.host as unknown as { indexes: Map<string, { append(): void }> };
+  const child = owner.indexes.get(task.childSessionId);
+  if (!child) throw new Error("missing child index");
+  const failure = vi.spyOn(child, "append").mockImplementation(() => {
+    throw new Error("storage: cannot restore child");
+  });
+  try {
+    expect(() => f.host.restoreSession(f.session.id)).toThrow("cannot restore child");
+    expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toBeNull();
+    expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt).toEqual(expect.any(Number));
+  } finally {
+    failure.mockRestore();
+  }
+  f.host.restoreSession(f.session.id);
+  expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
+});
+
 it("side-chat closure rejects new runs and notifications while cleanup is still pending", async () => {
   const f = await fixture();
   await run(f, "parent seed");

@@ -90,7 +90,14 @@ export function visiblePaneTabs(sessionId: string | undefined, tabs = usePane.ge
   return tabs.filter((tab) => tabOwner(tab) === sessionId);
 }
 function paneOwner(id: string | undefined) {
-  return useStore.getState().sessions.get(id ?? "")?.parentSessionId ?? id;
+  if (id === undefined) return;
+  const record = useStore.getState().sessions.get(id);
+  if (record) return record.parentSessionId ?? id;
+  // Archived child records leave the recent list, but their retained panes can still navigate.
+  return (
+    usePane.getState().tabs.find((tab) => tab.sessionId === id && tab.ownerSessionId !== undefined)
+      ?.ownerSessionId ?? id
+  );
 }
 function tabOwner(tab: PaneTab) {
   return tab.ownerSessionId ?? paneOwner(tab.sessionId);

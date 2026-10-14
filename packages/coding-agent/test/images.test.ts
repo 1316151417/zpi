@@ -532,3 +532,159 @@ test("animated PNGs are recognized even when the decoder reports only their firs
   expect(bytes.includes(Buffer.from("acTL"))).toBe(false);
   expect(await sharp(bytes).removeAlpha().raw().toBuffer()).toEqual(Buffer.from([255, 0, 0]));
 });
+
+test.each(["tEXt", "zTXt", "iTXt"])(
+  "inline PNG %s comments are stripped while source bytes are retained",
+  async (type) => {
+    const privateText = "Private project=/Users/alice/private-project, creator=Alice";
+    const text = Buffer.from(privateText);
+    const data =
+      type === "tEXt"
+        ? Buffer.concat([Buffer.from("Comment\0"), text])
+        : type === "zTXt"
+          ? Buffer.concat([Buffer.from("Comment\0\0"), deflateSync(text)])
+          : Buffer.concat([Buffer.from("Comment\0\0\0\0\0"), text]);
+    const header = Buffer.alloc(8);
+    header.writeUInt32BE(data.length);
+    header.write(type, 4);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])));
+    const png = await image(3, 2);
+    const original = Buffer.concat([png.subarray(0, 33), header, data, checksum, png.subarray(33)]);
+    expect((await sharp(original).metadata()).comments).toContainEqual({
+      keyword: "Comment",
+      text: privateText,
+    });
+    expect((await processImage(original)).bytes).toEqual(original);
+    for (const autoResizeImages of [true, false]) {
+      const prepared = await prepareInlineImage(original, "image/png", { autoResizeImages });
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) continue;
+      const bytes = Buffer.from(prepared.data, "base64");
+      expect(bytes.includes(text)).toBe(false);
+      expect((await sharp(bytes).metadata()).comments).toBeUndefined();
+      expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(original).raw().toBuffer());
+    }
+  },
+);
+
+test.each(["before scan", "after scan", "APP segment", "trailing bytes"])(
+  "inline JPEG metadata hidden from Sharp is stripped: %s",
+  async (placement) => {
+    const privateText = Buffer.from("Private project=/Users/alice/private-project, creator=Alice");
+    const header = Buffer.alloc(4);
+    header[0] = 0xff;
+    header[1] = placement === "APP segment" ? 0xe3 : 0xfe;
+    header.writeUInt16BE(privateText.length + 2, 2);
+    const jpeg = await sharp(await image(3, 2))
+      .jpeg()
+      .toBuffer();
+    const offset =
+      placement === "trailing bytes" ? jpeg.length : placement === "after scan" ? jpeg.length - 2 : 2;
+    const original = Buffer.concat([
+      jpeg.subarray(0, offset),
+      ...(placement === "trailing bytes" ? [] : [header]),
+      privateText,
+      jpeg.subarray(offset),
+    ]);
+    expect((await processImage(original)).bytes).toEqual(original);
+    for (const autoResizeImages of [true, false]) {
+      const prepared = await prepareInlineImage(original, "image/jpeg", { autoResizeImages });
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) continue;
+      const bytes = Buffer.from(prepared.data, "base64");
+      expect(bytes.includes(privateText)).toBe(false);
+      expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(jpeg).raw().toBuffer());
+    }
+  },
+);
+
+test.each(["XMP", "EXIF", "ICC"])("inline WebP %s metadata is stripped", async (kind) => {
+  let source = sharp(await image(3, 2)).webp({ lossless: true });
+  if (kind === "XMP")
+    source = source.withXmp('<x:xmpmeta xmlns:x="adobe:ns:meta/">Private project</x:xmpmeta>');
+  if (kind === "EXIF") source = source.withExif({ IFD0: { Artist: "Private creator" } });
+  if (kind === "ICC") source = source.withIccProfile("srgb");
+  const original = await source.toBuffer();
+  expect((await sharp(original).metadata())[kind.toLowerCase() as "xmp" | "exif" | "icc"]).toBeDefined();
+  expect((await processImage(original)).bytes).toEqual(original);
+  for (const autoResizeImages of [true, false]) {
+    const prepared = await prepareInlineImage(original, "image/webp", { autoResizeImages });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) continue;
+    const metadata = await sharp(Buffer.from(prepared.data, "base64")).metadata();
+    expect(metadata.xmp).toBeUndefined();
+    expect(metadata.exif).toBeUndefined();
+    expect(metadata.icc).toBeUndefined();
+    expect(metadata).toMatchObject({ width: 3, height: 2 });
+  }
+});
+
+test.each(["comment", "application", "trailing bytes"])(
+  "inline static GIF %s metadata hidden from Sharp is stripped",
+  async (kind) => {
+    const privateText = Buffer.from("Private project=/Users/alice/private-project, creator=Alice");
+    const gif = await sharp(await image(3, 2))
+      .gif()
+      .toBuffer();
+    const extension =
+      kind === "comment"
+        ? Buffer.from([0x21, 0xfe])
+        : Buffer.concat([Buffer.from([0x21, 0xff, 11]), Buffer.from("PRIVATE APP")]);
+    const original =
+      kind === "trailing bytes"
+        ? Buffer.concat([gif, privateText])
+        : Buffer.concat([
+            gif.subarray(0, -1),
+            extension,
+            Buffer.from([privateText.length]),
+            privateText,
+            Buffer.from([0]),
+            gif.subarray(-1),
+          ]);
+    expect((await processImage(original)).bytes).toEqual(original);
+    for (const autoResizeImages of [true, false]) {
+      const prepared = await prepareInlineImage(original, "image/gif", { autoResizeImages });
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) continue;
+      const bytes = Buffer.from(prepared.data, "base64");
+      expect(bytes.includes(privateText)).toBe(false);
+      expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(gif).raw().toBuffer());
+    }
+  },
+);
+
+test("metadata-free sources retain byte-preserving fast paths in both inline modes", async () => {
+  const png = await image(3, 2);
+  const cases: [string, Buffer][] = [
+    ["image/png", png],
+    ["image/jpeg", await sharp(png).jpeg().toBuffer()],
+    ["image/jpeg", await sharp(png).jpeg({ progressive: true }).toBuffer()],
+    ["image/webp", await sharp(png).webp({ lossless: true }).toBuffer()],
+  ];
+  for (const [mimeType, bytes] of cases) {
+    for (const autoResizeImages of [true, false]) {
+      expect(await prepareInlineImage(bytes, mimeType, { autoResizeImages })).toMatchObject({
+        ok: true,
+        data: bytes.toString("base64"),
+        mimeType,
+      });
+    }
+  }
+});
+
+test("static GIF originals are retained while inline output is a clean first-frame PNG", async () => {
+  const original = await sharp(await image(3, 2))
+    .gif()
+    .toBuffer();
+  expect((await processImage(original)).bytes).toEqual(original);
+  for (const autoResizeImages of [true, false]) {
+    const prepared = await prepareInlineImage(original, "image/gif", { autoResizeImages });
+    expect(prepared).toMatchObject({ ok: true, mimeType: "image/png" });
+    if (!prepared.ok) continue;
+    expect(await sharp(Buffer.from(prepared.data, "base64")).raw().toBuffer()).toEqual(
+      await sharp(original).raw().toBuffer(),
+    );
+    expect(prepared.hints.join("\n")).not.toContain("Animated image");
+  }
+});

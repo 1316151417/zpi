@@ -52,7 +52,13 @@ export class StreamingToolJournal {
       }
     }
     if (event.type === "tool_execution_start") {
-      const call = this.partial?.content.find((c) => c.type === "toolCall" && c.id === event.toolCallId);
+      let call =
+        event.toolCall ??
+        this.partial?.content.find((c) => c.type === "toolCall" && c.id === event.toolCallId);
+      // Terminal-only declarations can be interrupted before message_end updates
+      // the partial. Legacy/manual events may only carry the closed call's input.
+      if (!call && isJsonObject(event.args))
+        call = { type: "toolCall", id: event.toolCallId, name: event.toolName, arguments: event.args };
       if (call?.type !== "toolCall") throw new Error("Missing closed tool call");
       if (!journal.assistant.content.some((c) => c.type === "toolCall" && c.id === call.id)) {
         journal.assistant.content.push(structuredClone(call));

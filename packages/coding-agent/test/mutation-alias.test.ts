@@ -2,7 +2,9 @@ import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
 import { deferred } from "../../../tests/fake-server.ts";
+import { createEditTool, createWriteTool } from "../src/core/tools/index.ts";
 import { withFileMutationQueue } from "../src/core/tools/pi/file-mutation-queue.ts";
+import { createWriteToolDefinition } from "../src/core/tools/pi/write.ts";
 import { temp } from "./helpers/workspace-fixture.ts";
 
 for (const suffix of ["new.txt", "missing/nested/new.txt", "existing.txt"]) {
@@ -43,13 +45,46 @@ for (const suffix of ["new.txt", "missing/nested/new.txt", "existing.txt"]) {
   });
 }
 
-it("rejects non-directory ancestors without stranding later mutations", async () => {
+it("local writes reject non-directory ancestors without stranding later mutations", async () => {
   const cwd = await temp();
   await writeFile(join(cwd, "file"), "text");
-  await expect(withFileMutationQueue(join(cwd, "file", "child"), async () => {})).rejects.toMatchObject({
-    code: "ENOTDIR",
-  });
+  await expect(
+    createWriteToolDefinition(cwd).execute("local", { path: "file/nested/child", content: "invalid" }),
+  ).rejects.toMatchObject({ code: "ENOTDIR" });
+  await expect(withFileMutationQueue(join(cwd, "file/nested/child"), async () => "released")).resolves.toBe(
+    "released",
+  );
   await expect(withFileMutationQueue(join(cwd, "other"), async () => "released")).resolves.toBe("released");
+});
+
+it("custom remote writes and edits do not inherit incompatible local ancestors", async () => {
+  const cwd = await temp();
+  await writeFile(join(cwd, "remote-directory"), "This is only a file on the local filesystem");
+  const path = "remote-directory/file.txt";
+  const absolutePath = join(cwd, path);
+  const remote = new Map<string, string>();
+  const directories: string[] = [];
+  const writeRemote = async (file: string, content: string) => {
+    remote.set(file, content);
+  };
+  const write = createWriteTool(cwd, {
+    operations: { mkdir: async (dir) => void directories.push(dir), writeFile: writeRemote },
+  });
+  const written = await write.execute("write", { path, content: "original text" });
+  expect(written.details).toBeUndefined();
+  expect(directories).toEqual([join(cwd, "remote-directory")]);
+  expect(remote.get(absolutePath)).toBe("original text");
+  const edit = createEditTool(cwd, {
+    operations: {
+      access: async () => {},
+      readFile: async (file) => Buffer.from(remote.get(file) ?? ""),
+      writeFile: writeRemote,
+    },
+  });
+  const edited = await edit.execute("edit", { path, edits: [{ oldText: "original", newText: "edited" }] });
+  expect(edited.details).not.toHaveProperty("fileChange");
+  expect(remote.get(absolutePath)).toBe("edited text");
+  expect(await readFile(join(cwd, "remote-directory"), "utf8")).toContain("only a file");
 });
 
 for (const kind of ["file", "directory"] as const) {

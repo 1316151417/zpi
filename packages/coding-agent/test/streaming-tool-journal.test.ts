@@ -1,10 +1,19 @@
+import { copyFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import type { AssistantMessage, ToolCall } from "zpi-ai";
-import { emptyAssistant } from "zpi-ai";
-import { projectStreamedToolJournal, SessionManager } from "zpi-coding-agent";
-import { fakeModel } from "../../../tests/fake-server.ts";
+import type { AssistantMessage, Message, ToolCall } from "zpi-ai";
+import { createAssistantMessageEventStream, emptyAssistant, normalizeContext } from "zpi-ai";
+import {
+  createAgentSession,
+  ModelRuntime,
+  projectStreamedToolJournal,
+  SessionManager,
+  SettingsManager,
+  StaticResourceLoader,
+} from "zpi-coding-agent";
+import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
+import { responsesInput } from "../../ai/src/api/openai-responses.ts";
 import { restoreView } from "../../desktop/src/main/projection.ts";
 import { StreamingToolJournal } from "../src/core/streaming-tool-journal.ts";
 import { directory } from "./helpers/session-fixture.ts";
@@ -170,6 +179,25 @@ it("checkpoints calls supplied only by the final response before any execution s
   ]);
 });
 
+it("checkpoints the closed declaration instead of a stale partial with the same call ID", async () => {
+  const f = await fixture();
+  const closed: ToolCall = {
+    ...f.call,
+    arguments: { path: "final-input.txt" },
+    namespace: "custom-provider",
+    thoughtSignature: "provider-signature",
+  };
+  f.journal.observe({
+    type: "tool_execution_start",
+    toolCallId: closed.id,
+    toolName: closed.name,
+    args: closed.arguments,
+    toolCall: closed,
+  });
+  const recovered = SessionManager.open(f.file).buildSessionContext().messages;
+  expect(recovered.find((message) => message.role === "assistant")?.content).toEqual([closed]);
+});
+
 it("a committed journal does not resurrect calls or add model messages", async () => {
   const f = await fixture();
   f.start();
@@ -180,3 +208,100 @@ it("a committed journal does not resurrect calls or add model messages", async (
   SessionManager.open(f.file);
   expect(await readFile(f.file, "utf8")).toBe(before);
 });
+
+it.each(["error", "length", "aborted"] as const)(
+  "closes final-only tool calls after an empty initial partial and a %s response",
+  async (stopReason) => {
+    const cwd = await directory();
+    const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+    const runtime = await ModelRuntime.create();
+    let requests = 0;
+    runtime.registerProvider("fake", {
+      models: [{ ...fakeConfig(""), api: "openai-responses" }],
+      streamSimple(model) {
+        const stream = createAssistantMessageEventStream();
+        // Immutable custom providers need not mutate or re-emit the initial partial.
+        stream.push({ type: "start", partial: emptyAssistant(model) });
+        stream.end({
+          ...emptyAssistant(model),
+          stopReason: requests++ === 0 ? stopReason : "stop",
+          content:
+            requests === 1
+              ? ["first", "second"].map((id) => ({
+                  type: "toolCall" as const,
+                  id,
+                  name: "unexecuted",
+                  namespace: "custom-provider",
+                  thoughtSignature: "provider-signature",
+                  arguments: { input: id },
+                }))
+              : [{ type: "text", text: "Recovered normally" }],
+        });
+        return stream;
+      },
+    });
+    const { session } = await createAgentSession({
+      modelRuntime: runtime,
+      sessionManager: manager,
+      settingsManager: SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: false },
+      }),
+      resourceLoader: new StaticResourceLoader(),
+      noTools: "all",
+    });
+    let checkpointMessages: Message[] | undefined;
+    session.subscribe((event) => {
+      if (event.type !== "tool_execution_start" || event.toolCallId !== "first") return;
+      // Capture durable bytes before the terminal assistant reaches message_end.
+      const checkpoint = join(cwd, "before-message-end.jsonl");
+      copyFileSync(manager.getSessionFile() as string, checkpoint);
+      checkpointMessages = SessionManager.open(checkpoint).buildSessionContext().messages;
+    });
+    try {
+      await session.prompt("Exercise a final-only tool declaration");
+      expect(checkpointMessages?.find((message) => message.role === "assistant")).toMatchObject({
+        content: [{ id: "first", namespace: "custom-provider", thoughtSignature: "provider-signature" }],
+      });
+      expect(
+        responsesInput(session.model, normalizeContext({ messages: checkpointMessages ?? [] })),
+      ).toContainEqual({
+        type: "function_call",
+        call_id: "first",
+        name: "unexecuted",
+        namespace: "custom-provider",
+        arguments: JSON.stringify({ input: "first" }),
+      });
+      const messages = manager.buildSessionContext().messages;
+      const declaration = messages.findLast((message) => message.role === "assistant");
+      expect(declaration).toMatchObject({
+        stopReason,
+        content: ["first", "second"].map((id) => ({ id, namespace: "custom-provider" })),
+      });
+      expect(
+        manager
+          .getEntries()
+          .find(
+            (entry) =>
+              entry.type === "custom" &&
+              entry.customType === "zpi.streaming_tools" &&
+              (entry.data as { responseComplete?: boolean })?.responseComplete,
+          ),
+      ).toMatchObject({ data: { assistant: declaration } });
+      expect(messages.filter((message) => message.role === "toolResult")).toMatchObject([
+        { toolCallId: "first", isError: true, details: { reason: "not_executed" } },
+        { toolCallId: "second", isError: true, details: { reason: "not_executed" } },
+      ]);
+      expect(projectStreamedToolJournal(manager.getEntries())).toEqual(manager.getEntries());
+      expect(SessionManager.open(manager.getSessionFile() as string).buildSessionContext().messages).toEqual(
+        messages,
+      );
+      // A journal bookkeeping failure must not leave the session permanently faulted.
+      await session.prompt("Continue the session");
+      expect(session.messages.at(-1)).toMatchObject({ content: [{ text: "Recovered normally" }] });
+      expect(session.isIdle).toBe(true);
+    } finally {
+      session.dispose();
+    }
+  },
+);

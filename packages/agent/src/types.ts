@@ -122,6 +122,8 @@ export type AgentEvent =
       toolCallId: string;
       toolName: string;
       args: unknown;
+      /** Complete provider declaration for durable recovery before message_end. */
+      toolCall?: ToolCall;
       executionTiming?: "during_stream";
     }
   | {

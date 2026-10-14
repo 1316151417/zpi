@@ -75,7 +75,8 @@ export async function resizeImageInProcess(
       !source.animated &&
       !source.hasMetadata &&
       source.orientation === 1 &&
-      source.mimeType !== "image/bmp"
+      source.mimeType !== "image/bmp" &&
+      source.mimeType !== "image/gif"
     ) {
       await source.pipeline.stats();
       return result(inputBytes, source.mimeType);

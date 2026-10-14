@@ -25,6 +25,7 @@ vi.mock("../../../tests/fake-server.ts", async (importOriginal) => ({
 }));
 
 import { cleanup as contextCleanup, fixture } from "./helpers/context-fixture.ts";
+import { cleanup as hostCleanup, fixture as hostFixture } from "./helpers/host-fixture.ts";
 import { cleanup as sessionCleanup, setup } from "./helpers/session-fixture.ts";
 
 beforeEach(() => {
@@ -55,6 +56,7 @@ it("attempts all cleanup actions in reverse acquisition order and reports every 
 
 it.each([
   ["context", fixture, contextCleanup],
+  ["host", () => hostFixture(() => {}), hostCleanup],
   ["session", setup, sessionCleanup],
 ] as const)(
   "%s fixture releases partially initialized hosts, servers, and directories",

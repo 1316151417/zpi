@@ -2,10 +2,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { emptyAssistant, type Message } from "zpi-ai";
+import { calculateContextTokens, emptyAssistant, type Message } from "zpi-ai";
 import { createAgentSession, ModelRuntime, SessionManager, StaticResourceLoader } from "zpi-coding-agent";
 import { chunk, done, fakeConfig, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 import {
+  calculateContextTokens as compactionContextTokens,
   DEFAULT_COMPACTION_SETTINGS,
   estimateContextTokens,
   prepareCompaction,
@@ -17,6 +18,17 @@ afterEach(async () => {
   for (const cleanup of cleanups.reverse()) await cleanup();
   cleanups.length = 0;
 });
+it.each([
+  { usage: { totalTokens: 999, input: 100, output: 20, cacheRead: 30, cacheWrite: 5 }, tokens: 999 },
+  { usage: { totalTokens: 0, input: 100, output: 20, cacheRead: 30, cacheWrite: 5 }, tokens: 155 },
+  { usage: { cacheWrite: 11 }, tokens: 11 },
+  { usage: {}, tokens: 0 },
+])("shares the provider and compaction usage total for $usage", ({ usage: patch, tokens }) => {
+  const usage = Object.assign(emptyAssistant(fakeModel("http://localhost")).usage, patch);
+  expect(compactionContextTokens).toBe(calculateContextTokens);
+  expect(calculateContextTokens(usage)).toBe(tokens);
+});
+
 it("Pi estimates usage plus trailing text and both image sources; compaction cuts preserve tool batches", () => {
   const model = fakeModel("http://localhost");
   const messages: Message[] = [
