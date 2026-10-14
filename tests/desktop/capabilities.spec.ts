@@ -141,7 +141,16 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    await expect(page.locator(".capability-settings .settings-row strong").first()).toHaveText(
+      "提示词-交互方式",
+    );
+    await page.getByRole("button", { name: "系统提示词", exact: true }).click();
+    await expect(page.locator(".system-rules-preview")).toContainText(
+      "all answers, conclusions, and deliverables",
+    );
+    await page.getByRole("button", { name: "插件能力", exact: true }).click();
     for (const name of [
+      "提示词-交互方式",
       "提示词-多工具调用",
       "提示词-文件链接格式",
       "提示词-文件内容复用",
@@ -163,6 +172,10 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await page.reload();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    const communication = page.getByRole("checkbox", { name: "提示词-交互方式", exact: true });
+    await expect(communication).not.toBeChecked();
+    await communication.check();
+    await expect(communication).toBeEnabled();
     await expect(page.getByRole("checkbox", { name: "提示词-文件链接格式", exact: true })).not.toBeChecked();
     await expect(page.getByRole("checkbox", { name: "提示词-多工具调用", exact: true })).not.toBeChecked();
     const reuse = page.getByRole("checkbox", { name: "提示词-文件内容复用", exact: true });
@@ -172,6 +185,7 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await expect(reuse).toBeChecked();
     await page.screenshot({ path: "test-results/desktop-file-context-reuse.png", animations: "disabled" });
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
+    await expect(page.locator(".system-rules-preview")).toContainText("Before the first tool call");
     await expect(page.locator(".system-rules-preview")).toContainText(
       "Reuse file content already in context",
     );
@@ -185,6 +199,9 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain(
       "Reuse file content already in context",
+    );
+    expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain(
+      "all answers, conclusions, and deliverables",
     );
     expect(JSON.stringify(server.requests.at(-1)?.messages)).not.toContain(
       "When you have enough information to act, act.",
@@ -215,6 +232,7 @@ test("prompt plugin switches update their preview and the first-send prompt", as
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     await expect(proactive).toBeChecked();
+    await expect(communication).toBeChecked();
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
@@ -353,6 +371,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
     const settings = page.locator(".capability-settings");
     await expect(settings.locator(".settings-row strong")).toHaveText([
+      "提示词-交互方式",
       "提示词-多工具调用",
       "提示词-文件链接格式",
       "提示词-文件内容复用",
@@ -381,7 +400,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
         };
       }),
     );
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(7);
     for (const row of rows) {
       expect(row.toggleLeft).toBeGreaterThan(row.copyRight ?? 0);
       expect(row.height).toBeLessThan(100);

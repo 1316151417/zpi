@@ -585,6 +585,8 @@ export class SessionHost {
       throw new Error("Invalid session configuration");
     const config = entry.data as unknown as SessionConfiguration;
     validateTemplate(config.template);
+    if (config.communicationStyle !== undefined && typeof config.communicationStyle !== "boolean")
+      throw new Error("Invalid communication style capability");
     if (config.subagents !== undefined && typeof config.subagents !== "boolean")
       throw new Error("Invalid subagent capability");
     if (config.fileContextReuse !== undefined && typeof config.fileContextReuse !== "boolean")
@@ -601,6 +603,7 @@ export class SessionHost {
       throw new Error("Invalid session configuration");
     const snapshot = {
       ...structuredClone(config),
+      communicationStyle: config.communicationStyle ?? false,
       subagents: config.subagents ?? false,
       fileContextReuse: config.fileContextReuse ?? false,
       proactiveExecution: config.proactiveExecution ?? false,
