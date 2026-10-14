@@ -78,7 +78,11 @@ export interface BashOperations {
     command: string,
     cwd: string,
     options: {
-      onData: (data: Buffer) => void;
+      /**
+       * Await returned promises before delivering another chunk to bound pending output writes.
+       * Other return values are ignored, as with the original synchronous callback.
+       */
+      onData: (data: Buffer) => unknown;
       signal?: AbortSignal;
       timeout?: number;
       env?: NodeJS.ProcessEnv;
@@ -122,21 +126,77 @@ export function createLocalShellOperations(
       }
       let timedOut = false;
       let timeoutHandle: NodeJS.Timeout | undefined;
-      const onAbort = () => {
+      let pendingOutput: Promise<void> | undefined;
+      let outputError: Error | undefined;
+      let stopped = false;
+      const stopSignal = Promise.withResolvers<void>();
+      const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        stopSignal.resolve();
         if (child.pid) killProcessTree(child.pid);
+        // A stopped consumer must not leave paused pipes keeping execution alive.
+        child.stdout?.destroy();
+        child.stderr?.destroy();
       };
+      const handleOutputError = (error: unknown) => {
+        if (stopped) return;
+        outputError = error instanceof Error ? error : new Error(String(error));
+        stop();
+      };
+      const handleData = (data: Buffer) => {
+        try {
+          // A pipe can deliver an already scheduled chunk after pause (including the
+          // child-process exit flush). Serialize that chunk behind the current write.
+          const deliver = () => (stopped ? undefined : onData(data));
+          const pending = pendingOutput ? pendingOutput.then(deliver) : deliver();
+          if (
+            pending &&
+            (typeof pending === "object" || typeof pending === "function") &&
+            "then" in pending &&
+            typeof pending.then === "function"
+          ) {
+            // Both pipes share one output file: pausing only the current pipe still lets the
+            // other enqueue unbounded writes while the consumer is waiting for disk.
+            child.stdout?.pause();
+            child.stderr?.pause();
+            const current = Promise.resolve(pending).then(() => {
+              if (pendingOutput !== current) return;
+              pendingOutput = undefined;
+              if (!stopped) {
+                child.stdout?.resume();
+                child.stderr?.resume();
+              }
+            }, handleOutputError);
+            pendingOutput = current;
+          }
+        } catch (error) {
+          handleOutputError(error);
+        }
+      };
+      const onOutputResume = () => {
+        // Node also resumes inherited pipes on process exit. That must not bypass a
+        // pending consumer or start the inherited-handle idle clock while it is busy.
+        if (pendingOutput) {
+          child.stdout?.pause();
+          child.stderr?.pause();
+        }
+      };
+      const onAbort = stop;
 
       try {
         // Set timeout if provided.
         if (timeoutMs !== undefined) {
           timeoutHandle = setTimeout(() => {
             timedOut = true;
-            if (child.pid) killProcessTree(child.pid);
+            stop();
           }, timeoutMs);
         }
         // Stream stdout and stderr.
-        child.stdout?.on("data", onData);
-        child.stderr?.on("data", onData);
+        child.stdout?.on("resume", onOutputResume);
+        child.stderr?.on("resume", onOutputResume);
+        child.stdout?.on("data", handleData);
+        child.stderr?.on("data", handleData);
         // Handle abort signal by killing the entire process tree.
         if (signal) {
           if (signal.aborted) onAbort();
@@ -145,19 +205,26 @@ export function createLocalShellOperations(
         // Handle shell spawn errors and wait for the process to terminate without hanging
         // on inherited stdio handles held by detached descendants.
         const exitCode = await waitForChildProcess(child);
+        if (pendingOutput) await Promise.race([pendingOutput, stopSignal.promise]);
         if (signal?.aborted) {
           throw new Error("aborted");
         }
         if (timedOut) {
           throw new Error(`timeout:${timeout}`);
         }
+        if (outputError !== undefined) throw outputError;
         // A signal-killed shell has no exit code. Use the standard shell convention so
         // callers do not mistake the termination for a successful command.
         const signalCode = child.signalCode;
         return { exitCode: exitCode ?? (signalCode ? 128 + (osConstants.signals[signalCode] ?? 0) : 1) };
       } finally {
+        stopped = true;
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (signal) signal.removeEventListener("abort", onAbort);
+        child.stdout?.removeListener("data", handleData);
+        child.stderr?.removeListener("data", handleData);
+        child.stdout?.removeListener("resume", onOutputResume);
+        child.stderr?.removeListener("resume", onOutputResume);
       }
     },
   };
@@ -314,8 +381,9 @@ export function createShellToolDefinition(
 
       const handleData = (data: Buffer) => {
         if (!acceptingOutput) return;
-        output.append(data);
+        const pending = output.append(data);
         scheduleOutputUpdate();
+        return pending;
       };
 
       const finishOutput = async () => {

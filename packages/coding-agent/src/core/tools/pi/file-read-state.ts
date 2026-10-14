@@ -22,8 +22,18 @@ export class FileReadState {
     return entry.hash === contentHash(content);
   }
 
+  /** Reuse an incremental decoded-text hash without retaining the full file. */
+  isHashUnchanged(path: string, hash: string, offset?: number, limit?: number): boolean {
+    const entry = this.files.get(path);
+    if (!entry?.ranges.has(rangeKey(offset, limit))) return false;
+    return entry.hash === hash;
+  }
+
   recordRead(path: string, content: string, offset?: number, limit?: number, truncated = false): void {
-    const hash = contentHash(content);
+    this.recordReadHash(path, contentHash(content), offset, limit, truncated);
+  }
+
+  recordReadHash(path: string, hash: string, offset?: number, limit?: number, truncated = false): void {
     let entry = this.files.get(path);
     if (entry?.hash !== hash) {
       entry = { hash, ranges: new Set() };

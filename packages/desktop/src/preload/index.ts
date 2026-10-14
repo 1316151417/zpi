@@ -86,7 +86,7 @@ const bridge: DesktopBridge = {
   },
   readAttachment: (id, image) => call("readAttachment", id, image),
   removeAttachment: (id, image) => call("removeAttachment", id, image),
-  getChanges: (id, run) => call("getChanges", id, run),
+  getChanges: (id, run, includePatch = true) => call("getChanges", id, run, includePatch),
   readPatch: (id, run, patch) => call("readPatch", id, run, patch),
   previewPrompt: () => call("previewPrompt"),
   listTools: () => call("listTools"),

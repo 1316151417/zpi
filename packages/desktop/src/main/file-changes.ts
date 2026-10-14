@@ -1,6 +1,6 @@
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { createTwoFilesPatch } from "diff";
+import { Worker } from "node:worker_threads";
 import { isJsonObject } from "zpi-ai";
 import type { FileChange, SessionEntry } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
@@ -20,16 +20,19 @@ export function entryFileChange(entry: SessionEntry): FileChange | undefined {
   };
 }
 
+async function snapshotPath(path: string, root: string, maxBytes = 4 * 1024 * 1024): Promise<string> {
+  const [actual, directory] = await Promise.all([realpath(path), realpath(root)]);
+  if (!isPathInside(directory, actual)) throw new Error("invalid_input: 文件快照不属于此任务或超限");
+  const info = await stat(actual);
+  if (!info.isFile() || info.size > maxBytes) throw new Error("invalid_input: 文件快照不属于此任务或超限");
+  return actual;
+}
 export async function readFileSnapshot(
   path: string,
   root: string,
   maxBytes = 4 * 1024 * 1024,
 ): Promise<Buffer> {
-  const [actual, directory] = await Promise.all([realpath(path), realpath(root)]);
-  if (!isPathInside(directory, actual)) throw new Error("invalid_input: 文件快照不属于此任务或超限");
-  const info = await stat(actual);
-  if (!info.isFile() || info.size > maxBytes) throw new Error("invalid_input: 文件快照不属于此任务或超限");
-  return readFile(actual);
+  return readFile(await snapshotPath(path, root, maxBytes));
 }
 /** Forked history owns its snapshots, so deleting its parent cannot break file previews. */
 export async function copyFileChangeSnapshots(
@@ -79,8 +82,57 @@ export async function copyFileChangeSnapshots(
   }
   return copied;
 }
+// Serialize one-shot workers across requests; opening several panes must not fan out CPU work.
+let pendingPatch: Promise<unknown> = Promise.resolve();
+function createFilePatch(
+  path: string,
+  created: boolean,
+  before: string,
+  after: string,
+  signal?: AbortSignal,
+) {
+  const job = pendingPatch.then(async () => {
+    signal?.throwIfAborted();
+    const worker = new Worker(
+      new URL(import.meta.url.endsWith(".ts") ? "./diff-worker.ts" : "./diff-worker.js", import.meta.url),
+      { workerData: { path, created, before, after } },
+    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abort: (() => void) | undefined;
+    try {
+      return await new Promise<string | undefined>((resolve, reject) => {
+        worker.once("message", resolve);
+        worker.once("error", reject);
+        worker.once("exit", (code) => reject(new Error(`diff worker exited before replying (${code})`)));
+        // Covers worker startup/failure as well as diff's cooperative computation budget.
+        timer = setTimeout(() => resolve(undefined), 5000);
+        abort = () => reject(signal?.reason);
+        signal?.addEventListener("abort", abort, { once: true });
+      });
+    } finally {
+      clearTimeout(timer);
+      if (abort) signal?.removeEventListener("abort", abort);
+      await worker.terminate();
+    }
+  });
+  pendingPatch = job.then(
+    () => {},
+    () => {},
+  );
+  return job;
+}
+export interface FileChangesOptions {
+  includePatch?: boolean;
+  maxPatchBytes?: number;
+  signal?: AbortSignal;
+}
 /** Same semantics as ZCode taskChangeSummary: original before -> final after per file. */
-export async function fileChanges(changes: FileChange[], root: string, area: string): Promise<DiffItem[]> {
+export async function fileChanges(
+  changes: FileChange[],
+  root: string,
+  area: string,
+  { includePatch = true, maxPatchBytes = Infinity, signal }: FileChangesOptions = {},
+): Promise<DiffItem[]> {
   const groups = new Map<string, FileChange[]>();
   for (const change of changes) {
     const group = groups.get(change.path);
@@ -89,6 +141,7 @@ export async function fileChanges(changes: FileChange[], root: string, area: str
   }
   const result: DiffItem[] = [];
   for (const [path, writes] of groups) {
+    signal?.throwIfAborted();
     const first = writes[0],
       last = writes.at(-1) as FileChange;
     if (last.afterFile && (first.beforeHash === null || first.beforeFile)) {
@@ -100,25 +153,24 @@ export async function fileChanges(changes: FileChange[], root: string, area: str
         const before = beforeBytes.toString("utf8"),
           after = afterBytes.toString("utf8");
         if (before === after && first.beforeHash !== null) continue;
-        const patch = createTwoFilesPatch(
-          first.beforeHash === null ? "/dev/null" : path,
-          path,
-          before,
-          after,
-          "",
-          "",
-          { context: 3, timeout: 1000 },
-        );
+        // Defer large inputs before computing a patch that would only be stripped for IPC.
+        const deferred = !includePatch || beforeBytes.length + afterBytes.length > maxPatchBytes;
+        const patch = deferred
+          ? undefined
+          : await createFilePatch(path, first.beforeHash === null, before, after, signal);
+        const patchAvailable = deferred || (patch !== undefined && Buffer.byteLength(patch) > maxPatchBytes);
         result.push({
           id: `file:${path}`,
           path,
           status: first.beforeHash === null ? "created" : "modified",
           area,
-          patch,
+          patch: patchAvailable ? undefined : patch,
+          ...(patchAvailable ? { patchAvailable: true } : {}),
           failed: writes.some((c) => c.failed),
-          ...(!patch ? { reason: "文件已变化，比对超时" } : {}),
+          ...(!patch && !patchAvailable ? { reason: "文件已变化，比对超时" } : {}),
         });
       } catch (error) {
+        signal?.throwIfAborted();
         result.push({
           id: `file:${path}`,
           path,
@@ -131,13 +183,20 @@ export async function fileChanges(changes: FileChange[], root: string, area: str
     } else {
       for (const change of writes) {
         let patch = change.patch,
-          reason = change.reason;
+          reason = change.reason,
+          patchAvailable = false;
         if (!patch && change.patchFile) {
           try {
-            patch = (await readFileSnapshot(change.patchFile, root, 8 * 1024 * 1024)).toString("utf8");
+            const actual = await snapshotPath(change.patchFile, root, 8 * 1024 * 1024);
+            if (!includePatch || (await stat(actual)).size > maxPatchBytes) patchAvailable = true;
+            else patch = (await readFile(actual)).toString("utf8");
           } catch (error) {
             reason = `文件快照不可用：${String(error)}`;
           }
+        }
+        if (patch && (!includePatch || Buffer.byteLength(patch) > maxPatchBytes)) {
+          patchAvailable = true;
+          patch = undefined;
         }
         result.push({
           id: `operation:${change.toolCallId}`,
@@ -145,6 +204,7 @@ export async function fileChanges(changes: FileChange[], root: string, area: str
           status: change.operation,
           area,
           patch,
+          ...(patchAvailable ? { patchAvailable: true } : {}),
           reason,
           failed: change.failed,
         });

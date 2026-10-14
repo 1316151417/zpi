@@ -305,7 +305,7 @@ export interface DesktopBridge {
   importAttachment(sessionId: string, file: File): Promise<Result<Attachment>>;
   readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: Attachment; data: string }>>;
   removeAttachment(sessionId: string, id: string): Promise<Result<void>>;
-  getChanges(sessionId: string, runId: string | null): Promise<Result<DiffItem[]>>;
+  getChanges(sessionId: string, runId: string | null, includePatch?: boolean): Promise<Result<DiffItem[]>>;
   readPatch(sessionId: string, runId: string | null, id: string): Promise<Result<string>>;
   previewPrompt(): Promise<Result<PromptPreview>>;
   listTools(): Promise<Result<ToolInfo[]>>;
