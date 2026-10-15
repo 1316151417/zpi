@@ -2056,14 +2056,18 @@ export class SessionHost {
       this.emit(id, runId, { type: "history_reset", view: restored.view });
       this.updating.delete(id);
       await this.startRun(next, recoveryItemId);
-      return this.getSessionSnapshot(id);
     } finally {
       this.updating.delete(id);
       if (recoveryQueued) {
         const queue = this.settings.state.getQueue(id);
-        if (queue) this.inputQueue.restore(id, queue);
+        if (queue) {
+          this.inputQueue.restore(id, queue);
+          this.getSessionSnapshot(id);
+          this.emit(id, "queue", { type: "queue_changed", queue: this.inputQueue.get(id) });
+        }
       }
     }
+    return this.getSessionSnapshot(id);
   }
   async editQueuedInput(id: string, itemId: string) {
     this.record(id);
