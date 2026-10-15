@@ -4,10 +4,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("tables use theme borders and support Markdown copy, CSV, preview and horizontal scrolling; prose and image previews remain interactive", async () => {
   test.setTimeout(60000);

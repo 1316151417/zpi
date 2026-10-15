@@ -1,10 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("wheel and editor focus scroll only their viewport across drafts, conversations and side panes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-window-scroll-"));

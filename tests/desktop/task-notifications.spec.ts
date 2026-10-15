@@ -2,11 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import type { Notification } from "electron";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 // Exercise real Electron -> preload -> renderer delivery, intercepting only OS display.
 declare global {

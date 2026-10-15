@@ -10,6 +10,9 @@ import { mainBuild, preloadBuild } from "./desktop-build.mjs";
 import { stopDesktopProcess } from "./dev-process.ts";
 import { prepareTerminal } from "./prepare-terminal.ts";
 
+if (process.env.ZPI_TEST_SCOPE || process.env.ZPI_TEST_MODE || process.env.VITEST)
+  throw new Error("Tests must use launchDesktop; the development launcher is interactive");
+
 await prepareTerminal();
 await buildAppIcon();
 let executable = electron;

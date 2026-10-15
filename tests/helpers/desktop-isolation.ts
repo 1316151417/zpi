@@ -1,23 +1,42 @@
 import { join } from "node:path";
-import type * as Electron from "electron";
+
+export const automationContract = "zpi-desktop-isolation-v2";
 
 export function desktopEnvironment(
-  { dir, url, project, images = [] }: { dir: string; url: string; project?: string; images?: string[] },
+  {
+    dir,
+    url,
+    project,
+    images = [],
+    interactive = false,
+  }: {
+    dir: string;
+    url: string;
+    project?: string;
+    images?: string[];
+    interactive?: boolean;
+  },
   inherited: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(inherited)) {
-    if (
-      value !== undefined &&
-      !key.startsWith("ZPI_TEST_") &&
-      !["ZPI_DEV_URL", "ELECTRON_RUN_AS_NODE", "NODE_OPTIONS", "BASH_ENV", "ENV"].includes(key)
-    )
-      env[key] = value;
-  }
+  // Do not inherit credentials, dev/test switches, shell hooks, proxies or app data overrides.
+  for (const key of [
+    "PATH",
+    "SystemRoot",
+    "WINDIR",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "XDG_RUNTIME_DIR",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+  ])
+    if (inherited[key] !== undefined) env[key] = inherited[key];
   return {
     ...env,
     ZPI_TEST_MODE: "1",
-    ZPI_TEST_SHOW_WINDOW: inherited.ZPI_TEST_SHOW_WINDOW === "1" ? "1" : "0",
+    ZPI_TEST_INTERACTIVE: interactive ? "1" : "0",
     ZPI_TEST_AUTO_SELECTION: url ? "1" : "0",
     ZPI_TEST_DATA_DIR: dir,
     ZPI_TEST_BASE_URL: url,
@@ -31,41 +50,9 @@ export function desktopEnvironment(
     XDG_DATA_HOME: join(dir, ".local", "share"),
     XDG_CACHE_HOME: join(dir, ".cache"),
     ZDOTDIR: dir,
+    SHELL: process.platform === "darwin" ? "/bin/zsh" : "/bin/sh",
     TMPDIR: dir,
     TMP: dir,
     TEMP: dir,
-  };
-}
-
-// This function is serialized by Playwright and runs in Electron's main process.
-// Keep its implementation self-contained, with no module-scoped dependencies.
-export function isolateDesktop({
-  app,
-  clipboard,
-  shell,
-}: {
-  app: Pick<typeof Electron.app, "getApplicationInfoForProtocol">;
-  clipboard: Pick<typeof Electron.clipboard, "readText" | "writeText">;
-  shell: Pick<typeof Electron.shell, "openPath" | "openExternal" | "showItemInFolder">;
-}): void {
-  // Exercise renderer -> preload -> main copying without replacing the user's clipboard.
-  const text = new Map<string, string>();
-  clipboard.writeText = (value, type = "clipboard") => {
-    text.set(type, value);
-  };
-  clipboard.readText = (type = "clipboard") => text.get(type) ?? "";
-
-  // Tests that exercise native open actions must provide an explicit fake.
-  app.getApplicationInfoForProtocol = async () => {
-    throw new Error("No default application in desktop tests");
-  };
-  shell.openPath = async () => {
-    throw new Error("Mock shell.openPath in desktop tests");
-  };
-  shell.openExternal = async () => {
-    throw new Error("Mock shell.openExternal in desktop tests");
-  };
-  shell.showItemInFolder = () => {
-    throw new Error("Mock shell.showItemInFolder in desktop tests");
   };
 }

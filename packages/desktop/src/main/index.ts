@@ -4,13 +4,12 @@ import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
-  BrowserWindow,
+  type BrowserWindow,
   clipboard,
   dialog,
   globalShortcut,
   ipcMain,
   Menu,
-  Notification,
   nativeTheme,
   net,
   safeStorage,
@@ -30,6 +29,7 @@ import type {
 } from "../shared/bridge.ts";
 import { methods } from "../shared/bridge.ts";
 import type { ShortcutSettings } from "../shared/shortcuts.ts";
+import { createDesktopWindow, hiddenTestMode, testMode } from "./automation.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { defaultFileOpener } from "./default-file-open.ts";
@@ -63,14 +63,6 @@ const openFile = defaultFileOpener(
 // fallback from PingFang UI Display to PingFang SC, enlarging every UI label.
 // UI copy is supplied by React and remains Chinese.
 if (process.platform === "darwin") app.commandLine.appendSwitch("lang", "en-US");
-const testMode = process.env.ZPI_TEST_MODE === "1";
-const hiddenTestMode = testMode && process.env.ZPI_TEST_SHOW_WINDOW !== "1";
-if (hiddenTestMode) {
-  // Keep automation off the user's desktop while retaining real renderer/IPC behavior.
-  if (process.platform === "darwin") app.setActivationPolicy("accessory");
-  app.commandLine.appendSwitch("mute-audio");
-  Notification.prototype.show = () => {};
-}
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });
 let ending = false;
@@ -207,7 +199,7 @@ async function launch(): Promise<void> {
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
   // 非 macOS 的默认菜单直接显示在窗口顶栏，与 ZCode 的无菜单界面不符，整体移除。
-  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
+  if (testMode || process.platform !== "darwin") Menu.setApplicationMenu(null);
   // Match ZCode's inset panels to the native window corners (Tahoe uses larger corners).
   const workspacePanelRadius =
     process.platform === "win32"
@@ -215,9 +207,7 @@ async function launch(): Promise<void> {
       : process.platform === "darwin" && Number.parseInt(process.getSystemVersion(), 10) < 26
         ? 6
         : 12;
-  const window = new BrowserWindow({
-    show: !hiddenTestMode,
-    focusable: !hiddenTestMode,
+  const window = createDesktopWindow({
     width: Math.min(1200, display.width),
     height: Math.min(800, display.height),
     minWidth: 740,
@@ -239,7 +229,6 @@ async function launch(): Promise<void> {
       : {}),
     webPreferences: {
       additionalArguments: [`--zpi-panel-radius=${workspacePanelRadius}`],
-      backgroundThrottling: !hiddenTestMode,
       preload: join(dir, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
@@ -1028,7 +1017,8 @@ async function launch(): Promise<void> {
     if (preparingQuit) return;
     preparingQuit = true;
     ending = true;
-    if (!window.isDestroyed()) window.setEnabled(false);
+    // On macOS setEnabled(false) creates a visible native overlay even for a hidden window.
+    if (!hiddenTestMode && !window.isDestroyed()) window.setEnabled(false);
     void flushDraftsBeforeQuit(window)
       .then(async () => {
         chatgptAuth.close();
@@ -1040,7 +1030,7 @@ async function launch(): Promise<void> {
       })
       .catch((error) => {
         ending = false;
-        if (!window.isDestroyed()) window.setEnabled(true);
+        if (!hiddenTestMode && !window.isDestroyed()) window.setEnabled(true);
         errors.write("drafts.quit", error);
         if (!testMode) dialog.showErrorBox("草稿未保存，已取消退出", String(error));
       })

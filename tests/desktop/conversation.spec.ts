@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("interrupted history keeps its status and content without an extra notice", async () => {

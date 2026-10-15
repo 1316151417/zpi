@@ -1,10 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
 import { providerBaseUrl, providerPresets } from "zpi-ai";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("preset connection protocol changes update endpoints, preserve keys and survive restarting", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-provider-protocol-ui-"));

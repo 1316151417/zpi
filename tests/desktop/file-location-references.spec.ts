@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("copied links with line, column and range suffixes send and open at their original locations", async () => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-location-reference-")));

@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { done, fakeServer } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("skills preserve names beside long descriptions and match ZCode icons, search and insertion", async () => {

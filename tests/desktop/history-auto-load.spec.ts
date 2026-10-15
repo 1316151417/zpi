@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("scrolling near older messages loads one page, preserves the anchor and can reach the beginning", async () => {

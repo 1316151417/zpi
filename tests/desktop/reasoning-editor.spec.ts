@@ -1,10 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { type CleanupAction, runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("ZCode reasoning chips edit, add, remove and reorder; custom mappings survive reload and reach inference", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-reasoning-editor-"));

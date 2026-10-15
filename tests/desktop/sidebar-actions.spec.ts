@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
+import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("sidebar headings match ZCode hover states and dimensions; project menu only removes its entry", async () => {

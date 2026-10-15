@@ -1,16 +1,21 @@
 // Component-level visual comparison against the untouched, checked-out ZCode sources.
 // Run: node scripts/verify-preview-sidebar.mjs [reference repository]
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { _electron as electron } from "@playwright/test";
 import tailwind from "@tailwindcss/vite";
 import { build as bundle } from "esbuild";
 import sharp from "sharp";
 import { build as viteBuild } from "vite";
+import { launchDesktop } from "../tests/helpers/desktop.ts";
+import { desktopScope } from "../tests/helpers/desktop-scope.ts";
+import { assertBackgroundCommand } from "../tests/helpers/test-command.ts";
+import safetyCheck from "../tests/safety-check.ts";
 
+assertBackgroundCommand(process.argv.slice(2));
 const root = process.cwd();
 const reference = resolve(process.argv[2] ?? "/Users/jiezhou/VSCodeProjects/ZCode");
 const refUI = join(reference, "packages/ui/src");
@@ -266,25 +271,31 @@ const server = createServer(async (req, res) => {
     res.end(String(error));
   }
 });
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const port = server.address().port;
-await writeFile(
-  join(output, "electron.cjs"),
-  `const {app,BrowserWindow}=require('electron');
-const hidden=process.env.ZPI_TEST_SHOW_WINDOW!=="1";
-if(hidden&&process.platform==="darwin") app.setActivationPolicy("accessory");
+await safetyCheck();
+const scope = await desktopScope();
+let app;
+try {
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  await bundle({
+    stdin: {
+      contents: `import {app} from 'electron';
+import {createDesktopWindow} from './packages/desktop/src/main/automation.ts';
 app.whenReady().then(()=>{
-  const w=new BrowserWindow({width:1200,height:800,useContentSize:true,show:!hidden,focusable:!hidden,
-    webPreferences:{sandbox:true,backgroundThrottling:!hidden}});
+  const w=createDesktopWindow({width:1200,height:800,useContentSize:true,webPreferences:{sandbox:true}});
   w.loadURL('http://127.0.0.1:${port}/');
 });`,
-);
-const app = await electron.launch({
-  args: [join(output, "electron.cjs")],
-  env: { ...process.env, ELECTRON_RUN_AS_NODE: "" },
-});
-const evidence = [];
-try {
+      resolveDir: root,
+    },
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    external: ["electron"],
+    outfile: join(output, "electron.cjs"),
+  });
+  const dir = await mkdtemp(join(tmpdir(), "zpi-parity-"));
+  app = await launchDesktop({ dir, url: "", entry: join(output, "electron.cjs") });
+  const evidence = [];
   const page = await app.firstWindow();
   page.on("pageerror", (error) => console.error("Fixture:", error.message));
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -430,8 +441,12 @@ try {
     ),
   );
 } finally {
-  await app.close();
-  await new Promise((r) => server.close(r));
+  try {
+    await scope.close();
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+  }
 }
 const evidenceDir = resolve("docs/evidence/preview-sidebar");
 await mkdir(evidenceDir, { recursive: true });

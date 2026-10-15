@@ -2,10 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
+import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 test("settings replace the workspace on the first frame without changing its layout or state", async () => {

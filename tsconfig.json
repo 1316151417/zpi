@@ -22,7 +22,7 @@
     "examples/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts",
-    "playwright.config.ts",
+    "playwright*.config.ts",
     "scripts/**/*.ts"
   ]
 }

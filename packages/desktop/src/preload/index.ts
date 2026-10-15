@@ -3,6 +3,19 @@ import type { DesktopEventEnvelope } from "zpi-ui";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 import type { ShortcutCommand } from "../shared/shortcuts.ts";
 
+// Cancel Chromium's native clipboard default even for input injected through CDP.
+// Composer handlers still receive synthetic ClipboardEvents with their own DataTransfer.
+if (process.argv.includes("--zpi-test-isolation")) {
+  for (const type of ["copy", "cut", "paste"])
+    document.addEventListener(
+      type,
+      (event) => {
+        if (event.isTrusted) event.preventDefault();
+      },
+      true,
+    );
+}
+
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
 let beforeQuit: (() => Promise<void>) | undefined;
 ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {

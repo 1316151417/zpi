@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("conversation files and folders share ZCode menus; folders open in Finder and files use the sidebar", async () => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-conversation-file-menu-")));

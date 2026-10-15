@@ -1,12 +1,13 @@
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type ElectronApplication, expect, test } from "@playwright/test";
+import type { ElectronApplication } from "@playwright/test";
 import sharp from "sharp";
 import { done, fakeServer } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 interface DraftSaveGate {

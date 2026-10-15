@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 async function createGroup(page: Page, title: string) {
   await page.getByRole("button", { name: "新建分组", exact: true }).click();

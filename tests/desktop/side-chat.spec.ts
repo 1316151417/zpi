@@ -1,10 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 for (const streamingPane of ["main", "side"] as const) {
   test(`auxiliary selection stays open and adds to its own draft while ${streamingPane} streams`, async () => {
@@ -159,7 +159,14 @@ test("side chats fit narrow panes, add references to their own draft and copy on
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe("保留辅助草稿");
     const composer = side.getByLabel("消息", { exact: true });
     await composer.focus();
-    await composer.press("Meta+v");
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText());
+    await composer.evaluate((element, text) => {
+      const data = new DataTransfer();
+      data.setData("text/plain", text);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    }, copied);
     await expect(composer).toHaveText("保留辅助草稿");
     await expect(side.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
     await expect(quotedRun.locator(".selection-reference-chip")).toHaveAttribute(
@@ -204,7 +211,10 @@ test("window drag regions never overlap floating toggles or header buttons while
     app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
     await page.getByLabel("展开右侧栏", { exact: true }).click();
-    await page.locator("main").getByLabel("消息", { exact: true }).press("Control+f");
+    await page
+      .locator("main")
+      .getByLabel("消息", { exact: true })
+      .press(process.platform === "darwin" ? "Meta+f" : "Control+f");
     const find = page.getByRole("dialog", { name: "在任务中查找", exact: true });
     await expect(find).toBeVisible();
     const assertDisjointRegions = async () => {

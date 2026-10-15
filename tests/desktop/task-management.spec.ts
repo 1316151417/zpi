@@ -2,11 +2,11 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 const editor = (page: Page) => page.getByLabel("消息", { exact: true });
 const openMenu = async (page: Page) => {

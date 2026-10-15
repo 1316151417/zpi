@@ -2,11 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 // Inspect rendered pixels: native scrollbar fade/hover states have no DOM attributes.
 async function scrollbarPixels(page: Page, area: Locator, reference: number[]) {

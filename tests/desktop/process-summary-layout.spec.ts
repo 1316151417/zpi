@@ -1,13 +1,13 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
 import { emptyAssistant, type ToolCall } from "zpi-ai";
 import { piTemplate, SessionManager } from "zpi-coding-agent";
 import { defaultCapabilities } from "../../packages/desktop/src/shared/config.ts";
 import { fakeModel } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 test("process summaries retain ZCode typography and single-line geometry when the right pane opens", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-process-summary-layout-"));

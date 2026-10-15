@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.2.61",
+  "version": "0.2.62",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -12,9 +12,9 @@
   "scripts": {
     "check": "tsc --noEmit && biome check .",
     "format": "biome check --write .",
-    "test:unit": "vitest run",
+    "test:unit": "npm run test:safety && vitest run",
     "repair:sessions": "tsx scripts/repair-sessions.ts",
-    "test:desktop": "npm run build && playwright test",
+    "test:desktop": "npm run test:safety && npm run build && node scripts/test-desktop.ts",
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "package:mac": "npm run build && electron-builder --mac dmg",
@@ -23,7 +23,10 @@
     "package:win:preview": "npm run build && electron-builder --win nsis -c.productName=\"ZPI Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"ZPI Preview\"",
     "example:coding": "tsx examples/coding-session.ts",
     "install:electron": "node node_modules/electron/install.js",
-    "install:terminal": "electron-rebuild -f -w node-pty && node scripts/prepare-terminal.ts"
+    "install:terminal": "electron-rebuild -f -w node-pty && node scripts/prepare-terminal.ts",
+    "test:safety": "node tests/safety-check.ts",
+    "test:interactive": "npm run test:safety && npm run build && playwright test --config=playwright.interactive.config.ts",
+    "test:cleanup": "npm run test:safety && npm run build && node scripts/verify-test-cleanup.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

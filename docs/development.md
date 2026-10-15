@@ -100,33 +100,65 @@ npm run test:unit
 
 新增测试优先验证公开行为、失败路径和并发边界；同类输入用参数化用例覆盖，避免在多个层次重复相同断言。需要真实 renderer/preload/main 交互时再增加桌面测试，不以测试数量代替覆盖价值。
 
-### 桌面集成测试：启动隐藏的 Electron
+### 默认桌面集成测试：后台运行真实 Electron
 
-`npm run test:desktop` 构建应用后运行 Playwright。测试使用临时数据目录和本地假模型服务；默认隐藏窗口、禁用窗口焦点，并静默系统通知和音频。界面仍正常渲染，支持自动交互、截图和失败 trace。隐藏窗口不等于无图形依赖：仍需要可运行 Electron 的环境，Linux 无桌面环境通常需要虚拟显示服务。
+`npm run test:desktop` 先做静态安全检查、构建，再运行 Playwright；默认单 worker。renderer、preload、IPC、原生浏览器视图和 PTY 仍是真的，支持页面内输入、截图和失败 trace。隐藏窗口仍需要图形环境；Linux 无桌面环境需要虚拟显示服务。
 
-所有桌面用例应复用 `tests/helpers/desktop.ts`：它将 Home、XDG 和 Windows 应用数据目录指向临时目录，移除继承的 Shell 启动脚本变量，将文本剪贴板留在内存中，并拒绝未显式模拟的原生打开文件、浏览器和文件管理器操作。需要验证这些操作时，在用例中提供假实现，不启动用户的外部应用。
+所有桌面用例从 `tests/helpers/test.ts` 导入 `test`，使用 `tests/helpers/desktop.ts` 的 `launchDesktop`。自动 fixture 在任何测试代码执行前创建独立临时作用域，包含测试数据、Home、Chromium profile、Shell 配置和临时文件；启动器只继承必要的系统环境，不继承模型密钥、代理、开发 URL 或数据目录覆盖。测试目录必须在当前作用域内。
 
-定向运行不需要安装包的用例：
+`packages/desktop/src/main/automation.ts` 在应用服务和窗口启动前安装隔离，窗口统一通过 `createDesktopWindow` 创建。默认窗口隐藏、不可聚焦、无任务栏入口；显示、激活、恢复、全屏、闪烁、DevTools、原生对话框/菜单、外部应用打开和全局快捷键注册被拦截。macOS 测试只修改临时复制的应用包，加入 `LSUIElement` 并采用 `prohibited` 激活策略。**隐藏窗口也不能调用 `setEnabled(false)`**：它在 macOS 上会创建可见的原生覆盖窗口，退出流程已避开该调用。
+
+文本剪贴板在主进程内存中保存，其他格式默认拒绝；preload 取消可信剪贴板事件的 Chromium 默认动作，权限请求被拒绝。测试粘贴必须构造带 `DataTransfer` 的 `ClipboardEvent`，不能发送系统粘贴组合键。页面内 `keyboard`、`mouse`、DOM focus 和限定目标的 `sendInputEvent` 可以验证 renderer 行为，不操作系统鼠标位置。通知仍经过真实业务逻辑和 IPC，只拦截系统展示并静音。需要验证外部打开/对话框时，为该用例提供明确的假边界；不要启动用户的编辑器或浏览器。
+
+自动 fixture 在正常、断言失败和超时后关闭所有启动过的 Electron。独立 guardian 观察测试 worker 的后代进程；取消或 worker 崩溃导致管道关闭时，清理仍会执行。它按 PID 和启动时间核对身份，只终止观察到的测试后代，不按应用名杀进程；最后删除本作用域。测试仍应使用 `runCleanup` 及时关闭本地服务。该机制不是进程权限沙箱；宿主/guardian 同时被强杀、系统断电、未观察到的瞬时脱离进程不在可保证的清理范围内。
+
+定向运行与重复验证：
 
 ```sh
-npm run test:desktop -- tests/desktop/assistant-flow.spec.ts
+npm run test:desktop -- tests/desktop/hidden-window.spec.ts tests/desktop/side-chat.spec.ts
+npm run test:desktop -- tests/desktop/hidden-window.spec.ts --repeat-each=2
+npm run test:cleanup
+npm run test:safety
 ```
 
-需要观察窗口时运行：
+`test:cleanup` 启动独立的真实 Playwright 子套件，验证正常、断言失败、超时、SIGINT 取消和 worker 被终止后的清理；子套件的预期失败不会被伪装成业务测试通过。结果输出明确列出预期退出码、Electron 退出和临时目录删除。另有 Node 层回归验证脱离进程组的后代清理及无关进程保持存活。
+
+macOS 可选用只读系统观察器验证应用进程是否真的出现在屏幕或前台；需要 Xcode Command Line Tools。它构建后运行同一后台入口，每 50 ms 读取窗口归属/边界、前台 PID 和剪贴板变更计数，不截屏、不读取窗口标题或剪贴板内容，也不注入输入：
 
 ```sh
-ZPI_TEST_SHOW_WINDOW=1 npm run test:desktop
+node scripts/observe-desktop-tests.mjs tests/desktop/hidden-window.spec.ts --repeat-each=2
+node scripts/observe-desktop-tests.mjs --cleanup
 ```
 
-完整套件还包含打包历史和终端测试，需要已有 macOS `.app`，仅执行 `npm run build` 不足以运行这些用例。可先运行 `npm run package:mac`；不需要 DMG 时也可只生成目录包：
+测试窗口可见或成为前台会令观察入口失败。JSONL 和汇总 JSON 作为验证输出保留在打印的临时目录，观察器二进制及进程自动清理。剪贴板计数变化可能来自用户日常操作，不能直接归因于测试；采样也不能证明采样间隔内绝无瞬时行为。运行不同桌面套件时应串行，避免它们同时重建共享的 `dist`。本轮实际结果和未通过项见 [桌面隔离验收记录](evidence/desktop-test-isolation.md)。
+
+直接运行 `npx playwright test` 或 `npx vitest run` 也会执行安全检查。检查会拒绝绕过统一启动器、从原始 Playwright 导入测试 fixture、直接创建窗口、使用原生剪贴板快捷键和已知系统输入工具。运行时拦截会记录违规，即使业务代码捕获异常，测试关闭时仍报错。开发启动脚本拒绝在测试环境中启动；独立截图对比脚本 `scripts/verify-preview-sidebar.mjs` 也复用统一启动器及作用域。静态检查用于发现常见回归，并非对任意脚本行为的安全证明。
+
+### 显式交互验证：会显示窗口并改变焦点
+
+默认配置不包含 `tests/interactive/`。旧的 `ZPI_TEST_SHOW_WINDOW=1` 不再允许改变默认套件，默认配置会明确报错。npm 后台入口在加载 Playwright 前拒绝 `PWDEBUG`、`--debug`、`--ui`、`--headed` 和配置替换，并禁止 HTML 报告自动打开浏览器。直接调用 Playwright 的 `--ui` / `show-report` / `show-trace` 本身就是打开界面的命令（UI 模式可能忽略配置加载错误），不属于后台入口，不应在办公时使用。需要真人桌面验证时，应先获得当前使用者同意，再执行：
+
+```sh
+npm run test:interactive
+# 仅列出用例，不打开窗口
+npx playwright test --config=playwright.interactive.config.ts --list
+```
+
+目前唯一的交互用例是 `tests/interactive/window-focus.spec.ts`：验证真实窗口隐藏后的激活、显示和焦点。它继续隔离数据、剪贴板、通知及外部应用，也不向操作系统注册全局快捷键。普通套件中的快捷键、浏览器/终端焦点、通知点击和文件打开仍保留真实 Electron/IPC 覆盖，只有系统边界使用假实现。
+
+真实全局快捷键占用、macOS 前后台切换、真实系统通知/文件选择器、跨应用剪贴板及真实编辑器唤起目前属于人工系统集成烟测，未被默认测试验证。不要为了这些检查临时去掉后台保护；需经同意在专门的桌面环境验证，不能将模拟注册记作系统注册成功。
+
+### 打包测试：同样后台隔离
+
+完整桌面套件仍包含 `history.spec.ts` 和 `terminal.spec.ts` 的打包用例，需要已有 macOS `.app`。只运行 `npm run build` 不会产生应用包。可先执行 `npm run package:mac`，或只生成目录包：
 
 ```sh
 npm run build
 npx electron-builder --mac dir
-ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npm run test:desktop
+ZPI_TEST_PACKAGED_APP="$PWD/release/mac-arm64/ZPI.app" npm run test:desktop -- tests/desktop/history.spec.ts tests/desktop/terminal.spec.ts
 ```
 
-路径按实际产物调整，测试默认查找 `release/mac-arm64/ZPI.app`。`ZPI_TEST_PACKAGED_APP` 指定的应用必须包含当前测试模式；测试会把应用复制到临时目录后运行，验证它不依赖仓库中的依赖。其他平台只选择支持该平台的用例，不应把未运行的 macOS 打包测试记作通过。
+启动前会检查应用包是否包含当前版本的隔离机制；旧包明确失败，不执行它。测试将包复制到临时数据目录后运行，验证不依赖仓库中的依赖。未运行的 macOS 打包用例不能记作其他平台通过。
 
 `docs/specs/` 和 `docs/evidence/` 保留实现时的设计、引用版本和验收记录。其中的测试数量、机器路径及当时未运行的检查只描述该次工作，不是当前覆盖率、当前工作树状态或后续改动的测试豁免。
 

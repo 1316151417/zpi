@@ -150,7 +150,9 @@ npm run dev
 ```sh
 npm run check                # TypeScript 与 Biome 检查
 npm run test:unit            # Node 单元/服务测试，不启动 Electron 或窗口
-npm run test:desktop         # 真实 Electron 测试，默认隐藏窗口；完整套件还需 macOS 应用包
+npm run test:desktop         # 真实 Electron 后台测试；完整套件还需当前 macOS 应用包
+npm run test:cleanup         # 验证正常、失败、超时、取消及 worker 崩溃后的清理
+npm run test:interactive     # 显式交互测试，会显示窗口和改变焦点，运行前需征得使用者同意
 npm run build               # 构建桌面应用
 npm run package:mac          # 正式版 macOS DMG
 npm run package:mac:preview  # ZPI Preview DMG

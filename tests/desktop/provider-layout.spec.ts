@@ -2,10 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
 import { providerBaseUrl } from "zpi-ai";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { expect, test } from "../helpers/test.ts";
 
 async function expectAlignedFields(page: Page, count: number) {
   const fields = await page.locator(".provider-connection-fields").evaluate((element) =>

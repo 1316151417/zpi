@@ -86,6 +86,9 @@ export class PaneServices {
     const view = new WebContentsView({
       webPreferences: {
         session: isolated,
+        ...(process.env.ZPI_TEST_MODE === "1"
+          ? { devTools: false, disableDialogs: true, disableHtmlFullscreenWindowResize: true }
+          : {}),
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,

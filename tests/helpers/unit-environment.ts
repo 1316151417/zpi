@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Each isolated test file owns its home and temp files, including shell-tool logs.
 export function isolateUnitEnvironment(env: NodeJS.ProcessEnv = process.env) {
-  const root = mkdtempSync(join(tmpdir(), "zpi-unit-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "zpi-unit-")));
   const home = join(root, "home");
   const temp = join(root, "tmp");
   mkdirSync(home);
@@ -22,6 +22,12 @@ export function isolateUnitEnvironment(env: NodeJS.ProcessEnv = process.env) {
     TMPDIR: temp,
     TMP: temp,
     TEMP: temp,
+    ZPI_TEST_MODE: "1",
+    ZPI_DATA_DIR: home,
+    ZPI_TEST_DATA_DIR: home,
+    ZPI_DEV_URL: undefined,
+    ZPI_TEST_SHOW_WINDOW: undefined,
+    ZPI_TEST_INTERACTIVE: undefined,
     BASH_ENV: undefined,
     ENV: undefined,
   };
