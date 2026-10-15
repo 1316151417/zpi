@@ -53,7 +53,10 @@ async function setup() {
       value: { ...session, id: "created", draft: true },
     })),
     getSessionSnapshot: vi.fn(async (_id?: string) => ({ ok: true, value: snapshot })),
-    listCommands: vi.fn(async () => ({ ok: true, value: [] })),
+    listCommands: vi.fn(async () => ({
+      ok: true,
+      value: [] as ReturnType<typeof import("zpi-coding-agent").listCommands>,
+    })),
     listSessionSkills: vi.fn(async (_id?: string) => ({ ok: true, value: { skills: [], diagnostics: [] } })),
     onEvent: vi.fn((listener: typeof emit) => {
       emit = listener;
@@ -87,6 +90,46 @@ async function setup() {
     },
   };
 }
+
+it("lists built-in commands without auxiliary slash shortcuts", async () => {
+  const f = await setup();
+  const { listCommands } = await import("zpi-coding-agent");
+  f.bridge.listCommands.mockResolvedValue({ ok: true, value: listCommands() });
+  await f.store.refreshSuggestions(f.session.id);
+  const names = f.store.useStore
+    .getState()
+    .suggestions.get(f.session.id)
+    ?.map((item) => item.name);
+  expect(names).toContain("init");
+  expect(names).toContain("compact");
+  expect(names).not.toContain("side");
+  expect(names).not.toContain("btw");
+  f.unsubscribe();
+});
+
+it("opens a manual auxiliary chat once without submitting a prompt", async () => {
+  const f = await setup();
+  const child = { ...f.session, id: "manual-side", parentSessionId: f.session.id };
+  const createSideChat = vi.fn(async () => ({ ok: true, value: child }));
+  const submitInput = vi.fn();
+  Object.assign(f.bridge, { createSideChat, submitInput });
+  f.bridge.getSessionSnapshot.mockResolvedValue({
+    ok: true,
+    value: { session: child, view: { ...f.snapshot.view, sessionId: child.id }, seq: 0 },
+  });
+  f.store.useStore.setState({ selected: f.session.id });
+  const { openSideChat, usePane } = await import("../src/renderer/pane-store.ts");
+  await Promise.all([openSideChat(f.session.id), openSideChat(f.session.id)]);
+  expect(createSideChat).toHaveBeenCalledExactlyOnceWith(f.session.id);
+  expect(submitInput).not.toHaveBeenCalled();
+  expect(usePane.getState()).toMatchObject({
+    open: true,
+    active: `side-chat:${child.id}`,
+    tabs: [{ type: "side-chat", sessionId: f.session.id, childSessionId: child.id }],
+  });
+  expect(f.store.drafts.get(child.id)?.text).toBe("");
+  f.unsubscribe();
+});
 
 it("side-chat streaming keeps the main app selection stable without losing activity or deltas", async () => {
   const f = await setup();

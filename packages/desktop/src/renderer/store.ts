@@ -315,12 +315,6 @@ export async function refreshSuggestions(id: string): Promise<void> {
     suggestions = new Map(state.suggestions);
   resourceDiagnostics.set(id, catalog.diagnostics);
   suggestions.set(id, [
-    ...(state.sessions.get(id)?.parentSessionId
-      ? []
-      : [
-          { name: "side", description: "新建并打开一个辅助对话", insert: "/side ", group: "命令" as const },
-          { name: "btw", description: "在辅助对话中提问", insert: "/btw ", group: "命令" as const },
-        ]),
     ...commands.map((c) => ({ ...c, insert: `/${c.name} `, group: "命令" as const })),
     ...catalog.skills.map((s) => ({
       name: s.name,

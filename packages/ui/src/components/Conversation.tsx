@@ -1143,7 +1143,6 @@ export function ChatComposer({
   onFile,
   onCancel,
   resetFiles,
-  onCommand,
   shortcutCommand,
   onSelectModel,
   onConfigureEnvironment,
@@ -1153,7 +1152,6 @@ export function ChatComposer({
   ) => "send-next" | "select-model" | "configure-environment" | undefined;
   onSelectModel?: () => void;
   onConfigureEnvironment?: () => void;
-  onCommand?: (name: string) => void;
   onCancel?: () => void;
   resetFiles?: { disabled: boolean; description: string };
   onFile?: (path: string, location?: FileLocation) => void;
@@ -1403,24 +1401,17 @@ export function ChatComposer({
             : suggestions.filter(
                 (suggestion) =>
                   suggestion.group === "命令" &&
-                  (["init", "compact"].includes(suggestion.name) ||
-                    (onCommand && ["side", "btw"].includes(suggestion.name))) &&
+                  ["init", "compact"].includes(suggestion.name) &&
                   suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
               )
         : [],
-    [inputQuery, suggestions, onCommand, sessionCatalog, sessionId],
+    [inputQuery, suggestions, sessionCatalog, sessionId],
   );
   const menuOpen = Boolean(inputQuery);
   const insert = (suggestion: InputSuggestion) => {
     if (!inputQuery) return;
     const { start, end } = inputQuery;
     const inserted = suggestion.insert;
-    if (onCommand && ["side", "btw"].includes(suggestion.name)) {
-      updateDraft(draft.slice(0, start) + draft.slice(end));
-      setInputQuery(undefined);
-      onCommand(suggestion.name);
-      return;
-    }
     updateDraft(draft.slice(0, start) + inserted + draft.slice(end));
     setInputQuery(undefined);
     // The editor applies this caret when it renders the new text, before another user selection.

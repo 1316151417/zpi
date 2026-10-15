@@ -6,7 +6,6 @@ import {
   accept,
   addConversationSelection,
   closeSideChat,
-  drafts,
   focusComposer,
   loadDraft,
   refreshSuggestions,
@@ -213,7 +212,7 @@ export async function loadSideChat(id: string) {
     throw error;
   }
 }
-export async function openSideChat(parentId: string, reference?: ConversationSelection, text?: string) {
+export async function openSideChat(parentId: string, reference?: ConversationSelection) {
   const state = usePane.getState();
   const active = state.tabs.find(
     (tab) => tab.id === state.active && tab.type === "side-chat" && tab.sessionId === parentId,
@@ -230,8 +229,7 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
     }
   }
   if (!childId) {
-    const pendingKey = `${parentId}:${text ?? ""}`;
-    let pending = pendingSideChats.get(pendingKey);
+    let pending = pendingSideChats.get(parentId);
     if (!pending) {
       pending = window.zpi
         .createSideChat(parentId)
@@ -260,16 +258,10 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
             sessionId: parentId,
             childSessionId: record.id,
           });
-          if (text) {
-            const draft = drafts.get(record.id);
-            if (draft) drafts.set(record.id, { ...draft, text, selection: [text.length, text.length] });
-            unwrap(await window.zpi.submitInput({ sessionId: record.id, text }));
-            if (draft) drafts.set(record.id, { ...draft, text: "", selection: [0, 0] });
-          }
           return record.id;
         })
-        .finally(() => pendingSideChats.delete(pendingKey));
-      pendingSideChats.set(pendingKey, pending);
+        .finally(() => pendingSideChats.delete(parentId));
+      pendingSideChats.set(parentId, pending);
     }
     childId = await pending;
   } else if (active) showTab(active);

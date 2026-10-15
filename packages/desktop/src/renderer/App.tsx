@@ -1140,29 +1140,9 @@ export function App() {
                         onSettings={() => setSettingsOpen(true)}
                       />
                     }
-                    onCommand={
-                      canOpenSideChat(record) ? () => paneTask(openSideChat(view.sessionId)) : undefined
-                    }
                     suggestions={state.activeSuggestions ?? []}
                     onSubmit={async (text, input) => {
                       try {
-                        const side = /^\/(?:side|btw)(?:\s|$)/.exec(text.trimStart());
-                        if (
-                          side &&
-                          record &&
-                          !record.draft &&
-                          !record.parentSessionId &&
-                          !input.attachments.length &&
-                          !input.fileReferences.length &&
-                          !text.includes("# userselect:")
-                        ) {
-                          await openSideChat(
-                            view.sessionId,
-                            undefined,
-                            text.trimStart().slice(side[0].length).trim(),
-                          );
-                          return;
-                        }
                         const result = await window.zpi.submitInput({
                           sessionId: view.sessionId,
                           text,
