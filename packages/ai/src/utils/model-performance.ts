@@ -46,7 +46,7 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
     const valid = typeof outputTokens === "number" && Number.isSafeInteger(outputTokens) && outputTokens > 0;
     this.sample = {
       ...this.sample,
-      outputTokens: valid && generationMs > 0 ? outputTokens : undefined,
+      outputTokens: valid ? outputTokens : undefined,
       generationMs: valid && generationMs > 0 ? generationMs : undefined,
     };
     this.usageVersion = this.contentVersion;
@@ -70,9 +70,13 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
         (block?.type === "toolCall" && block.name.length > 0)
       )
         this.generated();
-    } else if (event.type === "done" && this.usageVersion !== this.contentVersion) {
-      // A partial count must never become a final speed after additional content arrived.
-      this.sample = { ttftMs: this.sample.ttftMs };
+    }
+    if (event.type === "done") {
+      if (this.usageVersion !== this.contentVersion) {
+        // A partial count must never become a final speed after additional content arrived.
+        this.sample = { ttftMs: this.sample.ttftMs };
+      }
+      this.sample.requestMs = this.started === undefined ? undefined : this.now() - this.started;
       this.publish();
     }
     super.push(event);

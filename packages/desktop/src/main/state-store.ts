@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
+import type { ModelPerformanceTotals } from "zpi-coding-agent";
 import type { InputQueue, SessionControls } from "zpi-ui";
 import type { CombinedSelection, ProjectRecord, SessionRecord } from "../shared/bridge.ts";
 import { emptyTaskGroups, type TaskGroupState, taskGroupColors } from "../shared/task-groups.ts";
@@ -11,6 +12,7 @@ import { taskFromRow, validateTask } from "./task-state.ts";
 
 export { STATE_SCHEMA_VERSION, validateStateDatabase } from "./state-migrations.ts";
 export interface TaskState extends SessionRecord {
+  modelPerformanceTotals?: ModelPerformanceTotals;
   titleState?: string;
   lastThinkingLevel?: SessionControls["lastThinkingLevel"];
   fork?: { sessionId: string; runId: string };
@@ -90,6 +92,7 @@ const taskAuditFields = [
   "groupId",
   "sortKey",
   "queuePaused",
+  "modelPerformanceTotals",
 ] as const;
 const settingsAuditFields = [
   "shortcuts",

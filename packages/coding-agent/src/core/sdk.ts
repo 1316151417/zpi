@@ -5,6 +5,7 @@ import type { Model } from "zpi-ai";
 import { assertSupportedOptions, clampThinkingLevel } from "zpi-ai";
 import { AgentSession } from "./agent-session.ts";
 import type { CompactionOptions } from "./compaction.ts";
+import type { ModelPerformanceTotals } from "./model-performance.ts";
 import { ModelRuntime } from "./model-runtime.ts";
 import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
@@ -14,6 +15,7 @@ import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
 import type { ResourceLoader, ToolDefinition } from "./types.ts";
 export interface CreateAgentSessionOptions {
+  modelPerformanceTotals?: ModelPerformanceTotals;
   cwd?: string;
   agentDir?: string;
   modelRuntime?: ModelRuntime;
@@ -59,6 +61,7 @@ export async function createAgentSession(
       "settingsManager",
       "promptTemplate",
       "projectName",
+      "modelPerformanceTotals",
     ],
     "createAgentSession",
   );
@@ -194,11 +197,21 @@ export async function createAgentSession(
   }
   const thinking = clampThinkingLevel(model, requestedThinking);
   if (thinking !== selection.thinkingLevel) manager.appendThinkingLevelChange(thinking);
-  session = new AgentSession(model, runtime, manager, all, active, buildPrompt(), thinking, {
-    loader,
-    buildPrompt,
-    settingsManager,
-  });
+  session = new AgentSession(
+    model,
+    runtime,
+    manager,
+    all,
+    active,
+    buildPrompt(),
+    thinking,
+    {
+      loader,
+      buildPrompt,
+      settingsManager,
+    },
+    options.modelPerformanceTotals,
+  );
   session.subscribe((event) => {
     if (event.type === "compaction" && event.status === "completed") fileReadState.clear();
   });

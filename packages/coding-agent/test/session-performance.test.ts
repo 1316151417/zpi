@@ -7,7 +7,7 @@ import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } fro
 import { deferred, fakeConfig } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 
-it("measures the whole prompt through tools/retries, discards cancellation and ignores late callbacks after reset", async () => {
+it("measures the whole prompt through tools/retries, discards cancellation and retains cumulative metrics across prompts and ignores late callbacks", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   const toolStarted = deferred();
@@ -40,7 +40,7 @@ it("measures the whole prompt through tools/retries, discards cancellation and i
         cancelledStarted.resolve();
         return stream; // The watchdog/abort path must discard this sample.
       } else {
-        // Custom providers without measured usage must not inherit old performance.
+        // Custom providers without measurements must not change the prior speed.
         late?.({ ttftMs: 9999 });
       }
       stream.end(message);
@@ -74,17 +74,17 @@ it("measures the whole prompt through tools/retries, discards cancellation and i
   });
   const running = session.prompt("go");
   await toolStarted.promise;
-  expect(session.modelPerformance).toEqual({ ttftMs: 800, tokensPerSecond: 85 });
+  expect(session.modelPerformance).toMatchObject({ ttftMs: 800, tokensPerSecond: 85 });
   toolRelease.resolve();
   await running;
   expect(calls).toBe(3);
-  expect(session.modelPerformance).toEqual({ ttftMs: 1000, tokensPerSecond: 50 });
+  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
   const cancelled = session.prompt("cancel");
-  expect(session.modelPerformance).toEqual({});
+  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
   await cancelledStarted.promise;
   await session.abort();
   await cancelled;
-  expect(session.modelPerformance).toEqual({});
+  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
   await session.prompt("again");
-  expect(session.modelPerformance).toEqual({});
+  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
 });

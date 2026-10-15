@@ -271,6 +271,7 @@ declare const transcriptBrand: unique symbol;
 export type TranscriptContext = { messages: Message[]; readonly [transcriptBrand]: true };
 /** A provider-reported token count paired with its own content interval, never wall-clock elapsed time. */
 export interface ModelPerformanceSample {
+  requestMs?: number;
   ttftMs?: number;
   outputTokens?: number;
   generationMs?: number;

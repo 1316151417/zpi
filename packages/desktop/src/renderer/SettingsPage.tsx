@@ -462,7 +462,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         [
                           "showModelPerformance",
                           "显示模型性能",
-                          "在输入框下方显示本次交互的平均输出速度和首段内容等待时间。",
+                          "在输入框下方显示整个任务的性能与用量，点击查看时间和 token 明细。",
                         ],
                         [
                           "showContextUsage",

@@ -94,7 +94,6 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   };
   const tool = (id: string) => run.orderedBlocks.find((b) => b.type === "tool" && b.toolCallId === id);
   if (event.type === "started") {
-    view = { ...view, modelPerformance: undefined };
     run.historyContinuation = event.historyContinuation;
     run.userMessage = event.text;
     run.subagentNotification = event.subagentNotification;

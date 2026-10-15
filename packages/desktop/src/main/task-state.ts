@@ -1,4 +1,5 @@
 import type { SQLOutputValue } from "node:sqlite";
+import { validPerformanceTotals } from "zpi-coding-agent";
 import type { TaskState } from "./state-store.ts";
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -27,6 +28,7 @@ export function validateTask(value: unknown, id: string): asserts value is TaskS
     if (!check(data[field])) fail(`${field} missing or invalid type`);
   if (data.id !== id) fail("id does not match SQL primary key");
   const optional: Record<string, (value: unknown) => boolean> = {
+    modelPerformanceTotals: validPerformanceTotals,
     parentSessionId: nonempty,
     groupId: nullableId,
     sortKey: number,

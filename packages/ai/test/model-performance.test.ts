@@ -38,7 +38,7 @@ it.each(["text_delta", "thinking_delta", "toolcall_delta"] as const)(
     f.at(10000, { type: "text_end", contentIndex: 0, content: "firstx", partial: f.message });
     f.stream.recordUsage(170);
     f.stream.end(f.message);
-    expect(f.samples.at(-1)).toEqual({ ttftMs: 800, outputTokens: 170, generationMs: 2000 });
+    expect(f.samples.at(-1)).toEqual({ ttftMs: 800, outputTokens: 170, generationMs: 2000, requestMs: 9900 });
   },
 );
 
@@ -79,7 +79,7 @@ it("does not invent speed for one wire event or reuse a partial count as final u
   f.stream.recordUsage(85);
   f.delta(2900);
   f.stream.end(f.message);
-  expect(f.samples.at(-1)).toEqual({ ttftMs: 800 });
+  expect(f.samples.at(-1)).toEqual({ ttftMs: 800, requestMs: 2800 });
 });
 
 it("starts each HTTP attempt afresh and ignores redacted placeholders", () => {

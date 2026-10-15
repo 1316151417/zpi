@@ -16,12 +16,14 @@ import {
   type FileChange,
   FileResourceLoader,
   ModelRuntime,
+  modelPerformance,
   type PromptTemplate,
   parseInput,
   parseMentions,
   patchLineCounts,
   piTemplate,
   SessionManager,
+  SessionPerformance,
   supportedThinkingLevels,
   type ToolDefinition,
   validateTemplate,
@@ -130,7 +132,6 @@ export class SessionHost {
   private runtimes = new Map<string, ModelRuntime>();
   private managers = new Map<string, SessionManager>();
   private views = new Map<string, SessionView>();
-  private modelPerformance = new Map<string, NonNullable<SessionView["modelPerformance"]>>();
   private indexes = new Map<string, HistoryIndex>();
   private titleJobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   private sequences = new Map<string, number>();
@@ -1295,6 +1296,34 @@ export class SessionHost {
     }
     return manager;
   }
+  /** One-time upgrade/fork backfill, streamed from history without retaining message bodies. */
+  private performanceTotals(id: string) {
+    const saved = this.settings.state.getTask(id)?.modelPerformanceTotals;
+    if (saved) return saved;
+    const stats = new SessionPerformance(() => {});
+    const index = this.indexes.get(id);
+    if (!index) throw new Error("storage: Missing history index");
+    const snapshot = index.snapshot();
+    let inRun = false;
+    for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot)) {
+      if (entry.type === "custom" && entry.customType === "zpi.run" && isJsonObject(entry.data)) {
+        if (entry.data.phase === "start") {
+          stats.begin();
+          inRun = true;
+        }
+        if (entry.data.phase === "end") inRun = false;
+      }
+      if (entry.type === "message") {
+        if (entry.message.role === "user" && !inRun) stats.begin();
+        if (entry.message.role === "assistant") stats.request().finish(false, entry.message);
+      }
+      if (entry.type === "compaction" && entry.usage)
+        stats.request().finish(false, { usage: entry.usage, usageAvailable: true });
+    }
+    const totals = stats.snapshot;
+    this.saveTask(id, { modelPerformanceTotals: totals });
+    return totals;
+  }
   getSessionSnapshot(id: string): SessionSnapshot {
     const record = this.record(id),
       index = this.indexes.get(id);
@@ -1310,12 +1339,14 @@ export class SessionHost {
       this.views.set(id, view);
     }
     const controls = this.getControls(id);
-    const forkOrigin = this.settings.state.getTask(id)?.fork;
+    const totals = this.performanceTotals(id);
+    const task = this.settings.state.getTask(id);
+    const forkOrigin = task?.fork;
     view = {
       ...view,
       title: record.title,
       controls,
-      modelPerformance: this.modelPerformance.get(id),
+      modelPerformance: modelPerformance(totals),
       queue: this.inputQueue.get(id),
       forkOrigin,
       question: this.questions.get(id),
@@ -1631,7 +1662,6 @@ export class SessionHost {
       this.settings.state.deleteTask(id);
       // SQLite 删除提交后立即移除内存所有者，避免文件清理失败后 rename/upsert 复活墓碑。
       this.records.delete(id);
-      this.modelPerformance.delete(id);
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
@@ -1692,8 +1722,6 @@ export class SessionHost {
       event,
       ...(activityAt !== undefined ? { activityAt } : {}),
     };
-    if (event.type === "started") this.modelPerformance.delete(id);
-    if (event.type === "model_performance") this.modelPerformance.set(id, event.performance);
     if (view) this.views.set(id, reduceSession(view, envelope));
     for (const listener of this.listeners) {
       try {
@@ -2223,6 +2251,7 @@ export class SessionHost {
               modelRuntime: runtime,
               model,
               sessionManager: manager,
+              modelPerformanceTotals: this.performanceTotals(id),
               toolOverrides: [
                 this.backgroundTasks.tool(id, this.cwd(record), !!configuration.subagentProfile),
               ],
@@ -2291,6 +2320,7 @@ export class SessionHost {
             model,
           );
         const unsubscribe = session.subscribe((e) => {
+          if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
             manager.appendCustomEntry("zpi.agent_call", {
               phase: e.type === "agent_start" ? "start" : "end",
@@ -2379,6 +2409,7 @@ export class SessionHost {
       sortKey: _sort,
       queuePaused: _paused,
       revision: _revision,
+      modelPerformanceTotals: _performance,
       ...record
     } = task;
     return record;

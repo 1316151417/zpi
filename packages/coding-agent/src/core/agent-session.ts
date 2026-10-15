@@ -21,7 +21,11 @@ import {
   shouldCompact,
 } from "./compaction.ts";
 import { withHttpIdleTimeout } from "./http-idle-timeout.ts";
-import { InteractionPerformance, type ModelPerformance } from "./model-performance.ts";
+import {
+  type ModelPerformance,
+  type ModelPerformanceTotals,
+  SessionPerformance,
+} from "./model-performance.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { LoadedSkill, SkillList } from "./resources.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
@@ -47,7 +51,7 @@ function validateInputContext(input: ParsedInput, context: InputContext): void {
     throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
 }
 export type AgentSessionEvent =
-  | { type: "model_performance"; performance: ModelPerformance }
+  | { type: "model_performance"; performance: ModelPerformance; totals: ModelPerformanceTotals }
   | Exclude<AgentEvent, { type: "agent_end" }>
   | { type: "agent_end"; messages: AgentState["messages"]; willRetry: boolean }
   | { type: "agent_settled" }
@@ -85,9 +89,7 @@ export class AgentSession {
   private overflowRecoveryAttempted = false;
   private retryAttempt = 0;
   private recoveredCalls = new WeakSet<object>();
-  private performance = new InteractionPerformance((performance) =>
-    this.notify({ type: "model_performance", performance }),
-  );
+  private performance: SessionPerformance;
   get modelPerformance(): ModelPerformance {
     return this.performance.value;
   }
@@ -104,7 +106,12 @@ export class AgentSession {
       buildPrompt: () => string;
       settingsManager?: SettingsManager;
     },
+    performanceTotals?: ModelPerformanceTotals,
   ) {
+    this.performance = new SessionPerformance(
+      (performance, totals) => this.notify({ type: "model_performance", performance, totals }),
+      performanceTotals,
+    );
     this.manager = manager;
     this.runtime = runtime;
     this.resources = resources;
@@ -160,6 +167,8 @@ export class AgentSession {
     const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
     this.agent.subscribe((event) => {
       try {
+        if (event.type === "tool_execution_start") this.performance.toolStart(event.toolCallId);
+        if (event.type === "tool_execution_end") this.performance.toolEnd(event.toolCallId);
         streamingTools.observe(event);
         if (
           event.type === "message_end" &&
@@ -529,7 +538,10 @@ export class AgentSession {
         });
         for await (const event of response) {
           if (event.type === "done" || event.type === "error")
-            request.finish(event.type === "done" && event.reason !== "length" && !options.signal?.aborted);
+            request.finish(
+              event.type === "done" && event.reason !== "length" && !options.signal?.aborted,
+              event.type === "done" ? event.message : event.error,
+            );
           output.push(event);
         }
       } catch (error) {
@@ -556,7 +568,7 @@ export class AgentSession {
       return Promise.reject(error);
     }
     this.active = "compact";
-    this.performance.reset();
+    this.performance.begin();
     this.abortRequested = false;
     const controller = new AbortController();
     this.compactController = controller;
@@ -613,7 +625,7 @@ export class AgentSession {
       return Promise.reject(e);
     }
     this.active = "prompt";
-    this.performance.reset();
+    this.performance.begin();
     this.abortRequested = false;
     this.overflowRecoveryAttempted = false;
     this.retryAttempt = 0;

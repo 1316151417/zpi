@@ -8,7 +8,7 @@ import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 
-test("persists the switch, streams accurate metrics per task and centers below the composer in all layouts", async () => {
+test("persists the switch, retains cumulative metrics per task and centers below the composer in all layouts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-performance-"));
   const more = deferred();
   const finish = deferred();
@@ -30,6 +30,7 @@ test("persists the switch, streams accurate metrics per task and centers below t
           prompt_tokens: 100,
           completion_tokens: 85,
           total_tokens: 185,
+          prompt_tokens_details: { cached_tokens: 80 },
           completion_tokens_details: { reasoning_tokens: 20 },
         },
       });
@@ -46,22 +47,22 @@ test("persists the switch, streams accurate metrics per task and centers below t
     const settings = page.getByRole("region", { name: "设置", exact: true });
     await page.getByRole("button", { name: "设置", exact: true }).click();
     const toggle = settings.getByRole("checkbox", { name: "显示模型性能", exact: true });
-    await expect(toggle).not.toBeChecked();
-    await toggle.check();
+    await expect(toggle).toBeChecked();
+    await toggle.uncheck();
     await settings.getByLabel("关闭设置").click();
     await page.reload();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await expect(toggle).toBeChecked();
+    await expect(toggle).not.toBeChecked();
+    await toggle.check();
     await settings.getByLabel("关闭设置").click();
     await expect(indicator).toHaveCount(0);
 
     await editor.fill("性能任务 A");
     await page.getByLabel("发送", { exact: true }).click();
-    await expect(indicator).toHaveText(/^TTFT (?:<)?[\d.]+ s$/);
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await expect(page.locator(".conversation")).toContainText("正在检查请求与用量。");
+    await expect(indicator).toHaveCount(0);
     more.resolve();
-    await expect(indicator).toHaveText(/[\d.]+ tok\/s · TTFT /);
-    const live = await indicator.innerText();
 
     // Run another task while A is still streaming; its missing usage must not inherit A's speed.
     await page.getByLabel("新建任务", { exact: true }).first().click();
@@ -69,12 +70,28 @@ test("persists the switch, streams accurate metrics per task and centers below t
     await editor.fill("性能任务 B");
     await page.getByLabel("发送", { exact: true }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
-    await expect(indicator).toHaveText(/^TTFT (?:<)?[\d.]+ s$/);
+    await expect(indicator).toHaveText("1 轮 1 步");
     await page.getByTestId("session-row").filter({ hasText: "性能任务 A" }).click();
-    await expect(indicator).toHaveText(live);
+    await expect(indicator).toHaveCount(0);
     finish.resolve();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
-    await expect(indicator).toHaveText(live); // Waiting for terminal metadata does not lower speed.
+    await expect(indicator).toContainText("1 轮 1 步");
+    await expect(indicator).toContainText("185 tok");
+    await expect(indicator).toContainText("缓存命中 80%");
+    const live = (await indicator.textContent()) ?? "";
+    await indicator.getByRole("button", { name: "会话统计", exact: true }).click();
+    const stats = page.getByRole("dialog", { name: "会话统计", exact: true });
+    await expect(stats).toContainText("模型用时");
+    await expect(stats).toContainText("首 token 平均（TTFT）");
+    await expect(stats).toContainText("输出速度（TPS）");
+    await page.keyboard.press("Escape");
+    await expect(stats).toHaveCount(0);
+    await indicator.getByRole("button", { name: "Token 用量", exact: true }).click();
+    const usage = page.getByRole("dialog", { name: "Token 用量", exact: true });
+    await expect(usage).toContainText("未缓存输入20 tok");
+    await expect(usage).toContainText("缓存读取80 tok");
+    await expect(usage).toContainText("输出85 tok");
+    await page.keyboard.press("Escape");
 
     for (const [theme, width, name] of [
       ["浅色", 1200, "light"],
@@ -105,7 +122,24 @@ test("persists the switch, streams accurate metrics per task and centers below t
         .toBe(true);
       await editor.fill("可以继续输入");
       await expect(editor).toBeFocused();
-      await page.screenshot({ path: `test-results/model-performance-${name}.png` });
+      await page.screenshot({ animations: "disabled", path: `test-results/model-performance-${name}.png` });
+      await indicator.getByRole("button", { name: "会话统计", exact: true }).click();
+      await expect(stats).toBeVisible();
+      const panel = await stats.boundingBox();
+      expect(panel && panel.x >= 0 && panel.x + panel.width <= width).toBeTruthy();
+      await page.screenshot({
+        animations: "disabled",
+        path: `test-results/model-performance-${name}-details.png`,
+      });
+      await page.keyboard.press("Escape");
+      await expect(stats).toHaveCount(0);
+      await indicator.getByRole("button", { name: "Token 用量", exact: true }).click();
+      await expect(usage).toBeVisible();
+      await page.screenshot({
+        animations: "disabled",
+        path: `test-results/model-performance-${name}-usage.png`,
+      });
+      await page.keyboard.press("Escape");
       await editor.fill("");
     }
     await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -118,10 +152,22 @@ test("persists the switch, streams accurate metrics per task and centers below t
     await expect(indicator).toHaveText(live);
     await editor.fill("重新统计");
     await page.getByLabel("发送", { exact: true }).click();
-    await expect(indicator).toHaveCount(0);
+    await expect(indicator).toHaveText(live);
     next.resolve();
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
-    await expect(indicator).toContainText("tok/s");
+    await expect(indicator).toContainText("2 轮 2 步");
+    await expect(indicator).toContainText("370 tok");
+    const final = (await indicator.textContent()) ?? "";
+    await app.close();
+    app = await launchDesktop({ dir, url: server.url });
+    const reopened = await app.firstWindow();
+    await reopened.getByTestId("session-row").filter({ hasText: "性能任务 A" }).click();
+    await expect(reopened.getByTestId("model-performance")).toHaveText(final);
+    await reopened.getByLabel("消息", { exact: true }).fill("重启后继续");
+    await reopened.getByLabel("发送", { exact: true }).click();
+    await expect(reopened.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(reopened.getByTestId("model-performance")).toContainText("3 轮 3 步");
+    await expect(reopened.getByTestId("model-performance")).toContainText("555 tok");
   } finally {
     more.resolve();
     finish.resolve();
