@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import type { InputQueue, SessionControls } from "zpi-ui";
 import type { CombinedSelection, ProjectRecord, SessionRecord } from "../shared/bridge.ts";
 import { emptyTaskGroups, type TaskGroupState, taskGroupColors } from "../shared/task-groups.ts";
+import { migrateStateDatabase, validateStateDatabase } from "./state-migrations.ts";
+import { taskFromRow, validateTask } from "./task-state.ts";
 
-export const STATE_SCHEMA_VERSION = 1;
+export { STATE_SCHEMA_VERSION, validateStateDatabase } from "./state-migrations.ts";
 export interface TaskState extends SessionRecord {
   titleState?: string;
   lastThinkingLevel?: SessionControls["lastThinkingLevel"];
@@ -18,6 +20,7 @@ export interface TaskState extends SessionRecord {
   groupId?: string | null;
   sortKey?: number;
   queuePaused?: boolean;
+  /** Version of persisted task fields (including SQL ownership/order and deletion); excludes runtime/queue/drafts. */
   revision?: number;
 }
 export interface StorageIntent {
@@ -39,91 +42,6 @@ export interface RuntimeState<T = unknown> {
   ownerEpoch: string;
   status: string;
   data: T;
-}
-const schema = `
-CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
-CREATE TABLE projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL,
- hidden INTEGER NOT NULL DEFAULT 0, sort_key REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
- revision INTEGER NOT NULL DEFAULT 1, data TEXT NOT NULL CHECK(json_valid(data)));
-CREATE TABLE task_groups(id TEXT PRIMARY KEY, title TEXT NOT NULL, color TEXT NOT NULL,
- created_at INTEGER NOT NULL, sort_key REAL NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1);
-CREATE TABLE tasks(id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
- parent_task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL, group_id TEXT REFERENCES task_groups(id) ON DELETE SET NULL,
- sort_key REAL NOT NULL DEFAULT 0, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
- revision INTEGER NOT NULL DEFAULT 1, deleted_at INTEGER, data TEXT NOT NULL CHECK(json_valid(data)));
-CREATE INDEX tasks_project ON tasks(project_id, updated_at);
-CREATE INDEX tasks_group ON tasks(group_id,sort_key);
-CREATE TABLE app_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL CHECK(json_valid(data)), revision INTEGER NOT NULL DEFAULT 1);
-CREATE TABLE drafts(task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
- revision INTEGER NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)));
-CREATE TABLE queue_state(task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE, data TEXT NOT NULL CHECK(json_valid(data)));
-CREATE TABLE queue_items(id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
- position INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('queued','reserved')), accepted_run_id TEXT,
- data TEXT NOT NULL CHECK(json_valid(data)), UNIQUE(task_id,position));
-CREATE TABLE accepted_inputs(task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
- queue_item_id TEXT NOT NULL, run_id TEXT NOT NULL, PRIMARY KEY(task_id,queue_item_id), UNIQUE(task_id,run_id));
-CREATE TABLE task_runtime(task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, kind TEXT NOT NULL,
- instance_id TEXT NOT NULL, owner_epoch TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)),
- PRIMARY KEY(task_id,kind,instance_id));
-CREATE TABLE storage_operations(operation_id TEXT PRIMARY KEY, task_id TEXT NOT NULL,
- kind TEXT NOT NULL, stage TEXT NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)));
-CREATE TABLE operation_log(seq INTEGER PRIMARY KEY AUTOINCREMENT, operation_id TEXT NOT NULL,
- entity_id TEXT NOT NULL, action TEXT NOT NULL, outcome TEXT NOT NULL CHECK(outcome IN ('success','failure')),
- created_at INTEGER NOT NULL, before_revision INTEGER, after_revision INTEGER,
- summary TEXT NOT NULL CHECK(length(summary)<=1024));
-CREATE INDEX operation_log_time ON operation_log(created_at);
-`;
-let expectedSchema: Map<string, string> | undefined;
-function authoritativeSchema(): Map<string, string> {
-  if (!expectedSchema) {
-    const reference = new DatabaseSync(":memory:");
-    try {
-      reference.exec(schema);
-      expectedSchema = new Map(
-        reference
-          .prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL")
-          .all()
-          .map((row) => [String(row.name), String(row.sql)]),
-      );
-    } finally {
-      reference.close();
-    }
-  }
-  return expectedSchema;
-}
-/** Schema-only startup preflight. Full diagnosis is explicit: scanning all pages scales with history.
- * Neither mode repairs or initializes an existing authoritative database.
- */
-export function validateStateDatabase(path: string, mode: "schema" | "full" = "schema"): void {
-  if (!lstatSync(path).isFile()) throw new Error("storage: state database must be a regular file");
-  const db = new DatabaseSync(path, { readOnly: true });
-  try {
-    const version = Number(db.prepare("PRAGMA user_version").get()?.user_version);
-    if (version === 0) throw new Error("storage: unversioned database; use offline migration");
-    if (version !== STATE_SCHEMA_VERSION) throw new Error(`storage: unsupported schema version ${version}`);
-    const actual = new Map(
-      db
-        .prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL")
-        .all()
-        .map((row) => [String(row.name), String(row.sql)]),
-    );
-    for (const [name, sql] of authoritativeSchema()) {
-      if (actual.get(name) !== sql) throw new Error(`storage: invalid authoritative schema: ${name}`);
-    }
-    if (!db.prepare("SELECT version FROM schema_migrations WHERE version=?").get(STATE_SCHEMA_VERSION))
-      throw new Error("storage: missing schema migration ledger");
-    if (
-      mode === "full" &&
-      (db
-        .prepare("PRAGMA integrity_check")
-        .all()
-        .some((row) => row.integrity_check !== "ok") ||
-        db.prepare("PRAGMA foreign_key_check").all().length)
-    )
-      throw new Error("storage: authoritative database integrity check failed");
-  } finally {
-    db.close();
-  }
 }
 function encode(value: unknown): string {
   const json = JSON.stringify(value);
@@ -200,16 +118,6 @@ function changedFields(before: unknown, after: unknown, fields: readonly string[
   const next = after as Record<string, unknown> | undefined;
   return fields.filter((field) => !isDeepStrictEqual(old?.[field], next?.[field]));
 }
-function taskFromRow(row: Record<string, SQLOutputValue>): TaskState {
-  return {
-    ...JSON.parse(String(row.data)),
-    revision: Number(row.revision),
-    groupId: row.group_id,
-    sortKey: row.sort_key,
-    projectId: row.project_id,
-    parentSessionId: row.parent_task_id ?? undefined,
-  };
-}
 /** Authoritative desktop state. Transcript projections may share db, never rebuild these tables. */
 export class StateStore {
   readonly db: DatabaseSync;
@@ -225,27 +133,7 @@ export class StateStore {
       this.db.exec(
         "PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",
       );
-      const version = Number(this.db.prepare("PRAGMA user_version").get()?.user_version);
-      if (version === 0) {
-        const tables = this.db
-          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-          .all();
-        if (tables.length) throw new Error("storage: unversioned database; use offline migration");
-        this.db.exec("BEGIN IMMEDIATE");
-        try {
-          this.db.exec(schema);
-          this.db.prepare("INSERT INTO schema_migrations VALUES (?,?)").run(STATE_SCHEMA_VERSION, Date.now());
-          this.db.exec(`PRAGMA user_version=${STATE_SCHEMA_VERSION}; COMMIT`);
-        } catch (error) {
-          this.db.exec("ROLLBACK");
-          throw error;
-        }
-      } else if (version !== STATE_SCHEMA_VERSION)
-        throw new Error(`storage: unsupported schema version ${version}`);
-      // A version stamp is not permission to recreate a missing/corrupt authoritative table.
-      this.db.prepare("SELECT id FROM tasks LIMIT 0").all();
-      if (!this.db.prepare("SELECT version FROM schema_migrations WHERE version=?").get(STATE_SCHEMA_VERSION))
-        throw new Error("storage: missing schema migration ledger");
+      migrateStateDatabase(this.db);
     } catch (error) {
       this.db.close();
       throw error;
@@ -336,18 +224,12 @@ export class StateStore {
     });
   }
   getTask(id: string): TaskState | undefined {
-    const row = this.db
-      .prepare(
-        "SELECT data,revision,group_id,sort_key,project_id,parent_task_id FROM tasks WHERE id=? AND deleted_at IS NULL",
-      )
-      .get(id);
+    const row = this.db.prepare("SELECT * FROM tasks WHERE id=? AND deleted_at IS NULL").get(id);
     return row ? taskFromRow(row) : undefined;
   }
   listTasks(): TaskState[] {
     return this.db
-      .prepare(
-        "SELECT data,revision,group_id,sort_key,project_id,parent_task_id FROM tasks WHERE deleted_at IS NULL ORDER BY updated_at DESC,id",
-      )
+      .prepare("SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY updated_at DESC,id")
       .all()
       .map(taskFromRow);
   }
@@ -358,17 +240,29 @@ export class StateStore {
       value.id,
       () => {
         const previous = this.getTask(value.id);
-        const next = { ...previous, ...value };
+        if (!previous && this.db.prepare("SELECT 1 FROM tasks WHERE id=?").get(value.id))
+          throw new Error("storage: cannot resurrect a deleted task");
+        const next = {
+          ...previous,
+          ...value,
+          groupId: value.groupId === undefined ? (previous?.groupId ?? null) : value.groupId,
+          sortKey: value.sortKey === undefined ? (previous?.sortKey ?? 0) : value.sortKey,
+        };
         // Live ownership and pending UI requests cannot survive process restart.
         delete next.running;
         delete next.pendingQuestion;
+        delete next.revision;
+        validateTask(next, value.id);
         summary.changedFields = changedFields(previous, next, taskAuditFields);
+        const { revision: _revision, ...before } = previous ?? {};
+        const json = encode(next);
+        if (previous && isDeepStrictEqual(JSON.parse(encode(before)), JSON.parse(json))) return previous;
         const revision = (previous?.revision ?? 0) + 1;
         this.db
           .prepare(`INSERT INTO tasks(id,project_id,parent_task_id,group_id,sort_key,title,created_at,updated_at,revision,data)
         VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,
         parent_task_id=excluded.parent_task_id,group_id=excluded.group_id,sort_key=excluded.sort_key,title=excluded.title,
-        updated_at=excluded.updated_at,revision=excluded.revision,data=excluded.data,deleted_at=NULL`)
+        created_at=excluded.created_at,updated_at=excluded.updated_at,revision=excluded.revision,data=excluded.data`)
           .run(
             next.id,
             next.projectId,
@@ -379,7 +273,7 @@ export class StateStore {
             next.createdAt,
             next.updatedAt,
             revision,
-            encode(next),
+            json,
           );
         const saved = this.getTask(value.id);
         if (!saved) throw new Error("storage: task write missing");
@@ -390,6 +284,12 @@ export class StateStore {
   }
   deleteTask(id: string): void {
     this.transaction("task.delete", id, () => {
+      if (!this.getTask(id)) return;
+      this.enqueueCleanup("task", id);
+      for (const intent of this.listIntents().filter((intent) => intent.taskId === id)) {
+        this.enqueueCleanup("transcript", id, intent.targetFile);
+        if (intent.resultFile) this.enqueueCleanup("transcript", id, intent.resultFile);
+      }
       this.db.prepare("UPDATE tasks SET deleted_at=?,revision=revision+1 WHERE id=?").run(Date.now(), id);
       for (const table of [
         "drafts",
@@ -401,6 +301,21 @@ export class StateStore {
       ])
         this.db.prepare(`DELETE FROM ${table} WHERE task_id=?`).run(id);
     });
+  }
+  enqueueCleanup(kind: "task" | "transcript", taskId: string, path = ""): void {
+    this.db
+      .prepare("INSERT OR IGNORE INTO storage_cleanup(kind,task_id,path) VALUES (?,?,?)")
+      .run(kind, taskId, path);
+  }
+  pendingCleanup(): { kind: "task" | "transcript"; taskId: string; path: string }[] {
+    return this.db
+      .prepare("SELECT kind,task_id,path FROM storage_cleanup ORDER BY kind,task_id,path")
+      .all()
+      .map((row) => ({
+        kind: row.kind as "task" | "transcript",
+        taskId: String(row.task_id),
+        path: String(row.path),
+      }));
   }
   upsertProject(value: ProjectRecord): void {
     this.transaction("project.upsert", value.id, () => {
@@ -434,6 +349,7 @@ export class StateStore {
   }
   deleteProject(id: string): void {
     this.transaction("project.delete", id, () => {
+      this.db.prepare("UPDATE tasks SET project_id=NULL,revision=revision+1 WHERE project_id=?").run(id);
       this.db.prepare("DELETE FROM projects WHERE id=?").run(id);
     });
   }
@@ -533,24 +449,39 @@ export class StateStore {
         }
       }
       if (rootGroups.size !== groupIds.size) throw new Error("storage: missing group root");
-      this.db.prepare("UPDATE tasks SET group_id=NULL").run();
-      const keep = new Set(state.groups.map((group) => group.id));
-      for (const row of this.db.prepare("SELECT id FROM task_groups").all())
-        if (!keep.has(String(row.id))) this.db.prepare("DELETE FROM task_groups WHERE id=?").run(row.id);
+      // Apply final values once. Removing a group and moving its tasks is one task revision change.
+      const placements = new Map<string, { group: string | null; sort: number }>();
       for (const group of state.groups) {
         this.db
           .prepare(`INSERT INTO task_groups(id,title,color,created_at) VALUES (?,?,?,?) ON CONFLICT(id)
-          DO UPDATE SET title=excluded.title,color=excluded.color,revision=task_groups.revision+1`)
+          DO UPDATE SET title=excluded.title,color=excluded.color,revision=task_groups.revision+1
+          WHERE task_groups.title IS NOT excluded.title OR task_groups.color IS NOT excluded.color`)
           .run(group.id, group.title, group.color, group.createdAt);
         for (const [sort, id] of (state.members[group.id] ?? []).entries())
-          this.db
-            .prepare("UPDATE tasks SET group_id=?,sort_key=?,revision=revision+1 WHERE id=?")
-            .run(group.id, sort, id);
+          placements.set(id, { group: group.id, sort });
       }
-      for (const [sort, node] of state.roots.entries())
+      for (const [sort, node] of state.roots.entries()) {
+        if (node.type === "task") placements.set(node.id, { group: null, sort });
+        else
+          this.db
+            .prepare("UPDATE task_groups SET sort_key=?,revision=revision+1 WHERE id=? AND sort_key IS NOT ?")
+            .run(sort, node.id, sort);
+      }
+      for (const row of this.db
+        .prepare("SELECT id,group_id,sort_key FROM tasks WHERE deleted_at IS NULL")
+        .all()) {
+        const placement = placements.get(String(row.id)) ?? { group: null, sort: row.sort_key };
         this.db
-          .prepare(`UPDATE ${node.type === "group" ? "task_groups" : "tasks"} SET sort_key=? WHERE id=?`)
-          .run(sort, node.id);
+          .prepare(`UPDATE tasks SET group_id=?,sort_key=?,revision=revision+1
+          WHERE id=? AND (group_id IS NOT ? OR sort_key IS NOT ?)`)
+          .run(placement.group, placement.sort, row.id, placement.group, placement.sort);
+      }
+      for (const row of this.db.prepare("SELECT id FROM task_groups").all()) {
+        if (groupIds.has(String(row.id))) continue;
+        // Tombstones can still reference a removed group; retain their revision semantics too.
+        this.db.prepare("UPDATE tasks SET group_id=NULL,revision=revision+1 WHERE group_id=?").run(row.id);
+        this.db.prepare("DELETE FROM task_groups WHERE id=?").run(row.id);
+      }
     });
   }
   getQueue(taskId: string): InputQueue | undefined {

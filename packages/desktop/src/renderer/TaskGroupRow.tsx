@@ -1,7 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import * as Context from "@radix-ui/react-context-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { ArrowUpToLine, ChevronRight, Folder, FolderInput, LoaderIcon, X } from "lucide-react";
+import { Archive, ArrowUpToLine, ChevronRight, Folder, FolderInput, LoaderIcon, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActionHint, TaskTitleOverflowText } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
@@ -191,20 +191,16 @@ export function TaskGroupRow({
                     <ArrowUpToLine size={14} />
                   </button>
                 </ActionHint>
-                <ActionHint
-                  label={record.running ? "请先停止运行" : "关闭"}
-                  appearance="control"
-                  open={tooltipsDisabled ? false : undefined}
-                >
+                <ActionHint label="归档任务" appearance="control" open={tooltipsDisabled ? false : undefined}>
                   <button
-                    aria-label={`关闭任务 ${record.title}`}
+                    aria-label="归档任务"
                     disabled={record.running || Boolean(record.diagnostic)}
                     onClick={(event) => {
                       event.stopPropagation();
                       close();
                     }}
                   >
-                    <X size={14} />
+                    <Archive size={14} />
                   </button>
                 </ActionHint>
               </span>

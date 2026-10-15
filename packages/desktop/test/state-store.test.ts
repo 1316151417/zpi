@@ -498,9 +498,8 @@ it("explicit full diagnosis rejects foreign-key corruption without repairing aut
 
 it("opens with large derived tables without any whole-database integrity scan", () => {
   const { value: s, file } = store();
-  s.db.exec(`CREATE TABLE derived_history(seq INTEGER PRIMARY KEY, body TEXT);
-    WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<20000)
-    INSERT INTO derived_history SELECT n, printf('%01024d',n) FROM rows;`);
+  s.db.exec(`WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<20000)
+    INSERT INTO transcript_search SELECT 'large',n,'run',printf('%01024d',n) FROM rows;`);
   s.close();
   const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
   try {
@@ -509,7 +508,9 @@ it("opens with large derived tables without any whole-database integrity scan", 
     expect(
       prepare.mock.calls
         .map(([sql]) => sql)
-        .filter((sql) => /(?:integrity_check|quick_check|foreign_key_check|derived_history)/i.test(sql)),
+        .filter((sql) =>
+          /(?:integrity_check|quick_check|foreign_key_check|FROM transcript_search)/i.test(sql),
+        ),
     ).toEqual([]);
   } finally {
     prepare.mockRestore();
@@ -576,4 +577,111 @@ it("restricts arbitrary transaction summaries to a bounded fixed field vocabular
   const log = s.db.prepare("SELECT summary FROM operation_log").get();
   expect(JSON.parse(String(log?.summary))).toEqual({ changedFields: ["pinnedAt", "title"] });
   expect(String(log?.summary).length).toBeLessThan(1024);
+});
+
+it.each([
+  [null, "data must be an object"],
+  [[], "data must be an object"],
+  [{}, "id"],
+  [{ ...task(), id: "other" }, "id does not match SQL primary key"],
+  [{ ...task(), title: undefined }, "title"],
+  [{ ...task(), title: 123 }, "title"],
+  [{ ...task(), projectId: undefined }, "projectId"],
+  [{ ...task(), createdAt: "yesterday" }, "createdAt"],
+  [{ ...task(), updatedAt: null }, "updatedAt"],
+  [{ ...task(), draft: "false" }, "draft"],
+  [{ ...task(), archivedAt: false }, "archivedAt"],
+  [{ ...task(), sessionFile: 123 }, "sessionFile"],
+  [{ ...task(), worktree: { path: "/work" } }, "worktree"],
+  [{ ...task(), currentSelection: {} }, "currentSelection"],
+  [{ ...task(), frozenConfiguration: [] }, "frozenConfiguration"],
+])("diagnoses invalid task JSON structure without hiding or repairing it: %j", (data, field) => {
+  const { value: s } = store();
+  s.upsertTask(task());
+  s.upsertTask(task("valid"));
+  const json = JSON.stringify(data);
+  s.db.prepare("UPDATE tasks SET data=? WHERE id='task'").run(json);
+  for (const read of [() => s.getTask("task"), () => s.listTasks()]) {
+    expect(read).toThrow(`storage: invalid task "task": ${field}`);
+  }
+  expect(s.db.prepare("SELECT data FROM tasks WHERE id='task'").get()?.data).toBe(json);
+  expect(s.getTask("valid")?.id).toBe("valid");
+});
+it("reads authoritative SQL identity, title, dates and membership over typed legacy JSON mirrors", () => {
+  const { value: s } = store();
+  s.upsertTask(task());
+  s.db.exec(
+    "UPDATE tasks SET title='SQL title',created_at=100,updated_at=200,revision=8,sort_key=9 WHERE id='task'",
+  );
+  expect(s.getTask("task")).toMatchObject({
+    id: "task",
+    title: "SQL title",
+    createdAt: 100,
+    updatedAt: 200,
+    revision: 8,
+    sortKey: 9,
+  });
+  s.db.exec("UPDATE tasks SET updated_at='invalid' WHERE id='task'");
+  expect(() => s.listTasks()).toThrow("updatedAt");
+});
+it("increments task revisions only for changed persisted task fields, including group/root moves", () => {
+  const { value: s } = store();
+  s.upsertTask(task());
+  s.upsertTask(task("two"));
+  const version = () => s.getTask("task")?.revision;
+  expect(s.upsertTask(task()).revision).toBe(1);
+  expect(s.upsertTask({ ...task(), running: true }).revision).toBe(1);
+  expect(s.upsertTask({ ...task(), pinnedAt: undefined, parentSessionId: undefined }).revision).toBe(1);
+  const grouped = {
+    version: 1 as const,
+    groups: [{ id: "g", title: "G", color: "blue" as const, createdAt: 1 }],
+    roots: [
+      { type: "group" as const, id: "g" },
+      { type: "task" as const, id: "two" },
+    ],
+    members: { g: ["task"] },
+  };
+  s.setTaskGroups(grouped);
+  expect(version()).toBe(2);
+  s.setTaskGroups(grouped);
+  expect(version()).toBe(2);
+  s.setTaskGroups({ ...grouped, groups: [{ ...grouped.groups[0], title: "Renamed" }] });
+  expect(version()).toBe(2); // The group title is not a task field.
+  const ungrouped = {
+    version: 1 as const,
+    groups: [],
+    members: {},
+    roots: [
+      { type: "task" as const, id: "task" },
+      { type: "task" as const, id: "two" },
+    ],
+  };
+  s.setTaskGroups(ungrouped);
+  expect(version()).toBe(3); // Move out even with the same sort key.
+  s.setTaskGroups({ ...ungrouped, roots: [...ungrouped.roots].reverse() });
+  expect(version()).toBe(4);
+  s.setTaskGroups({ ...ungrouped, roots: [...ungrouped.roots].reverse() });
+  expect(version()).toBe(4);
+  const current = s.getTask("task");
+  if (!current) throw new Error("missing task fixture");
+  s.upsertTask({ ...current, archivedAt: 100 });
+  expect(version()).toBe(5);
+  s.deleteTask("task");
+  const deletedRevision = s.db.prepare("SELECT revision FROM tasks WHERE id='task'").get()?.revision;
+  expect(deletedRevision).toBe(6);
+  s.deleteTask("task");
+  expect(s.db.prepare("SELECT revision FROM tasks WHERE id='task'").get()?.revision).toBe(6);
+  expect(() => s.upsertTask(task())).toThrow("cannot resurrect");
+});
+it("bumps task revisions when a project is deleted, including archived tasks, without touching unrelated tasks", () => {
+  const { value: s } = store();
+  s.upsertProject({ id: "p", name: "Project", path: "/work", updatedAt: 1 });
+  s.upsertTask({ ...task(), projectId: "p" });
+  s.upsertTask({ ...task("archived"), projectId: "p", archivedAt: 1 });
+  s.upsertTask(task("unrelated"));
+  s.deleteProject("p");
+  s.deleteProject("p");
+  for (const id of ["task", "archived"])
+    expect(s.getTask(id)).toMatchObject({ projectId: null, revision: 2 });
+  expect(s.getTask("unrelated")?.revision).toBe(1);
 });

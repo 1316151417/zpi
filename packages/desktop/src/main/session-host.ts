@@ -73,6 +73,7 @@ import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import type { StorageIntent, TaskState } from "./state-store.ts";
 import { resolveModel, type SettingsStore } from "./storage.ts";
+import { retryStorageCleanup } from "./storage-cleanup.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
 import { UserQuestions } from "./user-questions.ts";
@@ -366,6 +367,8 @@ export class SessionHost {
     this.projects = settings.state.listProjects();
   }
   async init(): Promise<void> {
+    // Validate all task payloads before recovery writes or runtime restoration.
+    const tasks = this.settings.state.listTasks();
     try {
       await this.attachments.cleanUnsent((error, sessionId) =>
         this.errors.write("attachments.cleanup", error, { sessionId }),
@@ -376,15 +379,15 @@ export class SessionHost {
     this.settings.state.pruneAudit();
     this.settings.state.recoverRuntime();
     // The database owns task identity and location. Unreferenced files are never adopted.
-    for (const task of this.settings.state.listTasks()) {
+    for (const task of tasks) {
       const record = this.taskRecord(task);
       if (record.status === "running") {
         record.status = "interrupted";
         this.settings.state.upsertTask({ ...task, status: "interrupted" });
       }
       this.records.set(task.id, { ...record, running: false });
-      const index = this.historyIndex(this.path(record));
       try {
+        const index = this.historyIndex(this.path(record));
         await index.load();
         if (index.data.header.id !== task.id) throw new Error("Session identity mismatch");
         this.indexes.set(task.id, index);
@@ -462,6 +465,7 @@ export class SessionHost {
         }
       }
     }
+    await this.retryCleanup();
     // Validate saved configuration before exposing restored sessions.
     for (const id of this.records.keys()) {
       try {
@@ -471,6 +475,19 @@ export class SessionHost {
         this.blocked.set(id, `storage: ${String(error)}`);
       }
     }
+  }
+  private retryCleanup(id?: string): Promise<void> {
+    return retryStorageCleanup(
+      this.settings.state,
+      this.dir,
+      async (taskId) => {
+        await this.attachments.deleteSession(taskId);
+        await rm(join(this.dir, "agent", "tool-output", taskId), { recursive: true, force: true });
+        await rm(join(this.dir, "agent", "session-context", taskId), { recursive: true, force: true });
+      },
+      (error, taskId) => this.errors.write("session.delete.cleanup", error, { sessionId: taskId }),
+      id,
+    );
   }
   private defaultConfiguration(): SessionConfiguration {
     const settings = this.settings.get();
@@ -1598,8 +1615,7 @@ export class SessionHost {
   async deleteSession(id: string): Promise<void> {
     if (this.activeRuns.has(id) || this.updating.has(id) || this.deleting.has(id))
       throw new Error("busy: 请先停止运行");
-    const record = this.record(id);
-    const file = this.path(record);
+    this.record(id);
     this.deleting.add(id);
     this.titleJobs.get(id)?.controller.abort();
     try {
@@ -1633,19 +1649,7 @@ export class SessionHost {
       this.cursors.delete(id);
       this.sequences.delete(id);
       this.blocked.delete(id);
-      // 文件回收失败只记录诊断；逻辑删除已提交，不能让磁盘故障恢复可写任务。
-      for (const cleanup of [
-        () => this.attachments.deleteSession(id),
-        () => rm(join(this.dir, "agent", "tool-output", id), { recursive: true, force: true }),
-        () => rm(join(this.dir, "agent", "session-context", id), { recursive: true, force: true }),
-        () => rm(file, { force: true }),
-      ]) {
-        try {
-          await cleanup();
-        } catch (error) {
-          this.errors.write("session.delete.cleanup", error, { sessionId: id });
-        }
-      }
+      await this.retryCleanup(id);
     } finally {
       this.deleting.delete(id);
     }
@@ -2390,7 +2394,7 @@ export class SessionHost {
         };
         this.settings.state.putIntent(operation);
       },
-      commit: (_oldPath, newPath, header, watermark) => {
+      commit: (oldPath, newPath, header, watermark) => {
         if (
           !operation ||
           operation.taskId !== header.id ||
@@ -2400,6 +2404,7 @@ export class SessionHost {
         this.settings.state.putIntent({ ...operation, stage: "durable", watermark });
         this.settings.state.completeIntent(operation.operationId, () => {
           this.saveTask(header.id, { sessionFile: relative(this.dir, newPath), cwd: header.cwd });
+          this.settings.state.enqueueCleanup("transcript", header.id, relative(this.dir, oldPath));
         });
         operation = undefined;
       },

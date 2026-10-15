@@ -20,7 +20,7 @@
     agents/*.md                 # 个人智能体配置正文
 ```
 
-`active-generation.json` 与 `ready.json` 使用 format 2、schemaVersion 1、transcriptVersion 2。运行入口先取得根目录锁；没有指针时仅在未检测到旧数据的根创建新 generation。发现旧 settings/projects/groups 或旧 sessions 时拒绝启动，交由离线工具。缺失或无效的已发布 generation 不会从旧 JSON 猜建。
+`active-generation.json` 与 `ready.json` 使用 format 2、schemaVersion 1、transcriptVersion 2。这里的 schemaVersion 是 generation 格式的初始基线；数据库当前版本由 `PRAGMA user_version` 和 `schema_migrations` 共同记录，升级数据库不重写 generation 指针。运行入口先取得根目录锁；没有指针时仅在未检测到旧数据的根创建新 generation。发现旧 settings/projects/groups 或旧 sessions 时拒绝启动，交由离线工具。缺失或无效的已发布 generation 不会从旧 JSON 猜建。
 
 - `StateStore` 使用 Node 24 的 `node:sqlite`；启用 foreign_keys、WAL、busy_timeout=5000、synchronous=FULL。schema 账本是新数据库版本管理，不是旧数据兼容器。
 - `projects`、`tasks`、`task_groups`、`app_settings`、`drafts`、`queue_state`、`queue_items`、`accepted_inputs`、`task_runtime` 是业务状态；`storage_operations` 是跨文件恢复意图。任务的一些低频字段保存在经过应用验证的 JSON 列中，不是计划中每一项都有单独 SQL 列。
@@ -33,13 +33,29 @@
 - 会话文件使用 v2 header 与递增 seq；允许消息、压缩及 run/call/tool_journal/context_anchor 等明确事实类型。标题、置顶、选择、队列等产品快照不属于日志。运行时适配层使用内部 SessionEntry 类型不意味着允许旧 JSONL 直接打开。
 - 附件继续采用受控内容文件和附件索引，不在本次强行迁 SQLite。fork 复制合并多个批次，保留目标已有附件；缓存文件通过文件复制保留，父任务删除后子任务自己的副本仍可读取。外部项目文件仍是外部引用，不会因为 fork 自动备份整个工作目录。
 
+### SQLite 顺序升级与任务校验
+
+已发布的 SQLite v1 可直接升级到当前 v3：v1 定义冻结在 `state-schema-v1.ts`；v2 为账本增加迁移 SQL 的 SHA-256 与各版本结构摘要，并创建 transcript 的未结束调用部分索引 `(path) WHERE complete=0` 和起点索引 `(path,start)`；v3 增加持久化清理待办，并为已有删除墓碑补建待办。所有待执行版本按顺序在一个事务内提交，任何一步失败均回滚结构、账本、数据与 `user_version`。重复启动不重复迁移，也不改写已有应用时间。
+
+打开已有库先只读校验版本、已知表/索引定义和完整账本；未知更新版本、意外对象、被修改的定义或校验值均拒绝打开，不删除数据库重建。缺失的 transcript 派生表可按既定定义重建，同时使其缓存水位失效；存在但定义异常的派生表也拒绝打开。启动不扫描所有历史页，完整 integrity/foreign-key 检查仍由显式诊断触发。
+
+任务 SQL 主键 `id` 是唯一身份；结构化列负责项目/父任务/分组、顺序、标题、创建/更新时间和 revision。JSON 负责其余持久化字段，历史 JSON 中上述结构化字段的副本可能过时，读取时使用 SQL 值；JSON 的 ID 必须与主键一致。读取和写入均校验必需字段、可选字段与嵌套字段的类型，缺字段、错误类型或身份冲突会给出包含任务 ID 和字段名的 `storage:` 诊断。启动在恢复任务运行状态前校验全部活动任务；损坏记录会阻止恢复并通过现有启动错误提示/日志报告，不跳过记录、不构造替代任务、不改写原数据。缺失会话路径进入已有任务历史诊断流程。
+
+任务 revision 表示持久化任务字段的版本，包括分组归属、根/组内排序、项目解绑、归档与删除；不包含独立的草稿、队列、运行时表或分组标题。一次操作按最终任务值比较，有变化递增一次，无变化保持原值。删除墓碑不能通过普通 upsert 复活。
+
+### 删除与旧代际回收
+
+归档只改变任务状态，保留会话、索引、搜索和附件。删除在提交墓碑时原子写入 `storage_cleanup`，随后回收所有对应 `transcript_*` 行、搜索文本、JSONL 代际与任务专属附件/输出。即使文件已不存在，仍清理对应索引。失败待办保留 `attempts` / `last_error`，错误日志使用 `session.delete.cleanup`，下次启动在恢复意图处理后自动重试；文件已删但 SQL 清理失败也可重试。
+
+成功发布新 JSONL 代际时，旧路径与新定位的提交在同一事务中进入待办，留到下次启动回收，避免影响本次进程中的历史读取。当前任务（含归档任务）的路径、未完成恢复意图的目标/结果路径，以及该意图所属任务的旧代际都受保护。删除任务时取消其自己的恢复意图，但其他任务的引用仍受保护。升级前的旧代际仅在显式删除所属任务时，依据受管目录内的任务文件名、文件头 ID 和索引定位回收；不对无法证明归属的孤立文件做全盘清扫。错误身份、异常文件或越出受管目录的路径保留并报告，等待明确修复后重试。显式删除任务时，其墓碑中登记的受管 JSONL 文件即使文件头损坏也可删除；其他代际必须验证文件头，合法但 ID 不符的文件始终保留。
+
 主要实现：[StateStore](../../packages/desktop/src/main/state-store.ts)、[存储入口](../../packages/desktop/src/main/storage-generation.ts)、[设置](../../packages/desktop/src/main/storage.ts)、[JSONL 合同](../../packages/desktop/src/main/transcript-v2.ts)、[索引](../../packages/desktop/src/main/history-index.ts)。
 
 ## 隔离试用与人工验收
 
 普通 `npm run dev` 与已安装 Preview 共用默认数据目录。首次试用本分支不得直接指向唯一生产数据。`ZPI_DATA_DIR` 可指定绝对路径覆盖数据根，不启用测试模式；相对路径会被拒绝。测试模式下 `ZPI_TEST_DATA_DIR` 优先。
 
-本分支首次发布前生成的临时 SQLite 测试库不承诺跨开发版本升级。人工验收请新建隔离目录，或从受支持的旧 JSON 数据副本运行离线迁移；不要把开发中间产物当正式迁移输入。
+已发布 SQLite v1 和当前顺序迁移版本受支持。首次发布前的异常开发中间结构不自动推测转换。人工验收请使用新建隔离目录、旧 SQLite 副本，或从受支持的旧 JSON 数据副本运行离线迁移。
 
 在独立临时目录进行真实分支试用（POSIX shell）：
 
@@ -115,6 +131,7 @@ npx tsx scripts/storage-migrate.ts activate --plan "$PLAN" --target "$TARGET" --
 ```sh
 npm run test:unit -- packages/desktop/test/storage.test.ts packages/desktop/test/shortcut-storage.test.ts packages/desktop/test/draft-store.test.ts packages/desktop/test/task-groups.test.ts packages/desktop/test/attachment-copy.test.ts packages/desktop/test/sqlite-preferences-reopen.test.ts
 npm run test:unit -- packages/desktop/test/storage-generation.test.ts packages/desktop/test/state-store.test.ts packages/desktop/test/storage-migration.test.ts
+npm run test:unit -- packages/desktop/test/state-migrations.test.ts packages/desktop/test/storage-cleanup.test.ts packages/desktop/test/history-query-plan.test.ts
 npm run test:unit -- packages/desktop/test/side-chat-recovery.test.ts packages/desktop/test/edit-recovery.test.ts packages/desktop/test/storage-host-recovery.test.ts packages/desktop/test/sqlite-build.test.ts
 npm run check
 npm run build

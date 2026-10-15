@@ -23,6 +23,70 @@ async function createGroup(page: Page, name: string) {
   await expect(page.getByRole("button", { name: `分组 ${name}`, exact: true })).toBeVisible();
 }
 
+test("grouped task archive uses the menu icon and retains history while draft X discards the draft", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-archive-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "已保留的任务历史" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("归档按钮验证");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    const task = await page.evaluate(async () => {
+      const result = await window.zpi.listRecentSessions();
+      if (!result.ok) throw new Error(result.error.message);
+      const task = result.value.find((record) => !record.draft);
+      if (!task) throw new Error("missing created task");
+      return task;
+    });
+    await grouped(page);
+    const row = page.locator(`.task-groups [data-session-id="${task.id}"]`);
+    await row.hover();
+    const archive = row.getByRole("button", { name: "归档任务", exact: true });
+    await expect(archive.locator("svg.lucide-archive")).toHaveCount(1);
+    await expect(archive.locator("svg.lucide-x")).toHaveCount(0);
+    await archive.hover();
+    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("grouped-archive.png") });
+    await archive.click();
+    await expect(row).toHaveCount(0);
+    const archived = await page.evaluate(() => window.zpi.listArchivedSessions());
+    expect(archived.ok && archived.value.some((record) => record.id === task.id)).toBe(true);
+    const snapshot = await page.evaluate((id) => window.zpi.getSessionSnapshot(id), task.id);
+    expect(snapshot.ok && snapshot.value.view.runs.length).toBe(1);
+    await page.getByRole("button", { name: "新建任务", exact: true }).first().click();
+    const draft = page.getByTestId("grouped-draft-row");
+    await expect(draft).toBeVisible();
+    const draftId = await draft.getAttribute("data-session-id");
+    await draft.hover();
+    const discard = draft.getByRole("button", { name: "关闭新任务", exact: true });
+    await expect(discard.locator("svg.lucide-x")).toHaveCount(1);
+    await expect(draft.locator("svg.lucide-archive")).toHaveCount(0);
+    await discard.click();
+    await expect(draft).toHaveCount(0);
+    const remaining = await page.evaluate(() => window.zpi.listRecentSessions());
+    expect(remaining.ok && remaining.value.some((record) => record.id === draftId)).toBe(false);
+    const after = await page.evaluate(() => window.zpi.listArchivedSessions());
+    expect(after.ok && after.value.map((record) => record.id)).toEqual([task.id]);
+    await page.reload();
+    await expect(page.locator(`[data-session-id="${draftId}"]`)).toHaveCount(0);
+    await expect(row).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("group menus preserve focus/expansion, names/IME and colors survive reload, and ungroup keeps tasks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-task-groups-ui-"));
   const project = join(dir, "workspace");
