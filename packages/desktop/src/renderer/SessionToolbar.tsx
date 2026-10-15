@@ -149,14 +149,6 @@ export function SessionToolbar({
                     </div>
                   ))}
                 </div>
-                <div className="context-cache">
-                  <span>平均缓存命中率</span>
-                  <strong>
-                    {usage?.averageCacheHitRate == null
-                      ? "未知"
-                      : `${(usage.averageCacheHitRate * 100).toFixed(1)}%`}
-                  </strong>
-                </div>
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
