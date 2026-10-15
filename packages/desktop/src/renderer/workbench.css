@@ -5956,29 +5956,38 @@
   }
 }
 
-.composer:has(.session-toolbar) {
-  container: composer / inline-size;
+.composer-container {
+  position: relative;
 }
 .model-performance {
+  position: absolute;
+  inset-inline: 16px;
+  bottom: 2px;
+  height: 12px;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
-  gap: 4px;
-  max-width: 100%;
+  justify-content: center;
+  gap: 8px;
+  max-width: 1024px;
+  margin-inline: auto;
   color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 20px;
+  font-size: 10px;
+  line-height: 12px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.side-chat-pane .model-performance {
+  inset-inline: 12px;
+  bottom: 0;
 }
 .model-stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
-  height: 28px;
-  padding: 0 6px;
+  height: 12px;
+  padding: 0 2px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -5992,7 +6001,11 @@ button.model-stat-pill:hover,
   background: var(--color-fill-hover);
   color: var(--color-text-subtle);
 }
-.model-stat-pill svg,
+.model-stat-pill svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
 .model-stat-title svg {
   width: 14px;
   height: 14px;
@@ -6003,13 +6016,8 @@ button.model-stat-pill:hover,
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@container composer (width < 760px) {
-  .model-performance .model-stat-label {
-    display: none;
-  }
-}
 .model-stat-separator {
-  margin: 0 6px;
+  margin: 0 4px;
   color: var(--color-border);
 }
 .model-stat-dialog {

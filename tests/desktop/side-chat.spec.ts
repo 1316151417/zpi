@@ -126,9 +126,25 @@ test("side chats fit narrow panes, add references to their own draft and copy on
         .toBe(0);
       await expect(side.getByLabel("消息", { exact: true })).toBeInViewport();
     }
+    const sideComposer = side.locator(".composer");
+    const withoutMetrics = await sideComposer.boundingBox();
     await side.getByLabel("消息", { exact: true }).fill("辅助问题");
     await side.getByLabel("发送", { exact: true }).click();
     await expect(side.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    expect(await sideComposer.boundingBox()).toEqual(withoutMetrics);
+    const metrics = side.getByTestId("model-performance");
+    await expect(metrics).toBeVisible();
+    const inputBox = await sideComposer.boundingBox();
+    const metricBox = await metrics.boundingBox();
+    const dockBox = await side.locator(".composer-container").boundingBox();
+    expect(inputBox && metricBox && dockBox).toBeTruthy();
+    if (inputBox && metricBox && dockBox) {
+      expect(metricBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
+      expect(metricBox.y + metricBox.height).toBeLessThanOrEqual(dockBox.y + dockBox.height);
+    }
+    await side.locator(".composer-container").screenshot({
+      path: "test-results/model-performance-side-composer.png",
+    });
     await side.getByLabel("消息", { exact: true }).fill("保留辅助草稿");
     const paragraph = side.locator(".answer p");
     await paragraph.evaluate((element) => {

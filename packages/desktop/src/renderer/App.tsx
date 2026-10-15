@@ -44,6 +44,7 @@ import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
+import { ModelPerformance } from "./ModelPerformance.tsx";
 import {
   canOpenSideChat,
   listenPanes,
@@ -1185,6 +1186,9 @@ export function App() {
                     }}
                     onStop={stop}
                   />
+                )}
+                {!view.question && prefs?.showModelPerformance && (
+                  <ModelPerformance value={view.modelPerformance} />
                 )}
               </div>
             </div>

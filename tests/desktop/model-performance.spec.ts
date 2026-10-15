@@ -8,7 +8,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("retains cumulative metrics in the toolbar without shifting the composer in all layouts", async () => {
+test("fits cumulative metrics below the composer without changing the bottom height in all layouts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-performance-"));
   const more = deferred();
   const finish = deferred();
@@ -121,23 +121,32 @@ test("retains cumulative metrics in the toolbar without shifting the composer in
       await settings.getByLabel("关闭设置").click();
       await expect(indicator).toBeVisible();
       expect(await composer.boundingBox()).toEqual(withoutMetrics);
-      await expect(composer.locator(".composer-footer").getByTestId("model-performance")).toBeVisible();
+      await expect(composer.getByTestId("model-performance")).toHaveCount(0);
       await expect
         .poll(async () => {
           const input = await composer.boundingBox();
           const metric = await indicator.boundingBox();
-          if (!input || !metric) return false;
+          const dock = await page.locator(".composer-container").first().boundingBox();
+          if (!input || !metric || !dock) return false;
           return (
             metric.x >= input.x &&
             metric.x + metric.width <= input.x + input.width &&
-            metric.y >= input.y &&
-            metric.y + metric.height <= input.y + input.height
+            metric.y >= input.y + input.height &&
+            metric.y + metric.height <= dock.y + dock.height &&
+            metric.height <= 12
           );
         })
         .toBe(true);
       await editor.fill("可以继续输入");
       await expect(editor).toBeFocused();
       await page.screenshot({ animations: "disabled", path: `test-results/model-performance-${name}.png` });
+      await page
+        .locator(".composer-container")
+        .first()
+        .screenshot({
+          animations: "disabled",
+          path: `test-results/model-performance-${name}-composer.png`,
+        });
       await indicator.getByRole("button", { name: "会话统计", exact: true }).click();
       await expect(stats).toBeVisible();
       const panel = await stats.boundingBox();

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChatComposer, Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
+import { ModelPerformance } from "./ModelPerformance.tsx";
 import { loadSideChat, openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { SessionToolbar } from "./SessionToolbar.tsx";
@@ -119,6 +120,9 @@ export function SideChatPane({
               }
             }}
           />
+        )}
+        {!view.question && settings?.interface.showModelPerformance && (
+          <ModelPerformance value={view.modelPerformance} />
         )}
       </div>
     </section>
