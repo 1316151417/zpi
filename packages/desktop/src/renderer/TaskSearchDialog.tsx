@@ -5,7 +5,6 @@ import { ChevronDown, File, List, MessageSquare, MessagesSquare, Rocket, Search 
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FileIcon } from "zpi-ui";
 import type { ProjectRecord, SessionRecord, TaskSearchChange, TaskSearchResult } from "../shared/bridge.ts";
-import { defaultShortcuts, shortcutForEvent } from "../shared/shortcuts.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import { HighlightedMatchText } from "./HighlightedMatchText.tsx";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
@@ -20,6 +19,7 @@ import {
 import { Trash2 } from "./task-search-icons.ts";
 import { resolveSearchScope, searchScopePrefix, taskSearchRows } from "./task-search-model.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
+import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
 
 export interface SearchCommand {
   id: string;
@@ -63,6 +63,7 @@ export function TaskSearchDialog({
   onOpenFile: (path: string) => Promise<unknown>;
 }) {
   const [open, close] = useDialogDismiss(onClosed);
+  useOverlayShortcut("search", open, close);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef(document.activeElement);
   const composing = useRef(false);
@@ -235,6 +236,7 @@ export function TaskSearchDialog({
         <Dialog.Overlay className="modal-backdrop" />
         <Dialog.Content
           className="task-search-dialog"
+          data-shortcut-owner="search"
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
@@ -267,17 +269,6 @@ export function TaskSearchDialog({
               }
             }}
             onKeyDown={(event) => {
-              if (
-                shortcutForEvent(
-                  event.nativeEvent,
-                  window.zpi.platform,
-                  useStore.getState().settings?.shortcuts ?? defaultShortcuts(window.zpi.platform),
-                ) === "search"
-              ) {
-                event.preventDefault();
-                event.stopPropagation();
-                input.current?.focus();
-              }
               if (event.nativeEvent.isComposing || event.keyCode === 229) {
                 event.stopPropagation();
               }

@@ -7,8 +7,9 @@ import {
 
 export function isWorkspaceShortcut(command: ShortcutCommand): boolean {
   return (
-    ["toggle-sidebar", "toggle-pane", "focus-composer", "new-task", "search", "find"].includes(command) ||
-    command.startsWith("pin-")
+    ["toggle-sidebar", "toggle-pane", "focus-composer", "new-task", "search", "find", "task-menu"].includes(
+      command,
+    ) || command.startsWith("pin-")
   );
 }
 

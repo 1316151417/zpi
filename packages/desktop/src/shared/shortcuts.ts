@@ -4,9 +4,10 @@ export const shortcutCommands = [
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
   { id: "focus-composer", label: "聚焦任务输入框", scope: "app" },
-  { id: "send-next", label: "立即发送队首消息", scope: "app" },
-  { id: "configure-environment", label: "配置本地环境", scope: "app" },
-  { id: "select-model", label: "选择模型", scope: "app" },
+  { id: "send-next", label: "立即发送队首消息", scope: "composer" },
+  { id: "configure-environment", label: "配置本地环境", scope: "draft-composer" },
+  { id: "select-model", label: "选择模型", scope: "composer" },
+  { id: "task-menu", label: "打开或关闭任务菜单", scope: "task" },
   { id: "pin-1", label: "切换到置顶任务 1", scope: "app" },
   { id: "pin-2", label: "切换到置顶任务 2", scope: "app" },
   { id: "pin-3", label: "切换到置顶任务 3", scope: "app" },
@@ -126,6 +127,7 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
       "send-next": `${primary}+Enter`,
       "configure-environment": `${primary}+J`,
       "select-model": `${primary}+L`,
+      "task-menu": `${primary}+U`,
       "pin-1": `${primary}+1`,
       "pin-2": `${primary}+2`,
       "pin-3": `${primary}+3`,
@@ -174,18 +176,18 @@ export function shortcutForEvent(
     return saved !== null && normalizeShortcut(saved, platform) === binding;
   })?.id;
 }
-export function formatShortcut(binding: string | null, platform: string): string {
-  if (binding === null) return "未设置";
+export function shortcutLabelParts(binding: string | null, platform: string): string[] {
+  if (binding === null) return ["未设置"];
   const normalized = normalizeShortcut(binding, platform);
-  if (!normalized) return binding;
+  if (!normalized) return [binding];
   const symbols: Record<string, string> =
     platform === "darwin"
       ? { Control: "⌃", Alt: "⌥", Shift: "⇧", Command: "⌘", Enter: "↵", Escape: "Esc", Space: "Space" }
       : { Control: "Ctrl", Command: "Win", Escape: "Esc", Plus: "+" };
-  return normalized
-    .split("+")
-    .map((key) => symbols[key] ?? key)
-    .join(platform === "darwin" ? "" : "+");
+  return normalized.split("+").map((key) => symbols[key] ?? key);
+}
+export function formatShortcut(binding: string | null, platform: string): string {
+  return shortcutLabelParts(binding, platform).join(platform === "darwin" ? "" : "+");
 }
 function reservedShortcut(binding: string, command: ShortcutCommand, platform: string): string | undefined {
   const parts = binding.split("+");
@@ -305,4 +307,14 @@ export function normalizeShortcuts(settings: ShortcutSettings, platform: string)
       ]),
     ) as ShortcutSettings["bindings"],
   };
+}
+
+/** Adding a command never steals a user's existing custom binding. */
+export function withTaskMenuShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
+  if (!settings?.bindings || Object.hasOwn(settings.bindings, "task-menu")) return settings;
+  const binding = platform === "darwin" ? "Command+U" : "Control+U";
+  const occupied = Object.values(settings.bindings).some(
+    (value) => typeof value === "string" && normalizeShortcut(value, platform) === binding,
+  );
+  return { ...settings, bindings: { ...settings.bindings, "task-menu": occupied ? null : binding } };
 }

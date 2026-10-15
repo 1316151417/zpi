@@ -49,6 +49,7 @@ import {
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
+  withTaskMenuShortcut,
 } from "../shared/shortcuts.ts";
 import { shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
 import { StateStore } from "./state-store.ts";
@@ -138,6 +139,7 @@ export class SettingsStore {
       const raw = this.state.getSetting<SettingsData>("app");
       if (raw !== undefined) {
         if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
+        raw.shortcuts = withTaskMenuShortcut(raw.shortcuts, process.platform);
         this.validateData(raw);
         this.data = raw;
       }

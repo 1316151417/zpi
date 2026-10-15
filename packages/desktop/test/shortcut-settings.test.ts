@@ -27,14 +27,26 @@ describe("shortcut settings presentation", () => {
     expect(html).toContain('<span class="settings-switch"><input type="checkbox" role="switch"');
     expect(html).toContain(`aria-label="启用快捷键" aria-checked="${enabled}"`);
     expect(html).toContain('<span aria-hidden="true"></span></span></label>');
-    expect(html).toContain('class="settings-row-copy"');
+    expect(html).toContain('class="shortcut-enable"');
   });
 
-  it("separates recording instructions and global conflicts using secondary hint styling", () => {
+  it("presents four columns with real scopes, compact keys and accessible actions", () => {
     const html = render();
-    expect(html).toContain(
-      '<div class="settings-hint shortcut-settings-hint"><p>点击快捷键后按下新组合，Esc 取消录入。修改后点击保存。</p><p>全局快捷键可能与其他应用或系统设置冲突；注册失败时会保留原设置。</p></div>',
-    );
-    expect(html).not.toContain("settings-help");
+    for (const label of [
+      "命令",
+      "按键绑定",
+      "作用域",
+      "操作",
+      "系统全局",
+      "输入框",
+      "新任务输入框",
+      "任务面板",
+    ])
+      expect(html).toContain(label);
+    expect(html).toContain('aria-label="按组合键搜索"');
+    expect(html).toContain('aria-label="编辑选择模型快捷键"');
+    expect(html).toContain('aria-label="清除选择模型快捷键"');
+    expect(html).toContain("<kbd>⌘</kbd><kbd>L</kbd>");
+    expect(html).toContain("全部恢复默认");
   });
 });

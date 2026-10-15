@@ -176,7 +176,7 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
-    const side = page.getByRole("region", { name: "辅助对话", exact: true });
+    const side = page.locator(".side-chat-pane");
     for (const [pane, label] of [
       [main, "main"],
       [side, "side"],
@@ -199,8 +199,13 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     await expect(mainEditor).toHaveText("main draft");
     await expect(sideEditor).toHaveText("side draft");
     await sideEditor.press(`${primary}+l`);
-    await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
-    await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "closed");
+    await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press(`${primary}+l`);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(sideEditor).toBeFocused();
+    await page.keyboard.press(`${primary}+l`);
+    await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(sideEditor).toBeFocused();
@@ -279,7 +284,7 @@ test("a retained question in a hidden auxiliary pane does not block active works
     await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
-    const side = page.getByRole("region", { name: "辅助对话", exact: true });
+    const side = page.locator(".side-chat-pane");
     await side.getByLabel("消息", { exact: true }).fill("ask me");
     await side.getByLabel("消息", { exact: true }).press("Enter");
     const question = page.locator(".right-pane .user-question-card");
@@ -295,7 +300,7 @@ test("a retained question in a hidden auxiliary pane does not block active works
     await expect(main.getByTestId("queue-item")).toHaveCount(1);
     await editor.fill("preserved main draft");
     await editor.press(`${primary}+l`);
-    await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("data-state", "open");
+    await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(editor).toBeFocused();

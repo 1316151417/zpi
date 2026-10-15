@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { done, fakeServer } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
-import { seedHistory } from "../history-fixture.ts";
 
 const primary = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -14,13 +14,28 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
   const dir = await mkdtemp(join(tmpdir(), "zpi-shortcuts-"));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
-  const first = seedHistory(dir, cwd, 1).id;
-  const second = seedHistory(dir, cwd, 1).id;
+  const server = await fakeServer((_, response) => done(response));
   let app: ElectronApplication | undefined;
   try {
-    app = await launchDesktop({ dir, url: "" });
+    app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await expect(page.locator(".sidebar")).toBeVisible();
+    const [first, second] = await page.evaluate(async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 2; i++) {
+        const result = await window.zpi.createSession(null);
+        if (!result.ok) throw new Error(result.error.message);
+        const activated = await window.zpi.submitInput({
+          sessionId: result.value.id,
+          text: `fixture ${i}`,
+          attachments: [],
+          fileReferences: [],
+        });
+        if (!activated.ok) throw new Error(activated.error.message);
+        ids.push(result.value.id);
+      }
+      return ids;
+    });
     await page.evaluate(
       async ({ first, second }) => {
         await window.zpi.setSessionPinned(second, true);
@@ -141,7 +156,11 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
       ),
     ).toBe(false);
   } finally {
-    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
   }
 });
 
@@ -169,6 +188,7 @@ test("shortcut recording validates conflicts, persists custom keys and disables 
     await expect(page.getByRole("alert")).toContainText("冲突");
     await expect(page.getByRole("button", { name: "保存快捷键", exact: true })).toBeDisabled();
     await row.locator(".shortcut-recorder").click();
+    await expect(row.locator(".shortcut-recorder")).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press(`${primary}+Shift+j`);
     await page.getByRole("button", { name: "保存快捷键", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText("快捷键已保存。");

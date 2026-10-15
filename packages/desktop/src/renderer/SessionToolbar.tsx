@@ -6,6 +6,7 @@ import { ActionHint, type SessionView } from "zpi-ui";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { accept, focusComposer, refresh, report, unwrap, useStore } from "./store.ts";
+import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
 export function SessionToolbar({
   view,
   open,
@@ -25,6 +26,10 @@ export function SessionToolbar({
   const mainMenu = useRef<HTMLDivElement>(null);
   const menuOpen = useRef(open);
   menuOpen.current = open;
+  useOverlayShortcut("select-model", open, () => {
+    setActive(undefined);
+    onOpenChange(false);
+  });
   const selectionLock = useRef(false);
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const menuBoundary = toolbar?.closest("main");
@@ -196,6 +201,7 @@ export function SessionToolbar({
           <Menu.Content
             ref={mainMenu}
             className="selection-menu model-menu"
+            data-shortcut-owner="select-model"
             side="top"
             align="end"
             collisionBoundary={menuBoundary}
@@ -255,6 +261,7 @@ export function SessionToolbar({
                           <Menu.Portal>
                             <Menu.SubContent
                               className="selection-menu reasoning-menu"
+                              data-shortcut-owner="select-model"
                               collisionBoundary={menuBoundary}
                               collisionPadding={8}
                               loop

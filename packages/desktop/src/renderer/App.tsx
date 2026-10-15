@@ -201,9 +201,13 @@ export function App() {
     snippet?: TaskSearchSnippet;
   }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
-  useEffect(() => setEnvironmentOpen(false), [state.selected]);
+  useEffect(() => {
+    setEnvironmentOpen(false);
+    setTaskMenuOpen(false);
+  }, [state.selected]);
   const [action, setAction] = useState<ActionDialog>();
   const [viewport, setViewport] = useState(window.innerWidth);
   const [dragWidth, setDragWidth] = useState<number>();
@@ -429,7 +433,10 @@ export function App() {
       else if (command === "toggle-pane") setPaneOpen(!usePane.getState().open);
       else if (command === "search") setSearchOpen(true);
       else if (command === "new-task") void newTask().catch(report);
-      else if (command === "find") find.show();
+      else if (command === "find") {
+        if (find.open) find.close();
+        else find.show();
+      } else if (command === "task-menu" && record && !record.draft) setTaskMenuOpen(true);
       else if (command === "focus-composer" || command === "toggle-window") {
         const id = useStore.getState().selected;
         if (id) focusComposer(id, { onlyIfFocusLost: command === "toggle-window" });
@@ -454,7 +461,17 @@ export function App() {
       window.removeEventListener("compositionend", end, true);
       offNative();
     };
-  }, [shortcuts, collapsed, pinned.map((record) => record.id).join(":"), find.show, newTask]);
+  }, [
+    shortcuts,
+    collapsed,
+    pinned.map((record) => record.id).join(":"),
+    find.show,
+    find.open,
+    find.close,
+    record?.id,
+    record?.draft,
+    newTask,
+  ]);
   const unpinned = records
     .filter((r) => r.pinnedAt == null && r.archivedAt == null)
     .sort((a, b) => compareTasks(a, b, taskPreferences.sortBy));
@@ -964,7 +981,15 @@ export function App() {
               <Folder size={16} />
               <span>{taskTitle}</span>
             </div>
-            {record && !record.draft && <TaskMenu record={record} onRename={() => renameTask(record)} />}
+            {record && !record.draft && (
+              <TaskMenu
+                key={record.id}
+                record={record}
+                open={taskMenuOpen}
+                onOpenChange={setTaskMenuOpen}
+                onRename={() => renameTask(record)}
+              />
+            )}
             <div className="topbar-drag-space" aria-hidden="true" />
           </header>
           {state.error && (

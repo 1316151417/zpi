@@ -374,7 +374,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         <div className="settings-titlebar" aria-hidden="true" />
         <div className="settings-scroll">
           <div className={`settings-content ${tab === "models" ? "model-settings-content" : ""}`}>
-            {tab !== "archived" && (
+            {tab !== "archived" && tab !== "shortcuts" && (
               <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
             )}
             <div className="settings-page">

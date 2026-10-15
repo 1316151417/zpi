@@ -1,4 +1,8 @@
+// Layout and key search adapted from ZCode settings/ShortcutSettingsSection (Apache-2.0).
+import * as Dialog from "@radix-ui/react-dialog";
+import { Keyboard, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ActionHint } from "zpi-ui";
 import {
   defaultShortcuts,
   formatShortcut,
@@ -6,24 +10,41 @@ import {
   type ShortcutSettings as ShortcutPreferences,
   shortcutCommands,
   shortcutFromEvent,
+  shortcutLabelParts,
   validateShortcuts,
 } from "../shared/shortcuts.ts";
 import { ShortcutRecordingRequest } from "./shortcut-recording.ts";
+import { matchesShortcutSearch, shortcutScopeLabels } from "./shortcut-settings-model.ts";
 import { report, unwrap, useStore } from "./store.ts";
+
+type Capture = ShortcutCommand | "key-search";
 
 export function ShortcutSettings() {
   const saved = useStore((state) => state.settings?.shortcuts);
   const platform = window.zpi.platform;
-  const [draft, setDraft] = useState<ShortcutPreferences>(() => saved ?? defaultShortcuts(platform));
-  const [recording, setRecording] = useState<ShortcutCommand>();
+  const defaults = defaultShortcuts(platform);
+  const [draft, setDraft] = useState<ShortcutPreferences>(() => saved ?? defaults);
+  const [recording, setRecording] = useState<Capture>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [query, setQuery] = useState("");
+  const [keySearch, setKeySearch] = useState<string | null>(null);
+  const [recordError, setRecordError] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [capturePending, setCapturePending] = useState(false);
   const mounted = useRef(true);
   const captureRequest = useRef(new ShortcutRecordingRequest());
+  const searchInput = useRef<HTMLInputElement>(null);
+  const recordingButton = useRef<HTMLButtonElement>(null);
+  const exclusive = Boolean(recording) || capturePending;
   const finishRecording = () => {
     captureRequest.current.cancel();
     setRecording(undefined);
+    setCapturePending(false);
+    setRecordError("");
+    setPreview(null);
     void window.zpi
       .setShortcutCapture(false)
       .then(unwrap)
@@ -42,24 +63,83 @@ export function ShortcutSettings() {
       void window.zpi.setShortcutCapture(false).then(unwrap).catch(report);
     };
   }, []);
-  const beginRecording = async (command: ShortcutCommand, button: HTMLButtonElement) => {
+  const beginRecording = async (command: Capture) => {
     setError("");
     setNotice("");
+    setRecordError("");
+    setPreview(null);
+    if (recording === command) return;
+    setRecording(undefined);
+    setCapturePending(true);
     try {
       const current = await captureRequest.current.start(() =>
         window.zpi.setShortcutCapture(true).then(unwrap),
       );
       if (!mounted.current || !current) return;
+      setCapturePending(false);
       setRecording(command);
-      button.focus();
     } catch (error) {
-      if (mounted.current) setError(String(error));
+      if (mounted.current) {
+        setCapturePending(false);
+        setError(String(error));
+      }
     }
   };
+  useEffect(() => {
+    if (!recording) return;
+    // Move away from editable text before capturing a combination, including IME input.
+    (recording === "key-search" ? searchInput.current : recordingButton.current)?.focus();
+  }, [recording]);
+  useEffect(() => {
+    if (!exclusive) return;
+    const keydown = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.isComposing || event.keyCode === 229 || event.repeat) return;
+      if (event.key === "Escape") {
+        finishRecording();
+        return;
+      }
+      if (!recording) return;
+      if (recording === "key-search" && event.key === "Backspace") {
+        setKeySearch(null);
+        return;
+      }
+      if (["Control", "Meta", "Alt", "Shift"].includes(event.key)) {
+        setRecordError("");
+        setPreview(null);
+        return;
+      }
+      const binding = shortcutFromEvent(event, platform);
+      if (recording === "key-search") {
+        if (!binding || (!event.metaKey && !event.ctrlKey && !event.altKey && !/^F\d+$/.test(binding)))
+          return;
+        setKeySearch(binding);
+        finishRecording();
+        return;
+      }
+      if (!binding) {
+        setRecordError("请选择带有修饰键的有效组合。");
+        return;
+      }
+      const next = { ...draft, bindings: { ...draft.bindings, [recording]: binding } };
+      const invalid = validateShortcuts(next, platform);
+      if (invalid) {
+        setPreview(binding);
+        setRecordError(invalid);
+        return;
+      }
+      setDraft(next);
+      finishRecording();
+    };
+    window.addEventListener("keydown", keydown, true);
+    return () => window.removeEventListener("keydown", keydown, true);
+  }, [exclusive, recording, draft, platform]);
   const validation = validateShortcuts(draft, platform);
-  const changed = JSON.stringify(draft) !== JSON.stringify(saved ?? defaultShortcuts(platform));
+  const changed = JSON.stringify(draft) !== JSON.stringify(saved ?? defaults);
+  const customized = shortcutCommands.some(({ id }) => draft.bindings[id] !== defaults.bindings[id]);
   const save = async () => {
-    if (validation || busy || recording) return;
+    if (validation || busy || exclusive) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -74,14 +154,15 @@ export function ShortcutSettings() {
       setBusy(false);
     }
   };
+  const visible = shortcutCommands.filter(({ id, label }) =>
+    matchesShortcutSearch(label, draft.bindings[id], query, keySearch, platform),
+  );
   return (
-    <div className="shortcut-settings" data-shortcut-recording={Boolean(recording)}>
-      <div className="settings-group">
-        <label className="settings-row">
-          <span className="settings-row-copy">
-            <strong>启用快捷键</strong>
-            <small>控制下列应用命令和全局窗口快捷键；复制、粘贴、撤销与常规导航仍可使用。</small>
-          </span>
+    <div className="shortcut-settings" data-shortcut-recording={exclusive}>
+      <div className="shortcut-settings-heading">
+        <h1>键盘快捷键</h1>
+        <label className="shortcut-enable">
+          <span>启用快捷键</span>
           <span className="settings-switch">
             <input
               type="checkbox"
@@ -89,97 +170,228 @@ export function ShortcutSettings() {
               aria-label="启用快捷键"
               aria-checked={draft.enabled}
               checked={draft.enabled}
-              disabled={busy || Boolean(recording)}
-              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+              disabled={busy || exclusive}
+              onChange={(event) => {
+                setDraft({ ...draft, enabled: event.target.checked });
+                setNotice("");
+              }}
             />
             <span aria-hidden="true" />
           </span>
         </label>
       </div>
-      <div className="settings-hint shortcut-settings-hint">
-        <p>点击快捷键后按下新组合，Esc 取消录入。修改后点击保存。</p>
-        <p>全局快捷键可能与其他应用或系统设置冲突；注册失败时会保留原设置。</p>
+      <div className="shortcut-search-bar">
+        <div className="shortcut-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            ref={searchInput}
+            aria-label="搜索命令或快捷键"
+            placeholder={recording === "key-search" ? "请按下组合键…" : "搜索命令或快捷键"}
+            value={keySearch ? formatShortcut(keySearch, platform) : query}
+            readOnly={recording === "key-search" || keySearch !== null}
+            disabled={busy}
+            data-key-filter={keySearch !== null}
+            onChange={(event) => setQuery(event.target.value)}
+            onBlur={(event) => {
+              if (
+                recording === "key-search" &&
+                !(
+                  event.relatedTarget instanceof Element &&
+                  event.relatedTarget.closest(".shortcut-key-search")
+                )
+              )
+                finishRecording();
+            }}
+          />
+          {(query || keySearch) && (
+            <button
+              className="shortcut-search-clear"
+              aria-label="清空搜索"
+              title="清空搜索"
+              disabled={busy || exclusive}
+              onClick={() => {
+                setQuery("");
+                setKeySearch(null);
+                searchInput.current?.focus();
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+          <ActionHint label="按组合键搜索（Esc 取消）" appearance="control">
+            <button
+              className="shortcut-key-search"
+              aria-label="按组合键搜索"
+              aria-pressed={recording === "key-search"}
+              disabled={busy || capturePending}
+              onClick={() =>
+                recording === "key-search" ? finishRecording() : void beginRecording("key-search")
+              }
+            >
+              <Keyboard size={16} />
+            </button>
+          </ActionHint>
+        </div>
+        <button
+          className="shortcut-reset"
+          disabled={busy || exclusive || !customized}
+          onClick={() => setConfirmReset(true)}
+        >
+          <RotateCcw size={16} />
+          全部恢复默认
+        </button>
       </div>
-      <div className="settings-group">
-        {shortcutCommands.map(({ id, label, scope }) => (
-          <div className="settings-row shortcut-setting-row" key={id} data-shortcut-command={id}>
-            <span className="settings-row-copy">
-              <strong>{label}</strong>
-              {scope === "global" && <small>全局：应用在后台时也可使用</small>}
-            </span>
-            <div className="shortcut-setting-actions">
-              <button
-                className={`shortcut-recorder ${recording === id ? "recording" : ""}`}
-                aria-label={`录入${label}快捷键`}
-                aria-pressed={recording === id}
-                disabled={busy || Boolean(recording && recording !== id)}
-                onClick={(event) => void beginRecording(id, event.currentTarget)}
-                onBlur={() => {
-                  if (recording === id) finishRecording();
-                }}
-                onKeyDownCapture={(event) => {
-                  if (recording !== id) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (event.nativeEvent.isComposing || event.keyCode === 229 || event.repeat) return;
-                  if (event.key === "Escape") {
-                    finishRecording();
-                    return;
-                  }
-                  if (["Control", "Meta", "Alt", "Shift"].includes(event.key)) return;
-                  const binding = shortcutFromEvent(event.nativeEvent, platform);
-                  if (!binding) {
-                    setError("请选择带有修饰键的有效组合。");
-                    return;
-                  }
-                  setDraft({ ...draft, bindings: { ...draft.bindings, [id]: binding } });
-                  setError("");
-                  finishRecording();
-                }}
-              >
-                {recording === id ? "请按快捷键…" : formatShortcut(draft.bindings[id], platform) || "未设置"}
-              </button>
-              <button
-                className="secondary shortcut-clear"
-                aria-label={`清除${label}快捷键`}
-                disabled={busy || Boolean(recording) || draft.bindings[id] === null}
-                onClick={() => {
-                  setDraft({ ...draft, bindings: { ...draft.bindings, [id]: null } });
-                  setNotice("");
-                }}
-              >
-                清除
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="shortcut-table-scroll">
+        <table className="shortcut-table" aria-label="快捷键绑定" data-disabled={!draft.enabled}>
+          <thead>
+            <tr className="shortcut-table-header">
+              {["命令", "按键绑定", "作用域", "操作"].map((label) => (
+                <th key={label} scope="col">
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(({ id, label, scope }) => {
+              const active = recording === id;
+              const [scopeLabel, scopeHint] = shortcutScopeLabels[scope];
+              return (
+                <tr
+                  className="shortcut-setting-row"
+                  key={id}
+                  data-shortcut-command={id}
+                  data-customized={draft.bindings[id] !== defaults.bindings[id]}
+                >
+                  <td className="shortcut-command" title={label}>
+                    {label}
+                  </td>
+                  <td className="shortcut-binding-cell">
+                    <div className="shortcut-binding">
+                      {active && <Keyboard size={16} aria-hidden="true" />}
+                      <button
+                        ref={active ? recordingButton : undefined}
+                        className={`shortcut-recorder ${active ? "recording" : ""}`}
+                        aria-label={`录入${label}快捷键`}
+                        aria-pressed={active}
+                        aria-invalid={active && Boolean(recordError)}
+                        aria-describedby={active ? `shortcut-hint-${id}` : undefined}
+                        disabled={busy || capturePending}
+                        onClick={() => void beginRecording(id)}
+                        onBlur={() => {
+                          if (active) finishRecording();
+                        }}
+                      >
+                        {active ? (
+                          <kbd>{preview ? formatShortcut(preview, platform) : "请按快捷键…"}</kbd>
+                        ) : (
+                          shortcutLabelParts(draft.bindings[id], platform).map((part, index) => (
+                            <kbd key={`${part}-${index}`}>{part}</kbd>
+                          ))
+                        )}
+                      </button>
+                      {!active && (
+                        <ActionHint label={`编辑${label}快捷键`} appearance="control">
+                          <button
+                            className="shortcut-edit"
+                            aria-label={`编辑${label}快捷键`}
+                            disabled={busy || capturePending}
+                            onClick={() => void beginRecording(id)}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        </ActionHint>
+                      )}
+                    </div>
+                    {active && (
+                      <span
+                        id={`shortcut-hint-${id}`}
+                        role={recordError ? "alert" : undefined}
+                        className={recordError ? "shortcut-record-error" : "shortcut-record-hint"}
+                      >
+                        {recordError || "按下新组合，Esc 取消"}
+                      </span>
+                    )}
+                  </td>
+                  <td className="shortcut-scope" title={scopeHint}>
+                    {scopeLabel}
+                  </td>
+                  <td>
+                    <ActionHint label={`清除${label}绑定（保留命令）`} appearance="control">
+                      <button
+                        className="shortcut-clear"
+                        aria-label={`清除${label}快捷键`}
+                        disabled={busy || exclusive || draft.bindings[id] === null}
+                        onClick={() => {
+                          setDraft({ ...draft, bindings: { ...draft.bindings, [id]: null } });
+                          setNotice("");
+                          setError("");
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </ActionHint>
+                  </td>
+                </tr>
+              );
+            })}
+            {visible.length === 0 && (
+              <tr className="shortcut-empty">
+                <td colSpan={4}>没有匹配的命令或快捷键</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="shortcut-settings-footer">
+        <p className="shortcut-settings-hint">
+          点击键位或编辑图标录入，Esc 取消。全局快捷键注册失败时保留原设置。
+        </p>
+        <button
+          className="primary"
+          disabled={busy || exclusive || Boolean(validation) || !changed}
+          onClick={() => void save()}
+        >
+          {busy ? "保存中…" : "保存快捷键"}
+        </button>
       </div>
       {(error || validation) && (
         <div role="alert" className="model-config-error">
           {error || validation}
         </div>
       )}
-      {notice && <p role="status">{notice}</p>}
-      <div className="shortcut-settings-footer">
-        <button
-          className="secondary"
-          disabled={busy || Boolean(recording)}
-          onClick={() => {
-            setDraft(defaultShortcuts(platform));
-            setError("");
-            setNotice("已恢复默认，保存后生效。");
-          }}
-        >
-          恢复默认
-        </button>
-        <button
-          className="primary"
-          disabled={busy || Boolean(recording) || Boolean(validation) || !changed}
-          onClick={() => void save()}
-        >
-          {busy ? "保存中…" : "保存快捷键"}
-        </button>
-      </div>
+      {notice && (
+        <p role="status" className="shortcut-notice">
+          {notice}
+        </p>
+      )}
+      <Dialog.Root open={confirmReset} onOpenChange={setConfirmReset}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="model-config-backdrop" />
+          <Dialog.Content className="provider-delete-dialog shortcut-reset-dialog">
+            <header>
+              <Dialog.Title>全部恢复默认快捷键？</Dialog.Title>
+              <Dialog.Description>
+                所有自定义绑定将恢复为 ZPI 默认键位。启用状态保持不变，点击保存后生效。
+              </Dialog.Description>
+            </header>
+            <footer>
+              <Dialog.Close className="secondary">取消</Dialog.Close>
+              <button
+                className="primary"
+                onClick={() => {
+                  setDraft({ ...defaults, enabled: draft.enabled });
+                  setError("");
+                  setNotice("已恢复默认，保存后生效。");
+                  setConfirmReset(false);
+                }}
+              >
+                恢复默认
+              </button>
+            </footer>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

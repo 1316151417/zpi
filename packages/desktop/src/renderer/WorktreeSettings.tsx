@@ -6,6 +6,8 @@ import type { GitEnvironment, SessionRecord } from "../shared/bridge.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { focusComposer, report, unwrap, useStore } from "./store.ts";
 
+import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
+
 export function WorktreeSettings({
   record,
   open,
@@ -22,6 +24,11 @@ export function WorktreeSettings({
   const [query, setQuery] = useState("");
   const menu = useRef<HTMLDivElement>(null);
   const available = Boolean(environment);
+  useOverlayShortcut("configure-environment", open && available, () => {
+    setBranchesOpen(false);
+    setQuery("");
+    onOpenChange(false);
+  });
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() =>
@@ -103,6 +110,7 @@ export function WorktreeSettings({
           <Menu.Content
             ref={menu}
             className="draft-project-menu environment-menu"
+            data-shortcut-owner="configure-environment"
             side="top"
             align="end"
             sideOffset={4}
@@ -150,6 +158,7 @@ export function WorktreeSettings({
                   <Menu.Portal>
                     <Menu.SubContent
                       className="draft-project-menu environment-menu worktree-branch-menu"
+                      data-shortcut-owner="configure-environment"
                       sideOffset={4}
                       loop
                       onFocusOutside={(event) => {

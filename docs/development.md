@@ -121,11 +121,11 @@ SQLite 状态、独立迁移、历史换代、编辑恢复与辅助对话回归�
 
 ## 快捷键实现与回归
 
-桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 SQLite 的 `app_settings`（`app` 配置的 `shortcuts` 字段）。平台默认值使用明确的 Command/Ctrl 映射；新建配置采用默认值；旧设置仅由独立迁移工具转换。默认左栏 [、右栏 ]、本地环境 J、任务搜索 K、模型选择 L、任务输入框聚焦 I，均使用平台主修饰键。离线迁移中的 `shortcutDefaultsVersion` 标记一次性迁移：按历史版本仅替换仍为旧默认的绑定，保留自定义、清空项和总开关；整个候选存在冲突时保留全部旧绑定。旧记录缺少输入框聚焦命令时补 I，若 I 已被自定义占用则补空绑定。新增本地环境命令默认 J，被自定义组合占用时补空绑定。迁移版本与结果原子保存，后续主动改回旧组合不会再次迁移。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建、查找和显式输入框聚焦命令，xterm 焦点由 renderer 捕获阶段处理。本地环境、模型选择和队列发送由当前 composer 自己处理。
+桌面快捷键定义和解析集中在 `packages/desktop/src/shared/shortcuts.ts`，设置保存在 SQLite 的 `app_settings`（`app` 配置的 `shortcuts` 字段）。平台默认值使用明确的 Command/Ctrl 映射；新建配置采用默认值；旧格式设置由独立迁移工具转换。默认左栏 [、右栏 ]、本地环境 J、任务搜索 K、模型选择 L、任务输入框聚焦 I、已有任务顶部菜单 U，均使用平台主修饰键。离线迁移中的 `shortcutDefaultsVersion` 标记一次性迁移：按历史版本仅替换仍为旧默认的绑定，保留自定义、清空项和总开关；整个候选存在冲突时保留全部旧绑定。旧记录缺少输入框聚焦命令时补 I，若 I 已被自定义占用则补空绑定。新增本地环境命令默认 J，被自定义组合占用时补空绑定。迁移版本与结果原子保存，后续主动改回旧组合不会再次迁移。当前 SQLite 配置缺少任务菜单命令时，读取阶段补 U；已被自定义组合占用则补空绑定，下一次主动保存时持久化。全局窗口键由主进程负责注册，应用命令只在应用窗口内处理，浏览器 WebContentsView 转发侧栏、置顶、新建、任务搜索、查找、任务菜单和显式输入框聚焦命令，xterm 焦点由 renderer 捕获阶段处理。本地环境、模型选择和队列发送由当前 composer 自己处理。
 
 全局改键先注册候选键，再保存设置并注销旧键；注册或保存失败不会覆盖原设置。退出只有在草稿确认保存后才注销，取消退出仍保留原绑定。`ZPI_TEST_MODE=1` 从不向系统注册全局快捷键，注册冲突、回滚及窗口切换使用假 registry/window 单元测试。
 
-定向回归用例在 `tests/desktop/shortcuts.spec.ts` 、`tests/desktop/composer-shortcuts.spec.ts` 与 `tests/desktop/composer-menus.spec.ts`，涵盖持久化、总开关、录入冲突、侧栏/置顶、原生浏览器与终端焦点，以及主/辅助 composer 的队列和模型操作。真实系统全局抢占与 macOS 前后台切换仍需在目标平台做手工烟测；不可将测试模式的模拟注册视为系统注册成功。
+定向回归用例在 `tests/desktop/shortcuts.spec.ts`、`tests/desktop/shortcut-settings-parity.spec.ts`、`tests/desktop/composer-shortcuts.spec.ts` 与 `tests/desktop/composer-menus.spec.ts`，涵盖搜索与录入、持久化、总开关、冲突及错误反馈、浮层重复按键切换、任务菜单键盘导航、侧栏/置顶、原生浏览器与终端焦点，以及主/辅助 composer 的队列和模型操作。真实系统全局抢占与 macOS 前后台切换仍需在目标平台做手工烟测；不可将测试模式的模拟注册视为系统注册成功。
 
 ## 旧版历史会话修复（仅旧格式）
 

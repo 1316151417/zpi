@@ -94,3 +94,28 @@ it.each([undefined, null, 0, 1, 3, "1"])(
     }
   },
 );
+
+it("reads the additive task-menu default without rewriting old settings or stealing custom U", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-shortcut-addition-"));
+  const store = new SettingsStore(dir, encryption);
+  try {
+    store.updatePreferences({ theme: "dark" });
+    const raw = store.state.getSetting<SettingsData>("app");
+    if (!raw) throw new Error("Missing settings fixture");
+    Reflect.deleteProperty(raw.shortcuts.bindings, "task-menu");
+    for (const occupied of [false, true]) {
+      raw.shortcuts.bindings["new-task"] = occupied ? "CmdOrCtrl+U" : "CmdOrCtrl+N";
+      store.state.setSetting("app", raw);
+      const next = new SettingsStore(dir, encryption, store.state);
+      expect(next.get().shortcuts.bindings["task-menu"]).toBe(
+        occupied ? null : defaultShortcuts(process.platform).bindings["task-menu"],
+      );
+      expect(store.state.getSetting("app")).toEqual(raw);
+      next.updateShortcuts(next.get().shortcuts);
+      expect(new SettingsStore(dir, encryption, store.state).get().shortcuts).toEqual(next.get().shortcuts);
+    }
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

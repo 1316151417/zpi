@@ -13,6 +13,7 @@ import {
   defaultShortcuts,
   normalizeShortcut,
   validateShortcuts,
+  withTaskMenuShortcut,
 } from "../../packages/desktop/src/shared/shortcuts.ts";
 
 /** Read-only legacy adapter. No runtime fallback or writes to the source directory. */
@@ -102,6 +103,7 @@ export function migrateLegacySettings(value: unknown): SettingsData {
     raw.shortcutDefaultsVersion !== shortcutDefaultsVersion
   )
     throw new Error("storage: Unsupported shortcut defaults version");
+  data.shortcuts = withTaskMenuShortcut(data.shortcuts, process.platform);
   const migrateShortcuts = raw.shortcutDefaultsVersion === undefined || raw.shortcutDefaultsVersion === 1;
   if (migrateShortcuts) {
     const bindings = data.shortcuts.bindings;
