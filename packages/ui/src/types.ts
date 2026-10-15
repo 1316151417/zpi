@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "zpi-agent";
 import type { Message, ModelRetryStatus, ToolCall, ToolResultMessage } from "zpi-ai";
-import type { Attachment, ContextUsage, ResourceDiagnostic } from "zpi-coding-agent";
+import type { Attachment, ContextUsage, ModelPerformance, ResourceDiagnostic } from "zpi-coding-agent";
 import type { FileLocation } from "./link-target.ts";
 export interface SessionControls {
   selection: {
@@ -145,6 +145,7 @@ export interface BackgroundTaskOutput {
   truncated: boolean;
 }
 export interface SessionView {
+  modelPerformance?: ModelPerformance;
   backgroundTasks?: BackgroundTask[];
   subagents?: SubagentTask[];
   question?: UserQuestionRequest | null;
@@ -172,6 +173,7 @@ export interface InputQueue {
   error?: string;
 }
 export type DesktopEvent =
+  | { type: "model_performance"; performance: ModelPerformance }
   | { type: "background_task_changed"; task: BackgroundTask }
   | { type: "subagent_changed"; task: SubagentTask }
   | { type: "run_preparation"; message: string | null }

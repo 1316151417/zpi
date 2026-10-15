@@ -37,9 +37,10 @@ import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { calculateCost } from "../utils/cost.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair } from "../utils/json-parse.ts";
+import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -525,7 +526,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   context: TranscriptContext,
   options?: AnthropicOptions,
 ): AssistantMessageEventStream => {
-  const stream = new AssistantMessageEventStream();
+  const stream = new MeasuredAssistantStream(options);
   const normalizedContext = resolveTranscript(
     context,
     getAnthropicCompat(model).supportsMidConvoSystemMessages,
@@ -607,7 +608,10 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         maxRetries: 0,
       };
       const response = await retryProviderRequest(
-        () => client.beta.messages.create(params, requestOptions).asResponse(),
+        () => {
+          stream.startRequest();
+          return client.beta.messages.create(params, requestOptions).asResponse();
+        },
         {
           maxRetries: options?.maxRetries ?? 2,
           maxRetryDelayMs: options?.maxRetryDelayMs,
@@ -624,6 +628,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       const blocks = output.content as Block[];
 
       for await (const event of iterateAnthropicEvents(response, options?.signal)) {
+        stream.received();
         if (event.type === "message_start") {
           output.responseId = event.message.id;
           output.usageAvailable = true;
@@ -807,6 +812,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
             }
             if (event.usage.output_tokens != null) {
               output.usage.output = event.usage.output_tokens;
+              stream.recordUsage(event.usage.output_tokens);
             }
             if (event.usage.cache_read_input_tokens != null) {
               output.usage.cacheRead = event.usage.cache_read_input_tokens;

@@ -14,7 +14,7 @@ import type {
 import { openAICompletionsCompatKeys } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
+import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameterKeys, reasoningParameters } from "../utils/reasoning.ts";
@@ -47,6 +47,7 @@ const commonOptions = [
   "onRetry",
   "onPayload",
   "onResponse",
+  "onPerformance",
   "samplingParams",
 ];
 function imagePart(c: ImageContent): { type: "image_url"; image_url: { url: string } } {
@@ -139,7 +140,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
   assertSupportedOptions(options, [...commonOptions, "reasoning", "reasoningEffort", "toolChoice"], "stream");
   if (model.api !== "openai-completions") throw new Error(`Unsupported API: ${model.api}`);
   assertSupportedOptions(model.compat ?? {}, openAICompletionsCompatKeys, "compat");
-  const events = createAssistantMessageEventStream();
+  const events = new MeasuredAssistantStream(options);
   let output = emptyAssistant(model);
   const completeCalls = new Set<ToolCall>();
   void consume(events).catch((error: unknown) => {
@@ -158,9 +159,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
     events.push({ type: "error", reason: output.stopReason, error: output });
   });
   return events;
-  async function consume(
-    events: Pick<import("../types.ts").AssistantMessageEventStream, "push">,
-  ): Promise<void> {
+  async function consume(events: MeasuredAssistantStream): Promise<void> {
     output = emptyAssistant(model);
     completeCalls.clear();
     if (
@@ -226,10 +225,12 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
       throw new Error("Payload must be a streaming request object");
     output.contextBreakdown = measureContextBreakdown(payload);
     const { data: chunks, response } = await retryProviderRequest(
-      () =>
-        client.chat.completions
+      () => {
+        events.startRequest();
+        return client.chat.completions
           .create(payload as unknown as ChatCompletionCreateParamsStreaming, { signal: options.signal })
-          .withResponse(),
+          .withResponse();
+      },
       { ...options, maxRetries: options.maxRetries ?? 2 },
     );
     await options.onResponse?.(
@@ -279,6 +280,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
       });
     }
     for await (const chunk of chunks) {
+      events.received();
       if (options.signal?.aborted) throw new Error("Request aborted");
       output.responseId = chunk.id;
       output.responseModel = chunk.model;
@@ -305,7 +307,10 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
         }
       }
       const choice = chunk.choices[0];
-      if (!choice) continue;
+      if (!choice) {
+        if (chunk.usage) events.recordUsage(chunk.usage.completion_tokens);
+        continue;
+      }
       if (choice.finish_reason) finish = choice.finish_reason;
       const d = choice.delta as typeof choice.delta & {
         reasoning_content?: unknown;
@@ -328,7 +333,10 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
           events.push({ type: "toolcall_start", contentIndex: state.index, partial: output });
         }
         if (t.id) state.call.id += t.id;
-        if (t.function?.name) state.call.name += t.function.name;
+        if (t.function?.name) {
+          state.call.name += t.function.name;
+          events.generated();
+        }
         if (t.function?.arguments) {
           state.raw += t.function.arguments;
           events.push({
@@ -339,6 +347,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
           });
         }
       }
+      if (chunk.usage) events.recordUsage(chunk.usage.completion_tokens);
     }
     closeCurrent();
     if (options.signal?.aborted) throw new Error("Request aborted");

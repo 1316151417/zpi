@@ -825,6 +825,7 @@ async function launch(): Promise<void> {
               "theme",
               "fontSize",
               "showContextUsage",
+              "showModelPerformance",
               "showSendButton",
               "notificationEnabled",
               "notificationSoundEnabled",

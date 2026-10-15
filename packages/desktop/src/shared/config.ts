@@ -64,6 +64,7 @@ export const defaultPreferences: InterfacePreferences = {
   theme: "system",
   fontSize: 14,
   showContextUsage: false,
+  showModelPerformance: false,
   showSendButton: false,
   notificationEnabled: true,
   notificationSoundEnabled: true,

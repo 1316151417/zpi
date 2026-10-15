@@ -140,6 +140,8 @@ export class SettingsStore {
       if (raw !== undefined) {
         if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
         raw.shortcuts = withTaskMenuShortcut(raw.shortcuts, process.platform);
+        if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)
+          raw.interface.showModelPerformance = false;
         this.validateData(raw);
         this.data = raw;
       }
@@ -583,6 +585,7 @@ export class SettingsStore {
     if (
       [
         prefs.showContextUsage,
+        prefs.showModelPerformance,
         prefs.showSendButton,
         prefs.notificationEnabled,
         prefs.notificationSoundEnabled,

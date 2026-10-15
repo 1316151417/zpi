@@ -40,6 +40,10 @@ export function sessionViewBytes(view: SessionView): number {
 export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope): SessionView {
   if (envelope.sessionId !== view.sessionId || envelope.seq <= view.seq) return view;
   const { event, runId, seq } = envelope;
+  if (event.type === "model_performance") {
+    if (view.runs.at(-1)?.runId !== runId) return { ...view, seq };
+    return { ...view, seq, modelPerformance: event.performance };
+  }
   if (event.type === "background_task_changed") {
     const tasks = view.backgroundTasks ?? [];
     const index = tasks.findIndex((task) => task.taskId === event.task.taskId);
@@ -90,6 +94,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   };
   const tool = (id: string) => run.orderedBlocks.find((b) => b.type === "tool" && b.toolCallId === id);
   if (event.type === "started") {
+    view = { ...view, modelPerformance: undefined };
     run.historyContinuation = event.historyContinuation;
     run.userMessage = event.text;
     run.subagentNotification = event.subagentNotification;

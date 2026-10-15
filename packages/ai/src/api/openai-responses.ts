@@ -7,7 +7,7 @@ import type {
 import type { Model, SimpleStreamOptions, ThinkingContent, ToolCall, TranscriptContext } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { createAssistantMessageEventStream } from "../utils/event-stream.ts";
+import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
@@ -111,6 +111,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       "onRetry",
       "onPayload",
       "onResponse",
+      "onPerformance",
       "samplingParams",
       "reasoning",
       "toolChoice",
@@ -119,7 +120,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
   );
   if (model.api !== "openai-responses") throw new Error(`Unsupported API: ${model.api}`);
   if (options.apiKey === undefined) throw new Error("API key must be configured");
-  const events = createAssistantMessageEventStream();
+  const events = new MeasuredAssistantStream(options);
   let output = emptyAssistant(model);
   const complete = new Set<ToolCall>();
   void consume(events).catch((error: unknown) => {
@@ -138,9 +139,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     events.push({ type: "error", reason: output.stopReason, error: output });
   });
   return events;
-  async function consume(
-    events: Pick<import("../types.ts").AssistantMessageEventStream, "push">,
-  ): Promise<void> {
+  async function consume(events: MeasuredAssistantStream): Promise<void> {
     output = emptyAssistant(model);
     complete.clear();
     if (
@@ -254,10 +253,12 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     }
     output.contextBreakdown = measureContextBreakdown(payload);
     const { data: chunks, response } = await retryProviderRequest(
-      () =>
-        client.responses
+      () => {
+        events.startRequest();
+        return client.responses
           .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
-          .withResponse(),
+          .withResponse();
+      },
       { ...options, maxRetries: options.maxRetries ?? 2 },
     );
     await options.onResponse?.(
@@ -340,6 +341,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         const index = blocks.get(item.id);
         if (index === undefined) throw new Error("Incomplete tool call");
         const block = output.content[index];
+        if (item.arguments && item.arguments !== args.get(item.id)) events.generated();
         try {
           const argumentsValue: unknown = JSON.parse(item.arguments || args.get(item.id) || "{}");
           if (block.type !== "toolCall" || !item.call_id || !item.name || !isJsonObject(argumentsValue))
@@ -376,6 +378,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     }
     let terminal = false;
     for await (const event of chunks) {
+      events.received();
       if (options.signal?.aborted) throw new Error("Request aborted");
       switch (event.type) {
         case "response.created":
@@ -452,6 +455,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
               output.usage.totalTokens = usage.total_tokens;
               output.usage.reasoning = usage.output_tokens_details?.reasoning_tokens;
             }
+            events.recordUsage(usage.output_tokens);
           }
           output.responseId = event.response.id;
           output.responseModel = event.response.model;

@@ -21,6 +21,7 @@ import {
   shouldCompact,
 } from "./compaction.ts";
 import { withHttpIdleTimeout } from "./http-idle-timeout.ts";
+import { InteractionPerformance, type ModelPerformance } from "./model-performance.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { LoadedSkill, SkillList } from "./resources.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
@@ -46,6 +47,7 @@ function validateInputContext(input: ParsedInput, context: InputContext): void {
     throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
 }
 export type AgentSessionEvent =
+  | { type: "model_performance"; performance: ModelPerformance }
   | Exclude<AgentEvent, { type: "agent_end" }>
   | { type: "agent_end"; messages: AgentState["messages"]; willRetry: boolean }
   | { type: "agent_settled" }
@@ -83,6 +85,12 @@ export class AgentSession {
   private overflowRecoveryAttempted = false;
   private retryAttempt = 0;
   private recoveredCalls = new WeakSet<object>();
+  private performance = new InteractionPerformance((performance) =>
+    this.notify({ type: "model_performance", performance }),
+  );
+  get modelPerformance(): ModelPerformance {
+    return this.performance.value;
+  }
   constructor(
     model: Model,
     runtime: ModelRuntime,
@@ -429,7 +437,7 @@ export class AgentSession {
       signal,
       this.thinkingLevel,
       (model, context, options) =>
-        this.runtime.streamSimple(
+        this.measuredStream(
           model,
           context,
           this.requestOptions({ ...options, streamIdleTimeoutRetryNumber: retryNumber }),
@@ -467,7 +475,7 @@ export class AgentSession {
     const output = createAssistantMessageEventStream();
     let partial = emptyAssistant(model);
     void (async () => {
-      const response = this.runtime.streamSimple(
+      const response = this.measuredStream(
         model,
         context,
         this.requestOptions({ ...options, sessionId: this.sessionId }),
@@ -510,6 +518,31 @@ export class AgentSession {
     });
     return output;
   }
+  private measuredStream(model: Model, context: TranscriptContext, options: SimpleStreamOptions) {
+    const output = createAssistantMessageEventStream();
+    const request = this.performance.request();
+    void (async () => {
+      try {
+        const response = this.runtime.streamSimple(model, context, {
+          ...options,
+          onPerformance: request.update,
+        });
+        for await (const event of response) {
+          if (event.type === "done" || event.type === "error")
+            request.finish(event.type === "done" && event.reason !== "length" && !options.signal?.aborted);
+          output.push(event);
+        }
+      } catch (error) {
+        const failure = emptyAssistant(model);
+        failure.stopReason = options.signal?.aborted ? "aborted" : "error";
+        failure.errorMessage = error instanceof Error ? error.message : String(error);
+        output.end(failure);
+      } finally {
+        request.finish(false);
+      }
+    })();
+    return output;
+  }
   compact(instructions = ""): Promise<void> {
     try {
       this.idleCheck();
@@ -523,6 +556,7 @@ export class AgentSession {
       return Promise.reject(error);
     }
     this.active = "compact";
+    this.performance.reset();
     this.abortRequested = false;
     const controller = new AbortController();
     this.compactController = controller;
@@ -531,6 +565,7 @@ export class AgentSession {
       await this.summarize(true, instructions, controller.signal);
       this.state.messages = this.manager.buildSessionContext().messages;
     })().finally(() => {
+      this.performance.settle();
       this.compactController = undefined;
       this.active = undefined;
       this.notify({ type: "agent_settled" });
@@ -578,6 +613,7 @@ export class AgentSession {
       return Promise.reject(e);
     }
     this.active = "prompt";
+    this.performance.reset();
     this.abortRequested = false;
     this.overflowRecoveryAttempted = false;
     this.retryAttempt = 0;
@@ -613,6 +649,7 @@ export class AgentSession {
         if (!this.abortRequested) throw error;
       })
       .finally(() => {
+        this.performance.settle();
         this.compactController = undefined;
         this.notify({ type: "model_retry", status: null });
         this.active = undefined;
@@ -638,6 +675,7 @@ export class AgentSession {
     await this.running;
   }
   dispose(): void {
+    this.performance.dispose();
     this.disposed = true;
     this.compactController?.abort();
     this.agent.abort();

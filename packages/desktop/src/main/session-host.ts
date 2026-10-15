@@ -130,6 +130,7 @@ export class SessionHost {
   private runtimes = new Map<string, ModelRuntime>();
   private managers = new Map<string, SessionManager>();
   private views = new Map<string, SessionView>();
+  private modelPerformance = new Map<string, NonNullable<SessionView["modelPerformance"]>>();
   private indexes = new Map<string, HistoryIndex>();
   private titleJobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   private sequences = new Map<string, number>();
@@ -1314,6 +1315,7 @@ export class SessionHost {
       ...view,
       title: record.title,
       controls,
+      modelPerformance: this.modelPerformance.get(id),
       queue: this.inputQueue.get(id),
       forkOrigin,
       question: this.questions.get(id),
@@ -1629,6 +1631,7 @@ export class SessionHost {
       this.settings.state.deleteTask(id);
       // SQLite 删除提交后立即移除内存所有者，避免文件清理失败后 rename/upsert 复活墓碑。
       this.records.delete(id);
+      this.modelPerformance.delete(id);
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
@@ -1656,6 +1659,7 @@ export class SessionHost {
   }
   private emit(id: string, runId: string, event: DesktopEvent): void {
     const view = this.views.get(id);
+    if (event.type === "model_performance" && view?.runs.at(-1)?.runId !== runId) return;
     if (!view && event.type !== "session_changed") throw new Error("Missing session view");
     const seq = (this.sequences.get(id) ?? view?.seq ?? 0) + 1;
     this.sequences.set(id, seq);
@@ -1663,6 +1667,7 @@ export class SessionHost {
     const activity = ![
       "session_changed",
       "controls_changed",
+      "model_performance",
       "queue_changed",
       "history_reset",
       "question_changed",
@@ -1687,6 +1692,8 @@ export class SessionHost {
       event,
       ...(activityAt !== undefined ? { activityAt } : {}),
     };
+    if (event.type === "started") this.modelPerformance.delete(id);
+    if (event.type === "model_performance") this.modelPerformance.set(id, event.performance);
     if (view) this.views.set(id, reduceSession(view, envelope));
     for (const listener of this.listeners) {
       try {

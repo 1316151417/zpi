@@ -202,6 +202,7 @@ export interface UserMessage {
 }
 export interface Usage {
   input: number;
+  /** Total generated tokens, including reasoning; `reasoning` is a breakdown, not an addition. */
   output: number;
   cacheRead: number;
   cacheWrite: number;
@@ -268,7 +269,15 @@ export interface Context {
 }
 declare const transcriptBrand: unique symbol;
 export type TranscriptContext = { messages: Message[]; readonly [transcriptBrand]: true };
+/** A provider-reported token count paired with its own content interval, never wall-clock elapsed time. */
+export interface ModelPerformanceSample {
+  ttftMs?: number;
+  outputTokens?: number;
+  generationMs?: number;
+}
 export interface StreamOptions {
+  /** Transient measurements from actual provider attempts; an empty sample starts a fresh attempt. */
+  onPerformance?: (sample: ModelPerformanceSample) => void;
   cacheRetention?: CacheRetention;
   metadata?: Record<string, unknown>;
   env?: ProviderEnv;

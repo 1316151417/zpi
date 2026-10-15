@@ -117,6 +117,7 @@ export interface InterfacePreferences {
   theme: "system" | "light" | "dark";
   fontSize: number;
   showContextUsage: boolean;
+  showModelPerformance: boolean;
   showSendButton: boolean;
   notificationEnabled: boolean;
   notificationSoundEnabled: boolean;

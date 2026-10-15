@@ -65,6 +65,23 @@ SDK 本地 Bash 在输出文件背压时暂停 stdout/stderr，排空后恢复�
 
 ## 测试
 
+### 模型性能统计
+
+「界面设置 → 显示模型性能」默认关闭，开关保存在现有 SQLite 应用设置中。指标只保留本次应用运行中的每个任务最近一次交互，不写入会话历史；切换任务、视图缓存淘汰后仍可显示，下一次输入被接受时清空。辅助对话独立统计。标题生成和子智能体的请求不并入父任务；同一会话在交互中执行的自动压缩请求计入该次交互。
+
+请求计时使用单调时钟，在提供商请求实际发起处开始，每个 HTTP 重试独立计时。首段非空文本、思考或有效工具调用增量触发 TTFT；连接、空事件、结束标记和本地占位文字不触发。平均 TTFT 是成功请求有效 TTFT 的算术平均。输出速度是有效请求输出 token 总和除以对应「首段有效内容至最后有效内容」的生成时间总和，不包含首段等待、工具执行或请求间等待。
+
+OpenAI Completions 的 `completion_tokens`、Responses 与 Anthropic 的 `output_tokens` 已包含思考 token，`reasoning_tokens` / `thinking_tokens` 仅是明细，不再相加，参见 [OpenAI 用量说明](https://developers.openai.com/api/docs/guides/token-counting) 和 [Anthropic 思考计费说明](https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost)。流式用量和其到达时的内容区间成对采样；后续内容没有新用量时保持上一对实时样本，结束时若仍只有过期的部分用量，则舍弃该请求的速度。Anthropic 的初始 `message_start` 用量不作为最终输出用量。缺失、非正值或无效耗时独立隐藏，单包输出的生成间隔为零时只显示 TTFT，不用字符数或块数代替 token。提供商缓冲内容、仅返回思考摘要或隐藏思考时，计时依据客户端实际收到的有效内容，不代表服务端内部逐 token 的生成时间。
+
+执行中的请求为临时样本，失败、取消和长度截断后移除；重试成功后只计成功尝试。任务层每 750 ms 最多发布一次普通更新，请求结束和整次交互结束立即发布；工具等待期间数值保持不变。实现位于 AI 层 `MeasuredAssistantStream` 与会话层 `InteractionPerformance`，只持有计时、计数与聚合值，渲染层负责格式化。自定义 SDK 提供商可通过 `onPerformance` 上报同口径样本，未提供时不猜测。
+
+定向验证：
+
+```sh
+npm run test:unit -- packages/ai/test/model-performance.test.ts packages/ai/test/provider-performance.test.ts packages/coding-agent/test/model-performance.test.ts packages/coding-agent/test/session-performance.test.ts packages/desktop/test/model-performance.test.ts
+npm run test:desktop -- tests/desktop/model-performance.spec.ts
+```
+
 ### 单元与服务测试：不启动窗口
 
 `npm run test:unit` 只运行 `packages/*/test/**/*.test.ts`，使用 Node 环境，不启动 Electron、浏览器或桌面窗口。部分用例会启动本地假模型 HTTP 服务、Git 或 Shell 子进程，并使用临时目录；它们不是纯函数测试，但不需要 GUI。

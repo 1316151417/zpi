@@ -460,6 +460,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                     {(
                       [
                         [
+                          "showModelPerformance",
+                          "显示模型性能",
+                          "在输入框下方显示本次交互的平均输出速度和首段内容等待时间。",
+                        ],
+                        [
                           "showContextUsage",
                           "显示上下文占用",
                           "在输入栏显示当前模型的上下文容量和使用情况。",
