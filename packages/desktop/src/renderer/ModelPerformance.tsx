@@ -96,7 +96,10 @@ const joined = (a: string, b?: string) => (
 export function ModelPerformance({ value }: { value?: Performance }) {
   if (!value) return null;
   const speed = positive(value.tokensPerSecond) ? formatSpeed(value.tokensPerSecond) : undefined;
-  const activity: [string, string][] = [];
+  const activity: [string, string][] = [
+    ["轮数", String(value.turns ?? 0)],
+    ["步数", String(value.steps ?? 0)],
+  ];
   if (positive(value.llmMs)) activity.push(["模型用时", formatDuration(value.llmMs)]);
   if (positive(value.toolMs)) activity.push(["工具调用用时", formatDuration(value.toolMs)]);
   if (positive(value.ttftMs)) activity.push(["首 token 平均（TTFT）", formatDuration(value.ttftMs)]);

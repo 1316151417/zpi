@@ -8,7 +8,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("persists the switch, retains cumulative metrics per task and centers below the composer in all layouts", async () => {
+test("retains cumulative metrics in the toolbar without shifting the composer in all layouts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-performance-"));
   const more = deferred();
   const finish = deferred();
@@ -43,6 +43,7 @@ test("persists the switch, retains cumulative metrics per task and centers below
     const page = await app.firstWindow();
     const indicator = page.getByTestId("model-performance");
     const editor = page.getByLabel("消息", { exact: true });
+    const composer = page.locator(".composer").first();
     await expect(indicator).toHaveCount(0);
     const settings = page.getByRole("region", { name: "设置", exact: true });
     await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -62,6 +63,8 @@ test("persists the switch, retains cumulative metrics per task and centers below
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
     await expect(page.locator(".conversation")).toContainText("正在检查请求与用量。");
     await expect(indicator).toHaveCount(0);
+    const initialBox = await composer.boundingBox();
+    expect(initialBox).not.toBeNull();
     more.resolve();
 
     // Run another task while A is still streaming; its missing usage must not inherit A's speed.
@@ -78,10 +81,13 @@ test("persists the switch, retains cumulative metrics per task and centers below
     await expect(indicator).toContainText("1 轮 1 步");
     await expect(indicator).toContainText("185 tok");
     await expect(indicator).toContainText("缓存命中 80%");
+    expect(await composer.boundingBox()).toEqual(initialBox);
     const live = (await indicator.textContent()) ?? "";
     await indicator.getByRole("button", { name: "会话统计", exact: true }).click();
     const stats = page.getByRole("dialog", { name: "会话统计", exact: true });
     await expect(stats).toContainText("模型用时");
+    await expect(stats).toContainText("轮数1");
+    await expect(stats).toContainText("步数1");
     await expect(stats).toContainText("首 token 平均（TTFT）");
     await expect(stats).toContainText("输出速度（TPS）");
     await page.keyboard.press("Escape");
@@ -94,6 +100,7 @@ test("persists the switch, retains cumulative metrics per task and centers below
     await page.keyboard.press("Escape");
 
     for (const [theme, width, name] of [
+      ["浅色", 1800, "wide"],
       ["浅色", 1200, "light"],
       ["深色", 1200, "dark"],
       ["深色", 900, "narrow"],
@@ -105,18 +112,26 @@ test("persists the switch, retains cumulative metrics per task and centers below
       await page.getByRole("button", { name: "设置", exact: true }).click();
       await settings.getByRole("combobox", { name: "界面主题", exact: true }).click();
       await page.getByRole("option", { name: theme, exact: true }).click();
+      await toggle.uncheck();
+      await settings.getByLabel("关闭设置").click();
+      await expect(indicator).toHaveCount(0);
+      const withoutMetrics = await composer.boundingBox();
+      await page.getByRole("button", { name: "设置", exact: true }).click();
+      await toggle.check();
       await settings.getByLabel("关闭设置").click();
       await expect(indicator).toBeVisible();
-      const composer = page.locator(".composer").first();
+      expect(await composer.boundingBox()).toEqual(withoutMetrics);
+      await expect(composer.locator(".composer-footer").getByTestId("model-performance")).toBeVisible();
       await expect
         .poll(async () => {
           const input = await composer.boundingBox();
           const metric = await indicator.boundingBox();
           if (!input || !metric) return false;
           return (
-            Math.abs(input.x + input.width / 2 - metric.x - metric.width / 2) < 1 &&
-            metric.y >= input.y + input.height &&
-            metric.y + metric.height <= 800
+            metric.x >= input.x &&
+            metric.x + metric.width <= input.x + input.width &&
+            metric.y >= input.y &&
+            metric.y + metric.height <= input.y + input.height
           );
         })
         .toBe(true);

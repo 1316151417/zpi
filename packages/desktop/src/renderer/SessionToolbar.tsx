@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActionHint, type SessionView } from "zpi-ui";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
+import { ModelPerformance } from "./ModelPerformance.tsx";
 import { accept, focusComposer, refresh, report, unwrap, useStore } from "./store.ts";
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
 export function SessionToolbar({
@@ -81,6 +82,7 @@ export function SessionToolbar({
     new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(number);
   return (
     <div ref={setToolbar} className="session-toolbar">
+      {settings?.interface.showModelPerformance && <ModelPerformance value={view.modelPerformance} />}
       {settings?.interface.showContextUsage && hasResponse && usage?.inputTokens != null && (
         <Tooltip.Provider delayDuration={0}>
           <Tooltip.Root>

@@ -5956,14 +5956,15 @@
   }
 }
 
+.composer:has(.session-toolbar) {
+  container: composer / inline-size;
+}
 .model-performance {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  flex-shrink: 0;
+  gap: 4px;
   max-width: 100%;
-  padding-top: 4px;
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 20px;
@@ -5976,7 +5977,8 @@
   gap: 6px;
   min-width: 0;
   max-width: 100%;
-  padding: 1px 8px;
+  height: 28px;
+  padding: 0 6px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -6000,6 +6002,11 @@ button.model-stat-pill:hover,
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+@container composer (width < 760px) {
+  .model-performance .model-stat-label {
+    display: none;
+  }
 }
 .model-stat-separator {
   margin: 0 6px;
