@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { Check } from "typebox/value";
+import { Compile } from "typebox/compile";
 import type { Message } from "zpi-ai";
 import type { SessionEntry, SessionHeader } from "./session-manager.ts";
 
@@ -104,12 +104,16 @@ const entry = Type.Intersect([
     }),
   ]),
 ]);
+// Compile the fixed schemas once; keep exactly the same validation at every public boundary.
+const headerValidator = Compile(header);
+const entryValidator = Compile(entry);
+const messageValidator = Compile(message);
 export function isSessionHeader(value: unknown): value is SessionHeader {
-  return Check(header, value);
+  return headerValidator.Check(value);
 }
 export function isSessionEntry(value: unknown): value is SessionEntry {
-  return Check(entry, value);
+  return entryValidator.Check(value);
 }
 export function validateMessage(value: unknown): asserts value is Message {
-  if (!Check(message, value)) throw new Error("Invalid message record");
+  if (!messageValidator.Check(value)) throw new Error("Invalid message record");
 }

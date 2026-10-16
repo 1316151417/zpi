@@ -147,3 +147,67 @@ it("retains the in-memory task when committing its deletion fails", async () => 
   expect(f.host.listSessions(f.a.id).some((entry) => entry.id === task.id)).toBe(true);
   expect(attachments).not.toHaveBeenCalled();
 });
+
+for (const phase of ["prepared", "durable", "published"] as const) {
+  it(`reopens the authoritative generation after a ${phase} replacement failure`, async () => {
+    const f = await fixture((_, response) => done(response));
+    const task = f.host.createSession(f.a.id);
+    const { HistoryIndex } = await import("../src/main/history-index.ts");
+    const owner = f.host as unknown as { indexes: Map<string, InstanceType<typeof HistoryIndex>> };
+    const index = owner.indexes.get(task.id);
+    if (!index) throw new Error("Missing index fixture");
+    const oldPath = index.path;
+    const original = await readFile(oldPath);
+    const originalCount = index.snapshot().endSeq;
+    let fault: ReturnType<typeof vi.spyOn> | undefined;
+    if (phase === "prepared") {
+      f.settings.state.db.exec(`CREATE TRIGGER fail_replacement AFTER INSERT ON transcript_entries
+        WHEN NEW.entry_id='replacement-2' BEGIN SELECT RAISE(ABORT, 'injected prepared failure'); END`);
+    } else {
+      const complete = f.settings.state.completeIntent.bind(f.settings.state);
+      fault = vi.spyOn(f.settings.state, "completeIntent").mockImplementation((id, finalize) => {
+        const replace = f.settings.state
+          .listIntents()
+          .some((intent) => intent.operationId === id && intent.kind === "replace");
+        if (replace && phase === "durable") throw new Error("injected durable failure");
+        complete(id, finalize);
+        if (replace) throw new Error("injected published failure");
+      });
+    }
+    const entries = [1, 2].map((n) => ({
+      type: "message" as const,
+      id: `replacement-${n}`,
+      parentId: n === 1 ? null : "replacement-1",
+      timestamp: new Date(1).toISOString(),
+      message: { role: "user" as const, content: `replacement ${n}`, timestamp: n },
+    }));
+    expect(() => index.replace(index.getHeader(), entries)).toThrow(`injected ${phase} failure`);
+    fault?.mockRestore();
+    f.settings.state.db.exec("DROP TRIGGER IF EXISTS fail_replacement");
+    expect(await readFile(oldPath)).toEqual(original);
+    expect(index.path).toBe(oldPath);
+    const intents = f.settings.state.listIntents();
+    if (phase === "published") expect(intents).toEqual([]);
+    else expect(intents).toHaveLength(1);
+    if (phase !== "published") expect(intents[0].stage).toBe(phase);
+    await f.host.close();
+    const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"));
+    await reopened.init();
+    cleanup.push(() => reopened.close());
+    const restored = new HistoryIndex(reopened.sessionPath(task.id), f.settings.state.db);
+    await restored.load();
+    expect(restored.snapshot().endSeq).toBe(phase === "published" ? 2 : originalCount);
+    if (phase === "published") {
+      expect(restored.path).not.toBe(oldPath);
+      expect(restored.getTail(restored.snapshot())?.entry).toMatchObject({ id: "replacement-2" });
+      expect(f.settings.state.listIntents()).toEqual([]);
+    } else {
+      expect(restored.path).toBe(oldPath);
+      expect(f.settings.state.listIntents()[0].stage).toBe("blocked");
+      await expect(reopened.startRun({ sessionId: task.id, text: "do not execute" })).rejects.toThrow(
+        "storage:",
+      );
+    }
+    expect(f.server.requests).toHaveLength(0);
+  });
+}

@@ -67,7 +67,7 @@ import { ErrorLog } from "./error-log.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot } from "./file-changes.ts";
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
-import { historyPerformance, sideChatGuard } from "./history-performance.ts";
+import { HistoryPerformance, historyPerformance, sideChatGuard } from "./history-performance.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
 import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
@@ -1056,7 +1056,7 @@ export class SessionHost {
     }
     const stable = { ...snapshot, endSeq: cutoff };
     const inherited = source.getStateAt(stable);
-    const inheritedTotals = historyPerformance(source.readRange(1, cutoff, stable));
+    const inheritedPerformance = new HistoryPerformance();
     const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
     const operationId = randomUUID();
     const originalFile = relative(this.dir, this.path(child));
@@ -1070,6 +1070,7 @@ export class SessionHost {
     try {
       const entries = function* () {
         for (const { seq, entry } of source.readRange(1, cutoff, snapshot)) {
+          inheritedPerformance.add(entry);
           if (entry.type === "message" || entry.type === "compaction") yield entry;
           else {
             const state = source.getStateAt({ ...snapshot, endSeq: seq });
@@ -1091,17 +1092,14 @@ export class SessionHost {
           }
         }
       };
-      const staged = await stageTranscript(
-        entries(),
-        async (entry) =>
-          (
-            await copyFileChangeSnapshots(
-              [entry],
-              join(this.dir, "agent", "tool-output", id),
-              join(this.dir, "agent", "tool-output", child.id),
-            )
-          )[0],
+      const sourceArtifacts = join(this.dir, "agent", "tool-output", id);
+      const targetArtifacts = join(this.dir, "agent", "tool-output", child.id);
+      const staged = await stageTranscript(entries(), async (entry) =>
+        entryFileChange(entry)
+          ? (await copyFileChangeSnapshots([entry], sourceArtifacts, targetArtifacts))[0]
+          : entry,
       );
+      const inheritedTotals = inheritedPerformance.snapshot;
       const manager = this.manager(child.id);
       try {
         manager.replaceEntries(staged.entries());

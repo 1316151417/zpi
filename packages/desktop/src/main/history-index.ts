@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, createReadStream, fsyncSync, openSync, readSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
 import { isJsonObject } from "zpi-ai";
 import { maxSessionEntryBytes, type SessionEntry, type SessionHeader } from "zpi-coding-agent";
 import type {
@@ -76,6 +76,7 @@ export class HistoryIndex implements TranscriptStore {
   key: string;
   private generationHooks?: GenerationHooks;
   private missingDerivedTables = false;
+  private batchStatements?: Map<string, StatementSync>;
   constructor(path: string, db: DatabaseSync, generationHooks?: GenerationHooks) {
     this.generationHooks = generationHooks;
     this.path = path;
@@ -83,14 +84,23 @@ export class HistoryIndex implements TranscriptStore {
     this.key = transcriptPathKey(db, path);
     this.missingDerivedTables = ensureTranscriptSchema(db);
   }
+  private prepare(sql: string): StatementSync {
+    if (!this.batchStatements) return this.db.prepare(sql);
+    let statement = this.batchStatements.get(sql);
+    if (!statement) {
+      statement = this.db.prepare(sql);
+      this.batchStatements.set(sql, statement);
+    }
+    return statement;
+  }
   private all(sql: string, ...args: SQLInputValue[]): Row[] {
-    return this.db.prepare(sql).all(this.key, ...args) as Row[];
+    return this.prepare(sql).all(this.key, ...args) as Row[];
   }
   private one(sql: string, ...args: SQLInputValue[]): Row | undefined {
-    return this.db.prepare(sql).get(this.key, ...args) as Row | undefined;
+    return this.prepare(sql).get(this.key, ...args) as Row | undefined;
   }
   private run(sql: string, ...args: SQLInputValue[]): void {
-    this.db.prepare(sql).run(this.key, ...args);
+    this.prepare(sql).run(this.key, ...args);
   }
   private transaction<T>(fn: () => T): T {
     this.db.exec("SAVEPOINT transcript_write");
@@ -389,13 +399,16 @@ export class HistoryIndex implements TranscriptStore {
             typeof value.queueItemId === "string" ? value.queueItemId : null,
           );
         else if (value.phase === "accepted")
-          this.db
-            .prepare("UPDATE transcript_runs SET accepted_seq=?,accepted_end=? WHERE path=? AND run_id=?")
-            .run(seq, end, this.key, value.runId);
+          this.prepare(
+            "UPDATE transcript_runs SET accepted_seq=?,accepted_end=? WHERE path=? AND run_id=?",
+          ).run(seq, end, this.key, value.runId);
         else if (value.phase === "end")
-          this.db
-            .prepare("UPDATE transcript_runs SET end=?,end_end=? WHERE path=? AND run_id=?")
-            .run(start, end, this.key, value.runId);
+          this.prepare("UPDATE transcript_runs SET end=?,end_end=? WHERE path=? AND run_id=?").run(
+            start,
+            end,
+            this.key,
+            value.runId,
+          );
       }
       if (
         (entry.customType === "zpi.context_boundary" || entry.customType === "zpi.run") &&
@@ -433,11 +446,9 @@ export class HistoryIndex implements TranscriptStore {
             0,
           );
         else if (value.phase === "end")
-          this.db
-            .prepare(
-              "UPDATE transcript_calls SET end=?,complete=1 WHERE path=? AND seq=(SELECT MAX(seq) FROM transcript_calls WHERE path=? AND run_id=?)",
-            )
-            .run(end, this.key, this.key, this.currentRun);
+          this.prepare(
+            "UPDATE transcript_calls SET end=?,complete=1 WHERE path=? AND seq=(SELECT MAX(seq) FROM transcript_calls WHERE path=? AND run_id=?)",
+          ).run(end, this.key, this.key, this.currentRun);
       }
       if (entry.customType === "zpi.streaming_tools" && typeof value.id === "string") {
         if (value.committed === true)
@@ -458,7 +469,7 @@ export class HistoryIndex implements TranscriptStore {
         );
       }
     }
-    this.db.prepare("UPDATE transcript_calls SET end=? WHERE path=? AND complete=0").run(end, this.key);
+    this.prepare("UPDATE transcript_calls SET end=? WHERE path=? AND complete=0").run(end, this.key);
     if (entry.type === "message" || (entry.type === "custom" && entry.customType === "zpi.run")) {
       const at = Date.parse(entry.timestamp);
       if (Number.isFinite(at)) this.data.lastActivityAt = Math.max(this.data.lastActivityAt ?? 0, at);
@@ -856,11 +867,54 @@ export class HistoryIndex implements TranscriptStore {
         }
       : undefined;
   }
+  /** Build an unpublished generation with bounded memory and one durability boundary. */
+  private static stageGeneration(
+    path: string,
+    db: DatabaseSync,
+    header: SessionHeader,
+    entries: Iterable<SessionEntry>,
+  ): HistoryIndex {
+    const value = validateTranscriptHeader({ ...header, version: 2, generation: randomUUID() });
+    const staged = new HistoryIndex(path, db);
+    const fd = openSync(path, "wx", 0o600);
+    const write = (line: Buffer) => {
+      let offset = 0;
+      while (offset < line.length) {
+        const written = writeSync(fd, line, offset);
+        if (written === 0) throw new Error("storage: Transcript write made no progress");
+        offset += written;
+      }
+    };
+    staged.batchStatements = new Map();
+    try {
+      staged.transaction(() => {
+        const line = Buffer.from(`${JSON.stringify(value)}\n`);
+        if (line.length > maxSessionEntryBytes) throw new Error("storage: Header exceeds 8 MiB");
+        staged.reset(value, line.length);
+        write(line);
+        for (const entry of entries) {
+          const line = Buffer.from(`${JSON.stringify(encodeTranscriptEntry(entry, staged.seq + 1))}\n`);
+          if (line.length - 1 > maxSessionEntryBytes) throw new Error("storage: Entry exceeds 8 MiB");
+          // ingest validates the chain, compaction boundary and unique IDs against this transaction.
+          // A failed iteration leaves only an unpublished file; no partial index transaction survives.
+          staged.ingest(entry, staged.data.size, staged.data.size + line.length);
+          write(line);
+        }
+        fsyncSync(fd);
+        staged.flush();
+      });
+    } finally {
+      staged.batchStatements = undefined;
+      closeSync(fd);
+    }
+    // Persist the new directory entry before the generation hooks can publish its locator.
+    syncDirectory(dirname(path));
+    return staged;
+  }
   replace(header: SessionHeader, entries: Iterable<SessionEntry>): void {
     const nextPath = join(dirname(this.path), `${header.id}.generation-${randomUUID()}.jsonl`);
     this.generationHooks?.prepare(this.path, nextPath, header);
-    const staged = HistoryIndex.create(nextPath, this.db, header);
-    for (const entry of entries) staged.append(entry);
+    const staged = HistoryIndex.stageGeneration(nextPath, this.db, header, entries);
     // Publication changes only the DB locator. The previous immutable generation survives every failure.
     this.generationHooks?.commit(this.path, nextPath, staged.getHeader(), staged.data.size);
     this.path = staged.path;

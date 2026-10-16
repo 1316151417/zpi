@@ -9,7 +9,7 @@ import {
   SquareTerminal as TerminalSquare,
   X,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { FileIcon, type FindRequest, type FindState } from "zpi-ui";
 import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
@@ -52,6 +52,24 @@ export function RightPane({
   });
   const state = usePane();
   const panel = useRef<HTMLElement>(null);
+  const previousOpen = useRef(state.open);
+  useLayoutEffect(() => {
+    if (previousOpen.current === state.open) return;
+    previousOpen.current = state.open;
+    const element = panel.current;
+    if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // 仅显式开合沿用 ZCode 的 200ms ease-out；锁住内容宽度，避免逐帧重排。
+    element.dataset.animating = "true";
+    const finish = () => element.removeAttribute("data-animating");
+    const timer = setTimeout(finish, 240);
+    // 原生窗口 resize 即刻打断开合过渡，不让宽度追着窗口变化。
+    window.addEventListener("resize", finish);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", finish);
+      finish();
+    };
+  }, [state.open]);
   const tabs = visiblePaneTabs(sessionId, state.tabs);
   const active = tabs.find((tab) => tab.id === state.active)?.id;
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -67,6 +85,7 @@ export function RightPane({
         aria-orientation="vertical"
         tabIndex={0}
         onPointerDown={(event) => {
+          panel.current?.removeAttribute("data-animating");
           panel.current?.setAttribute("data-resizing", "true");
           event.currentTarget.setPointerCapture(event.pointerId);
           event.preventDefault();
@@ -85,6 +104,7 @@ export function RightPane({
         onKeyDown={(event) => {
           if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
             event.preventDefault();
+            panel.current?.removeAttribute("data-animating");
             const ratio = Math.max(
               0.2,
               Math.min(0.7, state.ratio + (event.key === "ArrowLeft" ? 0.03 : -0.03)),

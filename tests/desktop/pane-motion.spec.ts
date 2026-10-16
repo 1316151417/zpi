@@ -5,7 +5,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("right pane changes layout once in both layouts and resizes without lag", async () => {
+test("right pane slides with stable content in both layouts and resizes without lag", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-pane-motion-"));
   let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
@@ -50,9 +50,10 @@ test("right pane changes layout once in both layouts and resizes without lag", a
           await Promise.allSettled(animations.map((animation) => animation.finished));
           return measured;
         });
-        expect(middle.layoutTransitions).toBe(0);
-        expect(middle.width).toBeCloseTo(opening ? middle.target : 0, 1);
-        if (opening) expect(middle.contentWidth).toBeCloseTo(middle.target - 2, 1);
+        expect(middle.layoutTransitions).toBe(2);
+        expect(middle.width).toBeGreaterThan(0);
+        expect(middle.width).toBeLessThan(middle.target);
+        expect(middle.contentWidth).toBeCloseTo(middle.target - 2, 1);
         expect(middle.inert).toBe(!opening);
       }
       await expect(panel).toBeHidden();
@@ -64,6 +65,7 @@ test("right pane changes layout once in both layouts and resizes without lag", a
     await page.mouse.move(box.x + 2, box.y + 100);
     await page.mouse.down();
     await expect(panel).toHaveAttribute("data-resizing", "true");
+    await expect(panel).not.toHaveAttribute("data-animating", "true");
     await page.mouse.move(box.x - 60, box.y + 100);
     await expect(panel).toHaveCSS("transition-duration", "0s");
     await expect
@@ -96,6 +98,47 @@ test("right pane changes layout once in both layouts and resizes without lag", a
       toggle?.click();
     });
     await expect(page.locator(".pane-empty-launcher")).toBeVisible();
+    await expect(panel).not.toHaveAttribute("data-animating", "true");
+    await expect(panel).not.toHaveAttribute("hidden");
+    await expect(panel).not.toHaveAttribute("inert");
+    // Keyboard resizing during an opening transition must immediately cancel the tween.
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
+    await expect(panel).toBeHidden();
+    const keyboardResize = await page.evaluate(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="right-sidebar-toggle"]')?.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      document
+        .querySelector(".right-resizer")
+        ?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const panel = document.querySelector<HTMLElement>(".right-pane");
+      if (!panel) throw Error("Missing pane");
+      return {
+        animating: panel.hasAttribute("data-animating"),
+        width: panel.getBoundingClientRect().width,
+        target: Number.parseFloat(getComputedStyle(panel).getPropertyValue("--right-pane-width")),
+      };
+    });
+    expect(keyboardResize.animating).toBe(false);
+    expect(keyboardResize.width).toBeCloseTo(keyboardResize.target, 1);
+    // A native resize also cancels an in-flight opening rather than chasing the viewport.
+    await page.getByLabel("收起右侧栏", { exact: true }).click();
+    await expect(panel).toBeHidden();
+    await page.evaluate(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="right-sidebar-toggle"]')?.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      window.dispatchEvent(new Event("resize"));
+    });
+    await expect(panel).not.toHaveAttribute("data-animating", "true");
+    expect(
+      await panel.evaluate((el) =>
+        el
+          .getAnimations()
+          .some(
+            (animation) => animation instanceof CSSTransition && animation.transitionProperty === "width",
+          ),
+      ),
+    ).toBe(false);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await expect(panel).toBeHidden();
