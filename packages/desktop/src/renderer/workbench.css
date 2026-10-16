@@ -412,8 +412,7 @@
   text-align: center;
 }
 .changes-pane,
-.terminal-pane,
-.browser-pane {
+.terminal-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -439,37 +438,6 @@
 }
 .terminal-surface .xterm {
   height: 100%;
-}
-.browser-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 7px;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-.browser-toolbar button {
-  padding: 5px;
-  display: flex;
-}
-.browser-toolbar form {
-  flex: 1;
-  min-width: 0;
-}
-.browser-toolbar input {
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-muted);
-  color: var(--color-text);
-  font-size: var(--text-body);
-  padding: 6px 8px;
-  min-width: 0;
-}
-.browser-surface {
-  flex: 1;
-  min-height: 0;
-  background: var(--color-surface-muted);
 }
 .diff-layout {
   display: flex;

@@ -1,19 +1,25 @@
-import { ArrowLeft, ArrowRight, ExternalLink, RotateCw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActionHint } from "zpi-ui";
 import type { BrowserState } from "../shared/bridge.ts";
+import { browserAddressAfterNavigation } from "./browser-address.ts";
 import { paneTask } from "./pane-store.ts";
 import { unwrap } from "./store.ts";
+import "./browser-pane.css";
 export function BrowserPane({ state, visible }: { state: BrowserState; visible: boolean }) {
   const root = useRef<HTMLDivElement>(null),
     [address, setAddress] = useState(state.url);
   const submittedAddress = useRef<string | null>(null);
   const previousUrl = useRef(state.url);
+  const editingAddress = useRef(false);
   useEffect(() => {
     const changed = previousUrl.current !== state.url;
     previousUrl.current = state.url;
     if (submittedAddress.current === null) {
-      if (changed) setAddress(state.url);
+      if (changed)
+        setAddress((current) =>
+          browserAddressAfterNavigation(current, state.url, null, editingAddress.current),
+        );
       return;
     }
     if (state.loading) return;
@@ -21,7 +27,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
     submittedAddress.current = null;
     // Reloading the same URL still needs to canonicalize the submitted address.
     // Keep text entered after submission while navigation was in progress.
-    setAddress((current) => (current === submitted ? state.url : current));
+    setAddress((current) => browserAddressAfterNavigation(current, state.url, submitted));
   }, [state]);
   useEffect(() => {
     const element = root.current;
@@ -98,26 +104,28 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       <div className="browser-toolbar">
         <ActionHint label="后退" appearance="control">
           <button aria-label="浏览器后退" disabled={!state.back} onClick={() => action("back")}>
-            <ArrowLeft size={15} />
+            <ChevronLeft size={16} />
           </button>
         </ActionHint>
         <ActionHint label="前进" appearance="control">
           <button aria-label="浏览器前进" disabled={!state.forward} onClick={() => action("forward")}>
-            <ArrowRight size={15} />
+            <ChevronRight size={16} />
           </button>
         </ActionHint>
         <ActionHint label={state.loading ? "停止加载" : "刷新"} appearance="control">
           <button
             aria-label={state.loading ? "停止加载" : "刷新页面"}
+            disabled={!state.url && !state.loading}
             onClick={() => action(state.loading ? "stop" : "reload")}
           >
-            {state.loading ? <X size={15} /> : <RotateCw size={15} />}
+            {state.loading ? <X size={16} /> : <RefreshCw size={16} />}
           </button>
         </ActionHint>
         <form
           onSubmit={(event) => {
             event.preventDefault();
             submittedAddress.current = address;
+            editingAddress.current = false;
             paneTask(
               window.zpi
                 .browserAction(state.id, "navigate", address)
@@ -131,9 +139,19 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
         >
           <input
             aria-label="浏览器地址"
-            placeholder="输入网址或本地文件路径"
+            type="text"
+            placeholder="输入"
+            spellCheck={false}
+            autoComplete="off"
+            autoCapitalize="off"
             value={address}
-            onChange={(event) => setAddress(event.target.value)}
+            onChange={(event) => {
+              editingAddress.current = true;
+              setAddress(event.target.value);
+            }}
+            onBlur={() => {
+              editingAddress.current = false;
+            }}
           />
         </form>
         <ActionHint label="在默认浏览器中打开" appearance="control">
@@ -142,7 +160,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
             disabled={!state.url}
             onClick={() => paneTask(window.zpi.openExternal(state.url).then(unwrap))}
           >
-            <ExternalLink size={14} />
+            <ExternalLink size={16} />
           </button>
         </ActionHint>
       </div>
@@ -151,9 +169,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
           {state.error}
         </p>
       )}
-      <div ref={root} className="browser-surface" data-testid="browser-surface">
-        {!state.url && <div className="pane-empty">输入地址，或点击聊天中的链接</div>}
-      </div>
+      <div ref={root} className="browser-surface" data-testid="browser-surface" />
     </div>
   );
 }
