@@ -82,7 +82,7 @@ export interface BashOperations {
        * Await returned promises before delivering another chunk to bound pending output writes.
        * Other return values are ignored, as with the original synchronous callback.
        */
-      onData: (data: Buffer) => unknown;
+      onData: (data: Buffer, stream?: "stdout" | "stderr") => unknown;
       signal?: AbortSignal;
       timeout?: number;
       env?: NodeJS.ProcessEnv;
@@ -144,11 +144,11 @@ export function createLocalShellOperations(
         outputError = error instanceof Error ? error : new Error(String(error));
         stop();
       };
-      const handleData = (data: Buffer) => {
+      const handleData = (data: Buffer, stream: "stdout" | "stderr") => {
         try {
           // A pipe can deliver an already scheduled chunk after pause (including the
           // child-process exit flush). Serialize that chunk behind the current write.
-          const deliver = () => (stopped ? undefined : onData(data));
+          const deliver = () => (stopped ? undefined : onData(data, stream));
           const pending = pendingOutput ? pendingOutput.then(deliver) : deliver();
           if (
             pending &&
@@ -174,6 +174,8 @@ export function createLocalShellOperations(
           handleOutputError(error);
         }
       };
+      const onStdout = (data: Buffer) => handleData(data, "stdout");
+      const onStderr = (data: Buffer) => handleData(data, "stderr");
       const onOutputResume = () => {
         // Node also resumes inherited pipes on process exit. That must not bypass a
         // pending consumer or start the inherited-handle idle clock while it is busy.
@@ -195,8 +197,8 @@ export function createLocalShellOperations(
         // Stream stdout and stderr.
         child.stdout?.on("resume", onOutputResume);
         child.stderr?.on("resume", onOutputResume);
-        child.stdout?.on("data", handleData);
-        child.stderr?.on("data", handleData);
+        child.stdout?.on("data", onStdout);
+        child.stderr?.on("data", onStderr);
         // Handle abort signal by killing the entire process tree.
         if (signal) {
           if (signal.aborted) onAbort();
@@ -221,8 +223,8 @@ export function createLocalShellOperations(
         stopped = true;
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (signal) signal.removeEventListener("abort", onAbort);
-        child.stdout?.removeListener("data", handleData);
-        child.stderr?.removeListener("data", handleData);
+        child.stdout?.removeListener("data", onStdout);
+        child.stderr?.removeListener("data", onStderr);
         child.stdout?.removeListener("resume", onOutputResume);
         child.stderr?.removeListener("resume", onOutputResume);
       }

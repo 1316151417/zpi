@@ -1,0 +1,340 @@
+/* ZCode ExternalAgentImportDialog geometry, translated to the existing ZPI theme tokens. */
+.command-import-backdrop {
+  z-index: 49;
+}
+.command-import-dialog {
+  position: fixed;
+  z-index: 50;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(672px, calc(100vw - 32px));
+  height: min(84vh, 640px);
+  max-height: calc(100dvh - 32px);
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-popover);
+  color: var(--color-text);
+  box-shadow: var(--shadow-menu);
+  font-size: var(--text-body);
+  outline: none;
+}
+.command-import-header,
+.command-import-header-tools,
+.command-import-footer,
+.command-import-footer-info,
+.command-import-mode,
+.command-import-source-row,
+.command-import-source-toggle,
+.command-import-select-all,
+.command-import-select-all > div,
+.command-import-item,
+.command-import-result-row {
+  display: flex;
+  align-items: center;
+}
+.command-import-header {
+  flex-shrink: 0;
+  gap: 8px;
+}
+.command-import-header h2 {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-heading);
+  font-weight: 600;
+}
+.command-import-header-tools {
+  gap: 8px;
+  color: var(--color-text-subtle);
+}
+.command-import-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--color-text-subtle);
+}
+.command-import-icon-button:hover,
+.command-import-source-row:hover,
+.command-import-item:hover {
+  background: var(--color-fill-hover);
+}
+.command-import-dialog button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.command-import-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+}
+.command-import-empty,
+.command-import-loading {
+  border-radius: 8px;
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
+  padding: 40px 16px;
+}
+.command-import-empty {
+  text-align: center;
+  border: 1px dashed var(--color-border);
+}
+.command-import-loading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 192px;
+}
+.command-import-spinner {
+  animation: command-import-spin 1s linear infinite;
+}
+@keyframes command-import-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.command-import-warning {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  overflow-wrap: anywhere;
+}
+.command-import-select-all {
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  margin-bottom: 4px;
+  color: var(--color-text-subtle);
+}
+.command-import-select-all > div {
+  gap: 8px;
+}
+.command-import-select-all > span,
+.command-import-source-info > span,
+.command-import-source-info code,
+.command-import-item-text > span + span,
+.command-import-result-row > span:last-child {
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+}
+.command-import-checkbox {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 20px;
+  min-width: 20px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: Independent scoped checkbox span. */
+.command-import-checkbox > span {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+}
+.command-import-checkbox > span[data-checked="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.command-import-source-row {
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.command-import-source-toggle {
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+  padding: 0;
+  text-align: left;
+}
+.command-import-source-toggle > svg {
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+}
+.command-import-source-toggle > svg.expanded {
+  transform: rotate(90deg);
+}
+.command-import-source-info {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.command-import-source-info strong,
+.command-import-item-text strong,
+.command-import-result-row strong {
+  font-weight: 500;
+}
+.command-import-source-info code {
+  overflow-wrap: anywhere;
+  font-family: var(--font-code);
+}
+.command-import-source-items {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border);
+}
+.command-import-item {
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.command-import-item-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.command-import-item-text > span:first-child {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.command-import-item-text code {
+  color: var(--color-text-subtle);
+  font: var(--text-small) var(--font-code);
+}
+.command-import-footer {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.command-import-footer:has(> button:only-child) {
+  justify-content: flex-end;
+}
+.command-import-footer-info {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--color-text-subtle);
+}
+.command-import-mode {
+  gap: 4px;
+}
+.command-import-mode .settings-select-trigger {
+  height: 28px;
+  min-width: 70px;
+  width: fit-content;
+  padding: 0 8px;
+  background: var(--color-surface);
+}
+.command-import-primary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: 500;
+}
+.command-import-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+}
+.command-import-stats strong {
+  margin-right: 4px;
+  color: var(--color-text);
+  font-family: var(--font-code);
+  font-weight: 500;
+}
+.command-import-results h3 {
+  font-size: var(--text-body);
+  font-weight: 500;
+  margin: 16px 0 8px;
+}
+.command-import-result-list {
+  overflow: hidden;
+  border-radius: 8px;
+}
+.command-import-result-row {
+  gap: 10px;
+  padding: 8px 12px;
+}
+.command-import-result-row + .command-import-result-row {
+  border-top: 1px solid var(--color-border);
+}
+.command-import-result-row strong {
+  overflow-wrap: anywhere;
+}
+.command-import-result-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-diff-added);
+  color: var(--color-bg);
+}
+.command-import-result-icon[data-status="skipped"] {
+  background: var(--color-warning);
+}
+.command-import-result-icon[data-status="failed"] {
+  background: var(--color-danger);
+}
+.command-import-warnings {
+  margin-top: 12px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.command-import-warnings summary {
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .command-import-dialog {
+    padding: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .command-import-spinner {
+    animation: none;
+  }
+}
+
+.command-import-checkbox input:focus-visible + span {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+}
+.command-import-header-tools .settings-select-trigger {
+  height: 28px;
+  width: fit-content;
+  min-width: 60px;
+}

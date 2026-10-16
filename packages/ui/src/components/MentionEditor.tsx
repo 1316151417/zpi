@@ -108,6 +108,9 @@ export const MentionEditor = forwardRef<
     placeholder?: string;
     history?: EditorHistory;
     initialSelection?: [number, number];
+    commandNames?: readonly string[];
+    subagentNames?: readonly string[];
+    onBlur?(): void;
     onFile?(path: string): void;
     onSelection?(selection: [number, number]): void;
     onChange(value: string, caret: number): void;
@@ -124,6 +127,9 @@ export const MentionEditor = forwardRef<
       placeholder = "描述你想完成的工作…",
       history: providedHistory,
       initialSelection,
+      commandNames,
+      subagentNames,
+      onBlur,
       onSelection,
       onFile,
       onChange,
@@ -203,7 +209,7 @@ export const MentionEditor = forwardRef<
         last.current = { text: value, selection: pendingCaret.current ?? last.current.selection };
         restoring.current = false;
       }
-      const mentions = displayReferences(value);
+      const mentions = displayReferences(value, commandNames, subagentNames);
       const rendered = Array.from(element.querySelectorAll<HTMLElement>("[data-markdown]"));
       const tail = element.querySelector("br[data-editor-tail]");
       if (
@@ -251,7 +257,7 @@ export const MentionEditor = forwardRef<
         setSelection(element, ...caret);
         pendingCaret.current = null;
       } else pendingCaret.current = initialSelection ?? [value.length, value.length];
-    }, [value, compositionVersion]);
+    }, [value, compositionVersion, commandNames, subagentNames]);
     const replaceSelection = (start: number, end: number, inserted: string) => {
       const caret = start + inserted.length;
       pendingCaret.current = [caret, caret];
@@ -307,6 +313,7 @@ export const MentionEditor = forwardRef<
           }
         }}
         onBlur={() => {
+          onBlur?.();
           const element = root.current;
           if (!element || composing.current) return;
           const positions = element.contains(window.getSelection()?.anchorNode ?? null)
@@ -378,7 +385,7 @@ export const MentionEditor = forwardRef<
             if (event.key === "Backspace") start -= Array.from(value.slice(0, start)).at(-1)?.length ?? 0;
             else end += Array.from(value.slice(end))[0]?.length ?? 0;
           }
-          for (const mention of displayReferences(value))
+          for (const mention of displayReferences(value, commandNames, subagentNames))
             if (start < mention.end && end > mention.start) {
               start = Math.min(start, mention.start);
               end = Math.max(end, mention.end);

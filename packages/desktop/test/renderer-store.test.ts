@@ -53,6 +53,10 @@ async function setup() {
       value: { ...session, id: "created", draft: true },
     })),
     getSessionSnapshot: vi.fn(async (_id?: string) => ({ ok: true, value: snapshot })),
+    listSessionCustomCommands: vi.fn(async () => ({
+      ok: true,
+      value: { commands: [], diagnostics: [], directoryPath: "/fixture/.zpi/commands", subagents: [] },
+    })),
     listCommands: vi.fn(async () => ({
       ok: true,
       value: [] as ReturnType<typeof import("zpi-coding-agent").listCommands>,

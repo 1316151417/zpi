@@ -468,6 +468,14 @@ async function launch(): Promise<void> {
         readPatch: 3,
         previewPrompt: 0,
         listTools: 0,
+        getCustomCommands: 1,
+        listSessionCustomCommands: 1,
+        createCustomCommand: 2,
+        updateCustomCommand: 2,
+        deleteCustomCommand: 2,
+        setCustomCommandEnabled: 2,
+        discoverCommandImports: 1,
+        importCommands: 2,
         getSkillSettings: 0,
         readSkill: 1,
         setSkillEnabled: 2,
@@ -769,6 +777,76 @@ async function launch(): Promise<void> {
           break;
         case "listTools":
           value = host.listTools();
+          break;
+        case "getCustomCommands":
+          value = await host.commandServices(args[0] === undefined ? undefined : string(0)).commands.list();
+          break;
+        case "listSessionCustomCommands":
+          value = await host.listSessionCustomCommands(string(0));
+          break;
+        case "createCustomCommand":
+          value = await host
+            .commandServices(args[1] === undefined ? undefined : string(1))
+            .commands.create(
+              object(0, [
+                "name",
+                "prompt",
+                "description",
+                "argumentHint",
+              ]) as unknown as import("../shared/custom-commands.ts").CustomCommandInput,
+            );
+          break;
+        case "updateCustomCommand":
+          value = await host
+            .commandServices(args[1] === undefined ? undefined : string(1))
+            .commands.update(
+              object(0, [
+                "id",
+                "expectedRevision",
+                "name",
+                "prompt",
+                "description",
+                "argumentHint",
+                "confirmLinkedSource",
+                "expectedSourcePath",
+              ]) as unknown as import("../shared/custom-commands.ts").CustomCommandUpdate,
+            );
+          break;
+        case "deleteCustomCommand":
+          value = await host
+            .commandServices(args[1] === undefined ? undefined : string(1))
+            .commands.delete(
+              object(0, [
+                "id",
+                "expectedRevision",
+              ]) as unknown as import("../shared/custom-commands.ts").CustomCommandDelete,
+            );
+          break;
+        case "setCustomCommandEnabled":
+          value = await host
+            .commandServices(args[1] === undefined ? undefined : string(1))
+            .commands.setEnabled(
+              object(0, [
+                "id",
+                "enabled",
+              ]) as unknown as import("../shared/custom-commands.ts").CustomCommandSetEnabled,
+            );
+          break;
+        case "discoverCommandImports":
+          value = await host
+            .commandServices(args[0] === undefined ? undefined : string(0))
+            .imports.discover();
+          break;
+        case "importCommands":
+          value = await host
+            .commandServices(args[1] === undefined ? undefined : string(1))
+            .imports.importSelected(
+              object(0, [
+                "scanId",
+                "mode",
+                "selections",
+              ]) as unknown as import("../shared/command-import.ts").CommandImportRequest,
+            );
           break;
         case "getSkillSettings":
           value = await host.getSkillSettings();

@@ -45,6 +45,10 @@ async function setup() {
     getDraft: vi.fn(async () =>
       ok({ text: "saved draft", fileReferences: [], selection: [0, 0], revision: 0 }),
     ),
+    listSessionCustomCommands: vi.fn(async () => ({
+      ok: true,
+      value: { commands: [], diagnostics: [], directoryPath: "/fixture/.zpi/commands", subagents: [] },
+    })),
     listCommands: vi.fn(async () => ok([])),
     listSessionSkills: vi.fn(async () => ok({ skills: [], diagnostics: [] })),
     closeSideChat: vi.fn(async () => ok(undefined)),

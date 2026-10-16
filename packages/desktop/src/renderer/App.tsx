@@ -86,6 +86,7 @@ import {
   newSession,
   queueActions,
   refresh,
+  refreshSuggestions,
   report,
   resetSession,
   selectSession,
@@ -283,6 +284,21 @@ export function App() {
     return () => {
       window.removeEventListener("resize", resize);
       if (resizing.current) document.body.style.userSelect = oldSelect.current;
+    };
+  }, []);
+  useEffect(() => {
+    const refreshCommands = () => {
+      const state = useStore.getState();
+      for (const id of state.suggestions.keys()) {
+        if (state.sessions.has(id))
+          void refreshSuggestions(id, () => useStore.getState().sessions.has(id)).catch(report);
+      }
+    };
+    window.addEventListener("zpi:commands-changed", refreshCommands);
+    window.addEventListener("focus", refreshCommands);
+    return () => {
+      window.removeEventListener("zpi:commands-changed", refreshCommands);
+      window.removeEventListener("focus", refreshCommands);
     };
   }, []);
   useEffect(() => {
@@ -1019,6 +1035,7 @@ export function App() {
                 commands={view.backgroundTasks}
               />
               <Conversation
+                suggestions={state.activeSuggestions ?? []}
                 onOpenSubagent={showSubagent}
                 previewServices={previewServices}
                 findRequest={find.open && find.scope === "conversation" ? find.request : undefined}

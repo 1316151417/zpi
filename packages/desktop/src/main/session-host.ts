@@ -61,6 +61,14 @@ import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts"
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { BackgroundTasks } from "./background-tasks.ts";
+import { CommandImportService } from "./command-import.ts";
+import {
+  expandCustomCommandPromptWithShell,
+  parseCustomCommandInvocation,
+  prepareCustomCommandPrompt,
+} from "./custom-command-expansion.ts";
+import { type CustomCommandShellRunner, runCustomCommandShell } from "./custom-command-shell.ts";
+import { CustomCommandsStore } from "./custom-commands.ts";
 import { pluginSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { ErrorLog } from "./error-log.ts";
@@ -95,6 +103,7 @@ interface ActiveRun {
   finish: () => void;
   ordinal: number;
   aborted?: boolean;
+  preparationAbort: AbortController;
   session?: AgentSession;
   hasAssistant?: boolean;
 }
@@ -154,12 +163,19 @@ export class SessionHost {
   private homeDir: string;
   private defaultWorkspace: string;
   readonly attachments: AttachmentStore;
+  readonly customCommands: CustomCommandsStore;
+  readonly commandImports: CommandImportService;
+  private readonly projectCommandServices = new Map<
+    string,
+    { commands: CustomCommandsStore; imports: CommandImportService }
+  >();
   readonly inputQueue: SessionInputQueue;
   private requestFetch?: typeof fetch;
   private configurations = new Map<string, SessionConfiguration>();
   private searches = new Map<string, AbortController>();
   private errors: ErrorLog;
   private worktreeRoot: string;
+  private readonly commandShellRunner: CustomCommandShellRunner;
   constructor(
     dir: string,
     settings: SettingsStore,
@@ -168,7 +184,19 @@ export class SessionHost {
     requestFetch?: typeof fetch,
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
+    commandShellRunner: CustomCommandShellRunner = runCustomCommandShell,
   ) {
+    this.commandShellRunner = commandShellRunner;
+    const commandsDirectory = join(homeDir, ".zpi", "commands");
+    this.commandImports = new CommandImportService({
+      homeDirectory: homeDir,
+      targetDirectory: commandsDirectory,
+    });
+    this.customCommands = new CustomCommandsStore({
+      rootDirectory: commandsDirectory,
+      stateFilePath: join(homeDir, ".zpi", "command-state.json"),
+      importedLinkTargets: () => this.commandImports.registeredLinkTargets(),
+    });
     this.taskGroups = new TaskGroupsStore(settings.state);
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
@@ -1513,6 +1541,57 @@ export class SessionHost {
       diagnostics: this.sessions.get(id)?.getResourceDiagnostics() ?? [],
     };
   }
+  private commandServicesForDirectory(directory: string) {
+    let services = this.projectCommandServices.get(directory);
+    if (!services) {
+      const targetDirectory = join(directory, ".zpi", "commands");
+      const imports = new CommandImportService({
+        homeDirectory: this.homeDir,
+        targetDirectory,
+        workspaceDirectory: directory,
+      });
+      services = {
+        imports,
+        commands: new CustomCommandsStore({
+          rootDirectory: targetDirectory,
+          stateFilePath: join(directory, ".zpi", "command-state.json"),
+          importedLinkTargets: () => imports.registeredLinkTargets(),
+        }),
+      };
+      this.projectCommandServices.set(directory, services);
+    }
+    return services;
+  }
+  commandServices(projectId?: string) {
+    if (projectId === undefined) return { commands: this.customCommands, imports: this.commandImports };
+    return this.commandServicesForDirectory(this.project(projectId).path);
+  }
+  private commandSubagents(id: string) {
+    const config = this.configuration(id);
+    if (!config.subagents || config.subagentProfile) return [];
+    const enabled = this.listSubagents(id).agents.filter((agent) => agent.enabled);
+    return [...new Map(enabled.map((agent) => [agent.name.toLowerCase(), agent])).values()];
+  }
+  async listSessionCustomCommands(id: string) {
+    const record = this.record(id);
+    const [project, user] = await Promise.all([
+      this.commandServicesForDirectory(this.cwd(record)).commands.list(),
+      this.customCommands.list(),
+    ]);
+    const names = new Set<string>();
+    const commands = [...project.commands, ...user.commands].filter((command) => {
+      const key = command.name.toLowerCase();
+      if (names.has(key)) return false;
+      names.add(key);
+      return true;
+    });
+    return {
+      commands,
+      diagnostics: [...project.diagnostics, ...user.diagnostics],
+      directoryPath: project.directoryPath,
+      subagents: this.commandSubagents(id).map(({ name, description }) => ({ name, description })),
+    };
+  }
   async listSkills(projectId: string) {
     const loader = new FileResourceLoader({
       projectDir: this.project(projectId).path,
@@ -2200,6 +2279,7 @@ export class SessionHost {
       }),
       finish: () => finish(),
       ordinal: 0,
+      preparationAbort: new AbortController(),
     };
     this.activeRuns.set(id, run);
     const needsWorktree = Boolean(record.newWorktree && !record.worktree);
@@ -2209,6 +2289,33 @@ export class SessionHost {
       const manager = this.manager(id);
       const loadedInput = await this.loadInput(input);
       const { references, loaded, parsed } = loadedInput;
+      const explicitUserInput = !internalSubagent && !input.subagentNotification;
+      const customInvocation = explicitUserInput ? parseCustomCommandInvocation(text) : undefined;
+      const initialCustom = customInvocation
+        ? (await this.listSessionCustomCommands(id)).commands.find(
+            (item) => item.name.slice(1).toLowerCase() === customInvocation.name.replaceAll(":", "/"),
+          )
+        : undefined;
+      if (initialCustom && !initialCustom.enabled)
+        throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
+      const agentMention = explicitUserInput ? /^@([^\s@/]+)(?:\s+([\s\S]*))?$/.exec(text.trim()) : null;
+      const declaredAgent = agentMention
+        ? this.listSubagents(id).agents.find(
+            (agent) => agent.name.toLowerCase() === agentMention[1].toLowerCase(),
+          )
+        : undefined;
+      const requestedAgent = declaredAgent
+        ? this.commandSubagents(id).find(
+            (agent) => agent.name.toLowerCase() === declaredAgent.name.toLowerCase(),
+          )
+        : undefined;
+      if (declaredAgent && !requestedAgent) throw new Error("invalid_input: 此会话未启用该子智能体");
+      const commandNeedsShell =
+        initialCustom && customInvocation
+          ? prepareCustomCommandPrompt(initialCustom, customInvocation.args).parts.some(
+              (part) => part.kind === "shell",
+            )
+          : false;
       let inputReferences = loadedInput.inputReferences;
       const context = manager.buildSessionContext();
       if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
@@ -2401,7 +2508,59 @@ export class SessionHost {
           session.setThinkingLevel(toThinking(selection.reasoning, model));
         run.session = session;
         const inputContext = { images: loaded.images, fileReferences: inputReferences };
-        const prepared = await session.prepareInput(text, inputContext);
+        const invocation = parseCustomCommandInvocation(text);
+        let commandText = text;
+        if (invocation && explicitUserInput) {
+          const catalog = await this.listSessionCustomCommands(id);
+          const command = catalog.commands.find(
+            (item) => item.name.slice(1).toLowerCase() === invocation.name.toLowerCase().replaceAll(":", "/"),
+          );
+          if (
+            Boolean(initialCustom) !== Boolean(command) ||
+            (initialCustom && command?.revision !== initialCustom.revision)
+          )
+            throw new Error("invalid_input: 命令文件在准备期间已更改或删除，请确认最新内容后重试");
+          if (command) {
+            if (!command.enabled) throw new Error("invalid_input: 此命令已禁用，请在设置中启用后重试");
+            const skillContext: string[] = [];
+            if (command.skills?.length) {
+              const resources = this.resourceLoader(id);
+              await resources.reload();
+              for (const name of command.skills) {
+                const skill = await resources.loadSkill(name);
+                skillContext.push(
+                  `Required skill: ${skill.name}\nSkill source: ${skill.path}\n${skill.body}`,
+                );
+              }
+            }
+            const source = command.filePath.startsWith(join(this.homeDir, ".zpi", "commands"))
+              ? "user/zpi"
+              : "project/zpi";
+            commandText = await expandCustomCommandPromptWithShell(
+              command,
+              invocation.args,
+              (shellCommand) =>
+                this.commandShellRunner(shellCommand, {
+                  cwd: this.cwd(record),
+                  sessionId: id,
+                  signal: run.preparationAbort.signal,
+                }),
+              source,
+            );
+            if (skillContext.length) commandText += `\n\n${skillContext.join("\n\n")}`;
+          }
+        }
+        if (requestedAgent && agentMention) {
+          if (
+            !configuration.subagents ||
+            !this.commandSubagents(id).some(
+              (agent) => agent.name.toLowerCase() === requestedAgent.name.toLowerCase(),
+            )
+          )
+            throw new Error("invalid_input: 此会话未启用该子智能体");
+          commandText = `Use the Agent tool with subagent_type ${JSON.stringify(requestedAgent.name)} for the following user request. Preserve the requested agent's configured permissions and report its result.\n\n${agentMention[2]?.trim() || `Use ${requestedAgent.name} for this task.`}`;
+        }
+        const prepared = await session.prepareInput(commandText, inputContext);
         if (prepared.kind === "prompt" && loaded.fileContext)
           prepared.text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
         if (prepared.kind === "prompt") {
@@ -2468,9 +2627,12 @@ export class SessionHost {
           )
           .finally(unsubscribe);
       };
-      if (needsWorktree) {
+      if (needsWorktree || commandNeedsShell) {
         await accept(configuredModel);
-        this.emit(id, run.runId, { type: "run_preparation", message: "正在创建工作树…" });
+        this.emit(id, run.runId, {
+          type: "run_preparation",
+          message: needsWorktree ? "正在创建工作树…" : "正在执行命令…",
+        });
         // Acknowledge accepted input before Git checkout so the composer can clear immediately.
         void initialize().catch((error) => this.settle(id, run, error));
       } else await initialize();
@@ -2770,6 +2932,7 @@ export class SessionHost {
     const run = this.activeRuns.get(input.sessionId);
     if (!run || run.runId !== input.runId) throw new Error("not_found: 当前运行不存在");
     run.aborted = true;
+    run.preparationAbort.abort();
     this.pendingSubagentMessages.delete(input.sessionId);
     await Promise.all([
       this.subagents.stopAll(input.sessionId),
@@ -2813,6 +2976,7 @@ export class SessionHost {
       runs.map((r) =>
         cleanup(async () => {
           r.aborted = true;
+          r.preparationAbort.abort();
           try {
             await r.session?.abort();
           } finally {

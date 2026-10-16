@@ -11,6 +11,15 @@ import type {
   WorktreeInfo,
 } from "zpi-ui";
 import type { FileLocation } from "zpi-ui/links";
+import type { CommandImportDiscovery, CommandImportRequest, CommandImportResult } from "./command-import.ts";
+import type {
+  CustomCommand,
+  CustomCommandDelete,
+  CustomCommandInput,
+  CustomCommandSetEnabled,
+  CustomCommandsList,
+  CustomCommandUpdate,
+} from "./custom-commands.ts";
 import type { EditorInfo } from "./editors.ts";
 import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
 import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
@@ -428,6 +437,14 @@ export interface DesktopBridge {
   setSessionSelection(sessionId: string, selection: CombinedSelection): Promise<Result<SessionSnapshot>>;
   listSessionSkills(sessionId: string): Promise<Result<SkillList>>;
   listCommands(): Promise<Result<{ name: string; description: string }[]>>;
+  listSessionCustomCommands(sessionId: string): Promise<Result<CustomCommandsList>>;
+  getCustomCommands(projectId?: string): Promise<Result<CustomCommandsList>>;
+  createCustomCommand(input: CustomCommandInput, projectId?: string): Promise<Result<CustomCommand>>;
+  updateCustomCommand(input: CustomCommandUpdate, projectId?: string): Promise<Result<CustomCommand>>;
+  deleteCustomCommand(input: CustomCommandDelete, projectId?: string): Promise<Result<void>>;
+  setCustomCommandEnabled(input: CustomCommandSetEnabled, projectId?: string): Promise<Result<CustomCommand>>;
+  discoverCommandImports(projectId?: string): Promise<Result<CommandImportDiscovery>>;
+  importCommands(input: CommandImportRequest, projectId?: string): Promise<Result<CommandImportResult>>;
   openExternal(url: string): Promise<Result<void>>;
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
@@ -530,5 +547,13 @@ export const methods = [
   "setSessionSelection",
   "listSessionSkills",
   "listCommands",
+  "getCustomCommands",
+  "listSessionCustomCommands",
+  "createCustomCommand",
+  "updateCustomCommand",
+  "deleteCustomCommand",
+  "setCustomCommandEnabled",
+  "discoverCommandImports",
+  "importCommands",
   "openExternal",
 ] as const;

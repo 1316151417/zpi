@@ -10,7 +10,10 @@ export const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   await runCleanup(cleanup);
 });
-export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
+export async function fixture(
+  handler: Parameters<typeof fakeServer>[0],
+  commandShellRunner?: ConstructorParameters<typeof SessionHost>[7],
+) {
   const dir = await mkdtemp(join(tmpdir(), "zpi-host-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const server = await fakeServer(handler);
@@ -32,7 +35,16 @@ export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
     maxTokens: 4096,
   });
   settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
-  const host = new SessionHost(dir, settings, join(dir, "agent"), undefined, undefined);
+  const host = new SessionHost(
+    dir,
+    settings,
+    join(dir, "agent"),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    commandShellRunner,
+  );
   cleanup.push(() => host.close());
   await host.init();
   const aDir = join(dir, "a"),

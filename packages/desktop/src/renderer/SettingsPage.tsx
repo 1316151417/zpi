@@ -21,6 +21,7 @@ import {
   Settings2,
   Sparkles,
   Sun,
+  Terminal,
   Trash2,
   Wrench,
 } from "lucide-react";
@@ -40,6 +41,7 @@ import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../sha
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { CapabilitySettings } from "./CapabilitySettings.tsx";
 import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
+import { CommandSettings } from "./CommandSettings.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
 import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
@@ -56,6 +58,7 @@ const sections = [
   ["prompt", "系统提示词", Sparkles],
   ["tools", "工具", Wrench],
   ["skills", "技能", Puzzle],
+  ["commands", "命令", Terminal],
   ["capabilities", "插件能力", Package],
   ["subagents", "子智能体", Bot],
   ["models", "模型", Braces],
@@ -125,6 +128,8 @@ function FontSizeInput({ value, onChange }: { value: number; onChange: (value: n
 }
 export function SettingsPage({ onClose }: { onClose: () => void }) {
   const opener = useRef(document.activeElement);
+  const [commandEditing, setCommandEditing] = useState(false);
+  const [commandBreadcrumb, setCommandBreadcrumb] = useState<HTMLDivElement | null>(null);
   const settings = useStore((s) => s.settings);
   const back = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -371,14 +376,23 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         </nav>
       </aside>
       <div className="settings-main">
-        <div className="settings-titlebar" aria-hidden="true" />
+        <div
+          className="settings-titlebar"
+          ref={setCommandBreadcrumb}
+          aria-hidden={tab !== "commands" || !commandEditing}
+        />
         <div className="settings-scroll">
           <div className={`settings-content ${tab === "models" ? "model-settings-content" : ""}`}>
-            {tab !== "archived" && tab !== "shortcuts" && (
+            {tab !== "archived" && tab !== "shortcuts" && !(tab === "commands" && commandEditing) && (
               <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
             )}
             <div className="settings-page">
-              {tab === "archived" ? (
+              {tab === "commands" ? (
+                <CommandSettings
+                  breadcrumbContainer={commandBreadcrumb}
+                  onEditingChange={setCommandEditing}
+                />
+              ) : tab === "archived" ? (
                 <ArchivedTasks />
               ) : tab === "shortcuts" ? (
                 <ShortcutSettings />

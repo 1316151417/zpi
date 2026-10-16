@@ -61,6 +61,13 @@ import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CompactionDivider } from "./CompactionDivider.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
+import {
+  customCommandNames,
+  slashSuggestionLabel,
+  slashSuggestions,
+  slashTokenEnd,
+  subagentNames,
+} from "./command-suggestions.ts";
 import { DraftGreeting } from "./DraftGreeting.tsx";
 import { FileRewindConflictDialog } from "./FileRewindConflictDialog.tsx";
 import { fileMentionQuery } from "./file-mention-query.ts";
@@ -75,7 +82,7 @@ import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
 import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
-import { displayReferences, FileIcon, Reference, referenceStyle } from "./Reference.tsx";
+import { displayReferences, FileIcon, Reference } from "./Reference.tsx";
 import { StreamEntrance } from "./StreamEntrance.tsx";
 import { SubagentContext } from "./SubagentToolBlock.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
@@ -103,6 +110,7 @@ function UserMessageEditor({
   context,
   onEdit,
   onCancel,
+  suggestions,
   onFile,
 }: {
   run: RunView;
@@ -110,6 +118,7 @@ function UserMessageEditor({
   context?: ComposerContext;
   onEdit: EditMessage;
   onCancel: () => void;
+  suggestions?: InputSuggestion[];
   onFile?: (path: string, location?: FileLocation) => void;
 }) {
   const storage = useRef(new ComposerDraftStore());
@@ -135,6 +144,7 @@ function UserMessageEditor({
         busy={false}
         draftStorage={storage.current}
         context={context}
+        suggestions={suggestions}
         onFile={onFile}
         showSendButton
         onStop={() => {}}
@@ -362,7 +372,9 @@ export const RunGroup = memo(function RunGroup({
   sessionId,
   onEdit,
   onFork,
+  suggestions,
 }: {
+  suggestions?: InputSuggestion[];
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
   run: RunView;
@@ -403,6 +415,8 @@ export const RunGroup = memo(function RunGroup({
   const [actionError, setActionError] = useState("");
   const cancelEdit = useCallback(() => setEditing(false), []);
   const parsedUser = parseSelectionPrompt(run.userMessage);
+  const commandNames = useMemo(() => customCommandNames(suggestions ?? []), [suggestions]);
+  const agentNames = useMemo(() => subagentNames(suggestions ?? []), [suggestions]);
   useEffect(() => {
     if (!onEdit) setEditing(false);
   }, [onEdit]);
@@ -452,6 +466,7 @@ export const RunGroup = memo(function RunGroup({
                 run={run}
                 sessionId={sessionId}
                 context={context}
+                suggestions={suggestions}
                 onEdit={onEdit}
                 onCancel={cancelEdit}
                 onFile={onFile}
@@ -482,7 +497,7 @@ export const RunGroup = memo(function RunGroup({
                       {(() => {
                         const parts: ReactNode[] = [];
                         let previous = 0;
-                        const mentions = displayReferences(parsedUser.text);
+                        const mentions = displayReferences(parsedUser.text, commandNames, agentNames);
                         for (const mention of mentions) {
                           const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
                           parts.push(parsedUser.text.slice(previous, mention.start));
@@ -739,7 +754,9 @@ export function Conversation({
   findRequest,
   onFindStateChange,
   findBar,
+  suggestions,
 }: {
+  suggestions?: InputSuggestion[];
   onOpenSubagent?: (task: SubagentTask) => void;
   findRequest?: FindRequest;
   onFindStateChange?: (state: FindState) => void;
@@ -1058,6 +1075,7 @@ export function Conversation({
               view.runs.map((run) => (
                 <Fragment key={run.runId}>
                   <RunGroup
+                    suggestions={suggestions}
                     workspace={workspace}
                     key={run.runId}
                     run={run}
@@ -1223,6 +1241,7 @@ export function ChatComposer({
     trigger: "/" | "$" | "#";
     query: string;
   }>();
+  const dismissedInput = useRef<string | undefined>(undefined);
   const sessionsEnabled = inputQuery?.trigger === "#";
   const [sessionCatalog, setSessionCatalog] = useState<{
     id: string;
@@ -1392,6 +1411,12 @@ export function ChatComposer({
   };
   const currentSession = useRef(sessionId);
   const [highlighted, setHighlighted] = useState(0);
+  const commandNames = useMemo(() => customCommandNames(suggestions), [suggestions]);
+  const agentNames = useMemo(() => subagentNames(suggestions), [suggestions]);
+  const slash = useMemo(
+    () => slashSuggestions(suggestions, inputQuery?.query ?? ""),
+    [suggestions, inputQuery?.query],
+  );
   const matches = useMemo(
     () =>
       inputQuery
@@ -1402,22 +1427,25 @@ export function ChatComposer({
             )
           : inputQuery.trigger === "$"
             ? filterSkillSuggestions(suggestions, inputQuery.query)
-            : suggestions.filter(
-                (suggestion) =>
-                  suggestion.group === "命令" &&
-                  ["init", "compact"].includes(suggestion.name) &&
-                  suggestion.name.toLowerCase().includes(inputQuery.query.toLowerCase()),
-              )
+            : slash.options
         : [],
-    [inputQuery, suggestions, sessionCatalog, sessionId],
+    [inputQuery, suggestions, sessionCatalog, sessionId, slash],
   );
+  useLayoutEffect(() => {
+    if (inputQuery?.trigger === "/") setHighlighted(slash.selectedIndex);
+  }, [inputQuery?.trigger, slash]);
   const menuOpen = Boolean(inputQuery);
   const insert = (suggestion: InputSuggestion) => {
     if (!inputQuery) return;
-    const { start, end } = inputQuery;
+    const { start } = inputQuery;
+    const end =
+      inputQuery.trigger === "/"
+        ? slashTokenEnd(draft, inputQuery.end, inputQuery.query, suggestion.name)
+        : inputQuery.end;
     const inserted = suggestion.insert;
     updateDraft(draft.slice(0, start) + inserted + draft.slice(end));
     setInputQuery(undefined);
+    dismissedInput.current = undefined;
     // The editor applies this caret when it renders the new text, before another user selection.
     textarea.current?.focus();
     textarea.current?.setSelectionRange(start + inserted.length, start + inserted.length);
@@ -1429,6 +1457,7 @@ export function ChatComposer({
     setFileQuery(undefined);
     setInputQuery(undefined);
     setQueueConfirmation(false);
+    dismissedInput.current = undefined;
     currentWorkspace.current = workspace;
     promptHistory.current = readPromptHistory(workspace, sentMessages);
     recalled.current = null;
@@ -1823,7 +1852,7 @@ export function ChatComposer({
         )}
         {menuOpen && !fileQuery && (
           <div
-            className={`command-panel${inputQuery?.trigger === "$" ? " skill-panel" : sessionsEnabled ? " session-panel" : ""}`}
+            className={`command-panel${inputQuery?.trigger === "$" ? " skill-panel" : sessionsEnabled ? " session-panel" : " slash-panel"}`}
           >
             <SuggestionOptions
               selectedIndex={highlighted}
@@ -1832,39 +1861,44 @@ export function ChatComposer({
             >
               {sessionError && <p role="alert">{sessionError}</p>}
               {sessionLoading && <p role="status">正在加载…</p>}
-              {!matches.length && !sessionError && !sessionLoading && (
+              {!matches.length && inputQuery?.trigger !== "/" && !sessionError && !sessionLoading && (
                 <p>
                   {sessionsEnabled
                     ? "没有匹配的近期会话"
                     : `暂无匹配${inputQuery?.trigger === "$" ? "技能" : "指令"}`}
                 </p>
               )}
-              {matches.map((suggestion, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index === highlighted}
-                  key={suggestion.insert}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => insert(suggestion)}
-                >
-                  {inputQuery?.trigger === "#" ? (
-                    <MessagesSquare size={14} className="skill-option-icon" aria-hidden="true" />
-                  ) : inputQuery?.trigger === "$" ? (
-                    <WandSparkles size={14} className="skill-option-icon" aria-hidden="true" />
-                  ) : (
-                    <span
-                      className="reference-menu-icon command"
-                      style={referenceStyle("command", suggestion.name)}
-                      aria-hidden="true"
-                    />
-                  )}
-                  <strong>
-                    {inputQuery?.trigger === "/" ? "/" : ""}
-                    {suggestion.name}
-                  </strong>
-                  <span>{suggestion.description}</span>
-                </button>
+              {(inputQuery?.trigger === "/"
+                ? slash.sections
+                : [{ label: "", options: matches, offset: 0 }]
+              ).map((section) => (
+                <Fragment key={section.label}>
+                  {section.label && <div className="command-section-title">{section.label}</div>}
+                  {section.label && !section.options.length && <p>暂无匹配{section.label}</p>}
+                  {section.options.map((suggestion, index) => (
+                    <button
+                      key={`${suggestion.group}:${suggestion.insert}`}
+                      type="button"
+                      role="option"
+                      aria-selected={section.offset + index === highlighted}
+                      title={
+                        suggestion.argumentHint ? `/${suggestion.name} ${suggestion.argumentHint}` : undefined
+                      }
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insert(suggestion)}
+                    >
+                      {inputQuery?.trigger === "#" ? (
+                        <MessagesSquare size={14} className="skill-option-icon" aria-hidden="true" />
+                      ) : inputQuery?.trigger === "$" ? (
+                        <WandSparkles size={14} className="skill-option-icon" aria-hidden="true" />
+                      ) : null}
+                      <strong>
+                        {inputQuery?.trigger === "/" ? slashSuggestionLabel(suggestion) : suggestion.name}
+                      </strong>
+                      <span>{suggestion.description}</span>
+                    </button>
+                  ))}
+                </Fragment>
               ))}
             </SuggestionOptions>
             {!inputQuery?.query && (
@@ -1896,6 +1930,12 @@ export function ChatComposer({
             })
           }
           value={draft}
+          commandNames={commandNames}
+          subagentNames={agentNames}
+          onBlur={() => {
+            setInputQuery(undefined);
+            dismissedInput.current = undefined;
+          }}
           disabled={editing}
           placeholder={busy ? "继续输入以排队后续修改" : sentMessages.length ? "提出后续修改要求" : undefined}
           onPaste={(e) => {
@@ -1930,9 +1970,12 @@ export function ChatComposer({
             }));
             const prefix = text.slice(0, caret);
             setFileQuery(context ? fileMentionQuery(prefix) : undefined);
-            const command = /(?:^|\s)([/$#¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
+            const command =
+              /(?:^|\s)(\/)([^\s@$#¥￥]*)$/.exec(prefix) ?? /(?:^|\s)([$#¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
+            const signature = command ? `${command[1]}:${command[2]}` : undefined;
+            if (signature !== dismissedInput.current) dismissedInput.current = undefined;
             setInputQuery(
-              command
+              command && (!signature || signature !== dismissedInput.current)
                 ? {
                     start: caret - command[2].length - 1,
                     end: caret,
@@ -1955,15 +1998,19 @@ export function ChatComposer({
               const options = fileQuery ? fileOptions : matches;
               if (e.key === "Escape") {
                 e.preventDefault();
+                if (inputQuery) dismissedInput.current = `${inputQuery.trigger}:${inputQuery.query}`;
                 setFileQuery(undefined);
                 setInputQuery(undefined);
                 return;
               }
               if (options.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                 e.preventDefault();
-                setHighlighted(
-                  (n) => (n + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length,
-                );
+                setHighlighted((n) => {
+                  const next = n + (e.key === "ArrowDown" ? 1 : -1);
+                  return inputQuery?.trigger === "/"
+                    ? Math.max(0, Math.min(next, options.length - 1))
+                    : (next + options.length) % options.length;
+                });
                 return;
               }
               if (

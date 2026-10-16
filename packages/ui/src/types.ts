@@ -21,7 +21,9 @@ export interface InputSuggestion {
   name: string;
   description: string;
   insert: string;
-  group: "命令" | "Skill" | "对话";
+  group: "命令" | "Skill" | "子智能体" | "对话";
+  customCommand?: boolean;
+  argumentHint?: string;
 }
 export interface SessionMentionSuggestion extends InputSuggestion {
   sessionId: string;

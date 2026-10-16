@@ -861,8 +861,17 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await expect(page.locator(".sidebar")).toBeVisible();
     expect(await toggle.boundingBox()).toEqual(position);
     await editor.fill("/");
-    await expect(page.getByRole("listbox", { name: "指令", exact: true }).getByRole("option")).toHaveCount(2);
-    await expect(page.getByRole("option")).toHaveText([/init/, /compact/]);
+    const slash = page.getByRole("listbox", { name: "指令", exact: true });
+    await expect(slash.locator(".command-section-title")).toHaveText(["指令", "技能", "子智能体"]);
+    await expect(slash.locator('[role="option"] > strong').filter({ hasText: /^\// })).toHaveText([
+      "/init",
+      "/compact",
+    ]);
+    await expect(slash.locator('[role="option"] > strong').filter({ hasText: /^\$/ })).toHaveText([
+      "$review",
+    ]);
+    await expect(slash.getByRole("option", { name: /^Explore/ })).toBeVisible();
+    await expect(slash.getByRole("option", { name: /^general-purpose/ })).toBeVisible();
     await editor.fill("$");
     await page.getByRole("option", { name: /^review 用户/ }).click();
     await expect(editor.locator(".inline-mention.skill")).toHaveText("review");

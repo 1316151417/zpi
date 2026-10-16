@@ -49,6 +49,7 @@ export function SideChatPane({
     <section className="side-chat-pane" aria-label="辅助对话" data-side-chat-session={sessionId}>
       <Conversation
         view={view}
+        suggestions={suggestions ?? []}
         workspace={workspace}
         context={inputContext}
         previewServices={previewServices}
