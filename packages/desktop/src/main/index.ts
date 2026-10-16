@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -33,12 +33,15 @@ import { createDesktopWindow, hiddenTestMode, testMode } from "./automation.ts";
 import { browserUrl } from "./browser-url.ts";
 import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { defaultFileOpener } from "./default-file-open.ts";
+import { getInstalledEditors, openInEditor } from "./editors.ts";
 import { ErrorLog } from "./error-log.ts";
 import { performFileAction } from "./file-actions.ts";
-import { readFilePreview } from "./file-preview.ts";
+import { readFilePreview, readPreviewRange } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { PaneServices } from "./pane-services.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
+import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
+import { previewPrintHostScript, previewPrintIsolationCss } from "./preview-print-host.ts";
 import { openProjectFromDialog } from "./project-picker.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
@@ -358,6 +361,24 @@ async function launch(): Promise<void> {
   window.webContents.on("will-redirect", (e) => e.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_, __, cb) => cb(false));
   window.webContents.session.setPermissionCheckHandler(() => false);
+  const pdfExporter = new PreviewPdfExporter({
+    ready: (sessionId) => window.webContents.executeJavaScript(previewPrintHostScript(sessionId)),
+    print: async () => {
+      const key = await window.webContents.insertCSS(previewPrintIsolationCss, { cssOrigin: "user" });
+      try {
+        return await window.webContents.printToPDF(previewPdfOptions);
+      } finally {
+        await window.webContents.removeInsertedCSS(key);
+      }
+    },
+    chooseFile: (suggestedName) =>
+      dialog.showSaveDialog(window, {
+        title: "导出 PDF",
+        defaultPath: suggestedName,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      }),
+    write: (path, data) => writeFile(path, data),
+  });
   const notifications = new TaskNotifications(window, () => settings.get().interface);
   host.subscribe((event) => {
     if (!window.isDestroyed()) window.webContents.send("zpi:event", event);
@@ -429,9 +450,14 @@ async function launch(): Promise<void> {
         copyText: 1,
         copySessionPath: 1,
         fileAction: 4,
+        getInstalledEditors: 0,
+        printPageToPdf: 1,
+        savePreviewPdf: 2,
+        openInEditor: 3,
         searchFiles: 2,
         getWorkspaceInfo: 1,
         readFilePreview: 3,
+        readPreviewRange: 4,
         checkPreviewFiles: 2,
         downloadImage: 1,
         pickAttachments: 1,
@@ -636,6 +662,19 @@ async function launch(): Promise<void> {
           clipboard.writeText(text);
           break;
         }
+        case "printPageToPdf":
+          host.workspaceInfo(string(0));
+          value = await pdfExporter.print(string(0));
+          break;
+        case "savePreviewPdf":
+          value = await pdfExporter.save(args[0], string(1));
+          break;
+        case "getInstalledEditors":
+          value = await getInstalledEditors();
+          break;
+        case "openInEditor":
+          await openInEditor(host.workspaceInfo(string(0)).cwd, string(1), string(2));
+          break;
         case "fileAction":
           await performFileAction(
             host.workspaceInfo(string(0)).cwd,
@@ -669,6 +708,9 @@ async function launch(): Promise<void> {
           break;
         case "checkPreviewFiles":
           value = await checkPreviewFiles(host.workspaceInfo(string(0)).cwd, args[1]);
+          break;
+        case "readPreviewRange":
+          value = await readPreviewRange(host.workspaceInfo(string(0)).cwd, string(1), args[2], args[3]);
           break;
         case "readFilePreview":
           value = await readFilePreview(host.workspaceInfo(string(0)).cwd, string(1), args[2]);

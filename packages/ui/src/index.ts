@@ -6,6 +6,7 @@ export { DiffView } from "./components/DiffView.tsx";
 export type { ComposerContext, ComposerDraft } from "./components/InputContext.tsx";
 export { ComposerDraftStore } from "./components/InputContext.tsx";
 export { Markdown } from "./components/Markdown.tsx";
+export { MermaidBlock } from "./components/MermaidBlock.tsx";
 export { ActionHint } from "./components/MessageActions.tsx";
 export { FileIcon } from "./components/Reference.tsx";
 export { SortableList } from "./components/SortableList.tsx";

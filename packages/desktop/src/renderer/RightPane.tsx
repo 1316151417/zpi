@@ -173,7 +173,11 @@ export function RightPane({
                     ) : tab.type === "side-chat" || tab.type === "side-chat-loading" ? (
                       <MessageSquare size={16} />
                     ) : tab.type === "changes" ? (
-                      <Files size={16} />
+                      tab.path ? (
+                        <FileIcon path={tab.path} />
+                      ) : (
+                        <Files size={16} />
+                      )
                     ) : tab.type === "terminal" || tab.type === "background-task" ? (
                       <TerminalSquare size={16} />
                     ) : tab.type === "file" ? (
@@ -182,6 +186,7 @@ export function RightPane({
                       <Globe size={16} />
                     )}
                     <span>{tab.title}</span>
+                    {tab.type === "changes" && <span className="pane-tab-diff-badge">Diff</span>}
                   </button>
                   <button
                     className="tab-close"

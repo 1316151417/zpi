@@ -253,7 +253,7 @@ test("embedded file images retain their preview across theme changes and reload 
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     expect(await width()).toBe(40);
-    await page.getByRole("button", { name: "刷新文件", exact: true }).click();
+    await page.locator(".answer").getByRole("button", { name: "预览", exact: true }).click();
     await expect.poll(width).toBe(60);
   } finally {
     await runCleanup([

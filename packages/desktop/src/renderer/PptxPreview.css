@@ -1,0 +1,206 @@
+.pptx-preview {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  outline: none;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.pptx-thumbnails {
+  width: 128px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface-muted) 30%, transparent);
+  padding: 8px;
+}
+.pptx-thumbnail {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: transparent;
+}
+.pptx-thumbnail:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+}
+.pptx-thumbnail[aria-current="page"] {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+.pptx-thumbnail-canvas {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.pptx-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  position: relative;
+}
+.pptx-viewport {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+.pptx-canvas-area {
+  display: grid;
+  min-height: 100%;
+  min-width: 100%;
+  place-items: center;
+  padding: 16px;
+}
+.pptx-page-frame {
+  position: relative;
+  flex-shrink: 0;
+}
+.pptx-slide {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: white;
+  box-shadow:
+    0 4px 6px -1px #0002,
+    0 2px 4px -2px #0002;
+}
+.pptx-slide-mount {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+.pptx-toolbar {
+  display: flex;
+  min-height: 40px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-top: 1px solid var(--color-border);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--color-surface-muted) 30%, transparent);
+  font-size: var(--text-body);
+}
+.pptx-toolbar button,
+.pptx-selection-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  min-width: 28px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.pptx-toolbar button:hover,
+.pptx-toolbar button[aria-pressed="true"],
+.pptx-selection-actions button:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+.pptx-toolbar button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.pptx-toolbar svg {
+  width: 16px;
+  height: 16px;
+}
+.pptx-toolbar input {
+  width: 48px;
+  height: 28px;
+  text-align: center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+.pptx-toolbar span {
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+.pptx-toolbar i {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  margin: 0 4px;
+}
+.pptx-status {
+  padding: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--text-body);
+}
+.pptx-status[role="alert"] {
+  color: var(--color-danger, #e03131);
+}
+.pptx-element-layer {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+.pptx-element {
+  position: absolute;
+  border: 1px solid transparent;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.pptx-element:hover,
+.pptx-element[aria-pressed="true"] {
+  border: 2px solid #369aff;
+  background: #369aff12;
+}
+.pptx-selection-actions {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px #0002;
+}
+.pptx-selection-actions textarea {
+  width: 312px;
+  max-width: 100%;
+  min-height: 80px;
+  resize: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: 8px;
+  font: inherit;
+}
+@media (max-width: 639px) {
+  .pptx-thumbnails {
+    width: 96px;
+  }
+  .pptx-toolbar input {
+    font-size: 16px;
+  }
+}

@@ -1,0 +1,56 @@
+.workspace-editor-group {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-input);
+  -webkit-app-region: no-drag;
+}
+.workspace-editor-group button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.workspace-editor-group button:hover {
+  background: var(--color-fill-hover);
+}
+.workspace-editor-open {
+  width: 28px;
+}
+.workspace-editor-select {
+  width: 20px;
+  color: var(--color-text-subtlest);
+}
+.workspace-editor-open img,
+.workspace-editor-menu img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.workspace-editor-menu {
+  width: 160px;
+}
+.workspace-editor-menu .menu-item {
+  position: relative;
+  padding-left: 28px;
+}
+.workspace-editor-check {
+  position: absolute;
+  left: 8px;
+  display: flex;
+}
+
+.workspace-editor-menu[data-platform="win32"] img,
+.shell:not(.mac-desktop) .workspace-editor-group img {
+  width: 16px;
+  height: 16px;
+}

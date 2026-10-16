@@ -7,6 +7,8 @@ export async function readMarkdownImage(
   location?: FileLocation,
 ): Promise<string> {
   const preview = unwrap(await window.zpi.readFilePreview(sessionId, path, location));
+  if (preview.kind === "text" && /\.svg$/i.test(preview.path))
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(preview.text)}`;
   if (preview.kind !== "image") throw new Error("文件不是图片");
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

@@ -1,0 +1,90 @@
+import { appendSelection, type ComposerDraftStore, type ConversationSelection } from "zpi-ui";
+
+export interface FileCommentRange {
+  start: number;
+  end: number;
+}
+export interface FileComment extends FileCommentRange {
+  id: string;
+  comment: string;
+}
+const prefix = "file-comment:";
+export function normalizeFileCommentRange(range: FileCommentRange, text: string): FileCommentRange {
+  const count = text.split("\n").length;
+  return {
+    start: Math.max(1, Math.min(count, range.start, range.end)),
+    end: Math.max(1, Math.min(count, Math.max(range.start, range.end))),
+  };
+}
+export function createFileComment(
+  path: string,
+  text: string,
+  range: FileCommentRange,
+  comment: string,
+  id: string,
+): ConversationSelection {
+  const normalized = normalizeFileCommentRange(range, text);
+  const selected = text
+    .split("\n")
+    .slice(normalized.start - 1, normalized.end)
+    .join("\n");
+  if (!selected.trim()) throw new Error("请选择包含内容的代码行。");
+  const label =
+    normalized.start === normalized.end
+      ? `第 ${normalized.start} 行`
+      : `第 ${normalized.start}–${normalized.end} 行`;
+  return {
+    id,
+    path,
+    sourceKey: `${prefix}${JSON.stringify({ ...normalized, comment: comment.trim() })}`,
+    sourceTitle: `${path} · ${label}`,
+    contentType: "tool",
+    text: `${label}\n${selected}${comment.trim() ? `\n\n备注：${comment.trim()}` : ""}`,
+  };
+}
+export function fileComments(selections: readonly ConversationSelection[], path: string): FileComment[] {
+  return selections.flatMap((selection) => {
+    if (selection.path !== path || !selection.id || !selection.sourceKey?.startsWith(prefix)) return [];
+    try {
+      const value = JSON.parse(selection.sourceKey.slice(prefix.length));
+      if (
+        !Number.isInteger(value.start) ||
+        !Number.isInteger(value.end) ||
+        value.start < 1 ||
+        value.end < value.start ||
+        typeof value.comment !== "string"
+      )
+        return [];
+      return [{ id: selection.id, start: value.start, end: value.end, comment: value.comment }];
+    } catch {
+      return [];
+    }
+  });
+}
+export function addFileCommentToDraft(
+  store: ComposerDraftStore,
+  sessionId: string,
+  path: string,
+  text: string,
+  range: FileCommentRange,
+  comment: string,
+  id: string,
+): void {
+  const current = store.get(sessionId);
+  if (!current) throw new Error("当前对话不可添加备注。");
+  const reference = createFileComment(path, text, range, comment, id);
+  store.set(sessionId, {
+    ...current,
+    selections: appendSelection(current.selections ?? [], reference),
+    error: undefined,
+  });
+}
+export function removeFileCommentFromDraft(store: ComposerDraftStore, sessionId: string, id: string): void {
+  const current = store.get(sessionId);
+  if (current)
+    store.set(sessionId, {
+      ...current,
+      selections: current.selections?.filter((selection) => selection.id !== id),
+    });
+}
+export { appendSelection };

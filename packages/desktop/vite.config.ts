@@ -2,11 +2,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { pdfAssetsPlugin } from "./pdf-assets-plugin.ts";
 export default defineConfig({
   root: "packages/desktop/src/renderer",
   base: "./",
   plugins: [
     tailwindcss(),
+    pdfAssetsPlugin(),
     {
       name: "zpi-original-icon",
       configureServer(server) {

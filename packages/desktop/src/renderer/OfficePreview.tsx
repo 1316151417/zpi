@@ -1,10 +1,13 @@
 import { setWasmSource, XlsxViewer, type XlsxViewerController } from "@extend-ai/react-xlsx";
 import xlsxWasmUrl from "@extend-ai/react-xlsx/duke_sheets_wasm_bg.wasm?url";
-import { renderAsync } from "docx-preview";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppearance } from "zpi-ui";
 import type { FilePreview } from "../shared/bridge.ts";
-import { logRendererError } from "./error-log.ts";
+import DocxPreview from "./DocxPreview.tsx";
+import { installDocumentLinkSafety } from "./office-preview-model.ts";
+
+const LegacyDocPreview = lazy(() => import("./LegacyDocPreview.tsx"));
+
 import { openBrowser, paneTask } from "./pane-store.ts";
 
 setWasmSource(xlsxWasmUrl);
@@ -46,56 +49,6 @@ function SheetTabs({ tabs, activeTabIndex, setActiveTabIndex }: XlsxViewerContro
   );
 }
 
-function DocxPreview({ buffer }: { buffer: ArrayBuffer }) {
-  const viewport = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    const container = viewport.current;
-    if (!container) return;
-    const content = document.createElement("div");
-    content.className = "file-docx-content";
-    let active = true;
-    const resize = new ResizeObserver(() => {
-      const sheet = content.querySelector<HTMLElement>("section.docx");
-      if (sheet && container.clientWidth)
-        content.style.zoom = String(Math.min(1, (container.clientWidth - 32) / sheet.offsetWidth));
-    });
-    void renderAsync(buffer, content, undefined, {
-      className: "docx",
-      inWrapper: true,
-      useBase64URL: true,
-      renderAltChunks: false,
-      ignoreLastRenderedPageBreak: true,
-      renderComments: false,
-      renderChanges: false,
-    })
-      .then(() => {
-        if (!active) return;
-        container.replaceChildren(content);
-        resize.observe(container);
-      })
-      .catch((error) => {
-        logRendererError("docx-preview", error);
-        if (active) setError(String(error));
-      });
-    return () => {
-      active = false;
-      resize.disconnect();
-      content.remove();
-    };
-  }, [buffer]);
-  return (
-    <div className="file-docx-preview">
-      {error && (
-        <p role="alert" className="run-error">
-          {error}
-        </p>
-      )}
-      <div ref={viewport} />
-    </div>
-  );
-}
-
 export default function OfficePreview({
   preview,
   sessionId,
@@ -106,29 +59,16 @@ export default function OfficePreview({
   const { theme } = useAppearance();
   const buffer = useMemo(() => new Uint8Array(preview.bytes).buffer, [preview]);
   const root = useRef<HTMLDivElement>(null);
+  const openUrl = useCallback((url: string) => paneTask(openBrowser(url, sessionId)), [sessionId]);
   useEffect(() => {
     const element = root.current;
-    if (!element) return;
-    const navigate = (event: MouseEvent) => {
-      const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (!anchor) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const target = anchor.getAttribute("href") ?? "";
-      if (/^https?:\/\//i.test(target)) paneTask(openBrowser(target, sessionId));
-    };
-    element.addEventListener("click", navigate, true);
-    element.addEventListener("auxclick", navigate, true);
-    return () => {
-      element.removeEventListener("click", navigate, true);
-      element.removeEventListener("auxclick", navigate, true);
-    };
-  }, [sessionId]);
+    return element && preview.kind === "xlsx" ? installDocumentLinkSafety(element, openUrl) : undefined;
+  }, [openUrl, preview.kind]);
   return (
     <div
       ref={root}
       className="file-office-preview"
-      data-office-preview-kind={preview.kind === "xlsx" ? "excel" : "docx"}
+      data-office-preview-kind={preview.kind === "xlsx" ? "excel" : preview.kind}
     >
       {preview.kind === "xlsx" ? (
         <XlsxViewer
@@ -140,15 +80,34 @@ export default function OfficePreview({
           rounded={false}
           showDefaultToolbar={false}
           toolbar={(controller) => <SheetTabs {...controller} />}
-          loadingState={<p className="pane-empty">正在加载表格…</p>}
+          loadingState={<div aria-busy="true" className="h-full" data-office-preview-pending />}
+          fileTooLargeState={() => (
+            <p role="alert" className="run-error">
+              无法预览此表格。
+            </p>
+          )}
           errorState={(error) => (
             <p role="alert" className="run-error">
               {error.message}
             </p>
           )}
         />
+      ) : preview.kind === "doc" ? (
+        <Suspense fallback={<div aria-busy="true" data-office-preview-pending />}>
+          <LegacyDocPreview
+            buffer={buffer}
+            sourcePath={preview.path}
+            errorMessage="无法预览此 Word 文档。"
+            onOpenBrowserUrl={openUrl}
+          />
+        </Suspense>
       ) : (
-        <DocxPreview buffer={buffer} />
+        <DocxPreview
+          buffer={buffer}
+          sourcePath={preview.path}
+          errorMessage="无法预览此 Word 文档。"
+          onOpenBrowserUrl={openUrl}
+        />
       )}
     </div>
   );

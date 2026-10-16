@@ -128,7 +128,7 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
       ["0.9s", "0.036s"],
       ["0.9s", "0.072s"],
     ]);
-    await expect.poll(calls).toEqual([join(project, "slides.pptx")]);
+    await expect.poll(calls).toEqual([]);
     await expect
       .poll(() =>
         cards
@@ -195,13 +195,7 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
     await expect(md.getByRole("alert")).toHaveCount(0);
     const html = cards.filter({ hasText: "网站 · HTML" });
     await html.getByRole("button", { name: "打开", exact: true }).click();
-    await expect
-      .poll(() =>
-        app?.evaluate(({ webContents }) =>
-          webContents.getAllWebContents().some((wc) => decodeURI(wc.getURL()).endsWith("页面 demo.html")),
-        ),
-      )
-      .toBe(true);
+    await expect(page.locator(".file-text-preview")).toContainText("真实 HTML 预览");
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await html.getByLabel("选择打开方式").click();
     await expect(menu.getByRole("menuitem")).toHaveText(fileMenuItems);
@@ -255,7 +249,7 @@ test("terminal cards use real turn changes, IPC file validation and native/brows
     await expect.poll(calls).toContain("http://localhost:43210/route?q=1");
     await page.reload();
     await expect(page.locator(".assistant-preview-card")).toHaveCount(4);
-    expect((await calls())?.filter((path) => path.endsWith("slides.pptx"))).toHaveLength(1);
+    expect((await calls())?.filter((path) => path.endsWith("slides.pptx"))).toHaveLength(0);
   } finally {
     release.resolve();
     await runCleanup([

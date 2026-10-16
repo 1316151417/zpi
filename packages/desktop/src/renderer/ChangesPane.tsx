@@ -1,7 +1,7 @@
-import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DiffView, type FindRequest, type FindState, ToolFilePreview } from "zpi-ui";
 import type { DiffItem } from "../shared/bridge.ts";
+import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, paneTask } from "./pane-store.ts";
 import { unwrap, useStore } from "./store.ts";
 export function ChangesPane({
@@ -91,19 +91,6 @@ export function ChangesPane({
   );
   return (
     <div className="changes-pane">
-      <div className="pane-subheading">
-        <span>
-          {toolCallId ? "工具变更" : runId ? "本轮变更" : "任务变更"} ·{" "}
-          {previewOperation ? 1 : new Set(entries.map((entry) => entry.path)).size} 个文件
-        </span>
-        <button
-          aria-label="刷新变更"
-          disabled={loading || previewOperation}
-          onClick={() => setRevision((n) => n + 1)}
-        >
-          <RefreshCw size={14} />
-        </button>
-      </div>
       {!pending && error && (
         <p role="alert" className="run-error">
           {error}
@@ -123,6 +110,9 @@ export function ChangesPane({
       ) : (
         <DiffView
           entries={entries}
+          renderHeader={(selectedPath, viewSource) => (
+            <PreviewHeader sessionId={sessionId} path={selectedPath} onViewSource={viewSource} />
+          )}
           initialPath={path}
           loadPatch={load}
           openFile={open}

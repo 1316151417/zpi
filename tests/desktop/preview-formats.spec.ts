@@ -96,13 +96,8 @@ test("Office, PDF and media cards preview actual existing files without turn cha
       .toBe(160);
     await close();
     await open("文档.pdf");
-    await expect
-      .poll(() =>
-        app?.evaluate(({ webContents }) =>
-          webContents.getAllWebContents().some((wc) => decodeURI(wc.getURL()).endsWith("文档.pdf")),
-        ),
-      )
-      .toBe(true);
+    await expect(page.getByRole("application", { name: "PDF 预览", exact: true })).toBeVisible();
+    await expect(page.locator(".react-pdf__Page canvas").first()).toBeVisible();
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

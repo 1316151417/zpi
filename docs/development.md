@@ -204,3 +204,21 @@ npm run repair:sessions -- "/path/to/app-data"
 产品展示和自然语言文案使用 **ZPI**；npm 包、隐藏目录（`.zpi`）、应用 ID、IPC、存储键和前端技术前缀使用小写 `zpi`；环境变量和全大写常量使用 `ZPI_*`。
 
 应用显示名及其对应的 `ZPI.app`、`ZPI Preview` 数据目录保留品牌大小写。OpenAI 对接是明确例外：ChatGPT 授权参数 `agent_name_hint` 和 Responses 工具命名空间保留大写 `ZPI`，不要随内部技术命名修改。
+
+### 文件与变更预览
+
+文件预览使用共享路径面包屑与右上操作。三点菜单中的路径复制经现有主进程文件操作完成；纯代码显示自动换行，Markdown/SVG 先提供预览/源码选择，源码模式才显示换行。Diff 默认统一视图，Tab 标记 `Diff`，提供“查看源码”，不提供备注或换行选项。单文件去掉重复文件列表与旧“统一/并排”工具条；多文件搜索仍可切换命中文件。
+
+文本左侧的 `+` 和行号拖选创建单行或多行备注。备注可以不填，但所选代码不能全为空白。添加只写入对应任务（包括辅助对话）的现有输入草稿引用，发送时才随消息带上路径、行号、代码和备注；不会写入原文件，也不会自动发送。Esc 取消，⌘/Ctrl+Enter 添加，输入法组合期间不触发提交。预览中删除和输入框移除引用保持同步，沿用引用数量/长度限制，错误保留编辑内容。大文本关闭语法高亮但仍提供行备注；原主进程 2 MiB 文本读取上限保留并明确提示。
+
+Markdown/SVG 默认预览，`.mermaid/.mmd` 使用现有 Mermaid 图表渲染；普通 `.txt/.text` 及未知文本使用参考的 log 高亮，识别脚本 shebang 和 diff 内容。HTML 作为代码显示，不在有权限的页面运行。图片使用棋盘背景并识别 `@2x`/`@3x` 像素倍率；音视频使用居中原生只读播放控件。编辑器入口与外部打开调用使用已安装程序白名单和独立安全 IPC，预览采用已选偏好；显式工作区下拉选择才修改偏好。
+
+Office/PDF/PPTX 均使用本地只读渲染：Word `.docx` 使用 docx-preview 保留页面/页眉页脚并按面板收缩，旧 `.doc` 使用 react-docx；Excel `.xlsx/.xlsm/.xls` 提供工作表切换。PDF 使用 react-pdf/PDF.js，本地打包 worker、CMap 与标准字体；大于 2 MiB 通过受限 IPC 分段读取，不向外部站点上传。PPTX 使用本地 pptx-renderer，提供缩略图、页码、缩放、元素上下文及导出 PDF；导出仅写用户在保存对话框选择的目标。旧 `.ppt` 与参考同样不支持。
+
+定向逻辑测试：
+
+```sh
+npm run test:unit -- packages/desktop/test/file-comments.test.ts packages/ui/test/diff-view.test.ts packages/desktop/test/file-actions.test.ts
+```
+
+桌面验证仍须使用上述隔离启动器；无 Electron/虚拟显示或浏览器沙箱不可用时，不把 SSR/单元测试当作视觉验证。所有外部程序启动、剪贴板和对话框测试必须使用假服务，不能操作真实系统程序或用户剪贴板。

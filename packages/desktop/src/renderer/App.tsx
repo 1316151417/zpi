@@ -107,6 +107,7 @@ import { useStopOnEscape } from "./use-stop-on-escape.ts";
 import { useTaskFind } from "./use-task-find.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { WindowChrome } from "./WindowChrome.tsx";
+import { WorkspaceEditorButton } from "./WorkspaceEditorButton.tsx";
 import { WorktreeSettings } from "./WorktreeSettings.tsx";
 
 interface ActionDialog {
@@ -992,6 +993,7 @@ export function App() {
               />
             )}
             <div className="topbar-drag-space" aria-hidden="true" />
+            {selected && <WorkspaceEditorButton sessionId={selected} />}
           </header>
           {state.error && (
             <div className="error-toast" role="alert">

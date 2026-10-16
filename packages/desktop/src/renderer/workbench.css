@@ -2642,20 +2642,6 @@
   flex-direction: column;
   background: var(--color-bg);
 }
-.file-preview-heading {
-  flex-shrink: 0;
-  gap: 8px;
-}
-.file-preview-heading > span {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.file-preview-heading button[aria-pressed="true"] {
-  background: var(--color-active);
-}
 .file-text-preview {
   flex: 1;
   min-height: 0;
@@ -2666,15 +2652,6 @@
 }
 .file-markdown-preview {
   padding: 16px 24px;
-}
-.file-plain-preview {
-  padding: 16px;
-  font: var(--text-small) / 1.6 var(--font-code);
-  white-space: pre;
-}
-.file-plain-preview.wrap {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .file-image-preview {
   flex: 1;
@@ -2689,7 +2666,6 @@
   object-fit: contain;
 }
 .file-media-preview {
-  width: 100%;
   max-height: 100%;
   margin: auto;
 }
@@ -2984,11 +2960,6 @@
 }
 .model-config-body .settings-select-trigger {
   width: 100%;
-}
-
-.file-preview-heading > .file-location {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
 }
 
 .task-more {
@@ -6066,4 +6037,258 @@ button.model-stat-pill:hover,
   color: var(--color-text-subtle);
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* File and diff previews share ZCode's quiet breadcrumb toolbar. */
+.preview-header {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 40px;
+  min-width: 0;
+  padding: 0 6px 0 12px;
+  gap: 32px;
+  background: color-mix(in srgb, var(--color-surface) 30%, transparent);
+}
+.preview-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+.preview-breadcrumb::-webkit-scrollbar {
+  display: none;
+}
+.preview-breadcrumb > *,
+.preview-path-segment > * {
+  flex-shrink: 0;
+}
+.preview-breadcrumb strong {
+  color: var(--color-text);
+  font-weight: 400;
+  padding: 0 4px;
+}
+.preview-breadcrumb .file-icon {
+  width: 14px;
+  height: 14px;
+}
+.preview-path-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.preview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.preview-header-actions button {
+  height: 28px;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.preview-header-actions button:hover {
+  background: var(--color-fill-hover);
+  color: var(--color-text);
+}
+.preview-header-actions .preview-icon-button {
+  width: 28px;
+  padding: 0;
+}
+.preview-source {
+  padding: 0 8px;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.preview-menu {
+  width: 192px;
+}
+.preview-menu-check {
+  margin-left: auto;
+}
+.preview-menu-separator {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+.file-text-preview > diffs-container {
+  font-size: 12px;
+  --diffs-font-size: 12px;
+  --diffs-line-height: 20px;
+}
+.pane-tab-trigger .pane-tab-diff-badge {
+  flex: none;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+.file-comment-card {
+  margin: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  box-shadow: 0 1px 2px #0000000d;
+}
+.file-comment-range {
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+}
+.file-comment-card textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: none;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--color-bg);
+}
+.file-comment-text {
+  white-space: pre-wrap;
+}
+.file-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.file-comment-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+.file-comment-actions button:hover {
+  background: var(--color-fill-hover);
+}
+.file-comment-actions .primary {
+  background: var(--color-primary);
+  color: var(--color-bg);
+}
+.file-comment-actions kbd {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.file-image-preview {
+  overflow: hidden;
+  padding: 40px;
+  background-color: var(--color-bg);
+  background-image:
+    linear-gradient(45deg, var(--color-surface) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--color-surface) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--color-surface) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--color-surface) 75%);
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+  background-size: 8px 8px;
+}
+.file-media-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--color-bg);
+  padding: 24px;
+}
+.file-media-container .file-media-preview {
+  padding: 0;
+  max-height: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+}
+.file-media-container audio {
+  width: 100%;
+  max-width: 672px;
+}
+.file-markdown-preview {
+  padding: 16px;
+}
+
+.preview-menu-label {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.file-image-preview .file-svg-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.preview-breadcrumb[data-mask="left"] {
+  mask-image: linear-gradient(to right, transparent, black 12px);
+}
+.preview-breadcrumb[data-mask="right"] {
+  mask-image: linear-gradient(to right, black calc(100% - 12px), transparent);
+}
+.preview-breadcrumb[data-mask="both"] {
+  mask-image: linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent);
+}
+.file-text-preview > .file-image-preview {
+  height: 100%;
+}
+.file-text-preview > diffs-container {
+  --diffs-bg: var(--color-bg);
+  --diffs-light-bg: var(--color-bg);
+  --diffs-dark-bg: var(--color-bg);
+  --diffs-font-family: var(--font-code);
+}
+
+.preview-header-divider {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.preview-menu .menu-item {
+  position: relative;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.preview-menu [role="menuitemcheckbox"],
+.preview-menu [role="menuitemradio"] {
+  padding-right: 32px;
+}
+.preview-menu-check {
+  position: absolute;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.file-mermaid-preview {
+  min-height: 100%;
+  padding: 16px;
+  background: var(--color-bg);
 }

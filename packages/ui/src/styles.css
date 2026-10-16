@@ -1872,6 +1872,85 @@ small {
 .diff-hunk {
   color: #54749e;
 }
+.diff-layout.diff-single-file {
+  grid-template-columns: minmax(0, 1fr);
+}
+.diff-layout.diff-preview {
+  --color-diff-added: light-dark(#1e8a3e, #46bf72);
+  --color-diff-removed: light-dark(#e03131, #ff5c5c);
+  --diffs-bg: var(--color-bg);
+  --diffs-light-bg: var(--color-bg);
+  --diffs-dark-bg: var(--color-bg);
+  --diffs-font-family: var(--font-code);
+  --diffs-font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+  margin-top: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.diff-preview .diff-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+.diff-preview .diff-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.diff-preview .diff-entry {
+  border: 0;
+}
+.diff-preview .diff-lightweight {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: var(--color-bg);
+}
+.diff-preview.diff-wrap .tool-diff-lines {
+  width: auto;
+}
+.diff-preview.diff-wrap .diff-lightweight-code {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff-preview diffs-container {
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
+.diff-layout.diff-wrap .diff-row {
+  grid-template-columns: 38px 38px minmax(0, 1fr);
+  white-space: pre-wrap;
+}
+.diff-layout.diff-wrap .diff-line-code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.diff-preview .diff-row.added {
+  box-shadow: inset 3px 0 0 var(--color-diff-added);
+}
+.diff-preview .diff-row.removed {
+  box-shadow: inset 3px 0 0 var(--color-diff-removed);
+}
+.diff-preview .diff-plain .diff-hunk-simple {
+  height: 12px;
+  padding: 0;
+  margin: 0;
+  background: var(--color-bg);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
 .resource-settings {
   max-height: 70vh;
   padding: 12px 2px;

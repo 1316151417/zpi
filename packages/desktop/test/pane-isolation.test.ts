@@ -555,3 +555,19 @@ it("still reports missing files when there is no pending matching write", async 
   await expect(openFile("A", "/shared/missing.html")).rejects.toThrow("文件不存在");
   expect(visiblePaneTabs("A")).toHaveLength(0);
 });
+
+it.each(["pdf", "pptx", "docx", "doc", "xlsx", "html", "svg"])(
+  "opens %s in the file pane without spawning a browser or external app",
+  async (extension) => {
+    const kind = extension === "html" || extension === "svg" ? "text" : extension;
+    const path = `/shared/document.${extension}`;
+    const preview =
+      kind === "text" ? { ...file, path } : ({ kind, path, bytes: new Uint8Array([1, 2]) } as FilePreview);
+    bridge.readFilePreview.mockResolvedValueOnce(ok(preview));
+    await openFile("A", path);
+    expect(visiblePaneTabs("A")).toEqual([
+      expect.objectContaining({ type: "file", sessionId: "A", preview }),
+    ]);
+    expect(bridge.createBrowser).not.toHaveBeenCalled();
+  },
+);

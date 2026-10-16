@@ -1,0 +1,23 @@
+.file-pdf-preview {
+  flex: 1;
+  min-height: 0;
+}
+.preview-pdf-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.preview-pdf-control:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+.preview-pdf-control:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.preview-pdf-control svg {
+  width: 16px;
+  height: 16px;
+}

@@ -344,7 +344,7 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
     runId,
     path,
     toolCallId,
-    title: toolCallId && path ? (path.split(/[\\/]/).at(-1) ?? "变更") : "变更",
+    title: path ? (path.split(/[\\/]/).at(-1) ?? "变更") : "变更",
   });
 }
 export async function openTerminal(sessionId: string) {
@@ -424,14 +424,6 @@ export async function openFile(sessionId: string, path: string, location?: FileL
     fileOpenVersions.set(id, version);
     if (preview.kind === "directory") {
       unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
-      return;
-    }
-    if (/\.(?:html?|pdf)$/i.test(preview.path) && !location?.line) {
-      await openBrowser(location?.fileUrl ?? preview.path, sessionId, ownerSessionId);
-      return;
-    }
-    if (/\.pptx$/i.test(preview.path)) {
-      unwrap(await window.zpi.fileAction(sessionId, preview.path, "open"));
       return;
     }
     showTab({

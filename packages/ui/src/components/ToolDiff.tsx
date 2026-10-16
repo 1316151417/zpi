@@ -40,22 +40,29 @@ const languages: Record<string, BundledLanguage> = {
   yml: "yaml",
 };
 
-function useToolTokens(code: string, language: BundledLanguage) {
+export function useToolTokens(code: string, language: BundledLanguage) {
   const { theme } = useAppearance();
-  const [tokens, setTokens] = useState<ThemedToken[][]>();
+  const [highlight, setHighlight] = useState<{
+    code: string;
+    language: BundledLanguage;
+    theme: string;
+    tokens: ThemedToken[][];
+  }>();
   useEffect(() => {
     let active = true;
-    setTokens(undefined);
-    if (code.length > 120_000) return;
+    setHighlight(undefined);
+    // Match ZCode's lightweight preview cutoff and its plain-text/log fast path.
+    if (!code || code.length > 120_000 || language === "log") return;
     void import("shiki")
-      .then(async ({ codeToTokens }) => {
+      .then(({ codeToTokens }) => {
+        if (!active) return;
         return codeToTokens(code, {
           lang: language,
           theme: theme === "dark" ? "github-dark" : "github-light",
         });
       })
       .then((result) => {
-        if (active) setTokens(result.tokens);
+        if (active && result) setHighlight({ code, language, theme, tokens: result.tokens });
       })
       .catch(() => {
         /* 纯文本首帧始终保留。 */
@@ -64,16 +71,20 @@ function useToolTokens(code: string, language: BundledLanguage) {
       active = false;
     };
   }, [code, language, theme]);
-  return tokens;
+  return highlight?.code === code && highlight.language === language && highlight.theme === theme
+    ? highlight.tokens
+    : undefined;
 }
 
 export function toolCodeLanguage(path: string, content = ""): BundledLanguage {
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  if (languages[extension]) return languages[extension];
+  const leaf = path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").at(-1);
+  const extension = leaf?.includes(".") ? leaf.split(".").at(-1)?.toLowerCase() : undefined;
+  if (extension && Object.hasOwn(languages, extension)) return languages[extension];
   if (content.startsWith("#!/")) {
     if (content.includes("python")) return "python";
     if (content.includes("bash") || content.includes("sh")) return "bash";
   }
+  if (/^(diff --git|--- |\+\+\+ |@@ )/m.test(content)) return "diff";
   return "log";
 }
 
