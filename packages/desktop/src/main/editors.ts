@@ -61,7 +61,7 @@ export function getInstalledEditors(): Promise<EditorInfo[]> {
   if (process.env.ZPI_TEST_MODE === "1") return Promise.resolve([]);
   installed ??= Promise.all(
     getEditorDefsForCurrentPlatform().map(async (def) => {
-      const path = resolveEditorDefAppPath(def);
+      const path = await resolveEditorDefAppPath(def);
       if (!path) return null;
       const iconDataUrl = await appIcon(path);
       return iconDataUrl ? { id: def.id, name: def.name, iconDataUrl } : null;
@@ -73,7 +73,7 @@ export function getInstalledEditors(): Promise<EditorInfo[]> {
 export interface EditorOpenServices {
   platform: string;
   definitions: EditorDef[];
-  resolveApp(definition: EditorDef): string | null;
+  resolveApp(definition: EditorDef): Promise<string | null>;
   launch(command: string, args: string[]): Promise<void>;
   openPath(path: string): Promise<string>;
   reveal(path: string): void;
@@ -88,7 +88,7 @@ export async function openWorkspaceEditor(
   if (!target || target.length > 8192 || /[\0\r\n]/.test(target))
     throw new Error("invalid_input: 文件路径无效");
   const definition = services.definitions.find((entry) => entry.id === editorId);
-  const appPath = definition && services.resolveApp(definition);
+  const appPath = definition && (await services.resolveApp(definition));
   if (!definition || !appPath) throw new Error("invalid_input: 编辑器未安装或不受支持");
   // 复用文件预览的路径边界，renderer 只能指定白名单 ID，不能传入可执行文件或命令参数。
   const path = await resolveLocalFilePath(cwd, target);

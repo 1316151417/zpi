@@ -1,5 +1,4 @@
 // Adapted from ZCode officeFilePreview.ts (Apache-2.0).
-export type OfficeFilePreviewKind = "excel" | "docx" | "doc";
 
 export interface DocxPreviewFit {
   scale: number;
@@ -7,26 +6,13 @@ export interface DocxPreviewFit {
   height: number;
 }
 
-const EXCEL_FILE_EXTENSIONS = [".xlsx", ".xlsm", ".xls"] as const;
-const DOCX_FILE_EXTENSIONS = [".docx"] as const;
-const LEGACY_DOC_FILE_EXTENSIONS = [".doc"] as const;
-
-export function getOfficeFilePreviewKind(path?: string): OfficeFilePreviewKind | null {
-  if (!path) {
-    return null;
-  }
-
-  const normalizedPath = path.trim().toLowerCase();
-  if (DOCX_FILE_EXTENSIONS.some((extension) => normalizedPath.endsWith(extension))) {
-    return "docx";
-  }
-  if (LEGACY_DOC_FILE_EXTENSIONS.some((extension) => normalizedPath.endsWith(extension))) {
-    return "doc";
-  }
-  if (EXCEL_FILE_EXTENSIONS.some((extension) => normalizedPath.endsWith(extension))) {
-    return "excel";
-  }
-  return null;
+export function isSameDocxPreviewFit(current: DocxPreviewFit | null, next: DocxPreviewFit): boolean {
+  return (
+    current !== null &&
+    Math.abs(current.scale - next.scale) < 0.001 &&
+    Math.abs(current.width - next.width) < 0.5 &&
+    Math.abs(current.height - next.height) < 0.5
+  );
 }
 
 export function calculateDocxPreviewFit({
@@ -55,15 +41,6 @@ export function calculateDocxPreviewFit({
     width: naturalWidth * scale,
     height: naturalHeight * scale,
   };
-}
-
-export function decodeBase64ToArrayBuffer(dataBase64: string): ArrayBuffer {
-  const binary = atob(dataBase64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
 }
 
 /**

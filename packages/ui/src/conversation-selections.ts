@@ -15,11 +15,21 @@ export interface FileCommentSelection {
   comment: string;
   lineLabel: string;
 }
+const fileCommentPrefix = "file-comment:";
+
+export function fileCommentSourceKey({
+  start,
+  end,
+  comment,
+}: Pick<FileCommentSelection, "start" | "end" | "comment">): string {
+  return `${fileCommentPrefix}${JSON.stringify({ start, end, comment: comment.trim() })}`;
+}
+
 // 旧草稿已经用此 sourceKey 标记文件评论；不能凭路径或“第 N 行”误判普通引用。
 export function getFileCommentSelection(reference: ConversationSelection): FileCommentSelection | null {
-  if (!reference.path?.trim() || !reference.sourceKey?.startsWith("file-comment:")) return null;
+  if (!reference.path?.trim() || !reference.sourceKey?.startsWith(fileCommentPrefix)) return null;
   try {
-    const value = JSON.parse(reference.sourceKey.slice("file-comment:".length));
+    const value = JSON.parse(reference.sourceKey.slice(fileCommentPrefix.length));
     if (
       !value ||
       !Number.isSafeInteger(value.start) ||

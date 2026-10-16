@@ -8,6 +8,7 @@ import {
 import {
   buildSelectionPrompt,
   type ConversationSelection,
+  fileCommentSourceKey,
   getFileCommentSelection,
   parseSelectionPrompt,
   validSelections,
@@ -28,6 +29,20 @@ function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   const element = node as ReactElement<{ children?: ReactNode }>;
   return [element as ReactElement<Record<string, unknown>>, ...elements(element.props.children)];
 }
+it("encodes the exact existing wire bytes and round-trips trimmed comments", () => {
+  const sourceKey = fileCommentSourceKey({ comment: '  中文 "quote"\nsecond line  ', end: 9, start: 6 });
+  expect(sourceKey).toBe(
+    String.raw`file-comment:{"start":6,"end":9,"comment":"中文 \"quote\"\nsecond line"}`,
+  );
+  expect(getFileCommentSelection({ path: "/work/example.ts", text: "code", sourceKey })).toMatchObject({
+    start: 6,
+    end: 9,
+    comment: '中文 "quote"\nsecond line',
+  });
+  expect(fileCommentSourceKey({ start: 1, end: 1, comment: " \n " })).toBe(
+    'file-comment:{"start":1,"end":1,"comment":""}',
+  );
+});
 it("recognizes saved file-comment drafts but never guesses ordinary quotations from path or line text", () => {
   expect(validSelections([comment(), quote])).toBe(true);
   expect(getFileCommentSelection(comment())).toMatchObject({

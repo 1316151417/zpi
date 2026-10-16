@@ -1,5 +1,6 @@
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toolPatchLanguage } from "../src/code-language.ts";
 import { toolCodeLanguage, useToolTokens } from "../src/components/ToolDiff.tsx";
 
 const mocks = vi.hoisted(() => ({
@@ -178,6 +179,15 @@ describe("lightweight diff language inference", () => {
     ["/work/chart.mmd", "mermaid"],
   ])("infers %s as %s", (path, language) => {
     expect(toolCodeLanguage(path)).toBe(language);
+  });
+
+  it("keeps standalone patch inference extension-only with its diff fallback", () => {
+    expect(toolPatchLanguage("unknown.xyz")).toBe("diff");
+    expect(toolPatchLanguage("README")).toBe("diff");
+    expect(toolPatchLanguage("a.txt")).toBe("log");
+    expect(toolPatchLanguage("a.TS")).toBe("typescript");
+    expect(toolPatchLanguage("a.ts/")).toBe("diff");
+    expect(toolCodeLanguage("a.ts/")).toBe("typescript");
   });
 
   it("uses known extensions before shebang or diff content clues", () => {

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
@@ -296,4 +296,47 @@ it("a command appearing during preparation cannot introduce unaccepted shell sid
   } finally {
     spy.mockRestore();
   }
+});
+
+it.each(["edited", "deleted", "disabled"])(
+  "revalidates a command %s between both preparation catalog reads",
+  async (change) => {
+    const shell = vi.fn(async () => "MOCK SHELL");
+    const { host, a, server } = await fixture((_, response) => done(response), shell);
+    const command = await host.customCommands.create({ name: "race", prompt: "!`fixture-never-run`" });
+    const original = host.listSessionCustomCommands.bind(host);
+    let reads = 0;
+    const spy = vi.spyOn(host, "listSessionCustomCommands").mockImplementation(async (id) => {
+      if (++reads === 2) {
+        if (change === "edited") await writeFile(command.filePath, "Changed !`fixture-never-run`");
+        else if (change === "deleted") await unlink(command.filePath);
+        else await host.customCommands.setEnabled({ id: command.id, enabled: false });
+      }
+      return original(id);
+    });
+    const session = host.createSession(a.id);
+    try {
+      await host.startRun({ sessionId: session.id, text: "/race" });
+      await host.activeRuns.get(session.id)?.done;
+      const run = host.getSessionSnapshot(session.id).view.runs[0];
+      expect(run.status).toBe("error");
+      expect(JSON.stringify(run)).toContain(change === "disabled" ? "禁用" : "准备期间已更改");
+      expect(reads).toBe(2);
+      expect(server.requests).toHaveLength(0);
+      expect(shell).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  },
+);
+
+it("uses the same normalized uppercase colon invocation in both preparation phases", async () => {
+  const { host, a, server } = await fixture((_, response) => done(response));
+  const directory = join(host.customCommands.rootDirectory, "Tools");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "Review.md"), "NESTED $ARGUMENTS");
+  const session = host.createSession(a.id);
+  await host.startRun({ sessionId: session.id, text: "/TOOLS:REVIEW argument" });
+  await host.activeRuns.get(session.id)?.done;
+  expect(JSON.stringify(server.requests[0].messages)).toContain("NESTED argument");
 });

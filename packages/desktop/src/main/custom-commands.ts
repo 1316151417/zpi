@@ -151,18 +151,20 @@ export function validateCustomCommandName(name: string): string {
     fail("invalid_input", "Use 1–50 letters, numbers, underscores, or hyphens for a command name");
   return normalized;
 }
+export function isCustomCommandId(id: unknown): id is string {
+  return (
+    typeof id === "string" &&
+    Boolean(id) &&
+    id.length <= 1024 &&
+    !isAbsolute(id) &&
+    !/[\\:]/.test(id) &&
+    ![...id].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) &&
+    /\.md$/i.test(id) &&
+    id.split("/").every((part) => part && !part.startsWith(".") && !part.endsWith(".") && !part.endsWith(" "))
+  );
+}
 function validateId(id: string): string {
-  if (
-    typeof id !== "string" ||
-    !id ||
-    id.length > 1024 ||
-    isAbsolute(id) ||
-    /[\\:]/.test(id) ||
-    [...id].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
-    !/\.md$/i.test(id) ||
-    id.split("/").some((part) => !part || part.startsWith(".") || part.endsWith(".") || part.endsWith(" "))
-  )
-    fail("invalid_input", "Invalid relative command path");
+  if (!isCustomCommandId(id)) fail("invalid_input", "Invalid relative command path");
   return id;
 }
 function commandName(id: string): string {
@@ -241,12 +243,17 @@ async function readRegularFile(path: string, maxBytes: number): Promise<string> 
     if (!stat.isFile() || stat.nlink > 1 || stat.dev !== before.dev || stat.ino !== before.ino)
       fail("unsafe_path", "Command file changed identity while being opened");
     if (stat.size > maxBytes) fail("file_limit", "Command file exceeds the byte limit");
-    const buffer = Buffer.alloc(maxBytes + 1);
+    let buffer = Buffer.alloc(Math.min(stat.size + 1, maxBytes + 1));
     let length = 0;
     while (length < buffer.length) {
       const result = await handle.read(buffer, length, buffer.length - length, length);
       if (!result.bytesRead) break;
       length += result.bytesRead;
+      if (length === buffer.length && length <= maxBytes) {
+        const expanded = Buffer.alloc(Math.min(buffer.length * 2, maxBytes + 1));
+        buffer.copy(expanded);
+        buffer = expanded;
+      }
     }
     if (length > maxBytes) fail("file_limit", "Command file exceeds the byte limit");
     const after = await handle.stat();

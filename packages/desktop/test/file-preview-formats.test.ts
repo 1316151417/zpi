@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { readFilePreview, readPreviewRange } from "../src/main/file-preview.ts";
 import {
   calculateDocxPreviewFit,
-  getOfficeFilePreviewKind,
+  isSameDocxPreviewFit,
   sanitizeDocumentHref,
 } from "../src/renderer/office-preview-model.ts";
 import { readPdfRange } from "../src/renderer/pdf-range.ts";
@@ -24,7 +24,7 @@ test.each([
   ["DOCX", "docx"],
   ["doc", "doc"],
   ["xlsx", "xlsx"],
-  ["xlsm", "xlsx"],
+  ["XLSM", "xlsx"],
   ["xls", "xlsx"],
   ["pptx", "pptx"],
   ["pdf", "pdf"],
@@ -76,7 +76,19 @@ test("office fit only shrinks paper and validates sizes", () => {
     calculateDocxPreviewFit({ availableWidth: 1000, naturalWidth: 800, naturalHeight: 1000 })?.scale,
   ).toBe(1);
   expect(calculateDocxPreviewFit({ availableWidth: 0, naturalWidth: 800, naturalHeight: 1000 })).toBeNull();
-  expect(getOfficeFilePreviewKind("EXAMPLE.XLSM")).toBe("excel");
+});
+test.each([
+  [null, false],
+  [{ scale: 0, width: 400, height: 500 }, true],
+  [{ scale: 0.0009, width: 400.49, height: 499.51 }, true],
+  [{ scale: 0.001, width: 400, height: 500 }, false],
+  [{ scale: -0.001, width: 400, height: 500 }, false],
+  [{ scale: 0, width: 400.5, height: 500 }, false],
+  [{ scale: 0, width: 399.5, height: 500 }, false],
+  [{ scale: 0, width: 400, height: 500.5 }, false],
+  [{ scale: 0, width: 400, height: 499.5 }, false],
+])("retains Word fit only within every strict jitter tolerance (%j)", (current, expected) => {
+  expect(isSameDocxPreviewFit(current, { scale: 0, width: 400, height: 500 })).toBe(expected);
 });
 test.each([
   "javascript:alert(1)",

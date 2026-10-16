@@ -12,7 +12,8 @@ import type {
   CommandImportSkipReason,
   CommandImportSource,
 } from "../shared/command-import.ts";
-import { parseCustomCommandMarkdown } from "./custom-commands.ts";
+import { isCustomCommandId, parseCustomCommandMarkdown } from "./custom-commands.ts";
+import { isPathInside } from "./path-bounds.ts";
 
 /** Deliberately matches ZCode's command list, not its broader skill source list. */
 export const COMMAND_IMPORT_SOURCES = [
@@ -60,28 +61,11 @@ export interface CommandImportOptions {
 function code(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException)?.code;
 }
-function inside(root: string, path: string): boolean {
-  const suffix = relative(root, path);
-  return !isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`);
-}
 function commandName(path: string): string {
   return `/${path.replaceAll(sep, "/").replace(/\.md$/i, "")}`;
 }
 function nameKey(path: string): string {
   return commandName(path).toLowerCase();
-}
-function validRelativePath(path: string): boolean {
-  return (
-    Boolean(path) &&
-    path.length <= 1024 &&
-    !isAbsolute(path) &&
-    !/[\\:]/.test(path) &&
-    ![...path].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) &&
-    /\.md$/i.test(path) &&
-    path
-      .split("/")
-      .every((part) => part && !part.startsWith(".") && !part.endsWith(".") && !part.endsWith(" "))
-  );
 }
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -137,7 +121,7 @@ export class CommandImportService {
   /** Require an injected scope, then check every ancestor from the filesystem root. */
   private async directories(path: string, create = false): Promise<boolean> {
     const anchor = [this.home, ...(this.workspace ? [this.workspace] : [])]
-      .filter((root) => inside(root, path))
+      .filter((root) => isPathInside(root, path))
       .sort((left, right) => right.length - left.length)[0];
     if (!anchor) throw new Error("目录超出了允许范围。");
     let current = parse(anchor).root;
@@ -166,9 +150,9 @@ export class CommandImportService {
 
   private async snapshot(path: string, root: string, maxBytes = MAX_FILE_BYTES): Promise<FileSnapshot> {
     if (
-      !inside(root, path) ||
+      !isPathInside(root, path) ||
       path === root ||
-      (!inside(this.home, root) && (!this.workspace || !inside(this.workspace, root)))
+      (!isPathInside(this.home, root) && (!this.workspace || !isPathInside(this.workspace, root)))
     ) {
       throw new Error("命令文件超出了允许范围。");
     }
@@ -276,7 +260,7 @@ export class CommandImportService {
               break;
             }
             const relativePath = relative(root, path).replaceAll(sep, "/");
-            if (!validRelativePath(relativePath)) throw new Error("命令文件名不受支持。");
+            if (!isCustomCommandId(relativePath)) throw new Error("命令文件名不受支持。");
             const parsed = parseCustomCommandMarkdown(file.content.toString("utf8"));
             const skipReason = await this.conflict(relativePath, names);
             const candidate: CommandImportCandidate = {
@@ -328,12 +312,13 @@ export class CommandImportService {
     const data: unknown = JSON.parse(snapshot.content.toString("utf8"));
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("导入链接记录无效。");
     const registered = new Map<string, string>();
+    const roots = this.sourceRoots();
     for (const [target, source] of Object.entries(data)) {
       if (typeof source !== "string" || !isAbsolute(source) || resolve(source) !== source) continue;
-      const match = this.sourceRoots().find(({ path: root }) => {
-        return inside(root, source) && relative(root, source).replaceAll(sep, "/") === target;
+      const match = roots.find(({ path: root }) => {
+        return isPathInside(root, source) && relative(root, source).replaceAll(sep, "/") === target;
       });
-      if (match && validRelativePath(target)) {
+      if (match && isCustomCommandId(target)) {
         registered.set(target, source);
       }
     }

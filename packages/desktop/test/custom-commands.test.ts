@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CustomCommandsStore,
   type CustomCommandsStoreOptions,
+  isCustomCommandId,
   parseCustomCommandMarkdown,
   validateCustomCommandName,
 } from "../src/main/custom-commands.ts";
@@ -113,7 +114,122 @@ describe("custom command Markdown", () => {
   });
 });
 
+describe("custom command IDs", () => {
+  it.each(["review.md", "tools/Legacy Name.MD", "中文.md", `${"a".repeat(1021)}.md`])(
+    "accepts the shared import/storage ID %s",
+    (id) => expect(isCustomCommandId(id)).toBe(true),
+  );
+  it.each([
+    undefined,
+    null,
+    0,
+    {},
+    "",
+    "/a.md",
+    "../a.md",
+    "a//b.md",
+    "a/./b.md",
+    "a\\b.md",
+    "a:b.md",
+    "a\u0000.md",
+    "a\u007f.md",
+    ".hidden.md",
+    "a./b.md",
+    "a /b.md",
+    "a.txt",
+    `${"a".repeat(1022)}.md`,
+  ])("rejects invalid or unknown ID %s", (id) => {
+    expect(isCustomCommandId(id)).toBe(false);
+  });
+});
+
 describe("custom command storage", () => {
+  it.each(["", "Short", "x".repeat(256 * 1024)])(
+    "reads empty, small and maximum-size commands with a size-based buffer (%#)",
+    async (content) => {
+      const path = await put("bounded.md", content);
+      const sizes: number[] = [];
+      const open = fs.open.bind(fs);
+      vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+        const handle = await open(...args);
+        if (args[0] === path) {
+          const read = handle.read.bind(handle);
+          Object.defineProperty(handle, "read", {
+            value: async (buffer: Buffer, offset: number, length: number, position: number) => {
+              sizes.push(buffer.length);
+              return read(buffer, offset, length, position);
+            },
+          });
+        }
+        return handle;
+      });
+      const result = await store.list();
+      expect(result.diagnostics).toEqual([]);
+      expect(result.commands[0].prompt).toBe(content);
+      expect(sizes.length).toBeGreaterThan(0);
+      expect(new Set(sizes)).toEqual(new Set([Buffer.byteLength(content) + 1]));
+    },
+  );
+  it("continues short reads without losing UTF-8 bytes", async () => {
+    const content = "Review 中文 prompt";
+    const path = await put("short.md", content);
+    const open = fs.open.bind(fs);
+    vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const handle = await open(...args);
+      if (args[0] === path) {
+        const read = handle.read.bind(handle);
+        Object.defineProperty(handle, "read", {
+          value: (buffer: Buffer, offset: number, length: number, position: number) =>
+            read(buffer, offset, Math.min(2, length), position),
+        });
+      }
+      return handle;
+    });
+    const result = await store.list();
+    expect(result.diagnostics).toEqual([]);
+    expect(result.commands[0].prompt).toBe(content);
+  });
+  it.each([
+    ["123456", "conflict", [2, 4, 8]],
+    ["123456789", "file_limit", [2, 4, 8, 9]],
+  ])(
+    "bounds growth during reading and preserves %s / %s diagnostics",
+    async (growth, expected, capacities) => {
+      const path = await put("growing.md", "x");
+      const sizes: number[] = [];
+      const open = fs.open.bind(fs);
+      let grew = false;
+      vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+        const handle = await open(...args);
+        if (args[0] === path) {
+          const read = handle.read.bind(handle);
+          Object.defineProperty(handle, "read", {
+            value: async (buffer: Buffer, offset: number, length: number, position: number) => {
+              if (!grew) {
+                grew = true;
+                await fs.appendFile(path, growth);
+              }
+              sizes.push(buffer.length);
+              return read(buffer, offset, length, position);
+            },
+          });
+        }
+        return handle;
+      });
+      const result = await makeStore({ limits: { maxFileBytes: 8 } }).list();
+      expect(result.commands).toEqual([]);
+      expect(result.diagnostics[0].code).toBe(expected);
+      expect([...new Set(sizes)]).toEqual(capacities);
+    },
+  );
+  it("still rejects invalid UTF-8 after bounded reads", async () => {
+    const path = await put("invalid.md", "");
+    await fs.writeFile(path, Buffer.from([0xc3, 0x28]));
+    const result = await store.list();
+    expect(result.commands).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("encoded data");
+  });
   it("lists an absent directory without creating any files", async () => {
     expect(await store.list()).toEqual({ commands: [], diagnostics: [], directoryPath: root });
     expect(await fs.readdir(temporary)).toEqual([]);

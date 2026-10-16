@@ -2,6 +2,7 @@ import {
   appendSelection,
   type ComposerDraftStore,
   type ConversationSelection,
+  fileCommentSourceKey,
   getFileCommentSelection,
 } from "zpi-ui";
 
@@ -13,7 +14,6 @@ export interface FileComment extends FileCommentRange {
   id: string;
   comment: string;
 }
-const prefix = "file-comment:";
 export function normalizeFileCommentRange(range: FileCommentRange, text: string): FileCommentRange {
   const count = text.split("\n").length;
   return {
@@ -41,7 +41,7 @@ export function createFileComment(
   return {
     id,
     path,
-    sourceKey: `${prefix}${JSON.stringify({ ...normalized, comment: comment.trim() })}`,
+    sourceKey: fileCommentSourceKey({ ...normalized, comment }),
     sourceTitle: `${path} · ${label}`,
     contentType: "tool",
     text: `${label}\n${selected}${comment.trim() ? `\n\n备注：${comment.trim()}` : ""}`,

@@ -1,4 +1,5 @@
 export { observeAppearance, useAppearance } from "./appearance.ts";
+export { toolCodeLanguage } from "./code-language.ts";
 export { ChatComposer, Conversation, RunGroup } from "./components/Conversation.tsx";
 export { ConversationSelectionMenu } from "./components/ConversationSelections.tsx";
 export type { DiffEntry } from "./components/DiffView.tsx";
@@ -19,6 +20,7 @@ export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,
   buildSelectionPrompt,
+  fileCommentSourceKey,
   getFileCommentSelection,
   parseSelectionPrompt,
   validSelections,

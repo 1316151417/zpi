@@ -28,7 +28,7 @@ test("discovery excludes absent applications and missing icons, caching the same
     { id: "missing", name: "Missing", appPath: "C:/Missing.exe", command: null },
     { id: "no-icon", name: "No Icon", appPath: "C:/NoIcon.exe", command: null },
   ]);
-  fakes.resolveApp.mockImplementation((def) => (def.id === "missing" ? null : def.appPath));
+  fakes.resolveApp.mockImplementation(async (def) => (def.id === "missing" ? null : def.appPath));
   fakes.icon.mockImplementation(async (path) => {
     if (path.includes("NoIcon")) throw new Error("No icon");
     return { toDataURL: () => "data:image/png;base64,real-native-icon" };

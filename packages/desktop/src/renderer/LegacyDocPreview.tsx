@@ -15,6 +15,7 @@ import {
   calculateDocxPreviewFit,
   type DocxPreviewFit,
   installDocumentLinkSafety,
+  isSameDocxPreviewFit,
 } from "./office-preview-model.ts";
 
 setWasmSource(docxWasmUrl);
@@ -30,15 +31,6 @@ function getDocxModelRenderKey(model: DocModel): number {
   nextDocxModelRenderKey += 1;
   docxModelRenderKeys.set(model, nextDocxModelRenderKey);
   return nextDocxModelRenderKey;
-}
-
-function isSameDocxPreviewFit(current: DocxPreviewFit | null, next: DocxPreviewFit): boolean {
-  return (
-    current !== null &&
-    Math.abs(current.scale - next.scale) < 0.001 &&
-    Math.abs(current.width - next.width) < 0.5 &&
-    Math.abs(current.height - next.height) < 0.5
-  );
 }
 
 function ResponsiveDocxEditorViewer({

@@ -2,43 +2,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { useAppearance } from "../appearance.ts";
+import { toolPatchLanguage } from "../code-language.ts";
 import { patchPreviewLines } from "./tool-presentation.ts";
 
-// ZCode codeViewer.ts extension mapping; unknown patch paths use diff syntax.
-const languages: Record<string, BundledLanguage> = {
-  bash: "bash",
-  c: "c",
-  cc: "cpp",
-  cpp: "cpp",
-  css: "css",
-  diff: "diff",
-  go: "go",
-  h: "c",
-  htm: "html",
-  html: "html",
-  java: "java",
-  js: "javascript",
-  json: "json",
-  jsx: "jsx",
-  md: "markdown",
-  mermaid: "mermaid",
-  mmd: "mermaid",
-  mjs: "javascript",
-  py: "python",
-  rb: "ruby",
-  rs: "rust",
-  sh: "bash",
-  sql: "sql",
-  svg: "xml",
-  text: "log",
-  toml: "toml",
-  ts: "typescript",
-  tsx: "tsx",
-  txt: "log",
-  xml: "xml",
-  yaml: "yaml",
-  yml: "yaml",
-};
+export { toolCodeLanguage } from "../code-language.ts";
 
 export function useToolTokens(code: string, language: BundledLanguage) {
   const { theme } = useAppearance();
@@ -74,18 +41,6 @@ export function useToolTokens(code: string, language: BundledLanguage) {
   return highlight?.code === code && highlight.language === language && highlight.theme === theme
     ? highlight.tokens
     : undefined;
-}
-
-export function toolCodeLanguage(path: string, content = ""): BundledLanguage {
-  const leaf = path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").at(-1);
-  const extension = leaf?.includes(".") ? leaf.split(".").at(-1)?.toLowerCase() : undefined;
-  if (extension && Object.hasOwn(languages, extension)) return languages[extension];
-  if (content.startsWith("#!/")) {
-    if (content.includes("python")) return "python";
-    if (content.includes("bash") || content.includes("sh")) return "bash";
-  }
-  if (/^(diff --git|--- |\+\+\+ |@@ )/m.test(content)) return "diff";
-  return "log";
 }
 
 export function ToolCode({ text, language = "json" }: { text: string; language?: BundledLanguage }) {
@@ -126,7 +81,7 @@ export function ToolDiff({
     () => lines.map((line) => (/^[ +-]/.test(line) ? line.slice(1) : line)).join("\n"),
     [lines],
   );
-  const language = languages[path.split(".").at(-1)?.toLowerCase() ?? ""] ?? "diff";
+  const language = toolPatchLanguage(path);
   const tokens = useToolTokens(code, language);
   return (
     <div className="tool-inline-diff" data-inline-diff-preview>

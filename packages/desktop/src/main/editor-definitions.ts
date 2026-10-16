@@ -1,8 +1,11 @@
 // Adapted from ZCode main/editors.ts; see THIRD_PARTY_NOTICES.md.
 
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { win32 as pathWin32 } from "node:path";
+import { promisify } from "node:util";
+
+const exec = promisify(execFile);
 
 const WINDOWS_EXPLORER_PATH = pathWin32.join(process.env.WINDIR ?? "C:/Windows", "explorer.exe");
 
@@ -130,35 +133,36 @@ function windowsProgramFilesCandidates(...segments: string[]): string[] {
   return getWindowsProgramFilesRoots().map((root) => pathWin32.join(root, ...segments));
 }
 
-function findWindowsJetBrainsExecutableCandidates(
-  productDirPrefix: string,
-  executableName: string,
-): string[] {
+function findWindowsJetBrainsDirectories(): string[] {
   const roots = uniquePaths([
     ...getWindowsProgramFilesRoots().map((root) => pathWin32.join(root, "JetBrains")),
     pathWin32.join(getWindowsLocalProgramsRoot(), "JetBrains"),
   ]);
-  const candidates: string[] = [];
-
+  const directories: string[] = [];
   for (const root of roots) {
     try {
       const entries = readdirSync(root, { withFileTypes: true })
-        .filter(
-          (entry) =>
-            entry.isDirectory() && entry.name.toLowerCase().startsWith(productDirPrefix.toLowerCase()),
-        )
+        .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
         .sort((left, right) => right.localeCompare(left));
-
-      for (const entry of entries) {
-        candidates.push(pathWin32.join(root, entry, "bin", executableName));
-      }
+      directories.push(...entries.map((entry) => pathWin32.join(root, entry)));
     } catch {
       // JetBrains products are optional; missing roots are expected.
     }
   }
+  return directories;
+}
 
-  return candidates;
+function findWindowsJetBrainsExecutableCandidates(
+  directories: string[],
+  productDirPrefix: string,
+  executableName: string,
+): string[] {
+  return directories
+    .filter((directory) =>
+      pathWin32.basename(directory).toLowerCase().startsWith(productDirPrefix.toLowerCase()),
+    )
+    .map((directory) => pathWin32.join(directory, "bin", executableName));
 }
 
 function createWindowsEditorDef(
@@ -179,13 +183,13 @@ function createWindowsEditorDef(
   };
 }
 
-function resolveWindowsCommandPaths(command: string): string[] {
+async function resolveWindowsCommandPaths(command: string): Promise<string[]> {
   if (process.platform !== "win32") {
     return [];
   }
 
   try {
-    const output = execFileSync("where.exe", [command], {
+    const { stdout: output } = await exec("where.exe", [command], {
       encoding: "utf8",
       timeout: 1000,
       windowsHide: true,
@@ -199,10 +203,10 @@ function resolveWindowsCommandPaths(command: string): string[] {
   }
 }
 
-function deriveWindowsAppPathsFromCommand(command: string, appNames: string[]): string[] {
+async function deriveWindowsAppPathsFromCommand(command: string, appNames: string[]): Promise<string[]> {
   const candidates: string[] = [];
 
-  for (const commandPath of resolveWindowsCommandPaths(command)) {
+  for (const commandPath of await resolveWindowsCommandPaths(command)) {
     const commandDir = pathWin32.dirname(commandPath);
     for (const appRoot of uniquePaths([commandDir, pathWin32.dirname(commandDir)])) {
       for (const appName of appNames) {
@@ -223,6 +227,7 @@ const WINDOWS_EDITOR_DEFS: EditorDef[] = [
 ];
 
 function windowsAdditionalEditorDefs(): EditorDef[] {
+  const jetBrainsDirectories = findWindowsJetBrainsDirectories();
   return [
     createWindowsEditorDef(
       "vscode",
@@ -263,19 +268,19 @@ function windowsAdditionalEditorDefs(): EditorDef[] {
       ...windowsProgramFilesCandidates("Trae CN", "Trae CN.exe"),
     ]),
     createWindowsEditorDef("idea", "IntelliJ IDEA", [
-      ...findWindowsJetBrainsExecutableCandidates("IntelliJ IDEA", "idea64.exe"),
+      ...findWindowsJetBrainsExecutableCandidates(jetBrainsDirectories, "IntelliJ IDEA", "idea64.exe"),
     ]),
     createWindowsEditorDef("webstorm", "WebStorm", [
-      ...findWindowsJetBrainsExecutableCandidates("WebStorm", "webstorm64.exe"),
+      ...findWindowsJetBrainsExecutableCandidates(jetBrainsDirectories, "WebStorm", "webstorm64.exe"),
     ]),
     createWindowsEditorDef("pycharm", "PyCharm", [
-      ...findWindowsJetBrainsExecutableCandidates("PyCharm", "pycharm64.exe"),
+      ...findWindowsJetBrainsExecutableCandidates(jetBrainsDirectories, "PyCharm", "pycharm64.exe"),
     ]),
     createWindowsEditorDef("goland", "GoLand", [
-      ...findWindowsJetBrainsExecutableCandidates("GoLand", "goland64.exe"),
+      ...findWindowsJetBrainsExecutableCandidates(jetBrainsDirectories, "GoLand", "goland64.exe"),
     ]),
     createWindowsEditorDef("clion", "CLion", [
-      ...findWindowsJetBrainsExecutableCandidates("CLion", "clion64.exe"),
+      ...findWindowsJetBrainsExecutableCandidates(jetBrainsDirectories, "CLion", "clion64.exe"),
     ]),
   ];
 }
@@ -292,17 +297,17 @@ export function getEditorDefsForCurrentPlatform(): EditorDef[] {
   return [];
 }
 
-/** 缓存检测结果，避免重复 IO */
-export function resolveEditorDefAppPath(def: EditorDef): string | null {
+/** Recheck availability on every resolution, including each open request. */
+export async function resolveEditorDefAppPath(def: EditorDef): Promise<string | null> {
   const commandAppPaths =
     def.command && def.windowsCommandAppNames?.length
-      ? deriveWindowsAppPathsFromCommand(def.command, def.windowsCommandAppNames)
+      ? await deriveWindowsAppPathsFromCommand(def.command, def.windowsCommandAppNames)
       : [];
   const commandPaths =
     process.platform === "win32" && def.windowsCommandAppNames?.length
       ? []
       : def.command
-        ? resolveWindowsCommandPaths(def.command)
+        ? await resolveWindowsCommandPaths(def.command)
         : [];
   const candidatePaths = uniquePaths([
     def.appPath,

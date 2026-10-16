@@ -33,7 +33,7 @@ function services(platform = "darwin"): EditorOpenServices & {
       { id: "explorer", name: "Explorer", appPath: "C:/Windows/explorer.exe", command: null },
       { id: "qspace", name: "QSpace", appPath: "/Applications/QSpace.app", command: null },
     ],
-    resolveApp: (def) => def.appPath,
+    resolveApp: async (def) => def.appPath,
     launch: vi.fn(async () => {}),
     openPath: vi.fn(async () => ""),
     reveal: vi.fn<EditorOpenServices["reveal"]>(),
@@ -102,9 +102,22 @@ test("rejects arbitrary executable IDs, malformed paths, traversal and symlink e
 test("rejects unavailable editors", async () => {
   const { dir, path } = await fixture();
   const native = services();
-  native.resolveApp = () => null;
+  native.resolveApp = async () => null;
   await expect(openWorkspaceEditor(dir, path, "vscode", native)).rejects.toThrow("未安装");
   expect(native.launch).not.toHaveBeenCalled();
+});
+test("each open awaits a fresh installation check and rejects an editor removed since the previous open", async () => {
+  const { dir, path } = await fixture();
+  const native = services();
+  const resolveApp = vi
+    .fn<EditorOpenServices["resolveApp"]>()
+    .mockResolvedValueOnce("/Applications/Visual Studio Code.app")
+    .mockResolvedValueOnce(null);
+  native.resolveApp = resolveApp;
+  await openWorkspaceEditor(dir, path, "vscode", native);
+  await expect(openWorkspaceEditor(dir, path, "vscode", native)).rejects.toThrow("未安装");
+  expect(resolveApp).toHaveBeenCalledTimes(2);
+  expect(native.launch).toHaveBeenCalledTimes(1);
 });
 const editor = (id: string): EditorInfo => ({ id, name: id, iconDataUrl: "data:image/png;base64,test" });
 test("pins file managers in reference order and respects an available preference", () => {

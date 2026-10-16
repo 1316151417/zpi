@@ -2293,7 +2293,7 @@ export class SessionHost {
       const customInvocation = explicitUserInput ? parseCustomCommandInvocation(text) : undefined;
       const initialCustom = customInvocation
         ? (await this.listSessionCustomCommands(id)).commands.find(
-            (item) => item.name.slice(1).toLowerCase() === customInvocation.name.replaceAll(":", "/"),
+            (item) => item.name.slice(1).toLowerCase() === customInvocation.name,
           )
         : undefined;
       if (initialCustom && !initialCustom.enabled)
@@ -2508,12 +2508,11 @@ export class SessionHost {
           session.setThinkingLevel(toThinking(selection.reasoning, model));
         run.session = session;
         const inputContext = { images: loaded.images, fileReferences: inputReferences };
-        const invocation = parseCustomCommandInvocation(text);
         let commandText = text;
-        if (invocation && explicitUserInput) {
+        if (customInvocation) {
           const catalog = await this.listSessionCustomCommands(id);
           const command = catalog.commands.find(
-            (item) => item.name.slice(1).toLowerCase() === invocation.name.toLowerCase().replaceAll(":", "/"),
+            (item) => item.name.slice(1).toLowerCase() === customInvocation.name,
           );
           if (
             Boolean(initialCustom) !== Boolean(command) ||
@@ -2538,7 +2537,7 @@ export class SessionHost {
               : "project/zpi";
             commandText = await expandCustomCommandPromptWithShell(
               command,
-              invocation.args,
+              customInvocation.args,
               (shellCommand) =>
                 this.commandShellRunner(shellCommand, {
                   cwd: this.cwd(record),

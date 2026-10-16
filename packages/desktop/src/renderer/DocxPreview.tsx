@@ -7,6 +7,7 @@ import {
   calculateDocxPreviewFit,
   type DocxPreviewFit,
   installDocumentLinkSafety,
+  isSameDocxPreviewFit,
 } from "./office-preview-model.ts";
 
 const DOCX_RENDER_OPTIONS = {
@@ -38,15 +39,6 @@ let nextDocxPreviewClassId = 0;
 function createDocxPreviewClassName(): string {
   nextDocxPreviewClassId += 1;
   return `zpi-docx-preview-${nextDocxPreviewClassId}`;
-}
-
-function isSameDocxPreviewFit(current: DocxPreviewFit | null, next: DocxPreviewFit): boolean {
-  return (
-    current !== null &&
-    Math.abs(current.scale - next.scale) < 0.001 &&
-    Math.abs(current.width - next.width) < 0.5 &&
-    Math.abs(current.height - next.height) < 0.5
-  );
 }
 
 export default function DocxPreview({

@@ -339,6 +339,30 @@ describe("explicit linked imports", () => {
     expect((await store.list()).commands).toEqual([]);
   });
 
+  it("normalizes equivalent injected paths and rereads global/project provenance on each call", async () => {
+    const { home, workspace, target, service, put } = await fixture(true);
+    const global = await put(".claude/commands/global.MD");
+    const project = join(workspace, ".claude", "commands", "local.md");
+    await mkdir(dirname(project), { recursive: true });
+    await writeFile(project, "Project");
+    expect((await service.importSelected(request(await service.discover(), "symlink"))).importedCount).toBe(
+      2,
+    );
+    const equivalent = new CommandImportService({
+      homeDirectory: `${home}/../home/.`,
+      workspaceDirectory: `${workspace}/../project/.`,
+      targetDirectory: `${target}/../commands/.`,
+    });
+    expect(await equivalent.registeredLinkTargets()).toEqual(
+      new Map([
+        ["global.MD", global],
+        ["local.md", project],
+      ]),
+    );
+    await writeFile(join(target, ".import-links.json"), JSON.stringify({ "local.md": project }));
+    expect(await equivalent.registeredLinkTargets()).toEqual(new Map([["local.md", project]]));
+  });
+
   it("filters fabricated provenance outside known source roots and blocks a symlink registry", async () => {
     const { root, target, service } = await fixture();
     await mkdir(target, { recursive: true });

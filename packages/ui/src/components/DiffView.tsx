@@ -223,17 +223,26 @@ export function DiffView({
   const [focusKey, setFocusKey] = useState<string>();
   const searching = Boolean(findRequest?.query.trim());
   const patchScope = searching ? undefined : selected;
+  const presentations = useMemo(
+    () =>
+      entries
+        .filter((entry) => patchScope === undefined || entry.path === patchScope)
+        .map((entry) => {
+          const patch = entry.patch ?? patches[entry.id] ?? "";
+          const singleSide = preview ? singleSidePatchLines(entry, patch) : undefined;
+          const large = !singleSide && (patch.length > 180000 || patch.split("\n").length > 1200);
+          return { entry, patch, singleSide, large };
+        }),
+    [entries, patches, patchScope, preview],
+  );
   const findTargets = useMemo(
     () =>
       searching
-        ? entries.flatMap((entry) => {
-            const patch = entry.patch ?? patches[entry.id] ?? "";
-            return (
-              (preview && singleSidePatchLines(entry, patch)) || patchFindTargets(entry.id, entry.path, patch)
-            );
-          })
+        ? presentations.flatMap(
+            ({ entry, patch, singleSide }) => singleSide ?? patchFindTargets(entry.id, entry.path, patch),
+          )
         : [],
-    [entries, patches, searching, preview],
+    [presentations, searching],
   );
   const navigateFind = useCallback((match: FindMatch, range?: Range) => {
     if (match.path) setSelected(match.path);
@@ -333,12 +342,9 @@ export function DiffView({
               </button>
             </div>
           )}
-          {entries
-            .filter((entry) => entry.path === selected)
-            .map((entry) => {
-              const patch = entry.patch ?? patches[entry.id] ?? "",
-                singleSide = renderHeader ? singleSidePatchLines(entry, patch) : undefined,
-                large = patch.length > 180000 || patch.split("\n").length > 1200;
+          {presentations
+            .filter(({ entry }) => entry.path === selected)
+            .map(({ entry, patch, singleSide, large }) => {
               return (
                 <section className="diff-entry" key={entry.id} data-diff-id={entry.id}>
                   {!renderHeader && (
