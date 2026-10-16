@@ -419,8 +419,7 @@
   height: 100%;
   min-height: 0;
 }
-.pane-subheading,
-.terminal-cwd {
+.pane-subheading {
   display: flex;
   justify-content: space-between;
   padding: 8px 12px;
@@ -432,13 +431,10 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.terminal-cwd {
-  font-size: var(--text-small);
-}
 .terminal-surface {
   flex: 1;
   min-height: 0;
-  padding: 10px;
+  padding: 12px;
   overflow: hidden;
 }
 .terminal-surface .xterm {

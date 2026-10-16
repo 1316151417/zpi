@@ -4,18 +4,22 @@ import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { observeAppearance } from "zpi-ui";
+import type { TerminalProfile } from "../shared/bridge.ts";
 import { openBrowser, paneTask, terminalListeners, terminalOutput } from "./pane-store.ts";
 import { report, unwrap } from "./store.ts";
+import { terminalCssColor, terminalOptions, terminalTheme } from "./terminal-presentation.ts";
 export function TerminalPane({
   id,
   sessionId,
   visible,
   cwd,
+  profile,
 }: {
   id: string;
   sessionId: string;
   visible: boolean;
   cwd: string;
+  profile?: TerminalProfile;
 }) {
   const root = useRef<HTMLDivElement>(null),
     terminal = useRef<Terminal | undefined>(undefined),
@@ -23,23 +27,19 @@ export function TerminalPane({
   useEffect(() => {
     const element = root.current;
     if (!element) return;
+    const openLink = (event: MouseEvent, url: string) => {
+      event.preventDefault();
+      if (/^https?:\/\//i.test(url)) paneTask(openBrowser(url, sessionId));
+    };
     const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 12,
-      fontFamily: '"SFMono-Regular", Menlo, monospace',
-      scrollback: 5000,
-      allowProposedApi: false,
+      ...terminalOptions(profile),
+      linkHandler: { allowNonHttpProtocols: false, activate: openLink },
     });
     const fitting = new FitAddon();
     terminal.current = term;
     fit.current = fitting;
     term.loadAddon(fitting);
-    term.loadAddon(
-      new WebLinksAddon((event, url) => {
-        event.preventDefault();
-        paneTask(openBrowser(url, sessionId));
-      }),
-    );
+    term.loadAddon(new WebLinksAddon(openLink));
     term.open(element);
     term.write(terminalOutput.get(id) ?? "");
     terminalListeners.set(id, (event) => term.write(event.data));
@@ -58,13 +58,13 @@ export function TerminalPane({
     observer.observe(element);
     const theme = () => {
       const styles = getComputedStyle(document.documentElement);
-      term.options.theme = {
-        background: styles.getPropertyValue("--color-bg").trim(),
-        foreground: styles.getPropertyValue("--color-text").trim(),
-        cursor: styles.getPropertyValue("--color-text").trim(),
-        selectionBackground: styles.getPropertyValue("--color-terminal-selection").trim(),
-      };
-      term.options.fontSize = Number.parseFloat(styles.getPropertyValue("--ui-font-size")) - 2;
+      const dark = document.documentElement.dataset.theme === "dark";
+      term.options.theme = terminalTheme(
+        dark,
+        terminalCssColor(styles, "--color-bg", dark ? "#161616" : "#f8f8f8"),
+        terminalCssColor(styles, "--color-text", dark ? "#d4d4d4" : "#262626"),
+        profile,
+      );
       fitSize();
     };
     theme();
@@ -94,7 +94,7 @@ export function TerminalPane({
       terminal.current = undefined;
       fit.current = undefined;
     };
-  }, [id, sessionId]);
+  }, [id, sessionId, profile]);
   useEffect(() => {
     if (!visible) return;
     const frame = requestAnimationFrame(() => {
@@ -106,7 +106,6 @@ export function TerminalPane({
   }, [id, visible]);
   return (
     <div className="terminal-pane" title={cwd}>
-      <div className="terminal-cwd">{cwd}</div>
       <div ref={root} className="terminal-surface" data-testid="terminal-surface" />
     </div>
   );

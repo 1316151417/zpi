@@ -1,7 +1,13 @@
 import { type BackgroundTask, type ConversationSelection, type SubagentTask, toolFile } from "zpi-ui";
 import { type FileLocation, resolveLinkTarget, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
 import { create } from "zustand";
-import type { BrowserState, FilePreview, PaneEvent, SessionRecord } from "../shared/bridge.ts";
+import type {
+  BrowserState,
+  FilePreview,
+  PaneEvent,
+  SessionRecord,
+  TerminalProfile,
+} from "../shared/bridge.ts";
 import {
   accept,
   addConversationSelection,
@@ -14,6 +20,7 @@ import {
   unwrap,
   useStore,
 } from "./store.ts";
+import { terminalTitle } from "./terminal-presentation.ts";
 export type PaneTab = (
   | { id: string; type: "background-task"; title: string; sessionId: string; taskId: string }
   | {
@@ -42,7 +49,7 @@ export type PaneTab = (
       toolCallId?: string;
       title: string;
     }
-  | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string }
+  | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string; profile?: TerminalProfile }
   | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview }
   | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState }
 ) & { ownerSessionId?: string };
@@ -357,7 +364,22 @@ export async function openTerminal(sessionId: string) {
     terminalOutput.delete(created.id);
     return;
   }
-  showTab({ type: "terminal", id: created.id, title: created.shell, sessionId, ownerSessionId, cwd });
+  const title = terminalTitle(
+    cwd,
+    usePane
+      .getState()
+      .tabs.filter((tab) => tab.type === "terminal" && tabOwner(tab) === ownerSessionId)
+      .map((tab) => tab.title),
+  );
+  showTab({
+    type: "terminal",
+    id: created.id,
+    title,
+    sessionId,
+    ownerSessionId,
+    cwd,
+    profile: created.profile,
+  });
 }
 export async function openBrowser(
   url = "",

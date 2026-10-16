@@ -6,8 +6,10 @@ import type { BrowserState, PaneBounds, PaneEvent } from "../shared/bridge.ts";
 import type { ShortcutKeyEvent } from "../shared/shortcuts.ts";
 import { browserUrl } from "./browser-url.ts";
 import type { ShortcutModifier } from "./shortcut-modifier.ts";
+import { readTerminalProfile } from "./terminal-profile.ts";
 import { terminalShell } from "./terminal-shell.ts";
 export class PaneServices {
+  private disposed = false;
   private terminals = new Map<string, IPty>();
   private browsers = new Map<string, { view: WebContentsView; error?: string }>();
   private shown?: string;
@@ -27,8 +29,11 @@ export class PaneServices {
     this.modifier = modifier;
   }
   async createTerminal(cwd: string) {
+    if (this.disposed) throw new Error("not_found: 窗口已关闭");
     if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
-    const { spawn } = await import("node-pty");
+    const [{ spawn }, profile] = await Promise.all([import("node-pty"), readTerminalProfile()]);
+    if (this.disposed) throw new Error("not_found: 窗口已关闭");
+    if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
     const { shell, args } = terminalShell();
     const env = Object.fromEntries(
       Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -50,7 +55,7 @@ export class PaneServices {
       if (!this.terminals.delete(id)) return;
       this.emit({ type: "terminal", id, data: `\r\n[终端已退出 ${exitCode}]\r\n`, exited: true });
     });
-    return { id, shell: basename(shell) };
+    return { id, shell: basename(shell), profile };
   }
   terminalInput(id: string, data: string) {
     if (typeof data !== "string" || Buffer.byteLength(data) > 1024 * 1024)
@@ -273,6 +278,7 @@ export class PaneServices {
     entry.view.webContents.close({ waitForBeforeUnload: false });
   }
   close() {
+    this.disposed = true;
     for (const id of this.terminals.keys()) this.closeTerminal(id);
     for (const id of this.browsers.keys()) this.closeBrowser(id);
   }

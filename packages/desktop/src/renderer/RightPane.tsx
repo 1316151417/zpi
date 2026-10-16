@@ -335,6 +335,7 @@ export function RightPane({
                   id={tab.id}
                   sessionId={tab.sessionId}
                   cwd={tab.cwd}
+                  profile={tab.profile}
                   visible={state.open && tab.id === active}
                 />
               ) : tab.type === "file" ? (

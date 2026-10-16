@@ -220,6 +220,31 @@ export type FilePreview = { location?: FileLocation } & (
   | { path: string; kind: "unsupported" }
   | { path: string; kind: "directory" }
 );
+export interface TerminalProfileTheme {
+  selectionBackground?: string;
+  selectionInactiveBackground?: string;
+  black?: string;
+  red?: string;
+  green?: string;
+  yellow?: string;
+  blue?: string;
+  magenta?: string;
+  cyan?: string;
+  white?: string;
+  brightBlack?: string;
+  brightRed?: string;
+  brightGreen?: string;
+  brightYellow?: string;
+  brightBlue?: string;
+  brightMagenta?: string;
+  brightCyan?: string;
+  brightWhite?: string;
+}
+export interface TerminalProfile {
+  fontFamily?: string;
+  fontSize?: number;
+  theme?: TerminalProfileTheme;
+}
 export interface BrowserState {
   id: string;
   url: string;
@@ -279,7 +304,9 @@ export interface DesktopBridge {
   listArchivedSessions(): Promise<Result<(SessionRecord & { projectName: string })[]>>;
   restoreSession(id: string): Promise<Result<SessionRecord>>;
   openDirectory(path: string): Promise<Result<void>>;
-  createTerminal(sessionId: string): Promise<Result<{ id: string; shell: string }>>;
+  createTerminal(
+    sessionId: string,
+  ): Promise<Result<{ id: string; shell: string; profile?: TerminalProfile }>>;
   terminalInput(id: string, data: string): Promise<Result<void>>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<Result<void>>;
   closeTerminal(id: string): Promise<Result<void>>;

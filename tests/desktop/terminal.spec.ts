@@ -18,11 +18,30 @@ test("packaged terminal starts a shell and runs commands outside the repository"
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "终端", exact: true }).click();
     const input = page.locator(".right-pane .xterm-helper-textarea");
     await expect(input).toBeAttached();
+    await expect(page.locator(".terminal-cwd")).toHaveCount(0);
+    await expect(page.getByLabel("关闭标签 workspace", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("terminal-surface")).toHaveCSS("padding", "12px");
+    await expect(page.locator(".xterm-rows")).toHaveCSS("font-size", "13px");
     await input.pressSequentially("printf 'PACKAGED_%s\\n' 'TERMINAL_OK'; pwd", { delay: 1 });
     await input.press("Enter");
     await expect(page.locator(".xterm-rows")).toContainText("PACKAGED_TERMINAL_OK");
     await expect(page.locator(".xterm-rows")).toContainText(join(dir, "workspace"));
-    await page.getByLabel("关闭标签 zsh", { exact: true }).click();
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = "dark";
+      document.documentElement.style.setProperty("--ui-font-size", "18px");
+    });
+    await expect(page.locator(".xterm-rows")).toHaveCSS("font-size", "13px");
+    await expect(page.locator(".xterm-viewport")).toHaveCSS("background-color", "rgb(22, 22, 22)");
+    await expect(page.locator(".xterm-rows")).toContainText("PACKAGED_TERMINAL_OK");
+    await input.pressSequentially("printf 'THEME_%s\\n' 'INPUT_OK'", { delay: 1 });
+    await input.press("Enter");
+    await expect(page.locator(".xterm-rows")).toContainText("THEME_INPUT_OK");
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = "light";
+      document.documentElement.style.removeProperty("--ui-font-size");
+    });
+    await expect(page.locator(".xterm-viewport")).toHaveCSS("background-color", "rgb(248, 248, 248)");
+    await page.getByLabel("关闭标签 workspace", { exact: true }).click();
     await expect(page.locator(".xterm-helper-textarea")).toHaveCount(0);
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);

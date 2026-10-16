@@ -571,3 +571,29 @@ it.each(["pdf", "pptx", "docx", "doc", "xlsx", "html", "svg"])(
     expect(bridge.createBrowser).not.toHaveBeenCalled();
   },
 );
+
+it("names terminals by workspace with per-owner ordinals rather than shell executable", async () => {
+  await openTerminal("A");
+  await openTerminal("A");
+  await openTerminal("B");
+  expect(usePane.getState().tabs.map((tab) => tab.title)).toEqual(["shared", "shared 2", "shared"]);
+  const first = usePane.getState().tabs[0];
+  if (!first) throw new Error("missing terminal tab");
+  await closeTab(first.id);
+  await openTerminal("A");
+  expect(usePane.getState().tabs.at(-1)?.title).toBe("shared");
+});
+
+it("keeps native profile metadata on its terminal tab without altering the shell process title", async () => {
+  const profile = { fontFamily: "Menlo", fontSize: 15, theme: { green: "#12ab34" } };
+  bridge.createTerminal.mockResolvedValueOnce(ok({ id: "native-profile", shell: "zsh", profile }));
+  await openTerminal("A");
+  expect(usePane.getState().tabs[0]).toMatchObject({
+    id: "native-profile",
+    title: "shared",
+    cwd: "/shared",
+    profile,
+  });
+  expect(bridge.createTerminal).toHaveBeenCalledOnce();
+  expect(bridge.closeTerminal).not.toHaveBeenCalled();
+});
