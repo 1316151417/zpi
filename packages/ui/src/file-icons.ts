@@ -116,7 +116,10 @@ export function resolveIconName(filePath: string): string {
   }
 
   for (const candidate of fileNameAliasCandidates) {
-    const aliasedFileName = FILE_NAME_ICON_ALIASES[candidate];
+    // 文件名可能恰好是 constructor / __proto__，不能把原型属性当成图标别名。
+    const aliasedFileName = Object.hasOwn(FILE_NAME_ICON_ALIASES, candidate)
+      ? FILE_NAME_ICON_ALIASES[candidate]
+      : undefined;
     if (aliasedFileName) {
       return aliasedFileName;
     }
@@ -127,7 +130,18 @@ export function resolveIconName(filePath: string): string {
   }
 
   const extension = leaf.slice(lastDot + 1).toLowerCase();
-  return EXTENSION_ICON_ALIASES[extension] ?? extension ?? DEFAULT_FILE_ICON_NAME;
+  return Object.hasOwn(EXTENSION_ICON_ALIASES, extension) ? EXTENSION_ICON_ALIASES[extension] : extension;
+}
+
+// 与参考组件相同，素材加载失败后先回退 document，再使用本地图形，避免破图和重试循环。
+export const INLINE_FALLBACK_FILE_ICON_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="M4.5 1.5h4.586L12.5 4.914V13a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 3.5 13V3A1.5 1.5 0 0 1 5 1.5Z" stroke="#94A3B8" stroke-width="1.2" stroke-linejoin="round"/><path d="M9 1.75V5h3.25" stroke="#94A3B8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+)}`;
+
+export function fallbackFileIconSource(currentSource: string): string | null {
+  if (currentSource === INLINE_FALLBACK_FILE_ICON_SRC) return null;
+  if (currentSource.endsWith("/document.svg")) return INLINE_FALLBACK_FILE_ICON_SRC;
+  return fileIconSource("file.txt");
 }
 
 export function fileIconSource(path: string): string {

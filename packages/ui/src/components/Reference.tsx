@@ -3,7 +3,7 @@ import { Copy, ExternalLink } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { parseMentions } from "zpi-coding-agent/input";
 import { selectionIntersects } from "../conversation-selections.ts";
-import { fileIconSource } from "../file-icons.ts";
+import { fallbackFileIconSource, fileIconSource } from "../file-icons.ts";
 import type { FileLocation } from "../link-target.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";
 
@@ -50,7 +50,22 @@ export function referenceStyle(kind: DisplayReference["kind"], path: string): CS
 }
 
 export function FileIcon({ path, size = 16 }: { path: string; size?: number }) {
-  return <img className="file-type-icon" src={fileIconSource(path)} width={size} height={size} alt="" />;
+  const source = fileIconSource(path);
+  return (
+    <img
+      key={source}
+      className="file-type-icon"
+      src={source}
+      width={size}
+      height={size}
+      alt=""
+      aria-hidden="true"
+      onError={(event) => {
+        const fallback = fallbackFileIconSource(event.currentTarget.src);
+        if (fallback) event.currentTarget.src = fallback;
+      }}
+    />
+  );
 }
 
 export function Reference({

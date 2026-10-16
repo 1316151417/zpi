@@ -19,6 +19,7 @@ export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,
   buildSelectionPrompt,
+  getFileCommentSelection,
   parseSelectionPrompt,
   validSelections,
 } from "./conversation-selections.ts";

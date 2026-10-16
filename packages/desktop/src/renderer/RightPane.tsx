@@ -166,27 +166,31 @@ export function RightPane({
                       if (event.button !== 1) activatePaneTab(tab.id);
                     }}
                   >
-                    {tab.type === "subagent" ? (
-                      <Bot size={16} />
-                    ) : tab.type === "task-directory" ? (
-                      <Activity size={16} />
-                    ) : tab.type === "side-chat" || tab.type === "side-chat-loading" ? (
-                      <MessageSquare size={16} />
-                    ) : tab.type === "changes" ? (
-                      tab.path ? (
-                        <FileIcon path={tab.path} />
-                      ) : (
-                        <Files size={16} />
-                      )
-                    ) : tab.type === "terminal" || tab.type === "background-task" ? (
-                      <TerminalSquare size={16} />
-                    ) : tab.type === "file" ? (
-                      <FileIcon path={tab.preview.path} />
-                    ) : (
-                      <Globe size={16} />
-                    )}
-                    <span>{tab.title}</span>
-                    {tab.type === "changes" && <span className="pane-tab-diff-badge">Diff</span>}
+                    <span className="pane-tab-content">
+                      <span className="pane-tab-icon">
+                        {tab.type === "subagent" ? (
+                          <Bot size={14} />
+                        ) : tab.type === "task-directory" ? (
+                          <Activity size={14} />
+                        ) : tab.type === "side-chat" || tab.type === "side-chat-loading" ? (
+                          <MessageSquare size={14} />
+                        ) : tab.type === "changes" ? (
+                          tab.path ? (
+                            <FileIcon path={tab.path} size={14} />
+                          ) : (
+                            <Files size={14} />
+                          )
+                        ) : tab.type === "terminal" || tab.type === "background-task" ? (
+                          <TerminalSquare size={14} />
+                        ) : tab.type === "file" ? (
+                          <FileIcon path={tab.preview.path} size={14} />
+                        ) : (
+                          <Globe size={14} />
+                        )}
+                      </span>
+                      <span className="pane-tab-title">{tab.title}</span>
+                      {tab.type === "changes" && <span className="pane-tab-diff-badge">Diff</span>}
+                    </span>
                   </button>
                   <button
                     className="tab-close"

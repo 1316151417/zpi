@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildSelectionPrompt } from "zpi-ui";
+import { buildSelectionPrompt, ComposerDraftStore } from "zpi-ui";
 import {
+  addFileCommentToDraft,
   appendSelection,
   createFileComment,
   fileComments,
   normalizeFileCommentRange,
+  removeFileCommentFromDraft,
 } from "../src/renderer/file-comments.ts";
 
 describe("file preview line comments", () => {
@@ -79,4 +81,20 @@ describe("preview breadcrumb", () => {
       file: "a.ts",
     });
   });
+});
+
+it("keeps comment additions and deletion scoped to the owning main or side-chat draft", () => {
+  const store = new ComposerDraftStore();
+  const quote = { text: "keep this ordinary quotation", path: "a.ts" };
+  for (const id of ["main", "side"])
+    store.set(id, { text: id, fileReferences: [], attachments: [], pending: 0, selections: [quote] });
+  addFileCommentToDraft(store, "main", "a.ts", "one\ntwo", { start: 1, end: 1 }, "main note", "same-id");
+  addFileCommentToDraft(store, "side", "b.ts", "one\ntwo", { start: 2, end: 2 }, "side note", "same-id");
+  const sideBefore = store.get("side");
+  removeFileCommentFromDraft(store, "main", "same-id");
+  expect(store.get("main")?.selections).toEqual([quote]);
+  expect(store.get("side")).toBe(sideBefore);
+  expect(fileComments(store.get("side")?.selections ?? [], "b.ts")).toEqual([
+    { id: "same-id", start: 2, end: 2, comment: "side note" },
+  ]);
 });

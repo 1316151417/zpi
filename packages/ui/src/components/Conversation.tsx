@@ -103,12 +103,14 @@ function UserMessageEditor({
   context,
   onEdit,
   onCancel,
+  onFile,
 }: {
   run: RunView;
   sessionId: string;
   context?: ComposerContext;
   onEdit: EditMessage;
   onCancel: () => void;
+  onFile?: (path: string, location?: FileLocation) => void;
 }) {
   const storage = useRef(new ComposerDraftStore());
   const [conflict, setConflict] = useState<{ files: FileRewindConflict[]; input: MessageEditInput }>();
@@ -133,6 +135,7 @@ function UserMessageEditor({
         busy={false}
         draftStorage={storage.current}
         context={context}
+        onFile={onFile}
         showSendButton
         onStop={() => {}}
         onCancel={onCancel}
@@ -451,11 +454,12 @@ export const RunGroup = memo(function RunGroup({
                 context={context}
                 onEdit={onEdit}
                 onCancel={cancelEdit}
+                onFile={onFile}
               />
             ) : (
               <>
                 <div className="message-images">
-                  <SelectionReferenceChip references={parsedUser.selections} />
+                  <SelectionReferenceChip references={parsedUser.selections} onFile={onFile} />
                   {context &&
                     sessionId &&
                     run.attachments?.map((image) => (
@@ -1691,6 +1695,8 @@ export function ChatComposer({
         <div className="input-context">
           <SelectionReferenceChip
             references={value.selections ?? []}
+            onCommentsEmpty={() => textarea.current?.focus()}
+            onFile={onFile}
             onChange={(selections) => updateValue(sessionId, (old) => ({ ...old, selections }))}
           />
 

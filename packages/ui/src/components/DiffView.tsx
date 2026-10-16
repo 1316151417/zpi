@@ -292,7 +292,7 @@ export function DiffView({
       className={`diff-layout${paths.length <= 1 ? " diff-single-file" : ""}${renderHeader ? " diff-preview" : ""}${wrap ? " diff-wrap" : ""}`}
     >
       {paths.length > 1 && (
-        <nav aria-label="改动文件">
+        <nav className="diff-file-list" aria-label="改动文件">
           {paths.map((path) => (
             <button
               type="button"

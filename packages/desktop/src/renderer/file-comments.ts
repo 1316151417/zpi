@@ -1,4 +1,9 @@
-import { appendSelection, type ComposerDraftStore, type ConversationSelection } from "zpi-ui";
+import {
+  appendSelection,
+  type ComposerDraftStore,
+  type ConversationSelection,
+  getFileCommentSelection,
+} from "zpi-ui";
 
 export interface FileCommentRange {
   start: number;
@@ -44,21 +49,10 @@ export function createFileComment(
 }
 export function fileComments(selections: readonly ConversationSelection[], path: string): FileComment[] {
   return selections.flatMap((selection) => {
-    if (selection.path !== path || !selection.id || !selection.sourceKey?.startsWith(prefix)) return [];
-    try {
-      const value = JSON.parse(selection.sourceKey.slice(prefix.length));
-      if (
-        !Number.isInteger(value.start) ||
-        !Number.isInteger(value.end) ||
-        value.start < 1 ||
-        value.end < value.start ||
-        typeof value.comment !== "string"
-      )
-        return [];
-      return [{ id: selection.id, start: value.start, end: value.end, comment: value.comment }];
-    } catch {
-      return [];
-    }
+    const value = getFileCommentSelection(selection);
+    return value && value.path === path && selection.id
+      ? [{ id: selection.id, start: value.start, end: value.end, comment: value.comment }]
+      : [];
   });
 }
 export function addFileCommentToDraft(

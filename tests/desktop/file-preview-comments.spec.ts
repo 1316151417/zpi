@@ -68,15 +68,18 @@ for (const target of ["main", "side"] as const) {
       await preview.getByLabel("代码备注", { exact: true }).press("Escape");
       await expect(preview.locator("[data-file-comment-draft]")).toHaveCount(0);
       await expect(preview.locator("[data-file-comment-id]")).toHaveCount(0);
+      await expect(preview.locator("[data-selected-line]")).toHaveCount(0);
       await selectLines(page, 2, 3);
       await preview.getByLabel("代码备注", { exact: true }).fill("检查多行上下文");
       await preview.getByRole("button", { name: /添加到对话/ }).click();
       await expect(preview.locator("[data-file-comment-id]")).toContainText("检查多行上下文");
       await expect(preview.locator("[data-file-comment-id]")).toContainText("第 2–3 行");
+      await expect(preview.locator("[data-selected-line]")).toHaveCount(0);
       if (target === "side")
         await expect(main.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
       await preview.getByRole("button", { name: "删除评论", exact: true }).click();
       await expect(preview.locator("[data-file-comment-id]")).toHaveCount(0);
+      await expect(preview.locator("[data-selected-line]")).toHaveCount(0);
       await selectLines(page, 1);
       await preview.getByRole("button", { name: /添加到对话/ }).click();
       await expect(preview.locator("[data-file-comment-id]")).toHaveCount(1);
@@ -84,14 +87,42 @@ for (const target of ["main", "side"] as const) {
         await page.getByRole("tab", { name: "辅助对话 1", exact: true }).locator(".pane-tab-trigger").click();
       await owner
         .locator(".composer-container")
-        .getByRole("button", { name: "移除对话引用", exact: true })
+        .getByRole("button", { name: "移除全部评论", exact: true })
         .click();
       await expect(owner.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
       await page.getByRole("tab", { name: "example.ts", exact: true }).locator(".pane-tab-trigger").click();
       await expect(preview.locator("[data-file-comment-id]")).toHaveCount(0);
+      await expect(preview.locator("[data-selected-line]")).toHaveCount(0);
       await selectLines(page, 2, 3);
       await preview.getByLabel("代码备注", { exact: true }).fill("最终提交备注");
       await preview.getByRole("button", { name: /添加到对话/ }).click();
+      if (target === "side")
+        await page.getByRole("tab", { name: "辅助对话 1", exact: true }).locator(".pane-tab-trigger").click();
+      const commentPill = owner
+        .locator(".composer-container")
+        .getByRole("button", { name: "1 条评论", exact: true });
+      await owner.getByLabel("消息", { exact: true }).focus();
+      await commentPill.hover();
+      await expect(owner.getByLabel("消息", { exact: true })).toBeFocused();
+      const commentDetails = page.getByRole("dialog", { name: "评论内容", exact: true });
+      await expect(commentDetails).toContainText("example.ts");
+      await expect(commentDetails).toContainText("L2-L3");
+      await expect(commentDetails).toContainText("最终提交备注");
+      await expect(commentDetails).not.toContainText("const second = 2;");
+      await expect(commentDetails.locator("small")).toHaveCSS("text-overflow", "ellipsis");
+      await commentPill.focus();
+      await commentPill.press("Enter");
+      await expect(
+        commentDetails.getByRole("button", { name: "打开 example.ts L2-L3", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(commentDetails.getByRole("button", { name: "移除评论", exact: true })).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(commentPill).toBeFocused();
+      await expect(commentDetails).toHaveCount(0);
+      await commentPill.hover();
+      await commentDetails.getByRole("button", { name: "打开 example.ts L2-L3", exact: true }).click();
+      await expect(preview).toBeVisible();
       if (target === "side")
         await page.getByRole("tab", { name: "辅助对话 1", exact: true }).locator(".pane-tab-trigger").click();
       await expect(owner.getByLabel("消息", { exact: true })).toHaveText(
@@ -101,6 +132,14 @@ for (const target of ["main", "side"] as const) {
       await expect.poll(() => requests.at(-1)).toContain("最终提交备注");
       expect(requests.at(-1)).toContain("const second = 2;");
       expect(requests.at(-1)).toContain("const third = 3;");
+      const sentComment = owner
+        .getByTestId("run")
+        .last()
+        .getByRole("button", { name: "1 条评论", exact: true });
+      await expect(sentComment).toBeVisible();
+      await sentComment.hover();
+      await expect(commentDetails).toContainText("最终提交备注");
+      await expect(commentDetails.getByRole("button", { name: "移除评论", exact: true })).toHaveCount(0);
       if (target === "side") await expect(main.getByLabel("消息", { exact: true })).toHaveText("保留主草稿");
     } finally {
       await runCleanup([

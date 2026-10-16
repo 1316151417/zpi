@@ -79,7 +79,7 @@ describe("diff preview", () => {
       entries: [entry, { ...entry, id: "change-2", path: "src/other.ts" }],
       initialPath: "src/other.ts",
     });
-    expect(html).toContain('<nav aria-label="改动文件">');
+    expect(html).toContain('<nav class="diff-file-list" aria-label="改动文件">');
     expect(html).toContain('class="diff-mode"');
     expect(html).toContain('class="diff-heading"');
     expect(html).toContain("统一");

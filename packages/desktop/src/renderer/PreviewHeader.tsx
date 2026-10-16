@@ -78,7 +78,7 @@ export function PreviewHeader({
             <ChevronRight size={14} />
           </span>
         ))}
-        <FileIcon path={path} />
+        <FileIcon path={path} size={14} />
         <strong>{name}</strong>
       </nav>
       <div className="preview-header-actions">

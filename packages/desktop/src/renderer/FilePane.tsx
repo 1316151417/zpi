@@ -336,11 +336,12 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
                     </div>
                   ) : null
                 }
+                // Pierre treats undefined as uncontrolled; null clears its internal drag selection.
                 selectedLines={
                   commentRange ??
                   (preview.location?.line
                     ? { start: preview.location.line, end: preview.location.endLine ?? preview.location.line }
-                    : undefined)
+                    : null)
                 }
                 options={{
                   enableLineSelection: Boolean(draft),

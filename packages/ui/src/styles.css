@@ -1837,18 +1837,18 @@ small {
   margin-top: 14px;
   display: grid;
 }
-.diff-layout nav {
+.diff-layout > .diff-file-list {
   max-height: 60vh;
   overflow: auto;
 }
-.diff-layout nav button {
+.diff-layout > .diff-file-list button {
   text-align: left;
   overflow-wrap: anywhere;
   width: 100%;
   padding: 7px;
   display: block;
 }
-.diff-layout nav button.selected {
+.diff-layout > .diff-file-list button.selected {
   background: var(--color-active);
 }
 .diff-detail {
@@ -3956,4 +3956,64 @@ button.inline-mention,
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* Code comment attachments mirror ZCode: source/range first, then path and user note. */
+.file-comment-detail {
+  min-height: 28px;
+  padding: 4px 8px;
+  line-height: 1.625;
+}
+.selection-reference-detail > .file-comment-source {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  opacity: 1;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.file-comment-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.file-comment-detail .file-comment-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.file-comment-heading span {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  color: var(--color-text-subtle);
+}
+.file-comment-detail small {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font: inherit;
+  font-family: var(--font-mono);
+}
+.file-comment-detail :where(p) {
+  -webkit-line-clamp: 2;
+  color: var(--color-text-subtle);
+}
+.file-comment-detail > .selection-remove-one {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.selection-reference-detail button:focus-visible {
+  opacity: 1;
 }

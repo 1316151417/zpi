@@ -1,45 +1,186 @@
 // Adapted from ZCode selection guard/menu and ContextAttachmentPill (Apache-2.0).
 import * as HoverCard from "@radix-ui/react-hover-card";
-import { Quote, Trash2, X } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
+import { Code2, MessageSquareText, Quote, Trash2, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ConversationSelection } from "../conversation-selections.ts";
+import { type ConversationSelection, getFileCommentSelection } from "../conversation-selections.ts";
+import type { FileLocation } from "../link-target.ts";
 
+interface SelectionReferenceChipProps {
+  references: ConversationSelection[];
+  onChange?: (value: ConversationSelection[]) => void;
+  onFile?: (path: string, location?: FileLocation) => void;
+  onCommentsEmpty?: () => void;
+}
 export function SelectionReferenceChip({
   references,
   onChange,
-}: {
-  references: ConversationSelection[];
-  onChange?: (value: ConversationSelection[]) => void;
-}) {
+  onFile,
+  onCommentsEmpty,
+}: SelectionReferenceChipProps) {
+  const comments = references.filter((reference) => getFileCommentSelection(reference));
+  const quotes = references.filter((reference) => !getFileCommentSelection(reference));
+  const changeGroup = (group: ConversationSelection[]) =>
+    onChange
+      ? (remaining: ConversationSelection[]) => {
+          onChange(references.filter((item) => !group.includes(item) || remaining.includes(item)));
+          if (group === comments && !remaining.length) onCommentsEmpty?.();
+        }
+      : undefined;
+  return (
+    <>
+      <SelectionGroupChip references={comments} onChange={changeGroup(comments)} onFile={onFile} comments />
+      <SelectionGroupChip references={quotes} onChange={changeGroup(quotes)} />
+    </>
+  );
+}
+export function SelectionReferenceDetails({
+  references,
+  onChange,
+  onFile,
+  comments = false,
+}: SelectionReferenceChipProps & { comments?: boolean }) {
+  return (
+    <>
+      {references.map((reference, index) => {
+        const comment = comments ? getFileCommentSelection(reference) : null;
+        const content = comment ? (
+          <>
+            <div className="file-comment-heading">
+              <strong>{comment.title}</strong>
+              <span>{comment.lineLabel}</span>
+            </div>
+            <small title={comment.path}>{comment.path}</small>
+            {comment.comment.trim() && <p>{comment.comment}</p>}
+          </>
+        ) : (
+          <>
+            <p>{reference.text}</p>
+            {(reference.path || reference.sourceTitle) && (
+              <small>{reference.path || reference.sourceTitle}</small>
+            )}
+          </>
+        );
+        return (
+          <div
+            className={`selection-reference-detail${comment ? " file-comment-detail" : ""}`}
+            key={reference.id ?? index}
+          >
+            {comment ? <Code2 size={16} /> : <Quote size={16} />}
+            {comment && onFile ? (
+              <button
+                type="button"
+                className="file-comment-source"
+                aria-label={`打开 ${comment.title} ${comment.lineLabel}`}
+                onClick={() => onFile(comment.path, { line: comment.start, endLine: comment.end })}
+              >
+                {content}
+              </button>
+            ) : (
+              <div>{content}</div>
+            )}
+            {onChange && (
+              <button
+                type="button"
+                className="selection-remove-one"
+                aria-label={comment ? "移除评论" : "移除对话引用"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onChange(references.filter((_, i) => i !== index));
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+function SelectionGroupChip({
+  references,
+  onChange,
+  onFile,
+  comments = false,
+}: SelectionReferenceChipProps & { comments?: boolean }) {
   const [open, setOpen] = useState(false);
+  const interactive = useRef(false);
+  const content = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelClose = () => clearTimeout(closeTimer.current);
+  const hover = () => {
+    cancelClose();
+    if (!open) interactive.current = false;
+    setOpen(true);
+  };
+  const leave = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => {
+      if (!interactive.current) setOpen(false);
+    }, 100);
+  };
+  const activate = () => {
+    cancelClose();
+    if (open && interactive.current) {
+      setOpen(false);
+      return;
+    }
+    interactive.current = true;
+    setOpen(true);
+    // Hover may already have mounted the popover without moving focus.
+    content.current?.querySelector<HTMLElement>("button:not(:disabled),[tabindex='0']")?.focus();
+  };
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
   useEffect(() => {
     if (!references.length) setOpen(false);
   }, [references.length]);
   if (!references.length) return null;
-  const label =
-    references.length === 1 && references[0].path
+  const label = comments
+    ? `${references.length} 条评论`
+    : references.length === 1 && references[0].path
       ? `${references[0].path.split(/[\\/]/).pop()} · 引用`
       : `${references.length} 条${references.some((ref) => ref.path) ? "引用" : "对话引用"}`;
+  const Card = comments ? Popover : HoverCard;
   return (
-    <HoverCard.Root openDelay={0} closeDelay={0} open={open} onOpenChange={setOpen}>
-      <HoverCard.Trigger asChild>
-        {/* biome-ignore lint/a11y/useSemanticElements: Match ZCode's focusable pill with a separate remove button. */}
+    <Card.Root open={open} onOpenChange={setOpen} {...(!comments ? { openDelay: 0, closeDelay: 0 } : {})}>
+      <Card.Trigger asChild>
+        {/* biome-ignore lint/a11y/useSemanticElements: Focusable pill with a separate remove button, matching ZCode. */}
         <div
           className="selection-reference-chip"
           role="button"
           tabIndex={0}
           aria-label={label}
-          data-conversation-selection-reference-count={references.length}
+          data-conversation-selection-reference-count={comments ? undefined : references.length}
+          data-file-comment-count={comments ? references.length : undefined}
+          onPointerEnter={(event) => {
+            if (comments && event.pointerType !== "touch") hover();
+          }}
+          onPointerLeave={comments ? leave : undefined}
+          onClick={(event) => {
+            if (comments) {
+              event.preventDefault();
+              activate();
+            } else setOpen((value) => !value);
+          }}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              if (comments) activate();
+              else setOpen((value) => !value);
+            } else if (event.key === "Escape") setOpen(false);
+          }}
         >
-          <Quote size={16} />
+          {comments ? <MessageSquareText size={16} /> : <Quote size={16} />}
           <span>{label}</span>
           {onChange && (
             <button
               type="button"
               className="selection-remove-all"
-              aria-label="移除对话引用"
+              aria-label={comments ? "移除全部评论" : "移除对话引用"}
               onClick={(event) => {
                 event.stopPropagation();
                 onChange([]);
@@ -50,40 +191,49 @@ export function SelectionReferenceChip({
             </button>
           )}
         </div>
-      </HoverCard.Trigger>
-      <HoverCard.Portal>
-        <HoverCard.Content
+      </Card.Trigger>
+      <Card.Portal>
+        <Card.Content
+          ref={content}
+          onPointerEnter={comments ? cancelClose : undefined}
+          onPointerLeave={comments ? leave : undefined}
+          {...(comments
+            ? {
+                onFocusCapture: () => {
+                  interactive.current = true;
+                },
+                onOpenAutoFocus: (event: Event) => {
+                  if (!interactive.current) event.preventDefault();
+                },
+                onCloseAutoFocus: (event: Event) => {
+                  if (!interactive.current) event.preventDefault();
+                },
+              }
+            : {})}
           role="dialog"
-          aria-label="引用内容"
+          aria-label={comments ? "评论内容" : "引用内容"}
           className="selection-reference-popover"
           side="top"
           sideOffset={4}
           align={onChange ? "start" : "end"}
           collisionPadding={12}
         >
-          {references.map((reference, index) => (
-            <div className="selection-reference-detail" key={reference.id ?? index}>
-              <Quote size={16} />
-              <div>
-                <p>{reference.text}</p>
-                {(reference.path || reference.sourceTitle) && (
-                  <small>{reference.path || reference.sourceTitle}</small>
-                )}
-              </div>
-              {onChange && (
-                <button
-                  type="button"
-                  aria-label="移除对话引用"
-                  onClick={() => onChange(references.filter((_, i) => i !== index))}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          ))}
-        </HoverCard.Content>
-      </HoverCard.Portal>
-    </HoverCard.Root>
+          <SelectionReferenceDetails
+            references={references}
+            onChange={
+              onChange && comments
+                ? (remaining) => {
+                    setOpen(false);
+                    onChange(remaining);
+                  }
+                : onChange
+            }
+            onFile={onFile}
+            comments={comments}
+          />
+        </Card.Content>
+      </Card.Portal>
+    </Card.Root>
   );
 }
 interface SelectionState {

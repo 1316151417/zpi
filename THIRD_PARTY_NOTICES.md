@@ -1058,3 +1058,17 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## File icon parity and load fallback
+
+The complete file icon alias regression fixture in `packages/ui/test/fixtures/file-icons-reference.json`
+is derived from ZCode `packages/ui/src/lib/fileDisplayHelpers.ts` at
+`aac4755666d09fdcd70272fcf063c077a639015f` (Apache-2.0). It records all 27 filename aliases,
+50 extension aliases, and the combined checksum of the existing 1,146 byte-identical
+Material Icon Theme SVGs. Filename overrides, including `README.txt` → `readme`, are
+preserved before extension lookup; no theme-specific substitution is introduced.
+The two-stage image-load fallback in `packages/ui/src/file-icons.ts` and
+`components/Reference.tsx` adapts that revision's `lib/fileDisplay.tsx`, with a valid
+inline SVG stroke color and source-keyed image reset. Existing Apache-2.0 and Material
+Icon Theme MIT notices above apply. No additional icon artwork or ZCode brand assets
+are imported.
