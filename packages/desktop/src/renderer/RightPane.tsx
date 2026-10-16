@@ -299,9 +299,12 @@ export function RightPane({
               ) : tab.type === "subagent" ? (
                 <SubagentPane tab={tab} />
               ) : tab.type === "side-chat-loading" ? (
-                <div className="side-chat-loading" role="status" aria-busy="true">
-                  正在创建辅助对话…
-                </div>
+                <div
+                  className="side-chat-loading"
+                  role="status"
+                  aria-busy="true"
+                  aria-label="正在创建辅助对话"
+                />
               ) : tab.type === "side-chat" ? (
                 <SideChatPane
                   sessionId={tab.childSessionId}

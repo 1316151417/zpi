@@ -6,6 +6,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
+import { expectNoCornerTooltipDuring } from "../helpers/tooltip.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 async function grouped(page: Page) {
@@ -55,6 +56,13 @@ test("grouped task archive uses the menu icon and retains history while draft X 
     await archive.hover();
     await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("grouped-archive.png") });
+    await expectNoCornerTooltipDuring(page, () => page.getByLabel("消息", { exact: true }).hover());
+    await expect(archive).toBeHidden();
+    await row.hover();
+    await archive.focus();
+    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
+    await expectNoCornerTooltipDuring(page, () => page.getByLabel("消息", { exact: true }).focus());
+    await row.hover();
     await archive.click();
     await expect(row).toHaveCount(0);
     const archived = await page.evaluate(() => window.zpi.listArchivedSessions());
@@ -181,9 +189,33 @@ test("long grouped/root lists virtualize, sticky headers remain usable, and draf
     await expect(group.locator(".task-group-count")).toHaveText("85");
     await expect(page.locator(".task-group-virtual-list")).toHaveCount(2);
     expect(await page.locator(".task-groups [data-testid=session-row]").count()).toBeLessThan(85);
-    await page.locator(".sidebar-sections").evaluate((element) => {
-      element.scrollTop = 800;
+    const firstRows = group.getByTestId("session-row");
+    await firstRows.first().hover();
+    const firstArchive = firstRows.first().getByRole("button", { name: "归档任务", exact: true });
+    await firstArchive.hover();
+    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
+    const archiveBounds = await firstArchive.boundingBox();
+    const nextBounds = await firstRows.nth(1).boundingBox();
+    if (!archiveBounds || !nextBounds) throw new Error("missing archive transition bounds");
+    await expectNoCornerTooltipDuring(page, async () => {
+      for (let index = 0; index < 3; index++) {
+        await page.mouse.move(
+          archiveBounds.x + archiveBounds.width / 2,
+          nextBounds.y + nextBounds.height / 2,
+        );
+        await page.mouse.move(
+          archiveBounds.x + archiveBounds.width / 2,
+          archiveBounds.y + archiveBounds.height / 2,
+        );
+      }
     });
+    await firstArchive.hover();
+    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
+    await expectNoCornerTooltipDuring(page, () =>
+      page.locator(".sidebar-sections").evaluate((element) => {
+        element.scrollTop = 800;
+      }),
+    );
     await expect(group.locator(".task-group-header")).toHaveClass(/task-group-header-sticky/);
     await group.getByRole("button", { name: "新建任务 长列表", exact: true }).click();
     await expect(page.locator(".task-group-content [data-testid=grouped-draft-row]")).toHaveCount(1);

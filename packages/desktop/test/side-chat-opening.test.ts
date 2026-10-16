@@ -223,7 +223,7 @@ it("suggestion failure leaves the conversation editable and reports the optional
   f.off();
 });
 
-it("renders the creation shell without mounting an editable composer", async () => {
+it("renders an empty busy creation shell without mounting an editable composer", async () => {
   const f = await setup();
   const created = Promise.withResolvers<Result<SessionRecord>>();
   f.bridge.createSideChat.mockReturnValueOnce(created.promise);
@@ -234,9 +234,12 @@ it("renders the creation shell without mounting an editable composer", async () 
   const html = renderToStaticMarkup(
     createElement(RightPane, { available: 1200, sessionId: f.parent.id, onSettings: () => {} }),
   );
-  expect(html).toContain("正在创建辅助对话");
+  expect(html.replace(/<[^>]*>/g, "")).not.toContain("正在创建辅助对话");
+  expect(html).toContain('role="status"');
+  expect(html).toContain('aria-label="正在创建辅助对话"');
   expect(html).toContain('aria-busy="true"');
   expect(html).not.toContain('contenteditable="true"');
+  expect(f.pane.usePane.getState()).toMatchObject({ open: true, tabs: [{ type: "side-chat-loading" }] });
   await f.pane.closeTab(f.pane.usePane.getState().active ?? "");
   created.resolve(ok(f.child));
   await opening;

@@ -191,7 +191,12 @@ export function TaskGroupRow({
                     <ArrowUpToLine size={14} />
                   </button>
                 </ActionHint>
-                <ActionHint label="归档任务" appearance="control" open={tooltipsDisabled ? false : undefined}>
+                <ActionHint
+                  label="归档任务"
+                  appearance="control"
+                  hideWhenDetached
+                  open={tooltipsDisabled ? false : undefined}
+                >
                   <button
                     aria-label="归档任务"
                     disabled={record.running || Boolean(record.diagnostic)}

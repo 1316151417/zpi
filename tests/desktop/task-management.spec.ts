@@ -7,6 +7,7 @@ import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
+import { expectNoCornerTooltipDuring } from "../helpers/tooltip.ts";
 
 const editor = (page: Page) => page.getByLabel("消息", { exact: true });
 const openMenu = async (page: Page) => {
@@ -75,6 +76,20 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
       }),
     ).toEqual(disabledAppearance);
     await expect(archiveButton).toHaveCSS("opacity", "0.45");
+    const rowBounds = await row.boundingBox();
+    if (!rowBounds) throw new Error("missing task row bounds");
+    for (const point of [
+      { x: Math.max(1, rowBounds.x - 3), y: rowBounds.y + rowBounds.height / 2 },
+      { x: rowBounds.x + rowBounds.width + 3, y: rowBounds.y + rowBounds.height / 2 },
+      { x: rowBounds.x + rowBounds.width / 2, y: rowBounds.y - 3 },
+      { x: rowBounds.x + rowBounds.width / 2, y: rowBounds.y + rowBounds.height + 3 },
+    ]) {
+      await row.hover();
+      await archiveButton.hover();
+      await expect(page.getByRole("tooltip")).toContainText("请先停止运行");
+      await expectNoCornerTooltipDuring(page, () => page.mouse.move(point.x, point.y));
+      await expect(archiveButton).toBeHidden();
+    }
     await editor(page).hover();
     await expect(archiveButton).toBeHidden();
     await row.locator(".session-name").focus();

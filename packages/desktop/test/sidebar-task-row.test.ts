@@ -1,6 +1,7 @@
-import { createElement } from "react";
+import { Children, createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { ActionHint } from "zpi-ui";
 import { SidebarTaskRow } from "../src/renderer/SidebarTaskRow.tsx";
 import { formatTaskRelativeTime } from "../src/renderer/sidebar-task-model.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
@@ -48,4 +49,36 @@ describe.each(["default", "timeline"] as const)("task row metadata in %s", (vari
     expect(html).toContain('data-shortcut="false"');
     expect(html).not.toContain("task-row-shortcut");
   });
+});
+
+function hints(node: ReactNode): Array<{ label: string; hideWhenDetached?: boolean }> {
+  return Children.toArray(node).flatMap((child) => {
+    if (!isValidElement<{ children?: ReactNode; label: string; hideWhenDetached?: boolean }>(child))
+      return [];
+    return child.type === ActionHint ? [child.props] : hints(child.props.children);
+  });
+}
+
+it.each([
+  { variant: "default", running: false },
+  { variant: "default", running: true },
+  { variant: "timeline", running: false },
+  { variant: "timeline", running: true },
+] as const)("hides detached archive hints for $variant, running=$running", ({ variant, running }) => {
+  const tree = SidebarTaskRow({
+    record: { ...record, running },
+    active: false,
+    workspace: "ZPI",
+    pinLimitReached: false,
+    variant,
+    onSelect() {},
+    onPin() {},
+    onArchive() {},
+  });
+  const archive = hints(tree).find((hint) => hint.label === (running ? "请先停止运行" : "归档任务"));
+  expect(archive?.hideWhenDetached).toBe(true);
+  expect(hints(tree).find((hint) => hint.label === "取消置顶任务")?.hideWhenDetached).toBeUndefined();
+  expect(row(undefined, { running }, variant)).toContain(
+    `aria-label="归档任务 Pinned task"${running ? ' disabled=""' : ""}`,
+  );
 });

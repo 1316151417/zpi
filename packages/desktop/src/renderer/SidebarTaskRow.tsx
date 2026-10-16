@@ -30,7 +30,7 @@ export function SidebarTaskRow({
     r.status === "error" ? "error" : r.unreadAt !== undefined ? "unread" : r.running ? "running" : "none";
   const actions = (
     <span className="task-row-actions">
-      <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control">
+      <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control" hideWhenDetached>
         <span className="task-archive-hint">
           <button
             className="row-action task-archive"

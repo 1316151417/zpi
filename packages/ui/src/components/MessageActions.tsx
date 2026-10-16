@@ -24,6 +24,7 @@ export function ActionHint({
   shortcut,
   side,
   sideOffset = 2,
+  hideWhenDetached,
   appearance = "message",
   open,
   className,
@@ -34,6 +35,7 @@ export function ActionHint({
   shortcut?: string;
   side?: "top" | "bottom" | "left" | "right";
   sideOffset?: number;
+  hideWhenDetached?: boolean;
   appearance?: "message" | "control";
   open?: boolean;
   className?: string;
@@ -47,6 +49,7 @@ export function ActionHint({
             side={side ?? (appearance === "control" ? "top" : "bottom")}
             align="center"
             sideOffset={sideOffset}
+            hideWhenDetached={hideWhenDetached}
             className={`message-action-tooltip${appearance === "control" ? " control-hint-tooltip" : ""}${className ? ` ${className}` : ""}`}
           >
             <span>

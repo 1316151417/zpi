@@ -24,9 +24,7 @@ vi.mock("zpi-ui", () => ({
   ChatComposer: () => null,
 }));
 vi.mock("../src/renderer/store.ts", () => ({
-  useStore: Object.assign((select: (state: typeof f.state) => unknown) => select(f.state), {
-    getState: () => f.state,
-  }),
+  useStore: (select: (state: typeof f.state) => unknown) => select(f.state),
   unwrap: (r: Result<unknown>) => {
     if (!r.ok) throw new Error(r.error.message);
     return r.value;
@@ -42,7 +40,6 @@ vi.mock("../src/renderer/pane-store.ts", () => ({
   openFile: vi.fn(),
   openWebLink: vi.fn(),
   paneTask: vi.fn(),
-  loadSideChat: vi.fn(),
 }));
 vi.mock("../src/renderer/use-workspace.ts", () => ({ useWorkspace: () => undefined }));
 vi.mock("../src/renderer/preview-services.ts", () => ({ previewServices: {} }));
