@@ -24,6 +24,7 @@ export type PaneTab = (
       childSessionId: string;
       ordinal: number;
     }
+  | { id: string; type: "side-chat-loading"; title: string; sessionId: string; ordinal: number }
   | { id: string; type: "task-directory"; title: string; sessionId: string }
   | {
       id: string;
@@ -154,6 +155,7 @@ export function listenPanes() {
         if (
           (!parent || parent.archivedAt != null) &&
           (tab.type === "side-chat" ||
+            tab.type === "side-chat-loading" ||
             tab.type === "subagent" ||
             tab.type === "task-directory" ||
             tab.type === "background-task")
@@ -200,26 +202,47 @@ function showTab(tab: PaneTab) {
   // 异步打开时冻结来源任务；迟到结果只更新来源任务，不能展开或激活当前任务的侧栏。
   if (ownerSessionId === useStore.getState().selected) restorePane();
 }
-const pendingSideChats = new Map<string, Promise<string>>();
-export async function loadSideChat(id: string) {
+const pendingSideChats = new Map<string, { tabId: string; promise: Promise<string | undefined> }>();
+let sideChatRequest = 0;
+export async function loadSideChat(id: string, current = () => true) {
   retainedSessionViews.add(id);
   try {
-    accept(unwrap(await window.zpi.getSessionSnapshot(id)));
-    await loadDraft(id);
-    await refreshSuggestions(id);
+    // Draft readiness is required before mounting the editor; optional suggestions are not.
+    const [snapshot, draft] = await Promise.allSettled([
+      window.zpi.getSessionSnapshot(id).then(unwrap),
+      loadDraft(id),
+    ]);
+    if (!current()) return;
+    if (snapshot.status === "rejected") throw snapshot.reason;
+    if (draft.status === "rejected") throw draft.reason;
+    accept(snapshot.value);
+    const retained = () => retainedSessionViews.has(id) && current();
+    void refreshSuggestions(id, retained).catch((error) => {
+      if (retained()) report(error);
+    });
   } catch (error) {
     retainedSessionViews.delete(id);
     throw error;
   }
 }
 export async function openSideChat(parentId: string, reference?: ConversationSelection) {
+  const focusOrigin = document.activeElement;
   const state = usePane.getState();
   const active = state.tabs.find(
     (tab) => tab.id === state.active && tab.type === "side-chat" && tab.sessionId === parentId,
   );
   let childId = reference && active?.type === "side-chat" ? active.childSessionId : undefined;
   if (childId && active) {
+    showTab(active);
     const snapshot = await window.zpi.getSessionSnapshot(childId);
+    if (
+      !usePane
+        .getState()
+        .tabs.some(
+          (tab) => tab.id === active.id && tab.type === "side-chat" && tab.childSessionId === childId,
+        )
+    )
+      return;
     if (!snapshot.ok && snapshot.error.code === "not_found") {
       await closeTab(active.id);
       childId = undefined;
@@ -231,42 +254,69 @@ export async function openSideChat(parentId: string, reference?: ConversationSel
   if (!childId) {
     let pending = pendingSideChats.get(parentId);
     if (!pending) {
-      pending = window.zpi
-        .createSideChat(parentId)
-        .then(unwrap)
-        .then(async (record) => {
-          await loadSideChat(record.id);
+      const used = new Set(
+        visiblePaneTabs(parentId).flatMap((tab) =>
+          tab.type === "side-chat" || tab.type === "side-chat-loading" ? [tab.ordinal] : [],
+        ),
+      );
+      let ordinal = 1;
+      while (used.has(ordinal)) ordinal++;
+      const tabId = `side-chat:request:${++sideChatRequest}`;
+      const tab = {
+        id: tabId,
+        type: "side-chat-loading" as const,
+        title: `辅助对话 ${ordinal}`,
+        ordinal,
+        sessionId: parentId,
+      };
+      showTab(tab);
+      const current = () => usePane.getState().tabs.some((item) => item.id === tabId);
+      const promise = (async () => {
+        let created: string | undefined;
+        try {
+          const record = unwrap(await window.zpi.createSideChat(parentId));
+          created = record.id;
+          if (current()) await loadSideChat(record.id, current);
           const parent = useStore.getState().sessions.get(parentId);
-          if (!parent || parent.archivedAt != null) {
+          if (!current() || !parent || parent.archivedAt != null || ownerDeleted(parentId)) {
             await closeSideChat(record.id);
-            throw new Error("主对话已关闭");
+            await closeTab(tabId);
+            return;
           }
-          const used = new Set(
-            usePane
-              .getState()
-              .tabs.flatMap((tab) =>
-                tab.type === "side-chat" && tab.sessionId === parentId ? [tab.ordinal] : [],
-              ),
-          );
-          let ordinal = 1;
-          while (used.has(ordinal)) ordinal++;
-          showTab({
-            id: `side-chat:${record.id}`,
-            type: "side-chat",
-            title: `辅助对话 ${ordinal}`,
-            ordinal,
-            sessionId: parentId,
-            childSessionId: record.id,
-          });
+          // Replace in place: completion must not reopen a collapsed pane or change the active tab.
+          usePane.setState((state) => ({
+            tabs: state.tabs.map((item) =>
+              item.id === tabId && item.type === "side-chat-loading"
+                ? { ...item, type: "side-chat", childSessionId: record.id }
+                : item,
+            ),
+          }));
           return record.id;
-        })
-        .finally(() => pendingSideChats.delete(parentId));
+        } catch (error) {
+          if (created) await closeSideChat(created).catch(report);
+          const stillOpen = current();
+          await closeTab(tabId);
+          if (stillOpen) throw error;
+        } finally {
+          if (pendingSideChats.get(parentId)?.tabId === tabId) pendingSideChats.delete(parentId);
+        }
+      })();
+      pending = { tabId, promise };
       pendingSideChats.set(parentId, pending);
     }
-    childId = await pending;
-  } else if (active) showTab(active);
-  if (reference) addConversationSelection(reference, childId);
-  focusComposer(childId);
+    childId = await pending.promise;
+  }
+  if (!childId) return;
+  const pane = usePane.getState();
+  const tab = pane.tabs.find((tab) => tab.type === "side-chat" && tab.childSessionId === childId);
+  if (!tab) return;
+  if (reference) addConversationSelection(reference, childId, false);
+  if (pane.open && pane.active === tab.id && useStore.getState().selected === parentId)
+    focusComposer(childId, {
+      onlyIfFocusLost:
+        document.activeElement !== focusOrigin ||
+        Boolean(focusOrigin?.matches('input, textarea, [contenteditable="true"]')),
+    });
 }
 export async function openSubagent(task: SubagentTask) {
   const retained = retainedSessionViews.has(task.childSessionId);
@@ -417,6 +467,8 @@ export async function closeTab(id: string) {
   const state = usePane.getState(),
     tab = state.tabs.find((t) => t.id === id);
   if (!tab) return;
+  if (tab.type === "side-chat-loading" && pendingSideChats.get(tab.sessionId)?.tabId === id)
+    pendingSideChats.delete(tab.sessionId);
   if (tab.type === "file" && pendingFileReads) fileOpenVersions.set(id, ++fileOpenVersion);
   if (tab.type === "terminal") {
     unwrap(await window.zpi.closeTerminal(id));

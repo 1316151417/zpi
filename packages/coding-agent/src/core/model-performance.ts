@@ -31,24 +31,27 @@ export const emptyPerformanceTotals = () => ({
   usageCount: 0,
   cacheCount: 0,
 });
-export type ModelPerformanceTotals = ReturnType<typeof emptyPerformanceTotals>;
+export type ModelPerformanceTotals = ReturnType<typeof emptyPerformanceTotals> & { turnsKnown?: false };
 
 export function validPerformanceTotals(value: unknown): value is ModelPerformanceTotals {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const data = value as Record<string, unknown>;
-  return Object.keys(emptyPerformanceTotals()).every(
-    (key) =>
-      typeof data[key] === "number" &&
-      Number.isFinite(data[key]) &&
-      data[key] >= 0 &&
-      (key.endsWith("Ms") || Number.isSafeInteger(data[key])),
+  return (
+    (data.turnsKnown === undefined || data.turnsKnown === false) &&
+    Object.keys(emptyPerformanceTotals()).every(
+      (key) =>
+        typeof data[key] === "number" &&
+        Number.isFinite(data[key]) &&
+        data[key] >= 0 &&
+        (key.endsWith("Ms") || Number.isSafeInteger(data[key])),
+    )
   );
 }
 
 export function modelPerformance(t: ModelPerformanceTotals): ModelPerformance {
   const input = t.inputTokens + t.cacheReadTokens + t.cacheWriteTokens;
   return {
-    ...(t.steps ? { turns: t.turns, steps: t.steps } : {}),
+    ...(t.steps ? { ...(t.turnsKnown === false ? {} : { turns: t.turns }), steps: t.steps } : {}),
     ...(t.llmMs > 0 ? { llmMs: t.llmMs } : {}),
     ...(t.toolMs > 0 ? { toolMs: t.toolMs } : {}),
     ...(t.ttftCount ? { ttftMs: t.ttftMs / t.ttftCount } : {}),

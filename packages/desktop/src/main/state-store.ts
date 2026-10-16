@@ -13,6 +13,14 @@ import { taskFromRow, validateTask } from "./task-state.ts";
 export { STATE_SCHEMA_VERSION, validateStateDatabase } from "./state-migrations.ts";
 export interface TaskState extends SessionRecord {
   modelPerformanceTotals?: ModelPerformanceTotals;
+  sideChatInheritance?: {
+    version: 1;
+    childGeneration: string;
+    parentGeneration?: string;
+    parentEndSeq?: number;
+    hiddenEndSeq: number;
+    totals: ModelPerformanceTotals;
+  };
   titleState?: string;
   lastThinkingLevel?: SessionControls["lastThinkingLevel"];
   fork?: { sessionId: string; runId: string };
@@ -93,6 +101,7 @@ const taskAuditFields = [
   "sortKey",
   "queuePaused",
   "modelPerformanceTotals",
+  "sideChatInheritance",
 ] as const;
 const settingsAuditFields = [
   "shortcuts",

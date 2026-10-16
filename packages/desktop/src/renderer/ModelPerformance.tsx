@@ -96,10 +96,8 @@ const joined = (a: string, b?: string) => (
 export function ModelPerformance({ value }: { value?: Performance }) {
   if (!value) return null;
   const speed = positive(value.tokensPerSecond) ? formatSpeed(value.tokensPerSecond) : undefined;
-  const activity: [string, string][] = [
-    ["轮数", String(value.turns ?? 0)],
-    ["步数", String(value.steps ?? 0)],
-  ];
+  const activity: [string, string][] = [["步数", String(value.steps ?? 0)]];
+  if (value.turns !== undefined) activity.unshift(["轮数", String(value.turns)]);
   if (positive(value.llmMs)) activity.push(["模型用时", formatDuration(value.llmMs)]);
   if (positive(value.toolMs)) activity.push(["工具调用用时", formatDuration(value.toolMs)]);
   if (positive(value.ttftMs)) activity.push(["首 token 平均（TTFT）", formatDuration(value.ttftMs)]);
@@ -130,7 +128,7 @@ export function ModelPerformance({ value }: { value?: Performance }) {
         <StatPill
           icon={<Gauge aria-hidden="true" />}
           title="会话统计"
-          label={joined(`${value.turns ?? 0} 轮 ${value.steps} 步`, speed)}
+          label={joined(`${value.turns === undefined ? "" : `${value.turns} 轮 `}${value.steps} 步`, speed)}
           rows={activity}
         />
       )}

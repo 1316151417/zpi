@@ -760,19 +760,26 @@ export class HistoryIndex implements TranscriptStore {
       .iterate(this.key))
       yield { start: Number(row.offset), end: Number(row.offset) + Number(row.length) };
   }
-  page(before = this.seq + 1, count = 10): { entries: SessionEntry[]; cursor: number | null; calls: number } {
+  page(
+    before = this.seq + 1,
+    count = 10,
+    after = 0,
+  ): { entries: SessionEntry[]; cursor: number | null; calls: number } {
     if (before === 0) return { entries: [], cursor: null, calls: 0 };
     if (!Number.isSafeInteger(count) || count < 1 || count > 100)
       throw new Error("invalid_input: 历史页大小无效");
     if (!Number.isSafeInteger(before) || before < 1 || before > this.seq + 1)
       throw new Error("invalid_input: 历史游标无效");
+    if (!Number.isSafeInteger(after) || after < 0 || after > this.seq)
+      throw new Error("invalid_input: 历史边界无效");
+    if (before <= after + 1) return { entries: [], cursor: null, calls: 0 };
     const selected: number[] = [];
     let bytes = 0;
     let calls = 0;
     const rows = this.db.prepare(
-      "SELECT seq,length FROM transcript_entries WHERE path=? AND seq<? ORDER BY seq DESC",
+      "SELECT seq,length FROM transcript_entries WHERE path=? AND seq<? AND seq>? ORDER BY seq DESC",
     );
-    for (const value of rows.iterate(this.key, before)) {
+    for (const value of rows.iterate(this.key, before, after)) {
       const row = value as Row;
       if (selected.length && bytes + Number(row.length) > 2 * 1024 * 1024) break;
       selected.push(Number(row.seq));
@@ -812,7 +819,7 @@ export class HistoryIndex implements TranscriptStore {
         entries.unshift(continuation);
       }
     }
-    return { entries, cursor: first > 1 ? first : null, calls };
+    return { entries, cursor: first > after + 1 ? first : null, calls };
   }
   seqAtOffset(offset: number): number | undefined {
     const row = this.one(

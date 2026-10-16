@@ -29,6 +29,14 @@ export function validateTask(value: unknown, id: string): asserts value is TaskS
   if (data.id !== id) fail("id does not match SQL primary key");
   const optional: Record<string, (value: unknown) => boolean> = {
     modelPerformanceTotals: validPerformanceTotals,
+    sideChatInheritance: (v) =>
+      object(v) &&
+      v.version === 1 &&
+      nonempty(v.childGeneration) &&
+      integer(v.hiddenEndSeq) &&
+      (v.parentGeneration === undefined || nonempty(v.parentGeneration)) &&
+      (v.parentEndSeq === undefined || integer(v.parentEndSeq)) &&
+      validPerformanceTotals(v.totals),
     parentSessionId: nonempty,
     groupId: nullableId,
     sortKey: number,

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { Value } from "typebox/value";
 import { isJsonObject } from "zpi-ai";
 import {
@@ -23,7 +24,6 @@ import {
   patchLineCounts,
   piTemplate,
   SessionManager,
-  SessionPerformance,
   supportedThinkingLevels,
   type ToolDefinition,
   validateTemplate,
@@ -67,6 +67,7 @@ import { ErrorLog } from "./error-log.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot } from "./file-changes.ts";
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
+import { historyPerformance, sideChatGuard } from "./history-performance.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
 import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
@@ -1055,6 +1056,7 @@ export class SessionHost {
     }
     const stable = { ...snapshot, endSeq: cutoff };
     const inherited = source.getStateAt(stable);
+    const inheritedTotals = historyPerformance(source.readRange(1, cutoff, stable));
     const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
     const operationId = randomUUID();
     const originalFile = relative(this.dir, this.path(child));
@@ -1109,8 +1111,7 @@ export class SessionHost {
       manager.appendMessage({
         role: "user",
         timestamp: Date.now(),
-        content:
-          "The preceding conversation was inherited from the parent task for reference only. Do not continue the parent's active work automatically; answer only new questions sent in this side chat. Modify the workspace only when the user explicitly asks you to do so in this side chat.",
+        content: sideChatGuard,
       });
       const model = inherited.model ? this.settings.getModel(inherited.model) : undefined;
       this.settings.state.putIntent({
@@ -1125,6 +1126,15 @@ export class SessionHost {
       this.settings.state.completeIntent(operationId, () => {
         this.saveTask(child.id, {
           title: "辅助对话",
+          modelPerformanceTotals: inheritedTotals,
+          sideChatInheritance: {
+            version: 1,
+            childGeneration: this.requiredIndex(child.id).snapshot().generation,
+            parentGeneration: stable.generation,
+            parentEndSeq: cutoff,
+            hiddenEndSeq: this.requiredIndex(child.id).snapshot().endSeq,
+            totals: inheritedTotals,
+          },
           titleState: "manual",
           draft: false,
           frozenConfiguration: this.configuration(id),
@@ -1296,31 +1306,118 @@ export class SessionHost {
     }
     return manager;
   }
-  /** One-time upgrade/fork backfill, streamed from history without retaining message bodies. */
+  /** Repair only a verified legacy prefix. Never substitute the parent's current totals. */
+  private sideChatInheritance(id: string) {
+    const task = this.settings.state.getTask(id);
+    if (!task?.parentSessionId || this.configuration(id).subagentProfile) return undefined;
+    const index = this.requiredIndex(id);
+    const snapshot = index.snapshot();
+    if (task.sideChatInheritance?.childGeneration === snapshot.generation) return task.sideChatInheritance;
+    let hiddenEndSeq = 0;
+    // The original guard is the last hidden entry, immediately before the first local run.
+    for (const { seq, entry } of index.readRange(1, snapshot.endSeq, snapshot)) {
+      if (entry.type === "custom" && entry.customType === "zpi.run") break;
+      if (
+        entry.type === "message" &&
+        entry.message.role === "user" &&
+        entry.message.content === sideChatGuard
+      ) {
+        hiddenEndSeq = seq;
+        break;
+      }
+    }
+    const baseline = historyPerformance(index.readRange(1, hiddenEndSeq, snapshot));
+    const parent = this.indexes.get(task.parentSessionId);
+    const source = parent?.snapshot();
+    let verified = hiddenEndSeq > 0 && !!source && source.endSeq >= hiddenEndSeq - 1;
+    if (verified && parent && source) {
+      const originals = parent.readRange(1, hiddenEndSeq - 1, source)[Symbol.iterator]();
+      const ids = new Map<string, string>();
+      for (const { entry } of index.readRange(1, hiddenEndSeq - 1, snapshot)) {
+        const original = originals.next().value?.entry;
+        if (!original) {
+          verified = false;
+          break;
+        }
+        ids.set(entry.id, original.id);
+        const normalized = {
+          ...structuredClone(entry),
+          id: original.id,
+          parentId: entry.parentId === null ? null : ids.get(entry.parentId),
+        };
+        if (normalized.type === "compaction")
+          normalized.firstKeptEntryId = ids.get(normalized.firstKeptEntryId) ?? "";
+        // Snapshot paths are the only message fields intentionally relocated by inheritance.
+        if (
+          normalized.type === "message" &&
+          normalized.message.role === "toolResult" &&
+          isJsonObject(normalized.message.details) &&
+          isJsonObject(normalized.message.details.fileChange)
+        ) {
+          const change = normalized.message.details.fileChange;
+          for (const key of ["beforeFile", "afterFile", "patchFile"]) {
+            const path = change[key];
+            if (
+              typeof path === "string" &&
+              path === join(this.dir, "agent", "tool-output", id, basename(path))
+            )
+              change[key] = join(this.dir, "agent", "tool-output", task.parentSessionId, basename(path));
+          }
+        }
+        const matches =
+          normalized.parentId === original.parentId &&
+          (entry.type === "message" || entry.type === "compaction"
+            ? isDeepStrictEqual(normalized, original)
+            : entry.type === "custom" &&
+              entry.customType === "zpi.context_boundary" &&
+              original.type !== "message" &&
+              original.type !== "compaction" &&
+              entry.timestamp === original.timestamp);
+        if (!matches) {
+          verified = false;
+          break;
+        }
+      }
+    }
+    const saved = task.modelPerformanceTotals;
+    if (saved && !task.sideChatInheritance && saved.turns < baseline.turns) verified = false;
+    const totals =
+      verified && parent && source
+        ? historyPerformance(parent.readRange(1, hiddenEndSeq - 1, source))
+        : { ...baseline, turnsKnown: false as const };
+    const inheritance = {
+      version: 1 as const,
+      childGeneration: snapshot.generation,
+      hiddenEndSeq,
+      ...(verified && source ? { parentGeneration: source.generation, parentEndSeq: hiddenEndSeq - 1 } : {}),
+      totals,
+    };
+    this.saveTask(id, {
+      sideChatInheritance: inheritance,
+      ...(saved
+        ? {
+            modelPerformanceTotals: verified
+              ? {
+                  ...saved,
+                  turns: task.sideChatInheritance ? saved.turns : saved.turns - baseline.turns + totals.turns,
+                }
+              : { ...saved, turnsKnown: false as const },
+          }
+        : {}),
+    });
+    return inheritance;
+  }
+  /** One-time upgrade/fork backfill, streamed without retaining message bodies. */
   private performanceTotals(id: string) {
+    const inheritance = this.sideChatInheritance(id);
     const saved = this.settings.state.getTask(id)?.modelPerformanceTotals;
     if (saved) return saved;
-    const stats = new SessionPerformance(() => {});
-    const index = this.indexes.get(id);
-    if (!index) throw new Error("storage: Missing history index");
+    const index = this.requiredIndex(id);
     const snapshot = index.snapshot();
-    let inRun = false;
-    for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot)) {
-      if (entry.type === "custom" && entry.customType === "zpi.run" && isJsonObject(entry.data)) {
-        if (entry.data.phase === "start") {
-          stats.begin();
-          inRun = true;
-        }
-        if (entry.data.phase === "end") inRun = false;
-      }
-      if (entry.type === "message") {
-        if (entry.message.role === "user" && !inRun) stats.begin();
-        if (entry.message.role === "assistant") stats.request().finish(false, entry.message);
-      }
-      if (entry.type === "compaction" && entry.usage)
-        stats.request().finish(false, { usage: entry.usage, usageAvailable: true });
-    }
-    const totals = stats.snapshot;
+    const totals = historyPerformance(
+      index.readRange((inheritance?.hiddenEndSeq ?? 0) + 1, snapshot.endSeq, snapshot),
+      inheritance?.totals,
+    );
     this.saveTask(id, { modelPerformanceTotals: totals });
     return totals;
   }
@@ -1333,7 +1430,7 @@ export class SessionHost {
       throw new Error(index?.data.diagnostic ?? "storage: Missing history index");
     let view = this.views.get(id);
     if (!view) {
-      const page = index.page();
+      const page = index.page(undefined, 10, this.sideChatInheritance(id)?.hiddenEndSeq ?? 0);
       view = { ...restoreView(id, record.title, page.entries), seq: this.sequences.get(id) ?? 0 };
       this.cursors.set(id, page.cursor);
       this.views.set(id, view);
@@ -1371,7 +1468,7 @@ export class SessionHost {
     const record = this.record(id),
       index = this.indexes.get(id);
     if (!index) throw new Error("not_found: 会话不存在");
-    const page = index.page(before);
+    const page = index.page(before, 10, this.sideChatInheritance(id)?.hiddenEndSeq ?? 0);
     return { view: restoreView(id, record.title, page.entries), cursor: page.cursor, calls: page.calls };
   }
   private trimCaches(keep?: string): void {
@@ -2414,6 +2511,7 @@ export class SessionHost {
       queuePaused: _paused,
       revision: _revision,
       modelPerformanceTotals: _performance,
+      sideChatInheritance: _inheritance,
       ...record
     } = task;
     return record;

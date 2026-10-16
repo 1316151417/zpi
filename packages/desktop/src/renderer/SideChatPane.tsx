@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChatComposer, Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { ModelPerformance } from "./ModelPerformance.tsx";
-import { loadSideChat, openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
+import { openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { SessionToolbar } from "./SessionToolbar.tsx";
 import {
@@ -35,9 +35,6 @@ export function SideChatPane({
   const loadingEarlier = useStore((state) => state.historyLoading.has(sessionId));
   const workspace = useWorkspace(sessionId);
   const [modelOpen, setModelOpen] = useState(false);
-  useEffect(() => {
-    if (!useStore.getState().views.has(sessionId)) paneTask(loadSideChat(sessionId));
-  }, [sessionId]);
   const running = view?.runs.find((run) => run.status === "running");
   const stop = () => {
     if (running) paneTask(window.zpi.abortRun({ sessionId, runId: running.runId }).then(unwrap));

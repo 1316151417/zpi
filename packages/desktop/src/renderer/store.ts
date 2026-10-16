@@ -305,11 +305,12 @@ export function subscribeEvents(): () => void {
     off();
   };
 }
-export async function refreshSuggestions(id: string): Promise<void> {
+export async function refreshSuggestions(id: string, current = () => true): Promise<void> {
   const [commands, catalog] = await Promise.all([
     window.zpi.listCommands().then(unwrap),
     window.zpi.listSessionSkills(id).then(unwrap),
   ]);
+  if (!current()) return;
   const state = useStore.getState();
   const resourceDiagnostics = new Map(state.resourceDiagnostics),
     suggestions = new Map(state.suggestions);
@@ -617,6 +618,7 @@ export async function initialize(): Promise<void> {
 export function addConversationSelection(
   reference: ConversationSelection,
   sessionId = useStore.getState().selected,
+  focus = true,
 ): void {
   if (!sessionId) return;
   const draft = drafts.get(sessionId);
@@ -627,7 +629,7 @@ export function addConversationSelection(
       selections: appendSelection(draft.selections ?? [], reference),
       error: undefined,
     });
-    focusComposer(sessionId);
+    if (focus) focusComposer(sessionId);
   } catch (error) {
     drafts.set(sessionId, { ...draft, error: error instanceof Error ? error.message : String(error) });
   }

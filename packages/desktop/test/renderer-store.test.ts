@@ -124,7 +124,7 @@ it("opens a manual auxiliary chat once without submitting a prompt", async () =>
   expect(submitInput).not.toHaveBeenCalled();
   expect(usePane.getState()).toMatchObject({
     open: true,
-    active: `side-chat:${child.id}`,
+    active: usePane.getState().tabs[0].id,
     tabs: [{ type: "side-chat", sessionId: f.session.id, childSessionId: child.id }],
   });
   expect(f.store.drafts.get(child.id)?.text).toBe("");

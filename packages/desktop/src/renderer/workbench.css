@@ -203,13 +203,6 @@
     opacity 200ms ease-out,
     display 200ms allow-discrete;
 }
-.right-pane[data-animating] {
-  transition:
-    width 200ms ease-out,
-    opacity 200ms ease-out,
-    margin-right 200ms ease-out,
-    display 200ms allow-discrete;
-}
 .right-pane[data-resizing] {
   transition: none;
 }
@@ -220,9 +213,7 @@
 }
 @starting-style {
   .workspace-surface > .right-pane:not([hidden]) {
-    width: 0;
     opacity: 0;
-    margin-right: 0;
   }
 }
 .right-pane-frame {
@@ -243,9 +234,6 @@
   min-height: 0;
   width: 100%;
   container-type: inline-size;
-}
-.right-pane[data-animating]:not([data-resizing]) .right-pane-content {
-  width: calc(var(--right-pane-width) - 2px);
 }
 .right-resizer {
   position: absolute;

@@ -138,6 +138,8 @@ it("copies the committed active user input without partial assistant output and 
   await f.host.startRun({ sessionId: parent.id, text: "active parent input" });
   await parentStarted.promise;
   const child = await f.host.createSideChat(parent.id);
+  expect(f.settings.state.getTask(child.id)?.modelPerformanceTotals).toMatchObject({ turns: 0, steps: 0 });
+  expect(f.host.getSessionSnapshot(child.id).historyCursor).toBeNull();
   await f.host.startRun({ sessionId: child.id, text: "child input" });
   await childStarted.promise;
   const messages = JSON.stringify(f.server.requests[1].messages);
@@ -151,4 +153,148 @@ it("copies the committed active user input without partial assistant output and 
   await f.host.activeRuns.get(parent.id)?.done;
   await f.host.deleteSession(parent.id);
   expect(() => f.host.getSessionSnapshot(child.id)).toThrow("不存在");
+});
+
+it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages only local history", async () => {
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "answer" }));
+    done(response);
+  });
+  const parent = f.host.createSession(f.a.id);
+  await f.host.startRun({ sessionId: parent.id, text: "first" });
+  await f.host.activeRuns.get(parent.id)?.done;
+  const manager = f.host["manager"](parent.id);
+  const assistant = [...manager.iterateEntries()].find(
+    (entry) => entry.type === "message" && entry.message.role === "assistant",
+  );
+  if (assistant?.type !== "message" || assistant.message.role !== "assistant") throw new Error("fixture");
+  manager.appendCustomEntry("zpi.run", { phase: "start", runId: "second", startedAt: Date.now() });
+  for (let i = 0; i < 27; i++) {
+    if (i % 5 === 0)
+      manager.appendMessage({ role: "user", content: "internal prompt", timestamp: Date.now() });
+    manager.appendMessage(assistant.message);
+  }
+  manager.appendCompaction("retained decisions", assistant.id, undefined, undefined, {
+    input: 10,
+    output: 2,
+    cacheRead: 3,
+    cacheWrite: 0,
+    totalTokens: 15,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  });
+  manager.appendCustomEntry("zpi.run", { phase: "end", runId: "second" });
+  const child = await f.host.createSideChat(parent.id);
+  const index = f.host["requiredIndex"](child.id);
+  const reads = index.readBytes;
+  const initial = f.host.getSessionSnapshot(child.id);
+  expect(initial.view.modelPerformance).toMatchObject({ turns: 2, steps: 29 });
+  expect(initial.view.runs).toEqual([]);
+  expect(initial.historyCursor).toBeNull();
+  expect(f.host.getHistoryPage(child.id, index.snapshot().endSeq + 1).cursor).toBeNull();
+  expect(index.readBytes).toBe(reads);
+  const saved = f.settings.state.getTask(child.id);
+  if (!saved?.modelPerformanceTotals) throw new Error("Missing totals");
+  f.settings.state.upsertTask({ ...saved, modelPerformanceTotals: undefined });
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 2, steps: 29 });
+  await f.host.startRun({ sessionId: child.id, text: "local question" });
+  await f.host.activeRuns.get(child.id)?.done;
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 3, steps: 30 });
+  // Simulate an old installation's already-saved inflated totals, including local latency/usage.
+  const completed = f.settings.state.getTask(child.id);
+  if (!completed?.modelPerformanceTotals) throw new Error("Missing completed totals");
+  const totals = { ...completed.modelPerformanceTotals, turns: 8, llmMs: 1234, toolMs: 567 };
+  f.settings.state.upsertTask({
+    ...completed,
+    sideChatInheritance: undefined,
+    modelPerformanceTotals: totals,
+  });
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({
+    turns: 3,
+    steps: 30,
+    llmMs: 1234,
+    toolMs: 567,
+  });
+  const repaired = f.settings.state.getTask(child.id);
+  if (!repaired) throw new Error("Missing repaired task");
+  expect(repaired.modelPerformanceTotals).toEqual({ ...totals, turns: 3 });
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance?.turns).toBe(3);
+  expect(f.settings.state.getTask(child.id)?.revision).toBe(repaired.revision);
+  await f.host.close();
+  const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined);
+  await restored.init();
+  cleanup.push(() => restored.close());
+  expect(restored.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 3, steps: 30 });
+  expect(restored.getSessionSnapshot(child.id).view.runs).toHaveLength(1);
+  expect(restored.getSessionSnapshot(child.id).historyCursor).toBeNull();
+  // A transcript generation rewrite must validate, rather than blindly trust, its old sequence boundary.
+  const rewritten = restored["manager"](child.id);
+  rewritten.replaceEntries([...rewritten.iterateEntries()]);
+  expect(restored.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 3, steps: 30 });
+  expect(f.settings.state.getTask(child.id)?.sideChatInheritance?.childGeneration).toBe(
+    restored["requiredIndex"](child.id).snapshot().generation,
+  );
+});
+
+it("keeps legacy usage and timings but omits unprovable inherited turns", async () => {
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "answer" }));
+    done(response);
+  });
+  const parent = f.host.createSession(f.a.id);
+  await f.host.startRun({ sessionId: parent.id, text: "original" });
+  await f.host.activeRuns.get(parent.id)?.done;
+  const child = await f.host.createSideChat(parent.id);
+  const saved = f.settings.state.getTask(child.id);
+  if (!saved?.modelPerformanceTotals) throw new Error("Missing totals");
+  f.settings.state.upsertTask({ ...saved, sideChatInheritance: undefined });
+  // IDs alone cannot verify a historical message if the parent's content was replaced.
+  const manager = f.host["manager"](parent.id);
+  manager.replaceEntries(
+    [...manager.iterateEntries()].map((entry) =>
+      entry.type === "message" && entry.message.role === "user"
+        ? { ...entry, message: { ...entry.message, content: "changed" } }
+        : entry,
+    ),
+  );
+  const value = f.host.getSessionSnapshot(child.id).view.modelPerformance;
+  expect(value?.turns).toBeUndefined();
+  expect(value?.steps).toBe(1);
+  expect(f.settings.state.getTask(child.id)?.modelPerformanceTotals).toEqual({
+    ...saved.modelPerformanceTotals,
+    turnsKnown: false,
+  });
+  await f.host.startRun({ sessionId: child.id, text: "local" });
+  await f.host.activeRuns.get(child.id)?.done;
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ steps: 2 });
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance?.turns).toBeUndefined();
+});
+
+it("freezes an active parent's completed prefix rather than its later totals", async () => {
+  const started = deferred();
+  const release = deferred();
+  const f = await fixture(async (_, response, i) => {
+    send(response, chunk({ content: i ? "pending answer" : "completed answer" }));
+    if (i === 1) {
+      started.resolve();
+      await release.promise;
+    }
+    done(response);
+  });
+  const parent = f.host.createSession(f.a.id);
+  await f.host.startRun({ sessionId: parent.id, text: "completed input" });
+  await f.host.activeRuns.get(parent.id)?.done;
+  await f.host.startRun({ sessionId: parent.id, text: "active input" });
+  await started.promise;
+  const child = await f.host.createSideChat(parent.id);
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 1, steps: 1 });
+  const messages = f.host["manager"](child.id).buildSessionContext().messages;
+  expect(JSON.stringify(messages)).toContain("active input");
+  expect(JSON.stringify(messages)).not.toContain("pending answer");
+  release.resolve();
+  await f.host.activeRuns.get(parent.id)?.done;
+  expect(f.host.getSessionSnapshot(parent.id).view.modelPerformance).toMatchObject({ turns: 2, steps: 2 });
+  const saved = f.settings.state.getTask(child.id);
+  if (!saved) throw new Error("Missing child");
+  f.settings.state.upsertTask({ ...saved, modelPerformanceTotals: undefined });
+  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 1, steps: 1 });
 });

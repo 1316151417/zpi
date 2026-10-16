@@ -9,7 +9,7 @@ import {
   SquareTerminal as TerminalSquare,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { FileIcon, type FindRequest, type FindState } from "zpi-ui";
 import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
@@ -52,20 +52,6 @@ export function RightPane({
   });
   const state = usePane();
   const panel = useRef<HTMLElement>(null);
-  const previousOpen = useRef(state.open);
-  useLayoutEffect(() => {
-    if (previousOpen.current === state.open) return;
-    previousOpen.current = state.open;
-    const element = panel.current;
-    if (!element) return;
-    // Like ZCode, animate explicit toggles only; dragging and window resize stay immediate.
-    element.dataset.animating = "true";
-    const timer = setTimeout(() => element.removeAttribute("data-animating"), 240);
-    return () => {
-      clearTimeout(timer);
-      element.removeAttribute("data-animating");
-    };
-  }, [state.open]);
   const tabs = visiblePaneTabs(sessionId, state.tabs);
   const active = tabs.find((tab) => tab.id === state.active)?.id;
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -164,7 +150,7 @@ export function RightPane({
                       <Bot size={16} />
                     ) : tab.type === "task-directory" ? (
                       <Activity size={16} />
-                    ) : tab.type === "side-chat" ? (
+                    ) : tab.type === "side-chat" || tab.type === "side-chat-loading" ? (
                       <MessageSquare size={16} />
                     ) : tab.type === "changes" ? (
                       <Files size={16} />
@@ -292,6 +278,10 @@ export function RightPane({
                 <TaskDirectory sessionId={tab.sessionId} visible={state.open && tab.id === active} />
               ) : tab.type === "subagent" ? (
                 <SubagentPane tab={tab} />
+              ) : tab.type === "side-chat-loading" ? (
+                <div className="side-chat-loading" role="status" aria-busy="true">
+                  正在创建辅助对话…
+                </div>
               ) : tab.type === "side-chat" ? (
                 <SideChatPane
                   sessionId={tab.childSessionId}

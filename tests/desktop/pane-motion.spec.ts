@@ -5,7 +5,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("right pane slides in both layouts, locks content during toggles and resizes without lag", async () => {
+test("right pane changes layout once in both layouts and resizes without lag", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-pane-motion-"));
   let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
@@ -30,15 +30,17 @@ test("right pane slides in both layouts, locks content during toggles and resize
           toggle.click();
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
           const animations = panel.getAnimations();
-          const transition = animations.find(
-            (animation) => animation instanceof CSSTransition && animation.transitionProperty === "width",
+          const layoutTransitions = animations.filter(
+            (animation) =>
+              animation instanceof CSSTransition &&
+              ["width", "margin-right"].includes(animation.transitionProperty),
           );
-          if (!transition) throw Error("Expected a width transition when toggling the pane");
           for (const animation of animations) {
             animation.pause();
             animation.currentTime = 100;
           }
           const measured = {
+            layoutTransitions: layoutTransitions.length,
             width: panel.getBoundingClientRect().width,
             target: Number.parseFloat(getComputedStyle(panel).getPropertyValue("--right-pane-width")),
             contentWidth: content.getBoundingClientRect().width,
@@ -48,15 +50,14 @@ test("right pane slides in both layouts, locks content during toggles and resize
           await Promise.allSettled(animations.map((animation) => animation.finished));
           return measured;
         });
-        expect(middle.width).toBeGreaterThan(0);
-        expect(middle.width).toBeLessThan(middle.target);
-        expect(middle.contentWidth).toBeCloseTo(middle.target - 2, 1);
+        expect(middle.layoutTransitions).toBe(0);
+        expect(middle.width).toBeCloseTo(opening ? middle.target : 0, 1);
+        if (opening) expect(middle.contentWidth).toBeCloseTo(middle.target - 2, 1);
         expect(middle.inert).toBe(!opening);
       }
       await expect(panel).toBeHidden();
     }
     await page.getByLabel("展开右侧栏", { exact: true }).click();
-    await expect(panel).not.toHaveAttribute("data-animating", "true");
     const handle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
     const box = await handle.boundingBox();
     if (!box) throw Error("Missing pane resize handle");
@@ -94,7 +95,6 @@ test("right pane slides in both layouts, locks content during toggles and resize
       await new Promise((resolve) => setTimeout(resolve, 30));
       toggle?.click();
     });
-    await expect(panel).not.toHaveAttribute("data-animating", "true");
     await expect(page.locator(".pane-empty-launcher")).toBeVisible();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByLabel("收起右侧栏", { exact: true }).click();
