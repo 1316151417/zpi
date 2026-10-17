@@ -77,13 +77,25 @@ Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP �
 
 过期使用单调时钟，以最后一次被接受的用户发送为基点。经过 15 分钟后，仅在下一次用户唤起时 reset，取消旧 run 并进入新 session；隐藏、显示、预热、输出 token 和回复完成均不续期。未曾发送时不按此规则过期。普通隐藏保留未发送草稿和当前回复；手动新对话或过期产生的新 session 清空草稿，迟到的旧请求不得更新新会话。
 
-紧凑浮窗为 `360 × 44 DIP` 的单行胶囊，保留现有发送按钮，不显示「＋」；长文本和 `Shift+Enter` 换行在输入框内滚动，不增长窗口高度，`Enter` 与 IME 处理保持一致。首次有效发送后展开为 `660 × 560 DIP`，左上「＋」开始新对话，无窗口关闭「X」，用 `Esc` 或快捷键收起。新对话恢复紧凑模式，流式更新不反复缩放。使用公开 display `bounds` / `workArea` 的底部 inset 估算底部 Dock 高度，让窗口底边在 Dock 上方再留约一 Dock 高；底部 inset 不明显的侧边/自动隐藏 Dock 使用 64 DIP 间距。所有坐标以 DIP 计算，当前显示器水平居中并限制在 workArea 内，小屏收窄尺寸、上移以免超界，不提供手动缩放。
+紧凑浮窗初始为 `360 × 44 DIP` 的胶囊，不显示「＋」；`Shift+Enter` 换行和长文本自动折行会按 textarea 的实际内容高度向上增长，最高 `184 DIP`，继续输入时内部滚动，删除、字体或可用宽度变化后重新测量并收缩。renderer 通过专用 IPC 上报当前 session 的有界高度，主进程拒绝无效高度，忽略旧 session 或展开状态的紧凑缩放请求。首次有效发送后展开为 `660 × 560 DIP`，展开后的 textarea 最高 `160 px`，不会随输入继续放大窗口；发送按钮始终是 `28 × 28 px` 圆形。左上「＋」开始新对话，无窗口关闭「X」，用 `Esc` 或快捷键收起。新对话恢复 44 DIP 紧凑模式，流式更新不反复缩放。对话布局只在 `.quick-chat` 范围覆盖：首轮顶部 8px，后续轮次顶部 12px，各轮底部 16px，主任务样式不变。
+
+使用公开 display `bounds` / `workArea` 的底部 inset 估算底部 Dock 高度，让窗口底边在 Dock 上方再留约一 Dock 高；紧凑输入增高或收缩时保留这个底边锚点。底部 inset 不明显的侧边/自动隐藏 Dock 使用 64 DIP 间距。所有窗口坐标以 DIP 计算，当前显示器水平居中并限制在 workArea 内；小屏限制尺寸和位置，必要时优先保证不超界，不能保证仍保留完整 Dock 间距。textarea 超过实际可用高度时内部滚动，不提供手动缩放。
+
+已加载且未过期的保留窗口直接在唤起调用栈中执行 `show` / 必要的 `focus`，没有额外 `await`；相同 bounds / minimum size 不重复设置，重新唤起不重发整个会话 snapshot。过期或替换 session 后则等待新 session 清空草稿和旧内容、完成两次 `requestAnimationFrame` 回调并确认，再显示窗口；取消、Space 变化或旧 session 的确认不能重新显示已收起窗口。确认超时会丢弃旧 renderer，下一次唤起重建。双帧确认表示 DOM 更新后已有帧调度机会，不证明操作系统合成器已经完成绘制，也不用于承诺零延迟。
+
+针对 0.2.91 基线的窗口替身可稳定重现一个事件顺序缺口：在 `show()` 调用栈内发出 `blur`，旧处理会立即隐藏并使后续 `focus` 无法执行，连续三次唤起均失败。本轮把显示期间的失焦复核推迟到同步焦点步骤之后，同时核对窗口身份、可见性 epoch 与实际聚焦状态；迟到的 `hide` 也先核对原生可见状态。真实失焦仍收起，旧事件不得撤销新的显示意图。这个模拟复现证明代码对该事件顺序的处理有缺口；尚未在真实 Mac 采到同一事件序列，不能据此宣称已经确定用户机器上快捷键症状的真实根因。
+
+本地诊断默认关闭；启动 ZPI 时显式设置 `ZPI_QUICK_CHAT_TIMING=1` 才记录，开发启动示例为 `ZPI_QUICK_CHAT_TIMING=1 npm run dev`。输出位置是 Electron `userData/agent/logs/quick-chat-timing.json`，最多保留当前进程的 64 条记录、文件上限 128 KiB，不上传。记录字段仅允许固定种类、冷/加载中/热启动模式、结果、阶段、数值标识、可见/聚焦/展开布尔状态及相对毫秒；不包含消息/草稿、session 内容、文件路径、URL、模型密钥或绝对时间。这里的 `userData` 路径是输出位置，日志内容不包含用户路径。写入在唤起调用栈返回后排队，失败不阻止浮窗。
+
+计时阶段区分预热、创建/加载、过期检查、几何、`show` / 原生 show 事件、`focus` / 原生 focus 事件，以及 renderer ready、输入框焦点和帧回调；固定隐藏原因包括快捷键、Esc/IPC、真实失焦、Space 变化及被忽略的迟到事件。记录不是持续系统追踪，`renderer-frame` 只代表双帧回调而非像素显示证明，缺失确认或超时也不能当作成功。分析时应分别观察冷启动、热唤起与过期重置，结合实际可见性/输入焦点复核，不把模拟计时换算成原生快捷键延迟。
 
 macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应用激活 API。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；普通隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器几何仅用于位置，Space 行为依赖原生面板。依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
 
-快速对话测试应覆盖工具 allowlist 与真实 `bash` 边界、内存会话与 15 分钟过期、草稿清理、独立默认模型与 fallback、快捷键冲突恢复、IPC/来源图标/导航边界，以及 Happy DOM 的紧凑输入、发送按钮、左上新对话、无窗口关闭按钮、IME、设置导航和默认模型选择。窗口模拟验证 DIP 几何、预热不显示或抢焦点、加载时收起、可见但未聚焦的再次唤起、Space 通知及清理。Happy DOM 和窗口模拟不证明真实 macOS 全局热键、Space 切换、跨应用焦点、像素布局或真实模型服务可用。
+快速对话测试应覆盖工具 allowlist 与真实 `bash` 边界、内存会话与 15 分钟过期、草稿清理、独立默认模型与 fallback、快捷键冲突恢复、IPC/来源图标/导航边界，以及 Happy DOM 的紧凑输入高度上报、发送按钮、左上新对话、无窗口关闭按钮、IME、设置导航和默认模型选择。窗口模拟验证 DIP 几何与底锚点、预热不显示或抢焦点、加载时收起、可见但未聚焦的再次唤起、show 栈内 blur、迟到 blur/hide、过期双帧确认/取消/超时、Space 通知及清理；诊断验证默认关闭、字段白名单与记录/字节上限。Happy DOM 和窗口模拟不证明真实 macOS 全局热键、Space 切换、跨应用焦点、像素布局或真实模型服务可用。
 
-原生验收：用隔离测试配置运行 `tests/desktop/quick-chat.spec.ts`（紧凑→发送→流式→Esc 隐藏/重载→新对话及主任务隔离），显式交互测试可运行 `tests/interactive/quick-chat-focus.spec.ts`（隐藏主窗时浮窗取焦点、固定紧凑尺寸、Esc 和草稿恢复）。另在 Mac 手动将主窗留在桌面 A、当前应用放在桌面 B，按 Option+N 应只在 B 出现输入框且不切回 A；再次按应收起。发送后切到桌面 C 应收起，再按应在 C 展开并保留回答。重复全屏 Space、多显示器、底部/侧边/自动隐藏 Dock、小屏、输入法候选、打开回答链接和流式停止/新对话流程。确认隐藏预热不显示、不抢焦点，也不发起模型请求；超过最后一次发送 15 分钟后再次唤起应进入空白新对话。云端沙箱没有可用的原生桌面验收环境时，Electron GUI、macOS Space/Dock/焦点和真实全局快捷键阶段均标为未运行，不绕过 Chromium 沙箱限制；脚本更新或 DOM 通过不等于原生验收通过。
+原生验收：用隔离测试配置运行 `tests/desktop/quick-chat.spec.ts`（44→184 DIP 多行增高、内滚、删除收缩、底锚点、圆形发送按钮、展开输入 160px、首轮/后续轮次间距、发送/流式、Esc 隐藏/重载、新对话及主任务隔离），显式交互测试可运行 `tests/interactive/quick-chat-focus.spec.ts`（隐藏主窗时浮窗取焦点、输入增高底锚点、多行草稿恢复、连续三次 Esc 隐藏/唤起）。两者仍使用 app API，不注册真实全局快捷键。另在 Mac 手动将主窗留在桌面 A、当前应用放在桌面 B，按 Option+N 应只在 B 出现输入框且不切回 A；再次按应收起。发送后切到桌面 C 应收起，再按应在 C 展开并保留回答，连续重复至少三次并确认可立即输入；发生失败时保留上述本地诊断，核对实际事件顺序。重复全屏 Space、多显示器、底部/侧边/自动隐藏 Dock、小屏、输入法候选、打开回答链接和流式停止/新对话流程。确认隐藏预热不显示、不抢焦点，也不发起模型请求；超过最后一次发送 15 分钟后再次唤起应进入空白新对话，旧内容和草稿不能短暂闪现。
+
+本轮云端仅更新这些原生用例并做静态校验/`--list` 发现检查，没有运行 Electron GUI、真实 API 或用户 Mac；macOS Space/Dock/跨应用焦点、真实全局快捷键事件顺序与原生毫秒延迟均未实测。不能将脚本更新、DOM/窗口模拟通过或 `--list` 成功写成原生验收通过，不承诺 0ms。
 
 ### 文件工具的资源与并发边界
 

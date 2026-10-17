@@ -15,6 +15,13 @@ export interface QuickChatBridge {
   stop(): Promise<Result<void>>;
   reset(): Promise<Result<void>>;
   hide(): Promise<Result<void>>;
+  setComposerHeight(sessionId: string, height: number): Promise<Result<void>>;
+  rendererReady(sessionId: string): Promise<Result<void>>;
+  onPresentation(listener: (token: number) => void): () => void;
+  reportPresentation(
+    token: number,
+    stage: "renderer-ready" | "renderer-focus" | "renderer-frame",
+  ): Promise<Result<void>>;
   copyText(text: string): Promise<Result<void>>;
   openExternal(url: string): Promise<Result<void>>;
   readWebSourceIcon(

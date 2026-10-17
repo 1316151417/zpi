@@ -19,11 +19,15 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "copyText",
     "getSnapshot",
     "hide",
+    "onPresentation",
     "onSnapshot",
     "openExternal",
     "readWebSourceIcon",
+    "rendererReady",
+    "reportPresentation",
     "reset",
     "send",
+    "setComposerHeight",
     "stop",
   ]);
   await bridge.send("question");
@@ -36,9 +40,26 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "run",
     "https://example.com/article",
   ]);
+  await bridge.setComposerHeight("session", 92);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "setComposerHeight", ["session", 92]);
+  await bridge.rendererReady("session");
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "rendererReady", ["session"]);
+  await bridge.reportPresentation(1, "renderer-frame");
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "reportPresentation", [
+    1,
+    "renderer-frame",
+  ]);
+  const presented = vi.fn();
+  const offPresentation = bridge.onPresentation(presented);
+  const [presentationChannel, presentationHandler] =
+    electron.on.mock.calls[electron.on.mock.calls.length - 1];
+  presentationHandler({}, 1);
+  expect(presented).toHaveBeenCalledWith(1);
+  offPresentation();
+  expect(electron.removeListener).toHaveBeenCalledWith(presentationChannel, presentationHandler);
   const listener = vi.fn();
   const off = bridge.onSnapshot(listener);
-  const [channel, handler] = electron.on.mock.calls[0];
+  const [channel, handler] = electron.on.mock.calls[electron.on.mock.calls.length - 1];
   handler({}, { revision: 2 });
   expect(listener).toHaveBeenCalledWith({ revision: 2 });
   off();

@@ -8,6 +8,14 @@ const bridge: QuickChatBridge = {
   stop: () => call("stop"),
   reset: () => call("reset"),
   hide: () => call("hide"),
+  setComposerHeight: (sessionId, height) => call("setComposerHeight", sessionId, height),
+  rendererReady: (sessionId) => call("rendererReady", sessionId),
+  reportPresentation: (token, stage) => call("reportPresentation", token, stage),
+  onPresentation(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, token: number) => listener(token);
+    ipcRenderer.on("zpi:quick-chat-presentation", handler);
+    return () => ipcRenderer.removeListener("zpi:quick-chat-presentation", handler);
+  },
   copyText: (text) => call("copyText", text),
   openExternal: (url) => call("openExternal", url),
   readWebSourceIcon: (sessionId, runId, sourceUrl) => call("readWebSourceIcon", sessionId, runId, sourceUrl),

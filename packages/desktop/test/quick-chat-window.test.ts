@@ -1,14 +1,25 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
 import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain, IpcMainInvokeEvent } from "electron";
 import { expect, test, vi } from "vitest";
 import type { QuickChatHost } from "../src/main/quick-chat-host.ts";
+import type { QuickChatTiming } from "../src/main/quick-chat-timing.ts";
 import { installQuickChatIpc, QuickChatWindow } from "../src/main/quick-chat-window.ts";
 import type { QuickChatSnapshot } from "../src/shared/quick-chat.ts";
 
 function fixture(
-  options: { autoLoad?: boolean; hidden?: boolean; platform?: NodeJS.Platform; history?: boolean } = {},
+  options: {
+    autoLoad?: boolean;
+    hidden?: boolean;
+    platform?: NodeJS.Platform;
+    history?: boolean;
+    timing?: QuickChatTiming;
+  } = {},
 ) {
-  let snapshot = { revision: 1, session: { runs: options.history ? [{}] : [] } } as QuickChatSnapshot;
+  let snapshot = {
+    revision: 1,
+    session: { sessionId: "session-1", runs: options.history ? [{}] : [] },
+  } as QuickChatSnapshot;
   let listener: (snapshot: QuickChatSnapshot) => void = () => {};
   let spaceChanged = () => {};
   const workspaceNotifications = {
@@ -33,7 +44,10 @@ function fixture(
     send: vi.fn(),
     stop: vi.fn(async () => {}),
     reset: vi.fn(async () => {}),
-    resetIfExpired: vi.fn(async () => {}),
+    resetIfExpired: vi.fn<() => Promise<void> | undefined>(() => undefined),
+    get sessionId() {
+      return snapshot.session.sessionId;
+    },
     readWebSourceIcon: vi.fn(async () => undefined as string | undefined),
   };
   const windows: ReturnType<typeof makeWindow>[] = [];
@@ -43,6 +57,7 @@ function fixture(
   function makeWindow(config: BrowserWindowConstructorOptions) {
     let bounds = { x: config.x ?? 0, y: config.y ?? 0, width: config.width ?? 0, height: config.height ?? 0 };
     let focused = false;
+    let visible = false;
     let destroyed = false;
     let url = "";
     const session = Object.assign(new EventEmitter(), {
@@ -61,20 +76,30 @@ function fixture(
     const window = Object.assign(new EventEmitter(), {
       webContents: contents,
       isDestroyed: () => destroyed,
-      isMinimized: () => false,
+      isMinimized: vi.fn(() => false),
       getBounds: () => ({ ...bounds }),
       setBounds: vi.fn((next) => {
         bounds = { ...next };
       }),
       setMinimumSize: vi.fn(),
       isFocused: vi.fn(() => focused),
-      show: vi.fn(),
+      isVisible: vi.fn(() => visible),
+      blur: () => {
+        focused = false;
+        window.emit("blur");
+      },
+      show: vi.fn(() => {
+        visible = true;
+        window.emit("show");
+      }),
       focus: vi.fn(() => {
         focused = true;
+        window.emit("focus");
       }),
       restore: vi.fn(),
       hide: vi.fn(() => {
         focused = false;
+        visible = false;
         window.emit("hide");
       }),
       destroy: vi.fn(() => {
@@ -91,6 +116,7 @@ function fixture(
   }
   const quick = new QuickChatWindow({
     host: host as unknown as QuickChatHost,
+    timing: options.timing,
     createWindow: (config) => {
       configs.push(config);
       const window = makeWindow(config);
@@ -117,11 +143,19 @@ function fixture(
     getDisplay,
     workspaceNotifications,
     spaceChanged: () => spaceChanged(),
+    changeSession: (id: string) => {
+      snapshot = {
+        ...snapshot,
+        revision: snapshot.revision + 1,
+        session: { sessionId: id, title: "快速对话", seq: 0, runs: [] },
+      } as QuickChatSnapshot;
+      listener(snapshot);
+    },
     emitHistory: (history: boolean) => {
       snapshot = {
         ...snapshot,
         revision: snapshot.revision + 1,
-        session: { runs: history ? [{}] : [] },
+        session: { sessionId: snapshot.session.sessionId, runs: history ? [{}] : [] },
       } as QuickChatSnapshot;
       listener(snapshot);
     },
@@ -263,7 +297,7 @@ test("blur and active Space change hide without cancelling and release the nativ
   );
   await f.quick.show();
   const window = f.windows[0];
-  window.emit("blur");
+  window.blur();
   expect(window.hide).toHaveBeenCalledOnce();
   await f.quick.show();
   expect(window.isFocused()).toBe(true);
@@ -505,6 +539,7 @@ test("delayed warmup stays hidden, is idempotent, and is cancelled on disposal",
 test("Space change or toggle while an expired run is stopping cancels the pending show", async () => {
   const f = fixture({ platform: "darwin" });
   await f.quick.prepare();
+  await f.quick.call("rendererReady", ["session-1"]);
   let expired!: () => void;
   f.host.resetIfExpired.mockImplementationOnce(
     () =>
@@ -595,5 +630,296 @@ test("source icon IPC delegates only bounded session/run/source fields to the qu
     expect(await f.quick.call("readWebSourceIcon", args)).toMatchObject({ ok: false });
   }
   expect(f.host.readWebSourceIcon).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("retained warm invocation shows synchronously without redundant geometry, focus, settings, or IPC", async () => {
+  const f = fixture({ history: true });
+  await f.quick.prepare();
+  const window = f.windows[0];
+  window.show.mockImplementation(() => {
+    window.isFocused.mockReturnValue(true);
+  });
+  const opening = f.quick.show();
+  expect(window.show).toHaveBeenCalledOnce();
+  expect(window.focus).not.toHaveBeenCalled();
+  expect(window.setBounds).not.toHaveBeenCalled();
+  expect(window.setMinimumSize).not.toHaveBeenCalled();
+  expect(f.host.refreshSettings).not.toHaveBeenCalled();
+  expect(window.webContents.send).not.toHaveBeenCalled();
+  await opening;
+  await f.quick.dispose();
+});
+
+test("blur during expanded show cannot defeat repeated invocations before focus executes", async () => {
+  const f = fixture({ history: true });
+  await f.quick.prepare();
+  const window = f.windows[0];
+  const nativeShow = window.show.getMockImplementation();
+  window.show.mockImplementation(() => {
+    nativeShow?.();
+    window.emit("blur");
+  });
+  for (let index = 0; index < 3; index++) {
+    await f.quick.toggle();
+    expect(window.focus).toHaveBeenCalledTimes(index + 1);
+    expect(window.hide).toHaveBeenCalledTimes(index);
+    expect(window.getBounds().height).toBe(560);
+    await f.quick.toggle();
+    expect(window.hide).toHaveBeenCalledTimes(index + 1);
+  }
+  expect(f.host.stop).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("same-window late blur/hide cannot undo a focused reopen, but a real blur still hides", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  await f.quick.show();
+  const window = f.windows[0];
+  window.emit("blur");
+  window.emit("hide");
+  await Promise.resolve();
+  expect(window.hide).toHaveBeenCalledOnce();
+  window.blur();
+  expect(window.hide).toHaveBeenCalledTimes(2);
+  await f.quick.show();
+  expect(window.show).toHaveBeenCalledTimes(3);
+  await f.quick.dispose();
+});
+
+test("expired show waits for the new rendered session and rejects old acknowledgements", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  f.host.resetIfExpired.mockImplementationOnce(async () => {
+    f.changeSession("new-session");
+  });
+  const opening = f.quick.show();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.call("rendererReady", ["session-1"]);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.call("rendererReady", ["new-session"]);
+  await opening;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("hiding before a new-session frame does not permit a later warm open to flash stale contents", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  f.changeSession("new-session");
+  const first = f.quick.show();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.quick.toggle();
+  await first;
+  const latest = f.quick.toggle();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.call("rendererReady", ["new-session"]);
+  await latest;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("new-session waits release on Space change or disposal without a late acknowledgement reopening", async () => {
+  for (const dispose of [false, true]) {
+    const f = fixture({ platform: "darwin", history: true });
+    await f.quick.show();
+    f.quick.hide();
+    f.changeSession("replacement");
+    const opening = f.quick.show();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (dispose) await f.quick.dispose();
+    else f.spaceChanged();
+    await opening;
+    await f.quick.call("rendererReady", ["replacement"]);
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    await f.quick.dispose();
+  }
+});
+
+test("composer growth keeps its bottom anchor, clamps to the screen, and rejects stale or malformed resize", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  const bottom = window.getBounds().y + window.getBounds().height;
+  expect(await f.quick.call("setComposerHeight", ["session-1", 140])).toMatchObject({ ok: true });
+  expect(window.getBounds().height).toBe(140);
+  expect(window.getBounds().y + window.getBounds().height).toBe(bottom);
+  window.setBounds.mockClear();
+  await f.quick.call("setComposerHeight", ["session-1", 140]);
+  await f.quick.call("setComposerHeight", ["old-session", 184]);
+  expect(window.setBounds).not.toHaveBeenCalled();
+  for (const height of [0, 43, 185, Number.NaN, Number.POSITIVE_INFINITY, "100"]) {
+    expect(await f.quick.call("setComposerHeight", ["session-1", height])).toMatchObject({ ok: false });
+  }
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 0, y: 0, width: 320, height: 80 },
+    workArea: { x: 0, y: 0, width: 320, height: 80 },
+  });
+  await f.quick.call("setComposerHeight", ["session-1", 184]);
+  expect(window.getBounds()).toEqual({ x: 0, y: 0, width: 320, height: 80 });
+  f.emitHistory(true);
+  const expanded = window.getBounds();
+  await f.quick.call("setComposerHeight", ["session-1", 44]);
+  expect(window.getBounds()).toEqual(expanded);
+  f.changeSession("new-session");
+  await f.quick.call("setComposerHeight", ["session-1", 184]);
+  expect(window.getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("resetting an already compact multiline draft shrinks the native window immediately", async () => {
+  const f = fixture();
+  await f.quick.show();
+  await f.quick.call("setComposerHeight", ["session-1", 184]);
+  const bottom = f.windows[0].getBounds().y + 184;
+  f.changeSession("fresh");
+  expect(f.windows[0].getBounds().height).toBe(44);
+  expect(f.windows[0].getBounds().y + 44).toBe(bottom);
+  await f.quick.dispose();
+});
+
+test("a lost new-session acknowledgement times out safely and the next invocation recreates the renderer", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fixture({ history: true });
+    await f.quick.show();
+    f.quick.hide();
+    f.changeSession("fresh");
+    const opening = f.quick.show();
+    const failed = expect(opening).rejects.toThrow("快速对话页面未准备就绪，请重试");
+    await vi.advanceTimersByTimeAsync(5000);
+    await failed;
+    expect(f.windows[0].destroy).toHaveBeenCalledOnce();
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    await f.quick.toggle();
+    expect(f.windows).toHaveLength(2);
+    expect(f.windows[1].show).toHaveBeenCalledOnce();
+    expect(f.windows[1].getBounds().height).toBe(44);
+    expect(f.host.reset).not.toHaveBeenCalled();
+    await f.quick.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each(["restore", "bounds"])(
+  "blur during native %s is reconciled after focus, just like show",
+  async (operation) => {
+    const f = fixture({ history: true });
+    await f.quick.prepare();
+    const window = f.windows[0];
+    if (operation === "restore") {
+      window.isMinimized.mockReturnValue(true);
+      window.restore.mockImplementation(() => {
+        window.emit("blur");
+      });
+    } else {
+      f.getDisplay.mockReturnValue({
+        bounds: { x: 1440, y: 0, width: 1440, height: 900 },
+        workArea: { x: 1440, y: 25, width: 1440, height: 825 },
+      });
+      const nativeBounds = window.setBounds.getMockImplementation();
+      window.setBounds.mockImplementation((bounds) => {
+        nativeBounds?.(bounds);
+        window.emit("blur");
+      });
+    }
+    await f.quick.toggle();
+    expect(window.focus).toHaveBeenCalledOnce();
+    expect(window.hide).not.toHaveBeenCalled();
+    await f.quick.toggle();
+    expect(window.hide).toHaveBeenCalledOnce();
+    await f.quick.dispose();
+  },
+);
+
+test("optional timings follow only the current numeric token and record post-frame hiding without user data", async () => {
+  const traces: { id: number; mark: ReturnType<typeof vi.fn>; finish: ReturnType<typeof vi.fn> }[] = [];
+  const timing = {
+    start: vi.fn(() => {
+      const trace = { id: traces.length + 1, mark: vi.fn(), finish: vi.fn() };
+      traces.push(trace);
+      return trace;
+    }),
+    flush: vi.fn(async () => {}),
+  };
+  const f = fixture({ history: true, timing: timing as unknown as QuickChatTiming });
+  await f.quick.prepare();
+  expect(traces[0].finish).toHaveBeenCalledWith("ready");
+  await f.quick.show();
+  expect(f.windows[0].webContents.send).toHaveBeenCalledWith("zpi:quick-chat-presentation", 2);
+  await f.quick.call("reportPresentation", [1, "renderer-frame"]);
+  expect(traces[1].finish).not.toHaveBeenCalled();
+  for (const args of [
+    [2, "private text"],
+    [Number.NaN, "renderer-focus"],
+    ["2", "renderer-ready"],
+  ])
+    expect(await f.quick.call("reportPresentation", args)).toMatchObject({ ok: false });
+  await f.quick.call("reportPresentation", [2, "renderer-ready"]);
+  await f.quick.call("reportPresentation", [2, "renderer-focus"]);
+  await f.quick.call("reportPresentation", [2, "renderer-frame"]);
+  expect(traces[1].finish).toHaveBeenCalledExactlyOnceWith("shown");
+  for (const [index, event] of ["blur", "hide"].entries()) {
+    f.windows[0].emit(event);
+    expect(traces[index + 2].mark).toHaveBeenCalledWith(`${event}-ignored`, {
+      visible: true,
+      focused: true,
+      expanded: true,
+    });
+    expect(traces[index + 2].finish).toHaveBeenCalledWith("shown");
+  }
+  f.windows[0].blur();
+  expect(traces[4].mark).toHaveBeenCalledWith("blur-unfocused", {
+    visible: true,
+    focused: false,
+    expanded: true,
+  });
+  expect(traces[4].finish).toHaveBeenCalledWith("hidden");
+  await f.quick.show();
+  const latest = traces[traces.length - 1];
+  await f.quick.call("reportPresentation", [2, "renderer-frame"]);
+  expect(latest.finish).not.toHaveBeenCalled();
+  f.quick.hide();
+  expect(latest.finish).toHaveBeenCalledWith("hidden");
+  expect(f.host.send).not.toHaveBeenCalled();
+  await f.quick.dispose();
+  expect(timing.flush).toHaveBeenCalledOnce();
+});
+
+test("background discovered models also refresh the retained quick-chat snapshot", () => {
+  const source = fs.readFileSync(new URL("../src/main/index.ts", import.meta.url), "utf8");
+  const discovery = source.slice(
+    source.indexOf("for (const id of discovered)"),
+    source.indexOf("const rendererUrl"),
+  );
+  expect(discovery).toMatch(/await settingsReady;\s*quickChatHost.refreshSettings\(\)/);
+});
+
+test("toggle recreates a destroyed window even if its closed notification is delayed", async () => {
+  const f = fixture();
+  await f.quick.show();
+  f.quick.hide();
+  const old = f.windows[0];
+  old.isDestroyed = () => true;
+  old.isVisible.mockImplementation(() => {
+    throw new Error("Object has been destroyed");
+  });
+  old.isFocused.mockImplementation(() => {
+    throw new Error("Object has been destroyed");
+  });
+  await f.quick.toggle();
+  expect(f.windows).toHaveLength(2);
+  expect(f.windows[1].show).toHaveBeenCalledOnce();
+  old.emit("closed");
+  await f.quick.toggle();
+  expect(f.windows[1].hide).toHaveBeenCalledOnce();
   await f.quick.dispose();
 });

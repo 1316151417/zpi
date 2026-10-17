@@ -82,12 +82,15 @@ export class QuickChatHost {
     };
   }
   /** Called only for a user invocation, never by hidden warmup or streaming events. */
-  async resetIfExpired(): Promise<void> {
+  resetIfExpired(): Promise<void> | undefined {
     if (this.resetting) return this.resetting;
     const elapsed = this.lastAcceptedSend === undefined ? 0 : this.now() - this.lastAcceptedSend;
     // A monotonic clock avoids wall-clock adjustments; injected invalid/backward clocks fail closed.
     if (!Number.isFinite(elapsed) || elapsed < QUICK_CHAT_IDLE_MS) return;
-    await this.reset();
+    return this.reset();
+  }
+  get sessionId(): string {
+    return this.view.sessionId;
   }
   async readWebSourceIcon(
     sessionId: string,

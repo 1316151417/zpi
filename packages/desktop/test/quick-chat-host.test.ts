@@ -350,13 +350,13 @@ test("expiry is based on the last accepted send, not settings, generation, or re
   const f = await fixture(undefined, () => now);
   const initial = f.host.getSnapshot().session.sessionId;
   now += QUICK_CHAT_IDLE_MS * 2;
-  await f.host.resetIfExpired();
+  expect(f.host.resetIfExpired()).toBeUndefined();
   expect(f.host.getSnapshot().session.sessionId).toBe(initial);
   await run(f.host);
   const sentAt = now;
   now += QUICK_CHAT_IDLE_MS - 1;
   f.host.refreshSettings();
-  await f.host.resetIfExpired();
+  expect(f.host.resetIfExpired()).toBeUndefined();
   expect(f.host.getSnapshot().session.runs).toHaveLength(1);
   expect(() => f.host.send(" ")).toThrow("invalid_input");
   now = sentAt + QUICK_CHAT_IDLE_MS;

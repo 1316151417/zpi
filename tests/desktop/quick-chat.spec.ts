@@ -40,24 +40,45 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
           .find((window) => window.webContents.getURL().includes("view=quick-chat"))
           ?.getBounds(),
       );
-    expect(await quickBounds()).toMatchObject({ width: 360, height: 44 });
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 44 });
+    const compactBounds = await quickBounds();
+    if (!compactBounds) throw new Error("Missing compact bounds");
+    const compactBottom = compactBounds.y + compactBounds.height;
+    const sendButton = quick.getByRole("button", { name: "发送", exact: true });
+    await expect(sendButton).toHaveCSS("width", "28px");
+    await expect(sendButton).toHaveCSS("height", "28px");
+    await expect(sendButton).toHaveCSS("border-radius", "50%");
     expect(await quick.evaluate(() => typeof window.zpi)).toBe("undefined");
     expect(await quick.evaluate(() => typeof window.zpiQuickChat.send)).toBe("function");
     const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
     await input.fill("第一行");
     await input.press("Shift+Enter");
     await expect(input).toHaveValue("第一行\n");
+    await expect.poll(async () => (await quickBounds())?.height ?? 0).toBeGreaterThan(44);
+    const multilineBounds = await quickBounds();
+    if (!multilineBounds) throw new Error("Missing multiline bounds");
+    expect(multilineBounds.width).toBe(360);
+    expect(multilineBounds.height).toBeLessThanOrEqual(184);
+    expect(multilineBounds.y + multilineBounds.height).toBe(compactBottom);
     await input.fill("长草稿\n".repeat(20));
-    expect(await input.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-    expect(await quickBounds()).toMatchObject({ width: 360, height: 44 });
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 184 });
+    await expect
+      .poll(() => input.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
+    await expect(input).toHaveCSS("overflow-y", "auto");
+    expect((await quickBounds())?.y).toBe(compactBottom - 184);
     expect(server.requests).toHaveLength(0);
     await input.fill("只在浮窗回答");
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 44 });
+    expect((await quickBounds())?.y).toBe(compactBounds.y);
     await expect(quick.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
     expect(await quick.evaluate(() => "setSelection" in window.zpiQuickChat)).toBe(false);
     await input.press("Enter");
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "running");
     await expect.poll(quickBounds).toMatchObject({ width: 660, height: 560 });
     await expect(quick.getByTestId("run")).toContainText("浮窗中的回复");
+    await expect(quick.getByTestId("run")).toHaveCSS("padding-top", "8px");
+    await expect(quick.getByTestId("run")).toHaveCSS("padding-bottom", "16px");
     await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "expanded");
     await expect(quick.locator(".quick-chat-header button")).toHaveCount(1);
     await expect(quick.getByRole("button", { name: "新对话", exact: true })).toBeVisible();
@@ -81,6 +102,18 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
     finish.resolve();
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(quick.getByTestId("run")).toContainText("已经完成");
+    await input.fill("展开后的长草稿\n".repeat(20));
+    await expect(input).toHaveCSS("height", "160px");
+    await expect(input).toHaveCSS("overflow-y", "auto");
+    expect(await input.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    expect(await quickBounds()).toMatchObject({ width: 660, height: 560 });
+    await input.fill("第二轮");
+    await expect(input).toHaveCSS("height", "24px");
+    await input.press("Enter");
+    await expect(quick.getByTestId("run")).toHaveCount(2);
+    await expect(quick.getByTestId("run").nth(1)).toHaveAttribute("data-status", "completed");
+    await expect(quick.getByTestId("run").nth(1)).toHaveCSS("padding-top", "12px");
+    await expect(quick.getByTestId("run").nth(1)).toHaveCSS("padding-bottom", "16px");
     await expect(main.getByLabel("消息", { exact: true })).toHaveValue("保留主窗口草稿");
     expect(await main.evaluate(() => window.zpi.listRecentSessions())).toEqual(before);
     expect(await quick.evaluate(() => Object.keys(localStorage))).toEqual([]);

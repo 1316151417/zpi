@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -56,6 +57,7 @@ let container: HTMLDivElement;
 let snapshot: QuickChatSnapshot;
 let bridge: QuickChatBridge;
 let listeners: Set<(snapshot: QuickChatSnapshot) => void>;
+let presentationListeners: Set<(token: number) => void>;
 let storageWrite: ReturnType<typeof vi.spyOn>;
 let conversationLoader: ReturnType<typeof vi.fn<() => Promise<{ default: typeof QuickChatConversation }>>>;
 
@@ -128,12 +130,22 @@ beforeEach(() => {
   };
   conversationLoader = vi.fn(async () => ({ default: QuickChatConversation }));
   listeners = new Set();
+  presentationListeners = new Set();
   bridge = {
     getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     send: vi.fn(async () => ok()),
     stop: vi.fn(async () => ok()),
     reset: vi.fn(async () => ok()),
     hide: vi.fn(async () => ok()),
+    setComposerHeight: vi.fn(async () => ok()),
+    rendererReady: vi.fn(async () => ok()),
+    reportPresentation: vi.fn(async () => ok()),
+    onPresentation: vi.fn((listener) => {
+      presentationListeners.add(listener);
+      return () => {
+        presentationListeners.delete(listener);
+      };
+    }),
     copyText: vi.fn(async () => ok()),
     openExternal: vi.fn(async () => ok()),
     readWebSourceIcon: vi.fn(async () => ({ ok: true as const, value: {} })),
@@ -164,6 +176,7 @@ afterEach(async () => {
     root.unmount();
   });
   expect(listeners.size).toBe(0);
+  expect(presentationListeners.size).toBe(0);
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -187,6 +200,322 @@ test("opens as a slim input with the task send control, theme, and isolated brid
   expect(conversationLoader).not.toHaveBeenCalled();
   expect("setSelection" in bridge).toBe(false);
   expect(storageWrite).not.toHaveBeenCalled();
+});
+
+// happy-dom runs real React state/effects/events, but not text layout or a compositor.
+// Only the browser's measured geometry and animation clock are supplied by these tests.
+function measureInput(height: () => number, available?: () => number) {
+  Object.defineProperty(input(), "scrollHeight", { configurable: true, get: height });
+  if (available) Object.defineProperty(input(), "clientHeight", { configurable: true, get: available });
+}
+
+function animationClock() {
+  let next = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.set(++next, callback);
+    return next;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  return async () => {
+    const current = [...frames];
+    frames.clear();
+    await act(async () => {
+      for (const [, callback] of current) callback(performance.now());
+    });
+  };
+}
+
+test("grows, caps, and shrinks compact input from native textarea measurements without duplicate IPC", async () => {
+  await mount();
+  expect(bridge.setComposerHeight).toHaveBeenCalledExactlyOnceWith("quick-session", 44);
+  measureInput(() => input().value.split("\n").length * 24);
+  await type("first\nsecond");
+  expect(input().style.height).toBe("48px");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 64);
+  await type("first\nsecond edited");
+  await push();
+  await push();
+  expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+  await type(Array.from({ length: 7 }, (_, index) => `line ${index}`).join("\n"));
+  expect(input().style.height).toBe("168px");
+  expect(input().style.overflowY).toBe("hidden");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 184);
+  await type(Array.from({ length: 15 }, (_, index) => `line ${index}`).join("\n"));
+  expect(input().style.height).toBe("168px");
+  expect(input().style.overflowY).toBe("auto");
+  expect(bridge.setComposerHeight).toHaveBeenCalledTimes(3);
+  await type("");
+  expect(input().style.height).toBe("24px");
+  expect(input().style.overflowY).toBe("hidden");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 44);
+});
+
+test("measures early multiline drafts and reports them as soon as the first session arrives", async () => {
+  const request = deferred<Result<QuickChatSnapshot>>();
+  vi.mocked(bridge.getSnapshot).mockReturnValue(request.promise);
+  await mount();
+  measureInput(() => input().value.split("\n").length * 24);
+  await type("draft\nbefore\nsnapshot");
+  expect(input().style.height).toBe("72px");
+  expect(bridge.setComposerHeight).not.toHaveBeenCalled();
+  expect(bridge.send).not.toHaveBeenCalled();
+  await act(async () => request.resolve({ ok: true, value: snapshot }));
+  expect(input().value).toBe("draft\nbefore\nsnapshot");
+  expect(bridge.setComposerHeight).toHaveBeenCalledExactlyOnceWith("quick-session", 88);
+});
+
+test("remeasures wrapped text after width and font changes while ignoring token-only snapshots", async () => {
+  const frame = animationClock();
+  const observers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      entry: (typeof observers)[number];
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [] };
+        observers.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      disconnect() {}
+    },
+  );
+  const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() });
+  Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+  try {
+    await mount();
+    let measured = 24;
+    measureInput(() => measured);
+    await type("a long pasted paragraph whose wrapping depends on the input width");
+    expect(bridge.setComposerHeight).toHaveBeenCalledTimes(1);
+    measured = 96;
+    const observer = observers.findLast((candidate) => candidate.targets.includes(input()));
+    expect(observer).toBeDefined();
+    const resized = (width: number) => {
+      observer?.callback(
+        [
+          {
+            target: input(),
+            contentRect: new DOMRectReadOnly(0, 0, width, 24),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          },
+        ],
+        {} as ResizeObserver,
+      );
+    };
+    await act(async () => resized(220));
+    await frame();
+    expect(input().style.height).toBe("96px");
+    expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 112);
+    await act(async () => resized(220));
+    await frame();
+    await push();
+    expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+    measured = 120;
+    await push({ settings: { ...settings, interface: { ...settings.interface, fontSize: 18 } } });
+    expect(input().style.height).toBe("120px");
+    expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 136);
+    measured = 144;
+    await act(async () => fonts.dispatchEvent(new Event("loadingdone")));
+    await frame();
+    expect(input().style.height).toBe("144px");
+    expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 160);
+  } finally {
+    Reflect.deleteProperty(document, "fonts");
+  }
+});
+
+test("retries a failed current height request without allowing an old failure to invalidate the new height", async () => {
+  const frame = animationClock();
+  const old = deferred<Result<void>>();
+  vi.mocked(bridge.setComposerHeight).mockReturnValueOnce(old.promise);
+  await mount();
+  measureInput(() => input().value.split("\n").length * 24);
+  await type("one\ntwo");
+  await act(async () => old.reject(new Error("old resize failure")));
+  await act(async () => window.dispatchEvent(new Event("resize")));
+  await frame();
+  expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+  vi.mocked(bridge.setComposerHeight).mockResolvedValueOnce({
+    ok: false,
+    error: { code: "busy", message: "not ready" },
+  });
+  await type("one\ntwo\nthree");
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await frame();
+  expect(bridge.setComposerHeight).toHaveBeenCalledTimes(4);
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 88);
+  expect(input().value).toBe("one\ntwo\nthree");
+});
+
+test("keeps overflowing text scrollable when the native display clamps the compact window", async () => {
+  const frame = animationClock();
+  await mount();
+  let available = 64;
+  measureInput(
+    () => 120,
+    () => available,
+  );
+  await type("multiline text on a short display");
+  expect(input().style.height).toBe("120px");
+  expect(input().style.overflowY).toBe("auto");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 136);
+  available = 120;
+  await act(async () => window.dispatchEvent(new Event("resize")));
+  await frame();
+  expect(input().style.overflowY).toBe("hidden");
+  expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+});
+
+test("preserves a tall hidden draft and resets height only when the accepted session changes", async () => {
+  const frame = animationClock();
+  await mount();
+  measureInput(() => input().value.split("\n").length * 24);
+  await type("one\ntwo\nthree");
+  await key(input(), "Escape");
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await frame();
+  expect(input().value).toBe("one\ntwo\nthree");
+  expect(input().style.height).toBe("72px");
+  expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+  await push({ session: emptySession("replacement-session") });
+  expect(input().value).toBe("");
+  expect(input().style.height).toBe("24px");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("replacement-session", 44);
+});
+
+test("grows expanded input to 160px with internal scrolling without resizing the popup for tokens", async () => {
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  vi.mocked(bridge.setComposerHeight).mockClear();
+  measureInput(() => input().value.split("\n").length * 24);
+  await type("one\ntwo\nthree");
+  expect(input().style.height).toBe("72px");
+  expect(input().style.overflowY).toBe("hidden");
+  await type(Array.from({ length: 12 }, () => "next draft").join("\n"));
+  expect(input().style.height).toBe("160px");
+  expect(input().style.overflowY).toBe("auto");
+  await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+  expect(input().style.height).toBe("160px");
+  expect(bridge.setComposerHeight).not.toHaveBeenCalled();
+  await type("");
+  expect(input().style.height).toBe("24px");
+  expect(input().style.overflowY).toBe("hidden");
+});
+
+test("acknowledges only the current session after two frame opportunities and keeps early typing usable", async () => {
+  const frame = animationClock();
+  await mount();
+  await type("before native presentation");
+  expect(input().disabled).toBe(false);
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  await frame();
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  await push({ session: emptySession("fresh-session") });
+  expect(input().value).toBe("");
+  await frame();
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  await frame();
+  expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("fresh-session");
+  await push();
+  await frame();
+  await frame();
+  expect(bridge.rendererReady).toHaveBeenCalledOnce();
+});
+
+test("reports diagnostic input readiness, actual focus and double-frame opportunity for the latest token", async () => {
+  const frame = animationClock();
+  await mount();
+  expect(bridge.reportPresentation).not.toHaveBeenCalled();
+  await act(async () => {
+    for (const listener of presentationListeners) listener(1);
+  });
+  expect(bridge.reportPresentation).toHaveBeenCalledWith(1, "renderer-ready");
+  expect(bridge.reportPresentation).not.toHaveBeenCalledWith(1, "renderer-frame");
+  await frame();
+  expect(bridge.reportPresentation).toHaveBeenCalledWith(1, "renderer-focus");
+  await act(async () => {
+    for (const listener of presentationListeners) listener(2);
+  });
+  expect(bridge.reportPresentation).toHaveBeenCalledWith(2, "renderer-ready");
+  expect(bridge.reportPresentation).toHaveBeenCalledWith(2, "renderer-focus");
+  await frame();
+  expect(bridge.reportPresentation).not.toHaveBeenCalledWith(1, "renderer-frame");
+  expect(bridge.reportPresentation).not.toHaveBeenCalledWith(2, "renderer-frame");
+  await frame();
+  expect(bridge.reportPresentation).toHaveBeenCalledWith(2, "renderer-frame");
+  await act(async () => {
+    input().blur();
+    input().focus();
+  });
+  expect(
+    vi
+      .mocked(bridge.reportPresentation)
+      .mock.calls.filter(([token, stage]) => token === 2 && stage === "renderer-focus"),
+  ).toHaveLength(1);
+});
+
+test("cancels pending session and diagnostic frame acknowledgements when the renderer unmounts", async () => {
+  const frame = animationClock();
+  await mount();
+  await act(async () => {
+    for (const listener of presentationListeners) listener(1);
+  });
+  await frame();
+  await act(async () => root.render(null));
+  vi.mocked(bridge.reportPresentation).mockClear();
+  await frame();
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  expect(bridge.reportPresentation).not.toHaveBeenCalled();
+  expect(presentationListeners.size).toBe(0);
+});
+
+test("uses quick-only compact conversation spacing and circular controls without changing task defaults", async () => {
+  const style = document.createElement("style");
+  style.textContent = [
+    readFileSync(new URL("../../ui/src/tokens.css", import.meta.url), "utf8"),
+    readFileSync(new URL("../../ui/src/styles.css", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/renderer/quick-chat.css", import.meta.url), "utf8"),
+  ].join("\n");
+  document.head.append(style);
+  try {
+    await mount();
+    expect(getComputedStyle(button("发送")).borderRadius).toBe("50%");
+    expect(getComputedStyle(button("发送")).width).toBe("28px");
+    expect(getComputedStyle(button("发送")).height).toBe("28px");
+    await push({
+      session: { ...snapshot.session, runs: [run("completed"), { ...run("completed"), runId: "run-2" }] },
+    });
+    const runs = [...container.querySelectorAll<HTMLElement>(".run-group")];
+    expect(runs).toHaveLength(2);
+    expect(getComputedStyle(runs[0]).paddingTop).toBe("8px");
+    expect(getComputedStyle(runs[1]).paddingTop).toBe("12px");
+    expect(getComputedStyle(runs[0]).paddingBottom).toBe("16px");
+    expect(getComputedStyle(query(".conversation")).overflowY).toBe("auto");
+    expect(getComputedStyle(button("发送")).borderRadius).toBe("50%");
+    await act(async () =>
+      root.render(
+        createElement(Conversation, {
+          view: { ...snapshot.session, runs: [run("completed")] },
+          persistReading: false,
+          onLink() {},
+        }),
+      ),
+    );
+    const taskRun = query<HTMLElement>(".run-group");
+    expect(getComputedStyle(taskRun).paddingTop).toBe("56px");
+    expect(getComputedStyle(taskRun).paddingBottom).toBe("20px");
+    const taskSend = document.createElement("button");
+    taskSend.className = "send";
+    container.append(taskSend);
+    expect(getComputedStyle(taskSend).borderRadius).toBe("8px");
+  } finally {
+    style.remove();
+  }
 });
 
 test("keeps a newer pushed conversation when the initial request resolves late", async () => {

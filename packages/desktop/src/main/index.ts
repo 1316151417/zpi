@@ -45,6 +45,7 @@ import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
 import { previewPrintHostScript, previewPrintIsolationCss } from "./preview-print-host.ts";
 import { openProjectFromDialog } from "./project-picker.ts";
 import { QuickChatHost } from "./quick-chat-host.ts";
+import { QuickChatTiming } from "./quick-chat-timing.ts";
 import { installQuickChatIpc, QuickChatWindow } from "./quick-chat-window.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
@@ -285,6 +286,7 @@ async function launch(): Promise<void> {
           models: result.models.map((model) => ({ ...model, useRecommendedConfig: true })),
         });
         await settingsReady;
+        quickChatHost.refreshSettings();
         if (!window.isDestroyed()) window.webContents.send("zpi:settings", settings.get());
       })
       .catch((error) => {
@@ -300,6 +302,9 @@ async function launch(): Promise<void> {
   );
   const quickChat = new QuickChatWindow({
     host: quickChatHost,
+    ...(process.env.ZPI_QUICK_CHAT_TIMING === "1"
+      ? { timing: new QuickChatTiming(app.getPath("userData"), true) }
+      : {}),
     createWindow: createDesktopWindow,
     rendererUrl: new URL("quick-chat.html", rendererUrl).href,
     preload: join(dir, "../preload/quick-chat.cjs"),

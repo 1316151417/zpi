@@ -1,5 +1,5 @@
 import { ArrowUp, CircleAlert, Plus, Square, X } from "lucide-react";
-import { type ComponentType, useEffect, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
@@ -9,6 +9,11 @@ import "./quick-chat.css";
 const defaultAppearance = { theme: "system", fontSize: 14 } as const;
 const configurationMessage = "默认模型不可用，请到主窗口「设置 → 快速对话」配置。";
 const loadConversation = () => import("./QuickChatConversation.tsx");
+const compactComposerMinHeight = 44;
+const compactComposerMaxHeight = 184;
+const composerVerticalInset = 16; // 7px padding and a 1px border on each edge.
+const textareaMinHeight = 24;
+const expandedTextareaMaxHeight = 160;
 type ConversationLoader = () => Promise<{ default: ComponentType<QuickChatConversationProps> }>;
 
 function unwrap<T>(result: Result<T>): T {
@@ -83,6 +88,8 @@ export function QuickChat({
   const revision = useRef(-1);
   const currentSession = useRef<string>(undefined);
   const operationGeneration = useRef(0);
+  const reportedHeight = useRef<{ sessionId: string; height: number }>(undefined);
+  const presentation = useRef<{ token: number; reported: Set<string> }>(undefined);
   const view = snapshot?.session;
   const expanded = Boolean(view?.runs.length);
   const running = Boolean(view?.runs.some((run) => run.status === "running"));
@@ -132,7 +139,7 @@ export function QuickChat({
     };
   }, [attempt]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
       document.documentElement.dataset.theme =
@@ -143,6 +150,133 @@ export function QuickChat({
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [preferences.theme, preferences.fontSize]);
+
+  const sessionId = view?.sessionId;
+  const resizeComposer = useCallback(() => {
+    const element = textarea.current;
+    if (!element) return;
+    // Reset before reading so deletion can shrink as well as typing/pasting can grow.
+    // Keep the scrollbar out of the measurement to avoid a width/wrapping feedback loop.
+    const scrollTop = element.scrollTop;
+    element.style.height = "0px";
+    element.style.overflowY = "hidden";
+    const contentHeight = Math.max(textareaMinHeight, element.scrollHeight);
+    const maxHeight = expanded ? expandedTextareaMaxHeight : compactComposerMaxHeight - composerVerticalInset;
+    const height = Math.min(contentHeight, maxHeight);
+    element.style.height = `${height}px`;
+    // A short display can clamp the native window below the requested height.
+    element.style.overflowY = contentHeight > (element.clientHeight || height) ? "auto" : "hidden";
+    element.scrollTop = scrollTop;
+    if (expanded || !sessionId) return;
+    const composerHeight = Math.max(compactComposerMinHeight, Math.ceil(height + composerVerticalInset));
+    const previous = reportedHeight.current;
+    if (previous?.sessionId === sessionId && previous.height === composerHeight) return;
+    const request = { sessionId, height: composerHeight };
+    reportedHeight.current = request;
+    const retryLater = () => {
+      if (reportedHeight.current === request) reportedHeight.current = undefined;
+    };
+    void window.zpiQuickChat.setComposerHeight(sessionId, composerHeight).then((result) => {
+      if (!result.ok) retryLater();
+    }, retryLater);
+  }, [expanded, sessionId]);
+
+  useLayoutEffect(() => {
+    resizeComposer();
+  }, [resizeComposer, draft, preferences.fontSize, configurationRequired, visibleError]);
+
+  useEffect(() => {
+    const element = textarea.current;
+    if (!element) return;
+    let active = true;
+    let frame: number | undefined;
+    const schedule = () => {
+      if (!active || frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        resizeComposer();
+      });
+    };
+    // Height changes are ours; only width changes require another layout measurement.
+    let width = element.getBoundingClientRect().width;
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width;
+      if (nextWidth === undefined || nextWidth === width) return;
+      width = nextWidth;
+      schedule();
+    });
+    observer.observe(element);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("focus", schedule);
+    const fonts = document.fonts;
+    void fonts?.ready.then(schedule);
+    fonts?.addEventListener("loadingdone", schedule);
+    return () => {
+      active = false;
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("focus", schedule);
+      fonts?.removeEventListener("loadingdone", schedule);
+    };
+  }, [resizeComposer]);
+
+  useLayoutEffect(() => {
+    if (!sessionId) return;
+    // A replacement session must apply its cleared DOM before the native window is shown.
+    // Two animation callbacks provide a frame opportunity, not proof of compositor paint.
+    let second: number | undefined;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        void window.zpiQuickChat.rendererReady(sessionId).catch(() => {});
+      });
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      if (second !== undefined) cancelAnimationFrame(second);
+    };
+  }, [sessionId]);
+
+  const reportPresentation = useCallback((stage: "renderer-ready" | "renderer-focus" | "renderer-frame") => {
+    const current = presentation.current;
+    if (!current || current.reported.has(stage)) return;
+    current.reported.add(stage);
+    void window.zpiQuickChat.reportPresentation(current.token, stage).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let first: number | undefined;
+    let second: number | undefined;
+    const cancelFrames = () => {
+      if (first !== undefined) cancelAnimationFrame(first);
+      if (second !== undefined) cancelAnimationFrame(second);
+      first = undefined;
+      second = undefined;
+    };
+    const off = window.zpiQuickChat.onPresentation((token) => {
+      if (presentation.current?.token === token) return;
+      cancelFrames();
+      presentation.current = { token, reported: new Set() };
+      if (textarea.current && !textarea.current.disabled) reportPresentation("renderer-ready");
+      if (document.activeElement === textarea.current) reportPresentation("renderer-focus");
+      first = requestAnimationFrame(() => {
+        first = undefined;
+        second = requestAnimationFrame(() => {
+          second = undefined;
+          reportPresentation("renderer-frame");
+        });
+      });
+    });
+    return () => {
+      off();
+      cancelFrames();
+      presentation.current = undefined;
+    };
+  }, [reportPresentation]);
+
+  useLayoutEffect(() => {
+    if (textarea.current && !textarea.current.disabled) reportPresentation("renderer-ready");
+  }, [reportPresentation, pending]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => textarea.current?.focus());
@@ -281,6 +415,7 @@ export function QuickChat({
             rows={1}
             disabled={pending === "reset"}
             onChange={(event) => setDraft(event.target.value)}
+            onFocus={() => reportPresentation("renderer-focus")}
             onCompositionStart={() => {
               composing.current = true;
             }}
