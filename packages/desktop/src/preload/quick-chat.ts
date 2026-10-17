@@ -1,10 +1,19 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { imageLimits } from "zpi-coding-agent/input";
 import type { QuickChatBridge, QuickChatSnapshot } from "../shared/quick-chat.ts";
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:quick-chat", method, args);
 const bridge: QuickChatBridge = {
   getSnapshot: () => call("getSnapshot"),
-  send: (text) => call("send", text),
+  send: (text, attachments) =>
+    attachments === undefined ? call("send", text) : call("send", text, attachments),
+  async importAttachment(sessionId, file) {
+    if (!file?.size || file.size > imageLimits.sourceBytes)
+      return { ok: false, error: { code: "invalid_input", message: "图片单张上限为 10 MiB" } };
+    return call("importAttachment", sessionId, file.name, new Uint8Array(await file.arrayBuffer()));
+  },
+  readAttachment: (sessionId, id) => call("readAttachment", sessionId, id),
+  removeAttachment: (sessionId, id) => call("removeAttachment", sessionId, id),
   stop: () => call("stop"),
   reset: () => call("reset"),
   hide: () => call("hide"),

@@ -1,8 +1,11 @@
 import { ArrowUp, CircleAlert, Plus, Square, X } from "lucide-react";
 import { type ComponentType, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { imageLimits } from "zpi-coding-agent/input";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
+import { QuickChatAttachment } from "./QuickChatAttachment.tsx";
 import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
+import { imageImportError, pastedImages, type QuickChatDraftImage } from "./quick-chat-attachments.ts";
 import { unwrap } from "./unwrap.ts";
 import "./quick-chat.css";
 
@@ -12,6 +15,7 @@ const configurationMessage = "默认模型不可用，请到主窗口「设置 �
 const loadConversation = () => import("./QuickChatConversation.tsx");
 const compactComposerMinHeight = 44;
 const compactComposerMaxHeight = 184;
+const attachmentRowHeight = 80; // 72px thumbnails/status and an 8px gap.
 const composerVerticalInset = 16; // 7px padding and a 1px border on each edge.
 const textareaMinHeight = 24;
 const expandedTextareaMaxHeight = 160;
@@ -75,6 +79,23 @@ export function QuickChat({
   const [snapshotError, setSnapshotError] = useState("");
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
+  const [images, setImages] = useState<QuickChatDraftImage[]>([]);
+  const imagesRef = useRef(images);
+  const nextImageKey = useRef(0);
+  const draftRevision = useRef(0);
+  const lastSubmission = useRef<{
+    generation: number;
+    revision: number;
+    text: string;
+    images: QuickChatDraftImage[];
+    previousRuns: Set<string>;
+    accepted: boolean;
+  }>(undefined);
+  const mounted = useRef(true);
+  const updateImages = useCallback((next: QuickChatDraftImage[]) => {
+    imagesRef.current = next;
+    setImages(next);
+  }, []);
   const [pending, setPending] = useState<"send" | "stop" | "reset">();
   const [attempt, setAttempt] = useState(0);
   const lock = useRef(false);
@@ -87,13 +108,29 @@ export function QuickChat({
   const reportedHeight = useRef<{ sessionId: string; height: number }>(undefined);
   const presentation = useRef<{ token: number; reported: Set<string> }>(undefined);
   const view = snapshot?.session;
-  const expanded = Boolean(view?.runs.length);
+  const expanded = snapshot?.expanded ?? Boolean(view?.runs.length);
+  const hasImages = images.length > 0;
+  const imagesReady = images.every((item) => item.status === "ready");
   const running = Boolean(view?.runs.some((run) => run.status === "running"));
   const preferences = snapshot?.settings.interface ?? defaultAppearance;
   // The host publishes a validated selection and revalidates every send.
   const selectionValid = Boolean(snapshot?.selection);
   const configurationRequired = Boolean(snapshot && !selectionValid);
   const visibleError = error || snapshotError;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      operationGeneration.current += 1;
+      const session = currentSession.current;
+      if (session) {
+        for (const item of imagesRef.current) {
+          if (item.image) void window.zpiQuickChat.removeAttachment(session, item.image.id).catch(() => {});
+        }
+      }
+    };
+  }, []);
 
   useEffect(() => {
     document.title = "快速对话 · ZPI";
@@ -111,9 +148,11 @@ export function QuickChat({
       const nextSession = next.session.sessionId;
       if (currentSession.current !== undefined && currentSession.current !== nextSession) {
         operationGeneration.current += 1;
+        lastSubmission.current = undefined;
         lock.current = false;
         setPending(undefined);
         setDraft("");
+        updateImages([]);
         setError("");
         composing.current = false;
       }
@@ -133,7 +172,21 @@ export function QuickChat({
       active = false;
       off();
     };
-  }, [attempt]);
+  }, [attempt, updateImages]);
+
+  useEffect(() => {
+    const submitted = lastSubmission.current;
+    if (!submitted?.accepted || !snapshot || submitted.generation !== operationGeneration.current) return;
+    const run = snapshot.session.runs.find((item) => !submitted.previousRuns.has(item.runId));
+    if (!run || run.status === "running") return;
+    lastSubmission.current = undefined;
+    // A provider may fail after IPC accepted the send. Restore only the untouched next draft.
+    if (run.status === "error" && submitted.revision === draftRevision.current) {
+      setDraft(submitted.text);
+      updateImages(submitted.images);
+      setError(run.error || "发送失败，请重试。");
+    }
+  }, [snapshot, pending, updateImages]);
 
   useLayoutEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -148,6 +201,81 @@ export function QuickChat({
   }, [preferences.theme, preferences.fontSize]);
 
   const sessionId = view?.sessionId;
+  const importImage = useCallback(
+    async (item: QuickChatDraftImage) => {
+      const importSession = currentSession.current;
+      if (!importSession || !imagesRef.current.includes(item)) return;
+      const generation = operationGeneration.current;
+      const active = () => mounted.current && generation === operationGeneration.current;
+      const update = (patch: Partial<QuickChatDraftImage>) => {
+        if (!active()) return;
+        updateImages(
+          imagesRef.current.map((entry) => (entry.key === item.key ? { ...entry, ...patch } : entry)),
+        );
+      };
+      setError((current) => (current === item.error ? "" : current));
+      update({ status: "importing", error: undefined });
+      try {
+        const invalid = imageImportError(item.file);
+        if (invalid) throw new Error(invalid);
+        const image = unwrap(await window.zpiQuickChat.importAttachment(importSession, item.file));
+        if (!active()) {
+          void window.zpiQuickChat.removeAttachment(importSession, image.id).catch(() => {});
+          return;
+        }
+        if (!imagesRef.current.some((entry) => entry.key === item.key)) {
+          // A paste may finish after the user has already removed its placeholder.
+          void window.zpiQuickChat.removeAttachment(importSession, image.id).catch(() => {});
+          return;
+        }
+        update({ image, status: "ready" });
+      } catch (reason) {
+        if (!active() || !imagesRef.current.some((entry) => entry.key === item.key)) return;
+        const message = errorMessage(reason);
+        update({ status: "failed", error: message });
+        setError(message);
+      }
+    },
+    [updateImages],
+  );
+  useEffect(() => {
+    if (!sessionId) return;
+    for (const item of imagesRef.current) {
+      if (item.status === "queued") void importImage(item);
+    }
+  }, [sessionId, images, importImage]);
+
+  const removeImage = async (item: QuickChatDraftImage) => {
+    if (lock.current || item.status === "removing") return;
+    draftRevision.current += 1;
+    setError((current) => (current === item.error ? "" : current));
+    const removeSession = currentSession.current;
+    if (!item.image || !removeSession) {
+      updateImages(imagesRef.current.filter((entry) => entry.key !== item.key));
+      return;
+    }
+    const generation = operationGeneration.current;
+    updateImages(
+      imagesRef.current.map((entry) =>
+        entry.key === item.key ? { ...entry, status: "removing", error: undefined } : entry,
+      ),
+    );
+    try {
+      unwrap(await window.zpiQuickChat.removeAttachment(removeSession, item.image.id));
+      if (mounted.current && generation === operationGeneration.current)
+        updateImages(imagesRef.current.filter((entry) => entry.key !== item.key));
+    } catch (reason) {
+      if (!mounted.current || generation !== operationGeneration.current) return;
+      const message = errorMessage(reason);
+      updateImages(
+        imagesRef.current.map((entry) =>
+          entry.key === item.key ? { ...entry, status: "ready", error: message } : entry,
+        ),
+      );
+      setError(message);
+    }
+  };
+
   const reportConversationError = useCallback(
     (message: string) => {
       if (sessionId === currentSession.current) setError(message);
@@ -170,7 +298,9 @@ export function QuickChat({
     element.style.overflowY = contentHeight > (element.clientHeight || height) ? "auto" : "hidden";
     element.scrollTop = scrollTop;
     if (expanded || !sessionId) return;
-    const composerHeight = Math.max(compactComposerMinHeight, Math.ceil(height + composerVerticalInset));
+    const composerHeight =
+      Math.max(compactComposerMinHeight, Math.ceil(height + composerVerticalInset)) +
+      (hasImages ? attachmentRowHeight : 0);
     const previous = reportedHeight.current;
     if (previous?.sessionId === sessionId && previous.height === composerHeight) return;
     const request = { sessionId, height: composerHeight };
@@ -181,7 +311,7 @@ export function QuickChat({
     void window.zpiQuickChat.setComposerHeight(sessionId, composerHeight).then((result) => {
       if (!result.ok) retryLater();
     }, retryLater);
-  }, [expanded, sessionId]);
+  }, [expanded, sessionId, hasImages]);
 
   useLayoutEffect(() => {
     resizeComposer();
@@ -338,7 +468,10 @@ export function QuickChat({
       unwrap(await operation());
       if (generation === operationGeneration.current) complete?.();
     } catch (reason) {
-      if (generation === operationGeneration.current) setError(errorMessage(reason));
+      if (generation === operationGeneration.current) {
+        if (action === "send") lastSubmission.current = undefined;
+        setError(errorMessage(reason));
+      }
     } finally {
       if (generation === operationGeneration.current) {
         lock.current = false;
@@ -348,13 +481,38 @@ export function QuickChat({
   }
 
   const submit = () => {
-    if (!draft.trim() || running || !selectionValid || !snapshot) return;
+    if (
+      lock.current ||
+      (!draft.trim() && !hasImages) ||
+      !imagesReady ||
+      running ||
+      !selectionValid ||
+      !snapshot
+    )
+      return;
     const submitted = draft;
+    const submittedImages = imagesRef.current;
+    const submission = {
+      generation: operationGeneration.current,
+      revision: draftRevision.current,
+      text: submitted,
+      images: submittedImages,
+      previousRuns: new Set(snapshot.session.runs.map((run) => run.runId)),
+      accepted: false,
+    };
+    lastSubmission.current = submission;
+    const attachmentIds = submittedImages.flatMap((item) => (item.image ? [item.image.id] : []));
     void perform(
       "send",
-      () => window.zpiQuickChat.send(submitted),
+      () =>
+        attachmentIds.length
+          ? window.zpiQuickChat.send(submitted, attachmentIds)
+          : window.zpiQuickChat.send(submitted),
       () => {
+        submission.accepted = true;
         setDraft((current) => (current === submitted ? "" : current));
+        const sent = new Set(submittedImages.map((item) => item.key));
+        updateImages(imagesRef.current.filter((item) => !sent.has(item.key)));
         textarea.current?.focus();
       },
     );
@@ -362,7 +520,7 @@ export function QuickChat({
 
   return (
     <main
-      className={`quick-chat${expanded ? " quick-chat-expanded" : " quick-chat-compact"}`}
+      className={`quick-chat${expanded ? " quick-chat-expanded" : " quick-chat-compact"}${hasImages ? " quick-chat-has-images" : ""}`}
       aria-label="快速对话"
       data-testid="quick-chat"
       data-state={expanded ? "expanded" : "compact"}
@@ -381,7 +539,12 @@ export function QuickChat({
                   void perform(
                     "reset",
                     () => window.zpiQuickChat.reset(),
-                    () => textarea.current?.focus(),
+                    () => {
+                      lastSubmission.current = undefined;
+                      setDraft("");
+                      updateImages([]);
+                      textarea.current?.focus();
+                    },
                   )
                 }
               >
@@ -389,12 +552,16 @@ export function QuickChat({
               </button>
             </div>
           </header>
-          <DeferredConversation
-            key={view.sessionId}
-            loader={conversationLoader}
-            view={view}
-            onError={reportConversationError}
-          />
+          {view.runs.length ? (
+            <DeferredConversation
+              key={view.sessionId}
+              loader={conversationLoader}
+              view={view}
+              onError={reportConversationError}
+            />
+          ) : (
+            <div className="quick-chat-empty-conversation" />
+          )}
         </>
       )}
 
@@ -406,94 +573,143 @@ export function QuickChat({
             submit();
           }}
         >
-          <textarea
-            ref={textarea}
-            value={draft}
-            aria-label="输入消息"
-            aria-describedby={configurationRequired ? "quick-chat-configuration" : undefined}
-            placeholder={running ? "继续输入，回复结束后发送" : "输入消息…"}
-            rows={1}
-            disabled={pending === "reset"}
-            onChange={(event) => setDraft(event.target.value)}
-            onFocus={() => reportPresentation("renderer-focus")}
-            onCompositionStart={() => {
-              composing.current = true;
-            }}
-            onCompositionEnd={() => {
-              composing.current = false;
-            }}
-            onKeyDown={(event) => {
-              if (
-                event.key !== "Enter" ||
-                event.shiftKey ||
-                event.ctrlKey ||
-                event.metaKey ||
-                event.altKey ||
-                event.nativeEvent.isComposing ||
-                event.keyCode === 229 ||
-                composing.current
-              )
-                return;
-              event.preventDefault();
-              if (!event.repeat) submit();
-            }}
-          />
-          {visibleError && (
-            <div className="quick-chat-error" role="alert" title={visibleError}>
-              <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
-              <span className="quick-chat-notice-text">{visibleError}</span>
-              {!snapshot ? (
-                <button
-                  type="button"
-                  className="quick-chat-retry"
-                  onClick={() => {
-                    setError("");
-                    setSnapshotError("");
-                    setAttempt((value) => value + 1);
-                  }}
-                >
-                  重新加载
-                </button>
-              ) : (
-                <button type="button" aria-label="关闭提示" onClick={() => setError("")}>
-                  <X size={14} aria-hidden="true" />
-                </button>
-              )}
-            </div>
+          {hasImages && (
+            <fieldset className="quick-chat-attachments" aria-label="待发送图片">
+              {images.map((item) => (
+                <QuickChatAttachment
+                  key={`${sessionId}:${item.key}`}
+                  sessionId={sessionId}
+                  item={item}
+                  disabled={Boolean(pending)}
+                  onRemove={() => void removeImage(item)}
+                  onRetry={() => void importImage(item)}
+                />
+              ))}
+            </fieldset>
           )}
-          {configurationRequired && (
-            <div
-              className="quick-chat-configuration"
-              id="quick-chat-configuration"
-              role="status"
-              title={configurationMessage}
-            >
-              <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
-              <span className="quick-chat-notice-text">{configurationMessage}</span>
-            </div>
-          )}
-          {running ? (
-            <button
-              type="button"
-              className="send stop"
-              aria-label="停止"
-              title="停止生成"
-              disabled={Boolean(pending)}
-              onClick={() => void perform("stop", () => window.zpiQuickChat.stop())}
-            >
-              <Square size={16} fill="currentColor" aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              className="send"
-              aria-label="发送"
-              title={!snapshot ? "正在连接…" : configurationRequired ? configurationMessage : "发送"}
-              disabled={Boolean(pending) || !selectionValid || !draft.trim()}
-            >
-              <ArrowUp size={16} aria-hidden="true" />
-            </button>
-          )}
+          <div className="quick-chat-composer-input-row">
+            <textarea
+              ref={textarea}
+              value={draft}
+              aria-label="输入消息"
+              aria-describedby={configurationRequired ? "quick-chat-configuration" : undefined}
+              placeholder={running ? "继续输入，回复结束后发送" : "输入消息…"}
+              rows={1}
+              disabled={pending === "reset"}
+              onChange={(event) => {
+                draftRevision.current += 1;
+                setDraft(event.target.value);
+              }}
+              onPaste={(event) => {
+                const files = pastedImages(event.clipboardData);
+                if (!files.length) return;
+                event.preventDefault();
+                if (pending === "reset") return;
+                draftRevision.current += 1;
+                const available = imageLimits.count - imagesRef.current.length;
+                if (files.length > available) setError(`每条消息最多可添加 ${imageLimits.count} 张图片。`);
+                const added = files.slice(0, available).map(
+                  (file): QuickChatDraftImage => ({
+                    key: ++nextImageKey.current,
+                    file,
+                    status: "queued",
+                  }),
+                );
+                updateImages([...imagesRef.current, ...added]);
+                const text = event.clipboardData.getData("text/plain");
+                if (!text) return;
+                const element = event.currentTarget;
+                const start = element.selectionStart;
+                const end = element.selectionEnd;
+                const generation = operationGeneration.current;
+                setDraft((current) => current.slice(0, start) + text + current.slice(end));
+                requestAnimationFrame(() => {
+                  if (generation === operationGeneration.current && textarea.current === element)
+                    element.setSelectionRange(start + text.length, start + text.length);
+                });
+              }}
+              onFocus={() => reportPresentation("renderer-focus")}
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={() => {
+                composing.current = false;
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "Enter" ||
+                  event.shiftKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.altKey ||
+                  event.nativeEvent.isComposing ||
+                  event.keyCode === 229 ||
+                  composing.current
+                )
+                  return;
+                event.preventDefault();
+                if (!event.repeat) submit();
+              }}
+            />
+            {visibleError && (
+              <div className="quick-chat-error" role="alert" title={visibleError}>
+                <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
+                <span className="quick-chat-notice-text">{visibleError}</span>
+                {!snapshot ? (
+                  <button
+                    type="button"
+                    className="quick-chat-retry"
+                    onClick={() => {
+                      setError("");
+                      setSnapshotError("");
+                      setAttempt((value) => value + 1);
+                    }}
+                  >
+                    重新加载
+                  </button>
+                ) : (
+                  <button type="button" aria-label="关闭提示" onClick={() => setError("")}>
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            )}
+            {configurationRequired && (
+              <div
+                className="quick-chat-configuration"
+                id="quick-chat-configuration"
+                role="status"
+                title={configurationMessage}
+              >
+                <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
+                <span className="quick-chat-notice-text">{configurationMessage}</span>
+              </div>
+            )}
+            {running ? (
+              <button
+                type="button"
+                className="send stop"
+                aria-label="停止"
+                title="停止生成"
+                disabled={Boolean(pending)}
+                onClick={() => void perform("stop", () => window.zpiQuickChat.stop())}
+              >
+                <Square size={16} fill="currentColor" aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="send"
+                aria-label="发送"
+                title={!snapshot ? "正在连接…" : configurationRequired ? configurationMessage : "发送"}
+                disabled={
+                  Boolean(pending) || !selectionValid || !imagesReady || (!draft.trim() && !hasImages)
+                }
+              >
+                <ArrowUp size={16} aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </main>

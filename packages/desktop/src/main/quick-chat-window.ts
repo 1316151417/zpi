@@ -10,6 +10,7 @@ import type {
   SystemPreferences,
 } from "electron";
 import type { ErrorCode, Result } from "../shared/bridge.ts";
+import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { isPathInside } from "./path-bounds.ts";
 import type { QuickChatHost } from "./quick-chat-host.ts";
@@ -43,6 +44,8 @@ export class QuickChatWindow {
   private presenting = false;
   private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
+  private keepExpanded = false;
+  private resettingPresentation?: { sessionId: string; expanded: boolean };
   private composerHeight = 44;
   private sessionId: string;
   private rendererSessionId?: string;
@@ -67,18 +70,36 @@ export class QuickChatWindow {
     this.unsubscribe = options.host.subscribe((snapshot) => {
       const changedSession = snapshot.session.sessionId !== this.sessionId;
       if (changedSession) {
+        this.keepExpanded = Boolean(
+          this.resettingPresentation?.sessionId === this.sessionId && this.resettingPresentation.expanded,
+        );
         this.sessionId = snapshot.session.sessionId;
         this.composerHeight = 44;
         this.rendererSessionId = undefined;
         this.needsSessionFrame = true;
       }
-      this.setExpanded(snapshot.session.runs.length > 0);
+      this.setExpanded(this.keepExpanded || snapshot.session.runs.length > 0);
       const window = this.window;
       if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
         if (changedSession) this.applyBounds(window, this.bounds(this.expanded, window.getBounds()));
-        window.webContents.send("zpi:quick-chat-snapshot", snapshot);
+        window.webContents.send("zpi:quick-chat-snapshot", this.snapshot(snapshot));
       }
     });
+  }
+  private snapshot(snapshot = this.options.host.getSnapshot()): QuickChatSnapshot {
+    return { ...snapshot, expanded: this.expanded || snapshot.session.runs.length > 0 };
+  }
+  private resetConversation(): Promise<void> {
+    const presentation = { sessionId: this.options.host.sessionId, expanded: this.expanded };
+    this.resettingPresentation = presentation;
+    return this.options.host.reset().finally(() => {
+      if (this.resettingPresentation === presentation) this.resettingPresentation = undefined;
+    });
+  }
+  /** Explicit new conversation preserves an already expanded presentation, even when hidden. */
+  newConversation(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    return this.show(this.startTrace(), this.resetConversation());
   }
   private bounds(expanded: boolean, previous?: Rectangle): Rectangle {
     const display = this.options.getDisplay(previous);
@@ -180,7 +201,7 @@ export class QuickChatWindow {
       return this.window;
     }
     if (this.window && !this.window.isDestroyed()) return this.window;
-    this.expanded = this.options.host.getSnapshot().session.runs.length > 0;
+    this.expanded = this.keepExpanded || this.options.host.getSnapshot().session.runs.length > 0;
     const bounds = this.bounds(this.expanded);
     const minimum = this.minimumSize(bounds);
     const window = this.options.createWindow({
@@ -282,8 +303,20 @@ export class QuickChatWindow {
       if (this.presenting) queueMicrotask(reconcile);
       else reconcile();
     });
+    window.webContents.on("did-start-navigation", (details) => {
+      // Draft images belong to this renderer. Reload/crash may skip React cleanup;
+      // keep accepted history images, but release invisible draft imports and entries.
+      if (
+        this.window === window &&
+        details.isMainFrame &&
+        !details.isSameDocument &&
+        details.url.split("#")[0] === window.webContents.getURL().split("#")[0]
+      )
+        this.options.host.discardDraftAttachments();
+    });
     window.on("closed", () => {
       if (this.window === window) {
+        this.options.host.discardDraftAttachments();
         this.window = undefined;
         this.visible = false;
         this.rendererSessionId = undefined;
@@ -374,14 +407,14 @@ export class QuickChatWindow {
     // Settings mutations already publish their updates. Reopening must not clone
     // and resend the entire conversation or schedule a rich renderer rerender.
   }
-  show(trace = this.startTrace()): Promise<void> {
+  show(trace = this.startTrace(), reset?: Promise<void>): Promise<void> {
     if (this.disposed) {
       trace?.finish("cancelled");
       return Promise.resolve();
     }
     this.visible = true;
     const epoch = ++this.visibilityEpoch;
-    const resetting = this.options.host.resetIfExpired();
+    const resetting = reset ?? this.options.host.resetIfExpired();
     if (!resetting) trace?.mark("expiry-ready");
     const warm = this.window && !this.window.isDestroyed() && !this.loading;
     if (warm && !resetting && !this.needsSessionFrame) {
@@ -463,9 +496,12 @@ export class QuickChatWindow {
     try {
       if (this.disposed) throw new Error("busy: 快速对话正在关闭");
       if (typeof method !== "string" || !Array.isArray(args)) throw new Error("invalid_input: 未知 IPC 方法");
-      const counts: Record<string, number> = {
+      const counts: Record<string, number | number[]> = {
         getSnapshot: 0,
-        send: 1,
+        send: [1, 2],
+        importAttachment: 3,
+        readAttachment: 2,
+        removeAttachment: 2,
         stop: 0,
         reset: 0,
         hide: 0,
@@ -476,7 +512,11 @@ export class QuickChatWindow {
         rendererReady: 1,
         reportPresentation: 2,
       };
-      if (!Object.hasOwn(counts, method) || args.length !== counts[method])
+      const count = counts[method];
+      if (
+        !Object.hasOwn(counts, method) ||
+        !(Array.isArray(count) ? count.includes(args.length) : args.length === count)
+      )
         throw new Error("invalid_input: 未知 IPC 方法或参数数量");
       const text = (limit: number, index = 0) => {
         if (typeof args[index] !== "string" || args[index].length > limit)
@@ -498,7 +538,7 @@ export class QuickChatWindow {
         case "setComposerHeight": {
           const sessionId = text(256);
           const height = args[1];
-          if (typeof height !== "number" || !Number.isFinite(height) || height < 44 || height > 184)
+          if (typeof height !== "number" || !Number.isFinite(height) || height < 44 || height > 264)
             throw new Error("invalid_input: 输入框高度无效");
           if (sessionId !== host.sessionId || this.expanded) break;
           const next = Math.round(height);
@@ -523,16 +563,36 @@ export class QuickChatWindow {
           break;
         }
         case "getSnapshot":
-          value = host.getSnapshot();
+          value = this.snapshot();
           break;
-        case "send":
-          host.send(text(32_000));
+        case "send": {
+          const attachments = args[1];
+          if (
+            attachments !== undefined &&
+            (!Array.isArray(attachments) ||
+              attachments.some((id) => typeof id !== "string" || id.length > 256))
+          )
+            throw new Error("invalid_input: 图片列表参数无效");
+          host.send(text(32_000), attachments as string[] | undefined);
+          break;
+        }
+        case "importAttachment": {
+          const bytes = args[2];
+          if (!(bytes instanceof Uint8Array)) throw new Error("invalid_input: 图片数据无效");
+          value = await host.importAttachment(text(256), text(250, 1), bytes);
+          break;
+        }
+        case "readAttachment":
+          value = await host.readAttachment(text(256), text(256, 1));
+          break;
+        case "removeAttachment":
+          await host.removeAttachment(text(256), text(256, 1));
           break;
         case "stop":
           await host.stop();
           break;
         case "reset":
-          await host.reset();
+          await this.resetConversation();
           break;
         case "hide":
           this.hide("ipc-hide");

@@ -128,6 +128,7 @@ it("adds quick chat to existing settings without rewriting storage and preserves
     const raw = store.state.getSetting<SettingsData>("app");
     if (!raw) throw new Error("Missing settings fixture");
     Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat");
+    Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
     Reflect.deleteProperty(raw.shortcuts.bindings, "task-menu");
     raw.shortcuts.enabled = false;
     store.state.setSetting("app", raw);
@@ -141,6 +142,39 @@ it("adds quick chat to existing settings without rewriting storage and preserves
       next.updateShortcuts(settings);
       const reopened = new SettingsStore(dir, encryption, store.state);
       expect(reopened.get().shortcuts.bindings["quick-chat"]).toBe(binding);
+      expect(reopened.get().shortcuts.enabled).toBe(false);
+    }
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("adds new quick chat without stealing a custom shortcut and preserves saved, cleared and disabled values", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-new-shortcut-"));
+  const store = new SettingsStore(dir, encryption);
+  try {
+    store.updatePreferences({ theme: "dark" });
+    const raw = store.state.getSetting<SettingsData>("app");
+    if (!raw) throw new Error("Missing settings fixture");
+    Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
+    raw.shortcuts.bindings["quick-chat"] = "Shift+Option+N";
+    raw.shortcuts.bindings["toggle-sidebar"] = null;
+    raw.shortcuts.enabled = false;
+    store.state.setSetting("app", raw);
+    const next = new SettingsStore(dir, encryption, store.state);
+    expect(next.get().shortcuts.bindings["quick-chat-new"]).toBeNull();
+    expect(next.get().shortcuts.bindings["quick-chat"]).toBe("Shift+Option+N");
+    expect(next.get().shortcuts.bindings["toggle-sidebar"]).toBeNull();
+    expect(next.get().shortcuts.enabled).toBe(false);
+    expect(store.state.getSetting("app")).toEqual(raw);
+    for (const binding of ["Alt+Shift+B", "Alt+Z", null]) {
+      const settings = next.get().shortcuts;
+      settings.bindings["quick-chat-new"] = binding;
+      next.updateShortcuts(settings);
+      const reopened = new SettingsStore(dir, encryption, store.state);
+      expect(reopened.get().shortcuts.bindings["quick-chat-new"]).toBe(binding);
+      expect(reopened.get().shortcuts.bindings["quick-chat"]).toBe("Alt+Shift+N");
       expect(reopened.get().shortcuts.enabled).toBe(false);
     }
   } finally {

@@ -177,19 +177,44 @@ it("preserves a conflicting custom v1 layout and explicit cleared bindings durin
   expect(migrateLegacySettings(migrated)).toEqual(migrated);
 });
 
-it.each([undefined, 1, 2])("adds quick chat when importing legacy shortcut version %s", (version) => {
-  const raw = { ...fixture(), ...(version === undefined ? {} : { shortcutDefaultsVersion: version }) };
-  Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat");
-  raw.shortcuts.enabled = false;
-  const snapshot = structuredClone(raw);
-  const migrated = migrateLegacySettings(raw);
-  expect(migrated.shortcuts.bindings["quick-chat"]).toBe("Alt+N");
-  expect(migrated.shortcuts.enabled).toBe(false);
-  expect(raw).toEqual(snapshot);
-});
+it.each([undefined, 1, 2])(
+  "adds both quick-chat commands when importing legacy shortcut version %s",
+  (version) => {
+    const raw = { ...fixture(), ...(version === undefined ? {} : { shortcutDefaultsVersion: version }) };
+    Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat");
+    Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
+    raw.shortcuts.enabled = false;
+    const snapshot = structuredClone(raw);
+    const migrated = migrateLegacySettings(raw);
+    expect(migrated.shortcuts.bindings["quick-chat"]).toBe("Alt+N");
+    expect(migrated.shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+N");
+    expect(migrated.shortcuts.enabled).toBe(false);
+    expect(raw).toEqual(snapshot);
+  },
+);
 
 it.each([null, "Alt+B"])("preserves an imported quick-chat binding of %s", (binding) => {
   const raw = { ...fixture(), shortcutDefaultsVersion: 2 };
   raw.shortcuts.bindings["quick-chat"] = binding;
   expect(migrateLegacySettings(raw).shortcuts.bindings["quick-chat"]).toBe(binding);
+});
+
+it.each([undefined, 1, 2])(
+  "preserves a custom binding occupying the new quick-chat default in legacy version %s",
+  (version) => {
+    const raw = { ...fixture(), ...(version === undefined ? {} : { shortcutDefaultsVersion: version }) };
+    Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
+    raw.shortcuts.bindings["quick-chat"] = "Shift+Option+N";
+    const before = structuredClone(raw);
+    const migrated = migrateLegacySettings(raw);
+    expect(migrated.shortcuts.bindings["quick-chat-new"]).toBeNull();
+    expect(migrated.shortcuts.bindings["quick-chat"]).toBe("Shift+Option+N");
+    expect(raw).toEqual(before);
+  },
+);
+
+it.each([null, "Alt+Shift+B"])("preserves an imported new quick-chat binding of %s", (binding) => {
+  const raw = { ...fixture(), shortcutDefaultsVersion: 2 };
+  raw.shortcuts.bindings["quick-chat-new"] = binding;
+  expect(migrateLegacySettings(raw).shortcuts.bindings["quick-chat-new"]).toBe(binding);
 });

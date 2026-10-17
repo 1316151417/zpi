@@ -17,6 +17,7 @@ import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { quickChatSelection } from "../shared/quick-chat-settings.ts";
 import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { projectEvent } from "./projection.ts";
+import { QuickChatAttachments, type QuickChatImages } from "./quick-chat-attachments.ts";
 import { quickChatPromptTemplate } from "./quick-chat-prompt.ts";
 import { recordedQuickChatWebSourceIcon } from "./quick-chat-source-icons.ts";
 import type { SettingsStore } from "./storage.ts";
@@ -49,6 +50,7 @@ export class QuickChatHost {
   private now: () => number;
   private lastAcceptedSend?: number;
   private lifetime = new AbortController();
+  private attachments = new QuickChatAttachments();
 
   constructor(
     settings: SettingsStore,
@@ -92,6 +94,25 @@ export class QuickChatHost {
   }
   get sessionId(): string {
     return this.view.sessionId;
+  }
+  private attachmentSession(sessionId: string): void {
+    if (this.closed || this.resetting) throw new Error("busy: 临时对话正在关闭或重置");
+    if (sessionId !== this.view.sessionId) throw new Error("not_found: 图片不属于此临时对话");
+  }
+  async importAttachment(sessionId: string, name: string, bytes: Uint8Array) {
+    this.attachmentSession(sessionId);
+    return this.attachments.import(name, bytes);
+  }
+  readAttachment(sessionId: string, id: string) {
+    this.attachmentSession(sessionId);
+    return this.attachments.read(id);
+  }
+  removeAttachment(sessionId: string, id: string): void {
+    this.attachmentSession(sessionId);
+    this.attachments.remove(id);
+  }
+  discardDraftAttachments(): void {
+    this.attachments.clearDraft();
   }
   async readWebSourceIcon(
     sessionId: string,
@@ -157,30 +178,51 @@ export class QuickChatHost {
     if (this.closed) throw new Error("busy: 快速对话已关闭");
     if (this.active || this.resetting) throw new Error("busy: 请先停止当前回复");
   }
-  send(text: string): void {
+  send(text: string, attachmentIds: string[] = []): void {
     this.idle();
-    if (typeof text !== "string" || !text.trim() || text.length > 32_000)
-      throw new Error("invalid_input: 消息需为 1–32000 个字符");
+    const loaded = this.attachments.load(attachmentIds);
+    if (typeof text !== "string" || (!text.trim() && !loaded.images.length) || text.length > 32_000)
+      throw new Error("invalid_input: 消息需为 1–32000 个字符或包含图片");
     if (this.view.runs.length >= 100 || sessionViewBytes(this.view) > 8 * 1024 * 1024)
       throw new Error("busy: 这段临时对话已较长，请开始新对话");
     this.selection = this.initialSelection();
     if (!this.selection) throw new Error("configuration: 请先在设置中启用可用模型，再配置快速对话默认模型");
     const selection = { ...this.selection };
+    const model = this.settings.getModel(selection);
+    if (
+      !model?.input.includes("image") &&
+      (loaded.images.length ||
+        this.session?.messages.some(
+          (message) =>
+            message.role === "user" &&
+            Array.isArray(message.content) &&
+            message.content.some((part) => part.type === "image"),
+        ))
+    )
+      throw new Error(
+        "configuration: 当前模型不支持图片，请选择图片模型或移除附件；历史中的图片也需要图片模型",
+      );
     // Reserve synchronously, before initialization or network work can yield to another IPC call.
     const run: ActiveRun = { id: randomUUID(), aborted: false, done: Promise.resolve() };
     this.active = run;
     const now = this.now();
     this.lastAcceptedSend = Number.isFinite(now) ? now : undefined;
-    const model = this.settings.getModel(selection);
+    this.attachments.markUsed(attachmentIds);
     this.emit(run, {
       type: "started",
       text: text.trim(),
       startedAt: Date.now(),
       modelLabel: model?.name ?? selection.modelId,
+      ...(loaded.metadata.length ? { attachments: loaded.metadata } : {}),
     });
-    run.done = this.execute(run, text.trim(), selection);
+    run.done = this.execute(run, text.trim(), selection, loaded);
   }
-  private async execute(run: ActiveRun, text: string, selection: CombinedSelection): Promise<void> {
+  private async execute(
+    run: ActiveRun,
+    text: string,
+    selection: CombinedSelection,
+    loaded: QuickChatImages,
+  ): Promise<void> {
     let unsubscribe: (() => void) | undefined;
     let failure: string | undefined;
     let status: "completed" | "aborted" | "error" = "completed";
@@ -198,6 +240,8 @@ export class QuickChatHost {
       );
       const model = this.runtime.getModel(selection.provider, selection.modelId);
       if (!model) throw new Error("configuration: 模型不可用");
+      if (loaded.images.length && !model.input.includes("image"))
+        throw new Error("configuration: 当前模型不支持图片，请选择图片模型");
       const enabled = ["read", "bash", ...(this.webEnabled() ? ["web_search", "web_fetch"] : [])];
       if (enabled.some((name) => !allowedTools.has(name))) throw new Error("configuration: 快速对话工具无效");
       if (!this.session) {
@@ -234,7 +278,7 @@ export class QuickChatHost {
         if (projected) this.emit(run, projected);
       });
       // prompt() is deliberate: slash commands, skills, @file expansion and shell hooks are never parsed.
-      await session.prompt(text);
+      await session.prompt([text, loaded.context].filter(Boolean).join("\n\n"), { images: loaded.images });
       const last = session.messages.findLast((message) => message.role === "assistant");
       if (last?.role === "assistant" && last.stopReason === "error") {
         status = "error";
@@ -276,6 +320,7 @@ export class QuickChatHost {
     if (this.closed) return Promise.reject(new Error("busy: 快速对话正在关闭"));
     if (this.resetting) return this.resetting;
     this.lifetime.abort();
+    this.attachments.clear();
     this.resetting = this.clearSession().finally(() => {
       this.resetting = undefined;
     });
@@ -296,6 +341,7 @@ export class QuickChatHost {
     if (this.closed) return;
     this.closed = true;
     this.lifetime.abort();
+    this.attachments.clear();
     clearTimeout(this.notification);
     this.notification = undefined;
     this.listeners.clear();

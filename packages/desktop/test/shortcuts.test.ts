@@ -8,6 +8,7 @@ import {
   shortcutForEvent,
   shortcutFromEvent,
   validateShortcuts,
+  withQuickChatNewShortcut,
   withQuickChatShortcut,
   withTaskMenuShortcut,
 } from "../src/shared/shortcuts.ts";
@@ -25,6 +26,7 @@ describe("shortcut contract", () => {
       const primary = platform === "darwin" ? "Command" : "Control";
       expect(settings.bindings).toMatchObject({
         "quick-chat": "Alt+N",
+        "quick-chat-new": "Alt+Shift+N",
         "toggle-sidebar": `${primary}+[`,
         "toggle-pane": `${primary}+]`,
         search: `${primary}+K`,
@@ -164,29 +166,49 @@ describe("shortcut contract", () => {
 });
 
 describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platform) => {
-  it("allows Alt plus a letter only for quick chat and preserves other reserved keys", () => {
-    const settings = defaultShortcuts(platform);
-    for (const binding of ["Alt+A", "Option+N", "Alt+Z"]) {
-      settings.bindings["quick-chat"] = binding;
-      expect(validateShortcuts(settings, platform)).toBeUndefined();
-      settings.bindings["toggle-window"] = binding;
-      expect(validateShortcuts(settings, platform)).toContain("Ctrl 或 Command");
-      settings.bindings["toggle-window"] = defaultShortcuts(platform).bindings["toggle-window"];
-    }
-    for (const binding of ["Alt+1", "Alt+Shift+N", "Alt+Tab", "Alt+F4", "Alt+Space", "N"]) {
-      settings.bindings["quick-chat"] = binding;
-      expect(validateShortcuts(settings, platform)).toBeTypeOf("string");
-    }
-  });
+  it.each(["quick-chat", "quick-chat-new"] as const)(
+    "allows Alt plus a letter and optional Shift only for %s",
+    (command) => {
+      const settings = defaultShortcuts(platform);
+      settings.bindings["quick-chat"] = null;
+      settings.bindings["quick-chat-new"] = null;
+      for (const binding of ["Alt+A", "Option+N", "Alt+Z", "Option+Shift+N", "Shift+Alt+B"]) {
+        settings.bindings[command] = binding;
+        expect(validateShortcuts(settings, platform)).toBeUndefined();
+        for (const { id, scope } of shortcutCommands) {
+          if (id === "quick-chat" || id === "quick-chat-new") continue;
+          const previous = settings.bindings[id];
+          settings.bindings[id] = binding;
+          expect(validateShortcuts(settings, platform), `${scope}: ${id}`).toContain("Ctrl 或 Command");
+          settings.bindings[id] = previous;
+        }
+      }
+      for (const binding of ["Alt+1", "Alt+Shift+1", "Shift+N", "Alt+Tab", "Alt+F4", "Alt+Space", "N"]) {
+        settings.bindings[command] = binding;
+        expect(validateShortcuts(settings, platform)).toBeTypeOf("string");
+      }
+    },
+  );
 
-  it("records the physical Option+N dead key without changing ordinary IME or dead-key handling", () => {
-    const event = { key: "Dead", code: "KeyN", altKey: true };
-    expect(shortcutFromEvent(event, platform)).toBeNull();
-    expect(shortcutFromEvent(event, platform, true)).toBe("Alt+N");
-    expect(shortcutForEvent(event, platform, defaultShortcuts(platform))).toBe("quick-chat");
-    for (const extra of [{ isComposing: true }, { repeat: true }, { altKey: false }])
-      expect(shortcutFromEvent({ ...event, ...extra }, platform, true)).toBeNull();
-    expect(shortcutFromEvent({ ...event, key: "Process" }, platform, true)).toBeNull();
+  it("records physical quick-chat letters without changing ordinary IME or dead-key handling", () => {
+    for (const shiftKey of [false, true]) {
+      const event = { key: "Dead", code: "KeyN", altKey: true, shiftKey };
+      const binding = shiftKey ? "Alt+Shift+N" : "Alt+N";
+      const command = shiftKey ? "quick-chat-new" : "quick-chat";
+      expect(shortcutFromEvent(event, platform)).toBeNull();
+      expect(shortcutFromEvent(event, platform, true)).toBe(binding);
+      expect(shortcutFromEvent({ ...event, key: "˜" }, platform, true)).toBe(binding);
+      expect(shortcutForEvent(event, platform, defaultShortcuts(platform))).toBe(command);
+      for (const extra of [{ isComposing: true }, { repeat: true }, { altKey: false }])
+        expect(shortcutFromEvent({ ...event, ...extra }, platform, true)).toBeNull();
+      expect(shortcutFromEvent({ ...event, key: "Process" }, platform, true)).toBeNull();
+      const settings = defaultShortcuts(platform);
+      settings.bindings[command] = null;
+      expect(shortcutForEvent(event, platform, settings)).toBeUndefined();
+      settings.bindings[command] = binding;
+      settings.enabled = false;
+      expect(shortcutForEvent(event, platform, settings)).toBeUndefined();
+    }
   });
 
   it("adds the default without changing an explicit custom or cleared quick-chat binding", () => {
@@ -211,13 +233,18 @@ describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s"
     settings.enabled = false;
     Reflect.deleteProperty(settings.bindings, "task-menu");
     Reflect.deleteProperty(settings.bindings, "quick-chat");
+    Reflect.deleteProperty(settings.bindings, "quick-chat-new");
     const snapshot = structuredClone(settings);
-    const next = withQuickChatShortcut(withTaskMenuShortcut(settings, platform), platform);
+    const next = withQuickChatNewShortcut(
+      withQuickChatShortcut(withTaskMenuShortcut(settings, platform), platform),
+      platform,
+    );
     expect(next).toEqual({ ...defaultShortcuts(platform), enabled: false });
     expect(Object.keys(next.bindings)).toEqual([
       ...Object.keys(settings.bindings),
       "task-menu",
       "quick-chat",
+      "quick-chat-new",
     ]);
     expect(settings).toEqual(snapshot);
     expect(next.bindings).not.toBe(settings.bindings);
@@ -226,6 +253,7 @@ describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s"
   it.each([
     { command: "task-menu" as const, migrate: withTaskMenuShortcut, occupied: "CmdOrCtrl+U" },
     { command: "quick-chat" as const, migrate: withQuickChatShortcut, occupied: "Option+N" },
+    { command: "quick-chat-new" as const, migrate: withQuickChatNewShortcut, occupied: "Shift+Option+N" },
   ])(
     "preserves existing $command values and normalized historical conflicts",
     ({ command, migrate, occupied }) => {

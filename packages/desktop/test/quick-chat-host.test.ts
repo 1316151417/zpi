@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import sharp from "sharp";
 import { afterEach, expect, test, vi } from "vitest";
 import type { JsonObject } from "zpi-ai";
 import { chunk } from "../../../tests/fake-server.ts";
@@ -102,6 +103,19 @@ async function run(host: QuickChatHost, text = "hello") {
   host.send(text);
   await host.waitForIdle();
 }
+function enableImages(settings: SettingsStore) {
+  settings.saveProvider({
+    ...settings.snapshot("chat"),
+    models: [
+      { id: "one", reasoning: false, input: ["text", "image"] },
+      { id: "two", reasoning: false, input: ["text"] },
+    ],
+  });
+}
+const pastedImage = () =>
+  sharp({ create: { width: 3, height: 2, channels: 4, background: "red" } })
+    .png()
+    .toBuffer();
 
 test("temporary conversation reuses model configuration but never creates tasks, transcripts, or project resources", async () => {
   const f = await fixture();
@@ -600,4 +614,177 @@ test("quit joins a pending manual reset without resurrecting state or accepting 
   const load = vi.fn(async () => "data:image/png;base64,OLD");
   expect(await f.host.readWebSourceIcon("old", "old", "https://example.com/article", load)).toBeUndefined();
   expect(load).not.toHaveBeenCalled();
+});
+
+test("pasted images and image-only sends reach multimodal requests while previews stay memory-only", async () => {
+  const f = await fixture();
+  enableImages(f.settings);
+  const before = await readdir(f.dir, { recursive: true });
+  const bytes = await pastedImage();
+  const image = await f.host.importAttachment(f.host.sessionId, "pasted.jpg", bytes);
+  const id = f.host.sessionId;
+  expect(image).toMatchObject({ mimeType: "image/png", size: bytes.length, width: 3, height: 2 });
+  expect(f.host.readAttachment(id, image.id)).toEqual({ metadata: image, data: bytes.toString("base64") });
+  f.host.send("  describe this  ", [image.id]);
+  expect(f.host.getSnapshot().session.runs[0]).toMatchObject({
+    userMessage: "describe this",
+    attachments: [image],
+  });
+  await f.host.waitForIdle();
+  f.host.send("", [image.id]);
+  await f.host.waitForIdle();
+  expect(f.host.getSnapshot().session.runs[1]).toMatchObject({
+    userMessage: "",
+    attachments: [image],
+    status: "completed",
+  });
+  await run(f.host, "follow up");
+  const requests = JSON.stringify(f.requests);
+  expect(requests).toContain("image_url");
+  expect(requests).toContain(`data:image/png;base64,${bytes.toString("base64")}`);
+  expect(messages(f.requests[2]).filter((message) => message.role === "user")).toHaveLength(3);
+  const snapshot = JSON.stringify(f.host.getSnapshot());
+  expect(snapshot).not.toContain("base64");
+  expect(snapshot).not.toContain(bytes.toString("base64"));
+  expect(f.settings.state.listTasks()).toEqual([]);
+  expect(await readdir(f.dir, { recursive: true })).toEqual(before);
+});
+
+test("non-image models reject fresh images and image history synchronously without consuming drafts or renewing expiry", async () => {
+  let now = 0;
+  const f = await fixture(undefined, () => now);
+  const image = await f.host.importAttachment(f.host.sessionId, "image.png", await pastedImage());
+  expect(() => f.host.send("inspect", [image.id])).toThrow("当前模型不支持图片");
+  expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+  expect(f.host.readAttachment(f.host.sessionId, image.id)).toBeDefined();
+  enableImages(f.settings);
+  f.host.send("inspect", [image.id]);
+  await f.host.waitForIdle();
+  f.settings.saveQuickChatSettings({
+    defaultSelection: { provider: "chat", modelId: "two", reasoning: "none" },
+  });
+  now = QUICK_CHAT_IDLE_MS - 1;
+  expect(() => f.host.send("text-only follow-up")).toThrow("历史中的图片也需要图片模型");
+  expect(f.requests).toHaveLength(1);
+  expect(f.host.getSnapshot().session.runs).toHaveLength(1);
+  now = QUICK_CHAT_IDLE_MS;
+  await f.host.resetIfExpired();
+  expect(() => f.host.readAttachment(f.host.sessionId, image.id)).toThrow("not_found:");
+  await run(f.host, "fresh text-only conversation");
+  expect(f.requests[1].model).toBe("two");
+});
+
+test("invalid and foreign image IDs fail before run acceptance; accepted image removal cannot race an active request", async () => {
+  let finish!: (response: Response) => void;
+  const f = await fixture(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  enableImages(f.settings);
+  const id = f.host.sessionId;
+  const image = await f.host.importAttachment(id, "image.png", await pastedImage());
+  for (const ids of [
+    [image.id, image.id],
+    ["unknown"],
+    ["../outside"],
+    Array.from({ length: 9 }, () => image.id),
+  ])
+    expect(() => f.host.send("inspect", ids)).toThrow();
+  await expect(f.host.importAttachment("main-session", "image.png", await pastedImage())).rejects.toThrow(
+    "not_found:",
+  );
+  expect(() => f.host.readAttachment("main-session", image.id)).toThrow("not_found:");
+  expect(() => f.host.removeAttachment("main-session", image.id)).toThrow("not_found:");
+  expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+  f.host.send("inspect", [image.id]);
+  expect(() => f.host.send("duplicate", [image.id])).toThrow("busy:");
+  f.host.removeAttachment(id, image.id);
+  expect(f.host.readAttachment(id, image.id)).toBeDefined();
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  finish(sse({ content: "image answered" }));
+  await f.host.waitForIdle();
+  expect(f.host.getSnapshot().session.runs[0].status).toBe("completed");
+  await f.host.reset();
+  expect(() => f.host.send("old image", [image.id])).toThrow("not_found:");
+});
+
+test("a failed model request retains its image records for a later retry", async () => {
+  const f = await fixture((_body, index) =>
+    index === 0
+      ? Response.json({ error: { message: "test invalid input" } }, { status: 400 })
+      : sse({ content: "retry succeeded" }),
+  );
+  enableImages(f.settings);
+  const image = await f.host.importAttachment(f.host.sessionId, "image.png", await pastedImage());
+  f.host.send("inspect", [image.id]);
+  await f.host.waitForIdle();
+  expect(f.host.getSnapshot().session.runs[0].status).toBe("error");
+  expect(f.host.readAttachment(f.host.sessionId, image.id)).toBeDefined();
+  f.host.send("inspect", [image.id]);
+  await f.host.waitForIdle();
+  expect(f.host.getSnapshot().session.runs[1].status).toBe("completed");
+  expect(JSON.stringify(f.requests[1])).toContain("data:image/png;base64,");
+});
+
+test.each(["reset", "expiry", "close"] as const)(
+  "%s invalidates pending image imports and clears all old previews",
+  async (kind) => {
+    let now = 0;
+    const f = await fixture(undefined, () => now);
+    const bytes = await pastedImage();
+    await run(f.host);
+    const id = f.host.sessionId;
+    const image = await f.host.importAttachment(id, "image.png", bytes);
+    const pending = f.host.importAttachment(id, "late.png", bytes);
+    const rejected = expect(pending).rejects.toThrow("临时对话已结束");
+    now = QUICK_CHAT_IDLE_MS;
+    await (kind === "expiry" ? f.host.resetIfExpired() : f.host[kind]());
+    await rejected;
+    expect(() => f.host.readAttachment(id, image.id)).toThrow();
+    expect(() => f.host.readAttachment(f.host.sessionId, image.id)).toThrow();
+    expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+  },
+);
+
+test("image imports neither create the working base nor renew the last accepted send timestamp", async () => {
+  let now = 0;
+  const f = await fixture(undefined, () => now);
+  await rm(f.cwd, { recursive: true });
+  const image = await f.host.importAttachment(f.host.sessionId, "unsent.png", await pastedImage());
+  await expect(readdir(f.cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  now = QUICK_CHAT_IDLE_MS * 2;
+  expect(f.host.resetIfExpired()).toBeUndefined();
+  expect(f.host.readAttachment(f.host.sessionId, image.id)).toBeDefined();
+  await run(f.host);
+  now += QUICK_CHAT_IDLE_MS - 1;
+  await f.host.importAttachment(f.host.sessionId, "next-draft.png", await pastedImage());
+  now++;
+  await f.host.resetIfExpired();
+  expect(() => f.host.readAttachment(f.host.sessionId, image.id)).toThrow("not_found:");
+});
+
+test("renderer draft loss clears orphaned imports without changing the session or its accepted image history", async () => {
+  const f = await fixture();
+  enableImages(f.settings);
+  const id = f.host.sessionId;
+  const bytes = await pastedImage();
+  const accepted = await f.host.importAttachment(id, "accepted.png", bytes);
+  f.host.send("inspect", [accepted.id]);
+  await f.host.waitForIdle();
+  const draft = await f.host.importAttachment(id, "draft.png", bytes);
+  const pending = f.host.importAttachment(id, "late.png", bytes);
+  const rejection = expect(pending).rejects.toThrow("临时对话已结束");
+  f.host.discardDraftAttachments();
+  await rejection;
+  expect(f.host.sessionId).toBe(id);
+  expect(f.host.getSnapshot().session.runs).toHaveLength(1);
+  expect(f.host.readAttachment(id, accepted.id).metadata).toEqual(accepted);
+  expect(() => f.host.readAttachment(id, draft.id)).toThrow("not_found:");
+  await run(f.host, "follow up");
+  expect(JSON.stringify(f.requests[1])).toContain("data:image/png;base64,");
+  await expect(
+    Promise.all(Array.from({ length: 8 }, () => f.host.importAttachment(id, "fresh.png", bytes))),
+  ).resolves.toHaveLength(8);
 });

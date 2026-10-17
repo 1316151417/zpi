@@ -42,6 +42,10 @@ function fixture(
     close: vi.fn(async () => {}),
     getSnapshot: vi.fn(() => snapshot),
     send: vi.fn(),
+    importAttachment: vi.fn(async () => ({ id: "image-1" })),
+    readAttachment: vi.fn(async () => ({ metadata: { id: "image-1" }, data: "image-bytes" })),
+    removeAttachment: vi.fn(async () => {}),
+    discardDraftAttachments: vi.fn(),
     stop: vi.fn(async () => {}),
     reset: vi.fn(async () => {}),
     resetIfExpired: vi.fn<() => Promise<void> | undefined>(() => undefined),
@@ -72,6 +76,10 @@ function fixture(
       getURL: () => url,
       setWindowOpenHandler: vi.fn(),
       send: vi.fn(),
+      importAttachment: vi.fn(async () => ({ id: "image-1" })),
+      readAttachment: vi.fn(async () => ({ metadata: { id: "image-1" }, data: "image-bytes" })),
+      removeAttachment: vi.fn(async () => {}),
+      discardDraftAttachments: vi.fn(),
     });
     const window = Object.assign(new EventEmitter(), {
       webContents: contents,
@@ -420,7 +428,7 @@ test("dedicated IPC rejects other renderers and child frames before dispatch", a
   expect(f.host.send).not.toHaveBeenCalled();
   const event = { sender: contents, senderFrame: contents.mainFrame } as unknown as IpcMainInvokeEvent;
   expect(await handler(event, "send", ["hello"])).toEqual({ ok: true, value: undefined });
-  expect(f.host.send).toHaveBeenCalledWith("hello");
+  expect(f.host.send).toHaveBeenCalledWith("hello", undefined);
   for (const method of [
     "createSession",
     "setSelection",
@@ -755,7 +763,7 @@ test("composer growth keeps its bottom anchor, clamps to the screen, and rejects
   await f.quick.call("setComposerHeight", ["session-1", 140]);
   await f.quick.call("setComposerHeight", ["old-session", 184]);
   expect(window.setBounds).not.toHaveBeenCalled();
-  for (const height of [0, 43, 185, Number.NaN, Number.POSITIVE_INFINITY, "100"]) {
+  for (const height of [0, 43, 265, Number.NaN, Number.POSITIVE_INFINITY, "100"]) {
     expect(await f.quick.call("setComposerHeight", ["session-1", height])).toMatchObject({ ok: false });
   }
   f.getDisplay.mockReturnValue({
@@ -949,5 +957,218 @@ test("minimum-size reuse preserves initial clamping, update order, and unchanged
   await f.quick.call("setComposerHeight", ["session-1", 184]);
   expect(window.getBounds().height).toBe(80);
   expect(window.setMinimumSize).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("explicit new keeps expanded presentation in pushes, snapshots and recreated renderers", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("explicit-new"));
+  expect(await f.quick.call("reset", [])).toMatchObject({ ok: true });
+  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].webContents.send).toHaveBeenLastCalledWith(
+    "zpi:quick-chat-snapshot",
+    expect.objectContaining({
+      expanded: true,
+      session: expect.objectContaining({ sessionId: "explicit-new", runs: [] }),
+    }),
+  );
+  expect(await f.quick.call("getSnapshot", [])).toMatchObject({ ok: true, value: { expanded: true } });
+  f.emitHistory(false);
+  expect(f.windows[0].getBounds().height).toBe(560);
+  f.windows[0].webContents.emit("render-process-gone");
+  await f.quick.show();
+  expect(f.windows[1].getBounds().height).toBe(560);
+  // Expiry is a separate reset policy; only the explicit action preserves expanded mode.
+  f.changeSession("expired-new");
+  expect(f.windows[1].getBounds().height).toBe(44);
+  expect(await f.quick.call("getSnapshot", [])).toMatchObject({ ok: true, value: { expanded: false } });
+  await f.quick.dispose();
+});
+
+test.each([false, true])(
+  "new-conversation shortcut shows a fresh session and preserves expanded=%s",
+  async (history) => {
+    const f = fixture({ history });
+    await f.quick.show();
+    f.quick.hide();
+    f.host.reset.mockImplementationOnce(async () => f.changeSession("shortcut-new"));
+    const opening = f.quick.newConversation();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    expect(f.windows[0].getBounds().height).toBe(history ? 560 : 44);
+    await f.quick.call("rendererReady", ["session-1"]);
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    await f.quick.call("rendererReady", ["shortcut-new"]);
+    await opening;
+    expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+    expect(f.host.resetIfExpired).toHaveBeenCalledTimes(1); // Initial show only, never another reset during explicit new.
+    await f.quick.dispose();
+  },
+);
+
+test("new shortcut is not a toggle when already visible, and cold new remains compact", async () => {
+  const f = fixture();
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("cold-new"));
+  const cold = f.quick.newConversation();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.quick.call("rendererReady", ["cold-new"]);
+  await cold;
+  expect(f.windows[0].getBounds().height).toBe(44);
+  f.emitHistory(true);
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("visible-new"));
+  const next = f.quick.newConversation();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.quick.call("rendererReady", ["visible-new"]);
+  await next;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].hide).not.toHaveBeenCalled();
+  expect(f.windows[0].getBounds().height).toBe(560);
+  await f.quick.dispose();
+});
+
+test("repeated explicit new while resetting uses the newest visibility intent without stale acknowledgement", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  let complete!: () => void;
+  const reset = new Promise<void>((resolve) => {
+    complete = () => {
+      f.changeSession("shared-new");
+      resolve();
+    };
+  });
+  f.host.reset.mockImplementation(() => reset);
+  const first = f.quick.newConversation();
+  const second = f.quick.newConversation();
+  await f.quick.toggle();
+  complete();
+  await Promise.all([first, second]);
+  await f.quick.call("rendererReady", ["session-1"]);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  expect(f.windows[0].getBounds().height).toBe(560);
+  const reopened = f.quick.toggle();
+  await f.quick.call("rendererReady", ["shared-new"]);
+  await reopened;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("explicit new during a pending expiry preserves the latest expanded intent", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  let complete!: () => void;
+  const reset = new Promise<void>((resolve) => {
+    complete = () => {
+      f.changeSession("shared-new");
+      resolve();
+    };
+  });
+  f.host.resetIfExpired.mockReturnValueOnce(reset);
+  f.host.reset.mockReturnValueOnce(reset);
+  const expired = f.quick.toggle();
+  const explicit = f.quick.newConversation();
+  complete();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.quick.call("rendererReady", ["shared-new"]);
+  await Promise.all([expired, explicit]);
+  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("image attachment IPC accepts bytes and owned identifiers, never paths or data URLs", async () => {
+  const f = fixture();
+  const bytes = new Uint8Array([137, 80, 78, 71]);
+  expect(await f.quick.call("importAttachment", ["session-1", "paste.png", bytes])).toMatchObject({
+    ok: true,
+    value: { id: "image-1" },
+  });
+  expect(f.host.importAttachment).toHaveBeenCalledWith("session-1", "paste.png", bytes);
+  expect(await f.quick.call("readAttachment", ["session-1", "image-1"])).toMatchObject({
+    ok: true,
+    value: { data: "image-bytes" },
+  });
+  expect(await f.quick.call("removeAttachment", ["session-1", "image-1"])).toMatchObject({ ok: true });
+  expect(await f.quick.call("send", ["", ["image-1"]])).toMatchObject({ ok: true });
+  expect(f.host.send).toHaveBeenCalledWith("", ["image-1"]);
+  f.host.importAttachment.mockClear();
+  for (const args of [
+    ["session-1", "paste.png", "data:image/png;base64,AAAA"],
+    ["session-1", "paste.png", "/tmp/image.png"],
+    ["session-1", "paste.png", [137, 80]],
+    ["session-1", "paste.png"],
+    ["session-1", "x".repeat(251), bytes],
+  ]) {
+    expect(await f.quick.call("importAttachment", args)).toMatchObject({ ok: false });
+  }
+  expect(f.host.importAttachment).not.toHaveBeenCalled();
+  f.host.send.mockImplementation(() => {
+    throw new Error("invalid_input: 图片附件无效");
+  });
+  expect(await f.quick.call("send", ["", ["unknown-image"]])).toMatchObject({
+    ok: false,
+    error: { code: "invalid_input" },
+  });
+  await f.quick.dispose();
+});
+
+test("image draft height grows upward to 264 and still clamps to the native work area", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  const bottom = window.getBounds().y + window.getBounds().height;
+  await f.quick.call("setComposerHeight", ["session-1", 264]);
+  expect(window.getBounds().height).toBe(264);
+  expect(window.getBounds().y + 264).toBe(bottom);
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 0, y: 0, width: 320, height: 80 },
+    workArea: { x: 0, y: 0, width: 320, height: 80 },
+  });
+  await f.quick.call("setComposerHeight", ["session-1", 263]);
+  expect(window.getBounds()).toEqual({ x: 0, y: 0, width: 320, height: 80 });
+  await f.quick.dispose();
+});
+
+test("renderer reload and destruction release draft images, never ordinary hide or stale windows", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const old = f.windows[0];
+  f.quick.hide();
+  await f.quick.show();
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: false,
+    isSameDocument: false,
+    url: old.webContents.getURL(),
+  });
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: true,
+    url: old.webContents.getURL(),
+  });
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: false,
+    url: "https://blocked.invalid/",
+  });
+  expect(f.host.discardDraftAttachments).not.toHaveBeenCalled();
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: false,
+    url: old.webContents.getURL(),
+  });
+  expect(f.host.discardDraftAttachments).toHaveBeenCalledOnce();
+  old.webContents.emit("render-process-gone");
+  expect(f.host.discardDraftAttachments).toHaveBeenCalledTimes(2);
+  await f.quick.show();
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: false,
+    url: old.webContents.getURL(),
+  });
+  old.emit("closed");
+  expect(f.host.discardDraftAttachments).toHaveBeenCalledTimes(2);
+  expect(f.host.reset).not.toHaveBeenCalled();
   await f.quick.dispose();
 });

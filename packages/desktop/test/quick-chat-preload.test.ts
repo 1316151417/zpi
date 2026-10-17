@@ -19,10 +19,13 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "copyText",
     "getSnapshot",
     "hide",
+    "importAttachment",
     "onPresentation",
     "onSnapshot",
     "openExternal",
+    "readAttachment",
     "readWebSourceIcon",
+    "removeAttachment",
     "rendererReady",
     "reportPresentation",
     "reset",
@@ -32,6 +35,32 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
   ]);
   await bridge.send("question");
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", ["question"]);
+  await bridge.send("", ["image-id"]);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", ["", ["image-id"]]);
+  const file = new File([new Uint8Array([1, 2, 3])], "clipboard.png", { type: "image/png" });
+  await bridge.importAttachment("session", file);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "importAttachment", [
+    "session",
+    "clipboard.png",
+    new Uint8Array([1, 2, 3]),
+  ]);
+  const arrayBuffer = vi.fn();
+  const oversized = { size: 10 * 1024 * 1024 + 1, arrayBuffer } as unknown as File;
+  expect(await bridge.importAttachment("session", oversized)).toMatchObject({
+    ok: false,
+    error: { code: "invalid_input" },
+  });
+  expect(arrayBuffer).not.toHaveBeenCalled();
+  await bridge.readAttachment("session", "image-id");
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "readAttachment", [
+    "session",
+    "image-id",
+  ]);
+  await bridge.removeAttachment("session", "image-id");
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "removeAttachment", [
+    "session",
+    "image-id",
+  ]);
   await bridge.reset();
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "reset", []);
   await bridge.readWebSourceIcon("session", "run", "https://example.com/article");

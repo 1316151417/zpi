@@ -54,11 +54,13 @@ describe.each(["darwin", "win32", "linux"])("shortcut default migration on %s", 
     expect(migrateShortcutDefaults(original, platform)).toBe(original);
   });
 
-  it("adds quick chat before validating a legacy map without it", () => {
+  it("adds both quick-chat shortcuts before validating a legacy map without them", () => {
     const settings = legacyShortcuts(platform);
     Reflect.deleteProperty(settings.bindings, "quick-chat");
+    Reflect.deleteProperty(settings.bindings, "quick-chat-new");
     expect(migrateShortcutDefaults(settings, platform)).toEqual(defaultShortcuts(platform));
     expect(Object.hasOwn(settings.bindings, "quick-chat")).toBe(false);
+    expect(Object.hasOwn(settings.bindings, "quick-chat-new")).toBe(false);
   });
 
   it("leaves an already updated map unchanged", () => {

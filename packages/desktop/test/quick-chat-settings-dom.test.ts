@@ -5,12 +5,13 @@ import { SettingsPage } from "../src/renderer/SettingsPage.tsx";
 import { useStore } from "../src/renderer/store.ts";
 import type { PublicSettings, QuickChatSettingsInput, Result } from "../src/shared/bridge.ts";
 import { defaultCapabilities, defaultPreferences } from "../src/shared/config.ts";
-import { defaultShortcuts } from "../src/shared/shortcuts.ts";
+import { defaultShortcuts, type ShortcutSettings } from "../src/shared/shortcuts.ts";
 
 let root: Root;
 let container: HTMLDivElement;
 const openQuickChat = vi.fn<() => Promise<Result<void>>>();
 const saveQuickChatSettings = vi.fn<(input: QuickChatSettingsInput) => Promise<Result<PublicSettings>>>();
+const updateShortcuts = vi.fn<(input: ShortcutSettings) => Promise<Result<PublicSettings>>>();
 const releaseCapture = vi.fn(async () => ({ ok: true as const, value: undefined }));
 
 function currentSettings(): PublicSettings {
@@ -36,6 +37,10 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   openQuickChat.mockReset().mockResolvedValue({ ok: true, value: undefined });
   releaseCapture.mockClear();
+  updateShortcuts.mockReset().mockImplementation(async (shortcuts) => ({
+    ok: true,
+    value: { ...currentSettings(), shortcuts },
+  }));
   saveQuickChatSettings.mockReset().mockImplementation(async (quickChat) => ({
     ok: true,
     value: { ...currentSettings(), quickChat },
@@ -61,7 +66,13 @@ beforeEach(async () => {
   useStore.setState({ settings });
   Object.defineProperty(window, "zpi", {
     configurable: true,
-    value: { platform: "darwin", openQuickChat, saveQuickChatSettings, setShortcutCapture: releaseCapture },
+    value: {
+      platform: "darwin",
+      openQuickChat,
+      saveQuickChatSettings,
+      updateShortcuts,
+      setShortcutCapture: releaseCapture,
+    },
   });
   container = document.createElement("div");
   document.body.append(container);
@@ -81,7 +92,8 @@ test("navigates from the real settings sidebar to quick chat and the existing sh
   expect(labels.indexOf("快速对话")).toBe(labels.indexOf("子智能体") + 1);
   await click(query('button[aria-label="快速对话"]'));
   expect(query('button[aria-label="快速对话"]').getAttribute("aria-pressed")).toBe("true");
-  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("⌥N");
+  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("显示或隐藏：⌥N");
+  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("新建：⌥⇧N");
   expect(container.textContent).toContain("临时对话，不保存到任务列表");
   expect(container.textContent).toContain("可用 read、bash 及已启用的联网工具");
   expect(container.textContent).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
@@ -275,4 +287,61 @@ test("displays a valid saved reasoning level even when equivalent choices are de
   expect(query('button[aria-label="快速对话思考级别"]').textContent).toContain("中");
   expect(container.textContent).not.toContain("原默认配置已不可用");
   expect(saveQuickChatSettings).not.toHaveBeenCalled();
+});
+
+test("records the new quick-chat physical dead key, rejects duplicates, and persists clear and disable", async () => {
+  await click(query('button[aria-label="快捷键"]'));
+  const row = () => query('[data-shortcut-command="quick-chat-new"]');
+  const recorder = () =>
+    query<HTMLButtonElement>('[data-shortcut-command="quick-chat-new"] .shortcut-recorder');
+  const edit = () => query<HTMLButtonElement>('button[aria-label="编辑新建快速对话快捷键"]');
+  const key = async (event: KeyboardEventInit) => {
+    await act(async () => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...event }),
+      );
+    });
+  };
+  await click(edit());
+  expect(releaseCapture).toHaveBeenLastCalledWith(true);
+  expect(recorder().getAttribute("aria-pressed")).toBe("true");
+  for (const event of [{ repeat: true }, { isComposing: true }]) {
+    await key({ key: "Dead", code: "KeyB", altKey: true, shiftKey: true, ...event });
+    expect(recorder().getAttribute("aria-pressed")).toBe("true");
+  }
+  await key({ key: "Dead", code: "KeyB", altKey: true, shiftKey: true });
+  expect(recorder().textContent).toBe("⌥⇧B");
+  expect(releaseCapture).toHaveBeenLastCalledWith(false);
+  await click(button("保存快捷键"));
+  expect(currentSettings().shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+B");
+  await click(edit());
+  await key({ key: "Dead", code: "KeyN", altKey: true });
+  expect(row().textContent).toContain("冲突");
+  expect(recorder().getAttribute("aria-pressed")).toBe("true");
+  await key({ key: "Escape" });
+  expect(recorder().textContent).toBe("⌥⇧B");
+  await click(query('button[aria-label="清除新建快速对话快捷键"]'));
+  expect(recorder().textContent).toBe("未设置");
+  await click(button("保存快捷键"));
+  expect(currentSettings().shortcuts.bindings["quick-chat-new"]).toBeNull();
+  await click(query('input[aria-label="启用快捷键"]'));
+  await click(button("保存快捷键"));
+  expect(currentSettings().shortcuts.enabled).toBe(false);
+  await click(query('button[aria-label="快速对话"]'));
+  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("新建：未设置（快捷键已停用）");
+});
+
+test("cancels new shortcut recording on blur and page exit without saving a draft", async () => {
+  await click(query('button[aria-label="快捷键"]'));
+  await click(query('button[aria-label="编辑新建快速对话快捷键"]'));
+  await act(async () => {
+    window.dispatchEvent(new Event("blur"));
+  });
+  expect(releaseCapture).toHaveBeenLastCalledWith(false);
+  expect(query('[data-shortcut-command="quick-chat-new"] .shortcut-recorder').textContent).toBe("⌥⇧N");
+  await click(query('button[aria-label="编辑新建快速对话快捷键"]'));
+  await click(query('button[aria-label="快速对话"]'));
+  expect(releaseCapture).toHaveBeenLastCalledWith(false);
+  expect(currentSettings().shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+N");
+  expect(updateShortcuts).not.toHaveBeenCalled();
 });

@@ -82,15 +82,24 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
   max-width: none;
   min-height: 44px;
-  gap: 6px 8px;
+  gap: 8px;
   padding: 7px 8px 7px 14px;
   border-radius: 22px;
+}
+
+.quick-chat-composer-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  gap: 6px 8px;
 }
 
 .quick-chat-composer textarea {
@@ -105,7 +114,7 @@ html[data-quick-chat="true"] #root {
   field-sizing: fixed;
 }
 
-.quick-chat-composer > .send {
+.quick-chat-composer .send {
   grid-area: 1 / 2;
   align-self: end;
   width: 28px;
@@ -125,12 +134,18 @@ html[data-quick-chat="true"] #root {
 
 .quick-chat-compact .quick-chat-composer {
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   flex: 1;
   height: 100%;
   min-height: 0;
   margin: 0;
+}
+
+.quick-chat-compact .quick-chat-composer-input-row {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
 }
 
 .quick-chat-compact textarea {
@@ -199,4 +214,98 @@ html[data-quick-chat="true"] #root {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.quick-chat-empty-conversation {
+  flex: 1;
+  min-height: 0;
+}
+
+.quick-chat-attachments {
+  display: flex;
+  flex-shrink: 1;
+  align-items: flex-start;
+  gap: 8px;
+  height: 72px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.quick-chat-attachment {
+  flex: 0 0 56px;
+  min-width: 0;
+}
+
+.quick-chat-attachment .image-chip > button:first-child {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+}
+
+.quick-chat-attachment .chip-remove {
+  opacity: 1;
+}
+
+.quick-chat-attachment-status {
+  display: block;
+  max-width: 56px;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  line-height: 20px;
+}
+
+.quick-chat-attachment .quick-chat-retry {
+  color: var(--color-error);
+}
+
+/* A short display may clamp expanded windows: let the input scroll before hiding send. */
+.quick-chat-expanded .quick-chat-composer-container {
+  display: flex;
+  max-height: calc(100% - 38px);
+}
+
+.quick-chat-expanded .quick-chat-composer {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.quick-chat-expanded .quick-chat-composer-input-row {
+  flex-shrink: 1;
+  grid-template-rows: minmax(28px, 1fr);
+}
+
+.quick-chat-expanded textarea {
+  min-height: 0;
+  max-height: min(160px, 100%);
+}
+
+.quick-chat-has-images.quick-chat-compact .quick-chat-composer-input-row {
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+/* Keep the primary input/send row reachable even on an unusually short work area. */
+@media (max-height: 140px) {
+  .quick-chat-expanded .quick-chat-composer-container {
+    padding-block: 0;
+  }
+
+  .quick-chat-expanded .quick-chat-composer {
+    gap: 0;
+    padding-block: 2px;
+  }
+
+  .quick-chat-expanded .quick-chat-composer-input-row {
+    min-height: 28px;
+  }
 }

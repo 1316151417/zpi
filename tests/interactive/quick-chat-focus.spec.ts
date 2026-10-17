@@ -5,7 +5,8 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
 // Native focus/panel integration only; this invokes the app API, not the OS hotkey.
-// Real hotkeys, macOS Spaces, and latency still require the manual acceptance
+// Synthetic paste does not use the OS clipboard. Real hotkeys, clipboard, macOS Spaces,
+// and latency still require the manual acceptance
 // sequence in docs/development.md. Listing this test does not run that acceptance.
 test("interactive: quick chat takes input focus without showing a hidden main window", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-focus-"));
@@ -66,20 +67,38 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
     mainVisible: false,
     bounds: { width: 360, height: 184, y: compactBottom - 184 },
   });
+  await input.evaluate((element) => {
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWN415H2riONAUIBADY+B3G73tFAAAAAAElFTkSuQmCC";
+    const data = new DataTransfer();
+    const bytes = Uint8Array.from(atob(png), (char) => char.charCodeAt(0));
+    data.items.add(new File([bytes], "focus.png", { type: "image/png" }));
+    element.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  });
+  const pendingImages = quick.getByRole("group", { name: "待发送图片", exact: true });
+  await expect(pendingImages.getByRole("button", { name: "预览 focus.png", exact: true })).toBeEnabled();
+  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 264, y: compactBottom - 264 } });
+  await expect(input).toBeFocused();
   await input.fill("跨桌面仍保留的草稿");
-  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 44, y: compactBounds.y } });
+  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 124, y: compactBottom - 124 } });
   for (let index = 0; index < 3; index++) {
     await input.press("Escape");
     await expect.poll(state).toMatchObject({ quickVisible: false, mainVisible: false });
     await main.evaluate(() => window.zpi.openQuickChat());
     await expect(input).toHaveValue("跨桌面仍保留的草稿");
+    await expect(pendingImages.getByRole("button", { name: "预览 focus.png", exact: true })).toBeEnabled();
     await expect(input).toBeFocused();
     await expect.poll(state).toMatchObject({
       quickVisible: true,
       quickFocused: true,
       mainVisible: false,
       mainFocused: false,
-      bounds: { width: 360, height: 44, y: compactBounds.y },
+      bounds: { width: 360, height: 124, y: compactBottom - 124 },
     });
   }
+  await pendingImages.getByRole("button", { name: "移除 focus.png", exact: true }).click();
+  await expect(pendingImages).toHaveCount(0);
+  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 44, y: compactBounds.y } });
 });

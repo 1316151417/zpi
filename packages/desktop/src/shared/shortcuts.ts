@@ -2,6 +2,7 @@
 export const shortcutCommands = [
   { id: "toggle-window", label: "显示或隐藏窗口", scope: "global" },
   { id: "quick-chat", label: "快速对话", scope: "global" },
+  { id: "quick-chat-new", label: "新建快速对话", scope: "global" },
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
   { id: "focus-composer", label: "聚焦任务输入框", scope: "app" },
@@ -124,6 +125,7 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
     bindings: {
       "toggle-window": platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
       "quick-chat": "Alt+N",
+      "quick-chat-new": "Alt+Shift+N",
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
       "focus-composer": `${primary}+I`,
@@ -188,7 +190,7 @@ export function shortcutForEvent(
   return shortcutCommands.find(({ id }) => {
     const saved = settings.bindings[id];
     return (
-      (event.key !== "Dead" || id === "quick-chat") &&
+      (event.key !== "Dead" || id === "quick-chat" || id === "quick-chat-new") &&
       saved !== null &&
       normalizeShortcut(saved, platform) === binding
     );
@@ -236,7 +238,10 @@ function reservedShortcut(binding: string, command: ShortcutCommand, platform: s
     return "此组合保留给系统导航或文本编辑";
   if (key === "Escape") return "Escape 组合保留给系统或弹窗操作";
   const quickChatAltLetter =
-    command === "quick-chat" && held.size === 1 && held.has("Alt") && /^[A-Z]$/.test(key);
+    (command === "quick-chat" || command === "quick-chat-new") &&
+    held.has("Alt") &&
+    [...held].every((modifier) => modifier === "Alt" || modifier === "Shift") &&
+    /^[A-Z]$/.test(key);
   if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key) && !quickChatAltLetter)
     return "请包含 Ctrl 或 Command，避免影响正常输入";
   const primary = platform === "darwin" ? "Command" : "Control";
@@ -357,5 +362,14 @@ export function withQuickChatShortcut(settings: ShortcutSettings, platform: stri
     platform,
     "quick-chat",
     () => defaultShortcuts(platform).bindings["quick-chat"],
+  );
+}
+
+export function withQuickChatNewShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
+  return withMissingShortcut(
+    settings,
+    platform,
+    "quick-chat-new",
+    () => defaultShortcuts(platform).bindings["quick-chat-new"],
   );
 }

@@ -72,7 +72,8 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
           <span className="settings-row-copy">
             <strong>全局快捷键</strong>
             <small>
-              {formatShortcut(shortcuts.bindings["quick-chat"], window.zpi.platform)}
+              显示或隐藏：{formatShortcut(shortcuts.bindings["quick-chat"], window.zpi.platform)}
+              {" · "}新建：{formatShortcut(shortcuts.bindings["quick-chat-new"], window.zpi.platform)}
               {!shortcuts.enabled && "（快捷键已停用）"}
             </small>
           </span>

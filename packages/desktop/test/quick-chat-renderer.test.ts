@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { type ImageAttachment, imageLimits } from "zpi-coding-agent/input";
 import { Conversation } from "zpi-ui";
 import { emptySession } from "zpi-ui/projection";
 import { QuickChat } from "../src/renderer/QuickChat.tsx";
@@ -68,6 +69,29 @@ function query<T extends Element>(selector: string): T {
   expect(element, selector).not.toBeNull();
   return element as T;
 }
+const imageMetadata = (id = "image-1", name = "clipboard.png"): ImageAttachment => ({
+  id,
+  name,
+  mimeType: "image/png",
+  width: 1,
+  height: 1,
+  size: 20,
+});
+const clipboardImage = (name = "clipboard.png") => new File(["png bytes"], name, { type: "image/png" });
+const paste = async (files: File[] = [], text = "") => {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: {
+      items: files.map((file) => ({ kind: "file", type: file.type, getAsFile: () => file })),
+      files,
+      getData: (type: string) => (type === "text/plain" ? text : ""),
+    },
+  });
+  await act(async () => {
+    input().dispatchEvent(event);
+  });
+  return event;
+};
 const input = () => query<HTMLTextAreaElement>("textarea");
 const button = (label: string) => query<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const click = async (element: HTMLElement) => {
@@ -136,6 +160,15 @@ beforeEach(() => {
   bridge = {
     getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     send: vi.fn(async () => ok()),
+    importAttachment: vi.fn(async (_sessionId, file) => ({
+      ok: true as const,
+      value: imageMetadata(`image-${file.name}`, file.name),
+    })),
+    readAttachment: vi.fn(async (_sessionId, id) => ({
+      ok: true as const,
+      value: { metadata: imageMetadata(id), data: "aW1hZ2U=" },
+    })),
+    removeAttachment: vi.fn(async () => ok()),
     stop: vi.fn(async () => ok()),
     reset: vi.fn(async () => ok()),
     hide: vi.fn(async () => ok()),
@@ -1294,4 +1327,388 @@ test("does not restore an old hide error after the session has been replaced", a
   );
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(input().value).toBe("fresh session draft");
+});
+
+test("pastes an image, shows its thumbnail and sends image-only input using an attachment id", async () => {
+  await mount();
+  const file = clipboardImage();
+  const event = await paste([file]);
+  expect(event.defaultPrevented).toBe(true);
+  expect(bridge.importAttachment).toHaveBeenCalledExactlyOnceWith("quick-session", file);
+  expect(bridge.readAttachment).toHaveBeenCalledExactlyOnceWith("quick-session", "image-clipboard.png");
+  expect(query<HTMLImageElement>(".quick-chat-attachment img").src).toBe("data:image/png;base64,aW1hZ2U=");
+  expect(button("发送").disabled).toBe(false);
+  expect(conversationLoader).not.toHaveBeenCalled();
+  await key(input(), "Enter");
+  expect(bridge.send).toHaveBeenCalledExactlyOnceWith("", ["image-clipboard.png"]);
+  expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+  expect(bridge.removeAttachment).not.toHaveBeenCalled();
+});
+
+test("keeps plain text and data URLs on the browser paste path, without importing images", async () => {
+  await mount();
+  expect((await paste([], "ordinary text")).defaultPrevented).toBe(false);
+  expect((await paste([], "data:image/png;base64,arbitrary")).defaultPrevented).toBe(false);
+  expect((await paste([new File(["text"], "note.txt", { type: "text/plain" })])).defaultPrevented).toBe(
+    false,
+  );
+  expect(bridge.importAttachment).not.toHaveBeenCalled();
+  expect(bridge.readAttachment).not.toHaveBeenCalled();
+});
+
+test("inserts mixed clipboard text at the selection and sends it with the image", async () => {
+  await mount();
+  await type("before OLD after");
+  input().setSelectionRange(7, 10);
+  await paste([clipboardImage()], "new\ntext");
+  expect(input().value).toBe("before new\ntext after");
+  await key(input(), "Enter", { shiftKey: true });
+  expect(bridge.send).not.toHaveBeenCalled();
+  await composition("compositionstart");
+  await key(input(), "Enter");
+  expect(bridge.send).not.toHaveBeenCalled();
+  await composition("compositionend");
+  await key(input(), "Enter");
+  expect(bridge.send).toHaveBeenCalledExactlyOnceWith("before new\ntext after", ["image-clipboard.png"]);
+});
+
+test("retains early text and queued clipboard images when the first snapshot arrives", async () => {
+  const request = deferred<Result<QuickChatSnapshot>>();
+  vi.mocked(bridge.getSnapshot).mockReturnValue(request.promise);
+  await mount();
+  await type("before connection");
+  await paste([clipboardImage()]);
+  expect(bridge.importAttachment).not.toHaveBeenCalled();
+  expect(button("发送").disabled).toBe(true);
+  await act(async () => request.resolve({ ok: true, value: snapshot }));
+  expect(input().value).toBe("before connection");
+  expect(bridge.importAttachment).toHaveBeenCalledOnce();
+  expect(button("发送").disabled).toBe(false);
+});
+
+test("reserves the image count across consecutive pastes while imports are pending", async () => {
+  const request = deferred<Result<ImageAttachment>>();
+  vi.mocked(bridge.importAttachment).mockReturnValue(request.promise);
+  await mount();
+  for (let index = 0; index < imageLimits.count + 2; index += 1)
+    await paste([clipboardImage(`${index}.png`)]);
+  expect(bridge.importAttachment).toHaveBeenCalledTimes(imageLimits.count);
+  expect(container.querySelectorAll(".quick-chat-attachment")).toHaveLength(imageLimits.count);
+  expect(query('[role="alert"]').textContent).toContain("最多可添加 8 张图片");
+  await type("wait for images");
+  await key(input(), "Enter");
+  expect(bridge.send).not.toHaveBeenCalled();
+  expect(button("发送").disabled).toBe(true);
+});
+
+test("keeps a rejected clipboard file and text for an explicit import retry", async () => {
+  vi.mocked(bridge.importAttachment).mockResolvedValueOnce({
+    ok: false,
+    error: { code: "invalid_input", message: "图片损坏" },
+  });
+  await mount();
+  await type("keep my text");
+  const file = clipboardImage();
+  await paste([file]);
+  expect(input().value).toBe("keep my text");
+  expect(container.querySelector(".quick-chat-attachment img")).toBeNull();
+  expect(query('[role="alert"]').textContent).toContain("图片损坏");
+  expect(button("发送").disabled).toBe(true);
+  await click(button("重试 clipboard.png"));
+  expect(bridge.importAttachment).toHaveBeenNthCalledWith(2, "quick-session", file);
+  expect(button("发送").disabled).toBe(false);
+});
+
+test.each([0, imageLimits.sourceBytes + 1])(
+  "rejects a %s-byte file before calling the import bridge",
+  async (size) => {
+    await mount();
+    const file = clipboardImage();
+    Object.defineProperty(file, "size", { value: size });
+    await paste([file]);
+    expect(bridge.importAttachment).not.toHaveBeenCalled();
+    expect(button("重试 clipboard.png")).toBeDefined();
+    expect(button("发送").disabled).toBe(true);
+    await click(button("移除 clipboard.png"));
+    expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+  },
+);
+
+test("retries a thumbnail read without reimporting its validated attachment", async () => {
+  vi.mocked(bridge.readAttachment).mockResolvedValueOnce({
+    ok: false,
+    error: { code: "not_found", message: "暂时无法预览" },
+  });
+  await mount();
+  await paste([clipboardImage()]);
+  expect(button("重试 clipboard.png").title).toContain("暂时无法预览");
+  expect(button("发送").disabled).toBe(false);
+  await click(button("重试 clipboard.png"));
+  expect(bridge.importAttachment).toHaveBeenCalledOnce();
+  expect(bridge.readAttachment).toHaveBeenCalledTimes(2);
+  expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+});
+
+test("keeps an image when removal fails, then allows a removal retry", async () => {
+  vi.mocked(bridge.removeAttachment).mockResolvedValueOnce({
+    ok: false,
+    error: { code: "busy", message: "稍后移除" },
+  });
+  await mount();
+  await paste([clipboardImage()]);
+  await click(button("移除 clipboard.png"));
+  expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+  expect(query('[role="alert"]').textContent).toContain("稍后移除");
+  await click(button("重试 clipboard.png"));
+  expect(bridge.removeAttachment).toHaveBeenCalledTimes(2);
+  expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+});
+
+test("removes a pending placeholder and cleans up its eventual import without restoring it", async () => {
+  const request = deferred<Result<ImageAttachment>>();
+  vi.mocked(bridge.importAttachment).mockReturnValue(request.promise);
+  await mount();
+  await paste([clipboardImage()]);
+  await click(button("移除 clipboard.png"));
+  await act(async () => request.resolve({ ok: true, value: imageMetadata("late-import") }));
+  expect(bridge.removeAttachment).toHaveBeenCalledExactlyOnceWith("quick-session", "late-import");
+  expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+});
+
+test("caps the compact composer at 264px with an image row and returns to its text-only height", async () => {
+  await mount();
+  measureInput(() => input().value.split("\n").length * 24);
+  await paste([clipboardImage()]);
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 124);
+  await type(Array.from({ length: 12 }, () => "line").join("\n"));
+  expect(input().style.height).toBe("168px");
+  expect(input().style.overflowY).toBe("auto");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 264);
+  await click(button("移除 clipboard.png"));
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 184);
+});
+
+test("preserves hidden images and clears them on a manual reset that stays expanded", async () => {
+  await mount();
+  await push({ expanded: true });
+  expect(state()).toBe("expanded");
+  expect(button("新对话")).toBeDefined();
+  expect(conversationLoader).not.toHaveBeenCalled();
+  await type("draft");
+  await paste([clipboardImage()]);
+  await key(input(), "Escape");
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(input().value).toBe("draft");
+  expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+  vi.mocked(bridge.reset).mockImplementation(async () => {
+    emit({ session: emptySession("manual-reset"), expanded: true });
+    return ok();
+  });
+  await click(button("新对话"));
+  expect(state()).toBe("expanded");
+  expect(input().value).toBe("");
+  expect(button("新对话")).toBeDefined();
+  expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+  expect(conversationLoader).not.toHaveBeenCalled();
+});
+
+test("retains text and images on send rejection and retries with the same ids", async () => {
+  vi.mocked(bridge.send).mockResolvedValueOnce({
+    ok: false,
+    error: { code: "configuration", message: "当前模型不支持图片" },
+  });
+  await mount();
+  await type("describe this");
+  await paste([clipboardImage()]);
+  await key(input(), "Enter");
+  expect(input().value).toBe("describe this");
+  expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+  expect(query('[role="alert"]').textContent).toContain("当前模型不支持图片");
+  await key(input(), "Enter");
+  expect(bridge.send).toHaveBeenNthCalledWith(2, "describe this", ["image-clipboard.png"]);
+  expect(bridge.importAttachment).toHaveBeenCalledOnce();
+  expect(input().value).toBe("");
+});
+
+test("restores the untouched text and images after an accepted send fails at the provider", async () => {
+  vi.mocked(bridge.send).mockImplementation(async () => {
+    emit({ session: { ...snapshot.session, runs: [run("running")] } });
+    return ok();
+  });
+  await mount();
+  await type("retry me");
+  await paste([clipboardImage()]);
+  await key(input(), "Enter");
+  expect(input().value).toBe("");
+  expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+  await push({
+    session: { ...snapshot.session, runs: [{ ...run("completed"), status: "error", error: "离线" }] },
+  });
+  expect(input().value).toBe("retry me");
+  expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+  expect(query('[role="alert"]').textContent).toContain("离线");
+});
+
+test("does not overwrite a newer draft or image after the previous accepted send fails", async () => {
+  vi.mocked(bridge.send).mockImplementation(async () => {
+    emit({ session: { ...snapshot.session, runs: [run("running")] } });
+    return ok();
+  });
+  await mount();
+  await type("old text");
+  await paste([clipboardImage("old.png")]);
+  await key(input(), "Enter");
+  await type("new text");
+  await paste([clipboardImage("new.png")]);
+  await push({ session: { ...snapshot.session, runs: [{ ...run("completed"), status: "error" }] } });
+  expect(input().value).toBe("new text");
+  expect(container.querySelector('img[alt="new.png"]')).not.toBeNull();
+  expect(container.querySelector('img[alt="old.png"]')).toBeNull();
+});
+
+test.each(["resolve", "reject"] as const)(
+  "ignores an old session's %s after image import",
+  async (outcome) => {
+    const request = deferred<Result<ImageAttachment>>();
+    vi.mocked(bridge.importAttachment).mockReturnValueOnce(request.promise);
+    await mount();
+    await paste([clipboardImage("old.png")]);
+    await push({ session: emptySession("replacement") });
+    await type("new text");
+    await paste([clipboardImage("new.png")]);
+    await act(async () => {
+      if (outcome === "resolve") request.resolve({ ok: true, value: imageMetadata("old-image") });
+      else request.reject(new Error("old import failure"));
+    });
+    expect(input().value).toBe("new text");
+    expect(container.querySelector('img[alt="new.png"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="old.png"], [role="alert"]')).toBeNull();
+  },
+);
+
+test.each(["read", "remove"] as const)("ignores an old session's late image %s failure", async (action) => {
+  const request = deferred<Result<never>>();
+  if (action === "read") vi.mocked(bridge.readAttachment).mockReturnValueOnce(request.promise);
+  else vi.mocked(bridge.removeAttachment).mockReturnValueOnce(request.promise);
+  await mount();
+  await paste([clipboardImage("old.png")]);
+  if (action === "remove") await click(button("移除 old.png"));
+  await push({ session: emptySession("replacement") });
+  await paste([clipboardImage("new.png")]);
+  await act(async () => request.reject(new Error(`old ${action} failure`)));
+  expect(container.querySelector('img[alt="new.png"]')).not.toBeNull();
+  expect(container.querySelector('img[alt="old.png"], [role="alert"]')).toBeNull();
+  expect(container.textContent).not.toContain("重试");
+});
+
+test("preserves images pasted while a send is pending and ignores an old session's send result", async () => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValueOnce(request.promise);
+  await mount();
+  await paste([clipboardImage("sent.png")]);
+  await key(input(), "Enter");
+  await paste([clipboardImage("next.png")]);
+  await act(async () => request.resolve(ok()));
+  expect(container.querySelector('img[alt="sent.png"]')).toBeNull();
+  expect(container.querySelector('img[alt="next.png"]')).not.toBeNull();
+  const old = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValueOnce(old.promise);
+  await key(input(), "Enter");
+  await push({ session: emptySession("replacement") });
+  await paste([clipboardImage("next.png")]);
+  await act(async () => old.resolve(ok()));
+  expect(container.querySelector('img[alt="next.png"]')).not.toBeNull();
+});
+
+test("renders history images through the dedicated attachment bridge", async () => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        this.callback(
+          [{ target, isIntersecting: true } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      disconnect() {}
+    },
+  );
+  await mount();
+  await push({
+    session: {
+      ...snapshot.session,
+      runs: [{ ...run("completed"), attachments: [imageMetadata("history-image")] }],
+    },
+  });
+  expect(bridge.readAttachment).toHaveBeenCalledExactlyOnceWith("quick-session", "history-image");
+  expect(query<HTMLImageElement>(".message-images img").src).toBe("data:image/png;base64,aW1hZ2U=");
+});
+
+test("releases ready draft images and late successful imports when the renderer unmounts", async () => {
+  const request = deferred<Result<ImageAttachment>>();
+  await mount();
+  await paste([clipboardImage("ready.png")]);
+  vi.mocked(bridge.importAttachment).mockReturnValueOnce(request.promise);
+  await paste([clipboardImage("pending.png")]);
+  await act(async () => root.render(null));
+  expect(bridge.removeAttachment).toHaveBeenCalledWith("quick-session", "image-ready.png");
+  await act(async () => request.resolve({ ok: true, value: imageMetadata("late-import") }));
+  expect(bridge.removeAttachment).toHaveBeenCalledWith("quick-session", "late-import");
+  expect(container.childElementCount).toBe(0);
+});
+
+test("keeps image input scrollable under a clamped compact display and reserves send-control space", async () => {
+  const style = document.createElement("style");
+  style.textContent = readFileSync(new URL("../src/renderer/quick-chat.css", import.meta.url), "utf8");
+  document.head.append(style);
+  try {
+    await mount();
+    measureInput(
+      () => 240,
+      () => 28,
+    );
+    await paste([clipboardImage()]);
+    await type("long input on an 80px-tall display");
+    expect(input().style.overflowY).toBe("auto");
+    expect(getComputedStyle(query(".quick-chat-composer-input-row")).minHeight).toBe("28px");
+    expect(getComputedStyle(query(".quick-chat-composer-input-row")).flexShrink).toBe("0");
+    expect(Number.parseFloat(getComputedStyle(query(".quick-chat-attachments")).minHeight)).toBe(0);
+    expect(getComputedStyle(query(".quick-chat-attachments")).overflowY).toBe("hidden");
+    expect(getComputedStyle(button("发送")).height).toBe("28px");
+    expect(button("发送").disabled).toBe(false);
+  } finally {
+    style.remove();
+  }
+});
+
+test("recovers an image-only provider failure that arrives before the send reply", async () => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockImplementation(() => {
+    emit({
+      session: { ...snapshot.session, runs: [{ ...run("completed"), status: "error", error: "发送失败" }] },
+    });
+    return request.promise;
+  });
+  await mount();
+  await paste([clipboardImage()]);
+  await key(input(), "Enter");
+  await act(async () => request.resolve(ok()));
+  expect(input().value).toBe("");
+  expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+  expect(button("发送").disabled).toBe(false);
+  expect(query('[role="alert"]').textContent).toContain("发送失败");
+});
+
+test("keeps an emergency small-display layout for the expanded input and send row", () => {
+  const css = readFileSync(new URL("../src/renderer/quick-chat.css", import.meta.url), "utf8");
+  const compactViewportRules = css.slice(css.indexOf("@media (max-height: 140px)"));
+  expect(compactViewportRules).toContain(".quick-chat-expanded .quick-chat-composer-container");
+  expect(compactViewportRules).toContain("padding-block: 0");
+  expect(compactViewportRules).toContain("padding-block: 2px");
+  expect(compactViewportRules).toContain("gap: 0");
+  expect(compactViewportRules).toContain("min-height: 28px");
 });

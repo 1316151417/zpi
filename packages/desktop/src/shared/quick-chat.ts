@@ -1,3 +1,4 @@
+import type { ImageAttachment } from "zpi-coding-agent/input";
 import type { SessionView } from "zpi-ui";
 import type { CombinedSelection, PublicSettings, Result } from "./bridge.ts";
 
@@ -7,11 +8,15 @@ export interface QuickChatSnapshot {
   settings: PublicSettings;
   selection: CombinedSelection | null;
   cwd: string;
+  expanded?: boolean;
 }
 /** Only this bridge is exposed to the temporary window. No task or privileged desktop API. */
 export interface QuickChatBridge {
   getSnapshot(): Promise<Result<QuickChatSnapshot>>;
-  send(text: string): Promise<Result<void>>;
+  send(text: string, attachments?: string[]): Promise<Result<void>>;
+  importAttachment(sessionId: string, file: File): Promise<Result<ImageAttachment>>;
+  readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: ImageAttachment; data: string }>>;
+  removeAttachment(sessionId: string, id: string): Promise<Result<void>>;
   stop(): Promise<Result<void>>;
   reset(): Promise<Result<void>>;
   hide(): Promise<Result<void>>;

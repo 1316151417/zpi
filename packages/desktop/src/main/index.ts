@@ -325,8 +325,9 @@ async function launch(): Promise<void> {
     process.platform,
     (command) => {
       if (ending) return;
-      if (command === "quick-chat") {
-        void quickChat.toggle().catch((error) => {
+      if (command === "quick-chat" || command === "quick-chat-new") {
+        const action = command === "quick-chat-new" ? quickChat.newConversation() : quickChat.toggle();
+        void action.catch((error) => {
           errors.write("quick-chat.window", error);
           if (!testMode && !ending) dialog.showErrorBox("快速对话无法打开", String(error));
         });
