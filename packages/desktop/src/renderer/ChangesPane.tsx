@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { DiffView, type FindRequest, type FindState, ToolFilePreview } from "zpi-ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DiffView, type FindRequest, type FindState, ToolFilePreview, useSelectionStableValue } from "zpi-ui";
 import type { DiffItem } from "../shared/bridge.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, paneTask } from "./pane-store.ts";
@@ -21,11 +21,17 @@ export function ChangesPane({
   toolCallId?: string;
   visible: boolean;
 }) {
-  const operation = useStore((state) =>
+  const incomingOperation = useStore((state) =>
     state.views
       .get(sessionId)
       ?.runs.find((run) => run.runId === runId)
       ?.orderedBlocks.find((block) => block.type === "tool" && block.toolCallId === toolCallId),
+  );
+  const root = useRef<HTMLDivElement>(null);
+  const operation = useSelectionStableValue(
+    incomingOperation,
+    `${sessionId}:${runId}:${toolCallId}:${path}`,
+    root,
   );
   const pending = operation?.type === "tool" && ["preparing", "running"].includes(operation.status);
   const previewOperation = operation?.type === "tool" && !operation.fileChange;
@@ -90,7 +96,7 @@ export function ChangesPane({
     [sessionId, entries],
   );
   return (
-    <div className="changes-pane">
+    <div ref={root} className="changes-pane">
       {!pending && error && (
         <p role="alert" className="run-error">
           {error}

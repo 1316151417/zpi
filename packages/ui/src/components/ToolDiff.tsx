@@ -1,13 +1,15 @@
 // ZCode EditInlineDiffContent/lightweight-diff-preview presentation (Apache-2.0).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { useAppearance } from "../appearance.ts";
 import { toolPatchLanguage } from "../code-language.ts";
 import { patchPreviewLines } from "./tool-presentation.ts";
 
+import { useSelectionStableValue } from "./use-selection-stable-value.ts";
+
 export { toolCodeLanguage } from "../code-language.ts";
 
-export function useToolTokens(code: string, language: BundledLanguage) {
+export function useToolTokens(code: string, language: BundledLanguage, streaming = false) {
   const { theme } = useAppearance();
   const [highlight, setHighlight] = useState<{
     code: string;
@@ -20,47 +22,64 @@ export function useToolTokens(code: string, language: BundledLanguage) {
     setHighlight(undefined);
     // Match ZCode's lightweight preview cutoff and its plain-text/log fast path.
     if (!code || code.length > 120_000 || language === "log") return;
-    void import("shiki")
-      .then(({ codeToTokens }) => {
-        if (!active) return;
-        return codeToTokens(code, {
-          lang: language,
-          theme: theme === "dark" ? "github-dark" : "github-light",
+    const highlight = () => {
+      void import("shiki")
+        .then(({ codeToTokens }) => {
+          if (!active) return;
+          return codeToTokens(code, {
+            lang: language,
+            theme: theme === "dark" ? "github-dark" : "github-light",
+          });
+        })
+        .then((result) => {
+          if (active && result) setHighlight({ code, language, theme, tokens: result.tokens });
+        })
+        .catch(() => {
+          /* 纯文本首帧始终保留。 */
         });
-      })
-      .then((result) => {
-        if (active && result) setHighlight({ code, language, theme, tokens: result.tokens });
-      })
-      .catch(() => {
-        /* 纯文本首帧始终保留。 */
-      });
+    };
+    // Keep content immediate; coalesce costly full-document tokenization while streaming.
+    const timer = streaming ? setTimeout(highlight, 150) : undefined;
+    if (!streaming) highlight();
     return () => {
       active = false;
+      clearTimeout(timer);
     };
-  }, [code, language, theme]);
+  }, [code, language, theme, streaming]);
   return highlight?.code === code && highlight.language === language && highlight.theme === theme
     ? highlight.tokens
     : undefined;
 }
 
-export function ToolCode({ text, language = "json" }: { text: string; language?: BundledLanguage }) {
-  const tokens = useToolTokens(text, language);
+export function ToolCode({
+  text,
+  language = "json",
+  streaming = false,
+}: {
+  text: string;
+  language?: BundledLanguage;
+  streaming?: boolean;
+}) {
+  const tokens = useToolTokens(text, language, streaming);
+  const root = useRef<HTMLDivElement>(null);
+  const incoming = useMemo(() => ({ text, language, tokens }), [text, language, tokens]);
+  const display = useSelectionStableValue(incoming, language, root);
   return (
-    <div className="tool-input-code" data-language={language}>
+    <div ref={root} className="tool-input-code" data-language={display.language}>
       <pre>
         <code>
-          {tokens
-            ? tokens.map((line, i) => (
+          {display.tokens
+            ? display.tokens.map((line, i, lines) => (
                 <span key={i}>
                   {line.map((token, j) => (
                     <span key={j} style={{ color: token.color }}>
                       {token.content}
                     </span>
                   ))}
-                  {i < tokens.length - 1 ? "\n" : ""}
+                  {i < lines.length - 1 ? "\n" : ""}
                 </span>
               ))
-            : text}
+            : display.text}
         </code>
       </pre>
     </div>

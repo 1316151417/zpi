@@ -1,6 +1,6 @@
 // ZCode read/execute/edit renderers, adapted to ZPI's four tools (Apache-2.0).
 import { Pencil, Search, SquareTerminal, Wrench } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FileOpenHandler, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { AskQuestionToolBlock } from "./AskQuestionToolBlock.tsx";
 import { FlipMetricValue } from "./FlipMetricValue.tsx";
@@ -15,6 +15,7 @@ import { ToolLayout } from "./ToolLayout.tsx";
 import { ToolOutput } from "./ToolOutput.tsx";
 import { toolInputPreview } from "./tool-input-preview.ts";
 import { executionCommand, type ToolView, toolCommand, toolFile, toolLabel } from "./tool-presentation.ts";
+import { useSelectionStableValue } from "./use-selection-stable-value.ts";
 import { WebToolBlock } from "./WebToolBlock.tsx";
 
 export interface ToolBlockProps {
@@ -84,6 +85,9 @@ export function ToolFilePreview({
   onFile,
   onLink,
 }: Pick<ToolBlockProps, "block" | "onLoadPatch" | "workspace" | "onCopy" | "onFile" | "onLink">) {
+  const root = useRef<HTMLDivElement>(null);
+  const scopeKey = `${block.id}:${toolFile(block)?.path ?? ""}`;
+  block = useSelectionStableValue(block, scopeKey, root);
   const input = toolInputPreview(block);
   const content = block.name === "write" && typeof input?.content === "string" ? input.content : "";
   const path = toolFile(block)?.path ?? "";
@@ -107,7 +111,7 @@ export function ToolFilePreview({
     };
   }, [block.toolCallId, block.fileChange, onLoadPatch]);
   return (
-    <div className="tool-file-details">
+    <div ref={root} className="tool-file-details">
       {patch ? (
         <ToolDiff
           patch={patch}
@@ -128,14 +132,23 @@ export function ToolFilePreview({
               onLink={onLink ?? (() => {})}
             />
           ) : (
-            <ToolCode text={content} language={language} />
+            <ToolCode
+              key={scopeKey}
+              text={content}
+              language={language}
+              streaming={block.status === "preparing"}
+            />
           )}
         </div>
       ) : input !== undefined ? (
         <div className="tool-parameters">
           <h4>Parameters</h4>
           <div className="tool-parameters-code">
-            <ToolCode text={JSON.stringify(input, null, 2)} />
+            <ToolCode
+              key={scopeKey}
+              text={JSON.stringify(input, null, 2)}
+              streaming={block.status === "preparing"}
+            />
           </div>
         </div>
       ) : null}

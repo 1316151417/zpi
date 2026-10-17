@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ToolBlock } from "../src/components/ToolBlock.tsx";
 import { toolInputPreview } from "../src/components/tool-input-preview.ts";
 import { type ToolView, toolCommand, toolFile } from "../src/components/tool-presentation.ts";
+import { emptySession, reduceSession } from "../src/reducer.ts";
+import type { DesktopEvent } from "../src/types.ts";
 
 // File icon URLs need the document base even during this server-rendered component test.
 beforeAll(() => vi.stubGlobal("document", { baseURI: "http://localhost/" }));
@@ -78,6 +80,97 @@ describe("ZCode streaming tool input preview", () => {
     ['{"path":"src/', { path: "src/" }],
   ])("recovers existing string fields from incomplete JSON: %s", (raw, input) => {
     expect(toolInputPreview(tool(raw))).toEqual(input);
+  });
+
+  it("keeps nested JSON escapes stable at every streaming boundary", () => {
+    const content = JSON.stringify(
+      { searches: [{ summary: "# 数智周报\n\n2026.10.17 02:34\n## 观点\n人工智能投资" }] },
+      null,
+      2,
+    );
+    const raw = JSON.stringify({ path: "ai-news.json", content });
+    let previous = "";
+    for (let end = 1; end <= raw.length; end++) {
+      const preview = toolInputPreview(tool(raw.slice(0, end)))?.content;
+      if (typeof preview !== "string") continue;
+      expect(content.startsWith(preview), `invalid content at offset ${end}`).toBe(true);
+      expect(preview.startsWith(previous), `rewritten prefix at offset ${end}`).toBe(true);
+      previous = preview;
+    }
+    expect(previous).toBe(content);
+  });
+
+  it.each(["\\", "\\\\", "\\u", "\\u4", "\\u4e", "\\u4e2", "\\u4e2d", "\\n", "\\r", "\\t"])(
+    "preserves literal escapes in %j at every streaming boundary",
+    (content) => {
+      const raw = JSON.stringify({ content });
+      let previous = "";
+      for (let end = 1; end <= raw.length; end++) {
+        const preview = toolInputPreview(tool(raw.slice(0, end)))?.content;
+        if (typeof preview !== "string") continue;
+        expect(content.startsWith(preview), `invalid content at offset ${end}`).toBe(true);
+        expect(preview.startsWith(previous), `rewritten prefix at offset ${end}`).toBe(true);
+        previous = preview;
+      }
+      expect(previous).toBe(content);
+    },
+  );
+
+  it.each([
+    'line\n\tquoted "text"\rend',
+    "中文😀\b\f",
+    ...Array.from({ length: 8 }, (_, i) => `${"\\".repeat(i + 1)}\n\t\r"中文`),
+    ...Array.from({ length: 8 }, (_, i) => `${"\\".repeat(i + 1)}u4e2d`),
+  ])("decodes actual control characters, quotes and slash runs in %j", (content) => {
+    // Exercise providers that emit Unicode escapes as well as literal UTF-16.
+    for (const raw of [
+      JSON.stringify({ content }),
+      JSON.stringify({ content }).replace(/中/g, "\\u4e2d").replace(/文/g, "\\u6587"),
+    ]) {
+      let previous = "";
+      for (let end = 1; end <= raw.length; end++) {
+        const preview = toolInputPreview(tool(raw.slice(0, end)))?.content;
+        if (typeof preview !== "string") continue;
+        expect(content.startsWith(preview), `invalid content at offset ${end}`).toBe(true);
+        expect(preview.startsWith(previous), `rewritten prefix at offset ${end}`).toBe(true);
+        previous = preview;
+      }
+      expect(previous).toBe(content);
+    }
+  });
+
+  it("keeps the reducer-to-component preview stable when a chunk ends on an escaped slash", () => {
+    const content = JSON.stringify({ summary: "## 观点\n新闻正文\n第二段\t中文" }, null, 2);
+    const args = JSON.stringify({ path: "ai-news.json", content });
+    const boundary = args.indexOf("\\\\n", args.indexOf("新闻正文")) + 2;
+    let view = emptySession("s");
+    let seq = 0;
+    const apply = (event: DesktopEvent) => {
+      view = reduceSession(view, { sessionId: "s", runId: "r", seq: ++seq, event });
+    };
+    apply({ type: "started", text: "write", startedAt: 1, modelLabel: "fake" });
+    apply({
+      type: "block_start",
+      messageId: "m",
+      contentIndex: 0,
+      kind: "tool",
+      toolCall: { type: "toolCall", id: "w", name: "write", arguments: {} },
+    });
+    apply({ type: "block_delta", messageId: "m", contentIndex: 0, delta: args.slice(0, boundary) });
+    const before = view.runs[0].orderedBlocks[0];
+    if (before.type !== "tool") throw new Error("Expected write block");
+    const preview = toolInputPreview(before)?.content;
+    expect(typeof preview).toBe("string");
+    expect(content.startsWith(preview as string)).toBe(true);
+    const html = render(before);
+    expect(html).toContain("tool-content-preview");
+    expect(html).toContain("观点\\n新闻正文");
+    expect(html).not.toContain("观点\\\n新闻正文");
+    apply({ type: "block_delta", messageId: "m", contentIndex: 0, delta: args.slice(boundary) });
+    const after = view.runs[0].orderedBlocks[0];
+    if (after.type !== "tool") throw new Error("Expected write block");
+    expect(toolInputPreview(after)?.content).toBe(content);
+    expect(toolInputPreview(before)?.content).toBe(preview);
   });
 
   it("preserves all fields and edit arrays when JSON is complete", () => {

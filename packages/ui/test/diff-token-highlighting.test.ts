@@ -28,9 +28,9 @@ vi.mock("../src/appearance.ts", () => ({ useAppearance: () => ({ theme: mocks.th
 vi.mock("shiki", () => ({ codeToTokens: mocks.highlight }));
 
 let cleanup: undefined | (() => void);
-function render(code: string, language: BundledLanguage = "typescript") {
+function render(code: string, language: BundledLanguage = "typescript", streaming = false) {
   // biome-ignore lint/correctness/useHookAtTopLevel: Hooks are mocked to test asynchronous effect cleanup without a DOM renderer.
-  return useToolTokens(code, language);
+  return useToolTokens(code, language, streaming);
 }
 function commit() {
   cleanup?.();
@@ -57,9 +57,54 @@ beforeEach(() => {
 afterEach(() => {
   cleanup?.();
   cleanup = undefined;
+  vi.useRealTimers();
 });
 
 describe("lightweight diff asynchronous highlighting", () => {
+  it("coalesces streaming highlighter work and highlights the latest text after a pause", async () => {
+    vi.useFakeTimers();
+    mocks.highlight.mockResolvedValue({ tokens: tokens("latest") });
+    for (const code of ["first", "second", "latest"]) {
+      expect(render(code, "json", true)).toBeUndefined();
+      commit();
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(mocks.highlight).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(mocks.highlight).toHaveBeenCalledExactlyOnceWith("latest", {
+      lang: "json",
+      theme: "github-light",
+    });
+  });
+
+  it("highlights immediately on completion and cancels the pending streaming timer", async () => {
+    vi.useFakeTimers();
+    mocks.highlight.mockResolvedValue({ tokens: tokens("final") });
+    render("partial", "json", true);
+    commit();
+    await vi.advanceTimersByTimeAsync(50);
+    render("final", "json", false);
+    commit();
+    await vi.dynamicImportSettled();
+    expect(mocks.highlight).toHaveBeenCalledExactlyOnceWith("final", {
+      lang: "json",
+      theme: "github-light",
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.highlight).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels delayed highlighting when the preview unmounts", async () => {
+    vi.useFakeTimers();
+    render("partial", "json", true);
+    commit();
+    cleanup?.();
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    expect(mocks.highlight).not.toHaveBeenCalled();
+  });
+
   it("keeps the first frame plain and then returns the matching Shiki tokens", async () => {
     const result = tokens("const value = 1;");
     mocks.highlight.mockResolvedValue({ tokens: result });

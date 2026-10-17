@@ -97,9 +97,14 @@ function readPartialString(raw: string, key: string): string | undefined {
       encoded += char;
     }
   }
-  if (escaped) encoded += "\\";
-  // A trailing slash or unfinished Unicode escape must not leak into the preview.
-  const normalized = closed ? encoded : encoded.replace(/\\u[0-9a-fA-F]{0,3}$/, "").replace(/\\$/, "");
+  // The scanner already holds an unfinished escape separately in `escaped`.
+  // Never strip a complete trailing \\ pair: doing so makes valid prefixes fail
+  // JSON.parse and incorrectly decodes every nested JSON \\n as a real newline.
+  const unicodeTail = !closed && /(\\+)u[0-9a-fA-F]{0,3}$/.exec(encoded);
+  const normalized =
+    unicodeTail && unicodeTail[1].length % 2 === 1
+      ? encoded.slice(0, encoded.length - unicodeTail[0].length + unicodeTail[1].length - 1)
+      : encoded;
   try {
     return JSON.parse(`"${normalized}"`) as string;
   } catch {

@@ -16,6 +16,7 @@ export { TaskFindBar } from "./components/TaskFindBar.tsx";
 export { TaskTitleOverflowText } from "./components/TaskTitleOverflowText.tsx";
 export { ToolFilePreview } from "./components/ToolBlock.tsx";
 export { toolFile } from "./components/tool-presentation.ts";
+export { useSelectionStableValue } from "./components/use-selection-stable-value.ts";
 export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,
