@@ -1108,6 +1108,24 @@ test("keeps hovered errors open and gives repeated failures a fresh three second
   expect(bridge.setNoticeHeight).toHaveBeenLastCalledWith("replacement", 0);
 });
 
+test("keeps expanded error controls beside the send control without covering the input", async () => {
+  const style = quickChatStyles();
+  try {
+    snapshot = { ...snapshot, expanded: true, session: { ...snapshot.session, runs: [run("completed")] } };
+    await mount();
+    vi.mocked(bridge.send).mockResolvedValue({ ok: false, error: { code: "provider", message: "发送失败" } });
+    await type("draft");
+    await key(input(), "Enter");
+    expect(query('[data-testid="quick-chat"]').className).toContain("quick-chat-has-error");
+    expect(getComputedStyle(input()).paddingRight).toBe("64px");
+    await click(button("关闭提示"));
+    expect(query('[data-testid="quick-chat"]').className).not.toContain("quick-chat-has-error");
+    expect(getComputedStyle(input()).paddingRight).toBe("0px");
+  } finally {
+    style.remove();
+  }
+});
+
 test.each<[string, KeyboardEventInit]>([
   ["IME key", { isComposing: true }],
   ["IME compatibility key", { keyCode: 229 }],

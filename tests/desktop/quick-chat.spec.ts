@@ -262,19 +262,23 @@ test("expanded window shows file link errors as a fully visible tooltip above th
     const tooltip = quick.getByRole("tooltip");
     await expect(tooltip).toContainText("快速对话不支持预览本地文件");
     const trigger = quick.getByRole("button", { name: "查看错误原因", exact: true });
+    const send = quick.getByRole("button", { name: "发送", exact: true });
     await expect
       .poll(async () => {
         const bubble = await tooltip.boundingBox();
         const icon = await trigger.boundingBox();
+        const sendBox = await send.boundingBox();
         return (
           bubble &&
-          icon && {
+          icon &&
+          sendBox && {
             insideX: bubble.x >= 12 && bubble.x + bubble.width <= 648,
             above: bubble.y + bubble.height <= icon.y,
+            besideSend: icon.x + icon.width <= sendBox.x,
           }
         );
       })
-      .toMatchObject({ insideX: true, above: true });
+      .toMatchObject({ insideX: true, above: true, besideSend: true });
     await expect(tooltip).toHaveCount(0, { timeout: 5000 });
     await trigger.hover();
     await expect(tooltip).toBeVisible();

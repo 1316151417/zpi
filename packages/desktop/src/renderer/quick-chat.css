@@ -336,6 +336,21 @@ html[data-quick-chat="true"] #root {
   max-height: min(160px, 100%);
 }
 
+/* Expanded keeps the indicator inline beside the send control; the input narrows
+   while the error is visible and restores after it is dismissed. */
+.quick-chat-expanded .quick-chat-error {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  justify-self: end;
+  max-height: none;
+  overflow: visible;
+}
+
+.quick-chat-expanded.quick-chat-has-error textarea {
+  padding-right: 64px;
+}
+
 .quick-chat-has-images.quick-chat-compact .quick-chat-composer-input-row {
   flex-shrink: 0;
   min-height: 28px;

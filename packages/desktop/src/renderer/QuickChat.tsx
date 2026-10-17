@@ -559,7 +559,7 @@ export function QuickChat({
 
   return (
     <main
-      className={`quick-chat${expanded ? " quick-chat-expanded" : " quick-chat-compact"}${hasImages ? " quick-chat-has-images" : ""}`}
+      className={`quick-chat${expanded ? " quick-chat-expanded" : " quick-chat-compact"}${hasImages ? " quick-chat-has-images" : ""}${visibleError ? " quick-chat-has-error" : ""}`}
       aria-label="快速对话"
       style={{ "--quick-chat-notice-height": `${reservedNoticeHeight}px` } as CSSProperties}
       data-testid="quick-chat"
