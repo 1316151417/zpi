@@ -77,13 +77,14 @@ import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
 import { HistoryPerformance, historyPerformance, sideChatGuard } from "./history-performance.ts";
 import { SessionInputQueue } from "./input-queue.ts";
+import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
 import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import type { StorageIntent, TaskState } from "./state-store.ts";
-import { resolveModel, type SettingsStore } from "./storage.ts";
+import type { SettingsStore } from "./storage.ts";
 import { retryStorageCleanup } from "./storage-cleanup.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
@@ -2834,19 +2835,10 @@ export class SessionHost {
     config = this.settings.snapshot(providerId),
   ): void {
     runtime.clearProviders();
-    runtime.registerProvider(providerId, {
-      baseUrl: config.baseUrl,
-      apiKey: config.apiKey,
-      ...(config.preset === "openai-chatgpt"
-        ? { getApiKey: () => this.settings.getRequestApiKey(providerId, this.requestFetch) }
-        : {}),
-      models: config.models
-        .filter((m) => m.enabled !== false)
-        .map((m) => {
-          const { provider: _provider, baseUrl: _url, ...model } = resolveModel(config, m);
-          return model;
-        }),
-    });
+    runtime.registerProvider(
+      providerId,
+      modelRuntimeConfig(config, () => this.settings.getRequestApiKey(providerId, this.requestFetch)),
+    );
   }
   private settle(id: string, run: ActiveRun, error?: unknown): void {
     if (this.activeRuns.get(id) !== run) return;

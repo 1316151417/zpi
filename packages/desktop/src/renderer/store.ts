@@ -10,28 +10,21 @@ import {
   sessionViewBytes,
 } from "zpi-ui";
 import { create } from "zustand";
-import type {
-  DesktopBridge,
-  ProjectRecord,
-  PublicSettings,
-  Result,
-  SessionRecord,
-} from "../shared/bridge.ts";
+import type { DesktopBridge, ProjectRecord, PublicSettings, SessionRecord } from "../shared/bridge.ts";
 import { emptyTaskGroups, type TaskGroupState, taskGroupFor } from "../shared/task-groups.ts";
 import { workspaceShortcutBlocked } from "./app-shortcuts.ts";
 import { logRendererError } from "./error-log.ts";
 import { previewLoader } from "./preview-loader.ts";
 import { hasRestorableFocus, isVisibleShortcutTarget } from "./shortcut-context.ts";
 import { readTaskPreferences, taskPreferencesKey } from "./sidebar-task-model.ts";
+import { unwrap } from "./unwrap.ts";
+
+export { unwrap } from "./unwrap.ts";
 
 declare global {
   interface Window {
     zpi: DesktopBridge;
   }
-}
-export function unwrap<T>(result: Result<T>): T {
-  if (!result.ok) throw new Error(result.error.message);
-  return result.value;
 }
 interface Store {
   taskGroups: TaskGroupState;

@@ -15,10 +15,11 @@ import type { CombinedSelection } from "../shared/bridge.ts";
 import { toThinking } from "../shared/config.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { quickChatSelection } from "../shared/quick-chat-settings.ts";
+import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { projectEvent } from "./projection.ts";
 import { quickChatPromptTemplate } from "./quick-chat-prompt.ts";
 import { recordedQuickChatWebSourceIcon } from "./quick-chat-source-icons.ts";
-import { resolveModel, type SettingsStore } from "./storage.ts";
+import type { SettingsStore } from "./storage.ts";
 import { WebTools } from "./web-tools.ts";
 
 export const QUICK_CHAT_IDLE_MS = 15 * 60 * 1000;
@@ -35,7 +36,7 @@ export class QuickChatHost {
   private settings: SettingsStore;
   private requestFetch: typeof fetch;
   private session?: AgentSession;
-  private runtime = new ModelRuntime();
+  private runtime: ModelRuntime;
   private view: SessionView = emptySession(randomUUID(), "快速对话");
   private selection: CombinedSelection | null;
   private active?: ActiveRun;
@@ -189,19 +190,12 @@ export class QuickChatHost {
       await mkdir(this.cwd, { recursive: true });
       if (this.closed || run.aborted) return;
       this.runtime.clearProviders();
-      this.runtime.registerProvider(selection.provider, {
-        baseUrl: config.baseUrl,
-        apiKey: config.apiKey,
-        ...(config.preset === "openai-chatgpt"
-          ? { getApiKey: () => this.settings.getRequestApiKey(selection.provider, this.requestFetch) }
-          : {}),
-        models: config.models
-          .filter((m) => m.enabled !== false)
-          .map((m) => {
-            const { provider: _provider, baseUrl: _url, ...model } = resolveModel(config, m);
-            return model;
-          }),
-      });
+      this.runtime.registerProvider(
+        selection.provider,
+        modelRuntimeConfig(config, () =>
+          this.settings.getRequestApiKey(selection.provider, this.requestFetch),
+        ),
+      );
       const model = this.runtime.getModel(selection.provider, selection.modelId);
       if (!model) throw new Error("configuration: 模型不可用");
       const enabled = ["read", "bash", ...(this.webEnabled() ? ["web_search", "web_fetch"] : [])];

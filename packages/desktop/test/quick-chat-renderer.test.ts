@@ -5,7 +5,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Conversation } from "zpi-ui";
 import { emptySession } from "zpi-ui/projection";
 import { QuickChat } from "../src/renderer/QuickChat.tsx";
-import QuickChatConversation from "../src/renderer/QuickChatConversation.tsx";
+import QuickChatConversation, {
+  type QuickChatConversationProps,
+} from "../src/renderer/QuickChatConversation.tsx";
 import type { CombinedSelection, PublicSettings, Result } from "../src/shared/bridge.ts";
 import { defaultCapabilities, defaultPreferences } from "../src/shared/config.ts";
 import type { QuickChatBridge, QuickChatSnapshot } from "../src/shared/quick-chat.ts";
@@ -910,6 +912,59 @@ test("loads rich output only after the first run and shows the latest snapshot w
   expect(storageWrite).not.toHaveBeenCalled();
 });
 
+test("does not rerender loaded history for draft edits but renders new session snapshots", async () => {
+  const renders = vi.fn<(props: QuickChatConversationProps) => void>();
+  conversationLoader.mockResolvedValue({
+    default: (props) => {
+      renders(props);
+      return createElement(QuickChatConversation, props);
+    },
+  });
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+  expect(container.textContent).toContain("hello");
+  expect(renders).toHaveBeenCalledOnce();
+  const onError = renders.mock.calls[0][0].onError;
+  const history = query(".conversation");
+
+  await type("next");
+  await type("next question");
+  await type("");
+  expect(renders).toHaveBeenCalledOnce();
+  expect(query(".conversation")).toBe(history);
+  expect(conversationLoader).toHaveBeenCalledOnce();
+
+  await push({
+    session: { ...snapshot.session, runs: [{ ...run("completed"), userMessage: "updated history" }] },
+  });
+  expect(renders).toHaveBeenCalledTimes(2);
+  expect(renders.mock.calls[1][0].onError).toBe(onError);
+  expect(container.textContent).toContain("updated history");
+  expect(container.textContent).not.toContain("hello");
+  expect(conversationLoader).toHaveBeenCalledOnce();
+});
+
+test("uses a replacement loader and ignores the obsolete loader's late completion", async () => {
+  const old = deferred<{ default: typeof QuickChatConversation }>();
+  const current = deferred<{ default: typeof QuickChatConversation }>();
+  conversationLoader.mockReturnValue(old.promise);
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+  const oldLoader = conversationLoader;
+  conversationLoader = vi.fn(() => current.promise);
+  await mount();
+  expect(conversationLoader).toHaveBeenCalledOnce();
+  await type("draft while the loader changes");
+  await act(async () => old.resolve({ default: QuickChatConversation }));
+  expect(container.querySelector(".conversation")).toBeNull();
+  expect(query('[role="status"]').textContent).toBe("正在加载对话…");
+  await act(async () => current.resolve({ default: QuickChatConversation }));
+  expect(container.textContent).toContain("hello");
+  expect(input().value).toBe("draft while the loader changes");
+  expect(oldLoader).toHaveBeenCalledOnce();
+  expect(conversationLoader).toHaveBeenCalledOnce();
+});
+
 test("keeps stop and Escape usable before rich output loads, preserving the conversation and draft", async () => {
   const request = deferred<{ default: typeof QuickChatConversation }>();
   conversationLoader.mockReturnValue(request.promise);
@@ -998,6 +1053,25 @@ test("ignores a failed rich output load after reset without reopening output or 
   expect(container.querySelector('[role="alert"], .conversation')).toBeNull();
   expect(input().value).toBe("fresh draft");
 });
+
+test.each(["resolve", "reject"] as const)(
+  "ignores a rich output load that finishes with %s after the renderer unmounts",
+  async (outcome) => {
+    const request = deferred<{ default: typeof QuickChatConversation }>();
+    const renderConversation = vi.fn(QuickChatConversation);
+    conversationLoader.mockReturnValue(request.promise);
+    await mount();
+    await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+    await act(async () => root.render(null));
+    await act(async () => {
+      if (outcome === "resolve") request.resolve({ default: renderConversation });
+      else request.reject(new Error("unmounted load failure"));
+    });
+    expect(container.childElementCount).toBe(0);
+    expect(renderConversation).not.toHaveBeenCalled();
+    expect(listeners.size).toBe(0);
+  },
+);
 
 test("uses the real deferred module through the production loader", async () => {
   await act(async () => root.render(createElement(QuickChat)));
@@ -1127,6 +1201,29 @@ test("keeps a globe fallback when the host rejects a source icon", async () => {
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
+test("ignores old-session link errors while still reporting current-session link errors", async () => {
+  const old = deferred<Result<void>>();
+  vi.mocked(bridge.openExternal)
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce({ ok: false, error: { code: "invalid_input", message: "current link failure" } });
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [sourcedRun()] } });
+  await click(button("来源，1 个网页"));
+  await click(query<HTMLButtonElement>(".answer-source-link"));
+  expect(bridge.openExternal).toHaveBeenCalledExactlyOnceWith("https://example.com/article");
+  await push({ session: { ...emptySession("replacement-session"), runs: [sourcedRun()] } });
+  await type("fresh session draft");
+  await act(async () =>
+    old.resolve({ ok: false, error: { code: "invalid_input", message: "old link failure" } }),
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(input().value).toBe("fresh session draft");
+  await click(button("来源，1 个网页"));
+  await click(query<HTMLButtonElement>(".answer-source-link"));
+  expect(query('[role="alert"]').textContent).toContain("current link failure");
+  expect(input().value).toBe("fresh session draft");
+});
+
 test("discards a late source icon when an expired session is replaced", async () => {
   const request = deferred<Result<{ dataUrl?: string }>>();
   vi.mocked(bridge.readWebSourceIcon).mockReturnValue(request.promise);
@@ -1138,6 +1235,20 @@ test("discards a late source icon when an expired session is replaced", async ()
   await act(async () => request.resolve({ ok: true, value: { dataUrl: png } }));
   expect(state()).toBe("compact");
   expect(container.querySelector(".answer-source-icon, .conversation")).toBeNull();
+  expect(input().value).toBe("new session draft");
+});
+
+test("ignores a source icon rejection after its session is replaced", async () => {
+  const request = deferred<Result<{ dataUrl?: string }>>();
+  vi.mocked(bridge.readWebSourceIcon).mockReturnValue(request.promise);
+  await mount();
+  await push({ session: { ...snapshot.session, sessionId: "late-icon-error", runs: [sourcedRun()] } });
+  expect(bridge.readWebSourceIcon).toHaveBeenCalledOnce();
+  await push({ session: emptySession("new-session") });
+  await type("new session draft");
+  await act(async () => request.reject(new Error("old source icon failure")));
+  expect(state()).toBe("compact");
+  expect(container.querySelector('[role="alert"], .answer-source-icon, .conversation')).toBeNull();
   expect(input().value).toBe("new session draft");
 });
 

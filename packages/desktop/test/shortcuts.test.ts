@@ -9,6 +9,7 @@ import {
   shortcutFromEvent,
   validateShortcuts,
   withQuickChatShortcut,
+  withTaskMenuShortcut,
 } from "../src/shared/shortcuts.ts";
 
 describe("shortcut contract", () => {
@@ -202,4 +203,46 @@ describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platfo
     settings.bindings["new-task"] = "Option+N";
     expect(withQuickChatShortcut(settings, platform).bindings["quick-chat"]).toBeNull();
   });
+});
+
+describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s", (platform) => {
+  it("appends missing commands in migration order without changing existing bindings or the input", () => {
+    const settings = defaultShortcuts(platform);
+    settings.enabled = false;
+    Reflect.deleteProperty(settings.bindings, "task-menu");
+    Reflect.deleteProperty(settings.bindings, "quick-chat");
+    const snapshot = structuredClone(settings);
+    const next = withQuickChatShortcut(withTaskMenuShortcut(settings, platform), platform);
+    expect(next).toEqual({ ...defaultShortcuts(platform), enabled: false });
+    expect(Object.keys(next.bindings)).toEqual([
+      ...Object.keys(settings.bindings),
+      "task-menu",
+      "quick-chat",
+    ]);
+    expect(settings).toEqual(snapshot);
+    expect(next.bindings).not.toBe(settings.bindings);
+  });
+
+  it.each([
+    { command: "task-menu" as const, migrate: withTaskMenuShortcut, occupied: "CmdOrCtrl+U" },
+    { command: "quick-chat" as const, migrate: withQuickChatShortcut, occupied: "Option+N" },
+  ])(
+    "preserves existing $command values and normalized historical conflicts",
+    ({ command, migrate, occupied }) => {
+      for (const binding of [null, "", "CmdOrCtrl+Shift+B"]) {
+        const settings = defaultShortcuts(platform);
+        settings.bindings[command] = binding;
+        expect(migrate(settings, platform)).toBe(settings);
+      }
+      const settings = defaultShortcuts(platform);
+      Reflect.deleteProperty(settings.bindings, command);
+      settings.bindings["new-task"] = occupied;
+      const snapshot = structuredClone(settings);
+      const next = migrate(settings, platform);
+      expect(next.bindings[command]).toBeNull();
+      expect(next.bindings["new-task"]).toBe(occupied);
+      expect(settings).toEqual(snapshot);
+      expect(migrate(next, platform)).toBe(next);
+    },
+  );
 });

@@ -192,6 +192,20 @@ it("shows deterministic fallback independently of the main task model", () => {
   expect(text(render())).toContain("从下一次发送起生效，不会中断当前回复");
 });
 
+it("uses one model catalog per render for options, saved selection and fallback", () => {
+  const settings = models();
+  settings.quickChat.defaultSelection = { provider: "chat", modelId: "second", reasoning: "medium" };
+  const configured = settings.providers[0].models;
+  const readModels = vi.fn(() => configured);
+  Object.defineProperty(settings.providers[0], "models", { get: readModels });
+  render();
+  expect(readModels).toHaveBeenCalledOnce();
+  settings.quickChat.defaultSelection = { provider: "chat", modelId: "missing", reasoning: "high" };
+  readModels.mockClear();
+  expect(text(render())).toContain("当前自动使用：Chat · first");
+  expect(readModels).toHaveBeenCalledOnce();
+});
+
 it("saves a model once while pending and applies only the acknowledged settings", async () => {
   const settings = models();
   let finish!: (value: unknown) => void;

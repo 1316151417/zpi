@@ -923,3 +923,31 @@ test("toggle recreates a destroyed window even if its closed notification is del
   expect(f.windows[1].hide).toHaveBeenCalledOnce();
   await f.quick.dispose();
 });
+
+test("minimum-size reuse preserves initial clamping, update order, and unchanged native-call caching", async () => {
+  const f = fixture();
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 0, y: 0, width: 320, height: 80 },
+    workArea: { x: 0, y: 0, width: 320, height: 80 },
+  });
+  await f.quick.show();
+  const window = f.windows[0];
+  expect(f.configs[0]).toMatchObject({ minWidth: 320, minHeight: 44 });
+  expect(window.setMinimumSize).not.toHaveBeenCalled();
+  f.emitHistory(true);
+  expect(window.setMinimumSize).toHaveBeenCalledExactlyOnceWith(320, 80);
+  expect(window.setMinimumSize.mock.invocationCallOrder[0]).toBeLessThan(
+    window.setBounds.mock.invocationCallOrder[0],
+  );
+  f.emitHistory(true);
+  expect(window.setMinimumSize).toHaveBeenCalledOnce();
+  f.emitHistory(false);
+  expect(window.setMinimumSize).toHaveBeenLastCalledWith(320, 44);
+  expect(window.setMinimumSize.mock.invocationCallOrder[1]).toBeLessThan(
+    window.setBounds.mock.invocationCallOrder[1],
+  );
+  await f.quick.call("setComposerHeight", ["session-1", 184]);
+  expect(window.getBounds().height).toBe(80);
+  expect(window.setMinimumSize).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});

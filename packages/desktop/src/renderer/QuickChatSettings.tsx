@@ -2,9 +2,9 @@ import { useRef, useState } from "react";
 import type { CombinedSelection } from "../shared/bridge.ts";
 import { defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import {
+  matchQuickChatSelection,
   quickChatModels,
   quickChatSelection,
-  quickChatSelectionIsValid,
 } from "../shared/quick-chat-settings.ts";
 import { defaultShortcuts, formatShortcut } from "../shared/shortcuts.ts";
 import { SettingsSelect } from "./SettingsSelect.tsx";
@@ -18,11 +18,9 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
   const shortcuts = settings?.shortcuts ?? defaultShortcuts(window.zpi.platform);
   const models = quickChatModels(settings?.providers ?? []);
   const saved = settings?.quickChat.defaultSelection;
-  const effective = settings ? quickChatSelection(settings) : null;
-  const selected = models.find(
-    ({ provider, model }) => provider.id === saved?.provider && model.id === saved?.modelId,
-  );
-  const valid = Boolean(saved && settings && quickChatSelectionIsValid(settings.providers, saved));
+  const effective = settings ? quickChatSelection(settings, models) : null;
+  const selected = saved ? matchQuickChatSelection(models, saved) : undefined;
+  const valid = Boolean(selected);
   const fallback = models.find(
     ({ provider, model }) => provider.id === effective?.provider && model.id === effective?.modelId,
   );

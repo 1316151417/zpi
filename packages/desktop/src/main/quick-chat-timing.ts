@@ -2,56 +2,10 @@ import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 
-export type QuickChatKind = "open" | "warmup" | "hide";
-export type QuickChatMode = "cold" | "loading" | "warm";
-export type QuickChatOutcome = "shown" | "hidden" | "failed" | "ready" | "cancelled" | "timeout";
-export type QuickChatStage =
-  | "start"
-  | "expiry-ready"
-  | "window-created"
-  | "window-loaded"
-  | "window-ready"
-  | "renderer-ready"
-  | "geometry"
-  | "show"
-  | "native-show"
-  | "focus"
-  | "native-focus"
-  | "settings"
-  | "renderer-focus"
-  | "renderer-frame"
-  | "blur-focused"
-  | "blur-unfocused"
-  | "blur-ignored"
-  | "space-changed"
-  | "native-hidden"
-  | "hide-ignored"
-  | "toggle-hide"
-  | "ipc-hide"
-  | "native-close"
-  | "program-hide"
-  | "finished";
-
-export interface QuickChatTrace {
-  readonly id: number;
-  mark(stage: QuickChatStage, state?: QuickChatTimingState): void;
-  finish(outcome: QuickChatOutcome): void;
-}
-
-export interface QuickChatTimingState {
-  visible: boolean;
-  focused: boolean;
-  expanded: boolean;
-}
-
-export const maxQuickChatTimingRecords = 64;
-export const maxQuickChatTimingBytes = 128 * 1024;
-export const maxQuickChatTimingActive = 64;
-
-const kinds = new Set<unknown>(["open", "warmup", "hide"]);
-const modes = new Set<unknown>(["cold", "loading", "warm"]);
-const outcomes = new Set<unknown>(["shown", "hidden", "failed", "ready", "cancelled", "timeout"]);
-const stages = new Set<unknown>([
+const kindValues = ["open", "warmup", "hide"] as const;
+const modeValues = ["cold", "loading", "warm"] as const;
+const outcomeValues = ["shown", "hidden", "failed", "ready", "cancelled", "timeout"] as const;
+const stageValues = [
   "start",
   "expiry-ready",
   "window-created",
@@ -77,7 +31,33 @@ const stages = new Set<unknown>([
   "native-close",
   "program-hide",
   "finished",
-]);
+] as const;
+
+export type QuickChatKind = (typeof kindValues)[number];
+export type QuickChatMode = (typeof modeValues)[number];
+export type QuickChatOutcome = (typeof outcomeValues)[number];
+export type QuickChatStage = (typeof stageValues)[number];
+
+export interface QuickChatTrace {
+  readonly id: number;
+  mark(stage: QuickChatStage, state?: QuickChatTimingState): void;
+  finish(outcome: QuickChatOutcome): void;
+}
+
+export interface QuickChatTimingState {
+  visible: boolean;
+  focused: boolean;
+  expanded: boolean;
+}
+
+export const maxQuickChatTimingRecords = 64;
+export const maxQuickChatTimingBytes = 128 * 1024;
+export const maxQuickChatTimingActive = 64;
+
+const kinds = new Set<unknown>(kindValues);
+const modes = new Set<unknown>(modeValues);
+const outcomes = new Set<unknown>(outcomeValues);
+const stages = new Set<unknown>(stageValues);
 
 interface TimingRecord {
   id: number;

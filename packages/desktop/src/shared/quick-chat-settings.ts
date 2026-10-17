@@ -20,24 +20,31 @@ export function quickChatModels(providers: readonly ProviderRecord[]) {
     );
 }
 
+type QuickChatModel = ReturnType<typeof quickChatModels>[number];
+
+export function matchQuickChatSelection(models: readonly QuickChatModel[], selection: CombinedSelection) {
+  const match = models.find(
+    ({ provider, model }) => provider.id === selection.provider && model.id === selection.modelId,
+  );
+  return match &&
+    canControlThinking(reasoningModel(match.model), toThinking(selection.reasoning, match.model))
+    ? match
+    : undefined;
+}
+
 export function quickChatSelectionIsValid(
   providers: readonly ProviderRecord[],
   selection: CombinedSelection,
 ): boolean {
-  const match = quickChatModels(providers).find(
-    ({ provider, model }) => provider.id === selection.provider && model.id === selection.modelId,
-  );
-  return Boolean(
-    match && canControlThinking(reasoningModel(match.model), toThinking(selection.reasoning, match.model)),
-  );
+  return Boolean(matchQuickChatSelection(quickChatModels(providers), selection));
 }
 
 export function quickChatSelection(
   settings: Pick<PublicSettings, "providers" | "quickChat">,
+  models: readonly QuickChatModel[] = quickChatModels(settings.providers),
 ): CombinedSelection | null {
-  const models = quickChatModels(settings.providers);
   const saved = settings.quickChat.defaultSelection;
-  if (saved && quickChatSelectionIsValid(settings.providers, saved)) return { ...saved };
+  if (saved && matchQuickChatSelection(models, saved)) return { ...saved };
   for (const { provider, model } of models) {
     const reasoning = defaultPreset(model);
     if (canControlThinking(reasoningModel(model), toThinking(reasoning, model)))

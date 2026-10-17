@@ -109,11 +109,14 @@ export class QuickChatWindow {
     const bounds = this.bounds(expanded, window.getBounds());
     this.applyBounds(window, bounds);
   }
-  private applyBounds(window: BrowserWindow, bounds: Rectangle): void {
-    const minimum: [number, number] = [
+  private minimumSize(bounds: Rectangle): [number, number] {
+    return [
       Math.min(this.expanded ? 440 : 360, bounds.width),
       Math.min(this.expanded ? 360 : 44, bounds.height),
     ];
+  }
+  private applyBounds(window: BrowserWindow, bounds: Rectangle): void {
+    const minimum = this.minimumSize(bounds);
     if (!this.minimum || minimum.some((size, index) => size !== this.minimum?.[index])) {
       window.setMinimumSize(...minimum);
       this.minimum = minimum;
@@ -179,10 +182,11 @@ export class QuickChatWindow {
     if (this.window && !this.window.isDestroyed()) return this.window;
     this.expanded = this.options.host.getSnapshot().session.runs.length > 0;
     const bounds = this.bounds(this.expanded);
+    const minimum = this.minimumSize(bounds);
     const window = this.options.createWindow({
       ...bounds,
-      minWidth: Math.min(this.expanded ? 440 : 360, bounds.width),
-      minHeight: Math.min(this.expanded ? 360 : 44, bounds.height),
+      minWidth: minimum[0],
+      minHeight: minimum[1],
       resizable: false,
       transparent: true,
       title: "快速对话",
@@ -209,10 +213,7 @@ export class QuickChatWindow {
       },
     });
     trace?.mark("window-created");
-    this.minimum = [
-      Math.min(this.expanded ? 440 : 360, bounds.width),
-      Math.min(this.expanded ? 360 : 44, bounds.height),
-    ];
+    this.minimum = minimum;
     this.rendererSessionId = undefined;
     this.needsSessionFrame = false;
     this.window = window;

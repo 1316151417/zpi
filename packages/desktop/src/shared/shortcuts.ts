@@ -330,21 +330,32 @@ export function normalizeShortcuts(settings: ShortcutSettings, platform: string)
 }
 
 /** Adding a command never steals a user's existing custom binding. */
-export function withTaskMenuShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
-  if (!settings?.bindings || Object.hasOwn(settings.bindings, "task-menu")) return settings;
-  const binding = platform === "darwin" ? "Command+U" : "Control+U";
+function withMissingShortcut(
+  settings: ShortcutSettings,
+  platform: string,
+  command: ShortcutCommand,
+  defaultBinding: () => string | null,
+): ShortcutSettings {
+  if (!settings?.bindings || Object.hasOwn(settings.bindings, command)) return settings;
+  const binding = defaultBinding();
   const occupied = Object.values(settings.bindings).some(
     (value) => typeof value === "string" && normalizeShortcut(value, platform) === binding,
   );
-  return { ...settings, bindings: { ...settings.bindings, "task-menu": occupied ? null : binding } };
+  return { ...settings, bindings: { ...settings.bindings, [command]: occupied ? null : binding } };
+}
+
+export function withTaskMenuShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
+  return withMissingShortcut(settings, platform, "task-menu", () =>
+    platform === "darwin" ? "Command+U" : "Control+U",
+  );
 }
 
 /** Existing custom and cleared bindings survive the additive quick-chat rollout. */
 export function withQuickChatShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
-  if (!settings?.bindings || Object.hasOwn(settings.bindings, "quick-chat")) return settings;
-  const binding = defaultShortcuts(platform).bindings["quick-chat"];
-  const occupied = Object.values(settings.bindings).some(
-    (value) => typeof value === "string" && normalizeShortcut(value, platform) === binding,
+  return withMissingShortcut(
+    settings,
+    platform,
+    "quick-chat",
+    () => defaultShortcuts(platform).bindings["quick-chat"],
   );
-  return { ...settings, bindings: { ...settings.bindings, "quick-chat": occupied ? null : binding } };
 }

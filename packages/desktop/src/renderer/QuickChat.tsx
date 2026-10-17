@@ -1,8 +1,9 @@
 import { ArrowUp, CircleAlert, Plus, Square, X } from "lucide-react";
-import { type ComponentType, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ComponentType, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
+import { unwrap } from "./unwrap.ts";
 import "./quick-chat.css";
 
 // Keep the first input independent of settings/model adapters and rich conversation rendering.
@@ -16,16 +17,11 @@ const textareaMinHeight = 24;
 const expandedTextareaMaxHeight = 160;
 type ConversationLoader = () => Promise<{ default: ComponentType<QuickChatConversationProps> }>;
 
-function unwrap<T>(result: Result<T>): T {
-  if (!result.ok) throw new Error(result.error.message);
-  return result.value;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function DeferredConversation({
+const DeferredConversation = memo(function DeferredConversation({
   loader,
   ...props
 }: QuickChatConversationProps & { loader: ConversationLoader }) {
@@ -68,7 +64,7 @@ function DeferredConversation({
       )}
     </div>
   );
-}
+});
 
 export function QuickChat({
   conversationLoader = loadConversation,
@@ -152,6 +148,12 @@ export function QuickChat({
   }, [preferences.theme, preferences.fontSize]);
 
   const sessionId = view?.sessionId;
+  const reportConversationError = useCallback(
+    (message: string) => {
+      if (sessionId === currentSession.current) setError(message);
+    },
+    [sessionId],
+  );
   const resizeComposer = useCallback(() => {
     const element = textarea.current;
     if (!element) return;
@@ -391,9 +393,7 @@ export function QuickChat({
             key={view.sessionId}
             loader={conversationLoader}
             view={view}
-            onError={(message) => {
-              if (view.sessionId === currentSession.current) setError(message);
-            }}
+            onError={reportConversationError}
           />
         </>
       )}
