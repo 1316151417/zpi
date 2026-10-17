@@ -150,11 +150,18 @@ export interface PluginCapabilities {
 export type CapabilityName = keyof PluginCapabilities;
 export interface WebSearchSettingsInput {
   provider: "deepseek";
+  enabled?: boolean;
   /** Omit to retain the saved key; an empty string removes it. */
   apiKey?: string;
 }
 export interface PublicSettings {
-  webSearch: { provider: "deepseek"; hasApiKey: boolean; credentialsPersisted: boolean };
+  webSearch: {
+    provider: "deepseek";
+    enabled: boolean;
+    hasApiKey: boolean;
+    credentialsPersisted: boolean;
+    credentialsLocked: boolean;
+  };
   shortcuts: ShortcutSettings;
   capabilities: PluginCapabilities;
   providers: ProviderRecord[];
@@ -361,6 +368,11 @@ export interface DesktopBridge {
     query: string,
   ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
   getWorkspaceInfo(sessionId: string | null): Promise<Result<WorkspaceInfo>>;
+  readWebSourceIcon(
+    sessionId: string,
+    runId: string,
+    sourceUrl: string,
+  ): Promise<Result<{ dataUrl?: string }>>;
   downloadImage(src: string): Promise<Result<void>>;
   checkPreviewFiles(
     sessionId: string,
@@ -507,6 +519,7 @@ export const methods = [
   "readPreviewRange",
   "checkPreviewFiles",
   "downloadImage",
+  "readWebSourceIcon",
   "pickAttachments",
   "importAttachment",
   "readAttachment",

@@ -39,7 +39,7 @@ import type {
   SubagentTask,
 } from "zpi-ui";
 import { splitFileLocation } from "zpi-ui/links";
-import { reduceSession, sessionViewBytes } from "zpi-ui/projection";
+import { normalizeWebToolDetails, reduceSession, sessionViewBytes } from "zpi-ui/projection";
 import { parseSelectionPrompt, validSelections } from "zpi-ui/selections";
 import type {
   CombinedSelection,
@@ -88,6 +88,7 @@ import { retryStorageCleanup } from "./storage-cleanup.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
 import { UserQuestions } from "./user-questions.ts";
+import { publicWebUrl } from "./web-client.ts";
 import { WebTools } from "./web-tools.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
@@ -523,12 +524,17 @@ export class SessionHost {
       id,
     );
   }
+  private webSearchAvailable(): boolean {
+    const { capabilities, webSearch } = this.settings.get();
+    return capabilities.webSearch && webSearch.enabled && webSearch.hasApiKey && !webSearch.credentialsLocked;
+  }
   private defaultConfiguration(): SessionConfiguration {
     const settings = this.settings.get();
     return {
       template: this.settings.getTemplate(),
       disabledSkillPaths: settings.disabledSkillPaths,
       ...settings.capabilities,
+      webSearch: this.webSearchAvailable(),
     };
   }
   private configuration(id: string): SessionConfiguration {
@@ -1671,7 +1677,7 @@ export class SessionHost {
     const info = this.workspaceInfo(null);
     const loader = this.resourceLoader(null);
     await loader.reload();
-    const capabilities = this.settings.get().capabilities;
+    const capabilities = { ...this.settings.get().capabilities, webSearch: this.webSearchAvailable() };
     const options = {
       cwd: info.cwd,
       projectName: "ZPI",
@@ -1702,7 +1708,7 @@ export class SessionHost {
       ),
       ...(this.settings.get().capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
       ...this.taskTools("preview", this.settings.get().capabilities.subagents),
-      ...(this.settings.get().capabilities.webSearch ? this.webTools.tools() : []),
+      ...(this.webSearchAvailable() ? this.webTools.tools() : []),
     ].map((t) => ({
       name: t.name,
       description: t.description,
@@ -1730,6 +1736,30 @@ export class SessionHost {
     const skills = await this.getSkillSettings();
     if (!skills.skills.some((s) => s.path === path)) throw new Error("invalid_input: 技能不属于全局目录");
     return this.settings.setSkillEnabled(path, enabled);
+  }
+  /** Authorize icon loading against recorded successful sources, never a renderer-supplied icon URL. */
+  recordedWebSourceIcon(id: string, runId: string, sourceUrl: string): string | undefined {
+    this.record(id);
+    if (!publicWebUrl(sourceUrl) || runId.length > 256) return undefined;
+    this.manager(id);
+    const { index, start, end } = this.runBoundary(id, runId);
+    if (start <= (this.sideChatInheritance(id)?.hiddenEndSeq ?? 0)) return undefined;
+    const snapshot = index.snapshot();
+    for (const { entry } of index.readRange(start, end ?? snapshot.endSeq, snapshot, ["message"])) {
+      if (
+        entry.type !== "message" ||
+        entry.message.role !== "toolResult" ||
+        entry.message.toolName !== "web_search" ||
+        entry.message.isError ||
+        !isJsonObject(entry.message.details)
+      )
+        continue;
+      const web = normalizeWebToolDetails(entry.message.details.web, "web_search");
+      if (web?.status !== "success") continue;
+      const source = web.results?.find((source) => source.url === sourceUrl && source.site_icon);
+      if (source?.site_icon) return source.site_icon;
+    }
+    return undefined;
   }
   private recordedChanges(id: string, runId: string | null): FileChange[] {
     this.record(id);

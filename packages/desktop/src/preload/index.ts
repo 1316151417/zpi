@@ -95,6 +95,7 @@ const bridge: DesktopBridge = {
   searchFiles: (id, q) => call("searchFiles", id, q),
   listSessionMentions: (id) => call("listSessionMentions", id),
   getWorkspaceInfo: (id) => call("getWorkspaceInfo", id),
+  readWebSourceIcon: (id, runId, sourceUrl) => call("readWebSourceIcon", id, runId, sourceUrl),
   downloadImage: (src) => call("downloadImage", src),
   checkPreviewFiles: (id, paths) => call("checkPreviewFiles", id, paths),
   readPreviewRange: (id, path, offset, length) => call("readPreviewRange", id, path, offset, length),

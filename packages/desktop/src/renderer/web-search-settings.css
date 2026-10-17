@@ -4,31 +4,10 @@
   gap: 16px;
 }
 .web-search-provider-panel {
-  display: grid;
-  grid-template-columns: minmax(136px, 180px) minmax(0, 1fr);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-panel);
   background: var(--color-surface);
   overflow: hidden;
-}
-.web-search-providers {
-  padding: 16px 12px;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-fill);
-}
-.settings-screen .web-search-provider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 36px;
-  padding: 6px 8px;
-  border: 1px solid var(--color-focus);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-  color: var(--color-text);
-  text-align: left;
-  font-weight: 500;
 }
 .web-search-editor {
   display: flex;
@@ -43,6 +22,24 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
+}
+.web-search-heading-copy {
+  flex: 1;
+  min-width: 0;
+}
+.settings-screen .web-search-enable {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+}
+.settings-screen .web-search-enable.primary {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+.settings-screen .web-search-enable.primary:hover:not(:disabled) {
+  color: var(--color-on-primary);
+  background: color-mix(in srgb, var(--color-primary) 85%, var(--color-on-primary));
 }
 .settings-screen .web-search-heading h2 {
   margin: 0;
@@ -134,13 +131,6 @@
   color: var(--color-text-subtle);
 }
 @media (max-width: 820px) {
-  .web-search-provider-panel {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .web-search-providers {
-    border-right: 0;
-    border-bottom: 1px solid var(--color-border);
-  }
   .web-search-editor {
     padding: 16px;
   }

@@ -57,7 +57,9 @@ import type {
   SubagentTask,
   ViewBlock,
 } from "../types.ts";
+import { AnswerSources } from "./AnswerSources.tsx";
 import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCards.tsx";
+import { collectAnswerSources } from "./answer-sources.ts";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CompactionDivider } from "./CompactionDivider.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
@@ -422,6 +424,7 @@ export const RunGroup = memo(function RunGroup({
     if (!onEdit) setEditing(false);
   }, [onEdit]);
   const { process, answer, defaultOpen } = runPresentation(run);
+  const answerSources = useMemo(() => collectAnswerSources(run, answer?.id), [run, answer?.id]);
   const latestText = run.orderedBlocks.findLast((block) => block.type === "text");
   const previews =
     previewServices && sessionId && workspace && latestText && run.status !== "running" ? (
@@ -717,6 +720,16 @@ export const RunGroup = memo(function RunGroup({
                 </MessageAction>
               )}
               <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
+              {answerSources.length > 0 && (
+                <AnswerSources
+                  key={JSON.stringify([sessionId, run.runId, answer.id])}
+                  sources={answerSources}
+                  sessionId={sessionId}
+                  runId={run.runId}
+                  readIcon={context?.readWebSourceIcon}
+                  onLink={onLink}
+                />
+              )}
             </div>
           )}
           {actionError && (

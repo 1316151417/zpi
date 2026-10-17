@@ -775,3 +775,76 @@ describe("cancellation, deadline and shared throttling", () => {
     expect(times[0]).toBe(times[1]);
   });
 });
+
+describe("web provider runtime authorization", () => {
+  it.each(["disabled", "removed", "replaced"])(
+    "rechecks settings immediately before the first request after %s",
+    async (change) => {
+      let current = key;
+      let disabled = false;
+      const broker = tools(() => {
+        if (disabled) throw new Error("Private credential details");
+        return current;
+      });
+      const pending = execute(
+        "web_search",
+        { query: "Example" },
+        undefined,
+        () => {
+          disabled = change === "disabled";
+          current = change === "removed" ? "" : change === "replaced" ? "new-fake-key" : key;
+        },
+        broker,
+      );
+      const result = await finish(pending);
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("settings changed");
+      expect(text(result)).not.toMatch(/Private|new-fake-key/);
+      expect(transport).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["disabled", "removed", "replaced"])(
+    "stops retrying when %s during Retry-After",
+    async (change) => {
+      let enabled = true;
+      let current = key;
+      transport.mockResolvedValue(json({}, 429, { "retry-after": "1" }));
+      const pending = execute(
+        "web_search",
+        { query: "Example" },
+        undefined,
+        undefined,
+        tools(() => {
+          if (!enabled) throw new Error("Disabled");
+          return current;
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(500);
+      expect(transport).toHaveBeenCalledOnce();
+      enabled = change !== "disabled";
+      current = change === "removed" ? "" : change === "replaced" ? "new-fake-key" : key;
+      const result = await finish(pending);
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("settings changed");
+      expect(transport).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("blocks a throttled request when the provider is disabled during its wait", async () => {
+    let enabled = true;
+    const broker = tools(() => {
+      if (!enabled) throw new Error("Disabled");
+      return key;
+    });
+    const first = execute("web_search", { query: "First" }, undefined, undefined, broker);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await first).isError).toBe(false);
+    const pending = execute("web_search", { query: "Queued" }, undefined, undefined, broker);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(transport).toHaveBeenCalledOnce();
+    enabled = false;
+    expect((await finish(pending)).isError).toBe(true);
+    expect(transport).toHaveBeenCalledOnce();
+  });
+});

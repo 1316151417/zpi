@@ -61,10 +61,10 @@ const sections = [
   ["tools", "工具", Wrench],
   ["skills", "技能", Puzzle],
   ["commands", "命令", Terminal],
+  ["models", "模型", Braces],
   ["capabilities", "插件能力", Package],
   ["webSearch", "联网搜索", Globe],
   ["subagents", "子智能体", Bot],
-  ["models", "模型", Braces],
   ["archived", "已归档任务", Archive],
 ] as const;
 type SettingsTab = (typeof sections)[number][0];

@@ -79,6 +79,8 @@ export interface SettingsData {
   shortcuts: ShortcutSettings;
   shortcutDefaultsVersion: typeof shortcutDefaultsVersion;
   capabilities: PluginCapabilities;
+  // Missing only while an older configuration's encrypted credentials are locked.
+  webSearchEnabled?: boolean;
   version: 4;
   templates: PromptTemplate[];
   selectedTemplateId: string;
@@ -114,6 +116,7 @@ export class SettingsStore {
     shortcuts: defaultShortcuts(process.platform),
     shortcutDefaultsVersion,
     capabilities: { ...defaultCapabilities },
+    webSearchEnabled: false,
     version: 4,
     templates: [],
     selectedTemplateId: "pi",
@@ -139,15 +142,18 @@ export class SettingsStore {
     try {
       const creds = join(dir, "credentials.enc");
       const raw = this.state.getSetting<SettingsData>("app");
+      let migrated = false;
       if (raw !== undefined) {
         if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
         raw.shortcuts = withTaskMenuShortcut(raw.shortcuts, process.platform);
         if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)
           raw.interface.showModelPerformance = defaultPreferences.showModelPerformance;
         const migrateWebSearch = isJsonObject(raw.capabilities) && raw.capabilities.webSearch === undefined;
-        if (migrateWebSearch) raw.capabilities.webSearch = false;
+        if (migrateWebSearch) {
+          raw.capabilities.webSearch = defaultCapabilities.webSearch;
+          migrated = true;
+        }
         this.validateData(raw);
-        if (migrateWebSearch) this.state.setSetting("app", raw);
         this.data = raw;
       }
       if (existsSync(creds)) {
@@ -176,6 +182,11 @@ export class SettingsStore {
           this.persisted = true;
         }
       }
+      if (this.data.webSearchEnabled === undefined && !this.unreadCredentials) {
+        this.data.webSearchEnabled = Boolean(this.webApiKey);
+        migrated = true;
+      }
+      if (migrated) this.state.setSetting("app", this.data);
     } catch (error) {
       this.close();
       throw error;
@@ -191,8 +202,10 @@ export class SettingsStore {
     return {
       webSearch: {
         provider: "deepseek",
+        enabled: this.data.webSearchEnabled ?? false,
         hasApiKey: Boolean(this.webApiKey),
         credentialsPersisted: this.persisted,
+        credentialsLocked: this.unreadCredentials,
       },
       shortcuts: structuredClone(this.data.shortcuts),
       capabilities: structuredClone(this.data.capabilities),
@@ -219,22 +232,31 @@ export class SettingsStore {
   // Main-process only. Web tools never use a chat provider's credentials or environment keys.
   getWebSearchApiKey(): string {
     if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
+    if (!this.data.webSearchEnabled) throw new Error("configuration: DeepSeek 联网搜索服务已停用");
     return this.webApiKey;
   }
   saveWebSearch(input: WebSearchSettingsInput): PublicSettings {
     if (!isJsonObject(input)) throw new Error("invalid_input: 联网搜索配置必须为对象");
-    assertSupportedOptions(input, ["provider", "apiKey"], "web search settings");
+    assertSupportedOptions(input, ["provider", "apiKey", "enabled"], "web search settings");
     if (input.provider !== "deepseek") throw new Error("invalid_input: 不支持的联网搜索提供商");
+    if (input.enabled !== undefined && typeof input.enabled !== "boolean")
+      throw new Error("invalid_input: 联网搜索服务状态无效");
     if (
       input.apiKey !== undefined &&
       (typeof input.apiKey !== "string" || input.apiKey.length > 8192 || /[\r\n\0]/.test(input.apiKey))
     )
       throw new Error("invalid_input: 联网搜索 API key 无效");
-    this.persist(
-      this.data,
-      this.credentials,
-      input.apiKey === undefined ? this.webApiKey : input.apiKey.trim(),
-    );
+    const webApiKey = input.apiKey === undefined ? this.webApiKey : input.apiKey.trim();
+    if (input.enabled === true) {
+      if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
+      if (!webApiKey) throw new Error("configuration: 请先配置 DeepSeek 联网搜索 API Key");
+    }
+    const data = {
+      ...this.data,
+      ...(input.enabled !== undefined ? { webSearchEnabled: input.enabled } : {}),
+    };
+    if (input.apiKey === undefined) return this.savePublic(data);
+    this.persist(data, this.credentials, webApiKey);
     return this.get();
   }
   getModel(selection: ModelSelection): Model | undefined {
@@ -549,6 +571,7 @@ export class SettingsStore {
       selectedTemplateId: "pi",
       disabledSkillPaths: [],
       capabilities: { ...defaultCapabilities },
+      webSearchEnabled: false,
       providers: [
         {
           id: "custom",
@@ -582,6 +605,7 @@ export class SettingsStore {
         "selectedTemplateId",
         "disabledSkillPaths",
         "capabilities",
+        "webSearchEnabled",
         "shortcuts",
         "shortcutDefaultsVersion",
       ],
@@ -592,6 +616,8 @@ export class SettingsStore {
     if (data.shortcutDefaultsVersion !== shortcutDefaultsVersion)
       throw new Error("storage: Unsupported shortcut defaults version");
     if (data.version !== 4 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");
+    if (data.webSearchEnabled !== undefined && typeof data.webSearchEnabled !== "boolean")
+      throw new Error("storage: Invalid web search provider state");
     if (
       !isJsonObject(data.capabilities) ||
       (Object.keys(defaultCapabilities) as CapabilityName[]).some(

@@ -56,7 +56,9 @@ import { StateStore } from "./state-store.ts";
 import { SettingsStore } from "./storage.ts";
 import { openStorageGeneration } from "./storage-generation.ts";
 import { TaskNotifications } from "./task-notifications.ts";
+import { WebSourceIcons } from "./web-source-icons.ts";
 
+const webSourceIcons = new WebSourceIcons();
 const dir = fileURLToPath(new URL(".", import.meta.url));
 const openFile = defaultFileOpener(
   (path) => shell.openPath(path),
@@ -460,6 +462,7 @@ async function launch(): Promise<void> {
         readPreviewRange: 4,
         checkPreviewFiles: 2,
         downloadImage: 1,
+        readWebSourceIcon: 3,
         pickAttachments: 1,
         importAttachment: 2,
         readAttachment: 2,
@@ -697,6 +700,12 @@ async function launch(): Promise<void> {
             args[3],
           );
           break;
+        case "readWebSourceIcon": {
+          const icon = host.recordedWebSourceIcon(string(0), string(1), string(2));
+          const dataUrl = icon ? await webSourceIcons.load(icon) : undefined;
+          value = dataUrl ? { dataUrl } : {};
+          break;
+        }
         case "downloadImage": {
           const src = string(0);
           if (
@@ -1092,6 +1101,7 @@ async function launch(): Promise<void> {
             object(0, [
               "provider",
               "apiKey",
+              "enabled",
             ]) as unknown as import("../shared/bridge.ts").WebSearchSettingsInput,
           );
           break;

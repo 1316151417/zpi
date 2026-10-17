@@ -3,6 +3,8 @@ import { readMarkdownImage } from "./markdown-image.ts";
 import { unwrap } from "./store.ts";
 export const inputContext: ComposerContext = {
   readImage: readMarkdownImage,
+  readWebSourceIcon: async (sessionId, runId, sourceUrl) =>
+    unwrap(await window.zpi.readWebSourceIcon(sessionId, runId, sourceUrl)).dataUrl,
   downloadImage: (src) => window.zpi.downloadImage(src).then(unwrap),
   searchFiles: (id, q) => window.zpi.searchFiles(id, q).then(unwrap),
   listSessionMentions: (id) => window.zpi.listSessionMentions(id).then(unwrap),

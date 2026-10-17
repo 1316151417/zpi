@@ -41,7 +41,7 @@ const capabilities: {
   {
     name: "webSearch",
     label: "联网搜索",
-    description: "通过 DeepSeek 搜索网页和读取网页正文，使用独立 API Key，默认关闭。",
+    description: "默认开启；需在「联网搜索」中配置 API Key 并启用 DeepSeek 服务，才能搜索和读取网页。",
   },
   {
     name: "subagents",

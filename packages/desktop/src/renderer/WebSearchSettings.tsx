@@ -6,13 +6,14 @@ import "./web-search-settings.css";
 
 export function WebSearchSettings() {
   const settings = useStore((state) => state.settings?.webSearch);
+  const globalEnabled = useStore((state) => state.settings?.capabilities.webSearch);
   const [apiKey, setApiKey] = useState("");
   const [visible, setVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const save = async (remove = false) => {
+  const save = async (remove = false, enabled?: boolean) => {
     setSaving(true);
     setError("");
     setNotice("");
@@ -21,14 +22,23 @@ export function WebSearchSettings() {
       const next = unwrap(
         await window.zpi.saveWebSearch({
           provider: "deepseek",
-          ...(remove ? { apiKey: "" } : key ? { apiKey: key } : {}),
+          ...(enabled !== undefined ? { enabled } : {}),
+          ...(remove ? { apiKey: "" } : key && enabled !== false ? { apiKey: key } : {}),
         }),
       );
       useStore.setState({ settings: next });
-      setApiKey("");
+      if (enabled !== false) setApiKey("");
       setVisible(false);
       setRemoving(false);
-      setNotice(remove ? "已移除 API Key。" : "已保存联网搜索设置。");
+      setNotice(
+        remove
+          ? "已移除 API Key。"
+          : enabled === true
+            ? "已启用 DeepSeek 联网服务。"
+            : enabled === false
+              ? "已停用 DeepSeek 联网服务。"
+              : "已保存 API Key。",
+      );
     } catch (error) {
       const message = String(error);
       setError(key ? message.replaceAll(key, "[已隐藏]") : message);
@@ -39,15 +49,10 @@ export function WebSearchSettings() {
   return (
     <div className="web-search-settings">
       <p className="global-settings-note">
-        在「插件能力」中启用联网搜索，同时开启网页搜索和网页读取。默认关闭，新对话首次发送时生效；已有对话保留原有配置。
+        「插件能力」中的联网搜索默认开启。配置 API Key
+        并启用服务后，新对话首次发送时可使用网页搜索和网页读取；已有对话保留原有配置。
       </p>
       <div className="web-search-provider-panel">
-        <nav className="web-search-providers" aria-label="联网搜索服务商">
-          <button type="button" aria-pressed="true" className="web-search-provider selected">
-            <ProviderLogo preset="deepseek" size={20} />
-            <span>DeepSeek</span>
-          </button>
-        </nav>
         <form
           className="web-search-editor"
           onSubmit={(event) => {
@@ -57,11 +62,35 @@ export function WebSearchSettings() {
         >
           <div className="web-search-heading">
             <ProviderLogo preset="deepseek" size={28} />
-            <div>
+            <div className="web-search-heading-copy">
               <h2>DeepSeek</h2>
               <p>独立配置联网服务，不受当前对话模型服务商影响。</p>
             </div>
+            <button
+              type="button"
+              className={`web-search-enable ${settings?.enabled ? "" : "primary"}`}
+              disabled={
+                saving ||
+                !settings ||
+                (!settings.enabled && (settings.credentialsLocked || (!settings.hasApiKey && !apiKey.trim())))
+              }
+              onClick={() => void save(false, !settings?.enabled)}
+            >
+              {settings?.enabled ? "停用" : "启用"}
+            </button>
           </div>
+          <p className="web-search-note" role="status">
+            {settings?.credentialsLocked
+              ? "保存的 API Key 尚未解锁，联网服务暂不可用。解锁系统密钥存储后重启应用。"
+              : !settings?.hasApiKey
+                ? "尚未配置 API Key，联网服务不可用。"
+                : settings.enabled
+                  ? "DeepSeek 服务已启用。"
+                  : "DeepSeek 服务已停用，保存的 API Key 将保留。"}
+          </p>
+          {globalEnabled === false && (
+            <p className="web-search-note">「插件能力」中的联网搜索已关闭，新对话不会使用联网工具。</p>
+          )}
           <label className="web-search-key-label" htmlFor="web-search-api-key">
             API Key
           </label>
@@ -73,8 +102,14 @@ export function WebSearchSettings() {
               autoComplete="new-password"
               spellCheck={false}
               autoCapitalize="none"
-              disabled={saving}
-              placeholder={settings?.hasApiKey ? "已配置，留空保留现有 API Key" : "输入 DeepSeek API Key"}
+              disabled={saving || settings?.credentialsLocked}
+              placeholder={
+                settings?.credentialsLocked
+                  ? "已保存的 API Key 尚未解锁"
+                  : settings?.hasApiKey
+                    ? "已配置，留空保留现有 API Key"
+                    : "输入 DeepSeek API Key"
+              }
               onChange={(event) => {
                 setApiKey(event.target.value);
                 setNotice("");
@@ -136,7 +171,11 @@ export function WebSearchSettings() {
                   移除 API Key
                 </button>
               )}
-              <button type="submit" className="primary web-search-save" disabled={saving || !apiKey.trim()}>
+              <button
+                type="submit"
+                className="primary web-search-save"
+                disabled={saving || settings?.credentialsLocked || !apiKey.trim()}
+              >
                 {saving ? "保存中…" : "保存"}
               </button>
             </div>

@@ -76,6 +76,7 @@ export interface ComposerContext {
   removeAttachment(sessionId: string, id: string): Promise<void>;
   readAttachment(sessionId: string, id: string): Promise<string>;
   readImage?(sessionId: string, path: string, location?: FileLocation): Promise<string>;
+  readWebSourceIcon?(sessionId: string, runId: string, sourceUrl: string): Promise<string | undefined>;
   downloadImage?(src: string): Promise<void>;
 }
 export function AttachmentPreview({

@@ -353,10 +353,12 @@ export async function requestWeb(
   key: string,
   requestFetch: typeof fetch,
   signal: AbortSignal,
+  beforeRequest?: () => void,
 ): Promise<unknown> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     await throttle(operation, signal);
     if (signal.aborted) throw aborted();
+    beforeRequest?.();
     const response = await abortable(
       requestFetch(endpoints[operation], {
         method: "POST",

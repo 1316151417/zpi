@@ -186,7 +186,7 @@ export class WebTools {
         key = this.options.getApiKey().trim();
       } catch {
         throw new WebRequestError(
-          "Unable to access saved DeepSeek Web Tools credentials. Unlock or re-enter the API key in Settings.",
+          "Unable to access DeepSeek Web Tools credentials. Enable the service and configure or unlock its API key in Settings.",
         );
       }
       if (!key || /\s/.test(key) || key.length > 16_384)
@@ -202,6 +202,17 @@ export class WebTools {
         key,
         this.options.requestFetch ?? fetch,
         controller.signal,
+        () => {
+          // Settings may change while throttled or waiting to retry. Do not send a stale key.
+          try {
+            if (this.options.getApiKey().trim() === key) return;
+          } catch {
+            // Only the fixed configuration guidance below may leave the main process.
+          }
+          throw new WebRequestError(
+            "DeepSeek Web Tools settings changed. Enable the service and configure or unlock its API key in Settings before retrying.",
+          );
+        },
       );
       if (controller.signal.aborted) throw new WebRequestError("Web request cancelled.");
       if (kind === "web_search") {

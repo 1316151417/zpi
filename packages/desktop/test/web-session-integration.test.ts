@@ -109,6 +109,7 @@ test("one capability drives catalog, preview, live tools and first-send frozen i
   expect(f.host.listTools().map((t) => t.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   f.settings.setCapabilityEnabled("webSearch", true);
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
   expect(f.host.listTools().map((t) => t.name)).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
   expect((await f.host.previewPrompt()).prompt).toContain("web_search");
   await run(f.host, f.session.id);
@@ -138,6 +139,7 @@ test("legacy frozen sessions missing webSearch remain off and invalid values blo
   delete configuration.webSearch;
   f.settings.state.upsertTask({ ...task, frozenConfiguration: configuration });
   f.settings.setCapabilityEnabled("webSearch", true);
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
   const restored = await f.open();
   await run(restored, f.session.id);
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
@@ -159,7 +161,8 @@ test("other chat providers use independent DeepSeek web credentials, stream deta
     return sse({ content: "Answer with source" });
   });
   f.settings.setCapabilityEnabled("webSearch", true);
-  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-only-key" });
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-only-key", enabled: true });
   const events: unknown[] = [];
   f.host.subscribe((event) => events.push(event.event));
   await run(f.host, f.session.id);
@@ -176,6 +179,13 @@ test("other chat providers use independent DeepSeek web credentials, stream deta
   expect(f.webRequests[0].body).not.toHaveProperty("ori_question");
   expect(f.webRequests[0].body).not.toHaveProperty("localization");
   const view = f.host.getSessionSnapshot(f.session.id).view;
+  const runId = view.runs[0].runId;
+  expect(f.host.recordedWebSourceIcon(f.session.id, runId, source.url)).toBe(source.site_icon);
+  expect(f.host.recordedWebSourceIcon(f.session.id, runId, "https://other.example/article")).toBeUndefined();
+  expect(f.host.recordedWebSourceIcon(f.session.id, runId, "http://127.0.0.1/")).toBeUndefined();
+  expect(() => f.host.recordedWebSourceIcon(f.session.id, "unrecorded-run", source.url)).toThrow();
+  const emptySession = f.host.createSession(null);
+  expect(() => f.host.recordedWebSourceIcon(emptySession.id, runId, source.url)).toThrow();
   expect(view.runs[0].orderedBlocks).toContainEqual(
     expect.objectContaining({
       name: "web_search",
@@ -193,6 +203,9 @@ test("other chat providers use independent DeepSeek web credentials, stream deta
   expect(await readFile(f.host.sessionPath(f.session.id), "utf8")).not.toContain("fake-web-only-key");
   await f.host.close();
   const restored = await f.open();
+  expect(restored.recordedWebSourceIcon(f.session.id, runId, source.url)).toBe(source.site_icon);
+  const side = await restored.createSideChat(f.session.id);
+  expect(() => restored.recordedWebSourceIcon(side.id, runId, source.url)).toThrow();
   expect(restored.getSessionSnapshot(f.session.id).view.runs[0].orderedBlocks).toContainEqual(
     expect.objectContaining({
       name: "web_fetch",
@@ -224,6 +237,7 @@ test.each([
     return sse({ content: "Parent done" });
   });
   f.settings.setCapabilityEnabled("webSearch", true);
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
   f.host.saveSubagent({
     scope: "user",
     sessionId: null,
@@ -240,4 +254,83 @@ test.each([
   await run(f.host, f.session.id);
   expect(childRequests).toHaveLength(1);
   expect(toolNames(childRequests[0]).filter((name) => name.startsWith("web_"))).toEqual(profile.expected);
+});
+
+test("new sessions freeze effective availability, not just the default-on global preference", async () => {
+  const f = await fixture();
+  expect(f.settings.get().capabilities.webSearch).toBe(true);
+  expect(f.settings.get().webSearch.enabled).toBe(false);
+  await run(f.host, f.session.id, "Freeze before setup");
+  expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key" });
+  expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
+  expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
+  f.settings.saveWebSearch({ provider: "deepseek", enabled: true });
+  expect(f.host.listTools().map((tool) => tool.name)).toContain("web_search");
+  expect((await f.host.previewPrompt()).prompt).toContain("web_search");
+  await run(f.host, f.session.id, "Old session stays restricted");
+  expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
+  const side = await f.host.createSideChat(f.session.id);
+  await run(f.host, side.id, "Side inherits frozen false");
+  expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
+  const fresh = f.host.createSession(null);
+  await run(f.host, fresh.id, "Ready at first send");
+  expect(toolNames(f.requests.at(-1) ?? {})).toContain("web_search");
+  f.settings.setCapabilityEnabled("webSearch", false);
+  expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
+  expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
+  f.settings.setCapabilityEnabled("webSearch", true);
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "" });
+  expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
+  expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
+});
+
+test("frozen web tools enforce provider and key changes before each request, and may recover", async () => {
+  let issueTool = false;
+  const f = await fixture(() => {
+    if (issueTool) {
+      issueTool = false;
+      return call("web_search", { query: "Example" });
+    }
+    return sse({ content: "Answer" });
+  });
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  await run(f.host, f.session.id, "Freeze ready");
+  for (const change of [{ enabled: false }, { enabled: true, apiKey: "fake-web-key" }, { apiKey: "" }]) {
+    f.settings.saveWebSearch({ provider: "deepseek", ...change });
+    const before = f.webRequests.length;
+    issueTool = true;
+    await run(f.host, f.session.id, "Use frozen tools");
+    expect(toolNames(f.requests.at(-1) ?? {})).toContain("web_search");
+    const allowed = change.enabled === true;
+    expect(f.webRequests).toHaveLength(before + Number(allowed));
+    const current = f.host.getSessionSnapshot(f.session.id).view.runs.at(-1);
+    const web = current?.orderedBlocks.find((block) => block.type === "tool" && block.name === "web_search");
+    expect(web).toMatchObject({ status: allowed ? "completed" : "error" });
+    if (!allowed) expect(web).toMatchObject({ web: { status: "error" } });
+  }
+});
+
+test("recorded icon authorization uses the source run even outside the restored history page", async () => {
+  let issueTool = true;
+  const f = await fixture(() => {
+    if (issueTool) {
+      issueTool = false;
+      return call("web_search", { query: "Example" });
+    }
+    return sse({ content: "Answer" });
+  });
+  f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  await run(f.host, f.session.id);
+  const originalRun = f.host.getSessionSnapshot(f.session.id).view.runs[0].runId;
+  for (let index = 0; index < 11; index++) await run(f.host, f.session.id, `Follow-up ${index}`);
+  const lastRun = f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.runId;
+  if (!lastRun) throw new Error("Missing last run");
+  expect(f.host.recordedWebSourceIcon(f.session.id, lastRun, source.url)).toBeUndefined();
+  await f.host.close();
+  const restored = await f.open();
+  expect(restored.getSessionSnapshot(f.session.id).view.runs.some((run) => run.runId === originalRun)).toBe(
+    false,
+  );
+  expect(restored.recordedWebSourceIcon(f.session.id, originalRun, source.url)).toBe(source.site_icon);
 });
