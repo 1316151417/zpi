@@ -23,6 +23,16 @@ export default defineConfig({
       },
     },
   ],
-  build: { outDir: "../../dist/renderer", emptyOutDir: true, sourcemap: true },
+  build: {
+    outDir: "../../dist/renderer",
+    emptyOutDir: true,
+    sourcemap: true,
+    rolldownOptions: {
+      input: [
+        resolve("packages/desktop/src/renderer/index.html"),
+        resolve("packages/desktop/src/renderer/quick-chat.html"),
+      ],
+    },
+  },
   server: { host: "127.0.0.1", port: 5173, strictPort: true },
 });

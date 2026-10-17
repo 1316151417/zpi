@@ -129,6 +129,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("quick-chat settings", () => {
   it("shows the temporary-session description and current shortcut with an editing link", () => {
     expect(text(render())).toContain("临时对话，不保存到任务列表");
+    expect(text(render())).toContain("可用 read、bash 及已启用的联网工具");
+    expect(text(render())).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
+    expect(text(render())).not.toContain("工具仅允许只读");
     expect(text(render())).toContain("⌥N");
     expect(button("修改快捷键").props.className).toBe("settings-action-button");
     (button("修改快捷键").props.onClick as () => void)();

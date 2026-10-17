@@ -65,21 +65,25 @@ Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP �
 
 ### 快速对话的隔离边界
 
-快速浮窗使用独立 `quick-chat` preload、`zpi:quick-chat` IPC 与非持久 Electron partition。主进程同时验证 sender 和 mainFrame；主窗口的 `zpi:call` 仍只接受主窗口。浮窗页面仅加载自身入口，不初始化主任务 store、资源、输入历史或阅读位置持久化。远程图片和非 renderer 目录的 file URL 均被窗口网络层阻止；用户点击的 HTTP(S) 链接可显式交给系统浏览器。
+快速浮窗使用独立 `quick-chat` preload、`zpi:quick-chat` IPC 与非持久 Electron partition。主进程同时验证 sender 和 mainFrame；主窗口的 `zpi:call` 仍只接受主窗口。独立 `quick-chat.html` 轻量入口不初始化主任务 store、资源、输入历史或阅读位置持久化，完整 `Conversation` 仅在展开时延迟加载。主窗口 HTML 加载完成后延迟 1500 ms 隐藏预热，不阻塞或被启动流程 await；不显示窗口、不抢焦点、不创建 Agent 会话或发起模型请求。预热不触发会话过期检查。
 
-`QuickChatHost` 与 `SessionHost` 分离，使用 `SessionManager.inMemory`、`SettingsManager.inMemory` 和 `StaticResourceLoader`。通过 `session.prompt()` 直接发送文字，避免 `/commands`、文件提及和 Shell 展开。工具选择在执行层限定为专用只读 `read/list/search`，以及当前有效的现有联网工具；即使模型请求其他工具，也不会执行。新轮次重新检查联网设置，实际联网请求也检查服务与能力状态。没有创建任务、会话日志、项目索引或自动转正式任务的路径。
+远程图片和非 renderer 目录的 file URL 均被窗口网络层阻止；用户点击的 HTTP(S) 链接可显式交给系统浏览器。来源图标通过快速对话专用 IPC，按当前内存 session/run 中已记录的成功搜索结果授权 `site_icon`，不接受 renderer 任意指定图标地址。授权后复用受限图片加载器的公网 HTTPS、DNS/IP 绑定、禁跳转、尺寸与解码限制，renderer 只接收有界 PNG data URL；不会为图标放开普通远程图片。新对话或退出应用会取消旧会话的图标请求。
 
-文件工具仅在显式调用后解析工作基点。限制根目录、敏感名称、符号/硬链接与普通 UTF-8 文件；单文件 256 KiB、一次搜索读取合计 2 MiB、输出 24000 字符、最多 2000 条目/每目录256项/6层/3秒。POSIX 使用非阻塞且不跟随最终符号链接的打开方式，打开前后校验文件身份；这不是操作系统级沙箱，不能保证抵御同用户恶意进程的所有跨平台文件系统竞态。正式任务的文件工具行为保持不变。
+`QuickChatHost` 与 `SessionHost` 分离，使用 `SessionManager.inMemory`、`SettingsManager.inMemory` 和空的 `StaticResourceLoader`，不加载项目 AGENTS、技能或命令。通过 `session.prompt()` 直接发送文字，避免 `/commands`、文件提及和 Shell 展开。执行层只注册核心 `read`、`bash` 与当前有效的 `web_search` / `web_fetch`，删除专用 `list/search`，不暴露 `write/edit`、结构化提问、子智能体或浏览器控制；未注册工具不能执行。新轮次重新检查联网工具设置，实际联网工具请求也检查服务与能力状态。这些联网开关不限制 `bash` 自行联网。
 
-快速对话默认模型独立保存在 `settings.quickChat.defaultSelection`，不读取或写入主任务的 `lastSelection`。设置变化从下一次发送起生效，运行中的模型快照不变；默认提供商、模型或思考级别不可用时回退首个可用模型的默认思考级别，无可用模型则阻止发送并提示去设置配置。会话仅在内存中保留，默认设置可以跨重启保留。
+`read` 与 `bash` 直接使用核心工具，不保留快速对话专用文件工具包装或路径、敏感文件拦截，不自动扫描目录。`bash` 沿用核心实现的可选 timeout（默认不设超时）、取消和输出限制，大输出可能写入临时文件。**只读要求由系统提示词约束；`bash` 能读写本机文件或自行联网，工作目录不限制访问其他路径，这不是技术只读沙箱。** 默认 `~/Documents/ZPI` 只是工作基点，首次发送时若不存在会创建。没有创建正式任务、持久会话日志、项目索引或自动转正式任务的路径；不应把临时会话描述成绝不写盘。
 
-浮窗初始高度 112px，首次有效发送后展开为 560px；新对话恢复紧凑模式。采用透明背景与现有 16px 输入圆角，固定宽度 660px，不提供手动缩放；按当前显示器 workArea 收窄，避免小屏超界。仅在模式变化时调整高度，流式更新不会反复缩放。macOS 使用 Electron `type: "panel"`，不设置主窗为 parent，不调用应用激活 API。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器坐标仅用于位置，Space 行为依赖原生面板。
+快速对话默认模型独立保存在 `settings.quickChat.defaultSelection`，不读取或写入主任务的 `lastSelection`。设置变化从下一次发送起生效，运行中的模型快照不变；默认提供商、模型或思考级别不可用时回退首个可用模型的默认思考级别，无可用模型则阻止发送并提示去设置配置。会话只在内存中保留，不提供历史会话 UI；默认设置可以跨重启保留。
 
-依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
+过期使用单调时钟，以最后一次被接受的用户发送为基点。经过 15 分钟后，仅在下一次用户唤起时 reset，取消旧 run 并进入新 session；隐藏、显示、预热、输出 token 和回复完成均不续期。未曾发送时不按此规则过期。普通隐藏保留未发送草稿和当前回复；手动新对话或过期产生的新 session 清空草稿，迟到的旧请求不得更新新会话。
 
-快速对话测试覆盖 fake provider 的禁止工具调用、内存会话生命周期、无任务落盘、独立默认模型持久化与 fallback、快捷键冲突回滚与部分恢复、浮窗 IPC/导航边界，以及 Happy DOM 的实际紧凑输入、IME、设置导航和默认模型选择。窗口模拟验证 panel 选项、加载时收起、可见但未聚焦的再次唤起、Space 通知及清理。Happy DOM 和窗口模拟不证明真实 macOS 全局热键、Space 切换、跨应用焦点、像素布局或真实模型服务可用。
+紧凑浮窗为 `360 × 44 DIP` 的单行胶囊，保留现有发送按钮，不显示「＋」；长文本和 `Shift+Enter` 换行在输入框内滚动，不增长窗口高度，`Enter` 与 IME 处理保持一致。首次有效发送后展开为 `660 × 560 DIP`，左上「＋」开始新对话，无窗口关闭「X」，用 `Esc` 或快捷键收起。新对话恢复紧凑模式，流式更新不反复缩放。使用公开 display `bounds` / `workArea` 的底部 inset 估算底部 Dock 高度，让窗口底边在 Dock 上方再留约一 Dock 高；底部 inset 不明显的侧边/自动隐藏 Dock 使用 64 DIP 间距。所有坐标以 DIP 计算，当前显示器水平居中并限制在 workArea 内，小屏收窄尺寸、上移以免超界，不提供手动缩放。
 
-原生验收：用隔离测试配置运行 `tests/desktop/quick-chat.spec.ts`（紧凑→发送→流式→隐藏/重载→新对话及主任务隔离），显式交互测试可运行 `tests/interactive/quick-chat-focus.spec.ts`（隐藏主窗时浮窗取焦点、Esc 和草稿恢复）。另在 Mac 手动将主窗留在桌面 A、当前应用放在桌面 B，按 Option+N 应只在 B 出现输入框且不切回 A；再次按应收起。发送后切到桌面 C 应收起，再按应在 C 展开并保留回答。重复全屏 Space、多显示器、输入法候选、打开回答链接和流式停止/新对话流程。云端无原生桌面时这些阶段应明确标为未运行，不绕过 Chromium 沙箱限制。
+macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应用激活 API。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；普通隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器几何仅用于位置，Space 行为依赖原生面板。依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
+
+快速对话测试应覆盖工具 allowlist 与真实 `bash` 边界、内存会话与 15 分钟过期、草稿清理、独立默认模型与 fallback、快捷键冲突恢复、IPC/来源图标/导航边界，以及 Happy DOM 的紧凑输入、发送按钮、左上新对话、无窗口关闭按钮、IME、设置导航和默认模型选择。窗口模拟验证 DIP 几何、预热不显示或抢焦点、加载时收起、可见但未聚焦的再次唤起、Space 通知及清理。Happy DOM 和窗口模拟不证明真实 macOS 全局热键、Space 切换、跨应用焦点、像素布局或真实模型服务可用。
+
+原生验收：用隔离测试配置运行 `tests/desktop/quick-chat.spec.ts`（紧凑→发送→流式→Esc 隐藏/重载→新对话及主任务隔离），显式交互测试可运行 `tests/interactive/quick-chat-focus.spec.ts`（隐藏主窗时浮窗取焦点、固定紧凑尺寸、Esc 和草稿恢复）。另在 Mac 手动将主窗留在桌面 A、当前应用放在桌面 B，按 Option+N 应只在 B 出现输入框且不切回 A；再次按应收起。发送后切到桌面 C 应收起，再按应在 C 展开并保留回答。重复全屏 Space、多显示器、底部/侧边/自动隐藏 Dock、小屏、输入法候选、打开回答链接和流式停止/新对话流程。确认隐藏预热不显示、不抢焦点，也不发起模型请求；超过最后一次发送 15 分钟后再次唤起应进入空白新对话。云端沙箱没有可用的原生桌面验收环境时，Electron GUI、macOS Space/Dock/焦点和真实全局快捷键阶段均标为未运行，不绕过 Chromium 沙箱限制；脚本更新或 DOM 通过不等于原生验收通过。
 
 ### 文件工具的资源与并发边界
 
@@ -188,7 +192,7 @@ npm run test:interactive
 npx playwright test --config=playwright.interactive.config.ts --list
 ```
 
-目前唯一的交互用例是 `tests/interactive/window-focus.spec.ts`：验证真实窗口隐藏后的激活、显示和焦点。它继续隔离数据、剪贴板、通知及外部应用，也不向操作系统注册全局快捷键。普通套件中的快捷键、浏览器/终端焦点、通知点击和文件打开仍保留真实 Electron/IPC 覆盖，只有系统边界使用假实现。
+交互用例包括 `tests/interactive/window-focus.spec.ts`（真实主窗口隐藏后的激活、显示和焦点）及 `tests/interactive/quick-chat-focus.spec.ts`（快速浮窗取焦点、Esc 隐藏与草稿恢复）。这些用例继续隔离数据、剪贴板、通知及外部应用，也不向操作系统注册全局快捷键。普通套件中的快捷键、浏览器/终端焦点、通知点击和文件打开仍保留真实 Electron/IPC 覆盖，只有系统边界使用假实现。
 
 真实全局快捷键占用、macOS 前后台切换、真实系统通知/文件选择器、跨应用剪贴板及真实编辑器唤起目前属于人工系统集成烟测，未被默认测试验证。不要为了这些检查临时去掉后台保护；需经同意在专门的桌面环境验证，不能将模拟注册记作系统注册成功。
 

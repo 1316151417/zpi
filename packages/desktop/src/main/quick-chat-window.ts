@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import type {
   BrowserWindow,
   BrowserWindowConstructorOptions,
+  Display,
   IpcMain,
   IpcMainInvokeEvent,
   Rectangle,
@@ -20,7 +21,8 @@ interface Options {
   preload: string;
   hiddenTestMode: boolean;
   platform: NodeJS.Platform;
-  getWorkArea: (bounds?: Rectangle) => Rectangle;
+  getDisplay: (bounds?: Rectangle) => Pick<Display, "bounds" | "workArea">;
+  loadSourceIcon: (url: string, signal: AbortSignal) => Promise<string | undefined>;
   workspaceNotifications?: Pick<
     SystemPreferences,
     "subscribeWorkspaceNotification" | "unsubscribeWorkspaceNotification"
@@ -34,6 +36,9 @@ export class QuickChatWindow {
   private window?: BrowserWindow;
   private loading?: Promise<void>;
   private visible = false;
+  private visibilityEpoch = 0;
+  private opening = 0;
+  private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
   private disposed = false;
   private unsubscribe: () => void;
@@ -56,21 +61,24 @@ export class QuickChatWindow {
     });
   }
   private bounds(expanded: boolean, previous?: Rectangle): Rectangle {
-    const area = this.options.getWorkArea(previous);
-    const width = Math.min(660, area.width);
-    const height = Math.min(expanded ? 560 : 112, area.height);
+    const display = this.options.getDisplay(previous);
+    const area = display.workArea;
+    const width = Math.min(expanded ? 660 : 360, area.width);
+    const height = Math.min(expanded ? 560 : 44, area.height);
+    // Public geometry only, in DIP. A visible bottom Dock/taskbar is an estimate
+    // of its height; side/auto-hidden Docks have no useful bottom inset.
+    const bottomInset = Math.max(0, display.bounds.y + display.bounds.height - area.y - area.height);
+    const gap = bottomInset > 4 ? bottomInset : 64;
     return {
       width,
       height,
       x: Math.round(
         Math.max(
           area.x,
-          Math.min(previous?.x ?? area.x + (area.width - width) / 2, area.x + area.width - width),
+          Math.min(display.bounds.x + (display.bounds.width - width) / 2, area.x + area.width - width),
         ),
       ),
-      y: Math.round(
-        Math.max(area.y, Math.min(previous?.y ?? area.y + area.height / 5, area.y + area.height - height)),
-      ),
+      y: Math.round(Math.max(area.y, area.y + area.height - gap - height)),
     };
   }
   private setExpanded(expanded: boolean): void {
@@ -79,7 +87,10 @@ export class QuickChatWindow {
     const window = this.window;
     if (!window || window.isDestroyed()) return;
     const bounds = this.bounds(expanded, window.getBounds());
-    window.setMinimumSize(Math.min(440, bounds.width), Math.min(expanded ? 360 : 112, bounds.height));
+    window.setMinimumSize(
+      Math.min(expanded ? 440 : 360, bounds.width),
+      Math.min(expanded ? 360 : 44, bounds.height),
+    );
     window.setBounds(bounds);
   }
   owns(event: Pick<IpcMainInvokeEvent, "sender" | "senderFrame">): boolean {
@@ -103,8 +114,8 @@ export class QuickChatWindow {
     const bounds = this.bounds(this.expanded);
     const window = this.options.createWindow({
       ...bounds,
-      minWidth: Math.min(440, bounds.width),
-      minHeight: Math.min(this.expanded ? 360 : 112, bounds.height),
+      minWidth: Math.min(this.expanded ? 440 : 360, bounds.width),
+      minHeight: Math.min(this.expanded ? 360 : 44, bounds.height),
       resizable: false,
       transparent: true,
       title: "快速对话",
@@ -190,32 +201,58 @@ export class QuickChatWindow {
     await this.loading;
     return this.window;
   }
+  /** Prepare only the renderer, without showing, refreshing, expiring, or creating a model session. */
+  async prepare(): Promise<void> {
+    await this.ready();
+  }
+  scheduleWarmup(onError: (error: unknown) => void): void {
+    if (this.disposed || this.window || this.warmup) return;
+    // Low-priority work after the main HTML load, never awaited by app startup.
+    this.warmup = setTimeout(() => {
+      this.warmup = undefined;
+      void this.prepare().catch(onError);
+    }, 1500);
+    this.warmup.unref();
+  }
   async show(): Promise<void> {
     if (this.disposed) return;
     this.visible = true;
-    const window = await this.ready();
-    if (!this.visible || this.disposed || !window || window.isDestroyed()) return;
-    this.options.host.refreshSettings();
-    if (!this.options.hiddenTestMode) {
-      if (window.isMinimized()) window.restore();
-      // Geometry chooses a display, not a Space. The macOS panel type above is
-      // what prevents app activation/Space switching. Transparent windows use
-      // fixed compact/expanded sizes; native user resizing is not reliable.
-      const bounds = this.bounds(this.expanded);
-      window.setMinimumSize(Math.min(440, bounds.width), Math.min(this.expanded ? 360 : 112, bounds.height));
-      window.setBounds(bounds);
-      window.show();
-      if (this.visible && !window.isDestroyed()) window.focus();
+    const epoch = ++this.visibilityEpoch;
+    this.opening++;
+    try {
+      const [window] = await Promise.all([this.ready(), this.options.host.resetIfExpired()]);
+      if (epoch !== this.visibilityEpoch || !this.visible || this.disposed || !window || window.isDestroyed())
+        return;
+      if (!this.options.hiddenTestMode) {
+        if (window.isMinimized()) window.restore();
+        // Geometry selects a display; the nonactivating panel is what keeps the
+        // current macOS Space. Both fixed sizes share the same bottom anchor.
+        const bounds = this.bounds(this.expanded);
+        window.setMinimumSize(
+          Math.min(this.expanded ? 440 : 360, bounds.width),
+          Math.min(this.expanded ? 360 : 44, bounds.height),
+        );
+        window.setBounds(bounds);
+        window.show();
+        if (this.visible && !window.isDestroyed()) window.focus();
+      }
+      this.options.host.refreshSettings();
+    } finally {
+      this.opening--;
     }
   }
   async toggle(): Promise<void> {
     // Native visibility does not mean the window is foreground on this Space.
     // Preserve the desired visibility toggle while a renderer is still loading.
-    if (this.visible && (this.loading || this.options.hiddenTestMode || this.window?.isFocused()))
+    if (
+      this.visible &&
+      (this.opening || this.loading || this.options.hiddenTestMode || this.window?.isFocused())
+    )
       this.hide();
     else await this.show();
   }
   hide(): void {
+    this.visibilityEpoch++;
     this.visible = false;
     if (this.window && !this.window.isDestroyed()) this.window.hide();
   }
@@ -231,13 +268,14 @@ export class QuickChatWindow {
         hide: 0,
         copyText: 1,
         openExternal: 1,
+        readWebSourceIcon: 3,
       };
       if (!Object.hasOwn(counts, method) || args.length !== counts[method])
         throw new Error("invalid_input: 未知 IPC 方法或参数数量");
-      const text = (limit: number) => {
-        if (typeof args[0] !== "string" || args[0].length > limit)
+      const text = (limit: number, index = 0) => {
+        if (typeof args[index] !== "string" || args[index].length > limit)
           throw new Error("invalid_input: 文本参数无效");
-        return args[0];
+        return args[index] as string;
       };
       const host = this.options.host;
       let value: unknown;
@@ -260,6 +298,16 @@ export class QuickChatWindow {
         case "copyText":
           this.options.copyText(text(1_000_000));
           break;
+        case "readWebSourceIcon": {
+          const dataUrl = await host.readWebSourceIcon(
+            text(256),
+            text(256, 1),
+            text(8192, 2),
+            this.options.loadSourceIcon,
+          );
+          value = dataUrl ? { dataUrl } : {};
+          break;
+        }
         case "openExternal": {
           const url = new URL(text(8192));
           if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
@@ -281,6 +329,8 @@ export class QuickChatWindow {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    clearTimeout(this.warmup);
+    this.warmup = undefined;
     this.visible = false;
     this.unsubscribe();
     if (this.spaceSubscription !== undefined) {

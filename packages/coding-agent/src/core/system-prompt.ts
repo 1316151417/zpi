@@ -7,13 +7,20 @@ export interface PromptTemplate {
   preamble: string;
   rules: string;
 }
-export const piTemplate: PromptTemplate = {
-  id: "pi",
-  name: "ZPI 通用",
-  preamble:
-    "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
-  rules: "Be concise in your responses\nShow file paths clearly when working with files",
-};
+/** Adapt the built-in capabilities without changing the default coding-task prompt. */
+export function createPiTemplate(options: { writable?: boolean } = {}): PromptTemplate {
+  const capabilities =
+    options.writable === false
+      ? "reading files and executing commands"
+      : "reading files, executing commands, editing code, and writing new files";
+  return {
+    id: "pi",
+    name: "ZPI 通用",
+    preamble: `You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by ${capabilities}.`,
+    rules: "Be concise in your responses\nShow file paths clearly when working with files",
+  };
+}
+export const piTemplate: PromptTemplate = createPiTemplate();
 export function validateTemplate(template: PromptTemplate): void {
   if (
     !template ||

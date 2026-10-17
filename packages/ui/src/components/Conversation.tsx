@@ -367,6 +367,7 @@ export const RunGroup = memo(function RunGroup({
   onBlockToggle,
   finding = false,
   context,
+  readWebSourceIcon = context?.readWebSourceIcon,
   onChanges,
   onLoadToolPatch,
   onFileAction,
@@ -385,6 +386,7 @@ export const RunGroup = memo(function RunGroup({
   previewAutoOpen?: ReturnType<typeof usePreviewAutoOpen>;
   sessionId?: string;
   context?: ComposerContext;
+  readWebSourceIcon?: ComposerContext["readWebSourceIcon"];
   onChanges?: (runId: string, path?: string, toolCallId?: string) => void;
   onLoadToolPatch?: (runId: string, toolCallId: string) => Promise<string>;
   onFileAction?: FileActionHandler;
@@ -725,7 +727,7 @@ export const RunGroup = memo(function RunGroup({
                   sources={answerSources}
                   sessionId={sessionId}
                   runId={run.runId}
-                  readIcon={context?.readWebSourceIcon}
+                  readIcon={readWebSourceIcon}
                   onLink={onLink}
                 />
               )}
@@ -749,6 +751,7 @@ export function Conversation({
   onLink,
   workspace,
   context,
+  readWebSourceIcon,
   onChanges,
   onLoadToolPatch,
   onFileAction,
@@ -793,6 +796,7 @@ export function Conversation({
   workspace?: LinkContext;
   onLink: (url: string, options?: WebOpenOptions) => void;
   context?: ComposerContext;
+  readWebSourceIcon?: ComposerContext["readWebSourceIcon"];
   onChanges?: (runId: string, path?: string, toolCallId?: string) => void;
   onLoadToolPatch?: (runId: string, toolCallId: string) => Promise<string>;
   onFileAction?: FileActionHandler;
@@ -1101,6 +1105,7 @@ export function Conversation({
                     previewAutoOpen={previewAutoOpen}
                     sessionId={view.sessionId}
                     context={context}
+                    readWebSourceIcon={readWebSourceIcon}
                     onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}
                     onFork={onFork}
                     onChanges={onChanges}

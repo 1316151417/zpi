@@ -18,7 +18,10 @@ function fixture(
     }),
     unsubscribeWorkspaceNotification: vi.fn(),
   };
-  const getWorkArea = vi.fn(() => ({ x: 0, y: 0, width: 1440, height: 900 }));
+  const getDisplay = vi.fn(() => ({
+    bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    workArea: { x: 0, y: 25, width: 1440, height: 825 },
+  }));
   const host = {
     subscribe: vi.fn((callback: typeof listener) => {
       listener = callback;
@@ -30,6 +33,8 @@ function fixture(
     send: vi.fn(),
     stop: vi.fn(async () => {}),
     reset: vi.fn(async () => {}),
+    resetIfExpired: vi.fn(async () => {}),
+    readWebSourceIcon: vi.fn(async () => undefined as string | undefined),
   };
   const windows: ReturnType<typeof makeWindow>[] = [];
   const configs: BrowserWindowConstructorOptions[] = [];
@@ -92,14 +97,15 @@ function fixture(
       windows.push(window);
       return window as unknown as BrowserWindow;
     },
-    rendererUrl: "file:///app/renderer/index.html",
+    rendererUrl: "file:///app/renderer/quick-chat.html",
     preload: "/app/preload/quick-chat.cjs",
     hiddenTestMode: options.hidden ?? false,
     platform: options.platform ?? "linux",
-    getWorkArea,
+    getDisplay,
     workspaceNotifications,
     copyText,
     openExternal,
+    loadSourceIcon: vi.fn(async () => undefined),
   });
   return {
     quick,
@@ -108,7 +114,7 @@ function fixture(
     configs,
     copyText,
     openExternal,
-    getWorkArea,
+    getDisplay,
     workspaceNotifications,
     spaceChanged: () => spaceChanged(),
     emitHistory: (history: boolean) => {
@@ -143,7 +149,7 @@ test("quick window is lazy, isolated, and toggles without affecting its request 
       sandbox: true,
     },
   });
-  expect(window.loadURL).toHaveBeenCalledWith("file:///app/renderer/index.html?view=quick-chat");
+  expect(window.loadURL).toHaveBeenCalledWith("file:///app/renderer/quick-chat.html?view=quick-chat");
   expect(window.show).toHaveBeenCalledTimes(1);
   await f.quick.toggle();
   expect(window.hide).toHaveBeenCalledTimes(1);
@@ -172,7 +178,7 @@ test("compact opens as an input-sized window, expands only once, and preserves e
   const f = fixture();
   await f.quick.show();
   const window = f.windows[0];
-  expect(f.configs[0]).toMatchObject({ height: 112, minHeight: 112, resizable: false });
+  expect(f.configs[0]).toMatchObject({ width: 360, height: 44, minHeight: 44, resizable: false });
   f.emitHistory(true);
   expect(window.getBounds().height).toBe(560);
   expect(window.setMinimumSize).toHaveBeenLastCalledWith(440, 360);
@@ -184,8 +190,8 @@ test("compact opens as an input-sized window, expands only once, and preserves e
   await f.quick.show();
   expect(window.getBounds()).toMatchObject({ width: 660, height: 560 });
   f.emitHistory(false);
-  expect(window.getBounds().height).toBe(112);
-  expect(window.setMinimumSize).toHaveBeenLastCalledWith(440, 112);
+  expect(window.getBounds().height).toBe(44);
+  expect(window.setMinimumSize).toHaveBeenLastCalledWith(360, 44);
   await f.quick.dispose();
 });
 
@@ -201,14 +207,20 @@ test("renderer recreation opens expanded from existing host history", async () =
 
 test("both modes fit a small active display and reopening leaves old display coordinates behind", async () => {
   const f = fixture();
-  f.getWorkArea.mockReturnValue({ x: -500, y: -200, width: 380, height: 300 });
+  f.getDisplay.mockReturnValue({
+    bounds: { x: -500, y: -200, width: 380, height: 300 },
+    workArea: { x: -500, y: -200, width: 380, height: 300 },
+  });
   await f.quick.show();
   const window = f.windows[0];
-  expect(window.getBounds()).toMatchObject({ x: -500, width: 380, height: 112 });
+  expect(window.getBounds()).toMatchObject({ x: -490, width: 360, height: 44 });
   f.emitHistory(true);
   expect(window.getBounds()).toEqual({ x: -500, y: -200, width: 380, height: 300 });
   f.quick.hide();
-  f.getWorkArea.mockReturnValue({ x: 1440, y: 50, width: 1000, height: 700 });
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 1440, y: 0, width: 1000, height: 800 },
+    workArea: { x: 1440, y: 50, width: 1000, height: 700 },
+  });
   await f.quick.show();
   const bounds = window.getBounds();
   expect(bounds).toMatchObject({ width: 660, height: 560 });
@@ -228,7 +240,10 @@ test("macOS uses a nonactivating unparented panel and visible-but-unfocused togg
   // It may still be OS-visible on another Space, or focus may have changed
   // before the blur notification. Visibility alone must not mean "hide".
   window.isFocused.mockReturnValue(false);
-  f.getWorkArea.mockReturnValue({ x: 1440, y: 0, width: 1000, height: 700 });
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 1440, y: 0, width: 1000, height: 700 },
+    workArea: { x: 1440, y: 0, width: 1000, height: 700 },
+  });
   await f.quick.toggle();
   expect(window.show).toHaveBeenCalledTimes(2);
   expect(window.hide).not.toHaveBeenCalled();
@@ -412,7 +427,7 @@ test("renderer network and local-file loading fail closed outside bundled assets
     expect(callback).toHaveBeenCalledWith({ cancel: true });
   }
   for (const url of [
-    "file:///app/renderer/index.html?view=quick-chat",
+    "file:///app/renderer/quick-chat.html?view=quick-chat",
     "file:///app/renderer/assets/app.js",
     "data:image/png;base64,AA",
   ]) {
@@ -442,5 +457,143 @@ test("user link actions allow only HTTP(S) and clipboard payloads remain bounded
   expect(await f.quick.call("copyText", ["answer"])).toMatchObject({ ok: true });
   expect(f.copyText).toHaveBeenCalledWith("answer");
   expect(await f.quick.call("copyText", ["x".repeat(1_000_001)])).toMatchObject({ ok: false });
+  await f.quick.dispose();
+});
+
+test("hidden preparation shares cold loading without showing, expiring, refreshing or starting a run", async () => {
+  const f = fixture({ autoLoad: false });
+  const warm = f.quick.prepare();
+  const again = f.quick.prepare();
+  expect(f.windows).toHaveLength(1);
+  expect(f.host.resetIfExpired).not.toHaveBeenCalled();
+  expect(f.host.refreshSettings).not.toHaveBeenCalled();
+  expect(f.host.send).not.toHaveBeenCalled();
+  const opening = f.quick.show();
+  f.windows[0].webContents.emit("did-finish-load");
+  await Promise.all([warm, again, opening]);
+  expect(f.windows[0].loadURL).toHaveBeenCalledOnce();
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  expect(f.host.resetIfExpired).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("delayed warmup stays hidden, is idempotent, and is cancelled on disposal", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fixture();
+    const error = vi.fn();
+    f.quick.scheduleWarmup(error);
+    f.quick.scheduleWarmup(error);
+    expect(f.windows).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(f.windows).toHaveLength(1);
+    expect(f.windows[0].show).not.toHaveBeenCalled();
+    expect(f.windows[0].focus).not.toHaveBeenCalled();
+    expect(f.host.resetIfExpired).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    await f.quick.dispose();
+    const cancelled = fixture();
+    cancelled.quick.scheduleWarmup(error);
+    await cancelled.quick.dispose();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(cancelled.windows).toHaveLength(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("Space change or toggle while an expired run is stopping cancels the pending show", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.prepare();
+  let expired!: () => void;
+  f.host.resetIfExpired.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        expired = resolve;
+      }),
+  );
+  const opening = f.quick.show();
+  await f.quick.toggle();
+  expired();
+  await opening;
+  expect(f.windows[0].show).not.toHaveBeenCalled();
+  await f.quick.show();
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  f.quick.hide();
+  f.host.resetIfExpired.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        expired = resolve;
+      }),
+  );
+  const afterSpace = f.quick.show();
+  f.spaceChanged();
+  expired();
+  await afterSpace;
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test.each([
+  {
+    name: "bottom Dock",
+    bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    area: { x: 0, y: 25, width: 1440, height: 825 },
+    x: 540,
+    bottom: 800,
+  },
+  {
+    name: "side Dock",
+    bounds: { x: -1440, y: -100, width: 1440, height: 900 },
+    area: { x: -1360, y: -75, width: 1360, height: 875 },
+    x: -900,
+    bottom: 736,
+  },
+  {
+    name: "auto-hidden Dock",
+    bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    area: { x: 0, y: 25, width: 1440, height: 873 },
+    x: 540,
+    bottom: 834,
+  },
+])(
+  "$name uses only DIP geometry and keeps the same bottom anchor after expansion",
+  async ({ bounds, area, x, bottom }) => {
+    const f = fixture();
+    f.getDisplay.mockReturnValue({ bounds, workArea: area });
+    await f.quick.show();
+    const window = f.windows[0];
+    expect(window.getBounds()).toEqual({ x, y: bottom - 44, width: 360, height: 44 });
+    f.emitHistory(true);
+    expect(window.getBounds().y + window.getBounds().height).toBe(bottom);
+    expect(window.getBounds().x + window.getBounds().width / 2).toBe(bounds.x + bounds.width / 2);
+    await f.quick.dispose();
+  },
+);
+
+test("source icon IPC delegates only bounded session/run/source fields to the quick host", async () => {
+  const f = fixture();
+  f.host.readWebSourceIcon.mockResolvedValue("data:image/png;base64,SAFE");
+  expect(await f.quick.call("readWebSourceIcon", ["session", "run", "https://example.com/article"])).toEqual({
+    ok: true,
+    value: { dataUrl: "data:image/png;base64,SAFE" },
+  });
+  expect(f.host.readWebSourceIcon).toHaveBeenCalledWith(
+    "session",
+    "run",
+    "https://example.com/article",
+    expect.any(Function),
+  );
+  f.host.readWebSourceIcon.mockClear();
+  for (const args of [
+    ["s", "r"],
+    ["s", "r", "url", "icon"],
+    [null, "r", "url"],
+    ["s".repeat(257), "r", "url"],
+    ["s", "r", "u".repeat(8193)],
+  ]) {
+    expect(await f.quick.call("readWebSourceIcon", args)).toMatchObject({ ok: false });
+  }
+  expect(f.host.readWebSourceIcon).not.toHaveBeenCalled();
   await f.quick.dispose();
 });

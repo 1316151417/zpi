@@ -11,10 +11,11 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
   const app = await launchDesktop({ dir, url: "" });
   const main = await app.firstWindow();
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
-  const [quick] = await Promise.all([
-    app.waitForEvent("window"),
-    main.evaluate(() => window.zpi.openQuickChat()),
-  ]);
+  await main.evaluate(() => window.zpi.openQuickChat());
+  const quickPage = () => app.windows().find((page) => page.url().includes("view=quick-chat"));
+  await expect.poll(() => Boolean(quickPage())).toBe(true);
+  const quick = quickPage();
+  if (!quick) throw new Error("Missing quick-chat page");
   const state = () =>
     app.evaluate(({ BrowserWindow }) => {
       const windows = BrowserWindow.getAllWindows();
@@ -26,6 +27,7 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
         mainVisible: main?.isVisible(),
         mainFocused: main?.isFocused(),
         allSpaces: quick?.isVisibleOnAllWorkspaces(),
+        bounds: quick?.getBounds(),
         platform: process.platform,
       };
     });
@@ -33,11 +35,16 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
     .poll(state)
     .toMatchObject({ quickVisible: true, quickFocused: true, mainVisible: false, mainFocused: false });
   if ((await state()).platform === "darwin") expect((await state()).allSpaces).toBe(true);
+  await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "compact");
+  await expect(quick.getByRole("button", { name: "发送", exact: true })).toBeVisible();
+  await expect(quick.getByRole("button", { name: /^(新对话|隐藏|关闭)$/ })).toHaveCount(0);
+  expect((await state()).bounds).toMatchObject({ width: 360, height: 44 });
   const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
   await input.fill("跨桌面仍保留的草稿");
   await input.press("Escape");
   await expect.poll(state).toMatchObject({ quickVisible: false, mainVisible: false });
   await main.evaluate(() => window.zpi.openQuickChat());
   await expect(input).toHaveValue("跨桌面仍保留的草稿");
+  expect((await state()).bounds).toMatchObject({ width: 360, height: 44 });
   await expect.poll(state).toMatchObject({ quickVisible: true, quickFocused: true, mainVisible: false });
 });

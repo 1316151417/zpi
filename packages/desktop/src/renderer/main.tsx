@@ -6,15 +6,6 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Missing root");
 
 async function startRenderer(root: HTMLElement) {
-  if (new URLSearchParams(location.search).get("view") === "quick-chat") {
-    const { QuickChat } = await import("./QuickChat.tsx");
-    createRoot(root).render(
-      <LucideProvider strokeWidth={1.5}>
-        <QuickChat />
-      </LucideProvider>,
-    );
-    return;
-  }
   const [{ App }, { startAppearance }, { logRendererError }] = await Promise.all([
     import("./App.tsx"),
     import("./appearance.ts"),

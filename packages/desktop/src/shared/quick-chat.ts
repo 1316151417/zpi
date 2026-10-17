@@ -17,5 +17,10 @@ export interface QuickChatBridge {
   hide(): Promise<Result<void>>;
   copyText(text: string): Promise<Result<void>>;
   openExternal(url: string): Promise<Result<void>>;
+  readWebSourceIcon(
+    sessionId: string,
+    runId: string,
+    sourceUrl: string,
+  ): Promise<Result<{ dataUrl?: string }>>;
   onSnapshot(listener: (snapshot: QuickChatSnapshot) => void): () => void;
 }

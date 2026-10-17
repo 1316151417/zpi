@@ -66,6 +66,9 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
   return (
     <section className="quick-chat-settings" aria-label="快速对话设置">
       <p className="settings-intro">临时对话，不保存到任务列表</p>
+      <p className="settings-hint">
+        可用 read、bash 及已启用的联网工具；只读要求依赖提示词，bash 仍可读写本机文件。
+      </p>
       <div className="settings-group">
         <div className="settings-row">
           <span className="settings-row-copy">

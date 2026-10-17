@@ -1,11 +1,15 @@
-import { Plus, Square, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { ActionHint, Conversation } from "zpi-ui";
+import { ArrowUp, CircleAlert, Plus, Square, X } from "lucide-react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
 import type { Result } from "../shared/bridge.ts";
-import { defaultPreferences } from "../shared/config.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
-import { quickChatSelectionIsValid } from "../shared/quick-chat-settings.ts";
+import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
 import "./quick-chat.css";
+
+// Keep the first input independent of settings/model adapters and rich conversation rendering.
+const defaultAppearance = { theme: "system", fontSize: 14 } as const;
+const configurationMessage = "默认模型不可用，请到主窗口「设置 → 快速对话」配置。";
+const loadConversation = () => import("./QuickChatConversation.tsx");
+type ConversationLoader = () => Promise<{ default: ComponentType<QuickChatConversationProps> }>;
 
 function unwrap<T>(result: Result<T>): T {
   if (!result.ok) throw new Error(result.error.message);
@@ -16,8 +20,58 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function QuickChat() {
+function DeferredConversation({
+  loader,
+  ...props
+}: QuickChatConversationProps & { loader: ConversationLoader }) {
+  const [Content, setContent] = useState<ComponentType<QuickChatConversationProps>>();
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    void loader().then(
+      (module) => {
+        if (active) setContent(() => module.default);
+      },
+      (reason) => {
+        if (active) setError(errorMessage(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [loader, attempt]);
+  if (Content) return <Content {...props} />;
+  return (
+    <div className="quick-chat-conversation-placeholder" role={error ? "alert" : "status"}>
+      {error ? (
+        <>
+          <span>无法加载对话：{error}</span>
+          <button
+            type="button"
+            className="quick-chat-retry"
+            onClick={() => {
+              setError("");
+              setAttempt((value) => value + 1);
+            }}
+          >
+            重试加载对话
+          </button>
+        </>
+      ) : (
+        "正在加载对话…"
+      )}
+    </div>
+  );
+}
+
+export function QuickChat({
+  conversationLoader = loadConversation,
+}: {
+  conversationLoader?: ConversationLoader;
+}) {
   const [snapshot, setSnapshot] = useState<QuickChatSnapshot>();
+  const [snapshotError, setSnapshotError] = useState("");
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<"send" | "stop" | "reset">();
@@ -27,15 +81,16 @@ export function QuickChat() {
   const composing = useRef(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const revision = useRef(-1);
+  const currentSession = useRef<string>(undefined);
+  const operationGeneration = useRef(0);
   const view = snapshot?.session;
   const expanded = Boolean(view?.runs.length);
   const running = Boolean(view?.runs.some((run) => run.status === "running"));
-  const preferences = snapshot?.settings.interface ?? defaultPreferences;
-  const selection = snapshot?.selection;
-  const selectionValid = Boolean(
-    snapshot && selection && quickChatSelectionIsValid(snapshot.settings.providers, selection),
-  );
+  const preferences = snapshot?.settings.interface ?? defaultAppearance;
+  // The host publishes a validated selection and revalidates every send.
+  const selectionValid = Boolean(snapshot?.selection);
   const configurationRequired = Boolean(snapshot && !selectionValid);
+  const visibleError = error || snapshotError;
 
   useEffect(() => {
     document.title = "快速对话 · ZPI";
@@ -50,7 +105,18 @@ export function QuickChat() {
     const accept = (next: QuickChatSnapshot) => {
       if (!active || next.revision < revision.current) return;
       revision.current = next.revision;
+      const nextSession = next.session.sessionId;
+      if (currentSession.current !== undefined && currentSession.current !== nextSession) {
+        operationGeneration.current += 1;
+        lock.current = false;
+        setPending(undefined);
+        setDraft("");
+        setError("");
+        composing.current = false;
+      }
+      currentSession.current = nextSession;
       setSnapshot(next);
+      setSnapshotError("");
     };
     const off = window.zpiQuickChat.onSnapshot(accept);
     void window.zpiQuickChat
@@ -58,7 +124,7 @@ export function QuickChat() {
       .then(unwrap)
       .then(accept)
       .catch((reason) => {
-        if (active) setError(errorMessage(reason));
+        if (active && revision.current < 0) setSnapshotError(errorMessage(reason));
       });
     return () => {
       active = false;
@@ -79,7 +145,6 @@ export function QuickChat() {
   }, [preferences.theme, preferences.fontSize]);
 
   useEffect(() => {
-    if (!view) return;
     const frame = requestAnimationFrame(() => textarea.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [view?.sessionId]);
@@ -113,10 +178,11 @@ export function QuickChat() {
   async function hide() {
     if (hiding.current) return;
     hiding.current = true;
+    const generation = operationGeneration.current;
     try {
       unwrap(await window.zpiQuickChat.hide());
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (generation === operationGeneration.current) setError(errorMessage(reason));
     } finally {
       hiding.current = false;
     }
@@ -129,16 +195,19 @@ export function QuickChat() {
   ) {
     if (lock.current) return;
     lock.current = true;
+    const generation = operationGeneration.current;
     setPending(action);
     setError("");
     try {
       unwrap(await operation());
-      complete?.();
+      if (generation === operationGeneration.current) complete?.();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (generation === operationGeneration.current) setError(errorMessage(reason));
     } finally {
-      lock.current = false;
-      setPending(undefined);
+      if (generation === operationGeneration.current) {
+        lock.current = false;
+        setPending(undefined);
+      }
     }
   }
 
@@ -166,57 +235,38 @@ export function QuickChat() {
         <>
           <header className="quick-chat-header">
             <div className="quick-chat-window-actions">
-              <ActionHint label="新对话" appearance="control" side="bottom">
-                <button
-                  type="button"
-                  className="quick-chat-icon-button"
-                  aria-label="新对话"
-                  disabled={Boolean(pending)}
-                  onClick={() =>
-                    void perform(
-                      "reset",
-                      () => window.zpiQuickChat.reset(),
-                      () => {
-                        setDraft("");
-                        textarea.current?.focus();
-                      },
-                    )
-                  }
-                >
-                  <Plus size={17} aria-hidden="true" />
-                </button>
-              </ActionHint>
-              <ActionHint label="隐藏" shortcut="Esc" appearance="control" side="bottom">
-                <button
-                  type="button"
-                  className="quick-chat-icon-button"
-                  aria-label="隐藏"
-                  onClick={() => void hide()}
-                >
-                  <X size={17} aria-hidden="true" />
-                </button>
-              </ActionHint>
+              <button
+                type="button"
+                className="quick-chat-icon-button"
+                aria-label="新对话"
+                title="新对话"
+                disabled={Boolean(pending)}
+                onClick={() =>
+                  void perform(
+                    "reset",
+                    () => window.zpiQuickChat.reset(),
+                    () => textarea.current?.focus(),
+                  )
+                }
+              >
+                <Plus size={17} aria-hidden="true" />
+              </button>
             </div>
           </header>
-          <Conversation
+          <DeferredConversation
             key={view.sessionId}
+            loader={conversationLoader}
             view={view}
-            persistReading={false}
-            onCopy={(text) => window.zpiQuickChat.copyText(text).then(unwrap)}
-            onLink={(url) => {
-              void window.zpiQuickChat
-                .openExternal(url)
-                .then(unwrap)
-                .catch((reason) => setError(errorMessage(reason)));
+            onError={(message) => {
+              if (view.sessionId === currentSession.current) setError(message);
             }}
-            onFile={() => setError("快速对话不支持预览本地文件")}
           />
         </>
       )}
 
       <div className="quick-chat-composer-container">
         <form
-          className={`composer quick-chat-composer${running ? " quick-chat-composer-running" : ""}`}
+          className="composer quick-chat-composer"
           onSubmit={(event) => {
             event.preventDefault();
             submit();
@@ -227,9 +277,9 @@ export function QuickChat() {
             value={draft}
             aria-label="输入消息"
             aria-describedby={configurationRequired ? "quick-chat-configuration" : undefined}
-            placeholder={!snapshot ? "正在加载…" : running ? "继续输入，回复结束后发送" : "输入消息…"}
+            placeholder={running ? "继续输入，回复结束后发送" : "输入消息…"}
             rows={1}
-            disabled={!snapshot || pending === "reset"}
+            disabled={pending === "reset"}
             onChange={(event) => setDraft(event.target.value)}
             onCompositionStart={() => {
               composing.current = true;
@@ -253,15 +303,17 @@ export function QuickChat() {
               if (!event.repeat) submit();
             }}
           />
-          {error && (
-            <div className="quick-chat-error" role="alert">
-              <span>{error}</span>
+          {visibleError && (
+            <div className="quick-chat-error" role="alert" title={visibleError}>
+              <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
+              <span className="quick-chat-notice-text">{visibleError}</span>
               {!snapshot ? (
                 <button
                   type="button"
                   className="quick-chat-retry"
                   onClick={() => {
                     setError("");
+                    setSnapshotError("");
                     setAttempt((value) => value + 1);
                   }}
                 >
@@ -275,22 +327,37 @@ export function QuickChat() {
             </div>
           )}
           {configurationRequired && (
-            <p className="quick-chat-configuration" id="quick-chat-configuration" role="status">
-              默认模型不可用，请到主窗口「设置 → 快速对话」配置。
-            </p>
+            <div
+              className="quick-chat-configuration"
+              id="quick-chat-configuration"
+              role="status"
+              title={configurationMessage}
+            >
+              <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
+              <span className="quick-chat-notice-text">{configurationMessage}</span>
+            </div>
           )}
-          {running && (
-            <ActionHint label="停止生成" appearance="control">
-              <button
-                type="button"
-                className="quick-chat-stop"
-                aria-label="停止"
-                disabled={Boolean(pending)}
-                onClick={() => void perform("stop", () => window.zpiQuickChat.stop())}
-              >
-                <Square size={12} fill="currentColor" aria-hidden="true" />
-              </button>
-            </ActionHint>
+          {running ? (
+            <button
+              type="button"
+              className="send stop"
+              aria-label="停止"
+              title="停止生成"
+              disabled={Boolean(pending)}
+              onClick={() => void perform("stop", () => window.zpiQuickChat.stop())}
+            >
+              <Square size={16} fill="currentColor" aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="send"
+              aria-label="发送"
+              title={!snapshot ? "正在连接…" : configurationRequired ? configurationMessage : "发送"}
+              disabled={Boolean(pending) || !selectionValid || !draft.trim()}
+            >
+              <ArrowUp size={16} aria-hidden="true" />
+            </button>
           )}
         </form>
       </div>

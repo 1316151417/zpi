@@ -10,6 +10,7 @@ const bridge: QuickChatBridge = {
   hide: () => call("hide"),
   copyText: (text) => call("copyText", text),
   openExternal: (url) => call("openExternal", url),
+  readWebSourceIcon: (sessionId, runId, sourceUrl) => call("readWebSourceIcon", sessionId, runId, sourceUrl),
   onSnapshot(listener) {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: QuickChatSnapshot) => listener(snapshot);
     ipcRenderer.on("zpi:quick-chat-snapshot", handler);

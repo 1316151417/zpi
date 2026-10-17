@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   buildSystemPrompt,
   createCodingTools,
+  createPiTemplate,
   FileResourceLoader,
   piTemplate,
   renderTemplate,
@@ -49,4 +50,32 @@ test("Pi prompt facts, literal nonrecursive variables, custom rules replace defa
   expect(changed).not.toContain("Be concise in your responses");
   expect(changed).toContain("PROJECT RULE");
   expect(changed).toContain("Use write only for new files or complete rewrites.");
+});
+
+test("default Pi template and generated prompt remain byte-for-byte stable", () => {
+  const preamble =
+    "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
+  const expected = {
+    id: "pi",
+    name: "ZPI 通用",
+    preamble,
+    rules: "Be concise in your responses\nShow file paths clearly when working with files",
+  };
+  expect(piTemplate).toEqual(expected);
+  expect(createPiTemplate()).toEqual(expected);
+  expect(createPiTemplate({ writable: true })).toEqual(expected);
+  expect(buildSystemPrompt({ cwd: "/project", tools: [] })).toBe(
+    `${preamble}\n\n<tools>\n(none)\n</tools>\n\n<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>\n\n<cwd>\n/project\n</cwd>`,
+  );
+});
+
+test("read-only Pi variant reuses the base template without advertising file changes", () => {
+  const template = createPiTemplate({ writable: false });
+  expect(template.preamble).toBe(
+    "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files and executing commands.",
+  );
+  expect(template.rules).toBe(piTemplate.rules);
+  expect(template.id).toBe(piTemplate.id);
+  expect(template.name).toBe(piTemplate.name);
+  expect(template.preamble).not.toMatch(/editing code|writing new files/);
 });

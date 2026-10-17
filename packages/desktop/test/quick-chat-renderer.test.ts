@@ -4,10 +4,11 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Conversation } from "zpi-ui";
 import { emptySession } from "zpi-ui/projection";
 import { QuickChat } from "../src/renderer/QuickChat.tsx";
+import QuickChatConversation from "../src/renderer/QuickChatConversation.tsx";
 import type { CombinedSelection, PublicSettings, Result } from "../src/shared/bridge.ts";
 import { defaultCapabilities, defaultPreferences } from "../src/shared/config.ts";
 import type { QuickChatBridge, QuickChatSnapshot } from "../src/shared/quick-chat.ts";
-import { quickChatModels } from "../src/shared/quick-chat-settings.ts";
+import { quickChatModels, quickChatSelectionIsValid } from "../src/shared/quick-chat-settings.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
 const ok = (): Result<void> => ({ ok: true, value: undefined });
@@ -56,6 +57,7 @@ let snapshot: QuickChatSnapshot;
 let bridge: QuickChatBridge;
 let listeners: Set<(snapshot: QuickChatSnapshot) => void>;
 let storageWrite: ReturnType<typeof vi.spyOn>;
+let conversationLoader: ReturnType<typeof vi.fn<() => Promise<{ default: typeof QuickChatConversation }>>>;
 
 function query<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -87,7 +89,7 @@ const composition = async (type: "compositionstart" | "compositionend") => {
 };
 const state = () => query<HTMLElement>("[data-testid='quick-chat']").dataset.state;
 const mount = async () => {
-  await act(async () => root.render(createElement(QuickChat)));
+  await act(async () => root.render(createElement(QuickChat, { conversationLoader })));
 };
 const emit = (patch: Partial<QuickChatSnapshot> = {}) => {
   snapshot = { ...snapshot, revision: snapshot.revision + 1, ...patch };
@@ -98,10 +100,12 @@ const push = async (patch: Partial<QuickChatSnapshot> = {}) => {
 };
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 const run = (status: "running" | "completed") => ({
   runId: "run-1",
@@ -122,6 +126,7 @@ beforeEach(() => {
     selection: { provider: "test", modelId: "first", reasoning: "none" },
     cwd: "/private/home/Documents/ZPI",
   };
+  conversationLoader = vi.fn(async () => ({ default: QuickChatConversation }));
   listeners = new Set();
   bridge = {
     getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
@@ -131,6 +136,7 @@ beforeEach(() => {
     hide: vi.fn(async () => ok()),
     copyText: vi.fn(async () => ok()),
     openExternal: vi.fn(async () => ok()),
+    readWebSourceIcon: vi.fn(async () => ({ ok: true as const, value: {} })),
     onSnapshot: vi.fn((listener) => {
       listeners.add(listener);
       return () => {
@@ -153,14 +159,17 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
+  await act(async () => {
+    await vi.dynamicImportSettled();
+    root.unmount();
+  });
   expect(listeners.size).toBe(0);
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-test("opens as only a rounded input, using the theme and isolated bridge", async () => {
+test("opens as a slim input with the task send control, theme, and isolated bridge", async () => {
   await mount();
   expect(document.title).toBe("快速对话 · ZPI");
   expect(document.documentElement.dataset.theme).toBe("dark");
@@ -169,11 +178,13 @@ test("opens as only a rounded input, using the theme and isolated bridge", async
   expect(state()).toBe("compact");
   expect(input().getAttribute("rows")).toBe("1");
   expect(input().disabled).toBe(false);
-  expect(
-    container.querySelector("header, button, .conversation, .composer-footer, .quick-chat-title"),
-  ).toBeNull();
+  expect(container.querySelector("header, .conversation, .composer-footer, .quick-chat-title")).toBeNull();
   expect(container.querySelector(".sidebar, .settings-screen, .composer-plus, .model-trigger")).toBeNull();
   expect(container.textContent).toBe("");
+  expect(button("发送").className).toBe("send");
+  expect(button("发送").disabled).toBe(true);
+  expect(button("发送").querySelector("svg")?.getAttribute("width")).toBe("16");
+  expect(conversationLoader).not.toHaveBeenCalled();
   expect("setSelection" in bridge).toBe(false);
   expect(storageWrite).not.toHaveBeenCalled();
 });
@@ -202,10 +213,10 @@ test("expands only when the host accepts the first message into the conversation
   expect(state()).toBe("expanded");
   expect(input().value).toBe("");
   expect(button("新对话")).toBeDefined();
+  expect(container.querySelector(".quick-chat-header")?.querySelectorAll("button")).toHaveLength(1);
+  expect(container.querySelector('button[aria-label="隐藏"]')).toBeNull();
   expect(button("停止")).toBeDefined();
-  expect(
-    container.querySelector('button[aria-label="发送"], .send, .model-trigger, .composer-footer'),
-  ).toBeNull();
+  expect(container.querySelector('button[aria-label="发送"], .model-trigger, .composer-footer')).toBeNull();
   expect("setSelection" in bridge).toBe(false);
 });
 
@@ -311,7 +322,8 @@ test("stops running output without losing the next draft or persisting reading p
   expect(input().value).toBe("next question");
   await push({ session: { ...snapshot.session, runs: [run("completed")] } });
   await act(async () => request.resolve(ok()));
-  expect(container.querySelector('button[aria-label="停止"], button[aria-label="发送"]')).toBeNull();
+  expect(container.querySelector('button[aria-label="停止"]')).toBeNull();
+  expect(button("发送").disabled).toBe(false);
   await key(input(), "Enter");
   expect(bridge.send).toHaveBeenCalledExactlyOnceWith("next question");
   await act(async () => window.dispatchEvent(new Event("pagehide")));
@@ -361,7 +373,8 @@ test("retains history on a failed reset, then returns to input-only after a succ
   expect(state()).toBe("compact");
   expect(input().value).toBe("");
   expect(container.textContent).toBe("");
-  expect(container.querySelector("header, button, .conversation")).toBeNull();
+  expect(container.querySelector("header, .conversation")).toBeNull();
+  expect(button("发送").disabled).toBe(true);
   expect("setSelection" in bridge).toBe(false);
 });
 
@@ -372,19 +385,26 @@ test.each<{ label: string; selection: CombinedSelection | null }>([
   { label: "missing model", selection: { provider: "test", modelId: "missing", reasoning: "none" } },
   { label: "disabled model", selection: { provider: "test", modelId: "disabled", reasoning: "none" } },
   { label: "invalid reasoning", selection: { provider: "test", modelId: "first", reasoning: "high" } },
-])("directs $label to settings and never sends or silently selects another model", async ({ selection }) => {
-  snapshot = { ...snapshot, selection };
-  await mount();
-  await type("question");
-  await key(input(), "Enter");
-  expect(bridge.send).not.toHaveBeenCalled();
-  expect("setSelection" in bridge).toBe(false);
-  expect(input().value).toBe("question");
-  expect(container.textContent).toContain("默认模型不可用");
-  expect(container.textContent).toContain("设置 → 快速对话");
-  expect(state()).toBe("compact");
-  expect(input().getAttribute("aria-describedby")).toBe("quick-chat-configuration");
-});
+])(
+  "directs host-rejected $label to settings without silently selecting another model",
+  async ({ selection }) => {
+    // The host validates these selections before publishing a snapshot.
+    snapshot = {
+      ...snapshot,
+      selection: selection && quickChatSelectionIsValid(settings.providers, selection) ? selection : null,
+    };
+    await mount();
+    await type("question");
+    await key(input(), "Enter");
+    expect(bridge.send).not.toHaveBeenCalled();
+    expect("setSelection" in bridge).toBe(false);
+    expect(input().value).toBe("question");
+    expect(container.textContent).toContain("默认模型不可用");
+    expect(container.textContent).toContain("设置 → 快速对话");
+    expect(state()).toBe("compact");
+    expect(input().getAttribute("aria-describedby")).toBe("quick-chat-configuration");
+  },
+);
 
 test("uses a valid selection restored by settings without showing a floating model picker", async () => {
   snapshot = { ...snapshot, selection: null };
@@ -463,7 +483,8 @@ test("retries a failed initial load without retaining an obsolete subscription",
     error: { code: "storage", message: "暂时无法加载" },
   });
   await mount();
-  expect(input().disabled).toBe(true);
+  expect(input().disabled).toBe(false);
+  expect(button("发送").disabled).toBe(true);
   expect(state()).toBe("compact");
   const retry = [...container.querySelectorAll("button")].find(
     (element) => element.textContent === "重新加载",
@@ -486,4 +507,351 @@ test("preserves the main conversation's reading bookmarks by default", async () 
   });
   await act(async () => window.dispatchEvent(new Event("pagehide")));
   expect(storageWrite).toHaveBeenCalledWith("zpi.reading.quick-session", expect.any(String));
+});
+
+test("accepts an early draft while waiting for the first snapshot without sending a default", async () => {
+  const request = deferred<Result<QuickChatSnapshot>>();
+  vi.mocked(bridge.getSnapshot).mockReturnValue(request.promise);
+  await mount();
+  expect(input().disabled).toBe(false);
+  expect(input().placeholder).toBe("输入消息…");
+  await type("typed before the host is ready");
+  await key(input(), "Enter");
+  await click(button("发送"));
+  expect(bridge.send).not.toHaveBeenCalled();
+  expect(button("发送").disabled).toBe(true);
+  expect(conversationLoader).not.toHaveBeenCalled();
+  await act(async () => request.resolve({ ok: true, value: snapshot }));
+  expect(input().value).toBe("typed before the host is ready");
+  expect(button("发送").disabled).toBe(false);
+  await click(button("发送"));
+  expect(bridge.send).toHaveBeenCalledExactlyOnceWith("typed before the host is ready");
+  expect(input().value).toBe("");
+});
+
+test("keeps an early draft through a failed snapshot and successful reload", async () => {
+  const request = deferred<Result<QuickChatSnapshot>>();
+  vi.mocked(bridge.getSnapshot).mockReturnValueOnce(request.promise);
+  await mount();
+  await type("do not discard this draft");
+  await act(async () => request.reject(new Error("暂时无法加载")));
+  expect(input().disabled).toBe(false);
+  expect(input().value).toBe("do not discard this draft");
+  expect(query('[role="alert"]').getAttribute("title")).toBe("暂时无法加载");
+  await click(query<HTMLButtonElement>(".quick-chat-retry"));
+  expect(input().value).toBe("do not discard this draft");
+  expect(button("发送").disabled).toBe(false);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(listeners.size).toBe(1);
+  expect(conversationLoader).not.toHaveBeenCalled();
+});
+
+test("ignores an obsolete load failure after accepting a newer snapshot", async () => {
+  const request = deferred<Result<QuickChatSnapshot>>();
+  vi.mocked(bridge.getSnapshot).mockReturnValue(request.promise);
+  await mount();
+  await type("still ready");
+  await push();
+  await act(async () => request.reject(new Error("obsolete load failure")));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(input().value).toBe("still ready");
+  expect(button("发送").disabled).toBe(false);
+});
+
+test("loads rich output only after the first run and shows the latest snapshot when loading finishes", async () => {
+  const request = deferred<{ default: typeof QuickChatConversation }>();
+  conversationLoader.mockReturnValue(request.promise);
+  await mount();
+  expect(conversationLoader).not.toHaveBeenCalled();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  expect(conversationLoader).toHaveBeenCalledOnce();
+  expect(query('[role="status"]').textContent).toBe("正在加载对话…");
+  expect(button("停止").className).toBe("send stop");
+  expect(button("停止").querySelector("svg")?.getAttribute("width")).toBe("16");
+  await type("next draft while output loads");
+  await push({
+    session: { ...snapshot.session, runs: [{ ...run("completed"), userMessage: "newest host output" }] },
+  });
+  await act(async () => request.resolve({ default: QuickChatConversation }));
+  expect(container.querySelector(".quick-chat-conversation-placeholder")).toBeNull();
+  expect(container.textContent).toContain("newest host output");
+  expect(input().value).toBe("next draft while output loads");
+  expect(conversationLoader).toHaveBeenCalledOnce();
+  await act(async () => window.dispatchEvent(new Event("pagehide")));
+  expect(storageWrite).not.toHaveBeenCalled();
+});
+
+test("keeps stop and Escape usable before rich output loads, preserving the conversation and draft", async () => {
+  const request = deferred<{ default: typeof QuickChatConversation }>();
+  conversationLoader.mockReturnValue(request.promise);
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  await type("keep this next question");
+  await click(button("停止"));
+  expect(bridge.stop).toHaveBeenCalledOnce();
+  await key(input(), "Escape");
+  expect(bridge.hide).toHaveBeenCalledOnce();
+  expect(input().value).toBe("keep this next question");
+  await act(async () => request.resolve({ default: QuickChatConversation }));
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(document.activeElement).toBe(input());
+  expect(state()).toBe("expanded");
+  expect(container.textContent).toContain("hello");
+  expect(input().value).toBe("keep this next question");
+  expect(bridge.reset).not.toHaveBeenCalled();
+});
+
+test("resets while rich output is loading and ignores its late completion", async () => {
+  const first = deferred<{ default: typeof QuickChatConversation }>();
+  const second = deferred<{ default: typeof QuickChatConversation }>();
+  conversationLoader.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  vi.mocked(bridge.reset).mockImplementation(async () => {
+    emit({ session: emptySession("new-quick-session") });
+    return ok();
+  });
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  await type("old draft");
+  await click(button("新对话"));
+  expect(bridge.reset).toHaveBeenCalledOnce();
+  expect(state()).toBe("compact");
+  expect(input().value).toBe("");
+  await type("new draft");
+  await push({
+    session: { ...snapshot.session, runs: [{ ...run("completed"), userMessage: "new session content" }] },
+  });
+  await act(async () => first.resolve({ default: QuickChatConversation }));
+  expect(container.querySelector(".conversation")).toBeNull();
+  expect(query('[role="status"]').textContent).toBe("正在加载对话…");
+  expect(input().value).toBe("new draft");
+  await act(async () => second.resolve({ default: QuickChatConversation }));
+  expect(container.textContent).toContain("new session content");
+  expect(container.textContent).not.toContain("hello");
+  expect(input().value).toBe("new draft");
+});
+
+test("retries a failed rich output load without disabling stop, reset, Escape, or the draft", async () => {
+  const request = deferred<{ default: typeof QuickChatConversation }>();
+  conversationLoader
+    .mockRejectedValueOnce(new Error("chunk unavailable"))
+    .mockReturnValueOnce(request.promise);
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  expect(query('[role="alert"]').textContent).toContain("无法加载对话：chunk unavailable");
+  expect(button("停止").disabled).toBe(false);
+  expect(button("新对话").disabled).toBe(false);
+  expect(container.querySelector('button[aria-label="隐藏"]')).toBeNull();
+  await type("draft during retry");
+  await click(query<HTMLButtonElement>(".quick-chat-conversation-placeholder .quick-chat-retry"));
+  expect(conversationLoader).toHaveBeenCalledTimes(2);
+  expect(query('[role="status"]').textContent).toBe("正在加载对话…");
+  await click(button("停止"));
+  expect(bridge.stop).toHaveBeenCalledOnce();
+  await act(async () => request.resolve({ default: QuickChatConversation }));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain("hello");
+  expect(input().value).toBe("draft during retry");
+});
+
+test("ignores a failed rich output load after reset without reopening output or showing an error", async () => {
+  const request = deferred<{ default: typeof QuickChatConversation }>();
+  conversationLoader.mockReturnValueOnce(request.promise);
+  vi.mocked(bridge.reset).mockImplementation(async () => {
+    emit({ session: emptySession("reset-session") });
+    return ok();
+  });
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  await click(button("新对话"));
+  await type("fresh draft");
+  await act(async () => request.reject(new Error("stale chunk failure")));
+  expect(state()).toBe("compact");
+  expect(container.querySelector('[role="alert"], .conversation')).toBeNull();
+  expect(input().value).toBe("fresh draft");
+});
+
+test("uses the real deferred module through the production loader", async () => {
+  await act(async () => root.render(createElement(QuickChat)));
+  await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+  await vi.waitFor(() => expect(container.textContent).toContain("hello"));
+  expect(container.querySelector(".conversation")).not.toBeNull();
+  expect(conversationLoader).not.toHaveBeenCalled();
+  await act(async () => window.dispatchEvent(new Event("pagehide")));
+  expect(storageWrite).not.toHaveBeenCalled();
+});
+
+test("clears the draft and operation error only when an accepted snapshot changes session", async () => {
+  vi.mocked(bridge.send).mockResolvedValue({ ok: false, error: { code: "provider", message: "旧对话错误" } });
+  await mount();
+  await type("old session draft");
+  await key(input(), "Enter");
+  await push();
+  expect(input().value).toBe("old session draft");
+  expect(query('[role="alert"]').textContent).toContain("旧对话错误");
+  await key(input(), "Escape");
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(input().value).toBe("old session draft");
+  await push({ session: emptySession("expired-session-replacement") });
+  expect(state()).toBe("compact");
+  expect(input().value).toBe("");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(bridge.reset).not.toHaveBeenCalled();
+});
+
+test("isolates late send results from a replacement session and its pending send", async () => {
+  const old = deferred<Result<void>>();
+  const current = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+  await mount();
+  await type("same text");
+  await key(input(), "Enter");
+  await push({ session: emptySession("replacement-session") });
+  expect(input().value).toBe("");
+  await type("same text");
+  expect(button("发送").disabled).toBe(false);
+  await key(input(), "Enter");
+  expect(bridge.send).toHaveBeenCalledTimes(2);
+  await act(async () => old.resolve({ ok: false, error: { code: "provider", message: "old failure" } }));
+  expect(input().value).toBe("same text");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(button("发送").disabled).toBe(true);
+  await key(input(), "Enter");
+  expect(bridge.send).toHaveBeenCalledTimes(2);
+  await act(async () => current.resolve(ok()));
+  expect(input().value).toBe("");
+});
+
+test("keeps a new session's same-text draft when an old send succeeds late", async () => {
+  const old = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValueOnce(old.promise);
+  await mount();
+  await type("same text");
+  await key(input(), "Enter");
+  await push({ session: emptySession("replacement-session") });
+  await type("same text");
+  await act(async () => old.resolve(ok()));
+  expect(input().value).toBe("same text");
+  expect(button("发送").disabled).toBe(false);
+});
+
+function sourcedRun(): QuickChatSnapshot["session"]["runs"][number] {
+  return {
+    ...run("completed"),
+    orderedBlocks: [
+      {
+        id: "search",
+        messageId: "search-message",
+        type: "tool",
+        toolCallId: "search-call",
+        name: "web_search",
+        argsText: "{}",
+        status: "completed",
+        output: "search output",
+        web: {
+          kind: "web_search",
+          status: "success",
+          results: [
+            {
+              url: "https://example.com/article",
+              title: "Example article",
+              snippet: "Example source excerpt",
+              date: null,
+              site_name: "Example",
+              site_icon: "https://icons.example.com/favicon.ico",
+            },
+          ],
+        },
+      },
+      { id: "answer", messageId: "answer-message", type: "text", text: "Answer from the source." },
+    ],
+    finalAnswerBlockIds: ["answer"],
+  };
+}
+
+const png =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6i0AAAAASUVORK5CYII=";
+
+test("loads source favicons through the isolated bridge using the source page URL", async () => {
+  vi.mocked(bridge.readWebSourceIcon).mockResolvedValue({ ok: true, value: { dataUrl: png } });
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [sourcedRun()] } });
+  expect(bridge.readWebSourceIcon).toHaveBeenCalledExactlyOnceWith(
+    "quick-session",
+    "run-1",
+    "https://example.com/article",
+  );
+  expect(query<HTMLImageElement>(".answer-source-icon img").getAttribute("src")).toBe(png);
+  expect(container.querySelector('img[src="https://icons.example.com/favicon.ico"]')).toBeNull();
+});
+
+test("keeps a globe fallback when the host rejects a source icon", async () => {
+  vi.mocked(bridge.readWebSourceIcon).mockResolvedValue({
+    ok: false,
+    error: { code: "invalid_input", message: "source unavailable" },
+  });
+  await mount();
+  await push({ session: { ...snapshot.session, sessionId: "rejected-icons", runs: [sourcedRun()] } });
+  expect(bridge.readWebSourceIcon).toHaveBeenCalledOnce();
+  expect(container.querySelector(".answer-source-icon img")).toBeNull();
+  expect(container.querySelector(".answer-source-icon svg")).not.toBeNull();
+  expect(container.textContent).toContain("Answer from the source.");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+test("discards a late source icon when an expired session is replaced", async () => {
+  const request = deferred<Result<{ dataUrl?: string }>>();
+  vi.mocked(bridge.readWebSourceIcon).mockReturnValue(request.promise);
+  await mount();
+  await push({ session: { ...snapshot.session, sessionId: "late-icons", runs: [sourcedRun()] } });
+  expect(bridge.readWebSourceIcon).toHaveBeenCalledOnce();
+  await push({ session: emptySession("new-session") });
+  await type("new session draft");
+  await act(async () => request.resolve({ ok: true, value: { dataUrl: png } }));
+  expect(state()).toBe("compact");
+  expect(container.querySelector(".answer-source-icon, .conversation")).toBeNull();
+  expect(input().value).toBe("new session draft");
+});
+
+test("preserves the main conversation's source-icon context fallback", async () => {
+  const unavailable = async () => {
+    throw new Error("This test must not use attachments or file search");
+  };
+  const readWebSourceIcon = vi.fn(async () => png);
+  await act(async () => {
+    root.render(
+      createElement(Conversation, {
+        view: { ...snapshot.session, sessionId: "main-icon-session", runs: [sourcedRun()] },
+        onLink() {},
+        context: {
+          searchFiles: unavailable,
+          pickAttachments: unavailable,
+          importAttachment: unavailable,
+          removeAttachment: unavailable,
+          readAttachment: unavailable,
+          readWebSourceIcon,
+        },
+      }),
+    );
+  });
+  expect(readWebSourceIcon).toHaveBeenCalledExactlyOnceWith(
+    "main-icon-session",
+    "run-1",
+    "https://example.com/article",
+  );
+  expect(query<HTMLImageElement>(".answer-source-icon img").getAttribute("src")).toBe(png);
+  expect(bridge.readWebSourceIcon).not.toHaveBeenCalled();
+});
+
+test("does not restore an old hide error after the session has been replaced", async () => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge.hide).mockReturnValueOnce(request.promise);
+  await mount();
+  await key(input(), "Escape");
+  await push({ session: emptySession("replacement-session") });
+  await type("fresh session draft");
+  await act(async () =>
+    request.resolve({ ok: false, error: { code: "storage", message: "old hide failure" } }),
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(input().value).toBe("fresh session draft");
 });

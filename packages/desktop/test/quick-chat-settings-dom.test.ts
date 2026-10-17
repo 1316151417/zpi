@@ -83,6 +83,9 @@ test("navigates from the real settings sidebar to quick chat and the existing sh
   expect(query('button[aria-label="快速对话"]').getAttribute("aria-pressed")).toBe("true");
   expect(query('section[aria-label="快速对话设置"]').textContent).toContain("⌥N");
   expect(container.textContent).toContain("临时对话，不保存到任务列表");
+  expect(container.textContent).toContain("可用 read、bash 及已启用的联网工具");
+  expect(container.textContent).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
+  expect(container.textContent).not.toContain("工具仅允许只读");
   expect(button("修改快捷键").classList.contains("settings-action-button")).toBe(true);
   await click(button("修改快捷键"));
   expect(query('button[aria-label="快捷键"]').getAttribute("aria-pressed")).toBe("true");

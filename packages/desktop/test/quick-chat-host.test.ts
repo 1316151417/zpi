@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { JsonObject } from "zpi-ai";
 import { chunk } from "../../../tests/fake-server.ts";
-import { QuickChatHost } from "../src/main/quick-chat-host.ts";
+import { QUICK_CHAT_IDLE_MS, QuickChatHost } from "../src/main/quick-chat-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -41,6 +41,7 @@ const toolNames = (body: JsonObject) =>
 async function fixture(
   handler: (body: JsonObject, index: number, signal: AbortSignal) => Response | Promise<Response> = () =>
     sse({ content: "quick answer" }),
+  now?: () => number,
 ) {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-"));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
@@ -79,7 +80,7 @@ async function fixture(
                   summary: "Summary",
                   content: "",
                   site_name: "Example",
-                  site_icon: "",
+                  site_icon: "https://cdn.example.com/icon.png",
                   date: null,
                   rerank_score: 1,
                   authority: 1,
@@ -93,7 +94,7 @@ async function fixture(
     const body = (await request.json()) as JsonObject;
     return handler(body, requests.push(body) - 1, request.signal);
   };
-  const host = new QuickChatHost(settings, cwd, transport);
+  const host = new QuickChatHost(settings, cwd, transport, now);
   cleanups.push(() => host.close());
   return { dir, cwd, settings, host, requests, web };
 }
@@ -112,7 +113,7 @@ test("temporary conversation reuses model configuration but never creates tasks,
   expect(f.host.getSnapshot().session.runs).toHaveLength(2);
   expect(f.host.getSnapshot().session.runs[0].status).toBe("completed");
   expect(JSON.stringify(f.host.getSnapshot().session)).toContain("quick answer");
-  expect(toolNames(f.requests[0])).toEqual(["read", "list", "search"]);
+  expect(toolNames(f.requests[0])).toEqual(["read", "bash"]);
   expect(JSON.stringify(f.requests)).not.toContain("DO NOT LOAD PROJECT SENTINEL");
   expect(messages(f.requests[1]).filter((message) => message.role === "user")).toHaveLength(2);
   expect(f.settings.state.listTasks()).toEqual([]);
@@ -123,7 +124,8 @@ test("temporary conversation reuses model configuration but never creates tasks,
 test.each([
   "write",
   "edit",
-  "bash",
+  "list",
+  "search",
   "AskUserQuestion",
   "Agent",
   "TaskOutput",
@@ -152,10 +154,10 @@ test("slash commands and file references are ordinary text rather than runtime i
     "/tools write bash @note.txt",
   );
   expect(JSON.stringify(f.requests[0])).not.toContain("read-only text");
-  expect(toolNames(f.requests[0])).toEqual(["read", "list", "search"]);
+  expect(toolNames(f.requests[0])).toEqual(["read", "bash"]);
 });
 
-test("allowed read runs through the constrained tool rather than the unrestricted core reader", async () => {
+test("core read is reused without a second quick-chat file tool implementation", async () => {
   const f = await fixture((_body, index) =>
     index === 0 ? toolCall("read", { path: "note.txt" }) : sse({ content: "done" }),
   );
@@ -170,10 +172,10 @@ test("web tools are gated by service, credentials and capability on every run an
   await run(f.host);
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true, apiKey: "fake-web-key" });
   await run(f.host);
-  expect(toolNames(f.requests[1])).toEqual(["read", "list", "search", "web_search", "web_fetch"]);
+  expect(toolNames(f.requests[1])).toEqual(["read", "bash", "web_search", "web_fetch"]);
   f.settings.setCapabilityEnabled("webSearch", false);
   await run(f.host);
-  expect(toolNames(f.requests[2])).toEqual(["read", "list", "search"]);
+  expect(toolNames(f.requests[2])).toEqual(["read", "bash"]);
   expect(f.web).toEqual([]);
 });
 
@@ -341,4 +343,261 @@ test("disabled or removed defaults fall back deterministically and no model prod
   expect(f.host.getSnapshot().selection).toBeNull();
   expect(() => f.host.send("no models")).toThrow("设置中启用可用模型");
   expect(f.host.getSnapshot().session.runs).toHaveLength(1);
+});
+
+test("expiry is based on the last accepted send, not settings, generation, or repeated opens", async () => {
+  let now = 100;
+  const f = await fixture(undefined, () => now);
+  const initial = f.host.getSnapshot().session.sessionId;
+  now += QUICK_CHAT_IDLE_MS * 2;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.sessionId).toBe(initial);
+  await run(f.host);
+  const sentAt = now;
+  now += QUICK_CHAT_IDLE_MS - 1;
+  f.host.refreshSettings();
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.runs).toHaveLength(1);
+  expect(() => f.host.send(" ")).toThrow("invalid_input");
+  now = sentAt + QUICK_CHAT_IDLE_MS;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.sessionId).not.toBe(initial);
+  expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+  const empty = f.host.getSnapshot().session.sessionId;
+  now += QUICK_CHAT_IDLE_MS * 3;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.sessionId).toBe(empty);
+});
+
+test("accepted follow-up renews expiry and manual reset uses latest default", async () => {
+  let now = 0;
+  const f = await fixture(undefined, () => now);
+  await run(f.host);
+  const id = f.host.getSnapshot().session.sessionId;
+  now = QUICK_CHAT_IDLE_MS - 1;
+  await run(f.host, "follow-up");
+  now = QUICK_CHAT_IDLE_MS;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.sessionId).toBe(id);
+  f.settings.saveQuickChatSettings({
+    defaultSelection: { provider: "chat", modelId: "two", reasoning: "none" },
+  });
+  now += QUICK_CHAT_IDLE_MS;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().selection?.modelId).toBe("two");
+  await run(f.host, "new conversation");
+  expect(messages(f.requests[2]).filter((message) => message.role === "user")).toHaveLength(1);
+  expect(f.requests[2].model).toBe("two");
+  await f.host.reset();
+  const empty = f.host.getSnapshot().session.sessionId;
+  now += QUICK_CHAT_IDLE_MS * 10;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.sessionId).toBe(empty);
+  expect(f.settings.get().lastSelection?.modelId).toBe("one");
+});
+
+test("backward or invalid injected clocks do not spuriously expire a conversation", async () => {
+  let now = QUICK_CHAT_IDLE_MS;
+  const f = await fixture(undefined, () => now);
+  await run(f.host);
+  const id = f.host.getSnapshot().session.sessionId;
+  for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY, QUICK_CHAT_IDLE_MS * 2 - 1]) {
+    now = value;
+    await f.host.resetIfExpired();
+    expect(f.host.getSnapshot().session.sessionId).toBe(id);
+  }
+  now = QUICK_CHAT_IDLE_MS * 2;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.sessionId).not.toBe(id);
+});
+
+test("expired opening cancels a delayed active request, shares reset, and rejects its late reply", async () => {
+  let now = 0;
+  let finish!: (value: Response) => void;
+  let signal!: AbortSignal;
+  const f = await fixture(
+    (_body, index, requestSignal) => {
+      signal = requestSignal;
+      return index === 0
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : sse({ content: "fresh answer" });
+    },
+    () => now,
+  );
+  f.host.send("old prompt");
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  now = QUICK_CHAT_IDLE_MS - 1;
+  expect(() => f.host.send("busy send")).toThrow("busy");
+  now = QUICK_CHAT_IDLE_MS;
+  const expired = f.host.resetIfExpired();
+  const duplicate = f.host.resetIfExpired();
+  expect(signal.aborted).toBe(true);
+  finish(sse({ content: "old late answer" }));
+  await Promise.all([expired, duplicate]);
+  expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+  await run(f.host, "fresh prompt");
+  expect(JSON.stringify(f.host.getSnapshot())).not.toContain("old late answer");
+  expect(messages(f.requests[1]).filter((message) => message.role === "user")).toHaveLength(1);
+});
+
+test("icons are authorized from quick search records and pending replies are discarded on reset/close", async () => {
+  const f = await fixture((_body, index) =>
+    index % 2 === 0 ? toolCall("web_search", { query: "Example" }) : sse({ content: "answer" }),
+  );
+  f.settings.saveWebSearch({ provider: "deepseek", enabled: true, apiKey: "fake-web-key" });
+  await run(f.host);
+  let snapshot = f.host.getSnapshot();
+  const load = vi.fn(async () => "data:image/png;base64,SAFE");
+  const source = "https://example.com/article";
+  expect(
+    await f.host.readWebSourceIcon(snapshot.session.sessionId, snapshot.session.runs[0].runId, source, load),
+  ).toContain("SAFE");
+  expect(load).toHaveBeenCalledWith("https://cdn.example.com/icon.png", expect.any(AbortSignal));
+  load.mockClear();
+  for (const [id, runId, url] of [
+    ["main-session", snapshot.session.runs[0].runId, source],
+    [snapshot.session.sessionId, "other-run", source],
+    [snapshot.session.sessionId, snapshot.session.runs[0].runId, "https://arbitrary.example/"],
+  ]) {
+    expect(await f.host.readWebSourceIcon(id, runId, url, load)).toBeUndefined();
+  }
+  expect(load).not.toHaveBeenCalled();
+  let finish!: (value: string) => void;
+  let signal!: AbortSignal;
+  const pendingLoad = vi.fn((_url: string, abort: AbortSignal) => {
+    signal = abort;
+    return new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+  });
+  const pending = f.host.readWebSourceIcon(
+    snapshot.session.sessionId,
+    snapshot.session.runs[0].runId,
+    source,
+    pendingLoad,
+  );
+  await f.host.reset();
+  expect(signal.aborted).toBe(true);
+  finish("data:image/png;base64,OLD");
+  expect(await pending).toBeUndefined();
+  expect(
+    await f.host.readWebSourceIcon(snapshot.session.sessionId, snapshot.session.runs[0].runId, source, load),
+  ).toBeUndefined();
+  await run(f.host);
+  snapshot = f.host.getSnapshot();
+  const closing = f.host.readWebSourceIcon(
+    snapshot.session.sessionId,
+    snapshot.session.runs[0].runId,
+    source,
+    pendingLoad,
+  );
+  await f.host.close();
+  expect(signal.aborted).toBe(true);
+  finish("data:image/png;base64,CLOSED");
+  expect(await closing).toBeUndefined();
+});
+
+test("ordinary core bash runs within the default base and is prompt-read-only rather than a command sandbox", async () => {
+  const f = await fixture((_body, index) =>
+    index === 0
+      ? toolCall("bash", { command: "pwd; printf 'shell result'", timeout: 5 })
+      : sse({ content: "done" }),
+  );
+  await run(f.host);
+  expect(toolNames(f.requests[0])).toEqual(["read", "bash"]);
+  const result = messages(f.requests[1]).find((message) => message.role === "tool")?.content;
+  expect(result).toContain(f.cwd);
+  expect(result).toContain("shell result");
+  expect(messages(f.requests[0]).find((message) => message.role === "system")?.content).toMatch(/read.only/i);
+  expect(f.settings.state.listTasks()).toEqual([]);
+});
+
+test("the default working directory is created only by an accepted send", async () => {
+  const f = await fixture();
+  await rm(f.cwd, { recursive: true });
+  f.host.getSnapshot();
+  f.host.refreshSettings();
+  await f.host.resetIfExpired();
+  await expect(readdir(f.cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  await run(f.host);
+  expect(await readdir(f.cwd)).toEqual([]);
+});
+
+test("an expired invocation waits for an already pending manual reset instead of rejecting busy", async () => {
+  let now = 0;
+  let finish!: (value: Response) => void;
+  const f = await fixture(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    () => now,
+  );
+  f.host.send("slow");
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  now = QUICK_CHAT_IDLE_MS;
+  const manual = f.host.reset();
+  const reopen = f.host.resetIfExpired();
+  finish(sse({ content: "discard me" }));
+  await Promise.all([manual, reopen]);
+  expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+});
+
+test("expiry cancels a running core bash command and its late output cannot enter the fresh session", async () => {
+  let now = 0;
+  const f = await fixture(
+    (_body, index) =>
+      index === 0
+        ? toolCall("bash", {
+            command: "printf 'command started'; sleep 30; printf 'stale output'",
+            timeout: 60,
+          })
+        : sse({ content: "fresh answer" }),
+    () => now,
+  );
+  f.host.send("inspect");
+  await vi.waitFor(() => expect(JSON.stringify(f.host.getSnapshot().session)).toContain("command started"));
+  now = QUICK_CHAT_IDLE_MS;
+  await f.host.resetIfExpired();
+  expect(f.host.getSnapshot().session.runs).toHaveLength(0);
+  await run(f.host, "fresh");
+  const snapshot = JSON.stringify(f.host.getSnapshot().session);
+  expect(snapshot).toContain("fresh answer");
+  expect(snapshot).not.toContain("command started");
+  expect(snapshot).not.toContain("stale output");
+});
+
+test("core bash retains its optional timeout without adding a command allowlist", async () => {
+  const f = await fixture((_body, index) =>
+    index === 0
+      ? toolCall("bash", { command: "sleep 30", timeout: 0.05 })
+      : sse({ content: "timed out safely" }),
+  );
+  await run(f.host);
+  expect(messages(f.requests[1]).find((message) => message.role === "tool")?.content).toMatch(
+    /timed out|timeout/i,
+  );
+});
+
+test("quit joins a pending manual reset without resurrecting state or accepting old icon reads", async () => {
+  let finish!: (value: Response) => void;
+  const f = await fixture(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  f.host.send("pending");
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  const reset = f.host.reset();
+  const close = f.host.close();
+  finish(sse({ content: "late after quit" }));
+  await Promise.all([reset, close]);
+  expect(f.host.getSnapshot().session.runs).toEqual([]);
+  expect(() => f.host.send("after quit")).toThrow("关闭");
+  const load = vi.fn(async () => "data:image/png;base64,OLD");
+  expect(await f.host.readWebSourceIcon("old", "old", "https://example.com/article", load)).toBeUndefined();
+  expect(load).not.toHaveBeenCalled();
 });

@@ -21,6 +21,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "hide",
     "onSnapshot",
     "openExternal",
+    "readWebSourceIcon",
     "reset",
     "send",
     "stop",
@@ -29,6 +30,12 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", ["question"]);
   await bridge.reset();
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "reset", []);
+  await bridge.readWebSourceIcon("session", "run", "https://example.com/article");
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "readWebSourceIcon", [
+    "session",
+    "run",
+    "https://example.com/article",
+  ]);
   const listener = vi.fn();
   const off = bridge.onSnapshot(listener);
   const [channel, handler] = electron.on.mock.calls[0];

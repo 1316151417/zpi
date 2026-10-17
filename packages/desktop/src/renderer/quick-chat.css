@@ -24,9 +24,9 @@ html[data-quick-chat="true"] #root {
 .quick-chat-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-shrink: 0;
-  height: 42px;
+  height: 38px;
   padding: 0 10px;
   user-select: none;
   -webkit-app-region: drag;
@@ -55,6 +55,21 @@ html[data-quick-chat="true"] #root {
   padding-inline: 18px;
 }
 
+.quick-chat-conversation-placeholder {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+
 .quick-chat-composer-container {
   flex-shrink: 0;
   min-width: 0;
@@ -63,18 +78,34 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   width: 100%;
   max-width: none;
-  min-height: 0;
-  gap: 6px;
-  padding: 12px 14px;
+  min-height: 44px;
+  gap: 6px 8px;
+  padding: 7px 8px 7px 14px;
+  border-radius: 22px;
 }
 
 .quick-chat-composer textarea {
-  min-height: 24px;
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 22px;
   max-height: min(180px, 30vh);
+  padding: 0;
   overflow-y: auto;
   field-sizing: content;
+}
+
+.quick-chat-composer > .send {
+  grid-area: 1 / 2;
+  align-self: end;
+}
+
+.quick-chat-compact {
+  border-radius: 22px;
 }
 
 .quick-chat-compact .quick-chat-composer-container {
@@ -84,40 +115,37 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-compact .quick-chat-composer {
+  display: flex;
+  flex-direction: row;
   flex: 1;
   height: 100%;
+  min-height: 0;
   margin: 0;
 }
 
 .quick-chat-compact textarea {
   flex: 1;
-  min-height: 24px;
-  max-height: none;
+  height: 24px;
+  min-height: 0;
+  max-height: 24px;
+  line-height: 24px;
+  field-sizing: fixed;
 }
 
-.quick-chat-composer-running textarea {
-  padding-right: 30px;
-}
-
-.quick-chat-stop {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-bg);
-  color: var(--color-text);
+.quick-chat-compact .send {
+  align-self: center;
 }
 
 .quick-chat-configuration,
 .quick-chat-error {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
+  min-width: 0;
   min-height: 0;
-  max-height: 44px;
+  max-height: 48px;
   overflow-y: auto;
   font-size: var(--text-small);
   line-height: 1.4;
@@ -129,13 +157,10 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
   color: var(--color-error);
 }
 
-.quick-chat-error span {
+.quick-chat-notice-text {
   flex: 1;
   min-width: 0;
 }
@@ -149,11 +174,25 @@ html[data-quick-chat="true"] #root {
   padding: 0;
 }
 
-.quick-chat-error .quick-chat-retry {
+.quick-chat-retry {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .quick-chat-compact :is(.quick-chat-configuration, .quick-chat-error) {
-  max-height: 32px;
+  flex-shrink: 0;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+/* The fixed-height capsule keeps errors discoverable without replacing the user's draft. */
+.quick-chat-compact .quick-chat-notice-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

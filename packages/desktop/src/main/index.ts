@@ -301,15 +301,15 @@ async function launch(): Promise<void> {
   const quickChat = new QuickChatWindow({
     host: quickChatHost,
     createWindow: createDesktopWindow,
-    rendererUrl,
+    rendererUrl: new URL("quick-chat.html", rendererUrl).href,
     preload: join(dir, "../preload/quick-chat.cjs"),
     hiddenTestMode,
     platform: process.platform,
-    getWorkArea: (bounds) =>
-      (bounds
+    getDisplay: (bounds) =>
+      bounds
         ? screen.getDisplayMatching(bounds)
-        : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-      ).workArea,
+        : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
+    loadSourceIcon: (url, signal) => webSourceIcons.load(url, signal),
     ...(process.platform === "darwin" ? { workspaceNotifications: systemPreferences } : {}),
     copyText: (text) => clipboard.writeText(text),
     openExternal: (url) => shell.openExternal(url),
@@ -1264,6 +1264,7 @@ async function launch(): Promise<void> {
   app.on("second-instance", showWindow);
   app.on("will-quit", () => shortcuts.dispose());
   await loadRenderer(window, rendererUrl);
+  if (!testMode && !ending) quickChat.scheduleWarmup((error) => errors.write("quick-chat.warmup", error));
   if (shortcutStartupError && !testMode && !ending)
     void dialog.showMessageBox(window, {
       type: "warning",
