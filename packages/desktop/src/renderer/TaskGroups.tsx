@@ -266,7 +266,7 @@ function GroupItem({
               draggable.setNodeRef(element);
               headerDrop.setNodeRef(element);
             }}
-            {...draggable.attributes}
+            {...(!renaming ? draggable.attributes : {})}
             {...draggable.listeners}
             className={`task-group-header${sticky ? " task-group-header-sticky" : ""}`}
             role="button"

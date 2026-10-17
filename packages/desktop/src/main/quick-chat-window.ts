@@ -361,8 +361,10 @@ export class QuickChatWindow {
         details.isMainFrame &&
         !details.isSameDocument &&
         details.url.split("#")[0] === window.webContents.getURL().split("#")[0]
-      )
+      ) {
         this.options.host.discardDraftAttachments();
+        this.invalidateFrame();
+      }
     });
     window.on("closed", () => {
       if (this.window === window) {
@@ -468,7 +470,7 @@ export class QuickChatWindow {
     const epoch = ++this.visibilityEpoch;
     this.cancelComposerProbe();
     this.cancelReadyWaiters();
-    const resetting = reset ?? this.options.host.resetIfExpired();
+    const resetting = reset ?? (wasHidden ? this.options.host.resetIfExpired() : undefined);
     if (!resetting) trace?.mark("expiry-ready");
     const warm = this.window && !this.window.isDestroyed() && !this.loading;
     const checkComposer = !resetting && wasHidden && this.expanded && !this.hasRuns;

@@ -99,6 +99,9 @@ export async function launchDesktop({
       }
     })());
   try {
+    // Main startup may still be restoring a large history before creating its window.
+    // Wait in Playwright's client before evaluating in that busy V8 context.
+    await application.firstWindow({ timeout: 15000 });
     const contract = await application.evaluate(
       () =>
         (

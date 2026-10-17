@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Mario Zechner. MIT: THIRD_PARTY_NOTICES.md.
 import { parse as partialParse } from "partial-json";
 
-const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
+const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
 
 function isControlCharacter(char: string): boolean {
   const codePoint = char.codePointAt(0);

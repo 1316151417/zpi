@@ -41,6 +41,24 @@ async function fixture(
   return { dir, workspace, host, settings, server };
 }
 
+it("persists project order when adding and restoring a hidden project", async () => {
+  const f = await fixture();
+  const aPath = join(f.dir, "a"),
+    bPath = join(f.dir, "b");
+  await mkdir(aPath);
+  await mkdir(bPath);
+  const a = await f.host.addProject(aPath),
+    b = await f.host.addProject(bPath);
+  f.host.removeProject(a.id);
+  await f.host.addProject(aPath);
+  expect(f.host.listProjects().map((project) => project.id)).toEqual([b.id, a.id]);
+  await f.host.close();
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace);
+  cleanup.push(() => reopened.close());
+  await reopened.init();
+  expect(reopened.listProjects().map((project) => project.id)).toEqual([b.id, a.id]);
+});
+
 it("nullable ownership uses the real workspace for AGENTS, skills, init and tools, and reloads the reserved partition", async () => {
   let wrote = false;
   const f = await fixture((body, r) => {

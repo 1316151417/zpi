@@ -218,14 +218,19 @@ export class CommandImportService {
     return found;
   }
 
-  private async conflict(path: string, names: Set<string>): Promise<CommandImportSkipReason | undefined> {
+  private async conflict(
+    path: string,
+    names: Map<string, string>,
+  ): Promise<CommandImportSkipReason | undefined> {
+    const existing = names.get(nameKey(path));
+    if (existing !== undefined) return existing === path ? "targetExists" : "sameNameExists";
     try {
       await lstat(join(this.target, path));
       return "targetExists";
     } catch (error) {
       if (code(error) !== "ENOENT" && code(error) !== "ENOTDIR") throw error;
     }
-    return names.has(nameKey(path)) ? "sameNameExists" : undefined;
+    return undefined;
   }
 
   async discover(): Promise<CommandImportDiscovery> {
@@ -233,8 +238,11 @@ export class CommandImportService {
     const snapshots = new Map<string, ImportSnapshot>();
     const sources: CommandImportSource[] = [];
     const warnings: string[] = [];
-    const names = new Set(
-      (await this.paths(this.target, true)).map((path) => nameKey(relative(this.target, path))),
+    const names = new Map(
+      (await this.paths(this.target, true)).map((path) => {
+        const id = relative(this.target, path).replaceAll(sep, "/");
+        return [nameKey(id), id];
+      }),
     );
     const seenPaths = new Set<string>();
     let totalBytes = 0;
@@ -379,8 +387,11 @@ export class CommandImportService {
     }
     const items: CommandImportItemResult[] = [];
     const links = new Map(await this.registeredLinkTargets());
-    const names = new Set(
-      (await this.paths(this.target, true)).map((path) => nameKey(relative(this.target, path))),
+    const names = new Map(
+      (await this.paths(this.target, true)).map((path) => {
+        const id = relative(this.target, path).replaceAll(sep, "/");
+        return [nameKey(id), id];
+      }),
     );
     for (const id of selected) {
       const candidate = scan.get(id) as ImportSnapshot;
@@ -438,7 +449,7 @@ export class CommandImportService {
             await unlink(temporary).catch(() => {});
           }
         }
-        names.add(nameKey(candidate.relativePath));
+        names.set(nameKey(candidate.relativePath), candidate.relativePath);
         items.push({ ...base, status: "imported", method });
       } catch (error) {
         if (code(error) === "EEXIST") items.push({ ...base, status: "skipped", skipReason: "targetExists" });

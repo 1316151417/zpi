@@ -85,6 +85,7 @@ describe("native browser keyboard boundary", () => {
 describe("native browser focus retention", () => {
   function setup() {
     const window = {
+      isDestroyed: () => false,
       contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
       getContentBounds: () => ({ width: 800, height: 600 }),
       webContents: { getZoomFactor: () => 1 },

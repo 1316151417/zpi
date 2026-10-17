@@ -188,11 +188,10 @@ describe("ZCode streaming tool input preview", () => {
 });
 
 describe("Parameters visibility", () => {
-  it("shows nonempty input only when there is no content or patch preview", () => {
+  it("shows an empty write preview once the content field starts streaming", () => {
     const html = render(tool('{"path":"src/a.ts","content":"'));
-    expect(html).toContain("Parameters");
-    expect(html).toContain("src/a.ts");
-    expect(html).not.toContain("tool-content-preview");
+    expect(html).not.toContain("Parameters");
+    expect(html).toContain("tool-content-preview");
   });
 
   it.each(["preparing", "running", "completed", "error"] as const)(

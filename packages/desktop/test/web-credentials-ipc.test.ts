@@ -60,6 +60,7 @@ vi.mock("electron", () => ({
   nativeTheme: { themeSource: "light", on: vi.fn() },
   net: { fetch: fake.fetch },
   safeStorage: {},
+  systemPreferences: { subscribeWorkspaceNotification: vi.fn(), unsubscribeWorkspaceNotification: vi.fn() },
   screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1200, height: 800 } }) },
   shell: {},
 }));

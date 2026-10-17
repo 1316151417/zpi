@@ -114,6 +114,64 @@ function createResponseModelSseResponse(model: string, contentBlock: ResponseCon
 }
 
 describe("Anthropic raw SSE parsing", () => {
+  it("maps a provider context-window stop to length", async () => {
+    const events = minimalAnthropicEvents.map((event) =>
+      event.event !== "message_delta"
+        ? event
+        : {
+            ...event,
+            data: JSON.stringify({
+              type: "message_delta",
+              delta: { stop_reason: "model_context_window_exceeded" },
+            }),
+          },
+    );
+    const result = await streamAnthropic(getModel(), normalizeContext({ messages: [] }), {
+      client: createFakeAnthropicClient(createSseResponse(events)),
+    }).result();
+    expect(result.stopReason).toBe("length");
+    expect(result.rawStopReason).toBe("model_context_window_exceeded");
+  });
+  it.each(["\n", "\r\n", "\r"])("parses %j line endings split at every byte", async (ending) => {
+    const wire = minimalAnthropicEvents
+      .map(({ event, data }) => `event: ${event}${ending}data: ${data}${ending}${ending}`)
+      .join("");
+    const bytes = new TextEncoder().encode(`event: message_start${ending}${ending}${wire}`);
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+          controller.close();
+        },
+      }),
+    );
+    const result = await streamAnthropic(getModel(), normalizeContext({ messages: [] }), {
+      client: createFakeAnthropicClient(response),
+    }).result();
+    expect(result.stopReason).toBe("stop");
+    expect(result.content).toEqual([{ type: "text", text: "Hello" }]);
+  });
+
+  it("cancels a response body when an SSE error interrupts consumption", async () => {
+    let cancelled = false;
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('event: error\ndata: {"error":"broken"}\n\n'));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+    const result = await streamAnthropic(getModel(), normalizeContext({ messages: [] }), {
+      client: createFakeAnthropicClient(response),
+    }).result();
+    expect(result.stopReason).toBe("error");
+    expect(cancelled).toBe(true);
+    expect(response.body?.locked).toBe(false);
+  });
+
   it("keeps signed thinking replayable when a proxy relabels the model", async () => {
     // Regression test for earendil-works/pi#9188.
     const model = getModel("anthropic", "claude-opus-5");

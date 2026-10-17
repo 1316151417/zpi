@@ -320,6 +320,9 @@ it("pairs a reused tool ID only with results in the same assistant turn", async 
   };
   expect(unresolvedCanonicalToolCalls([assistant, result, structuredClone(assistant)])).toEqual([call]);
   expect(unresolvedCanonicalToolCalls([assistant, result, structuredClone(assistant), result])).toEqual([]);
+  const duplicate = { ...assistant, content: [call, { ...call, name: "write" }] };
+  expect(unresolvedCanonicalToolCalls([duplicate])).toEqual([call]);
+  expect(unresolvedCanonicalToolCalls([duplicate, result])).toEqual([]);
   expect(() => unresolvedCanonicalToolCalls([assistant, structuredClone(assistant)])).toThrow(
     "later assistant turn",
   );

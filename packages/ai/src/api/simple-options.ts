@@ -50,6 +50,7 @@ export function buildBaseOptions(
     timeoutMs: options?.timeoutMs,
     maxRetries: options?.maxRetries,
     maxRetryDelayMs: options?.maxRetryDelayMs,
+    onRetry: options?.onRetry,
     metadata: options?.metadata,
     env: options?.env,
   };

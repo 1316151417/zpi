@@ -185,8 +185,10 @@ describe("bounded ICO frames", () => {
     expect(pixel(output, 2, 0)).toEqual([255, 0, 0, 255]);
   });
 
-  it("supports top-down DIB rows and shortened palettes", async () => {
-    const output = await pixels(ico([dib(8, { topDown: true, colors: 2 })]));
+  it.each([0, 2])("supports shortened palettes with directory color count %i", async (count) => {
+    const body = ico([dib(8, { topDown: true, colors: 2 })]);
+    body[8] = count;
+    const output = await pixels(body);
     expect(pixel(output, 16, 0)).toEqual([255, 0, 0, 255]);
     expect(pixel(output, 16, 31)).toEqual([0, 0, 255, 255]);
   });

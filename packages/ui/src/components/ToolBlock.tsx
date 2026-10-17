@@ -120,7 +120,7 @@ export function ToolFilePreview({
         />
       ) : block.fileChange?.patchAvailable && !error ? (
         <p className="tool-detail-note">正在加载...</p>
-      ) : content.trim() ? (
+      ) : block.name === "write" && typeof input?.content === "string" ? (
         <div className={`tool-content-preview${language === "markdown" ? " tool-markdown-preview" : ""}`}>
           {language === "markdown" ? (
             <Markdown

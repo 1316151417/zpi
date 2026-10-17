@@ -1,7 +1,11 @@
 // Adapted from ZCode assistantFileReferences.ts (Apache-2.0), commit 872ad960.
 // See THIRD_PARTY_NOTICES.md and docs/specs/assistant-previews-and-sidebar.md.
 
-import { extractFileCitationDirectives, resolveFileCitationPreviewKind } from "../file-citation.ts";
+import {
+  codeRanges,
+  extractFileCitationDirectives,
+  resolveFileCitationPreviewKind,
+} from "../file-citation.ts";
 import {
   isAssistantPathQuoteCharacter,
   isBalancedAssistantPathQuotePair,
@@ -152,10 +156,12 @@ export function extractAssistantFileReferences(
   if (!content.trim()) return [];
 
   const references: AssistantFileReference[] = [];
-  const protectedRanges: Array<[number, number]> = [];
+  const protectedRanges = codeRanges(content, false);
+  const allCodeRanges = codeRanges(content);
 
   for (const citation of extractFileCitationDirectives(content)) {
     protectedRanges.push([citation.start, citation.end]);
+    if (overlapsRanges(citation.start, citation.end, allCodeRanges)) continue;
     if (!citation.path) continue;
     const path = resolveAssistantRawFilePath(workspacePath, citation.path, options);
     const kind = path
@@ -183,6 +189,7 @@ export function extractAssistantFileReferences(
     const end = start + (match[0]?.length ?? 0);
     if (overlapsRanges(start, end, protectedRanges)) continue;
     protectedRanges.push([start, end]);
+    if (overlapsRanges(start, end, allCodeRanges)) continue;
     if (path && definition) {
       references.push({ start, end, kind: definition.kind, path, raw: href });
     }

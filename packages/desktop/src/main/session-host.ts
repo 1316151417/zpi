@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
@@ -190,6 +190,7 @@ export class SessionHost {
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
     commandShellRunner: CustomCommandShellRunner = runCustomCommandShell,
   ) {
+    if (existsSync(homeDir)) homeDir = realpathSync(homeDir);
     this.commandShellRunner = commandShellRunner;
     this.webTools = new WebTools({ getApiKey: () => settings.getWebSearchApiKey(), requestFetch });
     const commandsDirectory = join(homeDir, ".zpi", "commands");
@@ -590,7 +591,7 @@ export class SessionHost {
     if (p) p = { ...p, hidden: false, updatedAt: Date.now() };
     else p = { id: randomUUID(), name: basename(canonical), path: canonical, updatedAt: Date.now() };
     const next = this.projects.filter((o) => o.id !== p?.id).concat(p);
-    this.settings.state.upsertProject(p);
+    this.settings.state.setProjects(next);
     this.projects = next;
     return structuredClone(p);
   }
@@ -1555,6 +1556,7 @@ export class SessionHost {
     };
   }
   private commandServicesForDirectory(directory: string) {
+    if (existsSync(directory)) directory = realpathSync(directory);
     let services = this.projectCommandServices.get(directory);
     if (!services) {
       const targetDirectory = join(directory, ".zpi", "commands");

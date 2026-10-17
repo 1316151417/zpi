@@ -1,10 +1,13 @@
 // Adapted from Pi (commit c20cb09772bf4e2590a316cb54514cef76df4293) Copyright (c) 2025 Mario Zechner. MIT license
+import type { ModelRetryStatus } from "../types.ts";
+
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
 interface ProviderRetryOptions {
   maxRetries?: number;
   maxRetryDelayMs?: number;
   signal?: AbortSignal;
+  onRetry?: (status: ModelRetryStatus | null) => void;
 }
 
 interface ProviderError extends Error {
@@ -113,18 +116,31 @@ export async function retryProviderRequest<T>(
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 0;
   let retriesRemaining = maxRetries;
+  let retrying = false;
 
-  for (;;) {
-    try {
-      // Each retry is a fresh SDK request, so X-Stainless-Retry-Count remains zero.
-      return await request();
-    } catch (error) {
-      if (options.signal?.aborted) throw createAbortError();
-      if (retriesRemaining <= 0 || !isProviderError(error) || !isRetryableProviderError(error)) throw error;
+  try {
+    for (;;) {
+      try {
+        // Each retry is a fresh SDK request, so X-Stainless-Retry-Count remains zero.
+        return await request();
+      } catch (error) {
+        if (options.signal?.aborted) throw createAbortError();
+        if (retriesRemaining <= 0 || !isProviderError(error) || !isRetryableProviderError(error)) throw error;
 
-      const retryIndex = maxRetries - retriesRemaining;
-      retriesRemaining--;
-      await abortableSleep(getRetryDelayMs(error, retryIndex, options.maxRetryDelayMs), options.signal);
+        const retryIndex = maxRetries - retriesRemaining;
+        retriesRemaining--;
+        const retryDelayMs = getRetryDelayMs(error, retryIndex, options.maxRetryDelayMs);
+        retrying = true;
+        options.onRetry?.({
+          attempt: retryIndex + 1,
+          maxRetries,
+          retryDelayMs,
+          errorStatus: error.status ?? null,
+        });
+        await abortableSleep(retryDelayMs, options.signal);
+      }
     }
+  } finally {
+    if (retrying) options.onRetry?.(null);
   }
 }

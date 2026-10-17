@@ -238,8 +238,9 @@ export function unresolvedCanonicalToolCalls(messages: Message[]): ToolCall[] {
         throw new Error("Invalid transcript: unresolved tool call before a later assistant turn");
       for (const part of message.content) {
         if (part.type !== "toolCall") continue;
-        if (pending.has(part.id)) throw new Error("Invalid transcript: duplicate tool call in one turn");
-        pending.set(part.id, part);
+        // Older providers could persist duplicate IDs. Pair the first declaration;
+        // recovery never executes another call to guess what a duplicate meant.
+        if (!pending.has(part.id)) pending.set(part.id, part);
       }
     } else if (message.role === "toolResult") {
       pending.delete(message.toolCallId);

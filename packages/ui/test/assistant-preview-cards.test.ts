@@ -20,6 +20,18 @@ const paths = (text: string, changes: string[] = [], home?: string) =>
   build(text, changes, home).map(getAssistantPreviewCardFilePath);
 
 describe("ZCode terminal assistant preview candidates", () => {
+  it.each([
+    '```text\n::zcode-file-citation{path="report.pdf" artifact_kind="pdf"}\n```',
+    '`::zcode-file-citation{path="report.pdf" artifact_kind="pdf"}`',
+    "```markdown\n[example](./report.pdf)\n```",
+    "`[example](./report.pdf)`",
+  ])("does not turn quoted citation or link syntax into cards: %s", (text) => {
+    expect(extractAssistantFileReferences(text, cwd)).toEqual([]);
+  });
+
+  it.each(["~//report.pdf", "~///report.pdf", "~\\/report.pdf"])("keeps %s relative to home", (path) => {
+    expect(paths(`[home](${path})`, [], "/Users/test")).toEqual(["/Users/test/report.pdf"]);
+  });
   it("gates only MD/HTML on this turn's changes, resolving an unambiguous basename", () => {
     expect(paths("report.md page.html old.docx old.xlsx old.pptx old.pdf video.mp4 audio.opus")).toEqual([
       `${cwd}/audio.opus`,

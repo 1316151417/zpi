@@ -125,7 +125,11 @@ export function buildSelectionPrompt(text: string, references: readonly Conversa
   return text ? `${text}\n\n${block}` : block;
 }
 export function parseSelectionPrompt(text: string): { text: string; selections: ConversationSelection[] } {
-  const match = /(?:\n\n)?# userselect:\n```userselect\n([\s\S]*?)\n```\s*$/.exec(text);
+  const start = text.lastIndexOf("# userselect:\n```userselect\n");
+  const match =
+    start < 0 || (start > 0 && !text.slice(0, start).endsWith("\n\n"))
+      ? null
+      : /^# userselect:\n```userselect\n([\s\S]*?)\n```\s*$/.exec(text.slice(start));
   if (match) {
     try {
       const selections: unknown = JSON.parse(match[1]);
@@ -144,7 +148,7 @@ export function parseSelectionPrompt(text: string): { text: string; selections: 
                 getFileCommentSelection(item) !== null)),
         )
       )
-        return { text: text.slice(0, match.index).trimEnd(), selections };
+        return { text: text.slice(0, start).trimEnd(), selections };
     } catch {
       /* Preserve malformed user text verbatim. */
     }

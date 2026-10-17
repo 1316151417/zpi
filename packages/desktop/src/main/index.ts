@@ -213,7 +213,7 @@ async function launch(): Promise<void> {
   const workspacePanelRadius =
     process.platform === "win32"
       ? 5
-      : process.platform === "darwin" && Number.parseInt(process.getSystemVersion(), 10) < 26
+      : process.platform === "darwin" && Number.parseInt(process.getSystemVersion?.() ?? "", 10) < 26
         ? 6
         : 12;
   const window = createDesktopWindow({
@@ -399,6 +399,11 @@ async function launch(): Promise<void> {
     },
     shortcutModifier,
   );
+  window.webContents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame && !details.isSameDocument) panes.reset();
+  });
+  window.webContents.on("render-process-gone", () => panes.reset());
+  window.on("closed", () => panes.close());
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
   window.webContents.on("will-redirect", (e) => e.preventDefault());
@@ -1233,12 +1238,22 @@ async function launch(): Promise<void> {
     if (!hiddenTestMode && !window.isDestroyed()) window.setEnabled(false);
     void flushDraftsBeforeQuit(window)
       .then(async () => {
-        await quickChat.dispose();
-        removeQuickChatIpc();
-        chatgptAuth.close();
-        notifications.dispose();
-        panes.close();
-        await host.close().catch((error) => errors.write("main.quit", error));
+        // Drafts are durable now. Finish shutdown even if one service fails;
+        // returning to a partially disposed application is not recoverable.
+        for (const [scope, close] of [
+          ["quick-chat", () => quickChat.dispose()],
+          ["quick-chat-ipc", removeQuickChatIpc],
+          ["chatgpt-auth", () => chatgptAuth.close()],
+          ["notifications", () => notifications.dispose()],
+          ["panes", () => panes.close()],
+          ["host", () => host.close()],
+        ] as const) {
+          try {
+            await close();
+          } catch (error) {
+            errors.write(`main.quit.${scope}`, error);
+          }
+        }
         quitting = true;
         app.quit();
       })

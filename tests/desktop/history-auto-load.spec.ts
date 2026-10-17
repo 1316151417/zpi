@@ -18,11 +18,16 @@ test("scrolling near older messages loads one page, preserves the anchor and can
     let page = await app.firstWindow();
     await expect(page.getByTestId("run")).toHaveCount(10);
     await expect(page.getByRole("button", { name: "回到最新" })).toBeHidden();
-    const anchor = page.locator('[data-run-id="run-20"]');
-    const before = await page.locator(".conversation").evaluate((el) => {
+    // The first run may be a continuation whose user header arrives in the next page.
+    const anchorId = await page.getByTestId("run").nth(1).getAttribute("data-run-id");
+    if (!anchorId) throw new Error("Missing initial history anchor");
+    const anchor = page.locator(`[data-run-id="${anchorId}"]`);
+    const before = await page.locator(".conversation").evaluate((el, id) => {
       el.scrollTop = 80;
-      return el.querySelector('[data-run-id="run-20"]')?.getBoundingClientRect().y;
-    });
+      const anchor = el.querySelector(`[data-run-id="${id}"]`);
+      if (!anchor) throw new Error("Initial history anchor is not loaded");
+      return anchor.getBoundingClientRect().y;
+    }, anchorId);
     await expect(page.getByTestId("run")).toHaveCount(20);
     await expect
       .poll(async () => Math.abs(((await anchor.boundingBox())?.y ?? 0) - (before ?? 0)))
@@ -42,6 +47,10 @@ test("scrolling near older messages loads one page, preserves the anchor and can
       el.scrollTop = 0;
     });
     await expect(page.getByTestId("run")).toHaveCount(30);
+    // A call-bounded page may still omit the first run's user-message prefix.
+    await page.locator(".conversation").evaluate((el) => {
+      el.scrollTop = 0;
+    });
     await expect(page.locator(".load-history")).toHaveCount(0);
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);

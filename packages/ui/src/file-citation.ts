@@ -115,7 +115,7 @@ export function resolveFileCitationPreviewKind({
   return kinds[artifactKind.trim().toLowerCase()] === kind ? kind : null;
 }
 
-function codeRanges(content: string): Array<[number, number]> {
+export function codeRanges(content: string, includeInline = true): Array<[number, number]> {
   const blocks: Array<[number, number]> = [];
   let fence: (MarkdownFence & { start: number }) | null = null;
   let lineStart = 0;
@@ -146,6 +146,7 @@ function codeRanges(content: string): Array<[number, number]> {
     blocks.push([start, start + (match[0]?.length ?? 0)]);
   }
 
+  if (!includeInline) return blocks;
   const ranges = [...blocks];
   const isBlock = (index: number) => blocks.some(([start, end]) => index >= start && index < end);
   for (let index = 0; index < content.length; index += 1) {

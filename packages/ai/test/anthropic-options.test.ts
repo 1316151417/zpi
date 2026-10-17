@@ -58,6 +58,23 @@ it("preserves an explicit native thinking-level budget", async () => {
   });
 });
 
+it.each([false, true])(
+  "disables budget thinking without minimum answer room (mapped: %s)",
+  async (mapped) => {
+    const model = {
+      ...getModel(),
+      contextWindow: 4200,
+      compat: { forceAdaptiveThinking: false },
+      ...(mapped
+        ? { thinkingLevelMap: { low: { thinking: { type: "enabled", budget_tokens: 4096 } } } }
+        : {}),
+    };
+    const payload = await capture(model, { reasoning: "low" });
+    expect(payload.max_tokens).toBeLessThan(1024);
+    expect(payload.thinking).toEqual({ type: "disabled" });
+  },
+);
+
 it("retains strict sampling through tool declarations and sends Anthropic strict schemas", async () => {
   const tool = toToolDeclaration({
     name: "read",

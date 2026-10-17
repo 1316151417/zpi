@@ -126,6 +126,32 @@ it("does not infer completion from parsable argument deltas", async () => {
   expect(executions).toBe(1);
 });
 
+it("rejects duplicate declarations without persisting or executing them twice", async () => {
+  let executions = 0;
+  const f = fixture([
+    {
+      ...tool,
+      metadata: undefined,
+      async execute() {
+        executions++;
+        return result("executed");
+      },
+    },
+  ]);
+  const run = f.agent.prompt("read");
+  f.message.content = [call(), call()];
+  f.finish();
+  await run;
+  const assistant = f.agent.state.messages.find((m) => m.role === "assistant");
+  expect(assistant).toMatchObject({
+    stopReason: "error",
+    errorMessage: expect.stringContaining("duplicate tool call"),
+  });
+  expect(assistant?.role === "assistant" && assistant.content).toHaveLength(1);
+  expect(executions).toBe(0);
+  expect(f.agent.state.messages.filter((m) => m.role === "toolResult")).toHaveLength(1);
+});
+
 for (const [name, override] of [
   ["missing metadata", { metadata: undefined }],
   ["not read-only", { metadata: { ...safe, readOnly: false } }],
@@ -342,6 +368,7 @@ it("recovery retains completed reads and fails unexecuted writes without replayi
   f.close(call("write", "write"));
   const recovered: AssistantMessage = { ...emptyAssistant(model), content: [call(), call("write", "write")] };
   f.stream.push({ type: "reset", partial: recovered });
+  f.stream.push({ type: "reset", partial: recovered });
   f.stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: call(), partial: recovered });
   f.stream.push({
     type: "toolcall_end",
@@ -354,6 +381,9 @@ it("recovery retains completed reads and fails unexecuted writes without replayi
   await run;
   expect(reads).toBe(1);
   expect(writes).toBe(0);
+  expect(
+    f.events.filter((event) => event.type === "tool_execution_start" && event.toolCallId === "write"),
+  ).toHaveLength(1);
   const results = f.agent.state.messages.filter((m) => m.role === "toolResult");
   expect(results).toHaveLength(2);
   expect(results[0]).toMatchObject({ content: [{ text: "completed read" }], isError: false });

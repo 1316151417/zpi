@@ -435,6 +435,33 @@ it("typing batches draft writes and hiding or closing the window flushes the lat
   f.unsubscribe();
 });
 
+it("saves a newer draft when its timer fires while an earlier request is still pending", async () => {
+  const f = await setup();
+  await f.store.selectSession(f.session.id);
+  vi.useFakeTimers();
+  const gate = deferred();
+  f.bridge.saveDraft.mockImplementationOnce(async () => {
+    await gate.promise;
+    return { ok: true, value: undefined };
+  });
+  const update = (text: string) => {
+    const draft = f.store.drafts.get(f.session.id);
+    if (!draft) throw new Error("Missing draft");
+    f.store.drafts.set(f.session.id, { ...draft, text, selection: [text.length, text.length] });
+  };
+  update("first");
+  await vi.advanceTimersByTimeAsync(200);
+  update("latest");
+  await vi.advanceTimersByTimeAsync(200);
+  expect(f.bridge.saveDraft.mock.calls).toEqual([
+    [f.session.id, expect.objectContaining({ text: "first" })],
+    [f.session.id, expect.objectContaining({ text: "latest" })],
+  ]);
+  gate.resolve();
+  await f.beforeQuit();
+  f.unsubscribe();
+});
+
 it("synchronizes the complete worktree environment on creation", async () => {
   const f = await setup();
   const worktree = { branch: "abcd", path: "/trees/abcd/project", sourceCwd: "/project" };

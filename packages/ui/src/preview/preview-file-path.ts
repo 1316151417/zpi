@@ -73,7 +73,13 @@ function resolveHomeRelativeFilePath(path: string, homePath: string | undefined)
   }
 
   const separator = homePath.includes("\\") && !homePath.includes("/") ? "\\" : "/";
-  return joinFilePath(homePath, homeRelativePath.slice(2).replace(/[\\/]/g, separator));
+  return joinFilePath(
+    homePath,
+    homeRelativePath
+      .slice(2)
+      .replace(/^[\\/]+/, "")
+      .replace(/[\\/]/g, separator),
+  );
 }
 
 function isBareWorkspaceRelativeFileHref(href: string): boolean {

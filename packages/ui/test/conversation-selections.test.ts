@@ -43,6 +43,12 @@ it("selection limits deduplicate by source and enforce count, single and total i
     appendSelection([{ text: "a".repeat(8000) }, { text: "b".repeat(8000) }], { text: "c" }),
   ).toThrow("16,000");
 });
+
+it("preserves user-authored userselect examples before the real selection suffix", () => {
+  const text = "example\n\n# userselect:\n```userselect\n[]\n```";
+  const selections = [{ text: "selected code", path: "src/a.ts" }];
+  expect(parseSelectionPrompt(buildSelectionPrompt(text, selections))).toEqual({ text, selections });
+});
 it("message time follows local calendar days, yesterday and year boundaries", () => {
   const now = new Date(2026, 9, 5, 12).getTime();
   expect(messageTime(new Date(2026, 9, 5, 9, 3).getTime(), now)).toBe("09:03");
