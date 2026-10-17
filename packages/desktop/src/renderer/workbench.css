@@ -4613,7 +4613,8 @@
   align-items: center;
   gap: 8px;
 }
-.subagent-settings-group h3 button {
+.subagent-settings-group h3 button,
+.subagent-create {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -4752,13 +4753,12 @@
 .subagent-empty p {
   margin: 4px 0 0;
 }
-.subagent-empty button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
+.subagent-create {
+  font-size: var(--text-body);
+  font-weight: 500;
 }
-.subagent-group-actions button {
+.subagent-group-actions button,
+.subagent-create {
   height: 32px;
   border-radius: 8px;
   padding: 0 12px;

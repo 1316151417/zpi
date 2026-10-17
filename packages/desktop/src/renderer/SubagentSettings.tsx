@@ -532,7 +532,11 @@ export function SubagentSettings() {
                         >
                           <RefreshCw size={14} />
                         </button>
-                        <button className="primary" disabled={busy || !loaded} onClick={() => edit()}>
+                        <button
+                          className="primary subagent-create"
+                          disabled={busy || !loaded}
+                          onClick={() => edit()}
+                        >
                           <Plus size={14} />
                           新建
                         </button>
@@ -661,8 +665,12 @@ export function SubagentSettings() {
                         <strong>没有找到子智能体</strong>
                         <p>填写子智能体名称、工具和系统提示词，保存后返回列表。</p>
                       </div>
-                      <button className="primary" disabled={busy || !loaded} onClick={() => edit()}>
-                        <Plus size={16} />
+                      <button
+                        className="primary subagent-create"
+                        disabled={busy || !loaded}
+                        onClick={() => edit()}
+                      >
+                        <Plus size={14} />
                         新建
                       </button>
                     </div>

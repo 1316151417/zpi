@@ -65,6 +65,43 @@ test("subagent plugin manages profiles/models and opens complete read-only child
     await page.getByRole("button", { name: "子智能体", exact: true }).click();
     await expect(page.getByTestId("subagent-row-general-purpose")).toBeVisible();
     await expect(page.getByTestId("subagent-row-Explore")).toBeVisible();
+    const toolbarCreate = page.locator(".subagent-group-actions .primary");
+    const emptyCreate = page.locator(".subagent-empty .primary");
+    const createAppearance = async (selector: string) =>
+      page.locator(selector).evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          height: element.getBoundingClientRect().height,
+          width: element.getBoundingClientRect().width,
+          padding: style.padding,
+          gap: style.gap,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          borderRadius: style.borderRadius,
+          iconSize: element.querySelector("svg")?.getBoundingClientRect().width,
+          background: style.backgroundColor,
+          color: style.color,
+          filter: style.filter,
+        };
+      });
+    expect(await createAppearance(".subagent-empty .primary")).toEqual(
+      await createAppearance(".subagent-group-actions .primary"),
+    );
+    expect(await createAppearance(".subagent-empty .primary")).toMatchObject({
+      height: 32,
+      padding: "0px 12px",
+      gap: "4px",
+      borderRadius: "8px",
+      iconSize: 14,
+    });
+    await toolbarCreate.hover();
+    const toolbarHover = await createAppearance(".subagent-group-actions .primary");
+    await emptyCreate.hover();
+    expect(await createAppearance(".subagent-empty .primary")).toEqual(toolbarHover);
+    await emptyCreate.click();
+    await expect(page.getByLabel("子智能体名称", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(emptyCreate).toBeVisible();
     await expect(
       page.getByTestId("subagent-row-general-purpose").locator("[data-agent-color=blue]"),
     ).toBeVisible();
