@@ -1,3 +1,9 @@
+html[data-quick-chat="true"],
+html[data-quick-chat="true"] body,
+html[data-quick-chat="true"] #root {
+  background: transparent;
+}
+
 .quick-chat {
   container-type: inline-size;
   container-name: conversation;
@@ -7,25 +13,23 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  border-radius: var(--radius-dialog);
+}
+
+.quick-chat-expanded {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
 }
 
 .quick-chat-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
-  height: 48px;
-  padding: 0 12px 0 18px;
+  height: 42px;
+  padding: 0 10px;
   user-select: none;
   -webkit-app-region: drag;
-}
-
-.quick-chat-title {
-  font-weight: 500;
-  font-size: var(--text-body);
 }
 
 .quick-chat-window-actions {
@@ -37,39 +41,9 @@
 .quick-chat-icon-button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   color: var(--color-text-muted);
-}
-
-.quick-chat-empty {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 10px;
-  padding: 24px;
-  color: var(--color-text-muted);
-}
-
-.quick-chat-empty > svg {
-  margin-bottom: 4px;
-}
-
-.quick-chat-empty p {
-  margin: 0;
-  color: var(--color-text);
-  font-size: var(--text-heading);
-}
-
-.quick-chat-empty span {
-  font-size: var(--text-small);
-}
-
-.quick-chat-empty button {
-  padding: 6px 12px;
 }
 
 .quick-chat .conversation-inner {
@@ -84,73 +58,102 @@
 .quick-chat-composer-container {
   flex-shrink: 0;
   min-width: 0;
-  padding: 6px 14px 10px;
+  min-height: 0;
+  padding: 6px 14px 12px;
 }
 
 .quick-chat-composer {
-  gap: 8px;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  gap: 6px;
+  padding: 12px 14px;
 }
 
 .quick-chat-composer textarea {
-  min-height: 64px;
-  max-height: min(200px, 30vh);
+  min-height: 24px;
+  max-height: min(180px, 30vh);
+  overflow-y: auto;
   field-sizing: content;
 }
 
-.quick-chat .model-trigger {
-  min-width: 0;
-  max-width: calc(100% - 40px);
-  color: var(--color-text-muted);
-  font-size: var(--text-small);
+.quick-chat-compact .quick-chat-composer-container {
+  display: flex;
+  flex: 1;
+  padding: 0;
 }
 
-.quick-chat .model-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.quick-chat-model-menu {
-  min-width: 220px;
-}
-
-.quick-chat-model-empty {
-  padding: 8px;
+.quick-chat-compact .quick-chat-composer {
+  flex: 1;
+  height: 100%;
   margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-small);
 }
 
-.quick-chat-hint {
-  margin: 7px 0 0;
-  text-align: center;
-  color: var(--color-text-subtlest);
+.quick-chat-compact textarea {
+  flex: 1;
+  min-height: 24px;
+  max-height: none;
+}
+
+.quick-chat-composer-running textarea {
+  padding-right: 30px;
+}
+
+.quick-chat-stop {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.quick-chat-configuration,
+.quick-chat-error {
+  margin: 0;
+  min-height: 0;
+  max-height: 44px;
+  overflow-y: auto;
   font-size: var(--text-small);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.quick-chat-configuration {
+  color: var(--color-text-muted);
 }
 
 .quick-chat-error {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin: 0 0 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-control);
   color: var(--color-error);
-  background: var(--color-danger-surface);
-  font-size: var(--text-small);
 }
 
 .quick-chat-error span {
   flex: 1;
   min-width: 0;
-  max-height: 72px;
-  overflow: auto;
-  overflow-wrap: anywhere;
 }
 
 .quick-chat-error button {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 20px;
+  min-width: 20px;
   height: 20px;
+  padding: 0;
+}
+
+.quick-chat-error .quick-chat-retry {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.quick-chat-compact :is(.quick-chat-configuration, .quick-chat-error) {
+  max-height: 32px;
 }

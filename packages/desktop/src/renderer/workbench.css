@@ -5645,6 +5645,7 @@
   color: var(--color-primary);
   background: var(--color-active);
 }
+.settings-action-button,
 .shortcut-settings .shortcut-reset {
   display: inline-flex;
   align-items: center;
@@ -5661,6 +5662,7 @@
 .shortcut-settings .shortcut-reset svg {
   margin-right: 8px;
 }
+.settings-action-button:hover:not(:disabled),
 .shortcut-settings .shortcut-reset:hover:not(:disabled) {
   border-color: var(--color-border-strong);
   background: var(--color-fill);
@@ -5801,10 +5803,12 @@
 .shortcut-settings [data-disabled="true"] .shortcut-binding {
   opacity: 0.5;
 }
+.settings-action-button:disabled,
 .shortcut-settings button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.settings-action-button:focus-visible,
 .shortcut-settings button:focus-visible {
   box-shadow: 0 0 0 2px var(--color-focus);
   outline: 2px solid var(--color-focus);
@@ -6285,4 +6289,14 @@ button.model-stat-pill:hover,
   min-height: 100%;
   padding: 16px;
   background: var(--color-bg);
+}
+
+.quick-chat-settings .settings-select-trigger {
+  flex-shrink: 0;
+  max-width: 55%;
+}
+.quick-chat-settings .settings-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

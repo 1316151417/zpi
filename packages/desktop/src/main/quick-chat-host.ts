@@ -11,8 +11,9 @@ import {
 import type { DesktopEvent, SessionView } from "zpi-ui";
 import { emptySession, reduceSession, sessionViewBytes } from "zpi-ui/projection";
 import type { CombinedSelection } from "../shared/bridge.ts";
-import { defaultPreset, toThinking } from "../shared/config.ts";
+import { toThinking } from "../shared/config.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
+import { quickChatSelection } from "../shared/quick-chat-settings.ts";
 import { projectEvent } from "./projection.ts";
 import { createQuickChatFileTools } from "./quick-chat-tools.ts";
 import { resolveModel, type SettingsStore } from "./storage.ts";
@@ -69,24 +70,7 @@ export class QuickChatHost {
     });
   }
   private initialSelection(): CombinedSelection | null {
-    const settings = this.settings.get();
-    if (settings.lastSelection && this.settings.isSelectionValid(settings.lastSelection))
-      return settings.lastSelection;
-    for (const provider of settings.providers) {
-      if (provider.enabled === false) continue;
-      for (const model of provider.models) {
-        if (model.enabled === false) continue;
-        const selection = {
-          provider: provider.id,
-          modelId: model.id,
-          reasoning: defaultPreset(
-            this.settings.getModel({ provider: provider.id, modelId: model.id }) ?? model,
-          ),
-        };
-        if (selection.reasoning && this.settings.isSelectionValid(selection)) return selection;
-      }
-    }
-    return null;
+    return quickChatSelection(this.settings.get());
   }
   getSnapshot(): QuickChatSnapshot {
     return {
@@ -103,7 +87,7 @@ export class QuickChatHost {
   }
   refreshSettings(): void {
     if (this.closed) return;
-    if (!this.selection && !this.active) this.selection = this.initialSelection();
+    if (!this.active) this.selection = this.initialSelection();
     this.changed(true);
   }
   private changed(immediate = false): void {
@@ -144,22 +128,6 @@ export class QuickChatHost {
       !settings.webSearch.credentialsLocked
     );
   }
-  setSelection(selection: CombinedSelection): void {
-    this.idle();
-    if (
-      !selection ||
-      typeof selection !== "object" ||
-      Array.isArray(selection) ||
-      Object.keys(selection).some((key) => !["provider", "modelId", "reasoning"].includes(key)) ||
-      typeof selection.provider !== "string" ||
-      typeof selection.modelId !== "string" ||
-      typeof selection.reasoning !== "string" ||
-      !this.settings.isSelectionValid(selection)
-    )
-      throw new Error("configuration: 请选择可用的模型和思考级别");
-    this.selection = { ...selection };
-    this.changed(true);
-  }
   private idle(): void {
     if (this.closed) throw new Error("busy: 快速对话已关闭");
     if (this.active || this.resetting) throw new Error("busy: 请先停止当前回复");
@@ -170,8 +138,8 @@ export class QuickChatHost {
       throw new Error("invalid_input: 消息需为 1–32000 个字符");
     if (this.view.runs.length >= 100 || sessionViewBytes(this.view) > 8 * 1024 * 1024)
       throw new Error("busy: 这段临时对话已较长，请开始新对话");
-    if (!this.selection || !this.settings.isSelectionValid(this.selection))
-      throw new Error("configuration: 请先在设置中配置模型，再选择可用模型");
+    this.selection = this.initialSelection();
+    if (!this.selection) throw new Error("configuration: 请先在设置中启用可用模型，再配置快速对话默认模型");
     const selection = { ...this.selection };
     // Reserve synchronously, before initialization or network work can yield to another IPC call.
     const run: ActiveRun = { id: randomUUID(), aborted: false, done: Promise.resolve() };
@@ -266,7 +234,11 @@ export class QuickChatHost {
         endedAt: Date.now(),
         ...(failure ? { error: failure } : {}),
       });
-      if (this.active === run) this.active = undefined;
+      if (this.active === run) {
+        this.active = undefined;
+        this.selection = this.initialSelection();
+        this.changed(true);
+      }
     }
   }
   async waitForIdle(): Promise<void> {

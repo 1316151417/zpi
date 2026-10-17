@@ -3,23 +3,41 @@ import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain, IpcMainIn
 import { expect, test, vi } from "vitest";
 import type { QuickChatHost } from "../src/main/quick-chat-host.ts";
 import { installQuickChatIpc, QuickChatWindow } from "../src/main/quick-chat-window.ts";
+import type { QuickChatSnapshot } from "../src/shared/quick-chat.ts";
 
-function fixture(options: { autoLoad?: boolean; hidden?: boolean } = {}) {
+function fixture(
+  options: { autoLoad?: boolean; hidden?: boolean; platform?: NodeJS.Platform; history?: boolean } = {},
+) {
+  let snapshot = { revision: 1, session: { runs: options.history ? [{}] : [] } } as QuickChatSnapshot;
+  let listener: (snapshot: QuickChatSnapshot) => void = () => {};
+  let spaceChanged = () => {};
+  const workspaceNotifications = {
+    subscribeWorkspaceNotification: vi.fn((_name: string, callback: () => void) => {
+      spaceChanged = callback;
+      return 0;
+    }),
+    unsubscribeWorkspaceNotification: vi.fn(),
+  };
+  const getWorkArea = vi.fn(() => ({ x: 0, y: 0, width: 1440, height: 900 }));
   const host = {
-    subscribe: vi.fn(() => vi.fn()),
+    subscribe: vi.fn((callback: typeof listener) => {
+      listener = callback;
+      return vi.fn();
+    }),
     refreshSettings: vi.fn(),
     close: vi.fn(async () => {}),
-    getSnapshot: vi.fn(() => ({ revision: 1 })),
+    getSnapshot: vi.fn(() => snapshot),
     send: vi.fn(),
     stop: vi.fn(async () => {}),
     reset: vi.fn(async () => {}),
-    setSelection: vi.fn(),
   };
   const windows: ReturnType<typeof makeWindow>[] = [];
   const configs: BrowserWindowConstructorOptions[] = [];
   const copyText = vi.fn();
   const openExternal = vi.fn(async () => {});
-  function makeWindow() {
+  function makeWindow(config: BrowserWindowConstructorOptions) {
+    let bounds = { x: config.x ?? 0, y: config.y ?? 0, width: config.width ?? 0, height: config.height ?? 0 };
+    let focused = false;
     let destroyed = false;
     let url = "";
     const session = Object.assign(new EventEmitter(), {
@@ -39,10 +57,19 @@ function fixture(options: { autoLoad?: boolean; hidden?: boolean } = {}) {
       webContents: contents,
       isDestroyed: () => destroyed,
       isMinimized: () => false,
+      getBounds: () => ({ ...bounds }),
+      setBounds: vi.fn((next) => {
+        bounds = { ...next };
+      }),
+      setMinimumSize: vi.fn(),
+      isFocused: vi.fn(() => focused),
       show: vi.fn(),
-      focus: vi.fn(),
+      focus: vi.fn(() => {
+        focused = true;
+      }),
       restore: vi.fn(),
       hide: vi.fn(() => {
+        focused = false;
         window.emit("hide");
       }),
       destroy: vi.fn(() => {
@@ -61,17 +88,38 @@ function fixture(options: { autoLoad?: boolean; hidden?: boolean } = {}) {
     host: host as unknown as QuickChatHost,
     createWindow: (config) => {
       configs.push(config);
-      const window = makeWindow();
+      const window = makeWindow(config);
       windows.push(window);
       return window as unknown as BrowserWindow;
     },
     rendererUrl: "file:///app/renderer/index.html",
     preload: "/app/preload/quick-chat.cjs",
     hiddenTestMode: options.hidden ?? false,
+    platform: options.platform ?? "linux",
+    getWorkArea,
+    workspaceNotifications,
     copyText,
     openExternal,
   });
-  return { quick, host, windows, configs, copyText, openExternal };
+  return {
+    quick,
+    host,
+    windows,
+    configs,
+    copyText,
+    openExternal,
+    getWorkArea,
+    workspaceNotifications,
+    spaceChanged: () => spaceChanged(),
+    emitHistory: (history: boolean) => {
+      snapshot = {
+        ...snapshot,
+        revision: snapshot.revision + 1,
+        session: { runs: history ? [{}] : [] },
+      } as QuickChatSnapshot;
+      listener(snapshot);
+    },
+  };
 }
 
 test("quick window is lazy, isolated, and toggles without affecting its request or the main task", async () => {
@@ -83,6 +131,9 @@ test("quick window is lazy, isolated, and toggles without affecting its request 
   expect(f.configs[0]).toMatchObject({
     show: false,
     frame: false,
+    transparent: true,
+    resizable: false,
+    backgroundColor: "#00000000",
     alwaysOnTop: true,
     webPreferences: {
       preload: "/app/preload/quick-chat.cjs",
@@ -117,6 +168,136 @@ test("repeated toggles while loading preserve the latest visibility intent", asy
   await f.quick.dispose();
 });
 
+test("compact opens as an input-sized window, expands only once, and preserves expanded history until reset", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  expect(f.configs[0]).toMatchObject({ height: 112, minHeight: 112, resizable: false });
+  f.emitHistory(true);
+  expect(window.getBounds().height).toBe(560);
+  expect(window.setMinimumSize).toHaveBeenLastCalledWith(440, 360);
+  window.setBounds.mockClear();
+  f.emitHistory(true);
+  f.emitHistory(true);
+  expect(window.setBounds).not.toHaveBeenCalled();
+  f.quick.hide();
+  await f.quick.show();
+  expect(window.getBounds()).toMatchObject({ width: 660, height: 560 });
+  f.emitHistory(false);
+  expect(window.getBounds().height).toBe(112);
+  expect(window.setMinimumSize).toHaveBeenLastCalledWith(440, 112);
+  await f.quick.dispose();
+});
+
+test("renderer recreation opens expanded from existing host history", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  expect(f.configs[0]).toMatchObject({ height: 560, minHeight: 360, resizable: false });
+  f.windows[0].webContents.emit("render-process-gone");
+  await f.quick.show();
+  expect(f.configs[1]).toMatchObject({ height: 560, minHeight: 360, resizable: false });
+  await f.quick.dispose();
+});
+
+test("both modes fit a small active display and reopening leaves old display coordinates behind", async () => {
+  const f = fixture();
+  f.getWorkArea.mockReturnValue({ x: -500, y: -200, width: 380, height: 300 });
+  await f.quick.show();
+  const window = f.windows[0];
+  expect(window.getBounds()).toMatchObject({ x: -500, width: 380, height: 112 });
+  f.emitHistory(true);
+  expect(window.getBounds()).toEqual({ x: -500, y: -200, width: 380, height: 300 });
+  f.quick.hide();
+  f.getWorkArea.mockReturnValue({ x: 1440, y: 50, width: 1000, height: 700 });
+  await f.quick.show();
+  const bounds = window.getBounds();
+  expect(bounds).toMatchObject({ width: 660, height: 560 });
+  expect(bounds.x).toBeGreaterThanOrEqual(1440);
+  expect(bounds.y).toBeGreaterThanOrEqual(50);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(2440);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(750);
+  await f.quick.dispose();
+});
+
+test("macOS uses a nonactivating unparented panel and visible-but-unfocused toggle brings it forward", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.toggle();
+  const window = f.windows[0];
+  expect(f.configs[0]).toMatchObject({ type: "panel", hiddenInMissionControl: true });
+  expect(f.configs[0]).not.toHaveProperty("parent");
+  // It may still be OS-visible on another Space, or focus may have changed
+  // before the blur notification. Visibility alone must not mean "hide".
+  window.isFocused.mockReturnValue(false);
+  f.getWorkArea.mockReturnValue({ x: 1440, y: 0, width: 1000, height: 700 });
+  await f.quick.toggle();
+  expect(window.show).toHaveBeenCalledTimes(2);
+  expect(window.hide).not.toHaveBeenCalled();
+  expect(window.getBounds().x).toBeGreaterThanOrEqual(1440);
+  window.isFocused.mockReturnValue(true);
+  await f.quick.toggle();
+  expect(window.hide).toHaveBeenCalledOnce();
+  expect(f.host.stop).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("blur and active Space change hide without cancelling and release the native subscription exactly once", async () => {
+  const f = fixture({ platform: "darwin" });
+  expect(f.workspaceNotifications.subscribeWorkspaceNotification).toHaveBeenCalledExactlyOnceWith(
+    "NSWorkspaceActiveSpaceDidChangeNotification",
+    expect.any(Function),
+  );
+  await f.quick.show();
+  const window = f.windows[0];
+  window.emit("blur");
+  expect(window.hide).toHaveBeenCalledOnce();
+  await f.quick.show();
+  expect(window.isFocused()).toBe(true);
+  f.spaceChanged();
+  expect(window.hide).toHaveBeenCalledTimes(2);
+  expect(f.host.stop).not.toHaveBeenCalled();
+  expect(f.host.reset).not.toHaveBeenCalled();
+  await f.quick.show();
+  await f.quick.dispose();
+  await f.quick.dispose();
+  expect(f.workspaceNotifications.unsubscribeWorkspaceNotification).toHaveBeenCalledExactlyOnceWith(0);
+  f.spaceChanged();
+  expect(window.hide).toHaveBeenCalledTimes(2);
+});
+
+test("Space change during renderer loading cancels a pending show, but reopening still succeeds", async () => {
+  const f = fixture({ platform: "darwin", autoLoad: false });
+  const opening = f.quick.show();
+  f.spaceChanged();
+  f.windows[0].webContents.emit("did-finish-load");
+  await opening;
+  expect(f.windows[0].show).not.toHaveBeenCalled();
+  await f.quick.show();
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("non-macOS windows do not use panel or subscribe to workspace notifications", async () => {
+  const f = fixture({ platform: "win32" });
+  await f.quick.show();
+  expect(f.configs[0]).not.toHaveProperty("type");
+  expect(f.workspaceNotifications.subscribeWorkspaceNotification).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("a Space change during native show does not refocus and resurrect the hidden panel", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.show();
+  f.quick.hide();
+  const window = f.windows[0];
+  window.focus.mockClear();
+  window.show.mockImplementationOnce(() => f.spaceChanged());
+  await f.quick.show();
+  expect(window.focus).not.toHaveBeenCalled();
+  await f.quick.toggle();
+  expect(window.focus).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
 test("native close hides, renderer crash recreates, and quitting destroys without resurrecting a window", async () => {
   const f = fixture();
   await f.quick.show();
@@ -141,6 +322,24 @@ test("pending load can be disposed without showing or reusing a dead renderer", 
   await opening;
   expect(f.windows[0].show).not.toHaveBeenCalled();
   expect(f.windows[0].destroy).toHaveBeenCalledOnce();
+});
+
+test("late native events from a crashed renderer cannot hide or toggle a replacement window", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const old = f.windows[0];
+  old.webContents.emit("render-process-gone");
+  await f.quick.show();
+  const replacement = f.windows[1];
+  old.emit("close", { preventDefault: vi.fn() });
+  old.emit("blur");
+  old.emit("hide");
+  old.emit("closed");
+  expect(replacement.hide).not.toHaveBeenCalled();
+  await f.quick.toggle();
+  expect(replacement.hide).toHaveBeenCalledOnce();
+  expect(replacement.show).toHaveBeenCalledOnce();
+  await f.quick.dispose();
 });
 
 test("hidden test mode never shows/focuses a native window", async () => {
@@ -175,6 +374,8 @@ test("dedicated IPC rejects other renderers and child frames before dispatch", a
   expect(f.host.send).toHaveBeenCalledWith("hello");
   for (const method of [
     "createSession",
+    "setSelection",
+    "saveQuickChatSettings",
     "startRun",
     "createBrowser",
     "terminalInput",

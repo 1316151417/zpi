@@ -23,7 +23,6 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "openExternal",
     "reset",
     "send",
-    "setSelection",
     "stop",
   ]);
   await bridge.send("question");

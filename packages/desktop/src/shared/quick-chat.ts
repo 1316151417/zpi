@@ -14,7 +14,6 @@ export interface QuickChatBridge {
   send(text: string): Promise<Result<void>>;
   stop(): Promise<Result<void>>;
   reset(): Promise<Result<void>>;
-  setSelection(selection: CombinedSelection): Promise<Result<void>>;
   hide(): Promise<Result<void>>;
   copyText(text: string): Promise<Result<void>>;
   openExternal(url: string): Promise<Result<void>>;

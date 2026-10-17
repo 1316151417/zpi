@@ -27,16 +27,29 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
       main.evaluate(() => window.zpi.openQuickChat()),
     ]);
     await expect(quick.getByTestId("quick-chat")).toBeVisible();
+    await expect(quick.getByRole("button", { name: "发送", exact: true })).toHaveCount(0);
+    await expect(quick.getByRole("button", { name: "新对话", exact: true })).toHaveCount(0);
+    const quickHeight = () =>
+      app?.evaluate(
+        ({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .find((window) => window.webContents.getURL().includes("view=quick-chat"))
+            ?.getBounds().height,
+      );
+    expect(await quickHeight()).toBe(112);
     expect(await quick.evaluate(() => typeof window.zpi)).toBe("undefined");
     expect(await quick.evaluate(() => typeof window.zpiQuickChat.send)).toBe("function");
     await quick.getByRole("textbox", { name: "输入消息", exact: true }).fill("只在浮窗回答");
-    await quick.getByRole("button", { name: "发送", exact: true }).click();
+    expect(await quick.evaluate(() => "setSelection" in window.zpiQuickChat)).toBe(false);
+    await quick.getByRole("textbox", { name: "输入消息", exact: true }).press("Enter");
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await expect.poll(quickHeight).toBe(560);
     await expect(quick.getByTestId("run")).toContainText("浮窗中的回复");
     await quick.getByRole("button", { name: "隐藏", exact: true }).click();
     await quick.reload();
     await main.evaluate(() => window.zpi.openQuickChat());
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await expect.poll(quickHeight).toBe(560);
     finish.resolve();
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(quick.getByTestId("run")).toContainText("已经完成");
@@ -60,6 +73,8 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
     expect(rejected).toMatchObject({ ok: false, error: { code: "invalid_input" } });
     await quick.getByRole("button", { name: "新对话", exact: true }).click();
     await expect(quick.getByTestId("run")).toHaveCount(0);
+    await expect.poll(quickHeight).toBe(112);
+    await expect(quick.getByRole("button", { name: "新对话", exact: true })).toHaveCount(0);
     expect(await main.evaluate(() => window.zpi.listRecentSessions())).toEqual(before);
     expect(app.windows()).toHaveLength(2);
   } finally {

@@ -71,7 +71,15 @@ Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP �
 
 文件工具仅在显式调用后解析工作基点。限制根目录、敏感名称、符号/硬链接与普通 UTF-8 文件；单文件 256 KiB、一次搜索读取合计 2 MiB、输出 24000 字符、最多 2000 条目/每目录256项/6层/3秒。POSIX 使用非阻塞且不跟随最终符号链接的打开方式，打开前后校验文件身份；这不是操作系统级沙箱，不能保证抵御同用户恶意进程的所有跨平台文件系统竞态。正式任务的文件工具行为保持不变。
 
-快速对话测试覆盖 fake provider 的禁止工具调用、内存会话生命周期、无任务落盘、快捷键冲突回滚与部分恢复、浮窗 IPC/导航边界，以及 Happy DOM 的真实输入和模型菜单。Happy DOM 与窗口模拟测试不证明 macOS 全局热键、跨应用焦点、浮窗几何或真实模型服务可用；这些仍需在受支持的原生桌面环境验收。
+快速对话默认模型独立保存在 `settings.quickChat.defaultSelection`，不读取或写入主任务的 `lastSelection`。设置变化从下一次发送起生效，运行中的模型快照不变；默认提供商、模型或思考级别不可用时回退首个可用模型的默认思考级别，无可用模型则阻止发送并提示去设置配置。会话仅在内存中保留，默认设置可以跨重启保留。
+
+浮窗初始高度 112px，首次有效发送后展开为 560px；新对话恢复紧凑模式。采用透明背景与现有 16px 输入圆角，固定宽度 660px，不提供手动缩放；按当前显示器 workArea 收窄，避免小屏超界。仅在模式变化时调整高度，流式更新不会反复缩放。macOS 使用 Electron `type: "panel"`，不设置主窗为 parent，不调用应用激活 API。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器坐标仅用于位置，Space 行为依赖原生面板。
+
+依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
+
+快速对话测试覆盖 fake provider 的禁止工具调用、内存会话生命周期、无任务落盘、独立默认模型持久化与 fallback、快捷键冲突回滚与部分恢复、浮窗 IPC/导航边界，以及 Happy DOM 的实际紧凑输入、IME、设置导航和默认模型选择。窗口模拟验证 panel 选项、加载时收起、可见但未聚焦的再次唤起、Space 通知及清理。Happy DOM 和窗口模拟不证明真实 macOS 全局热键、Space 切换、跨应用焦点、像素布局或真实模型服务可用。
+
+原生验收：用隔离测试配置运行 `tests/desktop/quick-chat.spec.ts`（紧凑→发送→流式→隐藏/重载→新对话及主任务隔离），显式交互测试可运行 `tests/interactive/quick-chat-focus.spec.ts`（隐藏主窗时浮窗取焦点、Esc 和草稿恢复）。另在 Mac 手动将主窗留在桌面 A、当前应用放在桌面 B，按 Option+N 应只在 B 出现输入框且不切回 A；再次按应收起。发送后切到桌面 C 应收起，再按应在 C 展开并保留回答。重复全屏 Space、多显示器、输入法候选、打开回答链接和流式停止/新对话流程。云端无原生桌面时这些阶段应明确标为未运行，不绕过 Chromium 沙箱限制。
 
 ### 文件工具的资源与并发边界
 

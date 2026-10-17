@@ -34,6 +34,7 @@ import type {
   ProviderInput,
   ProviderRecord,
   PublicSettings,
+  QuickChatSettingsInput,
   SettingsInput,
   WebSearchSettingsInput,
 } from "../shared/bridge.ts";
@@ -45,6 +46,7 @@ import {
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
+import { quickChatSelectionIsValid } from "../shared/quick-chat-settings.ts";
 import {
   defaultShortcuts,
   normalizeShortcuts,
@@ -88,6 +90,7 @@ export interface SettingsData {
   disabledSkillPaths: string[];
   providers: ProviderData[];
   lastSelection: CombinedSelection | null;
+  quickChat: QuickChatSettingsInput;
   interface: InterfacePreferences;
 }
 export function resolveModel(provider: ProviderData, input: ModelSettings): Model {
@@ -124,6 +127,7 @@ export class SettingsStore {
     disabledSkillPaths: [],
     providers: [],
     lastSelection: null,
+    quickChat: { defaultSelection: null },
     interface: structuredClone(defaultPreferences),
   };
   private credentials: Record<string, Credentials> = {};
@@ -155,6 +159,10 @@ export class SettingsStore {
         const migrateWebSearch = isJsonObject(raw.capabilities) && raw.capabilities.webSearch === undefined;
         if (migrateWebSearch) {
           raw.capabilities.webSearch = defaultCapabilities.webSearch;
+          migrated = true;
+        }
+        if (raw.quickChat === undefined) {
+          raw.quickChat = { defaultSelection: null };
           migrated = true;
         }
         this.validateData(raw);
@@ -229,6 +237,7 @@ export class SettingsStore {
           : {}),
       })),
       lastSelection: structuredClone(this.data.lastSelection),
+      quickChat: structuredClone(this.data.quickChat),
       interface: structuredClone(this.data.interface),
       credentialsPersisted: this.persisted,
       disabledSkillPaths: [...this.data.disabledSkillPaths],
@@ -268,6 +277,13 @@ export class SettingsStore {
     if (input.apiKey === undefined) return this.savePublic(data);
     this.persist(data, this.credentials, webApiKey);
     return this.get();
+  }
+  saveQuickChatSettings(input: QuickChatSettingsInput): PublicSettings {
+    this.validateQuickChat(input);
+    const selection = input.defaultSelection;
+    if (selection && !quickChatSelectionIsValid(this.get().providers, selection))
+      throw new Error("configuration: 请选择可用的模型和思考级别");
+    return this.savePublic({ ...this.data, quickChat: structuredClone(input) });
   }
   getModel(selection: ModelSelection): Model | undefined {
     const p = this.data.providers.find((p) => p.id === selection.provider),
@@ -600,6 +616,7 @@ export class SettingsStore {
         },
       ],
       lastSelection: null,
+      quickChat: { defaultSelection: null },
       interface: structuredClone(defaultPreferences),
     };
   }
@@ -610,6 +627,7 @@ export class SettingsStore {
         "version",
         "providers",
         "lastSelection",
+        "quickChat",
         "interface",
         "templates",
         "selectedTemplateId",
@@ -652,6 +670,7 @@ export class SettingsStore {
     for (const p of data.providers) this.validateProvider(p);
     if (new Set(data.providers.map((p) => p.id)).size !== data.providers.length)
       throw new Error("configuration: 重复提供商 ID");
+    this.validateQuickChat(data.quickChat);
     const selection = data.lastSelection;
     if (
       selection !== null &&
@@ -688,6 +707,20 @@ export class SettingsStore {
       prefs.collapsedProjectIds.some((id) => typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id))
     )
       throw new Error("configuration: 无效界面设置");
+  }
+  private validateQuickChat(input: QuickChatSettingsInput): void {
+    if (!isJsonObject(input)) throw new Error("invalid_input: 快速对话配置必须为对象");
+    assertSupportedOptions(input, ["defaultSelection"], "quick chat settings");
+    const selection = input.defaultSelection;
+    if (selection === null) return;
+    if (
+      !isJsonObject(selection) ||
+      ["provider", "modelId", "reasoning"].some(
+        (key) => typeof selection[key] !== "string" || !selection[key].trim() || selection[key].length > 256,
+      )
+    )
+      throw new Error("invalid_input: 快速对话默认模型无效");
+    assertSupportedOptions(selection, ["provider", "modelId", "reasoning"], "quick chat selection");
   }
   private validateProvider(p: ProviderData): void {
     if (!isJsonObject(p)) throw new Error("configuration: 无效提供商");

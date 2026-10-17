@@ -24,7 +24,13 @@ const fake = vi.hoisted(() => {
     writeError: vi.fn(),
     loadRenderer: vi.fn(),
     settings: {
-      get: vi.fn(() => ({ interface: { theme: "light" }, shortcuts: { enabled: false }, providers: [] })),
+      get: vi.fn(() => ({
+        interface: { theme: "light" },
+        shortcuts: { enabled: false },
+        providers: [],
+        quickChat: { defaultSelection: null },
+      })),
+      saveQuickChatSettings: vi.fn(),
       getWebSearchCredentials: vi.fn(),
       getProviderCredentials: vi.fn(),
     },
@@ -65,6 +71,7 @@ vi.mock("../src/main/automation.ts", () => ({
 vi.mock("../src/main/storage.ts", () => ({
   SettingsStore: class {
     get = fake.settings.get;
+    saveQuickChatSettings = fake.settings.saveQuickChatSettings;
     getWebSearchCredentials = fake.settings.getWebSearchCredentials;
     getProviderCredentials = fake.settings.getProviderCredentials;
   },
@@ -233,4 +240,53 @@ test("the temporary window channel cannot reveal credentials or accept the main 
   }
   expect(fake.settings.getWebSearchCredentials).not.toHaveBeenCalled();
   expect(fake.settings.getProviderCredentials).not.toHaveBeenCalled();
+});
+
+test("saves quick-chat defaults only through the main bridge and allowlisted one-argument method", async () => {
+  const input = { defaultSelection: { provider: "chat", modelId: "model", reasoning: "none" } };
+  const settings = { ...fake.settings.get(), quickChat: input };
+  fake.invoke.mockResolvedValueOnce({ ok: true, value: settings });
+  await expect(bridge.saveQuickChatSettings(input)).resolves.toEqual({ ok: true, value: settings });
+  expect(fake.invoke).toHaveBeenCalledExactlyOnceWith("zpi:call", "saveQuickChatSettings", [input]);
+  expect(methods).toContain("saveQuickChatSettings");
+  fake.settings.saveQuickChatSettings.mockReturnValueOnce(settings);
+  await expect(call(authorized, "saveQuickChatSettings", [input])).resolves.toEqual({
+    ok: true,
+    value: settings,
+  });
+  expect(fake.settings.saveQuickChatSettings).toHaveBeenCalledExactlyOnceWith(input);
+});
+
+test.each([
+  { sender: {}, senderFrame: fake.window.webContents.mainFrame },
+  { sender: fake.window.webContents, senderFrame: {} },
+  { sender: fake.window.webContents, senderFrame: null },
+])("rejects non-owner windows and child frames before saving quick-chat defaults", async (event) => {
+  await expect(call(event, "saveQuickChatSettings", [{ defaultSelection: null }])).resolves.toMatchObject({
+    ok: false,
+    error: { code: "invalid_input", message: "invalid_input: 未授权的 IPC sender" },
+  });
+  expect(fake.settings.saveQuickChatSettings).not.toHaveBeenCalled();
+});
+
+test.each([
+  { args: [] },
+  { args: [null] },
+  { args: [[]] },
+  { args: [{ defaultSelection: null, extra: true }] },
+  { args: [{ defaultSelection: null }, "extra"] },
+])("rejects invalid default-settings IPC arguments: %j", async ({ args }) => {
+  await expect(call(authorized, "saveQuickChatSettings", args)).resolves.toMatchObject({
+    ok: false,
+    error: { code: "invalid_input" },
+  });
+  expect(fake.settings.saveQuickChatSettings).not.toHaveBeenCalled();
+});
+
+test("the temporary channel cannot save quick-chat defaults", async () => {
+  expect(await quickCall(authorized, "saveQuickChatSettings", [{ defaultSelection: null }])).toMatchObject({
+    ok: false,
+    error: { code: "invalid_input" },
+  });
+  expect(fake.settings.saveQuickChatSettings).not.toHaveBeenCalled();
 });

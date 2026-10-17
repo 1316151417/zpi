@@ -177,18 +177,25 @@ test("web tools are gated by service, credentials and capability on every run an
   expect(f.web).toEqual([]);
 });
 
-test("model switches preserve in-memory history without changing the main task model selection", async () => {
+test("default model changes preserve in-memory history without changing the main task model selection", async () => {
   const f = await fixture();
   await run(f.host);
-  f.host.setSelection({ provider: "chat", modelId: "two", reasoning: "none" });
+  f.settings.saveQuickChatSettings({
+    defaultSelection: { provider: "chat", modelId: "two", reasoning: "none" },
+  });
+  f.host.refreshSettings();
   await run(f.host, "continue");
   expect(f.requests[1].model).toBe("two");
   expect(messages(f.requests[1]).filter((message) => message.role === "user")).toHaveLength(2);
   expect(f.settings.get().lastSelection?.modelId).toBe("one");
-  expect(() => f.host.setSelection({ provider: "chat", modelId: "missing", reasoning: "none" })).toThrow();
+  expect(() =>
+    f.settings.saveQuickChatSettings({
+      defaultSelection: { provider: "chat", modelId: "missing", reasoning: "none" },
+    }),
+  ).toThrow();
 });
 
-test("a second send or model switch is rejected while initializing; stop aborts the request and reset clears it", async () => {
+test("a second send is rejected while initializing; stop aborts the request and reset clears it", async () => {
   let started!: () => void;
   const pending = new Promise<void>((resolve) => {
     started = resolve;
@@ -204,7 +211,6 @@ test("a second send or model switch is rejected while initializing; stop aborts 
   });
   f.host.send("slow");
   expect(() => f.host.send("duplicate")).toThrow("busy");
-  expect(() => f.host.setSelection({ provider: "chat", modelId: "two", reasoning: "none" })).toThrow("busy");
   await pending;
   await f.host.stop();
   expect(f.host.getSnapshot().session.runs[0].status).toBe("aborted");
@@ -285,3 +291,54 @@ test.each(["capability", "service", "key"])(
     );
   },
 );
+
+test("default changes during a run apply to the next send without interrupting the active request", async () => {
+  let finish!: (response: Response) => void;
+  const f = await fixture((_body, index) =>
+    index === 0
+      ? new Promise((resolve) => {
+          finish = resolve;
+        })
+      : sse({ content: "next answer" }),
+  );
+  f.host.send("first");
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  f.settings.saveQuickChatSettings({
+    defaultSelection: { provider: "chat", modelId: "two", reasoning: "none" },
+  });
+  f.host.refreshSettings();
+  expect(f.host.getSnapshot().selection?.modelId).toBe("one");
+  expect(f.host.getSnapshot().session.runs[0].status).toBe("running");
+  expect(f.requests[0].model).toBe("one");
+  finish(sse({ content: "first finished" }));
+  await f.host.waitForIdle();
+  expect(f.host.getSnapshot().session.runs[0].status).toBe("completed");
+  await run(f.host, "next");
+  expect(f.requests[1].model).toBe("two");
+  expect(f.settings.get().lastSelection?.modelId).toBe("one");
+});
+
+test("disabled or removed defaults fall back deterministically and no model produces an actionable error", async () => {
+  const f = await fixture();
+  f.settings.rememberSelection({ provider: "chat", modelId: "two", reasoning: "none" });
+  f.host.refreshSettings();
+  expect(f.host.getSnapshot().selection?.modelId).toBe("one");
+  f.settings.saveQuickChatSettings({
+    defaultSelection: { provider: "chat", modelId: "two", reasoning: "none" },
+  });
+  f.settings.saveProvider({
+    ...f.settings.snapshot("chat"),
+    models: [
+      { id: "one", reasoning: false },
+      { id: "two", reasoning: false, enabled: false },
+    ],
+  });
+  f.host.refreshSettings();
+  await run(f.host);
+  expect(f.requests[0].model).toBe("one");
+  f.settings.deleteProvider("chat");
+  f.host.refreshSettings();
+  expect(f.host.getSnapshot().selection).toBeNull();
+  expect(() => f.host.send("no models")).toThrow("设置中启用可用模型");
+  expect(f.host.getSnapshot().session.runs).toHaveLength(1);
+});

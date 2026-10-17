@@ -154,7 +154,11 @@ export interface WebSearchSettingsInput {
   /** Omit to retain the saved key; an empty string removes it. */
   apiKey?: string;
 }
+export interface QuickChatSettingsInput {
+  defaultSelection: CombinedSelection | null;
+}
 export interface PublicSettings {
+  quickChat: QuickChatSettingsInput;
   webSearch: {
     provider: "deepseek";
     enabled: boolean;
@@ -452,6 +456,7 @@ export interface DesktopBridge {
   }): Promise<Result<ModelDiscoveryResult>>;
   saveProvider(input: ProviderInput): Promise<Result<PublicSettings>>;
   saveWebSearch(input: WebSearchSettingsInput): Promise<Result<PublicSettings>>;
+  saveQuickChatSettings(input: QuickChatSettingsInput): Promise<Result<PublicSettings>>;
   reorderProviders(ids: string[]): Promise<Result<PublicSettings>>;
   deleteProvider(id: string): Promise<Result<PublicSettings>>;
   getProviderCredentials(id: string): Promise<Result<{ apiKey: string }>>;
@@ -567,6 +572,7 @@ export const methods = [
   "discoverModels",
   "saveProvider",
   "saveWebSearch",
+  "saveQuickChatSettings",
   "reorderProviders",
   "deleteProvider",
   "getProviderCredentials",

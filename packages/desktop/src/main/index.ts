@@ -15,6 +15,7 @@ import {
   safeStorage,
   screen,
   shell,
+  systemPreferences,
 } from "electron";
 import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
 import { listCommands } from "zpi-coding-agent";
@@ -303,6 +304,13 @@ async function launch(): Promise<void> {
     rendererUrl,
     preload: join(dir, "../preload/quick-chat.cjs"),
     hiddenTestMode,
+    platform: process.platform,
+    getWorkArea: (bounds) =>
+      (bounds
+        ? screen.getDisplayMatching(bounds)
+        : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+      ).workArea,
+    ...(process.platform === "darwin" ? { workspaceNotifications: systemPreferences } : {}),
     copyText: (text) => clipboard.writeText(text),
     openExternal: (url) => shell.openExternal(url),
   });
@@ -550,6 +558,7 @@ async function launch(): Promise<void> {
         openExternal: 1,
         saveProvider: 1,
         saveWebSearch: 1,
+        saveQuickChatSettings: 1,
         reorderProviders: 1,
         discoverModels: 1,
         deleteProvider: 1,
@@ -1132,6 +1141,13 @@ async function launch(): Promise<void> {
           );
           break;
         }
+        case "saveQuickChatSettings":
+          value = settings.saveQuickChatSettings(
+            object(0, [
+              "defaultSelection",
+            ]) as unknown as import("../shared/bridge.ts").QuickChatSettingsInput,
+          );
+          break;
         case "saveWebSearch":
           value = settings.saveWebSearch(
             object(0, [
@@ -1171,6 +1187,7 @@ async function launch(): Promise<void> {
           "updateShortcuts",
           "updatePreferences",
           "saveWebSearch",
+          "saveQuickChatSettings",
           "saveProvider",
           "deleteProvider",
           "reorderProviders",

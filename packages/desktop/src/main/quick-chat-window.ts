@@ -1,6 +1,13 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain, IpcMainInvokeEvent } from "electron";
+import type {
+  BrowserWindow,
+  BrowserWindowConstructorOptions,
+  IpcMain,
+  IpcMainInvokeEvent,
+  Rectangle,
+  SystemPreferences,
+} from "electron";
 import type { ErrorCode, Result } from "../shared/bridge.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { isPathInside } from "./path-bounds.ts";
@@ -12,6 +19,12 @@ interface Options {
   rendererUrl: string;
   preload: string;
   hiddenTestMode: boolean;
+  platform: NodeJS.Platform;
+  getWorkArea: (bounds?: Rectangle) => Rectangle;
+  workspaceNotifications?: Pick<
+    SystemPreferences,
+    "subscribeWorkspaceNotification" | "unsubscribeWorkspaceNotification"
+  >;
   copyText: (text: string) => void;
   openExternal: (url: string) => Promise<void>;
 }
@@ -21,15 +34,53 @@ export class QuickChatWindow {
   private window?: BrowserWindow;
   private loading?: Promise<void>;
   private visible = false;
+  private expanded = false;
   private disposed = false;
   private unsubscribe: () => void;
+  private spaceSubscription?: number;
   constructor(options: Options) {
     this.options = options;
+    if (options.platform === "darwin" && options.workspaceNotifications) {
+      // A panel can remain key across Spaces. Blur alone is not proof that the
+      // user has stayed on the invocation Space; hide on the native notification.
+      this.spaceSubscription = options.workspaceNotifications.subscribeWorkspaceNotification(
+        "NSWorkspaceActiveSpaceDidChangeNotification",
+        () => this.hide(),
+      );
+    }
     this.unsubscribe = options.host.subscribe((snapshot) => {
+      this.setExpanded(snapshot.session.runs.length > 0);
       const window = this.window;
       if (window && !window.isDestroyed() && !window.webContents.isDestroyed())
         window.webContents.send("zpi:quick-chat-snapshot", snapshot);
     });
+  }
+  private bounds(expanded: boolean, previous?: Rectangle): Rectangle {
+    const area = this.options.getWorkArea(previous);
+    const width = Math.min(660, area.width);
+    const height = Math.min(expanded ? 560 : 112, area.height);
+    return {
+      width,
+      height,
+      x: Math.round(
+        Math.max(
+          area.x,
+          Math.min(previous?.x ?? area.x + (area.width - width) / 2, area.x + area.width - width),
+        ),
+      ),
+      y: Math.round(
+        Math.max(area.y, Math.min(previous?.y ?? area.y + area.height / 5, area.y + area.height - height)),
+      ),
+    };
+  }
+  private setExpanded(expanded: boolean): void {
+    if (this.expanded === expanded) return;
+    this.expanded = expanded;
+    const window = this.window;
+    if (!window || window.isDestroyed()) return;
+    const bounds = this.bounds(expanded, window.getBounds());
+    window.setMinimumSize(Math.min(440, bounds.width), Math.min(expanded ? 360 : 112, bounds.height));
+    window.setBounds(bounds);
   }
   owns(event: Pick<IpcMainInvokeEvent, "sender" | "senderFrame">): boolean {
     const window = this.window;
@@ -48,17 +99,27 @@ export class QuickChatWindow {
       return this.window;
     }
     if (this.window && !this.window.isDestroyed()) return this.window;
+    this.expanded = this.options.host.getSnapshot().session.runs.length > 0;
+    const bounds = this.bounds(this.expanded);
     const window = this.options.createWindow({
-      width: 660,
-      height: 560,
-      minWidth: 440,
-      minHeight: 360,
+      ...bounds,
+      minWidth: Math.min(440, bounds.width),
+      minHeight: Math.min(this.expanded ? 360 : 112, bounds.height),
+      resizable: false,
+      transparent: true,
       title: "快速对话",
       show: false,
       frame: false,
       alwaysOnTop: true,
       skipTaskbar: true,
-      backgroundColor: "#f8f8f8",
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      // Electron's nonactivating panel takes key focus without activating ZPI
+      // or switching to the main window's Space. It already joins all Spaces;
+      // toggling setVisibleOnAllWorkspaces would only add process-type changes.
+      ...(this.options.platform === "darwin" ? { type: "panel", hiddenInMissionControl: true } : {}),
+      backgroundColor: "#00000000",
       webPreferences: {
         preload: this.options.preload,
         partition: "zpi-quick-chat",
@@ -97,16 +158,21 @@ export class QuickChatWindow {
       }
     });
     window.on("close", (event) => {
-      if (this.disposed) return;
+      if (this.disposed || this.window !== window) return;
       event.preventDefault();
       this.hide();
     });
     window.on("hide", () => {
-      this.visible = false;
+      if (this.window === window) this.visible = false;
+    });
+    window.on("blur", () => {
+      if (this.window === window) this.hide();
     });
     window.on("closed", () => {
-      if (this.window === window) this.window = undefined;
-      this.visible = false;
+      if (this.window === window) {
+        this.window = undefined;
+        this.visible = false;
+      }
     });
     window.webContents.on("render-process-gone", () => {
       if (!window.isDestroyed()) window.destroy();
@@ -132,12 +198,21 @@ export class QuickChatWindow {
     this.options.host.refreshSettings();
     if (!this.options.hiddenTestMode) {
       if (window.isMinimized()) window.restore();
+      // Geometry chooses a display, not a Space. The macOS panel type above is
+      // what prevents app activation/Space switching. Transparent windows use
+      // fixed compact/expanded sizes; native user resizing is not reliable.
+      const bounds = this.bounds(this.expanded);
+      window.setMinimumSize(Math.min(440, bounds.width), Math.min(this.expanded ? 360 : 112, bounds.height));
+      window.setBounds(bounds);
       window.show();
-      window.focus();
+      if (this.visible && !window.isDestroyed()) window.focus();
     }
   }
   async toggle(): Promise<void> {
-    if (this.visible) this.hide();
+    // Native visibility does not mean the window is foreground on this Space.
+    // Preserve the desired visibility toggle while a renderer is still loading.
+    if (this.visible && (this.loading || this.options.hiddenTestMode || this.window?.isFocused()))
+      this.hide();
     else await this.show();
   }
   hide(): void {
@@ -153,7 +228,6 @@ export class QuickChatWindow {
         send: 1,
         stop: 0,
         reset: 0,
-        setSelection: 1,
         hide: 0,
         copyText: 1,
         openExternal: 1,
@@ -179,9 +253,6 @@ export class QuickChatWindow {
           break;
         case "reset":
           await host.reset();
-          break;
-        case "setSelection":
-          host.setSelection(args[0]);
           break;
         case "hide":
           this.hide();
@@ -212,6 +283,10 @@ export class QuickChatWindow {
     this.disposed = true;
     this.visible = false;
     this.unsubscribe();
+    if (this.spaceSubscription !== undefined) {
+      this.options.workspaceNotifications?.unsubscribeWorkspaceNotification(this.spaceSubscription);
+      this.spaceSubscription = undefined;
+    }
     if (this.window && !this.window.isDestroyed()) this.window.destroy();
     await this.options.host.close();
   }

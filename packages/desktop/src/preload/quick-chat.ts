@@ -7,7 +7,6 @@ const bridge: QuickChatBridge = {
   send: (text) => call("send", text),
   stop: () => call("stop"),
   reset: () => call("reset"),
-  setSelection: (selection) => call("setSelection", selection),
   hide: () => call("hide"),
   copyText: (text) => call("copyText", text),
   openExternal: (url) => call("openExternal", url),
