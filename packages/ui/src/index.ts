@@ -26,7 +26,13 @@ export {
   validSelections,
 } from "./conversation-selections.ts";
 export type { FindRequest, FindState } from "./find.ts";
-export type { FileLocation, LinkContext, WebOpenOptions } from "./link-target.ts";
+export type {
+  FileLocation,
+  FileOpenHandler,
+  FileOpenOrigin,
+  LinkContext,
+  WebOpenOptions,
+} from "./link-target.ts";
 export { resolveLinkTarget, webOpenTarget } from "./link-target.ts";
 export type { PreviewServices } from "./preview/preview-lifecycle.ts";
 export { createPreviewLoader } from "./preview/preview-lifecycle.ts";

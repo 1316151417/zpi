@@ -1,6 +1,6 @@
 // ZCode Explore and ExecuteGroup renderers (872ad96, Apache-2.0).
 import { Search, SquareTerminal } from "lucide-react";
-import type { LinkContext } from "../link-target.ts";
+import type { FileOpenHandler, LinkContext } from "../link-target.ts";
 import { ToolBlock, ToolFileChip } from "./ToolBlock.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
 import { groupSummary, type ToolGroupView, toolCommand, toolFile, toolLabel } from "./tool-presentation.ts";
@@ -19,7 +19,7 @@ export function ToolGroup({
   blocks: Record<string, boolean>;
   toggle: (id: string) => void;
   workspace?: LinkContext;
-  onFile?: (path: string) => void;
+  onFile?: FileOpenHandler;
   onCopy?: (text: string) => Promise<void>;
   onChanges?: (path: string, toolCallId: string) => void;
   onLoadPatch?: (toolCallId: string) => Promise<string>;

@@ -30,7 +30,7 @@ export function SubagentPane({ tab }: { tab: Extract<PaneTab, { type: "subagent"
         context={inputContext}
         previewServices={previewServices}
         onLink={(url, options) => paneTask(openWebLink(url, options, tab.childSessionId))}
-        onFile={(path, location) => paneTask(openFile(tab.childSessionId, path, location))}
+        onFile={(path, location, origin) => paneTask(openFile(tab.childSessionId, path, location, origin))}
         onCopy={(text) => window.zpi.copyText(text).then(unwrap)}
         onChanges={(runId, path, toolCallId) => openChanges(tab.childSessionId, runId, path, toolCallId)}
         onLoadToolPatch={(runId, toolCallId) =>

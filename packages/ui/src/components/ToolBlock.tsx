@@ -1,7 +1,7 @@
 // ZCode read/execute/edit renderers, adapted to ZPI's four tools (Apache-2.0).
 import { Pencil, Search, SquareTerminal, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { LinkContext, WebOpenOptions } from "../link-target.ts";
+import type { FileOpenHandler, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { AskQuestionToolBlock } from "./AskQuestionToolBlock.tsx";
 import { FlipMetricValue } from "./FlipMetricValue.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -22,7 +22,7 @@ export interface ToolBlockProps {
   toggle: () => void;
   showIcon?: boolean;
   workspace?: LinkContext;
-  onFile?: (path: string) => void;
+  onFile?: FileOpenHandler;
   onCopy?: (text: string) => Promise<void>;
   onLink?: (url: string, options?: WebOpenOptions) => void;
   onChanges?: (path: string, toolCallId: string) => void;

@@ -1,3 +1,5 @@
+import { toFileUrl } from "./preview/path.ts";
+
 export interface LinkContext {
   cwd?: string;
   home?: string;
@@ -11,6 +13,10 @@ export interface FileLocation {
   relative?: boolean;
   fileUrl?: string;
 }
+/** Only Markdown anchors carry webpage intent; file chips and source actions do not. */
+export type FileOpenOrigin = "markdown-link";
+export type FileOpenHandler = (path: string, location?: FileLocation, origin?: FileOpenOrigin) => void;
+
 export interface WebOpenOptions {
   forceExternal?: boolean;
   forceInApp?: boolean;
@@ -157,4 +163,37 @@ export function webOpenTarget(url: string, options: WebOpenOptions = {}): "app-b
       return "app-browser";
   }
   return "external-browser";
+}
+
+/** Allow local HTML page queries/fragments without relaxing ordinary file path parsing. */
+export function resolveMarkdownLinkTarget(raw: string, context: LinkContext = {}): LinkTarget | null {
+  if (!raw || raw.length > 8192 || /[\0\r\n]/.test(raw)) return null;
+  const input = stripQuotes(raw.trim());
+  const page = /^([^?#]+)([?#].*)$/.exec(input);
+  const local = page && resolveLinkTarget(page[1], context);
+  if (!page || local?.kind !== "file" || !/\.html?$/i.test(local.path))
+    return resolveLinkTarget(raw, context);
+  // A colon inside a query is page data, not a source line/column suffix.
+  const lineFragment = /#L\d+(?:-L?\d+)?$/i.test(page[2]);
+  const file = lineFragment ? splitFileLocation(input) : { path: input, location: {} };
+  if (!file) return null;
+  const suffix = file.path.slice(page[1].length);
+  return { ...local, ...file.location, fileUrl: toFileUrl(local.path) + suffix };
+}
+
+export function markdownHtmlBrowserUrl(
+  path: string,
+  location?: FileLocation,
+  origin?: FileOpenOrigin,
+): string | null {
+  if (origin !== "markdown-link" || !/\.html?$/i.test(path) || location?.line !== undefined) return null;
+  const url = new URL(toFileUrl(path));
+  if (location?.fileUrl) {
+    const original = new URL(location.fileUrl);
+    if (original.protocol !== "file:") return null;
+    // The privileged file read owns the canonical path; only retain navigation suffixes.
+    url.search = original.search;
+    url.hash = original.hash;
+  }
+  return url.href;
 }

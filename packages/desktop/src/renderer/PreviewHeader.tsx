@@ -78,8 +78,10 @@ export function PreviewHeader({
             <ChevronRight size={14} />
           </span>
         ))}
-        <FileIcon path={path} size={14} />
-        <strong>{name}</strong>
+        <span className="preview-path-file">
+          <FileIcon path={path} size={14} />
+          <strong>{name}</strong>
+        </span>
       </nav>
       <div className="preview-header-actions">
         {onViewSource && (

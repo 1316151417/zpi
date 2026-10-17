@@ -7,7 +7,7 @@ import rehypeSanitize from "rehype-sanitize";
 import type { ExtraProps, StreamdownProps } from "streamdown";
 import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
 import { fileCitationRemarkPlugin, projectFileCitations } from "../file-citation.ts";
-import { type FileLocation, resolveLinkTarget, type WebOpenOptions } from "../link-target.ts";
+import { type FileOpenHandler, resolveMarkdownLinkTarget, type WebOpenOptions } from "../link-target.ts";
 import { type MarkdownFence, markdownFence } from "../markdown-fence.ts";
 import { markdownLinkRemarkPlugin } from "../markdown-link-nodes.ts";
 import type { FileActionHandler } from "../types.ts";
@@ -167,7 +167,7 @@ export const Markdown = memo(function Markdown({
 }: MarkdownServices & {
   text: string;
   onLink: (url: string, options?: WebOpenOptions) => void;
-  onFile?: (path: string, location?: FileLocation) => void;
+  onFile?: FileOpenHandler;
   onFileAction?: FileActionHandler;
 }) {
   const components = useMemo<NonNullable<StreamdownProps["components"]>>(
@@ -175,7 +175,7 @@ export const Markdown = memo(function Markdown({
       a: ({ href, children, node }) => {
         const original = node?.properties?.dataZpiTarget;
         const destination = typeof original === "string" ? original : href;
-        const target = destination ? resolveLinkTarget(destination, workspace) : null;
+        const target = destination ? resolveMarkdownLinkTarget(destination, workspace) : null;
         if (target?.kind === "file" && onFile) {
           const { kind: _kind, path, ...location } = target;
           return (
@@ -184,7 +184,7 @@ export const Markdown = memo(function Markdown({
               className="message-file-link"
               path={path}
               label={rawText(children) || path.split("/").at(-1) || path}
-              onOpen={() => onFile(path, location)}
+              onOpen={() => onFile(path, location, "markdown-link")}
               onAction={onFileAction ? (path, action) => onFileAction(path, action, location) : undefined}
             />
           );

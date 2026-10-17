@@ -32,7 +32,7 @@ test("browser has a seamless blank canvas and a centered editable address pill",
     const background = await pane.evaluate((element) => getComputedStyle(element).backgroundColor);
     await expect(toolbar).toHaveCSS("background-color", background);
     await expect(pane.getByTestId("browser-surface")).toHaveCSS("background-color", background);
-    await expect(address).toHaveAttribute("placeholder", "输入");
+    await expect(address).toHaveAttribute("placeholder", "输入网址后回车");
     await expect(address).toHaveCSS("height", "32px");
     await expect(address).toHaveCSS("border-radius", "9999px");
     await address.evaluate((element) => element.blur());

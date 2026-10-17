@@ -38,6 +38,7 @@ import {
 import { type FindMatch, type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
 import {
   type FileLocation,
+  type FileOpenHandler,
   type LinkContext,
   splitFileLocation,
   type WebOpenOptions,
@@ -119,7 +120,7 @@ function UserMessageEditor({
   onEdit: EditMessage;
   onCancel: () => void;
   suggestions?: InputSuggestion[];
-  onFile?: (path: string, location?: FileLocation) => void;
+  onFile?: FileOpenHandler;
 }) {
   const storage = useRef(new ComposerDraftStore());
   const [conflict, setConflict] = useState<{ files: FileRewindConflict[]; input: MessageEditInput }>();
@@ -216,7 +217,7 @@ function ProcessBlock({
   onChanges?: (path: string, toolCallId: string) => void;
   onLoadPatch?: (toolCallId: string) => Promise<string>;
   block: ViewBlock;
-  onFile?: (path: string, location?: FileLocation) => void;
+  onFile?: FileOpenHandler;
   onFileAction?: FileActionHandler;
   expanded: boolean;
   toggle: () => void;
@@ -386,7 +387,7 @@ export const RunGroup = memo(function RunGroup({
   onLoadToolPatch?: (runId: string, toolCallId: string) => Promise<string>;
   onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
-  onFile?: (path: string, location?: FileLocation) => void;
+  onFile?: FileOpenHandler;
   workspace?: LinkContext;
   onLink: (url: string, options?: WebOpenOptions) => void;
   expanded: boolean;
@@ -781,7 +782,7 @@ export function Conversation({
   onLoadToolPatch?: (runId: string, toolCallId: string) => Promise<string>;
   onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
-  onFile?: (path: string, location?: FileLocation) => void;
+  onFile?: FileOpenHandler;
 }) {
   const previewAutoOpen = usePreviewAutoOpen(view);
   const subagentContext = useMemo(
@@ -1176,7 +1177,7 @@ export function ChatComposer({
   onConfigureEnvironment?: () => void;
   onCancel?: () => void;
   resetFiles?: { disabled: boolean; description: string };
-  onFile?: (path: string, location?: FileLocation) => void;
+  onFile?: FileOpenHandler;
   busy: boolean;
   onSubmit: (
     text: string,

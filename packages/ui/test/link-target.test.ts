@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { resolveLinkTarget, splitFileLocation, webOpenTarget } from "../src/link-target.ts";
+import {
+  markdownHtmlBrowserUrl,
+  resolveLinkTarget,
+  resolveMarkdownLinkTarget,
+  splitFileLocation,
+  webOpenTarget,
+} from "../src/link-target.ts";
 
 const context = { cwd: "/workspace/project", home: "/Users/test" };
 describe("Markdown link targets", () => {
@@ -174,5 +180,63 @@ describe("web open routing", () => {
     expect(webOpenTarget("https://example.com", { forceInApp: true, forceExternal: true })).toBe(
       "external-browser",
     );
+  });
+});
+
+describe("HTML Markdown webpage intent", () => {
+  it.each([
+    ["./page.html", "file:///workspace/project/page.html"],
+    ["./page.html?time=12:30", "file:///workspace/project/page.html?time=12:30"],
+    [
+      "./page.html?next=http://localhost:3000",
+      "file:///workspace/project/page.html?next=http://localhost:3000",
+    ],
+    ["./page.html#section:12", "file:///workspace/project/page.html#section:12"],
+    ["file:///tmp/page.html?time=12:30", "file:///tmp/page.html?time=12:30"],
+    ["./PAGE.HTM?preview=1#intro", "file:///workspace/project/PAGE.HTM?preview=1#intro"],
+    ["./%E9%A1%B5%20%2520%2Ehtml?q=1#intro", "file:///workspace/project/%E9%A1%B5%20%2520.html?q=1#intro"],
+    ["file:///tmp/page.html?q=1#intro", "file:///tmp/page.html?q=1#intro"],
+    ["./name%23part.html#intro", "file:///workspace/project/name%23part.html#intro"],
+  ])("preserves browser navigation for %s", (raw, expected) => {
+    const target = resolveMarkdownLinkTarget(raw, context);
+    expect(target?.kind).toBe("file");
+    if (target?.kind !== "file") throw new Error("missing file");
+    expect(markdownHtmlBrowserUrl(target.path, target, "markdown-link")).toBe(expected);
+    expect(markdownHtmlBrowserUrl(target.path, target)).toBeNull();
+  });
+  it.each(["./page.html:12:3", "./page.htm#L2-L4", "./page.html?x=1#L2", "file:///tmp/page.html#L4"])(
+    "keeps source line references in the file pane: %s",
+    (raw) => {
+      const target = resolveMarkdownLinkTarget(raw, context);
+      expect(target?.kind).toBe("file");
+      if (target?.kind !== "file") throw new Error("missing file");
+      expect(target.line).toBeGreaterThan(0);
+      expect(markdownHtmlBrowserUrl(target.path, target, "markdown-link")).toBeNull();
+    },
+  );
+  it("does not broaden PDF, code, protocol, encoding or path safety rules", () => {
+    for (const raw of [
+      "../page.html?q=1",
+      "./%2e%2e/page.html#intro",
+      "./%2Fpage.html?x=1",
+      "javascript:page.html?x=1",
+      "./bad%zz.html#intro",
+      "./page.html#L0",
+      "./report.pdf?q=1",
+      "./app.ts#intro",
+    ])
+      expect(resolveMarkdownLinkTarget(raw, context), raw).toBeNull();
+    expect(markdownHtmlBrowserUrl("/tmp/report.pdf", undefined, "markdown-link")).toBeNull();
+    expect(markdownHtmlBrowserUrl("/tmp/app.ts", undefined, "markdown-link")).toBeNull();
+    expect(resolveLinkTarget("./page.html?x=1", context)).toBeNull();
+  });
+  it("takes the trusted canonical path rather than a supplied file URL path", () => {
+    expect(
+      markdownHtmlBrowserUrl(
+        "/safe/page.html",
+        { fileUrl: "file:///other/page.html?q=1#intro" },
+        "markdown-link",
+      ),
+    ).toBe("file:///safe/page.html?q=1#intro");
   });
 });

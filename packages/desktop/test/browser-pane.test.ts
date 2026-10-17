@@ -30,7 +30,7 @@ describe("browser toolbar presentation", () => {
     const html = render();
     expect(buttons(html)).toHaveLength(4);
     expect(buttons(html).every((button) => button.includes('disabled=""'))).toBe(true);
-    expect(html).toContain('placeholder="输入"');
+    expect(html).toContain('placeholder="输入网址后回车"');
     expect(html).toContain('aria-label="浏览器地址"');
     expect(html).toContain('spellCheck="false"');
     expect(html).not.toContain("输入地址，或点击聊天中的链接");
@@ -54,15 +54,18 @@ describe("browser toolbar presentation", () => {
     expect(buttons(html)[3]).not.toContain("disabled");
   });
 
-  it("retains stop while loading and displays load failures without empty-state clutter", () => {
+  it("keeps refresh spinning while loading and displays load failures without empty-state clutter", () => {
     const loading = render({ url: "http://localhost:3000/", loading: true, forward: true });
-    expect(loading).toContain('aria-label="停止加载"');
-    expect(loading).toContain("lucide-x");
-    expect(loading).not.toContain("lucide-refresh-cw");
+    expect(loading).toContain('aria-label="刷新页面"');
+    expect(loading).not.toContain("lucide-x");
+    expect(loading).toContain("browser-refresh-spinning");
+    expect(buttons(loading)[2]).not.toContain("disabled");
+    expect(loading).toContain("lucide-refresh-cw");
     expect(buttons(loading)[1]).not.toContain("disabled");
     const failed = render({ url: "http://localhost:3000/", error: "页面加载失败" });
     expect(failed).toContain('role="alert"');
     expect(failed).toContain("页面加载失败");
+    expect(failed).not.toContain("browser-refresh-spinning");
     expect(failed).toContain('aria-label="刷新页面"');
   });
 

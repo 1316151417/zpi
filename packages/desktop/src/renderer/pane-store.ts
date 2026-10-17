@@ -1,5 +1,12 @@
 import { type BackgroundTask, type ConversationSelection, type SubagentTask, toolFile } from "zpi-ui";
-import { type FileLocation, resolveLinkTarget, type WebOpenOptions, webOpenTarget } from "zpi-ui/links";
+import {
+  type FileLocation,
+  type FileOpenOrigin,
+  markdownHtmlBrowserUrl,
+  resolveLinkTarget,
+  type WebOpenOptions,
+  webOpenTarget,
+} from "zpi-ui/links";
 import { create } from "zustand";
 import type {
   BrowserState,
@@ -51,7 +58,7 @@ export type PaneTab = (
     }
   | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string; profile?: TerminalProfile }
   | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview }
-  | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState }
+  | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState; fileKey?: string }
 ) & { ownerSessionId?: string };
 interface PanePreference {
   open: boolean;
@@ -405,7 +412,12 @@ export async function openWebLink(
 const fileOpenVersions = new Map<string, number>();
 let fileOpenVersion = 0;
 let pendingFileReads = 0;
-export async function openFile(sessionId: string, path: string, location?: FileLocation) {
+export async function openFile(
+  sessionId: string,
+  path: string,
+  location?: FileLocation,
+  origin?: FileOpenOrigin,
+) {
   const ownerSessionId = paneOwner(sessionId);
   const state = useStore.getState();
   const cwd = state.sessions.get(sessionId)?.cwd;
@@ -448,6 +460,42 @@ export async function openFile(sessionId: string, path: string, location?: FileL
       unwrap(await window.zpi.fileAction(sessionId, preview.path, "reveal"));
       return;
     }
+    const url = markdownHtmlBrowserUrl(
+      preview.path,
+      preview.location ?? location ?? (target?.kind === "file" ? target : undefined),
+      origin,
+    );
+    if (url) {
+      const existing = usePane
+        .getState()
+        .tabs.find(
+          (tab): tab is Extract<PaneTab, { type: "browser" }> =>
+            tab.type === "browser" && tab.sessionId === sessionId && tab.state.url === url,
+        );
+      if (existing) {
+        showTab({ ...existing, fileKey: id });
+        return;
+      }
+      const created = unwrap(await window.zpi.createBrowser(url));
+      if (
+        ownerDeleted(ownerSessionId) ||
+        fileOpenVersions.get(id) !== version ||
+        fileOpenVersions.get(requestKey) !== version
+      ) {
+        unwrap(await window.zpi.closeBrowser(created.id));
+        return;
+      }
+      showTab({
+        type: "browser",
+        id: created.id,
+        title: "浏览器",
+        sessionId,
+        ownerSessionId,
+        state: created,
+        fileKey: id,
+      });
+      return;
+    }
     showTab({
       id,
       type: "file",
@@ -483,7 +531,10 @@ export async function closeTab(id: string) {
   if (!tab) return;
   if (tab.type === "side-chat-loading" && pendingSideChats.get(tab.sessionId)?.tabId === id)
     pendingSideChats.delete(tab.sessionId);
-  if (tab.type === "file" && pendingFileReads) fileOpenVersions.set(id, ++fileOpenVersion);
+  if (pendingFileReads) {
+    if (tab.type === "file") fileOpenVersions.set(id, ++fileOpenVersion);
+    if (tab.type === "browser" && tab.fileKey) fileOpenVersions.set(tab.fileKey, ++fileOpenVersion);
+  }
   if (tab.type === "terminal") {
     unwrap(await window.zpi.closeTerminal(id));
     terminalOutput.delete(id);

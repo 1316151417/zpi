@@ -36,3 +36,14 @@ test("file tabs fade filename and neutral Diff badge together around the close b
   expect(badge).toContain("background: var(--color-fill)");
   expect(badge).toContain("font-size: var(--text-xs)");
 });
+
+test("breadcrumb uses the reference's quiet arrows and four-pixel file label gap", () => {
+  expect(declarations(workbench, ".preview-breadcrumb .lucide-chevron-right")[0]).toContain(
+    "color: var(--color-text-subtlest)",
+  );
+  const [file] = declarations(workbench, ".preview-path-file");
+  expect(file).toContain("gap: 4px");
+  expect(file).toContain("padding-right: 12px");
+  expect(declarations(workbench, ".preview-breadcrumb strong")[0]).not.toContain("padding");
+  expect(declarations(workbench, ".preview-breadcrumb .file-icon")).toEqual([]);
+});

@@ -62,3 +62,12 @@
   min-height: 0;
   background: inherit;
 }
+
+.browser-refresh-spinning {
+  animation: browser-refresh-spin 1s linear infinite;
+}
+@keyframes browser-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

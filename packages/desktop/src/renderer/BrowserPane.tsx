@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActionHint } from "zpi-ui";
 import type { BrowserState } from "../shared/bridge.ts";
@@ -97,7 +97,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       paneTask(window.zpi.browserBounds(state.id, null).then(unwrap));
     };
   }, [state.id, state.url, visible]);
-  const action = (name: "back" | "forward" | "reload" | "stop") =>
+  const action = (name: "back" | "forward" | "reload") =>
     paneTask(window.zpi.browserAction(state.id, name).then(unwrap));
   return (
     <div className="browser-pane">
@@ -112,13 +112,13 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
             <ChevronRight size={16} />
           </button>
         </ActionHint>
-        <ActionHint label={state.loading ? "停止加载" : "刷新"} appearance="control">
+        <ActionHint label="刷新" appearance="control">
           <button
-            aria-label={state.loading ? "停止加载" : "刷新页面"}
+            aria-label="刷新页面"
             disabled={!state.url && !state.loading}
-            onClick={() => action(state.loading ? "stop" : "reload")}
+            onClick={() => action("reload")}
           >
-            {state.loading ? <X size={16} /> : <RefreshCw size={16} />}
+            <RefreshCw size={16} className={state.loading ? "browser-refresh-spinning" : undefined} />
           </button>
         </ActionHint>
         <form
@@ -140,7 +140,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
           <input
             aria-label="浏览器地址"
             type="text"
-            placeholder="输入"
+            placeholder="输入网址后回车"
             spellCheck={false}
             autoComplete="off"
             autoCapitalize="off"

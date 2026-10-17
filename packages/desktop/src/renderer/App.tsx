@@ -23,6 +23,7 @@ import {
   Conversation,
   type FileAction,
   type FileLocation,
+  type FileOpenOrigin,
   type SubagentTask,
   TaskFindBar,
   type WebOpenOptions,
@@ -379,8 +380,8 @@ export function App() {
   useStopOnEscape(stop);
   const copyCode = useCallback((text: string) => window.zpi.copyText(text).then(unwrap), []);
   const openFile = useCallback(
-    (path: string, location?: FileLocation) => {
-      if (selected) paneTask(showFile(selected, path, location));
+    (path: string, location?: FileLocation, origin?: FileOpenOrigin) => {
+      if (selected) paneTask(showFile(selected, path, location, origin));
     },
     [selected],
   );

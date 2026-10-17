@@ -597,3 +597,135 @@ it("keeps native profile metadata on its terminal tab without altering the shell
   expect(bridge.createTerminal).toHaveBeenCalledOnce();
   expect(bridge.closeTerminal).not.toHaveBeenCalled();
 });
+
+it.each(["html", "HTM"])(
+  "opens explicit Markdown %s links in the browser, after validating the file",
+  async (extension) => {
+    const path = `/shared/page.${extension}`;
+    const location = { fileUrl: `file://${path}?preview=1#intro` };
+    bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path, location }));
+    await openFile("A", path, location, "markdown-link");
+    expect(bridge.readFilePreview).toHaveBeenCalledWith("A", path, location);
+    expect(bridge.createBrowser).toHaveBeenCalledWith(`file://${path}?preview=1#intro`);
+    expect(visiblePaneTabs("A")[0]).toMatchObject({ type: "browser", sessionId: "A", ownerSessionId: "A" });
+  },
+);
+
+it.each(["/shared/page.html", "/shared/report.pdf"])(
+  "keeps source line links and PDF Markdown links in the file pane: %s",
+  async (path) => {
+    const location = path.endsWith("html") ? { line: 2 } : undefined;
+    bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path, location }));
+    await openFile("A", path, location, "markdown-link");
+    expect(visiblePaneTabs("A")[0]).toMatchObject({ type: "file" });
+    expect(bridge.createBrowser).not.toHaveBeenCalled();
+  },
+);
+
+it("deduplicates repeated HTML Markdown opens and does not resurrect a closed browser after a delayed read", async () => {
+  const path = "/shared/page.html";
+  const url = "file:///shared/page.html";
+  bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path }));
+  bridge.createBrowser.mockResolvedValueOnce(ok(browser("html-browser", url)));
+  await openFile("A", path, undefined, "markdown-link");
+  bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path }));
+  await openFile("A", path, undefined, "markdown-link");
+  expect(bridge.createBrowser).toHaveBeenCalledOnce();
+  const delayed = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(delayed.promise);
+  const pending = openFile("A", path, undefined, "markdown-link");
+  await closeTab("html-browser");
+  delayed.resolve(ok({ ...file, path }));
+  await pending;
+  expect(visiblePaneTabs("A")).toEqual([]);
+  expect(bridge.createBrowser).toHaveBeenCalledOnce();
+});
+
+it("discards an older native HTML browser creation after a newer source open", async () => {
+  const path = "/shared/page.html";
+  const delayed = Promise.withResolvers<Result<BrowserState>>();
+  bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path }));
+  bridge.createBrowser.mockReturnValueOnce(delayed.promise);
+  const pending = openFile("A", path, undefined, "markdown-link");
+  await vi.waitFor(() => expect(bridge.createBrowser).toHaveBeenCalledOnce());
+  bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path }));
+  await openFile("A", path);
+  delayed.resolve(ok(browser("stale-html", "file:///shared/page.html")));
+  await pending;
+  expect(bridge.closeBrowser).toHaveBeenCalledWith("stale-html");
+  expect(visiblePaneTabs("A")).toHaveLength(1);
+  expect(visiblePaneTabs("A")[0].type).toBe("file");
+});
+
+it("keeps an auxiliary chat HTML browser owned by its parent when selection changes", async () => {
+  useStore.setState({
+    sessions: new Map([
+      ...useStore.getState().sessions,
+      [
+        "side",
+        {
+          id: "side",
+          title: "side",
+          cwd: "/shared",
+          parentSessionId: "A",
+          projectId: null,
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+    ]),
+  });
+  const delayed = Promise.withResolvers<Result<BrowserState>>();
+  bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path: "/shared/page.html" }));
+  bridge.createBrowser.mockReturnValueOnce(delayed.promise);
+  const pending = openFile("side", "/shared/page.html", undefined, "markdown-link");
+  await vi.waitFor(() => expect(bridge.createBrowser).toHaveBeenCalledOnce());
+  select("B");
+  delayed.resolve(ok(browser("side-html", "file:///shared/page.html")));
+  await pending;
+  expect(visiblePaneTabs("A")[0]).toMatchObject({ type: "browser", sessionId: "side", ownerSessionId: "A" });
+  expect(visiblePaneTabs("B")).toEqual([]);
+  expect(usePane.getState().open).toBe(false);
+});
+
+it("does not create an HTML browser when validation fails", async () => {
+  bridge.readFilePreview.mockResolvedValueOnce({
+    ok: false,
+    error: { code: "not_found", message: "missing" },
+  });
+  await expect(openFile("A", "/shared/page.html", undefined, "markdown-link")).rejects.toThrow("missing");
+  expect(bridge.createBrowser).not.toHaveBeenCalled();
+});
+
+it.each([undefined, "file:A:/shared/old.html"])(
+  "binds the current file key when reusing a browser with previous key %s",
+  async (fileKey) => {
+    const path = "/shared/page.html",
+      url = "file:///shared/page.html";
+    usePane.setState({
+      tabs: [
+        {
+          type: "browser",
+          id: "existing",
+          title: "browser",
+          sessionId: "A",
+          ownerSessionId: "A",
+          state: browser("existing", url),
+          fileKey,
+        },
+      ],
+    });
+    bridge.readFilePreview.mockResolvedValueOnce(ok({ ...file, path }));
+    await openFile("A", path, undefined, "markdown-link");
+    expect(bridge.createBrowser).not.toHaveBeenCalled();
+    expect(visiblePaneTabs("A")[0]).toMatchObject({ fileKey: "file:A:/shared/page.html" });
+    const delayed = Promise.withResolvers<Result<FilePreview>>();
+    bridge.readFilePreview.mockReturnValueOnce(delayed.promise);
+    const pending = openFile("A", path, undefined, "markdown-link");
+    await closeTab("existing");
+    delayed.resolve(ok({ ...file, path }));
+    await pending;
+    expect(visiblePaneTabs("A")).toEqual([]);
+    expect(bridge.createBrowser).not.toHaveBeenCalled();
+  },
+);

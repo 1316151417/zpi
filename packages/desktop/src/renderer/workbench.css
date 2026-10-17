@@ -6060,11 +6060,15 @@ button.model-stat-pill:hover,
 .preview-breadcrumb strong {
   color: var(--color-text);
   font-weight: 400;
-  padding: 0 4px;
 }
-.preview-breadcrumb .file-icon {
-  width: 14px;
-  height: 14px;
+.preview-breadcrumb .lucide-chevron-right {
+  color: var(--color-text-subtlest);
+}
+.preview-path-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 12px;
 }
 .preview-path-segment {
   display: inline-flex;

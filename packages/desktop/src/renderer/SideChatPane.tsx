@@ -54,7 +54,7 @@ export function SideChatPane({
         context={inputContext}
         previewServices={previewServices}
         onLink={(url, options) => paneTask(openWebLink(url, options, sessionId))}
-        onFile={(path, location) => openFile(sessionId, path, location)}
+        onFile={(path, location, origin) => paneTask(openFile(sessionId, path, location, origin))}
         onCopy={(text) => window.zpi.copyText(text).then(unwrap)}
         onAddSelection={
           view.question ? undefined : (reference) => addConversationSelection(reference, sessionId)
@@ -97,7 +97,7 @@ export function SideChatPane({
               composerShortcutCommand(event, window.zpi.platform, settings?.shortcuts)
             }
             onSelectModel={() => setModelOpen(true)}
-            onFile={(path, location) => openFile(sessionId, path, location)}
+            onFile={(path, location, origin) => paneTask(openFile(sessionId, path, location, origin))}
             toolbar={
               <SessionToolbar
                 view={view}
