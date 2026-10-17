@@ -54,10 +54,10 @@ export async function recordFileChange(
       const key = randomUUID();
       if (before !== null) {
         change.beforeFile = join(outputDir, `${key}.before`);
-        await writeFile(change.beforeFile, beforeText, { mode: 0o600 });
+        await writeFile(change.beforeFile, before, { mode: 0o600 });
       }
       change.afterFile = join(outputDir, `${key}.after`);
-      await writeFile(change.afterFile, afterText, { mode: 0o600 });
+      await writeFile(change.afterFile, after, { mode: 0o600 });
     }
     const patch = createTwoFilesPatch(
       before === null ? "/dev/null" : path,

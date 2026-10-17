@@ -1,3 +1,5 @@
+import { codeRanges } from "./markdown-code.ts";
+
 export interface Mention {
   kind: "file" | "skill" | "session";
   label: string;
@@ -31,11 +33,14 @@ export function extractSessionReferences(text: string): string[] {
 export function parseMentions(text: string): Mention[] {
   const result: Mention[] = [];
   const links = [...text.matchAll(pattern)];
+  const code = codeRanges(text);
+  const inCode = (index: number) => code.some(([start, end]) => index >= start && index < end);
   for (const match of links) {
+    if (inCode(match.index)) continue;
     const label = unescapeMarkdown(match[1]),
       path = unescapeMarkdown(match[2] ?? match[3]);
     const session = sessionTarget.test(path);
-    if (!session && !path.startsWith("/") && !path.startsWith("./") && !path.startsWith("../")) continue;
+    if (!session && !/^(?:\/|\.\.?[\\/]|[a-z]:[\\/]|\\\\)/i.test(path)) continue;
     result.push({
       kind: session ? "session" : label.startsWith("$") ? "skill" : "file",
       label: label.replace(session ? /^#/ : /^[$@]/, ""),
@@ -49,6 +54,7 @@ export function parseMentions(text: string): Mention[] {
     /(^|\s)(#(?:sess_[a-zA-Z0-9._-]+|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}))(?=$|\s)/gi,
   )) {
     const start = match.index + match[1].length;
+    if (inCode(start)) continue;
     if (links.some((link) => start >= link.index && start < link.index + link[0].length)) continue;
     result.push({
       kind: "session",

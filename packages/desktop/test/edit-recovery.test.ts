@@ -6,6 +6,37 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 test.each([false, true])(
+  "a rejected compact edit preserves history and queue (active: %s)",
+  async (active) => {
+    const f = await fixture((_, response) => {
+      if (active) response.flushHeaders();
+      else {
+        send(response, chunk({ content: "original answer" }));
+        done(response);
+      }
+    });
+    const session = f.host.createSession(f.a.id);
+    const run = await f.host.startRun({ sessionId: session.id, text: "original input" });
+    if (!active) await f.host.activeRuns.get(session.id)?.done;
+    await expect.poll(() => f.server.requests.length).toBe(1);
+    const path = f.host.sessionPath(session.id);
+    const before = await readFile(path);
+    const queue = f.host.inputQueue.get(session.id);
+    await expect(f.host.editUserMessage(session.id, run.runId, { text: "/compact" })).rejects.toThrow(
+      "历史消息不能替换为 /compact",
+    );
+    expect(f.host.sessionPath(session.id)).toBe(path);
+    expect(await readFile(path)).toEqual(before);
+    expect(f.host.getSessionSnapshot(session.id).view.runs.map((item) => item.userMessage)).toEqual([
+      "original input",
+    ]);
+    expect(f.host.inputQueue.get(session.id)).toEqual(queue);
+    expect(f.host.activeRuns.has(session.id)).toBe(active);
+    expect(f.server.requests).toHaveLength(1);
+  },
+);
+
+test.each([false, true])(
   "editing removes the accepted recovery input from snapshots and events (queued follow-up: %s)",
   async (withFollowUp) => {
     const f = await fixture((_, response) => {

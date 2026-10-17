@@ -15,7 +15,15 @@ export function splitCustomCommandArguments(input: string): string[] {
   let current = "";
   let quote: "'" | '"' | undefined;
   let escaping = false;
+  let started = false;
   for (const char of input) {
+    if (!quote && !escaping && /\s/.test(char)) {
+      if (started) args.push(current);
+      current = "";
+      started = false;
+      continue;
+    }
+    started = true;
     if (escaping) {
       current += char;
       escaping = false;
@@ -24,13 +32,10 @@ export function splitCustomCommandArguments(input: string): string[] {
       if (char === quote) quote = undefined;
       else current += char;
     } else if (char === "'" || char === '"') quote = char;
-    else if (/\s/.test(char)) {
-      if (current) args.push(current);
-      current = "";
-    } else current += char;
+    else current += char;
   }
   if (escaping) current += "\\";
-  if (current) args.push(current);
+  if (started) args.push(current);
   return args;
 }
 

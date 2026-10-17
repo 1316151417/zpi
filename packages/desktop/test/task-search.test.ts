@@ -1,14 +1,48 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { resolveSearchScope, taskSearchRows } from "../src/renderer/task-search-model.ts";
 import { buildTaskSearchSnippets } from "../src/shared/task-search.ts";
 import { seedHistory } from "./helpers/history-fixture.ts";
+import { fixture as hostFixture } from "./helpers/host-fixture.ts";
 import { cleanup, setup } from "./helpers/session-fixture.ts";
 
 afterEach(() => vi.restoreAllMocks());
+
+it("finds non-ASCII body text with the same case conversion as titles and snippets", async () => {
+  const f = await hostFixture((_, response) => {
+    send(response, chunk({ content: "Äpfel ÉCOLE ΟΣ İx" }));
+    done(response);
+  });
+  const session = f.host.createSession(f.a.id);
+  const run = await f.host.startRun({ sessionId: session.id, text: "Fruit glossary" });
+  await f.host.activeRuns.get(session.id)?.done;
+  f.host.renameSession(session.id, "Fruit glossary");
+  for (const query of ["pfel", "Äpfel", "äpfel", "école", "ΟΣ", "ος", "x"]) {
+    expect(f.host.searchTasks(query)).toMatchObject([{ id: session.id, snippets: [{ runId: run.runId }] }]);
+  }
+});
+
+it("maps expanded lowercase matches and context back to the original run offsets", () => {
+  expect(
+    buildTaskSearchSnippets(
+      [
+        { runId: "first", text: "İ" },
+        { runId: "second", text: "x" },
+      ],
+      "x",
+    ),
+  ).toMatchObject([{ runId: "second", matchBefore: "", matchAfter: "" }]);
+  expect(buildTaskSearchSnippets([{ runId: "r", text: "İx" }], "x")).toMatchObject([
+    { runId: "r", matchBefore: "İ", matchAfter: "" },
+  ]);
+  expect(buildTaskSearchSnippets([{ runId: "r", text: "aİz" }], "i")).toMatchObject([
+    { runId: "r", matchBefore: "a", matchAfter: "z" },
+  ]);
+});
 
 describe("task list search", () => {
   it("finds unopened history, rebuilds old indexes, excludes drafts/children/archives and ignores tools/thinking", async () => {

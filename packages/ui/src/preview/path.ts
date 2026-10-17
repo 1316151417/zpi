@@ -20,7 +20,7 @@ export function decodeFilePathUriEscapes(path: string): string {
   }
 
   try {
-    return decodeURI(path);
+    return decodeURIComponent(path);
   } catch {
     return path;
   }

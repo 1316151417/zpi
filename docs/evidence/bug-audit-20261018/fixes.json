@@ -1,0 +1,45 @@
+{
+  "baselineCommit": "d980266",
+  "baselineVersion": "0.2.107",
+  "baselineFailures": "reproduction-output.txt",
+  "regressionTests": {
+    "AUDIT-01": "packages/desktop/test/file-rewind.test.ts",
+    "AUDIT-02": "packages/coding-agent/test/edit.test.ts",
+    "AUDIT-03": "packages/coding-agent/test/session-mentions.test.ts",
+    "AUDIT-04": "packages/desktop/test/custom-command-expansion.test.ts",
+    "AUDIT-05": "packages/desktop/test/edit-recovery.test.ts",
+    "AUDIT-06": "packages/desktop/test/background-tasks.test.ts",
+    "AUDIT-07": "packages/desktop/test/preview-files.test.ts",
+    "AUDIT-08": "packages/desktop/test/input-references.test.ts",
+    "AUDIT-09": "packages/desktop/test/task-search.test.ts",
+    "AUDIT-10": "packages/coding-agent/test/read-special-files.test.ts",
+    "AUDIT-11": "packages/desktop/test/task-search.test.ts",
+    "AUDIT-12": "packages/ai/test/responses.test.ts"
+  },
+  "validation": {
+    "check": {
+      "command": "npm run check",
+      "exitCode": 0,
+      "existingWarnings": 4,
+      "existingInfos": 6
+    },
+    "unit": {
+      "command": "npm run test:unit",
+      "exitCode": 0,
+      "filesPassed": 263,
+      "testsPassed": 3232,
+      "testsSkipped": 1
+    },
+    "build": {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    "desktop": {
+      "command": "node scripts/test-desktop.ts tests/desktop/background-tasks.spec.ts tests/desktop/task-search.spec.ts tests/desktop/file-location-references.spec.ts",
+      "exitCode": 0,
+      "testsPassed": 5
+    },
+    "platform": "darwin",
+    "windowsNativeTested": false
+  }
+}

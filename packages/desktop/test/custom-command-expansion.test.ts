@@ -7,6 +7,22 @@ import {
   splitCustomCommandArguments,
 } from "../src/main/custom-command-expansion.ts";
 
+it.each([
+  ['"" second', ["", "second"]],
+  ["'' second ''", ["", "second", ""]],
+  ['one "" "" four', ["one", "", "", "four"]],
+  ['a""b', ["ab"]],
+  ["   ", []],
+])("preserves positional arguments including empty quotes: %s", (input, args) => {
+  expect(splitCustomCommandArguments(input)).toEqual(args);
+});
+
+it("expands empty positional values without shifting the following argument", () => {
+  expect(
+    expandCustomCommandPrompt({ name: "review", prompt: "first=<$1> second=<$2>" }, '"" second'),
+  ).toContain("first=<> second=<second>");
+});
+
 it("recognizes only leading canonical command invocations and preserves raw argument quoting", () => {
   expect(parseCustomCommandInvocation('  /Frontend:Review "auth flow" high\npriority  ')).toEqual({
     name: "frontend/review",

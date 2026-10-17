@@ -1,5 +1,6 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
+import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
 const IMAGE_TYPE_SNIFF_BYTES = 4100;
@@ -25,8 +26,10 @@ export function detectSupportedImageMimeType(buffer: Uint8Array): string | null 
 }
 
 export async function detectSupportedImageMimeTypeFromFile(filePath: string): Promise<string | null> {
-  const fileHandle = await open(filePath, "r");
+  // A FIFO must not occupy a filesystem worker while waiting for a writer.
+  const fileHandle = await open(filePath, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   try {
+    if (!(await fileHandle.stat()).isFile()) throw new Error("Read requires a regular file");
     const buffer = Buffer.alloc(IMAGE_TYPE_SNIFF_BYTES);
     const { bytesRead } = await fileHandle.read(buffer, 0, IMAGE_TYPE_SNIFF_BYTES, 0);
     return detectSupportedImageMimeType(buffer.subarray(0, bytesRead));

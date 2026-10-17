@@ -255,14 +255,14 @@ function getNotFoundError(path: string, editIndex: number, totalEdits: number): 
   );
 }
 
-function getDuplicateError(path: string, editIndex: number, totalEdits: number, occurrences: number): Error {
+function getDuplicateError(path: string, editIndex: number, totalEdits: number): Error {
   if (totalEdits === 1) {
     return new Error(
-      `Found ${occurrences} occurrences of the text in ${path}. The text must be unique. Please provide more context to make it unique.`,
+      `Found at least 2 occurrences of the text in ${path}. The text must be unique. Please provide more context to make it unique.`,
     );
   }
   return new Error(
-    `Found ${occurrences} occurrences of edits[${editIndex}] in ${path}. Each oldText must be unique. Please provide more context to make it unique.`,
+    `Found at least 2 occurrences of edits[${editIndex}] in ${path}. Each oldText must be unique. Please provide more context to make it unique.`,
   );
 }
 
@@ -327,9 +327,8 @@ export function applyEditsToNormalizedContent(
       matchResult.index,
       matchResult.index + matchResult.matchLength,
     );
-    const occurrences = replacementBaseContent.split(matchedText).length - 1;
-    if (occurrences > 1) {
-      throw getDuplicateError(path, i, normalizedEdits.length, occurrences);
+    if (replacementBaseContent.indexOf(matchedText, matchResult.index + 1) !== -1) {
+      throw getDuplicateError(path, i, normalizedEdits.length);
     }
 
     matchedEdits.push({

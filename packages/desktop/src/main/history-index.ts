@@ -725,7 +725,7 @@ export class HistoryIndex implements TranscriptStore {
   }
   searchTextFor(query: string, limit = 80): { runId: string; text: string }[] {
     return this.all(
-      "SELECT run_id,text FROM transcript_search WHERE path=? AND instr(lower(text),lower(?))>0 ORDER BY seq LIMIT ?",
+      "SELECT run_id,text FROM transcript_search WHERE path=? AND instr(zpi_lower(text),zpi_lower(?))>0 ORDER BY seq LIMIT ?",
       query,
       Math.min(80, Math.max(1, limit)),
     ).map((row) => ({ runId: String(row.run_id), text: String(row.text) }));
@@ -733,7 +733,7 @@ export class HistoryIndex implements TranscriptStore {
   hasSearchText(query: string): boolean {
     return Boolean(
       this.one(
-        "SELECT 1 AS found FROM transcript_search WHERE path=? AND instr(lower(text),lower(?))>0 LIMIT 1",
+        "SELECT 1 AS found FROM transcript_search WHERE path=? AND instr(zpi_lower(text),zpi_lower(?))>0 LIMIT 1",
         query,
       ),
     );

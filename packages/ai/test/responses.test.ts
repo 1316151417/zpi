@@ -58,6 +58,42 @@ function sse(events: unknown[]) {
   });
 }
 
+it("finishes a completed response without waiting for transport EOF", async () => {
+  let transport: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      transport = controller;
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(terminal([textItem]))}\n\n`));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  try {
+    const result = await streamSimple(
+      responsesModel(),
+      normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] }),
+      {
+        apiKey: "fake",
+        streamIdleTimeoutMs: 100,
+        fetch: (async () =>
+          new Response(body, { headers: { "content-type": "text/event-stream" } })) as typeof fetch,
+      },
+    ).result();
+    expect(result.stopReason).toBe("stop");
+    expect(result.content).toMatchObject([{ type: "text", text: "你好" }]);
+    expect(result.usage.totalTokens).toBe(17);
+    expect(cancelled).toBe(true);
+  } finally {
+    try {
+      transport?.close();
+    } catch {
+      /* The adapter already cancelled the completed transport. */
+    }
+  }
+});
+
 describe("Responses protocol and portable transcripts", () => {
   it("counts text accompanying image input in the request context breakdown", async () => {
     const result = await streamSimple(

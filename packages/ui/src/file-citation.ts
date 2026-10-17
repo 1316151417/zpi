@@ -1,6 +1,8 @@
 import { decodeString } from "micromark-util-decode-string";
+import { codeRanges } from "zpi-coding-agent/input";
 import { type LinkContext, resolveLinkTarget } from "./link-target.ts";
-import { type MarkdownFence, markdownFence } from "./markdown-fence.ts";
+
+export { codeRanges } from "zpi-coding-agent/input";
 
 const quotes: Record<string, string> = { '"': '"', "'": "'", "“": "”", "‘": "’" };
 const starts = /(?<!:):{1,3}zcode-file-citation\s*\{/g;
@@ -113,58 +115,6 @@ export function resolveFileCitationPreviewKind({
     video: "video",
   };
   return kinds[artifactKind.trim().toLowerCase()] === kind ? kind : null;
-}
-
-export function codeRanges(content: string, includeInline = true): Array<[number, number]> {
-  const blocks: Array<[number, number]> = [];
-  let fence: (MarkdownFence & { start: number }) | null = null;
-  let lineStart = 0;
-
-  while (lineStart < content.length) {
-    const newlineIndex = content.indexOf("\n", lineStart);
-    const lineEnd = newlineIndex < 0 ? content.length : newlineIndex + 1;
-    const line = content.slice(lineStart, newlineIndex < 0 ? content.length : newlineIndex);
-    const marker = markdownFence(line, fence);
-    if (marker) {
-      if (!fence) {
-        fence = {
-          ...marker,
-          start: lineStart,
-        };
-      } else {
-        blocks.push([fence.start, lineEnd]);
-        fence = null;
-      }
-    }
-    if (!fence && /^(?: {4}|\t)/.test(line)) blocks.push([lineStart, lineEnd]);
-    lineStart = lineEnd;
-  }
-  if (fence) blocks.push([fence.start, content.length]);
-
-  for (const match of content.matchAll(/<(code|pre)(?:\s[^>]*)?>[\s\S]*?<\/\1\s*>/gi)) {
-    const start = match.index ?? 0;
-    blocks.push([start, start + (match[0]?.length ?? 0)]);
-  }
-
-  if (!includeInline) return blocks;
-  const ranges = [...blocks];
-  const isBlock = (index: number) => blocks.some(([start, end]) => index >= start && index < end);
-  for (let index = 0; index < content.length; index += 1) {
-    if (content[index] !== "`" || isBlock(index)) continue;
-    let markerLength = 1;
-    while (content[index + markerLength] === "`") markerLength += 1;
-    const marker = "`".repeat(markerLength);
-    const closingIndex = content.indexOf(marker, index + markerLength);
-    if (closingIndex < 0 || isBlock(closingIndex)) {
-      ranges.push([index, closingIndex < 0 ? content.length : closingIndex]);
-      index += markerLength - 1;
-      continue;
-    }
-    ranges.push([index, closingIndex + markerLength]);
-    index = closingIndex + markerLength - 1;
-  }
-
-  return ranges;
 }
 
 export function projectFileCitations(text: string, streaming: boolean): string {

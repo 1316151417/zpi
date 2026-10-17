@@ -248,7 +248,7 @@ export class BackgroundTasks {
           this.executions.delete(taskId);
         };
         const commitBackground = () => {
-          if (settled || rootExited || stopped || execution.background) return;
+          if (settled || stopped || execution.background) return;
           execution.background = true;
           execution.task = { ...execution.task, autoBackgrounded: !params.run_in_background };
           clearTimeout(timeout);
@@ -267,7 +267,8 @@ export class BackgroundTasks {
           rootExited = true;
           clearTimeout(timeout);
           execution.task.exitCode = code ?? (exitSignal ? 128 + constants.signals[exitSignal] : null);
-          if (!execution.background || !alive(processChild.pid)) void settle(execution.task.exitCode);
+          if (!alive(processChild.pid)) void settle(execution.task.exitCode);
+          else commitBackground();
         });
         processChild.once("spawn", () => {
           execution.task.pid = processChild.pid;

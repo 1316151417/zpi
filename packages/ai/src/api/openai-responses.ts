@@ -464,6 +464,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
           break;
         }
       }
+      if (terminal) break;
     }
     if (options.signal?.aborted) throw new Error("Request aborted");
     if (!terminal) throw new Error("Stream ended without response.completed");

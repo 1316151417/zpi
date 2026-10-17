@@ -35,8 +35,17 @@ export const transcriptTables = [
   "pending_journals",
 ] as const;
 
+const searchFunctions = new WeakSet<DatabaseSync>();
+
 /** Missing projections are rebuildable; existing incompatible definitions are rejected at startup. */
 export function ensureTranscriptSchema(db: DatabaseSync): boolean {
+  if (!searchFunctions.has(db)) {
+    // SQLite's built-in lower() only folds ASCII. Match the renderer's Unicode search semantics.
+    db.function("zpi_lower", { deterministic: true }, (value) =>
+      typeof value === "string" ? value.toLocaleLowerCase() : null,
+    );
+    searchFunctions.add(db);
+  }
   const missing = transcriptTables.some(
     (table) =>
       !db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(`transcript_${table}`),

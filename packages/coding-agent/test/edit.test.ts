@@ -17,6 +17,19 @@ function editable(content: string) {
 }
 
 it.each([
+  ["ababa", "aba"],
+  ["aaa", "aa"],
+  ["“a“a“", '"a"'],
+])("rejects overlapping occurrences in %j before writing", async (content, oldText) => {
+  const file = editable(content);
+  await expect(
+    file.edit.execute("overlap", { path: "example.txt", edits: [{ oldText, newText: "X" }] }),
+  ).rejects.toThrow("2 occurrences");
+  expect(file.operations.writeFile).not.toHaveBeenCalled();
+  expect(file.content()).toBe(content);
+});
+
+it.each([
   ["first\r\nsecond\nthird\n", "first", "FIRST", "FIRST\r\nsecond\nthird\n"],
   ["first\r\nsecond\nthird\r\n", "second", "SECOND", "first\r\nSECOND\nthird\r\n"],
   ["first\r\nsecond\r\n", "first", "new\nline", "new\r\nline\r\nsecond\r\n"],

@@ -35,6 +35,35 @@ async function fixture() {
   return { dir, runtime, port, invoke, launch };
 }
 
+test.skipIf(process.platform === "win32")(
+  "tracks foreground shell descendants after their root exits and stops them on close",
+  async () => {
+    const f = await fixture();
+    const result = await f.invoke({ command: "sleep 30 & echo $!" });
+    const task = f.runtime.list("owner")[0];
+    expect(task).toMatchObject({ status: "running", autoBackgrounded: true });
+    expect(result.content[0]).toMatchObject({ text: expect.stringContaining(task.taskId) });
+    const pid = Number((await f.runtime.read("owner", task.taskId)).output.trim());
+    expect(Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid).toBe(true);
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    try {
+      expect(alive()).toBe(true);
+      await f.runtime.close();
+      expect(alive()).toBe(false);
+      expect(f.runtime.list("owner")[0].status).toBe("cancelled");
+    } finally {
+      if (alive()) process.kill(pid, "SIGTERM");
+    }
+  },
+);
+
 test("background launch detaches from turn abort and timeout; owner can read and stop the process tree", async () => {
   const f = await fixture();
   const abort = new AbortController();

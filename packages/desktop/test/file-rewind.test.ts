@@ -3,8 +3,29 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
+import { createEditTool, type FileChange } from "zpi-coding-agent";
 import { applyFileRewind, planFileRewind } from "../src/main/file-rewind.ts";
 import { fixture } from "./helpers/context-fixture.ts";
+
+it("restores a BOM file byte-for-byte from an edit checkpoint", async () => {
+  const f = await fixture();
+  const cwd = await realpath(f.workspace);
+  const path = join(cwd, "bom.txt");
+  const snapshots = join(f.dir, "snapshots");
+  const before = Buffer.from("\uFEFFold text\r\n");
+  await writeFile(path, before);
+  const result = await createEditTool(cwd, snapshots).execute("edit", {
+    path,
+    edits: [{ oldText: "old", newText: "new" }],
+  });
+  const change = (result.details as unknown as { fileChange: FileChange }).fileChange;
+  expect(await readFile(change.beforeFile as string)).toEqual(before);
+  expect(await readFile(change.afterFile as string)).toEqual(await readFile(path));
+  const plan = await planFileRewind([change], snapshots, cwd);
+  expect(plan.conflicts).toEqual([]);
+  expect(applyFileRewind(plan, () => {})).toEqual([]);
+  expect(await readFile(path)).toEqual(before);
+});
 
 it("file reset rolls back all files if transcript commit fails, and rechecks concurrent edits before any write", async () => {
   const f = await fixture();

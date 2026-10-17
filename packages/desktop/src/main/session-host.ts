@@ -2181,10 +2181,11 @@ export class SessionHost {
     try {
       // Validate before stopping or changing durable history. A failed edit keeps the existing turn.
       const { loaded, parsed } = await this.loadInput(next);
+      if (parsed.kind === "compact")
+        throw new Error("invalid_input: 历史消息不能替换为 /compact 控制命令，请在输入框直接发送");
       const configuredModel = this.settings.getModel(selection);
       const context = this.manager(id).buildSessionContext({ ...index.snapshot(), endSeq: start - 1 });
       if (
-        parsed.kind !== "compact" &&
         !configuredModel?.input.includes("image") &&
         (loaded.images.length ||
           context.messages.some(
