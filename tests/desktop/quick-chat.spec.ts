@@ -240,6 +240,55 @@ test("quick chat error details open for three seconds and remain inside the comp
   }
 });
 
+test("expanded window shows file link errors as a fully visible tooltip above the indicator", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-expanded-error-"));
+  const server = await fakeServer((_request, response) => {
+    send(response, chunk({ content: "试试 [link-test.md](./link-test.md) 文件。" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const main = await app.firstWindow();
+    await main.evaluate(() => window.zpi.openQuickChat());
+    await expect.poll(() => app?.windows().some((page) => page.url().includes("view=quick-chat"))).toBe(true);
+    const quick = app.windows().find((page) => page.url().includes("view=quick-chat"));
+    if (!quick) throw new Error("Missing quick-chat page");
+    const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
+    await input.fill("回复一个本地文件链接");
+    await input.press("Enter");
+    await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await quick.getByRole("button", { name: "link-test.md", exact: true }).click();
+    const tooltip = quick.getByRole("tooltip");
+    await expect(tooltip).toContainText("快速对话不支持预览本地文件");
+    const trigger = quick.getByRole("button", { name: "查看错误原因", exact: true });
+    await expect
+      .poll(async () => {
+        const bubble = await tooltip.boundingBox();
+        const icon = await trigger.boundingBox();
+        return (
+          bubble &&
+          icon && {
+            insideX: bubble.x >= 12 && bubble.x + bubble.width <= 648,
+            above: bubble.y + bubble.height <= icon.y,
+          }
+        );
+      })
+      .toMatchObject({ insideX: true, above: true });
+    await expect(tooltip).toHaveCount(0, { timeout: 5000 });
+    await trigger.hover();
+    await expect(tooltip).toBeVisible();
+    const bubble = await tooltip.boundingBox();
+    expect(bubble && bubble.x >= 12 && bubble.x + bubble.width <= 648).toBe(true);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 async function configureImageModel(page: Page, supportsImages: boolean) {
   await page.evaluate(async (supportsImages) => {
     const settings = await window.zpi.getSettings();

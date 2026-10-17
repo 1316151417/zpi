@@ -47,9 +47,19 @@ export function QuickChatError({
       const anchor = trigger.current?.getBoundingClientRect();
       const content = tooltip.current;
       if (!anchor || !content) return;
-      content.style.bottom = `${window.innerHeight - anchor.top + 8}px`;
-      content.style.right = `${Math.max(12, window.innerWidth - anchor.right)}px`;
-      onHeightChange(Math.min(172, Math.ceil(content.getBoundingClientRect().height) + 12));
+      const height = content.offsetHeight;
+      const width = content.offsetWidth;
+      // Anchor above the trigger, but keep the bubble inside the window even when
+      // the trigger sits at an edge (the expanded error row starts at the left).
+      content.style.bottom = `${Math.min(
+        window.innerHeight - anchor.top + 8,
+        Math.max(12, window.innerHeight - height - 12),
+      )}px`;
+      content.style.right = `${Math.min(
+        Math.max(12, window.innerWidth - anchor.right),
+        Math.max(12, window.innerWidth - width - 12),
+      )}px`;
+      onHeightChange(Math.min(172, Math.ceil(height) + 12));
     };
     position();
     const observer = new ResizeObserver(position);

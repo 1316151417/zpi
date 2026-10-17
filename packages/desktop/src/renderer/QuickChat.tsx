@@ -597,6 +597,7 @@ export function QuickChat({
               key={view.sessionId}
               loader={conversationLoader}
               view={view}
+              cwd={snapshot.cwd}
               onError={reportConversationError}
             />
           ) : (

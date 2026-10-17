@@ -5,6 +5,7 @@ import { userErrorMessage } from "./user-error.ts";
 
 export interface QuickChatConversationProps {
   view: SessionView;
+  cwd: string;
   onError: (message: string) => void;
 }
 
@@ -22,11 +23,12 @@ const attachmentContext: ComposerContext = {
   readAttachment: readQuickChatAttachment,
 };
 
-export default function QuickChatConversation({ view, onError }: QuickChatConversationProps) {
+export default function QuickChatConversation({ view, cwd, onError }: QuickChatConversationProps) {
   return (
     <Conversation
       view={view}
       persistReading={false}
+      workspace={{ cwd }}
       context={attachmentContext}
       readWebSourceIcon={readWebSourceIcon}
       onCopy={(text) => window.zpiQuickChat.copyText(text).then(unwrap)}
