@@ -423,6 +423,8 @@ export class SessionHost {
         this.settings.state.upsertTask({ ...task, status: "interrupted" });
       }
       this.records.set(task.id, { ...record, running: false });
+      // New events must follow the persisted activity watermark after restart.
+      this.sequences.set(task.id, record.activitySeq ?? 0);
       try {
         const index = this.historyIndex(this.path(record));
         await index.load();

@@ -113,6 +113,51 @@ test("A/B background runs, sidebar indicators and hover pin; stop, reload and un
   }
 });
 
+test("a restored task shows its running indicator on the next send after application restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-running-indicator-restart-"));
+  const release = deferred();
+  let app: ElectronApplication | undefined;
+  const server = await fakeServer(async (body, response) => {
+    const text = (body.messages as unknown as { role: string; content: string }[])
+      .filter((message) => message.role === "user")
+      .at(-1)?.content;
+    send(response, chunk({ content: text }));
+    if (text === "second") await release.promise;
+    done(response);
+  });
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    let page = await app.firstWindow();
+    await page.getByLabel("消息", { exact: true }).fill("first");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+    if (!id) throw new Error("Missing task after first send");
+    await app.close();
+
+    app = await launchDesktop({ dir, url: server.url });
+    page = await app.firstWindow();
+    await expect(page.locator(".answer")).toHaveText("first");
+    await page.getByLabel("消息", { exact: true }).fill("second");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    const row = page.locator(`.sidebar [data-testid="session-row"][data-session-id="${id}"]`);
+    await expect(row).toHaveAttribute("data-status", "running");
+    await expect(row.locator('[data-loading-indicator="true"]')).toBeVisible();
+    await expect(row.locator(".task-indicator")).toHaveCSS("opacity", "1");
+    release.resolve();
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(row.locator('[data-loading-indicator="true"]')).toHaveCount(0);
+  } finally {
+    release.resolve();
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("draft workspace picker, contextual new tasks and per-project drafts persist until first send", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-draft-project-"));
   const project = join(dir, "工作项目");
