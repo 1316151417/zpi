@@ -59,7 +59,7 @@ test("saved keys use derived length only, with an enabled eye and no automatic r
   expect(keyInput(markup)).toContain('type="password"');
   expect(markup.match(/<button[^>]*aria-label="显示 API Key"[^>]*>/)?.[0]).not.toContain("disabled");
   expect(markup).toContain("provider-more");
-  expect(markup).toContain("点击眼睛查看已保存");
+  expect(markup).not.toContain("点击眼睛查看已保存");
   expect(reveal).not.toHaveBeenCalled();
 });
 test("memory-only and locked states are honest; no guessed length for locked credentials", () => {
@@ -87,8 +87,10 @@ test("provider and global switches remain independent with one credential field"
   expect(markup.match(/type="password"/g)).toHaveLength(1);
   expect(markup).not.toContain('type="radio"');
   expect(markup).not.toContain("Base URL");
-  expect(markup).toContain("返回的结果会发送给当前对话模型");
-  expect(markup).toContain("不自动附带原始提问");
+  expect(markup).not.toContain("独立配置联网服务");
+  expect(markup).not.toContain("返回的结果会发送给当前对话模型");
+  expect(markup).not.toContain("不自动附带原始提问");
+  expect(markup).not.toContain("DeepSeek 服务已启用。");
 });
 test("both settings editors render shared credential/header controls without web control CSS", () => {
   const model = source("../src/renderer/SettingsPage.tsx");
@@ -118,4 +120,26 @@ test("default-on web capability and model settings navigation preserve their ord
   expect(page.indexOf('["models", "模型", Braces]')).toBeLessThan(
     page.indexOf('["capabilities", "插件能力", Package]'),
   );
+});
+
+test("only actionable credential states describe the input; the configured state has no dangling description", () => {
+  fixture.webSearch.hasApiKey = true;
+  fixture.webSearch.enabled = true;
+  fixture.webSearch.credentialsPersisted = true;
+  let markup = render();
+  expect(keyInput(markup)).not.toContain("aria-describedby");
+  expect(markup).not.toContain('id="web-search-key-note"');
+  fixture.webSearch.enabled = false;
+  markup = render();
+  expect(keyInput(markup)).toContain('aria-describedby="web-search-key-note"');
+  expect(markup).toContain("DeepSeek 服务已停用，保存的 API Key 将保留。");
+  fixture.webSearch.hasApiKey = false;
+  markup = render();
+  expect(markup).toContain("尚未配置可用的 API Key，联网服务不可用。");
+  expect(markup.match(/id="web-search-key-note"/g)).toHaveLength(1);
+  fixture.webSearch.credentialsLocked = true;
+  markup = render();
+  expect(markup).toContain("保存的 API Key 尚未解锁");
+  expect(markup).not.toContain("尚未配置可用的 API Key");
+  expect(markup.match(/id="web-search-key-note"/g)).toHaveLength(1);
 });

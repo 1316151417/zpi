@@ -30,6 +30,13 @@ export function WebSearchSettings() {
   const shownKey =
     revealed?.settings === settings && !settings?.credentialsLocked ? revealed?.key : undefined;
   const masked = Boolean(settings?.hasApiKey && !editing && shownKey === undefined);
+  const keyNote = settings?.credentialsLocked
+    ? "保存的 API Key 尚未解锁，联网服务暂不可用。解锁系统密钥存储后重启应用。"
+    : !settings?.hasApiKey
+      ? "尚未配置可用的 API Key，联网服务不可用。"
+      : !settings.enabled
+        ? "DeepSeek 服务已停用，保存的 API Key 将保留。"
+        : undefined;
   const trimmed = apiKey.trim();
   const replacement = trimmed && !/^[*•●]+$/u.test(trimmed) ? trimmed : "";
   const clearReveal = useCallback(() => {
@@ -230,25 +237,16 @@ export function WebSearchSettings() {
                       cancelEdit();
                     }
                   }}
-                  aria-describedby="web-search-key-note"
+                  aria-describedby={keyNote ? "web-search-key-note" : undefined}
                   aria-busy={revealing}
                 />
               </label>
             </div>
-            <p id="web-search-key-note" className="web-search-note">
-              {settings?.credentialsLocked
-                ? "保存的 API Key 尚未解锁，联网服务暂不可用。解锁系统密钥存储后重启应用。"
-                : settings?.hasApiKey
-                  ? "点击眼睛查看已保存的 API Key；输入新密钥可替换，留空保留现有密钥。"
-                  : "使用 DeepSeek 联网服务的 API Key。"}
-            </p>
-            <p className="web-search-note" role="status">
-              {!settings?.hasApiKey
-                ? "尚未配置可用的 API Key，联网服务不可用。"
-                : settings.enabled
-                  ? "DeepSeek 服务已启用。"
-                  : "DeepSeek 服务已停用，保存的 API Key 将保留。"}
-            </p>
+            {keyNote && (
+              <p id="web-search-key-note" className="web-search-note" role="status">
+                {keyNote}
+              </p>
+            )}
             {globalEnabled === false && (
               <p className="web-search-note">「插件能力」中的联网搜索已关闭，新对话不会使用联网工具。</p>
             )}
@@ -257,10 +255,6 @@ export function WebSearchSettings() {
                 系统加密存储不可用，API Key 仅保留在本次应用运行的内存中，重启后需重新输入。
               </p>
             )}
-            <p className="web-search-note">
-              独立配置联网服务，不受当前对话模型服务商影响。搜索词或网页 URL 会发送给
-              DeepSeek，返回的结果会发送给当前对话模型。不自动附带原始提问（ori_question）或用户 IP 参数。
-            </p>
             <div className="provider-footer">
               {error && (
                 <p className="run-error" role="alert">
