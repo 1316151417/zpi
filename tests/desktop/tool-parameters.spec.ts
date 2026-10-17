@@ -7,6 +7,110 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+test("expanding a streaming Markdown write keeps the conversation footer near the composer", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-write-layout-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const content = deferred();
+  const complete = deferred();
+  const finish = deferred();
+  const source = [
+    "| 指标 | 名称 | 原表单元数 | 已生成未结算回算单元 | 当前无对应明细单元 |",
+    "| --- | --- | --- | --- | --- |",
+    ...Array.from({ length: 100 }, (_, i) => `| ${i} | 平台支付业主违约金成本 | 11 | 0 | 11 |`),
+    "",
+    "## 汇总",
+    "",
+    "| 状态 | 数量 |",
+    "| --- | --- |",
+    "| 待补算 | 100 |",
+  ].join("\n");
+  const server = await fakeServer(async (_, response, index) => {
+    if (index === 0) {
+      send(response, chunk({ content: "复核发现，需要生成排查说明。\n\n".repeat(50) }));
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "write-report",
+              type: "function",
+              function: {
+                name: "write",
+                arguments: '{"path":"report.md","content":"',
+              },
+            },
+          ],
+        }),
+      );
+      await content.promise;
+      send(
+        response,
+        chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify(source).slice(1, -1) } }] }),
+      );
+      await complete.promise;
+      send(response, chunk({ tool_calls: [{ index: 0, function: { arguments: '"}' } }] }));
+      done(response, "tool_calls");
+    } else {
+      await finish.promise;
+      send(response, chunk({ content: "完成。" }));
+      done(response);
+    }
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("生成排查说明");
+    await page.getByLabel("发送", { exact: true }).click();
+    const write = page.locator('[data-tool-name="write"]');
+    const summary = write.getByTestId("tool-summary");
+    await expect(summary).toContainText("report.md");
+    await summary.locator(".tool-kind-label").click();
+    await expect(summary).toHaveAttribute("aria-expanded", "true");
+    content.resolve();
+    await expect(write.locator(".tool-markdown-preview")).toContainText("平台支付业主违约金成本");
+    await expect(write.locator(".tool-content-fade")).toHaveCSS("opacity", "1");
+    await summary.locator(".tool-kind-label").click();
+    await expect(write.locator(".tool-content-shell")).toBeHidden();
+    await summary.locator(".tool-kind-label").click();
+    await expect(write.locator(".tool-content-fade")).toHaveCSS("opacity", "1");
+    await expect
+      .poll(() =>
+        page.locator(".conversation").evaluate((el) => {
+          const content = el.querySelector(".conversation-inner");
+          if (!content) throw new Error("Missing conversation content");
+          return el.scrollHeight - Math.max(el.clientHeight, content.getBoundingClientRect().height);
+        }),
+      )
+      .toBeLessThanOrEqual(1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const loading = document.querySelector(".chat-loading-slot");
+          const composer = document.querySelector(".composer-container > .composer-stack > .composer");
+          if (!loading || !composer) throw new Error("Missing loading slot or composer");
+          return composer.getBoundingClientRect().top - loading.getBoundingClientRect().bottom;
+        }),
+      )
+      .toBe(20);
+    await page.screenshot({ path: "test-results/write-markdown-expanded.png" });
+    complete.resolve();
+    await expect.poll(() => server.requests.length).toBe(2);
+    finish.resolve();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+  } finally {
+    for (const gate of [content, complete, finish]) gate.resolve();
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("write Parameters follow ZCode's empty input, partial input, content and result stages", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-tool-parameters-"));
   const project = join(dir, "project");

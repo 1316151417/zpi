@@ -2579,6 +2579,8 @@ button.inline-mention,
   gap: 4px;
 }
 .markdown-action {
+  /* Keep the copy status inside its button's scroll/clip boundary in long tool previews. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
