@@ -1,9 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   Folder,
+  LoaderCircle,
   Monitor,
   MoreHorizontal,
   Plus,
@@ -15,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ActionHint } from "zpi-ui";
 import type { CustomCommand, CustomCommandInput } from "../shared/custom-commands.ts";
 import { CommandImportDialog } from "./CommandImportDialog.tsx";
 import { unwrap, useStore } from "./store.ts";
@@ -44,24 +47,40 @@ export function CommandSettings({
   const [importing, setImporting] = useState(false);
   const request = useRef(0);
   const mounted = useRef(true);
-  const refresh = useCallback(async () => {
-    const token = ++request.current;
-    try {
-      const result = unwrap(await window.zpi.getCustomCommands(projectId));
-      if (!mounted.current || request.current !== token) return;
-      setCommands(result.commands);
-      setError(result.diagnostics.map((item) => item.message).join("\n"));
-    } catch (failure) {
-      if (mounted.current && request.current === token) setError(String(failure));
-    } finally {
-      if (mounted.current && request.current === token) setLoading(false);
-    }
-  }, [projectId]);
+  const operationPending = useRef(false);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const confirmationFocus = useRef<HTMLElement | null>(null);
+  const rememberConfirmationFocus = () => {
+    confirmationFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  const restoreConfirmationFocus = (event: Event) => {
+    event.preventDefault();
+    const previous = confirmationFocus.current;
+    (previous?.isConnected ? previous : moreButton.current)?.focus();
+  };
+  const refresh = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) setLoading(true);
+      const token = ++request.current;
+      try {
+        const result = unwrap(await window.zpi.getCustomCommands(projectId));
+        if (!mounted.current || request.current !== token) return;
+        setCommands(result.commands);
+        setError(result.diagnostics.map((item) => item.message).join("\n"));
+      } catch (failure) {
+        if (mounted.current && request.current === token) setError(String(failure));
+      } finally {
+        if (mounted.current && request.current === token) setLoading(false);
+      }
+    },
+    [projectId],
+  );
   useEffect(() => {
     mounted.current = true;
-    setLoading(true);
+    setCommands([]);
+    setError("");
     void refresh();
-    const focus = () => void refresh();
+    const focus = () => void refresh(false);
     window.addEventListener("focus", focus);
     return () => {
       mounted.current = false;
@@ -74,10 +93,12 @@ export function CommandSettings({
       setProjectId(undefined);
       setEditor(undefined);
       setLinkedSave(undefined);
+      setImporting(false);
     }
   }, [projectId, projects]);
   const act = async (operation: () => Promise<unknown>, close = false) => {
-    if (busy) return;
+    if (operationPending.current) return;
+    operationPending.current = true;
     setBusy(true);
     setError("");
     try {
@@ -92,11 +113,13 @@ export function CommandSettings({
     } catch (failure) {
       if (mounted.current) setError(String(failure));
     } finally {
+      operationPending.current = false;
       if (mounted.current) setBusy(false);
     }
   };
   const save = (config: CustomCommandInput, confirmed = false) => {
     if (editor && editor !== "new" && editor.importedSourcePath && !confirmed) {
+      rememberConfirmationFocus();
       setLinkedSave(config);
       return Promise.resolve();
     }
@@ -123,6 +146,7 @@ export function CommandSettings({
   const scopeControl = (
     <CommandScope
       projectId={projectId}
+      align={editor ? "end" : "start"}
       disabled={busy || Boolean(editor && editor !== "new")}
       onChange={setProjectId}
     />
@@ -133,7 +157,20 @@ export function CommandSettings({
       .includes(query.trim().toLowerCase()),
   );
   return (
-    <section className="command-settings" aria-label="命令设置">
+    <section
+      className="command-settings"
+      aria-label="命令设置"
+      onKeyDown={(event) => {
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+        if (event.key === "Escape" && editor && !event.defaultPrevented) {
+          event.stopPropagation();
+          if (!busy && !confirmDelete && !linkedSave) {
+            setEditor(undefined);
+            setError("");
+          }
+        }
+      }}
+    >
       {editor ? (
         <>
           {breadcrumbContainer &&
@@ -150,7 +187,7 @@ export function CommandSettings({
                   命令
                 </button>
                 <ChevronRight size={14} />
-                <span>{editor === "new" ? "新建命令" : editor.name}</span>
+                <span aria-current="page">{editor === "new" ? "新建命令" : editor.name}</span>
               </nav>,
               breadcrumbContainer,
             )}
@@ -172,7 +209,11 @@ export function CommandSettings({
               setEditor(undefined);
               setError("");
             }}
-            onDelete={() => setConfirmDelete(true)}
+            onDelete={() => {
+              setError("");
+              rememberConfirmationFocus();
+              setConfirmDelete(true);
+            }}
             onSave={save}
           />
         </>
@@ -207,45 +248,63 @@ export function CommandSettings({
             </h3>
             <div className="command-header-actions">
               <Menu.Root>
-                <Menu.Trigger className="resource-icon-button" aria-label="更多操作">
+                <Menu.Trigger
+                  ref={moreButton}
+                  className="resource-icon-button"
+                  aria-label="更多操作"
+                  disabled={busy}
+                >
                   <MoreHorizontal size={16} />
                 </Menu.Trigger>
                 <Menu.Portal>
-                  <Menu.Content className="settings-select-menu" align="end" sideOffset={4}>
-                    <Menu.Item onSelect={() => setImporting(true)}>
+                  <Menu.Content
+                    className="selection-menu command-menu"
+                    align="end"
+                    sideOffset={2}
+                    onEscapeKeyDown={(event) => event.stopPropagation()}
+                  >
+                    <Menu.Item className="menu-item" onSelect={() => setImporting(true)}>
                       <SquareArrowRightEnter size={16} />
                       导入
                     </Menu.Item>
                   </Menu.Content>
                 </Menu.Portal>
               </Menu.Root>
-              <button
-                type="button"
-                className="resource-icon-button"
-                title="刷新"
-                aria-label="刷新命令"
-                disabled={busy}
-                onClick={() => void refresh()}
-              >
-                <RefreshCcw size={16} />
-              </button>
+              <ActionHint appearance="control" label="刷新">
+                <button
+                  type="button"
+                  className="resource-icon-button"
+                  aria-label="刷新命令"
+                  aria-busy={loading}
+                  disabled={busy || loading}
+                  onClick={() => void refresh()}
+                >
+                  {loading ? (
+                    <LoaderCircle size={16} className="command-loading-spinner" />
+                  ) : (
+                    <RefreshCcw size={16} />
+                  )}
+                </button>
+              </ActionHint>
               <button
                 type="button"
                 className="command-new"
+                disabled={busy}
                 onClick={() => {
                   setEditor("new");
                   setError("");
                 }}
               >
-                <Plus size={16} />
+                <Plus size={14} />
                 新建
               </button>
             </div>
           </div>
           {loading ? (
-            <p className="resource-empty" role="status">
+            <div className="command-loading" role="status">
+              <LoaderCircle size={16} className="command-loading-spinner" />
               加载中...
-            </p>
+            </div>
           ) : filtered.length ? (
             <div className="command-list">
               {filtered.map((command) => (
@@ -264,7 +323,7 @@ export function CommandSettings({
                       <Terminal size={16} />
                     </span>
                     <span className="command-summary">
-                      <span className="command-name">
+                      <span className="command-name" title={command.name}>
                         {command.name}
                         {command.argumentHint && <span>{command.argumentHint}</span>}
                       </span>
@@ -312,7 +371,10 @@ export function CommandSettings({
       {importing && (
         <CommandImportDialog
           projectId={projectId}
-          onClose={() => setImporting(false)}
+          onClose={() => {
+            setImporting(false);
+            moreButton.current?.focus();
+          }}
           onImported={async () => {
             await refresh();
             window.dispatchEvent(new Event("zpi:commands-changed"));
@@ -326,9 +388,13 @@ export function CommandSettings({
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay className="modal-backdrop" />
+          <Dialog.Overlay className="modal-backdrop command-confirm-backdrop" />
           <Dialog.Content
             className="command-delete-dialog"
+            onCloseAutoFocus={restoreConfirmationFocus}
+            onPointerDownOutside={(event) => {
+              if (busy) event.preventDefault();
+            }}
             onEscapeKeyDown={(event) => {
               event.stopPropagation();
               if (busy) event.preventDefault();
@@ -341,11 +407,16 @@ export function CommandSettings({
                 ? "仅删除此链接，不会删除源命令文件。"
                 : ""}
             </Dialog.Description>
+            {error && (
+              <p className="run-error" role="alert">
+                {error}
+              </p>
+            )}
             <div className="command-form-actions">
               <Dialog.Close disabled={busy}>取消</Dialog.Close>
               <button
                 type="button"
-                className="danger"
+                className="command-confirm-delete"
                 disabled={busy}
                 onClick={() => {
                   if (editor && editor !== "new")
@@ -374,9 +445,13 @@ export function CommandSettings({
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay className="modal-backdrop" />
+          <Dialog.Overlay className="modal-backdrop command-confirm-backdrop" />
           <Dialog.Content
             className="command-delete-dialog"
+            onCloseAutoFocus={restoreConfirmationFocus}
+            onPointerDownOutside={(event) => {
+              if (busy) event.preventDefault();
+            }}
             onEscapeKeyDown={(event) => {
               event.stopPropagation();
               if (busy) event.preventDefault();
@@ -388,10 +463,16 @@ export function CommandSettings({
               <br />
               {editor && editor !== "new" ? editor.importedSourcePath : ""}
             </Dialog.Description>
+            {error && (
+              <p className="run-error" role="alert">
+                {error}
+              </p>
+            )}
             <div className="command-form-actions">
               <Dialog.Close disabled={busy}>取消</Dialog.Close>
               <button
                 type="button"
+                className="command-new"
                 disabled={busy}
                 onClick={() => {
                   if (linkedSave) void save(linkedSave, true);
@@ -406,7 +487,7 @@ export function CommandSettings({
     </section>
   );
 }
-function CommandEditor({
+export function CommandEditor({
   initial,
   busy,
   scopeControl,
@@ -425,15 +506,29 @@ function CommandEditor({
   const [description, setDescription] = useState(initial?.description ?? "");
   const [argumentHint, setArgumentHint] = useState(initial?.argumentHint ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  const composing = useRef(false);
   const valid = Boolean(
     !initial?.unreadable && prompt.trim() && (initial || /^[A-Za-z0-9_-]{1,50}$/.test(name.trim())),
   );
   return (
     <form
       className="command-form"
+      onCompositionStart={() => {
+        composing.current = true;
+      }}
+      onCompositionEnd={() => {
+        composing.current = false;
+      }}
+      onKeyDown={(event) => {
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          if (valid && !busy) event.currentTarget.requestSubmit();
+        }
+      }}
       onSubmit={(event) => {
         event.preventDefault();
-        if (valid && !busy)
+        if (valid && !busy && !composing.current)
           void onSave({
             name: name.trim(),
             description: description.trim() || undefined,
@@ -507,10 +602,12 @@ function CommandEditor({
 }
 
 function CommandScope({
+  align,
   projectId,
   disabled,
   onChange,
 }: {
+  align: "start" | "end";
   projectId?: string;
   disabled?: boolean;
   onChange: (id?: string) => void;
@@ -521,23 +618,42 @@ function CommandScope({
     <Menu.Root>
       <Menu.Trigger className="command-scope" disabled={disabled} aria-label="命令范围">
         {project ? <Folder size={16} /> : <Monitor size={16} />}
-        <span>{project?.name ?? "用户"}</span>
-        <ChevronDown size={12} />
+        <span title={project?.name ?? "用户"}>{project?.name ?? "用户"}</span>
+        <ChevronDown size={16} />
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Content className="settings-select-menu" sideOffset={4}>
-          <Menu.Item onSelect={() => onChange(undefined)}>
-            <Monitor size={16} />
-            用户
-          </Menu.Item>
-          {projects
-            .filter((item) => !item.hidden)
-            .map((item) => (
-              <Menu.Item key={item.id} onSelect={() => onChange(item.id)}>
-                <Folder size={16} />
-                {item.name}
-              </Menu.Item>
-            ))}
+        <Menu.Content
+          className="selection-menu command-menu command-scope-menu"
+          align={align}
+          sideOffset={2}
+          onEscapeKeyDown={(event) => event.stopPropagation()}
+        >
+          <Menu.RadioGroup value={projectId ?? ""} onValueChange={(value) => onChange(value || undefined)}>
+            <Menu.RadioItem className="menu-item" value="">
+              <Monitor size={16} />
+              <span>用户</span>
+              <Menu.ItemIndicator>
+                <Check size={14} />
+              </Menu.ItemIndicator>
+            </Menu.RadioItem>
+            {projects.some((item) => !item.hidden) && (
+              <>
+                <Menu.Separator className="command-menu-separator" />
+                <Menu.Label className="menu-label">项目</Menu.Label>
+              </>
+            )}
+            {projects
+              .filter((item) => !item.hidden)
+              .map((item) => (
+                <Menu.RadioItem className="menu-item" key={item.id} value={item.id}>
+                  <Folder size={16} />
+                  <span title={item.name}>{item.name}</span>
+                  <Menu.ItemIndicator>
+                    <Check size={14} />
+                  </Menu.ItemIndicator>
+                </Menu.RadioItem>
+              ))}
+          </Menu.RadioGroup>
         </Menu.Content>
       </Menu.Portal>
     </Menu.Root>

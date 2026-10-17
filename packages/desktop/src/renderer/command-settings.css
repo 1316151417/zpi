@@ -12,6 +12,7 @@
   margin-bottom: 8px;
 }
 .command-scope-count {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -43,6 +44,7 @@
   margin-left: 5px;
 }
 .settings-screen .command-scope {
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -101,20 +103,20 @@
   align-items: center;
   gap: 8px;
 }
-.settings-screen .command-new {
+.command-new {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   min-height: 28px;
-  padding: 0 9px;
+  padding: 0 8px;
   border-radius: 8px;
-  background: var(--color-text);
-  color: var(--color-bg);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   font-size: var(--text-body);
   font-weight: 500;
 }
-.settings-screen .command-new:disabled {
+.command-new:disabled {
   opacity: 0.45;
 }
 .command-list {
@@ -132,7 +134,7 @@
   border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 .command-row:hover {
-  background: var(--color-hover);
+  background: var(--color-fill-hover);
 }
 .settings-screen .command-edit {
   flex: 1;
@@ -164,6 +166,7 @@
   gap: 2px;
 }
 .command-name {
+  overflow-wrap: anywhere;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -184,12 +187,20 @@
   text-align: center;
   color: var(--color-text-subtle);
 }
+.command-empty .command-new {
+  min-height: 32px;
+  padding: 0 10px;
+}
+.command-empty h3 {
+  color: var(--color-text);
+}
 .command-empty p {
+  font-size: var(--text-small);
   margin: 8px 0 16px;
 }
 .command-breadcrumb {
   height: 48px;
-  padding: 0 24px;
+  padding: 0 10px;
   -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
@@ -230,7 +241,8 @@
   font-weight: 400;
 }
 .settings-screen .command-form input {
-  height: 36px;
+  height: 32px;
+  padding: 6px 12px;
 }
 .settings-screen .command-form textarea {
   min-height: 112px;
@@ -246,6 +258,10 @@
   width: 192px;
 }
 .command-form-top > span {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -260,8 +276,8 @@
   margin-top: 4px;
 }
 .command-form-actions > button {
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 32px;
+  padding: 0 10px;
   border-radius: 8px;
   font-size: var(--text-body);
 }
@@ -272,6 +288,9 @@
   margin-right: auto;
   padding-left: 0;
   color: var(--color-danger);
+}
+.modal-backdrop.command-confirm-backdrop {
+  z-index: 149;
 }
 .command-delete-dialog {
   position: fixed;
@@ -304,5 +323,96 @@
   }
   .command-form-top {
     flex-wrap: wrap;
+  }
+}
+/* Dropdowns render in a portal: reuse the application menu primitives, not Select's shell. */
+.selection-menu.command-menu {
+  /* Settings is a z-index:40 surface; its body portals must sit above it. */
+  z-index: 60;
+  min-width: 128px;
+  font-size: var(--text-body);
+}
+.command-menu .menu-item {
+  justify-content: flex-start;
+}
+.selection-menu.command-scope-menu {
+  width: 256px;
+  max-width: calc(100vw - 32px);
+}
+.command-scope-menu .menu-item > span:first-of-type {
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+}
+.command-menu-separator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--color-border);
+}
+.command-scope > span {
+  max-width: 192px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* State styles belong to the component; a generic button hover must not erase a filled action. */
+.command-new:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 80%, transparent);
+}
+.command-new:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 90%, transparent);
+}
+.command-edit:hover:not(:disabled) {
+  background: transparent;
+}
+.command-breadcrumb > button {
+  min-height: 28px;
+  padding: 0 8px;
+}
+.command-breadcrumb > span {
+  color: var(--color-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.command-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  padding: 40px 16px;
+  color: var(--color-text-subtle);
+}
+.command-loading-spinner {
+  animation: command-loading-spin 1s linear infinite;
+}
+@keyframes command-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.command-confirm-delete {
+  background: var(--color-danger);
+  color: white;
+}
+.command-confirm-delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 80%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .command-loading-spinner {
+    animation: none;
+  }
+}
+@media (max-width: 760px) {
+  .command-form-top > label {
+    width: 100%;
+  }
+  .command-scope-count {
+    max-width: 100%;
+  }
+  .command-scope-count .command-scope {
+    min-width: 0;
   }
 }

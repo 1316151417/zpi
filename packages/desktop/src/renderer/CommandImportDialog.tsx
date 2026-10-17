@@ -2,6 +2,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertCircle, Check, ChevronRight, LoaderCircle, Minus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ActionHint } from "zpi-ui";
 import type {
   CommandImportCandidate,
   CommandImportDiscovery,
@@ -76,6 +77,7 @@ export function CommandImportDialog({
   const [error, setError] = useState("");
   const scanSequence = useRef(0);
   const mounted = useRef(true);
+  const importPending = useRef(false);
   const load = useCallback(async () => {
     const sequence = ++scanSequence.current;
     setLoading(true);
@@ -122,7 +124,8 @@ export function CommandImportDialog({
       return next;
     });
   const startImport = async () => {
-    if (!discovery || !selected.size || importing) return;
+    if (!discovery || !selected.size || importPending.current) return;
+    importPending.current = true;
     setImporting(true);
     setError("");
     try {
@@ -138,6 +141,7 @@ export function CommandImportDialog({
           projectId,
         ),
       );
+      if (!mounted.current) return;
       setResult(imported);
       try {
         await onImported();
@@ -147,7 +151,8 @@ export function CommandImportDialog({
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
-      setImporting(false);
+      importPending.current = false;
+      if (mounted.current) setImporting(false);
     }
   };
   return (
@@ -182,16 +187,17 @@ export function CommandImportDialog({
                 ) : (
                   <span>全局</span>
                 )}
-                <button
-                  type="button"
-                  className="command-import-icon-button"
-                  aria-label="重新扫描"
-                  title="重新扫描"
-                  disabled={loading}
-                  onClick={() => void load()}
-                >
-                  <RefreshCw size={12} />
-                </button>
+                <ActionHint appearance="control" label="重新扫描">
+                  <button
+                    type="button"
+                    className="command-import-icon-button"
+                    aria-label="重新扫描"
+                    disabled={loading}
+                    onClick={() => void load()}
+                  >
+                    <RefreshCw size={12} className={loading ? "command-import-spinner" : undefined} />
+                  </button>
+                </ActionHint>
               </div>
             )}
             <Dialog.Close className="command-import-icon-button" aria-label="关闭导入" disabled={importing}>
@@ -354,7 +360,10 @@ export function CommandImportDialog({
             ) : (
               <>
                 <div className="command-import-footer-info">
-                  <span>发现 {candidates.length} 个可导入命令</span>
+                  <span>
+                    {loading ? "正在扫描..." : `发现 ${candidates.length} 个可导入命令`}
+                    {selected.size > 0 ? ` · 已选 ${selected.size}` : ""}
+                  </span>
                   {!importing && (
                     <div className="command-import-mode">
                       <SettingsSelect<CommandImportMode>
@@ -366,17 +375,20 @@ export function CommandImportDialog({
                           { value: "copy", label: "直接复制" },
                         ]}
                       />
-                      <span
-                        role="img"
-                        aria-label="导入方式说明"
-                        title={
+                      <ActionHint
+                        appearance="control"
+                        label="导入方式说明"
+                        className="command-import-mode-tooltip"
+                        description={
                           mode === "symlink"
                             ? "创建指向外部 Agent 命令文件的链接，跟随来源后续变更。来源路径须持续可用；编辑会在确认后修改来源文件。Windows 环境需要允许创建软链；不支持时可选择直接复制。"
                             : "将命令文件复制到 ZPI。外部 Agent 文件后续变更不会自动同步。"
                         }
                       >
-                        <AlertCircle size={12} />
-                      </span>
+                        <button type="button" className="command-import-help" aria-label="导入方式说明">
+                          <AlertCircle size={12} />
+                        </button>
+                      </ActionHint>
                     </div>
                   )}
                 </div>

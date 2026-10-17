@@ -350,6 +350,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       onKeyDown={(event) => {
         if (
           event.key === "Escape" &&
+          !event.nativeEvent.isComposing &&
+          event.keyCode !== 229 &&
           !event.defaultPrevented &&
           !(event.target instanceof Element && event.target.closest('[role="dialog"]'))
         )
