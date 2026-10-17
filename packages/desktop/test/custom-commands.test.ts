@@ -75,6 +75,22 @@ describe("custom command Markdown", () => {
     expect(parseCustomCommandMarkdown(`---\nskills: ${value}\n---\nPrompt`).skills).toEqual(skills);
   });
   it.each([
+    "skills:\n  - frontend-review",
+    "skills:\n- frontend-review",
+    "skills:\n  # note\n\n  - frontend-review",
+    "skills: # note\n  - frontend-review",
+  ])("reports unsupported block skills instead of silently dropping %s", (metadata) => {
+    expect(() => parseCustomCommandMarkdown(`---\n${metadata}\n---\nPrompt`)).toThrow("skills: [a, b]");
+  });
+  it("accepts empty skills metadata followed by comments and another field", () => {
+    expect(
+      parseCustomCommandMarkdown("---\nskills:\n  # none\ndescription: Summary\n---\nPrompt"),
+    ).toMatchObject({
+      skills: [],
+      description: "Summary",
+    });
+  });
+  it.each([
     ["true", true],
     ["yes", true],
     ['"YES"', true],
@@ -152,6 +168,15 @@ describe("custom command IDs", () => {
 });
 
 describe("custom command storage", () => {
+  it("lists an actionable diagnostic for block skills without hiding valid commands", async () => {
+    const path = await put("block.md", "---\nskills:\n  - frontend-review\n---\nPrompt");
+    await put("valid.md", "---\nskills: [testing]\n---\nPrompt");
+    const result = await store.list();
+    expect(result.commands.map((command) => command.id)).toEqual(["valid.md"]);
+    expect(result.diagnostics).toEqual([
+      { code: "invalid_frontmatter", path, message: expect.stringContaining("skills: [a, b]") },
+    ]);
+  });
   it.each(["init", "COMPACT", "side", "btw"])("rejects creating a reserved command %s", async (name) => {
     await expect(store.create({ name, prompt: "unreachable" })).rejects.toThrow("reserved");
   });

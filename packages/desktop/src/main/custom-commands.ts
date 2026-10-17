@@ -99,8 +99,15 @@ function metadataValue(lines: string[], wanted: string): string | undefined {
   return value.trim() || undefined;
 }
 function flatMetadataValue(lines: string[], wanted: string): string | undefined {
-  const line = lines.find((line) => keyLine(line)?.[1].toLowerCase() === wanted);
-  return line === undefined ? undefined : keyLine(line)?.[2];
+  const index = lines.findIndex((line) => keyLine(line)?.[1].toLowerCase() === wanted);
+  if (index < 0) return undefined;
+  const value = keyLine(lines[index])?.[2] ?? "";
+  if (wanted === "skills") {
+    const next = lines.slice(index + 1).find((line) => line.trim() && !/^\s*#/.test(line));
+    if (next && /^\s*-(?:\s|$)/.test(next))
+      fail("invalid_frontmatter", "Block skills lists are unsupported; use skills: [a, b]");
+  }
+  return value;
 }
 function skillNames(value: string | undefined): string[] | undefined {
   if (value === undefined) return undefined;

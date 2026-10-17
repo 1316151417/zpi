@@ -23,6 +23,7 @@ export class QuickChatAttachments {
   private generation = 0;
   private pending = 0;
   private pendingBytes = 0;
+  // Reserve a model-input payload per accepted send, including retries of the same cached ID.
   private historyBytes = 0;
   private imports: Promise<unknown> = Promise.resolve();
 

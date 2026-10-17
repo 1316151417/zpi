@@ -26,6 +26,8 @@ The storage constructor is an internal trusted-main API.
   characters per name). `disable-noninteractive` recognizes true/yes and remains distinct from the
   persisted enabled preference. Both are preserved when editing description/prompt fields. These are
   inert metadata: the session owner resolves skill names and controls slash-catalog visibility.
+  Block-style YAML skills lists produce an `invalid_frontmatter` diagnostic showing the supported
+  `skills: [a, b]` syntax. Empty skills metadata remains an explicit empty list.
   Model and allowed-tools metadata is preserved but not applied by storage.
 - No argument expansion, shell execution, or dependency on another agent framework is added here.
 

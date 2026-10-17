@@ -114,6 +114,24 @@ function createResponseModelSseResponse(model: string, contentBlock: ResponseCon
 }
 
 describe("Anthropic raw SSE parsing", () => {
+  it("preserves received text and the raw reason when an unknown stop reason fails closed", async () => {
+    const events = minimalAnthropicEvents.map((event) =>
+      event.event !== "message_delta"
+        ? event
+        : {
+            ...event,
+            data: JSON.stringify({ type: "message_delta", delta: { stop_reason: "future_reason" } }),
+          },
+    );
+    const result = await streamAnthropic(getModel(), normalizeContext({ messages: [] }), {
+      client: createFakeAnthropicClient(createSseResponse(events)),
+    }).result();
+    expect(result.stopReason).toBe("error");
+    expect(result.rawStopReason).toBe("future_reason");
+    expect(result.errorMessage).toContain("Unhandled stop reason: future_reason");
+    expect(result.content).toEqual([{ type: "text", text: "Hello" }]);
+  });
+
   it("maps a provider context-window stop to length", async () => {
     const events = minimalAnthropicEvents.map((event) =>
       event.event !== "message_delta"

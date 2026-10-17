@@ -23,7 +23,7 @@ test("commands settings create, search, persist switches, edit conflicts, and co
     await page.getByLabel("名称", { exact: true }).fill("review");
     await page.getByLabel("描述（可选）", { exact: true }).fill("Review selected files");
     await page.getByLabel("参数提示（可选）", { exact: true }).fill("<file>");
-    await page.getByLabel("提示词", { exact: true }).fill("Review $ARGUMENTS");
+    await page.getByRole("textbox", { name: "提示词", exact: true }).fill("Review $ARGUMENTS");
     await page.getByRole("button", { name: "保存", exact: true }).click();
     const row = page.locator(".command-row").filter({ hasText: "/review" });
     await expect(row).toBeVisible();
@@ -35,7 +35,8 @@ test("commands settings create, search, persist switches, edit conflicts, and co
     await page.getByLabel("搜索命令", { exact: true }).fill("missing");
     await expect(page.getByText("没有匹配的命令", { exact: true })).toBeVisible();
     await page.getByLabel("搜索命令", { exact: true }).fill("");
-    await row.getByRole("checkbox").uncheck();
+    await row.getByRole("checkbox").click();
+    await expect(row.getByRole("checkbox")).not.toBeChecked();
     await page.getByRole("button", { name: "刷新命令", exact: true }).click();
     await expect(row.getByRole("checkbox")).not.toBeChecked();
     await row.getByRole("button", { name: "编辑命令 /review", exact: true }).click();
@@ -46,7 +47,7 @@ test("commands settings create, search, persist switches, edit conflicts, and co
       return result.value.commands[0].filePath;
     });
     await writeFile(filePath, "EXTERNAL EDIT");
-    await page.getByLabel("提示词", { exact: true }).fill("STALE SAVE");
+    await page.getByRole("textbox", { name: "提示词", exact: true }).fill("STALE SAVE");
     await page.getByRole("button", { name: "保存", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     expect(await readFile(filePath, "utf8")).toBe("EXTERNAL EDIT");
@@ -190,8 +191,9 @@ test("subagent slash selection inserts a canonical chip without sending or spawn
     await expect(editor).toContainText("@Fixture-reviewer");
     await expect(editor.locator(".inline-mention.subagent")).toHaveCount(0);
     await editor.fill("/Fixture");
+    // Built-in agents can still match the query through their fuzzy description search.
+    await expect(slash).toBeVisible();
     await expect(option).toHaveCount(0);
-    await expect(slash.getByText("暂无匹配子智能体", { exact: true })).toBeVisible();
     expect(server.requests).toHaveLength(0);
   } finally {
     await runCleanup([

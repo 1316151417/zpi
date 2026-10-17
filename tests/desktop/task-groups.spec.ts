@@ -60,6 +60,7 @@ test("grouped task archive uses the menu icon and retains history while draft X 
     await expectNoCornerTooltipDuring(page, () => page.getByLabel("消息", { exact: true }).hover());
     await expect(archive).toBeHidden();
     await row.hover();
+    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toHaveCount(0);
     await archive.focus();
     await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
     await expectNoCornerTooltipDuring(page, () => page.getByLabel("消息", { exact: true }).focus());

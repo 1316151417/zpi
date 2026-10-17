@@ -29,6 +29,14 @@ describe("ZCode terminal assistant preview candidates", () => {
     expect(extractAssistantFileReferences(text, cwd)).toEqual([]);
   });
 
+  it.each([
+    ["`file:///Users/test/project/report.pdf`", `${cwd}/report.pdf`],
+    ["`report.pdf`", `${cwd}/report.pdf`],
+    ['`"./docs/report.md"`', `${cwd}/docs/report.md`],
+  ])("preserves supported inline path references in %s", (text, path) => {
+    expect(extractAssistantFileReferences(text, cwd)).toEqual([expect.objectContaining({ path })]);
+  });
+
   it.each(["~//report.pdf", "~///report.pdf", "~\\/report.pdf"])("keeps %s relative to home", (path) => {
     expect(paths(`[home](${path})`, [], "/Users/test")).toEqual(["/Users/test/report.pdf"]);
   });
