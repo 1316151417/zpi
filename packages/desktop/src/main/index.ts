@@ -493,6 +493,7 @@ async function launch(): Promise<void> {
         listSessionMentions: 1,
         setSessionPinned: 2,
         getProviderCredentials: 1,
+        getWebSearchCredentials: 0,
         updatePreferences: 1,
         setSessionSelection: 2,
         listSessionSkills: 1,
@@ -922,6 +923,9 @@ async function launch(): Promise<void> {
           break;
         case "getProviderCredentials":
           value = settings.getProviderCredentials(string(0));
+          break;
+        case "getWebSearchCredentials":
+          value = settings.getWebSearchCredentials();
           break;
         case "updateShortcuts": {
           const updated = shortcuts.update(

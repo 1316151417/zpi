@@ -1,40 +1,104 @@
-import { Eye, EyeOff } from "lucide-react";
-import { useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as Menu from "@radix-ui/react-dropdown-menu";
+import { Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
+import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { unwrap, useStore } from "./store.ts";
 import "./web-search-settings.css";
 
-const savedKeyMask = "********";
-
 export function WebSearchSettings() {
   const settings = useStore((state) => state.settings?.webSearch);
   const globalEnabled = useStore((state) => state.settings?.capabilities.webSearch);
-  // This state contains only a replacement typed here, never the saved secret or its display mask.
+  // Only genuine input changes populate the replacement. A revealed saved key is separate and transient.
   const [apiKey, setApiKey] = useState("");
   const [editing, setEditing] = useState(false);
+  const [revealed, setRevealed] = useState<{ settings: typeof settings; key: string }>();
   const [visible, setVisible] = useState(false);
+  const [revealing, setRevealing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
+  const revealRevision = useRef(0);
+  const revealIntent = useRef(false);
+  const draftEditing = useRef(editing);
+  draftEditing.current = editing;
   const keyInput = useRef<HTMLInputElement>(null);
-  const stored = Boolean(settings?.hasApiKey || settings?.credentialsLocked);
-  const masked = stored && !editing;
+  const shownKey =
+    revealed?.settings === settings && !settings?.credentialsLocked ? revealed?.key : undefined;
+  const masked = Boolean(settings?.hasApiKey && !editing && shownKey === undefined);
   const trimmed = apiKey.trim();
   const replacement = trimmed && !/^[*•●]+$/u.test(trimmed) ? trimmed : "";
+  const clearReveal = useCallback(() => {
+    revealRevision.current++;
+    revealIntent.current = false;
+    setRevealed(undefined);
+    setRevealing(false);
+    setVisible(false);
+  }, []);
+  useEffect(() => {
+    if (!draftEditing.current) keyInput.current?.blur();
+    clearReveal();
+    // Every new public settings snapshot invalidates an outstanding read, including same-length replacements.
+    // An unrelated settings refresh must not discard a replacement the user is still typing.
+  }, [settings, clearReveal]);
+  useEffect(() => {
+    const hide = () => {
+      keyInput.current?.blur();
+      clearReveal();
+    };
+    const visibility = () => {
+      if (document.hidden) hide();
+    };
+    window.addEventListener("blur", hide);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      revealRevision.current++;
+      window.removeEventListener("blur", hide);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [clearReveal]);
   const resetDraft = () => {
-    // Never leave the display mask editable after Escape or an Enter-key save.
     keyInput.current?.blur();
     setApiKey("");
     setEditing(false);
-    setVisible(false);
+    clearReveal();
   };
   const cancelEdit = () => {
     if (inFlight.current) return;
     resetDraft();
     setError("");
     setNotice("");
+  };
+  const toggleVisibility = async () => {
+    if (inFlight.current || removing || settings?.credentialsLocked) return;
+    if (revealIntent.current) {
+      if (!editing) keyInput.current?.blur();
+      clearReveal();
+      return;
+    }
+    revealIntent.current = true;
+    if (editing || !settings?.hasApiKey) {
+      setVisible(true);
+      return;
+    }
+    const revision = ++revealRevision.current;
+    setVisible(true);
+    setRevealing(true);
+    setError("");
+    try {
+      const value = unwrap(await window.zpi.getWebSearchCredentials());
+      if (revision !== revealRevision.current) return;
+      setRevealed({ settings, key: value.apiKey });
+      setRevealing(false);
+    } catch {
+      if (revision !== revealRevision.current) return;
+      clearReveal();
+      setError("无法读取已保存的 API Key，请解锁系统密钥存储后重试。");
+    }
   };
   const save = async (remove = false, enabled?: boolean) => {
     if (
@@ -46,6 +110,7 @@ export function WebSearchSettings() {
     )
       return;
     inFlight.current = true;
+    clearReveal();
     setSaving(true);
     setError("");
     setNotice("");
@@ -59,7 +124,6 @@ export function WebSearchSettings() {
       );
       useStore.setState({ settings: next });
       if (enabled !== false) resetDraft();
-      else setVisible(false);
       setRemoving(false);
       setNotice(
         remove
@@ -70,9 +134,8 @@ export function WebSearchSettings() {
               ? "已停用 DeepSeek 联网服务。"
               : "已保存 API Key。",
       );
-    } catch (error) {
-      const message = String(error);
-      setError(trimmed ? message.replaceAll(trimmed, "[已隐藏]") : message);
+    } catch {
+      setError("无法保存联网搜索设置，请重试。");
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -98,149 +161,107 @@ export function WebSearchSettings() {
             <header className="provider-detail-heading">
               <ProviderLogo preset="deepseek" size={20} />
               <h2>DeepSeek</h2>
-              <div className="provider-heading-actions">
-                <button
-                  type="button"
-                  className={`${settings?.enabled ? "secondary" : "primary"} web-search-enable`}
-                  disabled={
-                    saving ||
-                    removing ||
-                    !settings ||
-                    (!settings.enabled &&
-                      (settings.credentialsLocked || (!settings.hasApiKey && !replacement)))
-                  }
-                  onClick={() => void save(false, !settings?.enabled)}
-                >
-                  {settings?.enabled ? "停用" : "启用"}
-                </button>
-              </div>
+              <ProviderHeadingActions
+                name="DeepSeek 联网服务"
+                enabled={settings?.enabled ?? false}
+                disabled={saving || removing}
+                switchDisabled={
+                  saving ||
+                  removing ||
+                  !settings ||
+                  (!settings.enabled && (settings.credentialsLocked || (!settings.hasApiKey && !replacement)))
+                }
+                onEnabledChange={(enabled) => void save(false, enabled)}
+              >
+                {settings?.hasApiKey && (
+                  <Menu.Item
+                    className="provider-action-item provider-action-delete"
+                    onSelect={() => {
+                      clearReveal();
+                      setError("");
+                      setRemoving(true);
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    移除 API Key
+                  </Menu.Item>
+                )}
+              </ProviderHeadingActions>
             </header>
-            <p className="web-search-note">独立配置联网服务，不受当前对话模型服务商影响。</p>
-            <p className="web-search-note" role="status">
+            <div className="provider-connection-fields">
+              <label htmlFor="web-search-api-key">
+                <span>API Key</span>
+                <ProviderCredentialInput
+                  ref={keyInput}
+                  id="web-search-api-key"
+                  label="API Key"
+                  visible={visible && !masked}
+                  onToggleVisibility={() => void toggleVisibility()}
+                  visibilityDisabled={saving || removing || settings?.credentialsLocked}
+                  visibilityLabel={visible ? "隐藏 API Key" : "显示 API Key"}
+                  visibilityPressed={visible}
+                  value={editing ? apiKey : (shownKey ?? "*".repeat(settings?.apiKeyLength ?? 0))}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  disabled={saving || removing || settings?.credentialsLocked}
+                  placeholder={settings?.credentialsLocked ? "保存的凭据尚未解锁" : "输入 API Key"}
+                  onFocus={() => {
+                    if (inFlight.current || settings?.credentialsLocked || shownKey !== undefined) return;
+                    clearReveal();
+                    setEditing(true);
+                  }}
+                  onChange={(event) => {
+                    if (masked || inFlight.current || settings?.credentialsLocked) return;
+                    revealRevision.current++;
+                    setRevealed(undefined);
+                    setRevealing(false);
+                    setEditing(true);
+                    setApiKey(event.target.value);
+                    setNotice("");
+                    setError("");
+                  }}
+                  onBlur={() => {
+                    if (editing && !apiKey.trim() && !inFlight.current) resetDraft();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      cancelEdit();
+                    }
+                  }}
+                  aria-describedby="web-search-key-note"
+                  aria-busy={revealing}
+                />
+              </label>
+            </div>
+            <p id="web-search-key-note" className="web-search-note">
               {settings?.credentialsLocked
                 ? "保存的 API Key 尚未解锁，联网服务暂不可用。解锁系统密钥存储后重启应用。"
-                : !settings?.hasApiKey
-                  ? "尚未配置 API Key，联网服务不可用。"
-                  : settings.enabled
-                    ? "DeepSeek 服务已启用。"
-                    : "DeepSeek 服务已停用，保存的 API Key 将保留。"}
+                : settings?.hasApiKey
+                  ? "点击眼睛查看已保存的 API Key；输入新密钥可替换，留空保留现有密钥。"
+                  : "使用 DeepSeek 联网服务的 API Key。"}
+            </p>
+            <p className="web-search-note" role="status">
+              {!settings?.hasApiKey
+                ? "尚未配置可用的 API Key，联网服务不可用。"
+                : settings.enabled
+                  ? "DeepSeek 服务已启用。"
+                  : "DeepSeek 服务已停用，保存的 API Key 将保留。"}
             </p>
             {globalEnabled === false && (
               <p className="web-search-note">「插件能力」中的联网搜索已关闭，新对话不会使用联网工具。</p>
             )}
-            <div className="provider-connection-fields">
-              <label htmlFor="web-search-api-key">
-                <span>API Key</span>
-                <span className="credential-input">
-                  <input
-                    ref={keyInput}
-                    id="web-search-api-key"
-                    aria-label="API Key"
-                    type={masked || visible ? "text" : "password"}
-                    value={masked ? savedKeyMask : apiKey}
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoCapitalize="none"
-                    disabled={saving || removing || settings?.credentialsLocked}
-                    placeholder="输入 API Key"
-                    onFocus={() => {
-                      if (inFlight.current || settings?.credentialsLocked) return;
-                      setEditing(true);
-                    }}
-                    onChange={(event) => {
-                      if (masked || inFlight.current || settings?.credentialsLocked) return;
-                      setEditing(true);
-                      setApiKey(event.target.value);
-                      setNotice("");
-                      setError("");
-                    }}
-                    onBlur={() => {
-                      if (!apiKey.trim() && !inFlight.current) resetDraft();
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        cancelEdit();
-                      }
-                    }}
-                    aria-describedby="web-search-key-note"
-                  />
-                  <button
-                    type="button"
-                    aria-label={visible ? "隐藏 API Key" : "显示 API Key"}
-                    aria-pressed={visible}
-                    disabled={saving || removing || masked || settings?.credentialsLocked}
-                    onClick={() => setVisible((value) => !value)}
-                  >
-                    {visible ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </span>
-              </label>
-            </div>
-            <p id="web-search-key-note" className="web-search-note">
-              {stored
-                ? "已保存的 API Key 仅显示固定掩码。输入新密钥可替换，留空保留现有密钥。"
-                : "使用 DeepSeek 联网服务的 API Key。"}
-            </p>
             {settings?.hasApiKey && settings.credentialsPersisted === false && (
               <p className="web-search-storage-note" role="status">
                 系统加密存储不可用，API Key 仅保留在本次应用运行的内存中，重启后需重新输入。
               </p>
             )}
             <p className="web-search-note">
-              搜索词或网页 URL 会发送给
+              独立配置联网服务，不受当前对话模型服务商影响。搜索词或网页 URL 会发送给
               DeepSeek，返回的结果会发送给当前对话模型。不自动附带原始提问（ori_question）或用户 IP 参数。
             </p>
             <div className="provider-footer">
-              {removing ? (
-                <div className="web-search-remove-confirm">
-                  <p className="web-search-note">移除 API Key 后，联网工具将无法使用。</p>
-                  <div className="modal-actions">
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={saving}
-                      onClick={() => setRemoving(false)}
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary web-search-remove"
-                      disabled={saving}
-                      onClick={() => void save(true)}
-                    >
-                      确认移除
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="modal-actions">
-                  {settings?.hasApiKey && (
-                    <button
-                      type="button"
-                      className="secondary web-search-remove"
-                      disabled={saving || settings.credentialsLocked}
-                      onClick={() => setRemoving(true)}
-                    >
-                      移除 API Key
-                    </button>
-                  )}
-                  {editing && (
-                    <button type="button" className="secondary" disabled={saving} onClick={cancelEdit}>
-                      取消编辑
-                    </button>
-                  )}
-                  <button
-                    type="submit"
-                    className="primary web-search-save"
-                    disabled={saving || settings?.credentialsLocked || !replacement}
-                  >
-                    {saving ? "保存中…" : "保存"}
-                  </button>
-                </div>
-              )}
               {error && (
                 <p className="run-error" role="alert">
                   {error}
@@ -251,10 +272,69 @@ export function WebSearchSettings() {
                   {notice}
                 </p>
               )}
+              <div className="modal-actions">
+                {editing && (
+                  <button type="button" className="secondary" disabled={saving} onClick={cancelEdit}>
+                    取消编辑
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={saving || settings?.credentialsLocked || !replacement}
+                >
+                  {saving ? "保存中…" : "保存"}
+                </button>
+              </div>
             </div>
           </div>
         </form>
       </div>
+      <Dialog.Root
+        open={removing}
+        onOpenChange={(open) => {
+          if (!saving) setRemoving(open);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="model-config-backdrop" />
+          <Dialog.Content
+            className="provider-delete-dialog"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              document.querySelector<HTMLButtonElement>(".provider-delete-dialog .primary")?.focus();
+            }}
+            onKeyDownCapture={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.querySelector<HTMLButtonElement>(".primary")?.click();
+              }
+            }}
+            onEscapeKeyDown={(event) => {
+              if (saving) event.preventDefault();
+            }}
+          >
+            <header>
+              <Dialog.Title>移除 DeepSeek 联网服务的 API Key？</Dialog.Title>
+              <Dialog.Description>移除后联网工具将无法使用，可重新配置 API Key。</Dialog.Description>
+            </header>
+            {error && (
+              <div className="model-config-error" role="alert">
+                {error}
+              </div>
+            )}
+            <footer>
+              <Dialog.Close className="secondary" disabled={saving}>
+                取消<span aria-hidden="true">esc</span>
+              </Dialog.Close>
+              <button type="button" className="primary" disabled={saving} onClick={() => void save(true)}>
+                确认移除
+              </button>
+            </footer>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

@@ -47,7 +47,7 @@ macOS 数据目录：
 
 接口按 DeepSeek 官方[网页搜索与抓取指南](https://api-docs.deepseek.com/zh-cn/guides/search/)、[Search API](https://api-docs.deepseek.com/zh-cn/api/search/) 与 [Fetch API](https://api-docs.deepseek.com/zh-cn/api/fetch/)（2026-10-17 核对）实现。
 
-主进程 `web-client.ts` 对接固定的 DeepSeek `POST /v1/tools/search` 与 `/v1/tools/fetch`，不使用 Harness 的辅助模型搜索协议，也不本地抓取网页。工具 schema 保留官方字段、可选性、`count` 1–50（默认 10）及 128 Unicode 字符查询限制；不自动补入原始问题或 IP。独立网页凭据位于 `credentials.enc` 加密载荷，renderer 只能读取是否已配置；`saveWebSearch` 省略 key 表示保留，空字符串表示删除。
+主进程 `web-client.ts` 对接固定的 DeepSeek `POST /v1/tools/search` 与 `/v1/tools/fetch`，不使用 Harness 的辅助模型搜索协议，也不本地抓取网页。工具 schema 保留官方字段、可选性、`count` 1–50（默认 10）及 128 Unicode 字符查询限制；不自动补入原始问题或 IP。独立网页凭据位于 `credentials.enc` 加密载荷，常规 `PublicSettings` 只含是否已配置和解锁后推导的 `apiKeyLength`，锁定时长度为 0，不持久化长度副本。仅用户点击设置中的眼睛时，经现有 sender/mainFrame 校验的零参数 `getWebSearchCredentials` IPC 读取已保存 Key（停用服务仍可查看），不广播到全局 settings、不记录 key、不联网。renderer 将临时明文与用户替换草稿分开，隐藏、设置快照变化、页面隐藏/窗口失焦和卸载会撤销在途读取并清除临时显示；只查看不会成为待保存值。输入框和头部启停/菜单控件由模型与网页设置共享。`saveWebSearch` 省略 key 表示保留，空字符串表示删除。
 
 两个操作分别在本 ZPI 实例中按 5 QPS 调度，不能控制同账号的其他客户端。单次工具执行总期限 30 秒（包括排队、响应读取和重试），仅对 408、429、5xx 最多尝试三次，不缩短服务器有效的 Retry-After；等待超出总期限时返回受控错误，取消不重试。响应最多 2 MiB；给模型的完整结果最多 32,000 字符，截断会明确标记。超出响应字节限制返回受控错误，不接受不完整 JSON。
 
@@ -61,7 +61,7 @@ Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP �
 
 站点图标是独立的受限图片通路：renderer 只提交 session/run/source URL，主进程先在该轮已记录的成功搜索结果中查找 `site_icon`，再使用共享缓存。仅接受 HTTPS 默认端口；DNS 所有地址必须为公网，并将连接绑定到已校验 IP。禁止跳转和环境代理，不发送 Cookie、Authorization 或 Referer。总期限 5 秒包含排队、DNS、响应与解码，最多 4 并发、50 排队、256 KiB 响应、1M 输入像素；按实际字节识别 PNG/JPEG/GIF/WebP/ICO，再解码转为 32px PNG（最多 16 KiB），不依赖 CDN 可能错误的 Content-Type。ICO 目录最多 64 帧、每帧尺寸最多 256px，仅支持嵌入 PNG 或 40 字节头的未压缩 Windows BI_RGB DIB（1/4/8/24/32 位）；验证边界后解码单帧，并保留透明度。SVG、HTML、损坏或不支持的编码仍使用联网图标。缓存最多 128 项，失败短暂缓存；不使用第三方 favicon 服务。UI 只接收有界 PNG data URL，不把远端地址交给 img。
 
-单元与集成测试全部使用注入的 mock transport 和隔离 HOME，不发送付费请求。真实桌面端验收仍需使用本指南的共享隐藏 Electron 测试启动器，不能把 SSR 或静态样式检查当作 GUI 验收。
+单元与集成测试全部使用注入的 mock transport 和隔离 HOME，不发送付费请求。联网设置交互使用 ReactDOM + Happy DOM 运行真实组件、DOM 事件、effects、Radix 菜单和弹层，并保留隔离 HOME；它不启动浏览器，也不提供布局/像素验收。Happy DOM 不合成浏览器 Enter/Space 的默认点击，键盘用例明确派发按键后补原生 click。真实桌面端验收仍需使用本指南的共享隐藏 Electron 测试启动器，不能把 DOM、SSR 或静态样式检查当作 GUI 验收。
 
 ### 文件工具的资源与并发边界
 

@@ -6,14 +6,11 @@ import {
   Bot,
   Braces,
   ChevronRight,
-  Eye,
-  EyeOff,
   Globe,
   Info,
   Keyboard,
   Monitor,
   Moon,
-  MoreHorizontal,
   Package,
   Pencil,
   Plus,
@@ -45,6 +42,8 @@ import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
 import { CommandSettings } from "./CommandSettings.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
 import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
+import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
+import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
@@ -661,75 +660,52 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                             ) : (
                               <h2>{name || "新提供商"}</h2>
                             )}
-                            <div className="provider-heading-actions">
-                              <ActionHint appearance="control" label={enabled ? "禁用供应商" : "启用供应商"}>
-                                <label className="settings-switch provider-enabled-switch">
-                                  <input
-                                    type="checkbox"
-                                    role="switch"
-                                    aria-label={`启用供应商 ${name || "新提供商"}`}
-                                    aria-checked={enabled}
-                                    checked={enabled}
-                                    disabled={saving || discovering || !keyReady}
-                                    onChange={(event) => {
-                                      if (selected) void save(models, event.target.checked);
-                                      else setEnabled(event.target.checked);
-                                    }}
-                                  />
-                                  <span />
-                                </label>
-                              </ActionHint>
+                            <ProviderHeadingActions
+                              enabled={enabled}
+                              name={name}
+                              disabled={saving || discovering}
+                              switchDisabled={saving || discovering || !keyReady}
+                              onEnabledChange={(value) => {
+                                if (selected) void save(models, value);
+                                else setEnabled(value);
+                              }}
+                              onCloseAutoFocus={(event) => {
+                                if (renameRequested.current) {
+                                  event.preventDefault();
+                                  renameRequested.current = false;
+                                  renameInput.current?.focus();
+                                  renameInput.current?.select();
+                                }
+                              }}
+                            >
                               {selected && (
-                                <Menu.Root>
-                                  <Menu.Trigger
-                                    className="provider-more"
-                                    aria-label="供应商操作"
-                                    disabled={saving || discovering}
-                                  >
-                                    <MoreHorizontal size={16} />
-                                  </Menu.Trigger>
-                                  <Menu.Portal>
-                                    <Menu.Content
-                                      className="provider-actions-menu"
-                                      align="end"
-                                      sideOffset={2}
-                                      onCloseAutoFocus={(event) => {
-                                        if (renameRequested.current) {
-                                          event.preventDefault();
-                                          renameRequested.current = false;
-                                          renameInput.current?.focus();
-                                          renameInput.current?.select();
-                                        }
-                                      }}
-                                    >
-                                      {!preset && (
-                                        <>
-                                          <Menu.Item
-                                            className="provider-action-item"
-                                            onSelect={() => {
-                                              renameStart.current = name;
-                                              renameRequested.current = true;
-                                              setRenaming(true);
-                                            }}
-                                          >
-                                            <Pencil size={14} />
-                                            重命名
-                                          </Menu.Item>
-                                          <Menu.Separator className="provider-action-separator" />
-                                        </>
-                                      )}
+                                <>
+                                  {!preset && (
+                                    <>
                                       <Menu.Item
-                                        className="provider-action-item provider-action-delete"
-                                        onSelect={() => setConfirmDelete(true)}
+                                        className="provider-action-item"
+                                        onSelect={() => {
+                                          renameStart.current = name;
+                                          renameRequested.current = true;
+                                          setRenaming(true);
+                                        }}
                                       >
-                                        <Trash2 size={14} />
-                                        删除
+                                        <Pencil size={14} />
+                                        重命名
                                       </Menu.Item>
-                                    </Menu.Content>
-                                  </Menu.Portal>
-                                </Menu.Root>
+                                      <Menu.Separator className="provider-action-separator" />
+                                    </>
+                                  )}
+                                  <Menu.Item
+                                    className="provider-action-item provider-action-delete"
+                                    onSelect={() => setConfirmDelete(true)}
+                                  >
+                                    <Trash2 size={14} />
+                                    删除
+                                  </Menu.Item>
+                                </>
                               )}
-                            </div>
+                            </ProviderHeadingActions>
                           </header>
                           <div className="provider-connection-fields">
                             {!preset && (
@@ -788,26 +764,17 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 }}
                               />
                             ) : (
-                              <label>
+                              <label htmlFor="model-provider-api-key">
                                 <span>API Key</span>
-                                <span className="credential-input">
-                                  <input
-                                    aria-label="API key"
-                                    type={keyVisible ? "text" : "password"}
-                                    autoComplete="off"
-                                    value={key}
-                                    onChange={(event) => setKey(event.target.value)}
-                                    disabled={!keyReady || saving || discovering}
-                                    placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
-                                  />
-                                  <button
-                                    type="button"
-                                    aria-label={keyVisible ? "隐藏 API key" : "显示 API key"}
-                                    onClick={() => setKeyVisible(!keyVisible)}
-                                  >
-                                    {keyVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                                  </button>
-                                </span>
+                                <ProviderCredentialInput
+                                  id="model-provider-api-key"
+                                  visible={keyVisible}
+                                  onToggleVisibility={() => setKeyVisible(!keyVisible)}
+                                  value={key}
+                                  onChange={(event) => setKey(event.target.value)}
+                                  disabled={!keyReady || saving || discovering}
+                                  placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
+                                />
                               </label>
                             )}
                           </div>

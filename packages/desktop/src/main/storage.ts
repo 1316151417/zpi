@@ -204,6 +204,7 @@ export class SettingsStore {
         provider: "deepseek",
         enabled: this.data.webSearchEnabled ?? false,
         hasApiKey: Boolean(this.webApiKey),
+        apiKeyLength: this.unreadCredentials ? 0 : this.webApiKey.length,
         credentialsPersisted: this.persisted,
         credentialsLocked: this.unreadCredentials,
       },
@@ -234,6 +235,11 @@ export class SettingsStore {
     if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
     if (!this.data.webSearchEnabled) throw new Error("configuration: DeepSeek 联网搜索服务已停用");
     return this.webApiKey;
+  }
+  // Explicit settings reveal may read a saved key even when the service is disabled.
+  getWebSearchCredentials(): { apiKey: string } {
+    if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
+    return { apiKey: this.webApiKey };
   }
   saveWebSearch(input: WebSearchSettingsInput): PublicSettings {
     if (!isJsonObject(input)) throw new Error("invalid_input: 联网搜索配置必须为对象");

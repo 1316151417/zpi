@@ -159,6 +159,7 @@ export interface PublicSettings {
     provider: "deepseek";
     enabled: boolean;
     hasApiKey: boolean;
+    apiKeyLength: number;
     credentialsPersisted: boolean;
     credentialsLocked: boolean;
   };
@@ -453,6 +454,8 @@ export interface DesktopBridge {
   reorderProviders(ids: string[]): Promise<Result<PublicSettings>>;
   deleteProvider(id: string): Promise<Result<PublicSettings>>;
   getProviderCredentials(id: string): Promise<Result<{ apiKey: string }>>;
+  /** Read only when the user explicitly reveals the key in web search settings. */
+  getWebSearchCredentials(): Promise<Result<{ apiKey: string }>>;
   updatePreferences(input: Partial<InterfacePreferences>): Promise<Result<PublicSettings>>;
   setSessionSelection(sessionId: string, selection: CombinedSelection): Promise<Result<SessionSnapshot>>;
   listSessionSkills(sessionId: string): Promise<Result<SkillList>>;
@@ -565,6 +568,7 @@ export const methods = [
   "reorderProviders",
   "deleteProvider",
   "getProviderCredentials",
+  "getWebSearchCredentials",
   "updatePreferences",
   "setSessionSelection",
   "listSessionSkills",

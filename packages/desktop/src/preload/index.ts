@@ -179,6 +179,7 @@ const bridge: DesktopBridge = {
   reorderProviders: (ids) => call("reorderProviders", ids),
   deleteProvider: (id) => call("deleteProvider", id),
   getProviderCredentials: (id) => call("getProviderCredentials", id),
+  getWebSearchCredentials: () => call("getWebSearchCredentials"),
   updatePreferences: (input) => call("updatePreferences", input),
   setSessionSelection: (id, selection) => call("setSessionSelection", id, selection),
   listSessionSkills: (id) => call("listSessionSkills", id),

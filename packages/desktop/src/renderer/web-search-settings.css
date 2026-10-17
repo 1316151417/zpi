@@ -7,9 +7,6 @@
 .settings-screen .model-provider-panel.web-search-provider-panel {
   min-height: 0;
 }
-.web-search-settings .provider-detail-heading {
-  flex-wrap: wrap;
-}
 .web-search-note,
 .web-search-storage-note {
   margin: 0;
@@ -17,40 +14,9 @@
   color: var(--color-text-subtle);
   line-height: 1.6;
 }
-/* Match the model editor's 32px actions; secondary actions retain a visible boundary. */
-.settings-screen .web-search-settings :is(.primary, .secondary) {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-nested);
-  font-size: var(--text-body);
-  flex-shrink: 0;
-}
-.settings-screen .web-search-settings .secondary {
-  color: var(--color-foreground);
-  background: var(--color-surface-muted);
-  border-color: var(--color-border);
-}
-.settings-screen .web-search-settings .secondary:hover:not(:disabled) {
-  background: var(--color-menu-hover);
-}
-.settings-screen .web-search-settings .web-search-remove {
-  color: var(--color-error);
-}
-/* Global outline suppression requires a shadow for a visible keyboard focus state. */
-.settings-screen .web-search-settings :is(button, input):focus-visible {
-  box-shadow: 0 0 0 2px var(--color-focus);
-}
 .web-search-storage-note {
   padding: 8px 10px;
   border-radius: var(--radius-control);
   color: var(--color-waiting);
   background: var(--color-warning-surface);
-}
-.web-search-remove-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
 }

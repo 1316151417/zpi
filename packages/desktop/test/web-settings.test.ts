@@ -50,6 +50,7 @@ test("keeps a separate encrypted web key across restart and chat-provider edits"
     provider: "deepseek",
     enabled: false,
     hasApiKey: false,
+    apiKeyLength: 0,
     credentialsPersisted: false,
     credentialsLocked: false,
   });
@@ -110,6 +111,40 @@ test("requires a key to enable and never enables a provider by saving or replaci
   expect(f.open().get().webSearch.enabled).toBe(true);
 });
 
+test.each([false, true])("reveals only the saved web key with provider enabled=%s", async (enabled) => {
+  const f = await fixture();
+  const store = f.open();
+  const apiKey = "web-reveal-fake-key";
+  expect(store.getWebSearchCredentials()).toEqual({ apiKey: "" });
+  store.saveWebSearch({ provider: "deepseek", apiKey: `  ${apiKey}  `, enabled });
+  const encrypted = await readFile(join(f.dir, "credentials.enc"));
+  const publicBefore = store.get();
+  for (const current of [store, f.open()]) {
+    expect(current.getWebSearchCredentials()).toEqual({ apiKey });
+    expect(current.get().webSearch).toEqual({
+      provider: "deepseek",
+      enabled,
+      hasApiKey: true,
+      apiKeyLength: apiKey.length,
+      credentialsPersisted: true,
+      credentialsLocked: false,
+    });
+    expect(JSON.stringify(current.get())).not.toContain(apiKey);
+    expect(current.get().webSearch).not.toHaveProperty("apiKey");
+    current.getWebSearchCredentials().apiKey = "changed-fake-key";
+    expect(current.getWebSearchCredentials()).toEqual({ apiKey });
+    if (!enabled) expect(() => current.getWebSearchApiKey()).toThrow("已停用");
+  }
+  expect(store.get()).toEqual(publicBefore);
+  expect(await readFile(join(f.dir, "credentials.enc"))).toEqual(encrypted);
+  expect(JSON.stringify(savedData(f.state))).not.toContain(apiKey);
+  store.saveWebSearch({ provider: "deepseek", apiKey: "" });
+  for (const current of [store, f.open()]) {
+    expect(current.getWebSearchCredentials()).toEqual({ apiKey: "" });
+    expect(current.get().webSearch).toMatchObject({ hasApiKey: false, apiKeyLength: 0 });
+  }
+});
+
 test("holds web credentials only in memory without encryption and does not read environment keys", async () => {
   const f = await fixture();
   f.lock();
@@ -120,12 +155,16 @@ test("holds web credentials only in memory without encryption and does not read 
     provider: "deepseek",
     enabled: true,
     hasApiKey: true,
+    apiKeyLength: "memory-fake-key".length,
     credentialsPersisted: false,
     credentialsLocked: false,
   });
   expect(store.getWebSearchApiKey()).toBe("memory-fake-key");
+  expect(store.getWebSearchCredentials()).toEqual({ apiKey: "memory-fake-key" });
   expect(existsSync(join(f.dir, "credentials.enc"))).toBe(false);
   expect(f.open().getWebSearchApiKey()).toBe("");
+  expect(f.open().getWebSearchCredentials()).toEqual({ apiKey: "" });
+  expect(f.open().get().webSearch.apiKeyLength).toBe(0);
   expect(JSON.stringify(f.state.getSetting("app"))).not.toContain("memory-fake-key");
 });
 
@@ -135,10 +174,19 @@ test("never overwrites locked encrypted credentials and allows disabling without
   const before = await readFile(join(f.dir, "credentials.enc"));
   f.lock();
   const store = f.open();
-  expect(store.get().webSearch).toMatchObject({ enabled: true, hasApiKey: false, credentialsLocked: true });
+  expect(store.get().webSearch).toMatchObject({
+    enabled: true,
+    hasApiKey: false,
+    apiKeyLength: 0,
+    credentialsLocked: true,
+  });
+  const lockedError = new Error("configuration: 保存的联网搜索凭据尚未解锁");
+  expect(() => store.getWebSearchCredentials()).toThrow(lockedError);
   expect(() => store.getWebSearchApiKey()).toThrow("尚未解锁");
   expect(() => store.saveWebSearch({ provider: "deepseek", apiKey: "replacement" })).toThrow("尚未解锁");
   store.saveWebSearch({ provider: "deepseek", enabled: false });
+  expect(() => store.getWebSearchCredentials()).toThrow(lockedError);
+  expect(() => f.open().getWebSearchCredentials()).toThrow(lockedError);
   expect(() => store.saveWebSearch({ provider: "deepseek", enabled: true })).toThrow("尚未解锁");
   expect(await readFile(join(f.dir, "credentials.enc"))).toEqual(before);
   f.unlock();
@@ -148,6 +196,8 @@ test("never overwrites locked encrypted credentials and allows disabling without
     credentialsLocked: false,
   });
   expect(() => f.open().getWebSearchApiKey()).toThrow("已停用");
+  expect(f.open().getWebSearchCredentials()).toEqual({ apiKey: "locked-fake-key" });
+  expect(f.open().get().webSearch.apiKeyLength).toBe("locked-fake-key".length);
 });
 
 test.each([false, true])(
