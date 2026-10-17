@@ -26,6 +26,36 @@ for (const colorScheme of ["light", "dark"] as const) {
       await enabled.check();
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();
       const key = page.getByLabel("API Key", { exact: true });
+      const originalViewport = page.viewportSize();
+      for (const width of [1280, 800, 640, 480]) {
+        await page.setViewportSize({ width, height: 900 });
+        const panel = page.locator(".web-search-provider-panel");
+        await expect(panel.locator(".provider-list button")).toHaveCount(1);
+        await expect(panel.getByRole("button", { name: "DeepSeek", exact: true })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
+        await expect(panel.getByRole("button", { name: "新增提供商", exact: true })).toHaveCount(0);
+        const layout = await panel.evaluate((element) => {
+          const nav = element.querySelector<HTMLElement>(".provider-list");
+          const editor = element.querySelector<HTMLElement>(".provider-editor");
+          const field = element.querySelector<HTMLInputElement>("#web-search-api-key");
+          if (!nav || !editor || !field) throw new Error("Missing web settings layout");
+          return {
+            height: element.getBoundingClientRect().height,
+            navRight: nav.getBoundingClientRect().right,
+            editorLeft: editor.getBoundingClientRect().left,
+            fieldRight: field.getBoundingClientRect().right,
+            editorRight: editor.getBoundingClientRect().right,
+            overflow: element.scrollWidth > element.clientWidth,
+          };
+        });
+        expect(layout.navRight).toBeLessThanOrEqual(layout.editorLeft + 1);
+        expect(layout.fieldRight).toBeLessThanOrEqual(layout.editorRight);
+        expect(layout.height).toBeLessThan(400);
+        expect(layout.overflow).toBe(false);
+      }
+      if (originalViewport) await page.setViewportSize(originalViewport);
       await expect(key).toHaveAttribute("type", "password");
       await key.fill("fake-desktop-web-key");
       await page.getByRole("button", { name: "显示 API Key", exact: true }).click();

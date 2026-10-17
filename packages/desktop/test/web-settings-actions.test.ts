@@ -166,6 +166,26 @@ test("saved key has real-length native password masking and no automatic credent
   expect(container.innerHTML).not.toContain(secret);
   expect(button("保存").disabled).toBe(true);
 });
+
+test("the sole provider entry preserves the credential draft and never reads or saves a key", async () => {
+  const nav = query<HTMLElement>('nav[aria-label="联网搜索提供商"]');
+  const provider = query<HTMLButtonElement>('.provider-list button[aria-label="DeepSeek"]');
+  expect(nav.querySelectorAll("button")).toHaveLength(1);
+  expect(nav.nextElementSibling).toBe(input().closest("form"));
+  expect(provider.getAttribute("aria-current")).toBe("true");
+  await click(provider);
+  expect(mocks.reveal).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+  await focus();
+  await type("fake-unsaved-replacement");
+  await click(provider);
+  expect(input().value).toBe("fake-unsaved-replacement");
+  expect(mocks.save).not.toHaveBeenCalled();
+  await click(button("取消编辑"));
+  await click(query<HTMLInputElement>('input[role="switch"]'));
+  expect(nav.querySelector(".provider-status.disabled")).not.toBeNull();
+  expect(mocks.save).toHaveBeenLastCalledWith({ provider: "deepseek", enabled: false });
+});
 test("eye reveals the saved key, supports focus/select, hides and never marks it dirty", async () => {
   await click(eye());
   expect(mocks.reveal).toHaveBeenCalledTimes(1);

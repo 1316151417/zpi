@@ -3,9 +3,21 @@
   flex-direction: column;
   gap: 16px;
 }
-/* The one-provider web form uses the model editor, without its provider navigation column. */
+/* Reuse the model provider columns, but size this one-field panel to its content. */
 .settings-screen .model-provider-panel.web-search-provider-panel {
   min-height: 0;
+}
+.settings-screen .web-search-provider-panel .provider-list {
+  border-right: 1px solid var(--color-border);
+  border-bottom: 0;
+}
+.web-search-provider-panel .provider-detail-heading {
+  flex-wrap: wrap;
+}
+@media (max-width: 1023px) {
+  .web-search-provider-panel .provider-status {
+    display: none;
+  }
 }
 .web-search-note,
 .web-search-storage-note {

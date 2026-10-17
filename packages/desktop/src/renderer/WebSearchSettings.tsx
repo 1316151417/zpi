@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ActionHint } from "zpi-ui";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
@@ -156,7 +157,29 @@ export function WebSearchSettings() {
           并启用服务后，新对话首次发送时可使用网页搜索和网页读取；已有对话保留原有配置。
         </p>
       </div>
-      <div className="model-provider-panel web-search-provider-panel">
+      <div className="settings-layout model-provider-panel web-search-provider-panel">
+        <nav className="provider-list" aria-label="联网搜索提供商">
+          <div className="provider-nav-group">
+            <h3>供应商</h3>
+            <ActionHint appearance="control" label="DeepSeek" side="right">
+              <button
+                type="button"
+                className="selected"
+                aria-label="DeepSeek"
+                aria-current="true"
+                disabled={saving || removing}
+              >
+                <ProviderLogo preset="deepseek" size={16} />
+                <span>DeepSeek</span>
+                <i
+                  className={`provider-status ${settings?.enabled ? "enabled" : "disabled"}`}
+                  title={settings?.enabled ? "已启用" : "已关闭"}
+                  aria-hidden="true"
+                />
+              </button>
+            </ActionHint>
+          </div>
+        </nav>
         <form
           className="provider-editor"
           onSubmit={(event) => {

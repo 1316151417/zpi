@@ -102,12 +102,34 @@ test("both settings editors render shared credential/header controls without web
   const markup = render();
   expect(markup).toContain("provider-enabled-switch");
   expect(markup).toContain("credential-input");
-  expect(markup.match(/<img[^>]*class="provider-logo"[^>]*>/)?.[0]).toMatch(/width="20" height="20"/);
+  const heading = markup.match(/<header class="provider-detail-heading">[\s\S]*?<\/header>/)?.[0];
+  expect(heading?.match(/<img[^>]*class="provider-logo"[^>]*>/)?.[0]).toMatch(/width="20" height="20"/);
   expect(markup.match(/<svg[^>]*class="[^"]*lucide-eye[^"]*"[^>]*>/)?.[0]).toMatch(/width="14" height="14"/);
   const css = source("../src/renderer/web-search-settings.css");
   expect(css).not.toMatch(/secondary|primary|button|credential-input|provider-heading-actions|:hover/);
   expect(web).not.toContain("web-search-remove");
   expect(web).not.toContain("web-search-enable");
+});
+
+test("the compact model-style layout lists only DeepSeek beside the existing editor", () => {
+  const markup = render();
+  expect(markup).toContain('class="settings-layout model-provider-panel web-search-provider-panel"');
+  const navigation = markup.match(/<nav class="provider-list"[\s\S]*?<\/nav>/)?.[0];
+  expect(navigation).toContain('aria-label="联网搜索提供商"');
+  expect(navigation?.match(/<button\b/g)).toHaveLength(1);
+  expect(navigation).toContain('aria-label="DeepSeek" aria-current="true"');
+  expect(navigation).toContain('width="16" height="16"');
+  expect(markup.indexOf("</nav>")).toBeLessThan(markup.indexOf('<form class="provider-editor"'));
+  expect(markup).not.toContain("新增提供商");
+  expect(markup).not.toContain("自定义提供商");
+  expect(markup).not.toContain("provider-template-picker");
+  const css = source("../src/renderer/web-search-settings.css");
+  expect(css).toMatch(/\.model-provider-panel\.web-search-provider-panel\s*\{\s*min-height: 0;/);
+  expect(css).toMatch(
+    /\.provider-list\s*\{[^}]*border-right: 1px solid var\(--color-border\);[^}]*border-bottom: 0;/,
+  );
+  expect(css).toMatch(/\.provider-detail-heading\s*\{\s*flex-wrap: wrap;/);
+  expect(css).toMatch(/@media \(max-width: 1023px\)[\s\S]*\.provider-status\s*\{\s*display: none;/);
 });
 test("default-on web capability and model settings navigation preserve their order", () => {
   const markup = renderToStaticMarkup(createElement(CapabilitySettings));
