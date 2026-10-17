@@ -3,7 +3,7 @@ import { isJsonObject } from "zpi-ai";
 import type { AgentSessionEvent, Attachment, SessionEntry } from "zpi-coding-agent";
 import { patchLineCounts, projectStreamedToolJournal } from "zpi-coding-agent";
 import type { DesktopEvent, FileChangeSummary, RunStatus, SessionView, UserQuestionResponse } from "zpi-ui";
-import { emptySession, reduceSession, resultText } from "zpi-ui/projection";
+import { emptySession, normalizeWebToolDetails, reduceSession, resultText } from "zpi-ui/projection";
 
 function questionAnswers(toolName: string, details: unknown): UserQuestionResponse | undefined {
   if (toolName !== "AskUserQuestion" || !isJsonObject(details) || !isJsonObject(details.answers)) return;
@@ -95,6 +95,10 @@ export function projectEvent(event: AgentSessionEvent, messageId: string): Deskt
       type: "tool_update",
       toolCallId: event.toolCallId,
       output: resultText(event.partialResult),
+      web: normalizeWebToolDetails(
+        isJsonObject(event.partialResult.details) ? event.partialResult.details.web : undefined,
+        event.toolName,
+      ),
     };
   if (event.type === "tool_execution_end")
     return {
@@ -105,6 +109,10 @@ export function projectEvent(event: AgentSessionEvent, messageId: string): Deskt
       hasFileChange: isJsonObject(event.result.details) && isJsonObject(event.result.details.fileChange),
       fileChange: fileChangeSummary(event.result.details),
       questionAnswers: questionAnswers(event.toolName, event.result.details),
+      web: normalizeWebToolDetails(
+        isJsonObject(event.result.details) ? event.result.details.web : undefined,
+        event.toolName,
+      ),
     };
   return undefined;
 }
@@ -214,12 +222,17 @@ function visibleMessage(message: Message): Message {
   if (message.role === "toolResult") {
     const fileChange = fileChangeSummary(message.details);
     const answers = questionAnswers(message.toolName, message.details);
+    const web = normalizeWebToolDetails(
+      isJsonObject(message.details) ? message.details.web : undefined,
+      message.toolName,
+    );
     return {
       ...message,
       details: {
         hasFileChange: isJsonObject(message.details) && isJsonObject(message.details.fileChange),
         ...(fileChange ? { fileChange: { ...fileChange } } : {}),
         ...(answers ? { questionAnswers: { answers: answers.answers } } : {}),
+        ...(web ? { web: JSON.parse(JSON.stringify(web)) } : {}),
       },
       content: message.content.map((c) =>
         c.type === "image" ? { type: "text", text: "[Image result]" } : c,

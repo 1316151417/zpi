@@ -517,6 +517,7 @@ async function launch(): Promise<void> {
         disconnectChatGPT: 1,
         openExternal: 1,
         saveProvider: 1,
+        saveWebSearch: 1,
         reorderProviders: 1,
         discoverModels: 1,
         deleteProvider: 1,
@@ -1086,6 +1087,14 @@ async function launch(): Promise<void> {
           );
           break;
         }
+        case "saveWebSearch":
+          value = settings.saveWebSearch(
+            object(0, [
+              "provider",
+              "apiKey",
+            ]) as unknown as import("../shared/bridge.ts").WebSearchSettingsInput,
+          );
+          break;
         case "saveProvider": {
           const input = object(0, ["id", "name", "baseUrl", "models", "apiKey", "preset", "enabled", "api"]);
           if (!usesChatGPTAuth(input.preset as string | undefined) && typeof input.apiKey !== "string")

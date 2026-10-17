@@ -119,9 +119,10 @@ test("snapshots prompt plugins on first send and keeps them when global settings
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults all plugin capabilities on and preserves saved choices in SQLite", async () => {
+test("defaults web access off and other plugin capabilities on and preserves saved choices in SQLite", async () => {
   const f = await fixture();
   expect(f.settings.get().capabilities).toEqual({
+    webSearch: false,
     communicationStyle: true,
     subagents: true,
     askUserQuestion: true,
@@ -134,6 +135,7 @@ test("defaults all plugin capabilities on and preserves saved choices in SQLite"
   f.settings.setCapabilityEnabled("askUserQuestion", false);
   const restored = new SettingsStore(f.dir, codec);
   expect(restored.get().capabilities).toEqual({
+    webSearch: false,
     communicationStyle: true,
     subagents: true,
     askUserQuestion: false,

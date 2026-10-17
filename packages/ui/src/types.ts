@@ -56,6 +56,26 @@ export interface WorktreeInfo {
   sourceCwd: string;
 }
 export type FileActionHandler = (path: string, action: FileAction, location?: FileLocation) => Promise<void>;
+export interface WebSearchSource {
+  title: string;
+  url: string;
+  snippet: string;
+  summary?: string;
+  site_name: string | null;
+  site_icon: string | null;
+  date: string | null;
+}
+export interface WebToolDetails {
+  kind: "web_search" | "web_fetch";
+  status: "pending" | "success" | "error" | "cancelled";
+  query?: string;
+  url?: string;
+  title?: string;
+  content?: string;
+  results?: WebSearchSource[];
+  truncated?: boolean;
+  message?: string;
+}
 export type ViewBlock =
   | {
       id: string;
@@ -79,6 +99,7 @@ export type ViewBlock =
       hasFileChange?: boolean;
       fileChange?: FileChangeSummary;
       questionAnswers?: UserQuestionResponse;
+      web?: WebToolDetails;
     };
 export interface SubagentNotification {
   agentId: string;
@@ -228,6 +249,7 @@ export type DesktopEvent =
       hasFileChange?: boolean;
       fileChange?: FileChangeSummary;
       questionAnswers?: UserQuestionResponse;
+      web?: WebToolDetails;
     };
 export interface DesktopEventEnvelope {
   /** Host event time for conversation activity; metadata envelopes omit it. */

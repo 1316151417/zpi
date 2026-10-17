@@ -39,6 +39,11 @@ const capabilities: {
     description: "让助手通过单选、多选或自定义回答澄清问题，再继续执行。",
   },
   {
+    name: "webSearch",
+    label: "联网搜索",
+    description: "通过 DeepSeek 搜索网页和读取网页正文，使用独立 API Key，默认关闭。",
+  },
+  {
     name: "subagents",
     label: "子智能体",
     description: "将独立任务交给专门的智能体并行处理，支持自定义智能体和模型，在侧栏查看完整过程。",

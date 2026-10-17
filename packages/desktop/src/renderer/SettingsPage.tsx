@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Globe,
   Info,
   Keyboard,
   Monitor,
@@ -50,6 +51,7 @@ import { SettingsSelect } from "./SettingsSelect.tsx";
 import { ShortcutSettings } from "./ShortcutSettings.tsx";
 import { SubagentSettings } from "./SubagentSettings.tsx";
 import { refresh, unwrap, useStore } from "./store.ts";
+import { WebSearchSettings } from "./WebSearchSettings.tsx";
 
 const sections = [
   ["general", "常规", Settings2],
@@ -60,6 +62,7 @@ const sections = [
   ["skills", "技能", Puzzle],
   ["commands", "命令", Terminal],
   ["capabilities", "插件能力", Package],
+  ["webSearch", "联网搜索", Globe],
   ["subagents", "子智能体", Bot],
   ["models", "模型", Braces],
   ["archived", "已归档任务", Archive],
@@ -432,6 +435,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                   </div>
                   {error && <div role="alert">{error}</div>}
                 </div>
+              ) : tab === "webSearch" ? (
+                <WebSearchSettings />
               ) : tab === "subagents" ? (
                 <SubagentSettings />
               ) : tab === "capabilities" ? (

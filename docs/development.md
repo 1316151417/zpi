@@ -38,10 +38,22 @@ macOS 数据目录：
 ## 工具与会话边界
 
 - `packages/coding-agent` 的默认工具是 `read`、`write`、`edit`、`bash`。SDK 用 `customTools` 增加工具，用 `toolOverrides` 显式替换同名基础工具，不依赖 Electron。
-- 桌面端的 `SessionHost` 负责注入 `AskUserQuestion`、子智能体工具和后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体插件后仍提供这两个后台任务工具。
-- 「插件能力」中的提问、子智能体和提示词选项目前均默认开启，已有设置中的显式选择会保留。新对话首次发送时保存配置快照；之后修改全局开关不会重配已有对话。提示词开关不构成权限沙箱，也不会禁用底层并行执行能力。
+- 桌面端的 `SessionHost` 负责通过 `customTools` 注入 `AskUserQuestion`、子智能体工具与可选的 `web_search`/`web_fetch`，通过 `toolOverrides` 替换后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体插件后仍提供这两个后台任务工具。
+- 「插件能力」中的联网搜索默认关闭，提问、子智能体和提示词选项默认开启，已有设置中的显式选择会保留。新对话首次发送时保存配置快照；之后修改全局开关不会重配已有对话。提示词开关不构成权限沙箱，也不会禁用底层并行执行能力。
 - 第一项「提示词-交互方式」控制进展说明、最终回复的完整交付、表达方式及代码风格规则，独立于「提示词-主动推进」。升级后全局设置默认开启此项；已有对话缺失此项时保持关闭，继续沿用原有提示词。
 - 辅助对话是用户手动创建的独立会话，只复制创建时的稳定上下文和配置。子智能体是桌面编排的受委派任务。两者都共享父任务的工作目录；Git 工作树只提供独立检出目录，不隔离操作系统权限。
+
+### 联网工具边界
+
+接口按 DeepSeek 官方[网页搜索与抓取指南](https://api-docs.deepseek.com/zh-cn/guides/search/)、[Search API](https://api-docs.deepseek.com/zh-cn/api/search/) 与 [Fetch API](https://api-docs.deepseek.com/zh-cn/api/fetch/)（2026-10-17 核对）实现。
+
+主进程 `web-client.ts` 对接固定的 DeepSeek `POST /v1/tools/search` 与 `/v1/tools/fetch`，不使用 Harness 的辅助模型搜索协议，也不本地抓取网页。工具 schema 保留官方字段、可选性、`count` 1–50（默认 10）及 128 Unicode 字符查询限制；不自动补入原始问题或 IP。独立网页凭据位于 `credentials.enc` 加密载荷，renderer 只能读取是否已配置；`saveWebSearch` 省略 key 表示保留，空字符串表示删除。
+
+两个操作分别在本 ZPI 实例中按 5 QPS 调度，不能控制同账号的其他客户端。单次工具执行总期限 30 秒（包括排队、响应读取和重试），仅对 408、429、5xx 最多尝试三次，不缩短服务器有效的 Retry-After；等待超出总期限时返回受控错误，取消不重试。响应最多 2 MiB；给模型的完整结果最多 32,000 字符，截断会明确标记。超出响应字节限制返回受控错误，不接受不完整 JSON。
+
+Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP 字面量与本地域名；本客户端不解析目标站点 DNS，DeepSeek 负责其上游 DNS 和跳转策略，因此这不是完整的客户端 SSRF 保证。带凭据 API 请求禁止跳转。网页结果是不可信资料，不能成为系统指令；渲染层禁用原始 HTML、远端图片和本地文件链接。站点 `site_icon` 尚无安全图片代理，使用无网络回退图标。
+
+单元与集成测试全部使用注入的 mock transport 和隔离 HOME，不发送付费请求。真实桌面端验收仍需使用本指南的共享隐藏 Electron 测试启动器，不能把 SSR 或静态样式检查当作 GUI 验收。
 
 ### 文件工具的资源与并发边界
 

@@ -1,4 +1,5 @@
 import { workDuration } from "./components/process-presentation.ts";
+import { cancelledWebTool, normalizeWebToolDetails } from "./components/web-tool-data.ts";
 import type { DesktopEventEnvelope, RunView, SessionView, ViewBlock } from "./types.ts";
 import { resultText } from "./types.ts";
 export function emptySession(sessionId: string, title = "新对话"): SessionView {
@@ -20,6 +21,7 @@ export function sessionViewBytes(view: SessionView): number {
       if (block.type === "tool" && block.questionAnswers)
         for (const [question, answer] of Object.entries(block.questionAnswers.answers))
           chars += question.length + answer.length;
+      if (block.type === "tool" && block.web) chars += JSON.stringify(block.web).length;
     }
   }
   for (const item of view.queue?.items ?? []) chars += item.text.length;
@@ -60,7 +62,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     else subagents[index] = event.task;
     return { ...view, seq, subagents };
   }
-  if (event.type === "history_reset") return { ...event.view, seq };
+  if (event.type === "history_reset") return { ...normalizeWebHistory(event.view), seq };
   if (event.type === "session_changed") return { ...view, seq, title: event.title };
   if (event.type === "controls_changed") return { ...view, seq, controls: event.controls };
   if (event.type === "queue_changed") return { ...view, seq, queue: event.queue };
@@ -153,6 +155,23 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         ? { ...block, streaming: false, ...(block.startedAt !== undefined ? { endedAt: event.endedAt } : {}) }
         : block,
     );
+    run.orderedBlocks = run.orderedBlocks.map((block) =>
+      block.type === "tool" &&
+      (block.name === "web_search" || block.name === "web_fetch") &&
+      (block.web?.status === "pending" || block.status === "preparing" || block.status === "running")
+        ? {
+            ...block,
+            status: "error",
+            isError: true,
+            web: {
+              ...block.web,
+              kind: block.name,
+              status: ["aborted", "interrupted"].includes(event.status) ? "cancelled" : "error",
+              message: "联网工具已停止，未收到结果。",
+            },
+          }
+        : block,
+    );
     if (event.status === "interrupted")
       run.orderedBlocks = run.orderedBlocks.map((b) =>
         b.type === "tool" && (b.status === "preparing" || b.status === "running")
@@ -221,6 +240,10 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
       replace(b.id, {
         ...b,
         output: event.output,
+        web:
+          event.web === undefined
+            ? (cancelledWebTool(b.name, event.output, event.isError) ?? b.web)
+            : normalizeWebToolDetails(event.web, b.name),
         ...(event.type === "tool_end"
           ? {
               isError: event.isError,
@@ -259,6 +282,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
             hasFileChange: previous?.type === "tool" ? previous.hasFileChange : undefined,
             fileChange: previous?.type === "tool" ? previous.fileChange : undefined,
             questionAnswers: previous?.type === "tool" ? previous.questionAnswers : undefined,
+            web: previous?.type === "tool" ? previous.web : undefined,
           });
         } else {
           const previous = oldBlocks.get(id);
@@ -302,6 +326,10 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
             m.details && typeof m.details === "object" && "questionAnswers" in m.details
               ? (m.details.questionAnswers as unknown as import("./types.ts").UserQuestionResponse)
               : b.questionAnswers,
+          web:
+            m.details && typeof m.details === "object" && "web" in m.details
+              ? normalizeWebToolDetails(m.details.web, b.name)
+              : (cancelledWebTool(b.name, resultText(m), m.isError) ?? b.web),
         });
     }
   }
@@ -318,7 +346,22 @@ export function progressSummary(run: RunView, now = Date.now()): string {
   return `${status} ${workDuration((run.endedAt ?? (run.status === "running" ? now : run.startedAt)) - run.startedAt)}`;
 }
 
+export { normalizeWebToolDetails } from "./components/web-tool-data.ts";
 export { resultText } from "./types.ts";
+
+function normalizeWebHistory(view: SessionView): SessionView {
+  return {
+    ...view,
+    runs: view.runs.map((run) => ({
+      ...run,
+      orderedBlocks: run.orderedBlocks.map((block) =>
+        block.type === "tool" && block.web !== undefined
+          ? { ...block, web: normalizeWebToolDetails(block.web, block.name) }
+          : block,
+      ),
+    })),
+  };
+}
 
 export function mergeHistory(older: SessionView, newer: SessionView): SessionView {
   const runs = [...older.runs];
@@ -344,5 +387,5 @@ export function mergeHistory(older: SessionView, newer: SessionView): SessionVie
       };
     }
   }
-  return { ...newer, runs };
+  return normalizeWebHistory({ ...newer, runs });
 }

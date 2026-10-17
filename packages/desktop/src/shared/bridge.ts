@@ -138,6 +138,7 @@ export interface InterfacePreferences {
   tasksCollapsed: boolean;
 }
 export interface PluginCapabilities {
+  webSearch: boolean;
   communicationStyle: boolean;
   subagents: boolean;
   askUserQuestion: boolean;
@@ -147,7 +148,13 @@ export interface PluginCapabilities {
   proactiveExecution: boolean;
 }
 export type CapabilityName = keyof PluginCapabilities;
+export interface WebSearchSettingsInput {
+  provider: "deepseek";
+  /** Omit to retain the saved key; an empty string removes it. */
+  apiKey?: string;
+}
 export interface PublicSettings {
+  webSearch: { provider: "deepseek"; hasApiKey: boolean; credentialsPersisted: boolean };
   shortcuts: ShortcutSettings;
   capabilities: PluginCapabilities;
   providers: ProviderRecord[];
@@ -430,6 +437,7 @@ export interface DesktopBridge {
     apiKey?: string;
   }): Promise<Result<ModelDiscoveryResult>>;
   saveProvider(input: ProviderInput): Promise<Result<PublicSettings>>;
+  saveWebSearch(input: WebSearchSettingsInput): Promise<Result<PublicSettings>>;
   reorderProviders(ids: string[]): Promise<Result<PublicSettings>>;
   deleteProvider(id: string): Promise<Result<PublicSettings>>;
   getProviderCredentials(id: string): Promise<Result<{ apiKey: string }>>;
@@ -540,6 +548,7 @@ export const methods = [
   "setShortcutCapture",
   "discoverModels",
   "saveProvider",
+  "saveWebSearch",
   "reorderProviders",
   "deleteProvider",
   "getProviderCredentials",

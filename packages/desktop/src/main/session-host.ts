@@ -88,6 +88,7 @@ import { retryStorageCleanup } from "./storage-cleanup.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
 import { UserQuestions } from "./user-questions.ts";
+import { WebTools } from "./web-tools.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
 
@@ -126,6 +127,7 @@ export class SessionHost {
   }
   readonly subagents: SubagentPlugin;
   readonly backgroundTasks: BackgroundTasks;
+  private readonly webTools: WebTools;
   readonly questions = new UserQuestions((id, question) => {
     const record = this.records.get(id);
     if (record)
@@ -187,6 +189,7 @@ export class SessionHost {
     commandShellRunner: CustomCommandShellRunner = runCustomCommandShell,
   ) {
     this.commandShellRunner = commandShellRunner;
+    this.webTools = new WebTools({ getApiKey: () => settings.getWebSearchApiKey(), requestFetch });
     const commandsDirectory = join(homeDir, ".zpi", "commands");
     this.commandImports = new CommandImportService({
       homeDirectory: homeDir,
@@ -538,6 +541,8 @@ export class SessionHost {
     validateTemplate(config.template);
     if (config.communicationStyle !== undefined && typeof config.communicationStyle !== "boolean")
       throw new Error("Invalid communication style capability");
+    if (config.webSearch !== undefined && typeof config.webSearch !== "boolean")
+      throw new Error("Invalid web search capability");
     if (config.subagents !== undefined && typeof config.subagents !== "boolean")
       throw new Error("Invalid subagent capability");
     if (config.fileContextReuse !== undefined && typeof config.fileContextReuse !== "boolean")
@@ -556,6 +561,7 @@ export class SessionHost {
       ...structuredClone(config),
       communicationStyle: config.communicationStyle ?? false,
       subagents: config.subagents ?? false,
+      webSearch: config.webSearch ?? false,
       fileContextReuse: config.fileContextReuse ?? false,
       proactiveExecution: config.proactiveExecution ?? false,
     };
@@ -1676,6 +1682,7 @@ export class SessionHost {
         ),
         ...(capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
         ...this.taskTools("preview", capabilities.subagents),
+        ...(capabilities.webSearch ? this.webTools.tools() : []),
       ],
     };
     return {
@@ -1695,6 +1702,7 @@ export class SessionHost {
       ),
       ...(this.settings.get().capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
       ...this.taskTools("preview", this.settings.get().capabilities.subagents),
+      ...(this.settings.get().capabilities.webSearch ? this.webTools.tools() : []),
     ].map((t) => ({
       name: t.name,
       description: t.description,
@@ -2464,6 +2472,7 @@ export class SessionHost {
               customTools: [
                 ...(configuration.askUserQuestion ? [this.sessionQuestionTool(id)] : []),
                 ...this.taskTools(id, configuration.subagents),
+                ...(configuration.webSearch ? this.webTools.tools() : []),
                 ...(configuration.subagentProfile ? this.subagents.childTools(id) : []),
               ],
               ...(configuration.subagentProfile
@@ -2478,6 +2487,7 @@ export class SessionHost {
                         "TaskOutput",
                         "TaskStop",
                         ...(configuration.askUserQuestion ? ["AskUserQuestion"] : []),
+                        ...(configuration.webSearch ? ["web_search", "web_fetch"] : []),
                         "RespondToCoordinator",
                       ];
                       const allowed =

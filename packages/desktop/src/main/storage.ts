@@ -35,6 +35,7 @@ import type {
   ProviderRecord,
   PublicSettings,
   SettingsInput,
+  WebSearchSettingsInput,
 } from "../shared/bridge.ts";
 import {
   defaultCapabilities,
@@ -122,6 +123,7 @@ export class SettingsStore {
     interface: structuredClone(defaultPreferences),
   };
   private credentials: Record<string, Credentials> = {};
+  private webApiKey = "";
   private refreshes = new Map<string, Promise<string>>();
   private persisted = false;
   private unreadCredentials = false;
@@ -142,7 +144,10 @@ export class SettingsStore {
         raw.shortcuts = withTaskMenuShortcut(raw.shortcuts, process.platform);
         if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)
           raw.interface.showModelPerformance = defaultPreferences.showModelPerformance;
+        const migrateWebSearch = isJsonObject(raw.capabilities) && raw.capabilities.webSearch === undefined;
+        if (migrateWebSearch) raw.capabilities.webSearch = false;
         this.validateData(raw);
+        if (migrateWebSearch) this.state.setSetting("app", raw);
         this.data = raw;
       }
       if (existsSync(creds)) {
@@ -150,7 +155,8 @@ export class SettingsStore {
         else {
           const raw: unknown = JSON.parse(encryption.decryptString(readFileSync(creds)));
           if (!isJsonObject(raw)) throw new Error("storage: Invalid credential record");
-          const values = raw.version === 2 || raw.version === 3 ? raw.providers : { custom: raw };
+          const values =
+            raw.version === 2 || raw.version === 3 || raw.version === 4 ? raw.providers : { custom: raw };
           if (!isJsonObject(values)) throw new Error("storage: Invalid credential providers");
           for (const [id, value] of Object.entries(values)) {
             if (!isJsonObject(value) || typeof value.baseUrl !== "string" || typeof value.apiKey !== "string")
@@ -161,6 +167,11 @@ export class SettingsStore {
                 apiKey: value.apiKey,
                 ...(isChatGPTCredential(value.chatgpt) ? { chatgpt: value.chatgpt } : {}),
               };
+          }
+          if (raw.version === 4 && raw.webSearch !== undefined) {
+            if (!isJsonObject(raw.webSearch) || typeof raw.webSearch.apiKey !== "string")
+              throw new Error("storage: Invalid web search credentials");
+            this.webApiKey = raw.webSearch.apiKey;
           }
           this.persisted = true;
         }
@@ -178,6 +189,11 @@ export class SettingsStore {
   }
   get(): PublicSettings {
     return {
+      webSearch: {
+        provider: "deepseek",
+        hasApiKey: Boolean(this.webApiKey),
+        credentialsPersisted: this.persisted,
+      },
       shortcuts: structuredClone(this.data.shortcuts),
       capabilities: structuredClone(this.data.capabilities),
       providers: this.data.providers.map((p) => ({
@@ -199,6 +215,27 @@ export class SettingsStore {
       credentialsPersisted: this.persisted,
       disabledSkillPaths: [...this.data.disabledSkillPaths],
     };
+  }
+  // Main-process only. Web tools never use a chat provider's credentials or environment keys.
+  getWebSearchApiKey(): string {
+    if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
+    return this.webApiKey;
+  }
+  saveWebSearch(input: WebSearchSettingsInput): PublicSettings {
+    if (!isJsonObject(input)) throw new Error("invalid_input: 联网搜索配置必须为对象");
+    assertSupportedOptions(input, ["provider", "apiKey"], "web search settings");
+    if (input.provider !== "deepseek") throw new Error("invalid_input: 不支持的联网搜索提供商");
+    if (
+      input.apiKey !== undefined &&
+      (typeof input.apiKey !== "string" || input.apiKey.length > 8192 || /[\r\n\0]/.test(input.apiKey))
+    )
+      throw new Error("invalid_input: 联网搜索 API key 无效");
+    this.persist(
+      this.data,
+      this.credentials,
+      input.apiKey === undefined ? this.webApiKey : input.apiKey.trim(),
+    );
+    return this.get();
   }
   getModel(selection: ModelSelection): Model | undefined {
     const p = this.data.providers.find((p) => p.id === selection.provider),
@@ -437,23 +474,34 @@ export class SettingsStore {
     this.data = data;
     return this.get();
   }
-  private persist(data: SettingsData, credentials: Record<string, Credentials>): void {
+  private persist(
+    data: SettingsData,
+    credentials: Record<string, Credentials>,
+    webApiKey = this.webApiKey,
+  ): void {
     this.validateData(data);
     if (this.unreadCredentials) throw new Error("configuration: 保存的凭据尚未解锁");
     const encrypted = this.encryption.isEncryptionAvailable();
-    this.writeConfiguration(data, encrypted ? credentials : undefined);
+    this.writeConfiguration(data, encrypted ? credentials : undefined, webApiKey);
     if (!encrypted) rmSync(join(this.dir, "credentials.enc"), { force: true });
     this.data = data;
     this.credentials = credentials;
+    this.webApiKey = webApiKey;
     this.persisted = encrypted;
   }
-  private writeConfiguration(data: SettingsData, credentials?: Record<string, Credentials>): void {
+  private writeConfiguration(
+    data: SettingsData,
+    credentials?: Record<string, Credentials>,
+    webApiKey = this.webApiKey,
+  ): void {
     if (!credentials) {
       this.state.setSetting("app", data);
       return;
     }
     // Preserve the encrypted-file contract; restore its bytes if the database commit fails.
-    const encrypted = this.encryption.encryptString(JSON.stringify({ version: 3, providers: credentials }));
+    const encrypted = this.encryption.encryptString(
+      JSON.stringify({ version: 4, providers: credentials, webSearch: { apiKey: webApiKey } }),
+    );
     mkdirSync(this.dir, { recursive: true });
     const creds = join(this.dir, "credentials.enc");
     const token = randomUUID(),

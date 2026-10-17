@@ -15,6 +15,7 @@ import { ToolLayout } from "./ToolLayout.tsx";
 import { ToolOutput } from "./ToolOutput.tsx";
 import { toolInputPreview } from "./tool-input-preview.ts";
 import { executionCommand, type ToolView, toolCommand, toolFile, toolLabel } from "./tool-presentation.ts";
+import { WebToolBlock } from "./WebToolBlock.tsx";
 
 export interface ToolBlockProps {
   block: ToolView;
@@ -154,6 +155,7 @@ export function ToolFilePreview({
 }
 
 export function ToolBlock(props: ToolBlockProps) {
+  if (["web_search", "web_fetch"].includes(props.block.name)) return <WebToolBlock {...props} />;
   if (["SendMessage", "RespondToCoordinator"].includes(props.block.name))
     return <SubagentMessageToolBlock {...props} />;
   if (["TaskOutput", "TaskStop"].includes(props.block.name)) return <SubagentTaskToolBlock {...props} />;

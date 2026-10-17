@@ -174,6 +174,7 @@ const bridge: DesktopBridge = {
   cancelChatGPTLogin: (loginId) => call("cancelChatGPTLogin", loginId),
   disconnectChatGPT: (providerId) => call("disconnectChatGPT", providerId),
   saveProvider: (input) => call("saveProvider", input),
+  saveWebSearch: (input) => call("saveWebSearch", input),
   reorderProviders: (ids) => call("reorderProviders", ids),
   deleteProvider: (id) => call("deleteProvider", id),
   getProviderCredentials: (id) => call("getProviderCredentials", id),
