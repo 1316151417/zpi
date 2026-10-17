@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DiffView, type FindRequest, type FindState, ToolFilePreview, useSelectionStableValue } from "zpi-ui";
+import {
+  DiffView,
+  type FindRequest,
+  type FindState,
+  ToolFilePreview,
+  toolFile,
+  useSelectionStableValue,
+} from "zpi-ui";
 import type { DiffItem } from "../shared/bridge.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, paneTask } from "./pane-store.ts";
 import { unwrap, useStore } from "./store.ts";
 import { userErrorMessage } from "./user-error.ts";
+
+const emptyEntries: DiffItem[] = [];
 export function ChangesPane({
   sessionId,
   runId,
@@ -31,43 +40,70 @@ export function ChangesPane({
   const root = useRef<HTMLDivElement>(null);
   const operation = useSelectionStableValue(
     incomingOperation,
-    `${sessionId}:${runId}:${toolCallId}:${path}`,
+    JSON.stringify([sessionId, runId, toolCallId ?? null, path ?? null]),
     root,
   );
   const pending = operation?.type === "tool" && ["preparing", "running"].includes(operation.status);
   const previewOperation = operation?.type === "tool" && !operation.fileChange;
-  const [entries, setEntries] = useState<DiffItem[]>([]),
-    [error, setError] = useState(""),
-    [revision, setRevision] = useState(0),
-    [loading, setLoading] = useState(false);
+  const previewPath = path || (operation?.type === "tool" ? toolFile(operation)?.path : undefined);
+  const scope = JSON.stringify([sessionId, runId, toolCallId ?? null, previewPath ?? null]);
+  const [result, setResult] = useState<{
+    scope: string;
+    entries: DiffItem[];
+    error: string;
+    loading: boolean;
+  }>();
+  const [revision, setRevision] = useState(0);
+  // 来源切换的首帧也不能露出旧文件；同来源刷新则保留已展示的内容。
+  const entries = result?.scope === scope ? result.entries : emptyEntries;
+  const error = result?.scope === scope ? result.error : "";
+  const loading = result?.scope === scope ? result.loading : visible && !previewOperation;
   useEffect(() => {
     if (!visible || previewOperation) return;
     let active = true;
-    setLoading(true);
-    setError("");
-    const changes =
-      toolCallId && path
+    setResult((current) => ({
+      scope,
+      entries: current?.scope === scope ? current.entries : emptyEntries,
+      error: "",
+      loading: true,
+    }));
+    const changes = toolCallId
+      ? previewPath
         ? window.zpi
             .readPatch(sessionId, runId, `operation:${toolCallId}`)
             .then(unwrap)
             .then((patch): DiffItem[] => [
-              { id: `operation:${toolCallId}`, path, status: "modified", area: "工具变更", patch },
+              {
+                id: `operation:${toolCallId}`,
+                path: previewPath,
+                status: "modified",
+                area: "工具变更",
+                patch,
+              },
             ])
-        : window.zpi.getChanges(sessionId, runId).then(unwrap);
+        : Promise.reject(new Error("无法确定此工具变更的文件，请从工具卡片重新打开。"))
+      : window.zpi
+          .getChanges(sessionId, runId)
+          .then(unwrap)
+          // initialPath 只是默认选择；先限定数据，才能同时隔离文件导航和搜索。
+          .then((value) => (previewPath ? value.filter((entry) => entry.path === previewPath) : value));
     void changes
       .then((value) => {
-        if (active) setEntries(value);
+        if (active) setResult({ scope, entries: value, error: "", loading: false });
       })
       .catch((error) => {
-        if (active) setError(userErrorMessage(error));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        if (active)
+          setResult((current) => ({
+            scope,
+            entries: current?.scope === scope ? current.entries : emptyEntries,
+            error: userErrorMessage(error),
+            loading: false,
+          }));
       });
     return () => {
       active = false;
     };
-  }, [sessionId, runId, revision, visible, toolCallId, path, previewOperation]);
+  }, [sessionId, runId, revision, visible, toolCallId, previewPath, previewOperation, scope]);
   useEffect(() => {
     if (!visible) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -116,11 +152,12 @@ export function ChangesPane({
         <p className="pane-empty">加载变更…</p>
       ) : (
         <DiffView
+          key={scope}
           entries={entries}
           renderHeader={(selectedPath, viewSource) => (
             <PreviewHeader sessionId={sessionId} path={selectedPath} onViewSource={viewSource} />
           )}
-          initialPath={path}
+          initialPath={previewPath}
           loadPatch={load}
           openFile={open}
           findRequest={visible ? findRequest : undefined}

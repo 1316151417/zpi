@@ -1860,6 +1860,14 @@ small {
   right: 2px;
   opacity: 0;
 }
+.image-chip > .chip-remove {
+  /* Keep the 12px icon inside the 14px grid instead of overflowing a padded 10px cell. */
+  padding: 0;
+  line-height: 0;
+}
+.image-chip > :where(.chip-remove) > svg {
+  display: block;
+}
 .image-chip:hover .chip-remove,
 .file-attachment:hover .chip-remove,
 .chip-remove:focus-visible {

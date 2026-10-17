@@ -103,7 +103,7 @@ it("keeps the selected preview mounted across tool completion, then shows the fi
   harness.selected = false;
   const released = render();
   expect(preview(released)).toBeUndefined();
-  expect(released.some((node) => node.type === DiffView)).toBe(true);
+  expect(released.some((node) => node.props.children === "加载变更…")).toBe(true);
 });
 
 it("retains the selected prefix through cancellation and shows the latest result on release", () => {

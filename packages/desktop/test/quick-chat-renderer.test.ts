@@ -5,7 +5,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { type ImageAttachment, imageLimits } from "zpi-coding-agent/input";
-import { Conversation } from "zpi-ui";
+import { ChatComposer, ComposerDraftStore, Conversation } from "zpi-ui";
 import { emptySession } from "zpi-ui/projection";
 import type { QuickChatHost } from "../src/main/quick-chat-host.ts";
 import { QuickChatWindow } from "../src/main/quick-chat-window.ts";
@@ -1844,6 +1844,91 @@ test("pastes an image, shows its thumbnail and sends image-only input using an a
   expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 44);
   expect(bridge.removeAttachment).not.toHaveBeenCalled();
 });
+
+test.each(["task", "compact", "expanded"] as const)(
+  "centers the image remove icon in the %s composer without padding overflow",
+  async (mode) => {
+    const style = quickChatStyles();
+    const removeAttachment = vi.fn(async () => {});
+    try {
+      if (mode === "task") {
+        const drafts = new ComposerDraftStore();
+        drafts.set("task-session", {
+          text: "",
+          fileReferences: [],
+          attachments: [imageMetadata()],
+          pending: 0,
+        });
+        await act(async () =>
+          root.render(
+            createElement(ChatComposer, {
+              sessionId: "task-session",
+              busy: false,
+              onSubmit: async () => {},
+              onStop() {},
+              draftStorage: drafts,
+              context: {
+                searchFiles: async () => [],
+                pickAttachments: async () => [],
+                importAttachment: async () => imageMetadata(),
+                readAttachment: async () => "data:image/png;base64,aW1hZ2U=",
+                removeAttachment,
+              },
+            }),
+          ),
+        );
+      } else {
+        await mount();
+        if (mode === "expanded") await push({ expanded: true });
+        await paste([clipboardImage()]);
+      }
+      const remove = button("移除 clipboard.png");
+      const icon = remove.querySelector("svg");
+      expect(icon).not.toBeNull();
+      // Real component DOM and computed styles verify the sizing contract;
+      // happy-dom has no layout engine, so this is not a pixel-position assertion.
+      for (const fontSize of [12, 20]) {
+        container.style.fontSize = `${fontSize}px`;
+        container.style.lineHeight = "32px";
+        const css = getComputedStyle(remove);
+        expect(css.display).toBe("grid");
+        expect(css.placeItems).toBe("center");
+        expect(css.boxSizing).toBe("border-box");
+        expect(css.width).toBe("14px");
+        expect(css.height).toBe("14px");
+        expect(css.padding).toBe("0px");
+        expect(Number.parseFloat(css.lineHeight)).toBe(0);
+        expect(css.top).toBe("2px");
+        expect(css.right).toBe("2px");
+        expect(css.borderRadius).toBe("50%");
+        expect(css.opacity).toBe(mode === "task" ? "0" : "1");
+        expect(icon?.getAttribute("width")).toBe("12");
+        expect(icon?.getAttribute("height")).toBe("12");
+        expect(getComputedStyle(icon as SVGSVGElement).display).toBe("block");
+        expect(getComputedStyle(icon as SVGSVGElement).flexShrink).toBe("0");
+      }
+      expect(remove.disabled).toBe(false);
+      if (mode === "task") {
+        await click(remove);
+        expect(removeAttachment).toHaveBeenCalledExactlyOnceWith("task-session", "image-1");
+      } else {
+        const removing = deferred<Result<void>>();
+        vi.mocked(bridge.removeAttachment).mockReturnValueOnce(removing.promise);
+        await click(remove);
+        expect(remove.disabled).toBe(true);
+        await click(remove);
+        expect(bridge.removeAttachment).toHaveBeenCalledExactlyOnceWith(
+          "quick-session",
+          "image-clipboard.png",
+        );
+        await act(async () => removing.resolve(ok()));
+      }
+      expect(container.querySelector(".image-chip")).toBeNull();
+    } finally {
+      style.remove();
+    }
+  },
+);
 
 test.each([
   { expanded: false, count: 1 },

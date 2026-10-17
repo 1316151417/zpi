@@ -353,7 +353,21 @@ export async function openSubagent(task: SubagentTask) {
   }
 }
 export function openChanges(sessionId: string, runId: string | null, path?: string, toolCallId?: string) {
-  const id = `changes:${sessionId}:${runId ?? "task"}${toolCallId ? `:operation:${toolCallId}` : ""}`;
+  path ||= undefined;
+  toolCallId ||= undefined;
+  // 文件名不能只用于标题：同轮的不同文件必须独立，旧内存页签按来源字段继续复用。
+  const existing = usePane
+    .getState()
+    .tabs.find(
+      (tab) =>
+        tab.type === "changes" &&
+        tab.sessionId === sessionId &&
+        tab.runId === runId &&
+        (tab.path || undefined) === path &&
+        (tab.toolCallId || undefined) === toolCallId,
+    );
+  const id =
+    existing?.id ?? `changes:${JSON.stringify([sessionId, runId, toolCallId ?? null, path ?? null])}`;
   showTab({
     id,
     type: "changes",
