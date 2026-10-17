@@ -50,6 +50,7 @@ import {
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
+  withQuickChatShortcut,
   withTaskMenuShortcut,
 } from "../shared/shortcuts.ts";
 import { shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
@@ -145,7 +146,10 @@ export class SettingsStore {
       let migrated = false;
       if (raw !== undefined) {
         if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
-        raw.shortcuts = withTaskMenuShortcut(raw.shortcuts, process.platform);
+        raw.shortcuts = withQuickChatShortcut(
+          withTaskMenuShortcut(raw.shortcuts, process.platform),
+          process.platform,
+        );
         if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)
           raw.interface.showModelPerformance = defaultPreferences.showModelPerformance;
         const migrateWebSearch = isJsonObject(raw.capabilities) && raw.capabilities.webSearch === undefined;

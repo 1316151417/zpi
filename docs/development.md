@@ -63,6 +63,16 @@ Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP �
 
 单元与集成测试全部使用注入的 mock transport 和隔离 HOME，不发送付费请求。联网设置交互使用 ReactDOM + Happy DOM 运行真实组件、DOM 事件、effects、Radix 菜单和弹层，并保留隔离 HOME；它不启动浏览器，也不提供布局/像素验收。Happy DOM 不合成浏览器 Enter/Space 的默认点击，键盘用例明确派发按键后补原生 click。真实桌面端验收仍需使用本指南的共享隐藏 Electron 测试启动器，不能把 DOM、SSR 或静态样式检查当作 GUI 验收。
 
+### 快速对话的隔离边界
+
+快速浮窗使用独立 `quick-chat` preload、`zpi:quick-chat` IPC 与非持久 Electron partition。主进程同时验证 sender 和 mainFrame；主窗口的 `zpi:call` 仍只接受主窗口。浮窗页面仅加载自身入口，不初始化主任务 store、资源、输入历史或阅读位置持久化。远程图片和非 renderer 目录的 file URL 均被窗口网络层阻止；用户点击的 HTTP(S) 链接可显式交给系统浏览器。
+
+`QuickChatHost` 与 `SessionHost` 分离，使用 `SessionManager.inMemory`、`SettingsManager.inMemory` 和 `StaticResourceLoader`。通过 `session.prompt()` 直接发送文字，避免 `/commands`、文件提及和 Shell 展开。工具选择在执行层限定为专用只读 `read/list/search`，以及当前有效的现有联网工具；即使模型请求其他工具，也不会执行。新轮次重新检查联网设置，实际联网请求也检查服务与能力状态。没有创建任务、会话日志、项目索引或自动转正式任务的路径。
+
+文件工具仅在显式调用后解析工作基点。限制根目录、敏感名称、符号/硬链接与普通 UTF-8 文件；单文件 256 KiB、一次搜索读取合计 2 MiB、输出 24000 字符、最多 2000 条目/每目录256项/6层/3秒。POSIX 使用非阻塞且不跟随最终符号链接的打开方式，打开前后校验文件身份；这不是操作系统级沙箱，不能保证抵御同用户恶意进程的所有跨平台文件系统竞态。正式任务的文件工具行为保持不变。
+
+快速对话测试覆盖 fake provider 的禁止工具调用、内存会话生命周期、无任务落盘、快捷键冲突回滚与部分恢复、浮窗 IPC/导航边界，以及 Happy DOM 的真实输入和模型菜单。Happy DOM 与窗口模拟测试不证明 macOS 全局热键、跨应用焦点、浮窗几何或真实模型服务可用；这些仍需在受支持的原生桌面环境验收。
+
 ### 文件工具的资源与并发边界
 
 本地文本 `read` 以流式扫描计算行数和内容哈希，仅保留当前输出范围的有界内容；超长单行也不整行缓存。为了精确的续读提示和内容复用判断，仍会扫描全文件，分页不等于只读取请求范围的磁盘字节。自定义 `ReadOperations` 保持原有接口，由实现方负责读取资源限制。

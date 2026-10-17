@@ -8,6 +8,7 @@ import {
   shortcutForEvent,
   shortcutFromEvent,
   validateShortcuts,
+  withQuickChatShortcut,
 } from "../src/shared/shortcuts.ts";
 
 describe("shortcut contract", () => {
@@ -22,6 +23,7 @@ describe("shortcut contract", () => {
       );
       const primary = platform === "darwin" ? "Command" : "Control";
       expect(settings.bindings).toMatchObject({
+        "quick-chat": "Alt+N",
         "toggle-sidebar": `${primary}+[`,
         "toggle-pane": `${primary}+]`,
         search: `${primary}+K`,
@@ -157,5 +159,47 @@ describe("shortcut contract", () => {
     expect(formatShortcut("Control+Command+E", "darwin")).toBe("⌃⌘E");
     expect(formatShortcut("CmdOrCtrl+Alt+E", "linux")).toBe("Ctrl+Alt+E");
     expect(formatShortcut(null, "darwin")).toBe("未设置");
+  });
+});
+
+describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platform) => {
+  it("allows Alt plus a letter only for quick chat and preserves other reserved keys", () => {
+    const settings = defaultShortcuts(platform);
+    for (const binding of ["Alt+A", "Option+N", "Alt+Z"]) {
+      settings.bindings["quick-chat"] = binding;
+      expect(validateShortcuts(settings, platform)).toBeUndefined();
+      settings.bindings["toggle-window"] = binding;
+      expect(validateShortcuts(settings, platform)).toContain("Ctrl 或 Command");
+      settings.bindings["toggle-window"] = defaultShortcuts(platform).bindings["toggle-window"];
+    }
+    for (const binding of ["Alt+1", "Alt+Shift+N", "Alt+Tab", "Alt+F4", "Alt+Space", "N"]) {
+      settings.bindings["quick-chat"] = binding;
+      expect(validateShortcuts(settings, platform)).toBeTypeOf("string");
+    }
+  });
+
+  it("records the physical Option+N dead key without changing ordinary IME or dead-key handling", () => {
+    const event = { key: "Dead", code: "KeyN", altKey: true };
+    expect(shortcutFromEvent(event, platform)).toBeNull();
+    expect(shortcutFromEvent(event, platform, true)).toBe("Alt+N");
+    expect(shortcutForEvent(event, platform, defaultShortcuts(platform))).toBe("quick-chat");
+    for (const extra of [{ isComposing: true }, { repeat: true }, { altKey: false }])
+      expect(shortcutFromEvent({ ...event, ...extra }, platform, true)).toBeNull();
+    expect(shortcutFromEvent({ ...event, key: "Process" }, platform, true)).toBeNull();
+  });
+
+  it("adds the default without changing an explicit custom or cleared quick-chat binding", () => {
+    for (const binding of [null, "Alt+B"]) {
+      const settings = defaultShortcuts(platform);
+      settings.bindings["quick-chat"] = binding;
+      expect(withQuickChatShortcut(settings, platform)).toBe(settings);
+    }
+    const settings = defaultShortcuts(platform);
+    Reflect.deleteProperty(settings.bindings, "quick-chat");
+    const snapshot = structuredClone(settings);
+    expect(withQuickChatShortcut(settings, platform)).toEqual(defaultShortcuts(platform));
+    expect(settings).toEqual(snapshot);
+    settings.bindings["new-task"] = "Option+N";
+    expect(withQuickChatShortcut(settings, platform).bindings["quick-chat"]).toBeNull();
   });
 });

@@ -1,9 +1,11 @@
 import type { PublicSettings } from "../shared/bridge.ts";
 import {
+  type GlobalShortcutCommand,
   normalizeShortcuts,
   type ShortcutCommand,
   type ShortcutKeyEvent,
   type ShortcutSettings,
+  shortcutCommands,
 } from "../shared/shortcuts.ts";
 import { workspaceShortcutForEvent } from "../shared/workspace-shortcuts.ts";
 
@@ -11,23 +13,22 @@ export interface GlobalShortcutRegistry {
   register(accelerator: string, callback: () => void): boolean;
   unregister(accelerator: string): void;
 }
-/** Owns only the global window shortcut, with registration and persistence committed together. */
+/** Owns the global shortcuts, with registration and persistence committed together. */
 export class ShortcutController {
-  private binding: string | null = null;
-  private registered: string | null = null;
+  private bindings = new Map<string, GlobalShortcutCommand>();
+  private registered = new Map<string, number>();
   private registrationVersion = 0;
-  private activeVersion = 0;
   private capturing = false;
   private disposed = false;
   private registry: GlobalShortcutRegistry;
   private platform: string;
-  private execute: () => void;
+  private execute: (command: GlobalShortcutCommand) => void;
   private testMode: boolean;
   private ignoreMenuShortcuts: (ignore: boolean) => void;
   constructor(
     registry: GlobalShortcutRegistry,
     platform: string,
-    execute: () => void,
+    execute: (command: GlobalShortcutCommand) => void,
     testMode = false,
     ignoreMenuShortcuts: (ignore: boolean) => void = () => {},
   ) {
@@ -44,17 +45,9 @@ export class ShortcutController {
     if (typeof capturing !== "boolean") throw new Error("invalid_input: 快捷键录制状态无效");
     if (this.disposed) return;
     try {
-      if (capturing) {
-        this.capturing = true;
-        if (this.registered && !this.testMode) this.registry.unregister(this.registered);
-        this.registered = null;
-      } else {
-        this.capturing = false;
-        if (this.binding && !this.registered) {
-          this.activeVersion = this.register(this.binding);
-          this.registered = this.binding;
-        }
-      }
+      this.capturing = capturing;
+      if (capturing) this.unregisterAll();
+      else this.restoreAvailable();
     } finally {
       // Menu accelerators must not consume a recording, even when global restoration fails.
       this.ignoreMenuShortcuts(this.capturing);
@@ -66,13 +59,9 @@ export class ShortcutController {
     let registered = false;
     try {
       registered = this.registry.register(binding, () => {
-        if (
-          !this.disposed &&
-          !this.capturing &&
-          this.registered === binding &&
-          this.activeVersion === version
-        )
-          this.execute();
+        const command = this.bindings.get(binding);
+        if (command && !this.disposed && !this.capturing && this.registered.get(binding) === version)
+          this.execute(command);
       });
     } catch {
       // Electron may reject a platform-specific accelerator before registration.
@@ -81,8 +70,69 @@ export class ShortcutController {
       throw new Error("configuration: 全局快捷键注册失败，可能已被其他应用或系统占用，请更换组合");
     return version;
   }
+  private unregister(bindings: Iterable<string>): void {
+    if (this.testMode) return;
+    let failure: unknown;
+    for (const binding of bindings) {
+      try {
+        this.registry.unregister(binding);
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    if (failure) throw failure;
+  }
+  private unregisterAll(): void {
+    const bindings = [...this.registered.keys()];
+    this.registered.clear();
+    this.unregister(bindings);
+  }
+  private registerMissing(bindings: ReadonlyMap<string, GlobalShortcutCommand>): Map<string, number> {
+    const additions = new Map<string, number>();
+    try {
+      for (const binding of bindings.keys()) {
+        if (!this.registered.has(binding)) additions.set(binding, this.register(binding));
+      }
+    } catch (error) {
+      this.unregister(additions.keys());
+      throw error;
+    }
+    return additions;
+  }
+  private restoreAvailable(): void {
+    let failure: unknown;
+    // A newly occupied shortcut must not disable another saved global action on startup or capture end.
+    for (const binding of this.bindings.keys()) {
+      if (this.registered.has(binding)) continue;
+      try {
+        this.registered.set(binding, this.register(binding));
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    if (failure) throw failure;
+  }
+  private globalBindings(settings: ShortcutSettings): Map<string, GlobalShortcutCommand> {
+    const bindings = new Map<string, GlobalShortcutCommand>();
+    if (settings.enabled) {
+      for (const { id, scope } of shortcutCommands) {
+        const binding = settings.bindings[id];
+        if (scope === "global" && binding !== null) bindings.set(binding, id);
+      }
+    }
+    return bindings;
+  }
+  private removeUnused(): void {
+    const removed = [...this.registered.keys()].filter((binding) => !this.bindings.has(binding));
+    for (const binding of removed) this.registered.delete(binding);
+    this.unregister(removed);
+  }
   initialize(settings: ShortcutSettings): void {
-    this.update(settings, () => undefined);
+    if (this.disposed) throw new Error("busy: 应用正在退出");
+    if (this.capturing) throw new Error("busy: 请先结束快捷键录制");
+    this.bindings = this.globalBindings(normalizeShortcuts(settings, this.platform));
+    this.removeUnused();
+    this.restoreAvailable();
   }
   update(settings: ShortcutSettings, persist: (settings: ShortcutSettings) => PublicSettings): PublicSettings;
   update(settings: ShortcutSettings, persist: (settings: ShortcutSettings) => undefined): undefined;
@@ -93,32 +143,29 @@ export class ShortcutController {
     if (this.disposed) throw new Error("busy: 应用正在退出");
     if (this.capturing) throw new Error("busy: 请先结束快捷键录制");
     const normalized = normalizeShortcuts(settings, this.platform);
-    const next = normalized.enabled ? normalized.bindings["toggle-window"] : null;
-    const previous = this.registered;
-    const changed = next !== previous;
-    const nextVersion = changed && next ? this.register(next) : this.activeVersion;
+    const next = this.globalBindings(normalized);
+    // Reuse accelerators across commands, so swapping bindings needs no unsafe unregister/register gap.
+    const additions = this.registerMissing(next);
     let result: PublicSettings | undefined;
     try {
       result = persist(normalized);
     } catch (error) {
-      if (changed && next && !this.testMode) this.registry.unregister(next);
+      this.unregister(additions.keys());
       throw error;
     }
-    this.binding = next;
-    this.registered = next;
-    this.activeVersion = nextVersion;
-    if (changed && previous && !this.testMode) this.registry.unregister(previous);
+    this.bindings = next;
+    for (const [binding, version] of additions) this.registered.set(binding, version);
+    this.removeUnused();
     return result;
   }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.capturing = false;
+    this.bindings.clear();
     try {
-      if (this.registered && !this.testMode) this.registry.unregister(this.registered);
+      this.unregisterAll();
     } finally {
-      this.registered = null;
-      this.binding = null;
       this.ignoreMenuShortcuts(false);
     }
   }

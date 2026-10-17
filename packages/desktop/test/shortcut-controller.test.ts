@@ -7,10 +7,11 @@ import {
 } from "../src/main/shortcut-controller.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 
-function fixture(testMode = false) {
+function fixture(testMode = false, quickChat = false) {
   const callbacks = new Map<string, () => void>();
   const registry = {
     register: vi.fn((key: string, callback: () => void) => {
+      if (callbacks.has(key)) return false;
       callbacks.set(key, callback);
       return true;
     }),
@@ -22,6 +23,7 @@ function fixture(testMode = false) {
   const ignoreMenuShortcuts = vi.fn();
   const controller = new ShortcutController(registry, "darwin", execute, testMode, ignoreMenuShortcuts);
   const settings = defaultShortcuts("darwin");
+  if (!quickChat) settings.bindings["quick-chat"] = null;
   controller.initialize(settings);
   return {
     callbacks,
@@ -165,6 +167,154 @@ describe("global shortcut transaction", () => {
     controller.dispose();
     expect(registry.register).not.toHaveBeenCalled();
     expect(registry.unregister).not.toHaveBeenCalled();
+  });
+});
+describe("multiple global shortcut transactions", () => {
+  it("dispatches the two global actions independently and respects clearing and master disable", () => {
+    const { controller, callbacks, settings, execute, original } = fixture(false, true);
+    callbacks.get(original)?.();
+    callbacks.get("Alt+N")?.();
+    expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
+    settings.bindings["quick-chat"] = null;
+    controller.update(settings, () => undefined);
+    expect([...callbacks.keys()]).toEqual([original]);
+    settings.enabled = false;
+    controller.update(settings, () => undefined);
+    expect(callbacks.size).toBe(0);
+  });
+
+  it.each(["registration", "persistence"])("rolls back both replacements on %s failure", (failure) => {
+    const { controller, callbacks, registry, settings, execute, original } = fixture(false, true);
+    settings.bindings["toggle-window"] = "Control+Command+T";
+    settings.bindings["quick-chat"] = "Control+Command+B";
+    const register = registry.register.getMockImplementation();
+    registry.register.mockImplementation((key, callback) =>
+      failure === "registration" && key === "Control+Command+B" ? false : register?.(key, callback) === true,
+    );
+    const persist = vi.fn(() => {
+      throw new Error("disk full");
+    });
+    expect(() => controller.update(settings, persist)).toThrow(
+      failure === "registration" ? "全局快捷键注册失败" : "disk full",
+    );
+    expect(persist).toHaveBeenCalledTimes(failure === "registration" ? 0 : 1);
+    expect([...callbacks.keys()]).toEqual([original, "Alt+N"]);
+    callbacks.get(original)?.();
+    callbacks.get("Alt+N")?.();
+    expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
+  });
+
+  it("swaps shared accelerator ownership atomically without re-registering or unregistering them", () => {
+    const { controller, callbacks, registry, settings, execute, original } = fixture(false, true);
+    const other = "Control+Command+B";
+    settings.bindings["quick-chat"] = other;
+    controller.update(settings, () => undefined);
+    registry.register.mockClear();
+    registry.unregister.mockClear();
+    settings.bindings["toggle-window"] = other;
+    settings.bindings["quick-chat"] = original;
+    expect(() =>
+      controller.update(settings, () => {
+        throw new Error("disk full");
+      }),
+    ).toThrow("disk full");
+    callbacks.get(original)?.();
+    callbacks.get(other)?.();
+    expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
+    execute.mockClear();
+    controller.update(settings, () => {
+      callbacks.get(original)?.();
+      callbacks.get(other)?.();
+      expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
+      return undefined;
+    });
+    execute.mockClear();
+    callbacks.get(original)?.();
+    callbacks.get(other)?.();
+    expect(execute.mock.calls).toEqual([["quick-chat"], ["toggle-window"]]);
+    expect(registry.register).not.toHaveBeenCalled();
+    expect(registry.unregister).not.toHaveBeenCalled();
+  });
+
+  it("reuses an old accelerator moved to the other command while registering a fresh one", () => {
+    const { controller, callbacks, settings, execute, original } = fixture(false, true);
+    const staleQuickChat = callbacks.get("Alt+N");
+    settings.bindings["toggle-window"] = "Control+Command+T";
+    settings.bindings["quick-chat"] = original;
+    controller.update(settings, () => {
+      callbacks.get("Control+Command+T")?.();
+      expect(execute).not.toHaveBeenCalled();
+      return undefined;
+    });
+    expect([...callbacks.keys()]).toEqual([original, "Control+Command+T"]);
+    staleQuickChat?.();
+    expect(execute).not.toHaveBeenCalled();
+    callbacks.get(original)?.();
+    callbacks.get("Control+Command+T")?.();
+    expect(execute.mock.calls).toEqual([["quick-chat"], ["toggle-window"]]);
+  });
+
+  it("suspends both shortcuts, keeps available capture restorations and retries missing ones safely", () => {
+    const { controller, callbacks, registry, execute, original } = fixture(false, true);
+    const staleCallbacks = [...callbacks.values()];
+    controller.setCapture(true);
+    expect(callbacks.size).toBe(0);
+    for (const callback of staleCallbacks) callback();
+    expect(execute).not.toHaveBeenCalled();
+    const register = registry.register.getMockImplementation();
+    registry.register
+      .mockImplementationOnce((key, callback) => register?.(key, callback) === true)
+      .mockReturnValueOnce(false);
+    expect(() => controller.setCapture(false)).toThrow("全局快捷键注册失败");
+    expect([...callbacks.keys()]).toEqual([original]);
+    callbacks.get(original)?.();
+    expect(execute).toHaveBeenCalledExactlyOnceWith("toggle-window");
+    execute.mockClear();
+    controller.setCapture(false);
+    for (const callback of staleCallbacks) callback();
+    expect(execute).not.toHaveBeenCalled();
+    callbacks.get(original)?.();
+    callbacks.get("Alt+N")?.();
+    expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
+  });
+
+  it.each(["toggle-window", "quick-chat"] as const)(
+    "keeps the other action available when %s is occupied at initialization",
+    (blocked) => {
+      const callbacks = new Map<string, () => void>();
+      const settings = defaultShortcuts("darwin");
+      const registry = {
+        register: vi.fn((binding: string, callback: () => void) => {
+          if (binding === settings.bindings[blocked]) return false;
+          callbacks.set(binding, callback);
+          return true;
+        }),
+        unregister: vi.fn((binding: string) => callbacks.delete(binding)),
+      };
+      const execute = vi.fn();
+      const controller = new ShortcutController(registry, "darwin", execute);
+      expect(() => controller.initialize(settings)).toThrow("全局快捷键注册失败");
+      const available = blocked === "quick-chat" ? "toggle-window" : "quick-chat";
+      const binding = settings.bindings[available] ?? "";
+      expect([...callbacks.keys()]).toEqual([binding]);
+      callbacks.get(binding)?.();
+      expect(execute).toHaveBeenCalledExactlyOnceWith(available);
+      controller.dispose();
+      expect(registry.unregister).toHaveBeenCalledExactlyOnceWith(binding);
+    },
+  );
+
+  it("disposes both owned registrations while preserving unrelated application registrations", () => {
+    const { controller, callbacks, registry, execute } = fixture(false, true);
+    const staleCallbacks = [...callbacks.values()];
+    const other = vi.fn();
+    registry.register("Control+Command+B", other);
+    controller.dispose();
+    controller.dispose();
+    expect([...callbacks.keys()]).toEqual(["Control+Command+B"]);
+    for (const callback of staleCallbacks) callback();
+    expect(execute).not.toHaveBeenCalled();
+    expect(registry.unregister).toHaveBeenCalledTimes(2);
   });
 });
 describe("window shortcut", () => {
@@ -330,8 +480,8 @@ describe("menu shortcut window lifecycle", () => {
     expect(controller.isCapturing).toBe(false);
     expect(getContents).not.toHaveBeenCalled();
     expect(contents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
-    expect(registry.register).toHaveBeenCalledOnce();
-    expect(registry.unregister).toHaveBeenCalledOnce();
+    expect(registry.register).toHaveBeenCalledTimes(2);
+    expect(registry.unregister).toHaveBeenCalledTimes(2);
   });
 
   it("does not hide unexpected errors from live webContents", () => {

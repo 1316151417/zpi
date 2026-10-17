@@ -1,6 +1,7 @@
 /** The same accelerator grammar is used by settings, DOM events and Electron. */
 export const shortcutCommands = [
   { id: "toggle-window", label: "显示或隐藏窗口", scope: "global" },
+  { id: "quick-chat", label: "快速对话", scope: "global" },
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
   { id: "focus-composer", label: "聚焦任务输入框", scope: "app" },
@@ -19,6 +20,7 @@ export const shortcutCommands = [
   { id: "stop-run", label: "停止当前回复", scope: "app" },
 ] as const;
 export type ShortcutCommand = (typeof shortcutCommands)[number]["id"];
+export type GlobalShortcutCommand = Extract<(typeof shortcutCommands)[number], { scope: "global" }>["id"];
 export interface ShortcutSettings {
   enabled: boolean;
   bindings: Record<ShortcutCommand, string | null>;
@@ -121,6 +123,7 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
     enabled: true,
     bindings: {
       "toggle-window": platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
+      "quick-chat": "Alt+N",
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
       "focus-composer": `${primary}+I`,
@@ -141,8 +144,19 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
   };
 }
 /** Returns a recordable accelerator; validation explains any reserved combination. */
-export function shortcutFromEvent(event: ShortcutKeyEvent, platform: string): string | null {
-  if (event.isComposing || event.repeat || ["Dead", "Process", "Unidentified"].includes(event.key))
+export function shortcutFromEvent(
+  event: ShortcutKeyEvent,
+  platform: string,
+  allowAltLetter = false,
+): string | null {
+  // Option+N is a dead key on macOS; quick-chat recording still uses the physical letter.
+  const altLetter = allowAltLetter && event.altKey && /^Key[A-Z]$/.test(event.code ?? "");
+  if (
+    event.isComposing ||
+    event.repeat ||
+    ["Process", "Unidentified"].includes(event.key) ||
+    (event.key === "Dead" && !altLetter)
+  )
     return null;
   let key: string | undefined;
   if (/^Key[A-Z]$/.test(event.code ?? "")) key = event.code?.slice(3);
@@ -169,11 +183,15 @@ export function shortcutForEvent(
   settings: ShortcutSettings,
 ): ShortcutCommand | undefined {
   if (!settings.enabled) return undefined;
-  const binding = shortcutFromEvent(event, platform);
+  const binding = shortcutFromEvent(event, platform, true);
   if (!binding) return undefined;
   return shortcutCommands.find(({ id }) => {
     const saved = settings.bindings[id];
-    return saved !== null && normalizeShortcut(saved, platform) === binding;
+    return (
+      (event.key !== "Dead" || id === "quick-chat") &&
+      saved !== null &&
+      normalizeShortcut(saved, platform) === binding
+    );
   })?.id;
 }
 export function shortcutLabelParts(binding: string | null, platform: string): string[] {
@@ -217,7 +235,9 @@ function reservedShortcut(binding: string, command: ShortcutCommand, platform: s
   )
     return "此组合保留给系统导航或文本编辑";
   if (key === "Escape") return "Escape 组合保留给系统或弹窗操作";
-  if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key))
+  const quickChatAltLetter =
+    command === "quick-chat" && held.size === 1 && held.has("Alt") && /^[A-Z]$/.test(key);
+  if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key) && !quickChatAltLetter)
     return "请包含 Ctrl 或 Command，避免影响正常输入";
   const primary = platform === "darwin" ? "Command" : "Control";
   if (
@@ -317,4 +337,14 @@ export function withTaskMenuShortcut(settings: ShortcutSettings, platform: strin
     (value) => typeof value === "string" && normalizeShortcut(value, platform) === binding,
   );
   return { ...settings, bindings: { ...settings.bindings, "task-menu": occupied ? null : binding } };
+}
+
+/** Existing custom and cleared bindings survive the additive quick-chat rollout. */
+export function withQuickChatShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
+  if (!settings?.bindings || Object.hasOwn(settings.bindings, "quick-chat")) return settings;
+  const binding = defaultShortcuts(platform).bindings["quick-chat"];
+  const occupied = Object.values(settings.bindings).some(
+    (value) => typeof value === "string" && normalizeShortcut(value, platform) === binding,
+  );
+  return { ...settings, bindings: { ...settings.bindings, "quick-chat": occupied ? null : binding } };
 }

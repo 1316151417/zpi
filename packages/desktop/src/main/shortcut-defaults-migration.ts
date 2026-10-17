@@ -3,6 +3,7 @@ import {
   normalizeShortcut,
   type ShortcutSettings,
   validateShortcuts,
+  withQuickChatShortcut,
 } from "../shared/shortcuts.ts";
 
 export const shortcutDefaultsVersion = 2;
@@ -13,6 +14,7 @@ export function migrateShortcutDefaults(
   platform: string,
   fromVersion = 0,
 ): ShortcutSettings {
+  settings = withQuickChatShortcut(settings, platform);
   const primary = platform === "darwin" ? "Command" : "Control";
   const candidate = { ...settings, bindings: { ...settings.bindings } };
   const upgrades = [

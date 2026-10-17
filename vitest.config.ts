@@ -8,13 +8,21 @@ export default defineConfig({
           name: "node",
           include: ["packages/*/test/**/*.test.ts"],
           environment: "./tests/unit-environment.ts",
-          exclude: ["packages/desktop/test/web-settings-actions.test.ts"],
+          exclude: [
+            "packages/desktop/test/web-settings-actions.test.ts",
+            "packages/desktop/test/quick-chat-renderer.test.ts",
+            "packages/desktop/test/quick-chat-settings-dom.test.ts",
+          ],
         },
       },
       {
         test: {
           name: "dom",
-          include: ["packages/desktop/test/web-settings-actions.test.ts"],
+          include: [
+            "packages/desktop/test/web-settings-actions.test.ts",
+            "packages/desktop/test/quick-chat-renderer.test.ts",
+            "packages/desktop/test/quick-chat-settings-dom.test.ts",
+          ],
           environment: "./tests/dom-environment.ts",
         },
       },

@@ -43,6 +43,8 @@ import { checkPreviewFiles } from "./preview-files.ts";
 import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
 import { previewPrintHostScript, previewPrintIsolationCss } from "./preview-print-host.ts";
 import { openProjectFromDialog } from "./project-picker.ts";
+import { QuickChatHost } from "./quick-chat-host.ts";
+import { installQuickChatIpc, QuickChatWindow } from "./quick-chat-window.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
 import {
@@ -289,11 +291,35 @@ async function launch(): Promise<void> {
         /* Keep the usable catalog; settings offers explicit retry. */
       });
   }
+  const rendererUrl = process.env.ZPI_DEV_URL ?? pathToFileURL(join(dir, "../renderer/index.html")).href;
+  const quickChatHost = new QuickChatHost(
+    settings,
+    testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
+    requestFetch,
+  );
+  const quickChat = new QuickChatWindow({
+    host: quickChatHost,
+    createWindow: createDesktopWindow,
+    rendererUrl,
+    preload: join(dir, "../preload/quick-chat.cjs"),
+    hiddenTestMode,
+    copyText: (text) => clipboard.writeText(text),
+    openExternal: (url) => shell.openExternal(url),
+  });
+  const removeQuickChatIpc = installQuickChatIpc(ipcMain, quickChat);
   const shortcuts = new ShortcutController(
     globalShortcut,
     process.platform,
-    () => {
-      if (ending || hiddenTestMode || !toggleShortcutWindow(window)) return;
+    (command) => {
+      if (ending) return;
+      if (command === "quick-chat") {
+        void quickChat.toggle().catch((error) => {
+          errors.write("quick-chat.window", error);
+          if (!testMode && !ending) dialog.showErrorBox("快速对话无法打开", String(error));
+        });
+        return;
+      }
+      if (hiddenTestMode || !toggleShortcutWindow(window)) return;
       // Native guests and DOM controls normally retain focus; notify only for a lost-target fallback.
       if (!window.webContents.isDestroyed() && !panes.hasFocusedBrowser())
         window.webContents.send("zpi:shortcut", "toggle-window");
@@ -324,6 +350,7 @@ async function launch(): Promise<void> {
   }
   // A reload/crash must never leave recording mode active indefinitely.
   const resetShortcutCapture = () => {
+    if (!shortcuts.isCapturing) return;
     try {
       shortcuts.setCapture(false);
     } catch (error) {
@@ -416,6 +443,7 @@ async function launch(): Promise<void> {
         return value;
       };
       const count: Record<(typeof methods)[number], number> = {
+        openQuickChat: 0,
         setSessionUnread: 1,
         getTaskGroups: 0,
         updateTaskGroups: 1,
@@ -532,6 +560,10 @@ async function launch(): Promise<void> {
       const sessionContext = () => (args[0] === null ? null : string(0));
       let value: unknown;
       switch (method) {
+        case "openQuickChat":
+          if (ending) throw new Error("busy: 应用正在退出");
+          await quickChat.show();
+          break;
         case "listSubagents":
           value = host.listSubagents(sessionContext());
           break;
@@ -1134,6 +1166,20 @@ async function launch(): Promise<void> {
           break;
         }
       }
+      if (
+        [
+          "updateShortcuts",
+          "updatePreferences",
+          "saveWebSearch",
+          "saveProvider",
+          "deleteProvider",
+          "reorderProviders",
+          "completeChatGPTLogin",
+          "disconnectChatGPT",
+          "setCapabilityEnabled",
+        ].includes(method)
+      )
+        quickChatHost.refreshSettings();
       return { ok: true, value };
     } catch (error) {
       errors.write("ipc", error, { method: typeof method === "string" ? method : "unknown" });
@@ -1164,6 +1210,8 @@ async function launch(): Promise<void> {
     if (!hiddenTestMode && !window.isDestroyed()) window.setEnabled(false);
     void flushDraftsBeforeQuit(window)
       .then(async () => {
+        await quickChat.dispose();
+        removeQuickChatIpc();
         chatgptAuth.close();
         notifications.dispose();
         panes.close();
@@ -1198,8 +1246,7 @@ async function launch(): Promise<void> {
   app.on("activate", showWindow);
   app.on("second-instance", showWindow);
   app.on("will-quit", () => shortcuts.dispose());
-  const devUrl = process.env.ZPI_DEV_URL;
-  await loadRenderer(window, devUrl ?? pathToFileURL(join(dir, "../renderer/index.html")).href);
+  await loadRenderer(window, rendererUrl);
   if (shortcutStartupError && !testMode && !ending)
     void dialog.showMessageBox(window, {
       type: "warning",

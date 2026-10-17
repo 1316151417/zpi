@@ -24,7 +24,7 @@ export const mainBuild = {
   },
 };
 export const preloadBuild = {
-  entry: ["packages/desktop/src/preload/index.ts"],
+  entry: ["packages/desktop/src/preload/index.ts", "packages/desktop/src/preload/quick-chat.ts"],
   outDir: "packages/desktop/dist/preload",
   format: ["cjs"],
   bundle: true,

@@ -119,3 +119,32 @@ it("reads the additive task-menu default without rewriting old settings or steal
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it("adds quick chat to existing settings without rewriting storage and preserves custom or cleared values", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-shortcut-"));
+  const store = new SettingsStore(dir, encryption);
+  try {
+    store.updatePreferences({ theme: "dark" });
+    const raw = store.state.getSetting<SettingsData>("app");
+    if (!raw) throw new Error("Missing settings fixture");
+    Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat");
+    Reflect.deleteProperty(raw.shortcuts.bindings, "task-menu");
+    raw.shortcuts.enabled = false;
+    store.state.setSetting("app", raw);
+    const next = new SettingsStore(dir, encryption, store.state);
+    expect(next.get().shortcuts).toEqual({ ...defaultShortcuts(process.platform), enabled: false });
+    expect(next.get().interface.theme).toBe("dark");
+    expect(store.state.getSetting("app")).toEqual(raw);
+    for (const binding of [null, "Alt+B"]) {
+      const settings = next.get().shortcuts;
+      settings.bindings["quick-chat"] = binding;
+      next.updateShortcuts(settings);
+      const reopened = new SettingsStore(dir, encryption, store.state);
+      expect(reopened.get().shortcuts.bindings["quick-chat"]).toBe(binding);
+      expect(reopened.get().shortcuts.enabled).toBe(false);
+    }
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

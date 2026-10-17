@@ -769,7 +769,9 @@ export function Conversation({
   onFindStateChange,
   findBar,
   suggestions,
+  persistReading = true,
 }: {
+  persistReading?: boolean;
   suggestions?: InputSuggestion[];
   onOpenSubagent?: (task: SubagentTask) => void;
   findRequest?: FindRequest;
@@ -974,6 +976,7 @@ export function Conversation({
     return () => window.removeEventListener("pagehide", flushReading);
   }, [flushReading]);
   const saveReading = () => {
+    if (!persistReading) return;
     const el = ref.current;
     if (!el) return;
     readingWrite.current = {
@@ -985,7 +988,8 @@ export function Conversation({
   useLayoutEffect(() => {
     let saved: { top: number; following: boolean } | undefined;
     try {
-      saved = JSON.parse(localStorage.getItem(`zpi.reading.${view.sessionId}`) ?? "null") ?? undefined;
+      if (persistReading)
+        saved = JSON.parse(localStorage.getItem(`zpi.reading.${view.sessionId}`) ?? "null") ?? undefined;
     } catch {
       /* Invalid optional bookmark starts at latest. */
     }
@@ -1000,7 +1004,7 @@ export function Conversation({
     lastScrollTop.current = el?.scrollTop ?? 0;
     setShowLatest(Boolean(el && el.scrollHeight - el.clientHeight - el.scrollTop >= 60));
     return flushReading;
-  }, [view.sessionId, flushReading]);
+  }, [view.sessionId, flushReading, persistReading]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;

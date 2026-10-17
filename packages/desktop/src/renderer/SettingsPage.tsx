@@ -9,6 +9,7 @@ import {
   Globe,
   Info,
   Keyboard,
+  MessageSquare,
   Monitor,
   Moon,
   Package,
@@ -45,6 +46,7 @@ import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
+import { QuickChatSettings } from "./QuickChatSettings.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { ShortcutSettings } from "./ShortcutSettings.tsx";
@@ -64,6 +66,7 @@ const sections = [
   ["capabilities", "插件能力", Package],
   ["webSearch", "联网搜索", Globe],
   ["subagents", "子智能体", Bot],
+  ["quickChat", "快速对话", MessageSquare],
   ["archived", "已归档任务", Archive],
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
@@ -438,6 +441,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 <WebSearchSettings />
               ) : tab === "subagents" ? (
                 <SubagentSettings />
+              ) : tab === "quickChat" ? (
+                <QuickChatSettings onEditShortcut={() => setTab("shortcuts")} />
               ) : tab === "capabilities" ? (
                 <CapabilitySettings />
               ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (

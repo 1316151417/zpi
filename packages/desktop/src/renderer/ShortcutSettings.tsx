@@ -110,7 +110,11 @@ export function ShortcutSettings() {
         setPreview(null);
         return;
       }
-      const binding = shortcutFromEvent(event, platform);
+      const binding = shortcutFromEvent(
+        event,
+        platform,
+        recording === "quick-chat" || recording === "key-search",
+      );
       if (recording === "key-search") {
         if (!binding || (!event.metaKey && !event.ctrlKey && !event.altKey && !/^F\d+$/.test(binding)))
           return;

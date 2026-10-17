@@ -1,29 +1,46 @@
 import { LucideProvider } from "lucide-react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.tsx";
-import { startAppearance } from "./appearance.ts";
-import { logRendererError } from "./error-log.ts";
 import "zpi-ui/styles.css";
-import "./workbench.css";
-
-window.addEventListener("error", (event) => {
-  logRendererError(
-    "uncaught",
-    event.error ?? `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
-  );
-});
-window.addEventListener("unhandledrejection", (event) =>
-  logRendererError("unhandled-rejection", event.reason),
-);
-
-const stopAppearance = startAppearance();
-window.addEventListener("beforeunload", stopAppearance, { once: true });
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing root");
-// ZCode Root supplies this default to navigation, settings and portal menus.
-createRoot(root).render(
-  <LucideProvider strokeWidth={1.5}>
-    <App />
-  </LucideProvider>,
-);
+
+async function startRenderer(root: HTMLElement) {
+  if (new URLSearchParams(location.search).get("view") === "quick-chat") {
+    const { QuickChat } = await import("./QuickChat.tsx");
+    createRoot(root).render(
+      <LucideProvider strokeWidth={1.5}>
+        <QuickChat />
+      </LucideProvider>,
+    );
+    return;
+  }
+  const [{ App }, { startAppearance }, { logRendererError }] = await Promise.all([
+    import("./App.tsx"),
+    import("./appearance.ts"),
+    import("./error-log.ts"),
+    import("./workbench.css"),
+  ]);
+  window.addEventListener("error", (event) => {
+    logRendererError(
+      "uncaught",
+      event.error ?? `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
+    );
+  });
+  window.addEventListener("unhandledrejection", (event) =>
+    logRendererError("unhandled-rejection", event.reason),
+  );
+  const stopAppearance = startAppearance();
+  window.addEventListener("beforeunload", stopAppearance, { once: true });
+  // ZCode Root supplies this default to navigation, settings and portal menus.
+  createRoot(root).render(
+    <LucideProvider strokeWidth={1.5}>
+      <App />
+    </LucideProvider>,
+  );
+}
+
+void startRenderer(root).catch((error) => {
+  console.error(error);
+  root.textContent = "无法加载窗口，请重启 ZPI。";
+});

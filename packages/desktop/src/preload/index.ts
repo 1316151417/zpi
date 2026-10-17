@@ -27,6 +27,7 @@ ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {
   }
 });
 const bridge: DesktopBridge = {
+  openQuickChat: () => call("openQuickChat"),
   setSessionUnread: (id) => call("setSessionUnread", id),
   getTaskGroups: () => call("getTaskGroups"),
   updateTaskGroups: (command) => call("updateTaskGroups", command),

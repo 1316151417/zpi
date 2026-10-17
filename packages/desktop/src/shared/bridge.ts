@@ -288,6 +288,7 @@ export interface PaneBounds {
   height: number;
 }
 export interface DesktopBridge {
+  openQuickChat(): Promise<Result<void>>;
   setSessionUnread(id: string): Promise<Result<void>>;
   getTaskGroups(): Promise<Result<import("./task-groups.ts").TaskGroupState>>;
   updateTaskGroups(
@@ -472,6 +473,7 @@ export interface DesktopBridge {
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
 export const methods = [
+  "openQuickChat",
   "setSessionUnread",
   "getTaskGroups",
   "updateTaskGroups",

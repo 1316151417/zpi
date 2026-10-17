@@ -115,14 +115,16 @@ const originalListeners = new Map(
   processEvents.map((event) => [event, new Set(processEmitter.listeners(event))]),
 );
 let call: CallHandler;
+let quickCall: CallHandler;
 let bridge: DesktopBridge;
 const authorized = { sender: fake.window.webContents, senderFrame: fake.window.webContents.mainFrame };
 beforeAll(async () => {
   await import("../src/main/index.ts");
   await vi.waitFor(() => expect(fake.loadRenderer).toHaveBeenCalledOnce());
   expect(fake.writeError).not.toHaveBeenCalled();
-  expect(fake.handle).toHaveBeenCalledExactlyOnceWith("zpi:call", expect.any(Function));
-  call = fake.handle.mock.calls[0][1] as CallHandler;
+  expect(fake.handle.mock.calls.map(([channel]) => channel)).toEqual(["zpi:quick-chat", "zpi:call"]);
+  call = fake.handle.mock.calls.find(([channel]) => channel === "zpi:call")?.[1] as CallHandler;
+  quickCall = fake.handle.mock.calls.find(([channel]) => channel === "zpi:quick-chat")?.[1] as CallHandler;
   await import("../src/preload/index.ts");
   bridge = fake.expose.mock.calls[0][1] as DesktopBridge;
   expect(fake.invoke).not.toHaveBeenCalled();
@@ -220,4 +222,15 @@ test("returns a controlled locked error without credentials, broadcasts or netwo
   });
   expect(fake.window.webContents.send).not.toHaveBeenCalled();
   expect(fake.fetch).not.toHaveBeenCalled();
+});
+
+test("the temporary window channel cannot reveal credentials or accept the main renderer", async () => {
+  for (const method of ["getSnapshot", "getWebSearchCredentials", "getProviderCredentials"]) {
+    expect(await quickCall(authorized, method, [])).toMatchObject({
+      ok: false,
+      error: { code: "invalid_input" },
+    });
+  }
+  expect(fake.settings.getWebSearchCredentials).not.toHaveBeenCalled();
+  expect(fake.settings.getProviderCredentials).not.toHaveBeenCalled();
 });

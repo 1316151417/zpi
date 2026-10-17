@@ -41,7 +41,7 @@ test("shortcut search, capture, cancel, clear, reset confirmation and failure fe
     const page = await app.firstWindow();
     await settings(page);
     const rows = page.locator("[data-shortcut-command]");
-    await expect(rows).toHaveCount(17);
+    await expect(rows).toHaveCount(18);
     const search = page.getByRole("textbox", { name: "搜索命令或快捷键" });
     await search.fill("选择模型");
     await expect(rows).toHaveCount(1);
@@ -64,13 +64,34 @@ test("shortcut search, capture, cancel, clear, reset confirmation and failure fe
     await page.keyboard.press("Backspace");
     await page.keyboard.press("Escape");
     await expect(keySearch).toHaveAttribute("aria-pressed", "false");
-    await expect(rows).toHaveCount(17);
+    await expect(rows).toHaveCount(18);
+    const quickChat = page.locator('[data-shortcut-command="quick-chat"]');
+    await quickChat.getByLabel("编辑快速对话快捷键", { exact: true }).click();
+    await expect(quickChat.locator(".shortcut-recorder")).toHaveAttribute("aria-pressed", "true");
+    // macOS Option+N produces a dead key; recording uses its physical letter only for quick chat.
+    await page.evaluate(() =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Dead",
+          code: "KeyN",
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await expect(quickChat.locator(".shortcut-recorder")).toHaveAttribute("aria-pressed", "false");
+    await expect(quickChat.locator(".shortcut-recorder")).toHaveText(
+      process.platform === "darwin" ? "⌥N" : "AltN",
+    );
     const model = page.locator('[data-shortcut-command="select-model"]');
     const old = await model.locator(".shortcut-recorder").textContent();
     await model.getByLabel("编辑选择模型快捷键", { exact: true }).click();
     await expect(model.locator(".shortcut-recorder")).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press(`${primary}+u`);
     await expect(model.getByRole("alert")).toContainText("冲突");
+    await page.keyboard.press("Alt+b");
+    await expect(model.getByRole("alert")).toContainText("Ctrl 或 Command");
     await page.keyboard.press("Escape");
     await expect(model.locator(".shortcut-recorder")).toHaveText(old ?? "");
     await model.getByLabel("清除选择模型快捷键", { exact: true }).click();
