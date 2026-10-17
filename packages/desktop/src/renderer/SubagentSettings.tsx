@@ -28,6 +28,7 @@ import {
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 const agentColorLabels: Record<(typeof agentColors)[number], string> = {
   blue: "蓝色",
@@ -228,7 +229,7 @@ export function SubagentSettings() {
         }
       })
       .catch((error) => {
-        if (active) setError(String(error));
+        if (active) setError(userErrorMessage(error));
       });
     return () => {
       active = false;
@@ -242,7 +243,7 @@ export function SubagentSettings() {
       if (close) setEditing(undefined);
       return true;
     } catch (error) {
-      setError(String(error));
+      setError(userErrorMessage(error));
       return false;
     } finally {
       setBusy(false);
@@ -681,7 +682,7 @@ export function SubagentSettings() {
           )}
           {catalog.diagnostics.map((item) => (
             <p key={item.path} role="alert" className="run-error">
-              {item.path}: {item.message}
+              {item.path}: {userErrorMessage(item.message)}
             </p>
           ))}
         </>

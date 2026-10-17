@@ -52,6 +52,7 @@ import { SettingsSelect } from "./SettingsSelect.tsx";
 import { ShortcutSettings } from "./ShortcutSettings.tsx";
 import { SubagentSettings } from "./SubagentSettings.tsx";
 import { refresh, unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 import { WebSearchSettings } from "./WebSearchSettings.tsx";
 
 const sections = [
@@ -222,7 +223,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         })
         .catch((e) => {
           if (active) {
-            setError(String(e));
+            setError(userErrorMessage(e));
             setKeyReady(false);
           }
         });
@@ -249,7 +250,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       setModels((current) => mergeDiscoveredModels(current, result.models.map(draftModel)));
       setNotice(result.warning ?? `已获取 ${result.models.length} 个模型。`);
     } catch (error) {
-      if (revision === discoveryRevision.current) setError(String(error));
+      if (revision === discoveryRevision.current) setError(userErrorMessage(error));
     } finally {
       if (revision === discoveryRevision.current) setDiscovering(false);
     }
@@ -303,7 +304,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       .updatePreferences(input)
       .then(unwrap)
       .then((value) => useStore.setState({ settings: value }))
-      .catch((error) => setError(String(error)));
+      .catch((error) => setError(userErrorMessage(error)));
   };
   const save = async (nextModels = models, nextEnabled = enabled, nextName = name) => {
     if (!keyReady) return false;
@@ -342,7 +343,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       setNotice(discoveryNotice || "提供商已保存。");
       return true;
     } catch (error) {
-      setError(String(error));
+      setError(userErrorMessage(error));
       return false;
     } finally {
       setSaving(false);
@@ -516,7 +517,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 .updatePreferences({ [field]: e.target.checked })
                                 .then(unwrap)
                                 .then((value) => useStore.setState({ settings: value }))
-                                .catch((e) => setError(String(e)));
+                                .catch((e) => setError(userErrorMessage(e)));
                             }}
                           />
                           <span aria-hidden="true" />
@@ -572,7 +573,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               .reorderProviders(providers.map((provider) => provider.id))
                               .then(unwrap)
                               .then((settings) => useStore.setState({ settings }))
-                              .catch((error) => setError(String(error)))
+                              .catch((error) => setError(userErrorMessage(error)))
                               .finally(() => setSaving(false));
                           }}
                           renderItem={(
@@ -987,7 +988,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 select(value.providers[0]);
                                 setPicker(value.providers.length === 0);
                               } catch (error) {
-                                setError(String(error));
+                                setError(userErrorMessage(error));
                               } finally {
                                 setSaving(false);
                               }

@@ -33,6 +33,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "reset",
     "send",
     "setComposerHeight",
+    "setNoticeHeight",
     "stop",
   ]);
   await bridge.send("question");
@@ -73,6 +74,10 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
   ]);
   await bridge.setComposerHeight("session", 92);
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "setComposerHeight", ["session", 92]);
+  await bridge.setNoticeHeight("session", 172);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "setNoticeHeight", ["session", 172]);
+  await bridge.setNoticeHeight("session", 0);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "setNoticeHeight", ["session", 0]);
   await bridge.rendererReady("session", 3);
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "rendererReady", ["session", 3]);
   await bridge.reportComposerState(7, "session", false);

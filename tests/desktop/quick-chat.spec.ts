@@ -178,6 +178,68 @@ async function pasteImages(input: Locator, names: string[], text = "") {
   );
 }
 
+test("quick chat error details open for three seconds and remain inside the compact native window", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-notice-"));
+  const server = await fakeServer((_request, response) => {
+    send(response, chunk({ content: "无需发送" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const main = await app.firstWindow();
+    await main.evaluate(() => window.zpi.openQuickChat());
+    await expect.poll(() => app?.windows().some((page) => page.url().includes("view=quick-chat"))).toBe(true);
+    const quick = app.windows().find((page) => page.url().includes("view=quick-chat"));
+    if (!quick) throw new Error("Missing quick-chat page");
+    const bounds = () =>
+      app?.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .find((window) => window.webContents.getURL().includes("view=quick-chat"))
+          ?.getBounds(),
+      );
+    await expect.poll(bounds).toMatchObject({ width: 360, height: 44 });
+    const before = await bounds();
+    if (!before) throw new Error("Missing compact bounds");
+    const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
+    await input.fill("保留草稿");
+    await pasteImages(
+      input,
+      Array.from({ length: 9 }, (_, index) => `notice-${index}.png`),
+    );
+    const tooltip = quick.getByRole("tooltip");
+    await expect(tooltip).toContainText("每条消息最多可添加 8 张图片");
+    await expect
+      .poll(async () => {
+        const bubble = await tooltip.boundingBox();
+        return Boolean(bubble && bubble.y >= 0 && bubble.x >= 0 && bubble.x + bubble.width <= 360);
+      })
+      .toBe(true);
+    const opened = await bounds();
+    expect(opened && opened.y + opened.height).toBe(before.y + before.height);
+    await expect(tooltip).toHaveCount(0, { timeout: 5000 });
+    await expect.poll(bounds).toMatchObject({ height: 100 });
+    const indicator = quick.getByRole("button", { name: "查看错误原因", exact: true });
+    // Native top-edge expansion changes page coordinates; deliver hover at the anchored control.
+    await indicator.dispatchEvent("pointerover", { pointerType: "mouse" });
+    await expect(tooltip).toBeVisible();
+    await indicator.focus();
+    await indicator.press("Escape");
+    await expect(tooltip).toHaveCount(0);
+    await expect.poll(bounds).toMatchObject({ height: 100 });
+    await expect(input).toHaveValue("保留草稿");
+    expect(server.requests).toHaveLength(0);
+    await quick.getByRole("button", { name: "关闭提示", exact: true }).click();
+    await expect(quick.locator(".quick-chat-error")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 async function configureImageModel(page: Page, supportsImages: boolean) {
   await page.evaluate(async (supportsImages) => {
     const settings = await window.zpi.getSettings();

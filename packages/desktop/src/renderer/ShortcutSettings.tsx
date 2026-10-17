@@ -16,6 +16,7 @@ import {
 import { ShortcutRecordingRequest } from "./shortcut-recording.ts";
 import { matchesShortcutSearch, shortcutScopeLabels } from "./shortcut-settings-model.ts";
 import { report, unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 type Capture = ShortcutCommand | "key-search";
 
@@ -49,7 +50,7 @@ export function ShortcutSettings() {
       .setShortcutCapture(false)
       .then(unwrap)
       .catch((error) => {
-        if (mounted.current) setError(String(error));
+        if (mounted.current) setError(userErrorMessage(error));
         else report(error);
       });
   };
@@ -81,7 +82,7 @@ export function ShortcutSettings() {
     } catch (error) {
       if (mounted.current) {
         setCapturePending(false);
-        setError(String(error));
+        setError(userErrorMessage(error));
       }
     }
   };
@@ -153,7 +154,7 @@ export function ShortcutSettings() {
       setDraft(settings.shortcuts);
       setNotice("快捷键已保存。");
     } catch (error) {
-      setError(String(error));
+      setError(userErrorMessage(error));
     } finally {
       setBusy(false);
     }

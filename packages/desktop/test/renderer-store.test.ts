@@ -95,6 +95,19 @@ async function setup() {
   };
 }
 
+it("reports friendly error copy while retaining diagnostics and replacing identical notifications", async () => {
+  const f = await setup();
+  const error = new Error("not_found: 文件不存在：/private/example/missing.md");
+  f.store.report(error);
+  expect(f.store.useStore.getState().error).toContain("找不到文件");
+  expect(f.store.useStore.getState().error).not.toMatch(/not_found|\/private\//);
+  expect(f.bridge.logError).toHaveBeenCalledWith(expect.objectContaining({ message: error.message }));
+  const version = f.store.useStore.getState().errorVersion;
+  f.store.report(error);
+  expect(f.store.useStore.getState().errorVersion).toBe(version + 1);
+  f.unsubscribe();
+});
+
 it("lists built-in commands without auxiliary slash shortcuts", async () => {
   const f = await setup();
   const { listCommands } = await import("zpi-coding-agent");

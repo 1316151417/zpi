@@ -9,6 +9,7 @@ import { ModelConfigAdvanced } from "./ModelConfigAdvanced.tsx";
 import { ReasoningLevelEditor } from "./ReasoningLevelEditor.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 export interface ModelDraft extends ModelSettings {
   reasoningConfig: ReasoningConfig;
@@ -91,7 +92,7 @@ export function ModelConfigDialog({
       await onSave(model);
       onClose();
     } catch (error) {
-      setError(String(error));
+      setError(userErrorMessage(error));
       try {
         validateReasoningConfig(model.reasoningConfig);
       } catch {

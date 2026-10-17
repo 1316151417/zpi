@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import type { PromptPreview, SkillSettings, ToolInfo } from "../shared/bridge.ts";
 import { refresh, unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills" }) {
   const settings = useStore((s) => s.settings);
   const [preview, setPreview] = useState<PromptPreview>();
@@ -38,7 +39,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
         .catch((error) => {
           if (active) {
             setPreview(undefined);
-            setError(String(error));
+            setError(userErrorMessage(error));
           }
         });
     }
@@ -50,7 +51,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           if (active) setTools(v);
         })
         .catch((e) => {
-          if (active) setError(String(e));
+          if (active) setError(userErrorMessage(e));
         });
     if (page === "skills")
       void window.zpi
@@ -60,7 +61,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           if (active) setSkills(v);
         })
         .catch((e) => {
-          if (active) setError(String(e));
+          if (active) setError(userErrorMessage(e));
         });
     return () => {
       active = false;
@@ -77,7 +78,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           if (active) setBody(v);
         })
         .catch((e) => {
-          if (active) setError(String(e));
+          if (active) setError(userErrorMessage(e));
         });
     return () => {
       active = false;
@@ -91,7 +92,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
       await work();
       setRevision((r) => r + 1);
     } catch (e) {
-      setError(String(e));
+      setError(userErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -219,7 +220,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           <p className="skill-directories">全局技能目录：{skills?.directories.join("、")}</p>
           {skills?.diagnostics.map((d) => (
             <p className="run-error" key={d.path}>
-              {d.path}: {d.message}
+              {d.path}: {userErrorMessage(d.message)}
             </p>
           ))}
           <div className="skill-resource-list">

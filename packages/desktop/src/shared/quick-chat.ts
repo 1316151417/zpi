@@ -22,6 +22,7 @@ export interface QuickChatBridge {
   reset(): Promise<Result<void>>;
   hide(): Promise<Result<void>>;
   setComposerHeight(sessionId: string, height: number): Promise<Result<void>>;
+  setNoticeHeight(sessionId: string, height: number): Promise<Result<void>>;
   rendererReady(sessionId: string, presentationVersion: number): Promise<Result<void>>;
   onComposerProbe(listener: (token: number, sessionId: string) => void): () => void;
   reportComposerState(token: number, sessionId: string, occupied: boolean): Promise<Result<void>>;

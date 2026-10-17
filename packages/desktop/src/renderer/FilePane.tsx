@@ -37,6 +37,7 @@ import { openFile, openSideChat, openWebLink, paneTask, useSideChatBlocked } fro
 import { inferPreviewLanguage } from "./preview-language.ts";
 import { addConversationSelection, drafts, unwrap, useStore } from "./store.ts";
 import { useWorkspace } from "./use-workspace.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 const OfficePreview = lazy(() => import("./OfficePreview.tsx"));
 const PdfPreview = lazy(() => import("./PdfPreview.tsx"));
@@ -186,7 +187,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
       setCommentRange(null);
       setCommentText("");
     } catch (error) {
-      setCommentError(error instanceof Error ? error.message : String(error));
+      setCommentError(userErrorMessage(error));
     }
   };
   const removeComment = (id: string) => removeFileCommentFromDraft(drafts, sessionId, id);

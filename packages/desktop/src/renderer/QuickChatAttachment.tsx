@@ -2,6 +2,7 @@ import { Image, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { QuickChatDraftImage } from "./quick-chat-attachments.ts";
 import { readQuickChatAttachment } from "./quick-chat-attachments.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 /** Uses the task composer's image-chip/lightbox styles without importing its editor or store. */
 export function QuickChatAttachment({
@@ -32,7 +33,7 @@ export function QuickChatAttachment({
         if (active) setSrc(value);
       },
       (reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+        if (active) setError(userErrorMessage(reason));
       },
     );
     return () => {

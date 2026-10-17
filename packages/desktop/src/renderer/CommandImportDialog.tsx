@@ -13,6 +13,7 @@ import type {
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { unwrap } from "./store.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
+import { userErrorMessage } from "./user-error.ts";
 import "./command-import.css";
 
 function SelectionBox({
@@ -51,7 +52,7 @@ function resultLabel(item: CommandImportItemResult): string {
   if (item.status === "imported") {
     return item.method === "copy" ? "已导入（复制）" : "已导入";
   }
-  if (item.status === "failed") return `失败：${item.error ?? "无法导入命令"}`;
+  if (item.status === "failed") return `失败：${item.error ? userErrorMessage(item.error) : "无法导入命令"}`;
   return `已跳过：${item.skipReason === "sameNameExists" ? "同名已存在" : "文件已存在"}`;
 }
 
@@ -91,7 +92,7 @@ export function CommandImportDialog({
       if (mounted.current && scanSequence.current === sequence) setDiscovery(next);
     } catch (error) {
       if (mounted.current && scanSequence.current === sequence) {
-        setError(error instanceof Error ? error.message : String(error));
+        setError(userErrorMessage(error));
         setDiscovery(undefined);
       }
     } finally {
@@ -149,7 +150,7 @@ export function CommandImportDialog({
         setError("导入已完成，但命令列表刷新失败。请重新打开命令设置。");
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+      setError(userErrorMessage(error));
     } finally {
       importPending.current = false;
       if (mounted.current) setImporting(false);

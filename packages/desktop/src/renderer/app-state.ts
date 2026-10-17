@@ -11,6 +11,7 @@ export function selectAppState(state: Store) {
     selected: state.selected,
     settings: state.settings,
     error: state.error,
+    errorVersion: state.errorVersion,
     ready: state.ready,
     activeRecord: state.sessions.get(id),
     activeView: state.views.get(id),

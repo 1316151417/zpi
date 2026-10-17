@@ -10,6 +10,7 @@ import {
   previewInputKey,
 } from "../preview/preview-lifecycle.ts";
 import type { RunView, SessionView } from "../types.ts";
+import { userErrorMessage } from "../user-error.ts";
 import { OpenFileButton } from "./OpenFileButton.tsx";
 import { FileIcon } from "./Reference.tsx";
 
@@ -105,7 +106,7 @@ export function AssistantTurnPreviews({
     if (!autoOpen.consume(consumedKey)) return;
     void (async () => {
       for (const card of pptx) await services.openFile(sessionId, card.path);
-    })().catch((error) => setError(String(error)));
+    })().catch((error) => setError(userErrorMessage(error)));
   }, [autoOpen?.target, autoOpen?.consume, pptx, services, sessionId, run.runId]);
   if (!visible?.length) return null;
   return (
@@ -168,7 +169,7 @@ function PreviewOpenButton({
   const path = card.type === "website" ? card.filePath : card.path;
   const perform = (promise: Promise<void>) => {
     setError("");
-    void promise.catch((error) => setError(error instanceof Error ? error.message : String(error)));
+    void promise.catch((error) => setError(userErrorMessage(error)));
   };
   return (
     <div className="preview-open-control">

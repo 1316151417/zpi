@@ -10,6 +10,7 @@ import { exportPresentationPdf } from "./presentation/export.ts";
 import { createPresentationSelection } from "./presentation/reference.ts";
 import type { PresentationPageElement, PresentationPreviewDocument } from "./presentation/types.ts";
 import { addConversationSelection, unwrap } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 import "./PptxPreview.css";
 
 function useSize(node: HTMLElement | null) {
@@ -318,8 +319,7 @@ export default function PptxPreview({ preview, sessionId, onExportPdf }: PptxPre
         setComment("");
       })
       .catch((reason: unknown) => {
-        if (generation.current === requestGeneration)
-          setError(reason instanceof Error ? reason.message : String(reason));
+        if (generation.current === requestGeneration) setError(userErrorMessage(reason));
       })
       .finally(() => {
         if (generation.current === requestGeneration) setAddingReference(false);

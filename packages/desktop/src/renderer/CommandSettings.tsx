@@ -21,6 +21,7 @@ import { ActionHint } from "zpi-ui";
 import type { CustomCommand, CustomCommandInput } from "../shared/custom-commands.ts";
 import { CommandImportDialog } from "./CommandImportDialog.tsx";
 import { unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 import "./command-settings.css";
 
 export function CommandSettings({
@@ -66,9 +67,9 @@ export function CommandSettings({
         const result = unwrap(await window.zpi.getCustomCommands(projectId));
         if (!mounted.current || request.current !== token) return;
         setCommands(result.commands);
-        setError(result.diagnostics.map((item) => item.message).join("\n"));
+        setError(result.diagnostics.map((item) => userErrorMessage(item.message)).join("\n"));
       } catch (failure) {
-        if (mounted.current && request.current === token) setError(String(failure));
+        if (mounted.current && request.current === token) setError(userErrorMessage(failure));
       } finally {
         if (mounted.current && request.current === token) setLoading(false);
       }
@@ -111,7 +112,7 @@ export function CommandSettings({
       await refresh();
       window.dispatchEvent(new Event("zpi:commands-changed"));
     } catch (failure) {
-      if (mounted.current) setError(String(failure));
+      if (mounted.current) setError(userErrorMessage(failure));
     } finally {
       operationPending.current = false;
       if (mounted.current) setBusy(false);

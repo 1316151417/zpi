@@ -220,7 +220,8 @@ it("suggestion failure leaves the conversation editable and reports the optional
   const f = await setup();
   f.bridge.listSessionSkills.mockRejectedValueOnce(new Error("skills unavailable"));
   await f.pane.openSideChat(f.parent.id);
-  await vi.waitFor(() => expect(f.store.useStore.getState().error).toContain("skills unavailable"));
+  await vi.waitFor(() => expect(f.store.useStore.getState().error).toContain("操作失败，请重试"));
+  expect(f.store.useStore.getState().error).not.toContain("skills unavailable");
   expect(f.pane.visiblePaneTabs(f.parent.id)[0].type).toBe("side-chat");
   expect(f.store.drafts.get(f.child.id)?.text).toBe("saved draft");
   expect(f.bridge.closeSideChat).not.toHaveBeenCalled();

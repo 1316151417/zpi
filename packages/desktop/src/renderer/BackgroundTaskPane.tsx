@@ -3,6 +3,7 @@ import type { BackgroundTaskOutput } from "zpi-ui";
 import { paneTask } from "./pane-store.ts";
 import { unwrap } from "./store.ts";
 import { backgroundStatus } from "./TaskActivity.tsx";
+import { userErrorMessage } from "./user-error.ts";
 
 export function BackgroundTaskPane({
   sessionId,
@@ -30,7 +31,7 @@ export function BackgroundTaskPane({
         setError("");
         if (next.task.status === "running") timer = setTimeout(read, 1000);
       } catch (error) {
-        if (!disposed) setError(error instanceof Error ? error.message : String(error));
+        if (!disposed) setError(userErrorMessage(error));
       }
     };
     void read();

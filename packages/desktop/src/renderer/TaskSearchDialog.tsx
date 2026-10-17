@@ -20,6 +20,7 @@ import { Trash2 } from "./task-search-icons.ts";
 import { resolveSearchScope, searchScopePrefix, taskSearchRows } from "./task-search-model.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 export interface SearchCommand {
   id: string;
@@ -103,7 +104,7 @@ export function TaskSearchDialog({
         if (!cancelled) setResult({ query, tasks });
       })
       .catch((error) => {
-        if (!cancelled) setTaskError(String(error));
+        if (!cancelled) setTaskError(userErrorMessage(error));
       });
     return () => {
       cancelled = true;
@@ -119,7 +120,7 @@ export function TaskSearchDialog({
         if (!cancelled) setFiles(entries);
       })
       .catch((error) => {
-        if (!cancelled) setFileError(String(error));
+        if (!cancelled) setFileError(userErrorMessage(error));
       });
     return () => {
       cancelled = true;

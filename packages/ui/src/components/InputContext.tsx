@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { type Attachment, type ImageAttachment, isImageAttachment } from "zpi-coding-agent/input";
 import type { ConversationSelection } from "../conversation-selections.ts";
 import type { FileLocation } from "../link-target.ts";
+import { userErrorMessage } from "../user-error.ts";
 import { EditorHistory } from "./editor-history.ts";
 import { FileIcon } from "./Reference.tsx";
 export interface ComposerDraft {
@@ -141,7 +142,7 @@ export function ImagePreview({
           if (active) setSrc(value);
         })
         .catch((e) => {
-          if (active) setError(String(e));
+          if (active) setError(userErrorMessage(e));
         });
     };
     const observer = new IntersectionObserver(

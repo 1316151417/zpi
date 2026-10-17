@@ -2,6 +2,7 @@
 import { Pencil, Search, SquareTerminal, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { FileOpenHandler, LinkContext, WebOpenOptions } from "../link-target.ts";
+import { userErrorMessage } from "../user-error.ts";
 import { AskQuestionToolBlock } from "./AskQuestionToolBlock.tsx";
 import { FlipMetricValue } from "./FlipMetricValue.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -104,7 +105,7 @@ export function ToolFilePreview({
         if (active) setPatch(text);
       })
       .catch((error) => {
-        if (active) setError(String(error));
+        if (active) setError(userErrorMessage(error));
       });
     return () => {
       active = false;

@@ -4,6 +4,7 @@ import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, use
 import { useAppearance } from "../appearance.ts";
 import type { FindMatch, FindRequest, FindState, FindTarget } from "../find.ts";
 import { patchFindTargets } from "../patch-find.ts";
+import { userErrorMessage } from "../user-error.ts";
 import { toolCodeLanguage, useToolTokens } from "./ToolDiff.tsx";
 import { findHighlightCSS, useTextFind } from "./use-text-find.ts";
 export interface DiffEntry {
@@ -289,7 +290,7 @@ export function DiffView({
         Object.fromEntries(values.flatMap((value) => (value.status === "fulfilled" ? [value.value] : []))),
       );
       const failure = values.find((value) => value.status === "rejected");
-      if (failure?.status === "rejected") setError(String(failure.reason));
+      if (failure?.status === "rejected") setError(userErrorMessage(failure.reason));
     });
     return () => {
       active = false;

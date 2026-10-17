@@ -158,6 +158,9 @@ test("an unavailable preference falls back without overwriting it and open error
   expect(window.localStorage.getItem("zpi-last-editor-id")).toBe("missing-editor");
   await click(query(".workspace-editor-open"));
   expect(logError).toHaveBeenCalledWith(
-    expect.objectContaining({ source: "open-in-editor", message: "Editor unavailable" }),
+    expect.objectContaining({
+      source: "open-in-editor",
+      message: expect.stringContaining("Editor unavailable"),
+    }),
   );
 });

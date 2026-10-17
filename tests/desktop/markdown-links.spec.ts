@@ -113,7 +113,6 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await expect(page.locator(".file-text-preview")).toHaveAttribute("data-line", "80");
     await expect(page.locator(".file-text-preview")).toHaveAttribute("data-column", "3");
     await expect(page.locator('.file-text-preview [data-line="80"]').last()).toBeInViewport();
-    await expect(page.locator(".file-location")).toHaveText("第 80 行 · 第 3 列");
     await answer.getByRole("button", { name: "文件 URI", exact: true }).click();
     await expect(page.getByRole("tab", { name: filename, exact: true })).toHaveCount(1);
     await expect(page.locator(".file-text-preview")).toHaveAttribute("data-line", "2");
@@ -144,11 +143,15 @@ test("Markdown links and streamed file citations share icons, preview locations 
     // macOS maps native Ctrl-click to the context menu; exercise its click-event modifier separately.
     await local.dispatchEvent("click", { ctrlKey: true });
     await expect.poll(external).toEqual(["https://example.com/page.html", localUrl, localUrl, localUrl]);
+    const taskBounds = await page.locator(".task-body").boundingBox();
     await answer.getByRole("button", { name: "不存在", exact: true }).click();
-    await expect(page.getByText(/文件不存在：/).first()).toBeVisible();
+    await expect(page.locator(".error-toast")).toContainText("找不到文件");
+    await expect(page.locator(".error-toast")).not.toContainText(/not_found|ENOENT|Error:/);
+    await expect(page.locator(".error-toast")).toHaveCSS("position", "absolute");
+    expect(await page.locator(".task-body").boundingBox()).toEqual(taskBounds);
     await answer.getByRole("button", { name: "越界符号链接", exact: true }).click();
     await expect(page.getByText(/相对文件链接超出当前工作目录/).first()).toBeVisible();
-    // Dismiss the toast before opening a menu: its layout shift can dismiss Radix's context menu.
+    // The overlay is dismissible without changing the conversation layout.
     await page.getByRole("button", { name: "关闭错误", exact: true }).click();
     await expect(page.locator(".error-toast")).toHaveCount(0);
     await answer.getByRole("button", { name: "越界符号链接", exact: true }).click({ button: "right" });

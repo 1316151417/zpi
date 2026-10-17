@@ -45,6 +45,7 @@ import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
+import { ErrorToast } from "./ErrorToast.tsx";
 import { ModelPerformance } from "./ModelPerformance.tsx";
 import {
   canOpenSideChat,
@@ -108,6 +109,7 @@ import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
 import { useTaskFind } from "./use-task-find.ts";
 import { useWorkspace } from "./use-workspace.ts";
+import { userErrorMessage } from "./user-error.ts";
 import { WindowChrome } from "./WindowChrome.tsx";
 import { WorkspaceEditorButton } from "./WorkspaceEditorButton.tsx";
 import { WorktreeSettings } from "./WorktreeSettings.tsx";
@@ -157,7 +159,7 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
               confirming.current = true;
               setBusy(true);
               void action.onConfirm(value).then(onClose, (e) => {
-                setError(String(e));
+                setError(userErrorMessage(e));
                 confirming.current = false;
                 setBusy(false);
               });
@@ -184,6 +186,9 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+function dismissError(): void {
+  useStore.setState({ error: undefined });
 }
 function openLink(url: string, options?: WebOpenOptions): void {
   paneTask(openWebLink(url, options));
@@ -1012,14 +1017,6 @@ export function App() {
             <div className="topbar-drag-space" aria-hidden="true" />
             {selected && <WorkspaceEditorButton sessionId={selected} />}
           </header>
-          {state.error && (
-            <div className="error-toast" role="alert">
-              {state.error}
-              <button aria-label="关闭错误" onClick={() => useStore.setState({ error: undefined })}>
-                <X size={13} />
-              </button>
-            </div>
-          )}
           {state.settings?.providers.some((p) => p.hasApiKey || p.chatgptAccount?.connected) &&
             !state.settings.credentialsPersisted && (
               <div className="banner">系统加密不可用，凭据仅保存在本次应用内存中。</div>
@@ -1206,6 +1203,7 @@ export function App() {
           onFindStateChange={find.update}
         />
       </div>
+      {state.error && <ErrorToast key={state.errorVersion} message={state.error} onDismiss={dismissError} />}
       {action && <ActionModal action={action} onClose={() => setAction(undefined)} />}
       {useMemo(
         () => (settingsOpen ? <SettingsPage onClose={() => setSettingsOpen(false)} /> : null),

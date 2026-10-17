@@ -18,6 +18,7 @@ import { previewLoader } from "./preview-loader.ts";
 import { hasRestorableFocus, isVisibleShortcutTarget } from "./shortcut-context.ts";
 import { readTaskPreferences, taskPreferencesKey } from "./sidebar-task-model.ts";
 import { unwrap } from "./unwrap.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 export { unwrap } from "./unwrap.ts";
 
@@ -35,6 +36,7 @@ interface Store {
   selected?: string;
   settings?: PublicSettings;
   error?: string;
+  errorVersion: number;
   ready: boolean;
   historyCursors: Map<string, number | null>;
   historyLoading: Set<string>;
@@ -48,6 +50,7 @@ export const useStore = create<Store>(() => ({
   sessions: new Map(),
   views: new Map(),
   ready: false,
+  errorVersion: 0,
   historyCursors: new Map(),
   historyLoading: new Set(),
   suggestions: new Map(),
@@ -269,7 +272,7 @@ function apply(events: DesktopEventEnvelope[]): void {
 }
 export function report(error: unknown): void {
   logRendererError("reported", error);
-  useStore.setState({ error: error instanceof Error ? error.message : String(error) });
+  useStore.setState((state) => ({ error: userErrorMessage(error), errorVersion: state.errorVersion + 1 }));
 }
 export function subscribeEvents(): () => void {
   const flush = () => void flushDrafts().catch(report);
@@ -650,7 +653,7 @@ export function addConversationSelection(
     });
     if (focus) focusComposer(sessionId);
   } catch (error) {
-    drafts.set(sessionId, { ...draft, error: error instanceof Error ? error.message : String(error) });
+    drafts.set(sessionId, { ...draft, error: userErrorMessage(error) });
   }
 }
 export function resetSession(snapshot: import("../shared/bridge.ts").SessionSnapshot): void {

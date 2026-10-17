@@ -6,6 +6,7 @@ import { selectionIntersects } from "../conversation-selections.ts";
 import { fallbackFileIconSource, fileIconSource } from "../file-icons.ts";
 import type { FileLocation } from "../link-target.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";
+import { userErrorMessage } from "../user-error.ts";
 
 export interface DisplayReference {
   kind: "file" | "skill" | "command" | "session" | "subagent";
@@ -132,9 +133,7 @@ export function Reference({
   if (kind !== "file" || !onOpen || !onAction) return reference;
   const perform = (action: FileAction) => {
     setError("");
-    void onAction(path, action, location).catch((error) =>
-      setError(error instanceof Error ? error.message : String(error)),
-    );
+    void onAction(path, action, location).catch((error) => setError(userErrorMessage(error)));
   };
   return (
     <>

@@ -18,6 +18,7 @@ const bridge: QuickChatBridge = {
   reset: () => call("reset"),
   hide: () => call("hide"),
   setComposerHeight: (sessionId, height) => call("setComposerHeight", sessionId, height),
+  setNoticeHeight: (sessionId, height) => call("setNoticeHeight", sessionId, height),
   rendererReady: (sessionId, version) => call("rendererReady", sessionId, version),
   reportComposerState: (token, sessionId, occupied) =>
     call("reportComposerState", token, sessionId, occupied),

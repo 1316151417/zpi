@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProviderRecord, PublicSettings } from "../shared/bridge.ts";
 import { unwrap } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 export function ChatGPTConnection({
   provider,
@@ -56,7 +57,7 @@ export function ChatGPTConnection({
       onSettings(result.settings, result.providerId);
       onNotice(result.warning ?? "ChatGPT 已登录，模型列表已自动获取。");
     } catch (error) {
-      if (mounted.current && pending.current !== "cancelled") onError(String(error));
+      if (mounted.current && pending.current !== "cancelled") onError(userErrorMessage(error));
     } finally {
       if (mounted.current) {
         pending.current = undefined;
@@ -85,7 +86,7 @@ export function ChatGPTConnection({
         onNotice(result.warning ?? "已退出 ChatGPT。");
       }
     } catch (error) {
-      if (mounted.current) onError(String(error));
+      if (mounted.current) onError(userErrorMessage(error));
     } finally {
       if (mounted.current) {
         setBusy(false);
@@ -132,7 +133,7 @@ export function ChatGPTConnection({
                 .submitChatGPTCallback(login.loginId, callback)
                 .then(unwrap)
                 .then(() => setCallback(""))
-                .catch((error) => onError(String(error)));
+                .catch((error) => onError(userErrorMessage(error)));
             }}
           >
             提交回调地址

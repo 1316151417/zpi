@@ -28,6 +28,7 @@ import {
   useStore,
 } from "./store.ts";
 import { terminalTitle } from "./terminal-presentation.ts";
+import { userErrorMessage } from "./user-error.ts";
 export type PaneTab = (
   | { id: string; type: "background-task"; title: string; sessionId: string; taskId: string }
   | {
@@ -520,7 +521,9 @@ export async function deleteSessionWithPanes(sessionId: string) {
     state.tabs
       .filter((tab) => tabOwner(tab) === sessionId)
       .map((tab) =>
-        closeTab(tab.id).catch((error) => report(new Error(`任务已删除，但侧栏清理失败：${String(error)}`))),
+        closeTab(tab.id).catch((error) =>
+          report(new Error(`任务已删除，但侧栏清理失败：${userErrorMessage(error)}`, { cause: error })),
+        ),
       ),
   );
   const preferences = new Map(usePane.getState().preferences);

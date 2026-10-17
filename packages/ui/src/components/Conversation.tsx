@@ -57,6 +57,7 @@ import type {
   SubagentTask,
   ViewBlock,
 } from "../types.ts";
+import { userErrorMessage } from "../user-error.ts";
 import { AnswerSources } from "./AnswerSources.tsx";
 import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCards.tsx";
 import { collectAnswerSources } from "./answer-sources.ts";
@@ -129,7 +130,7 @@ function UserMessageEditor({
   const [resolving, setResolving] = useState(false);
   const report = (error: unknown) => {
     const draft = storage.current.get(sessionId);
-    if (draft) storage.current.set(sessionId, { ...draft, error: String(error) });
+    if (draft) storage.current.set(sessionId, { ...draft, error: userErrorMessage(error) });
   };
   const parsed = parseSelectionPrompt(run.userMessage);
   if (!storage.current.has(sessionId))
@@ -666,7 +667,7 @@ export const RunGroup = memo(function RunGroup({
         )}
         {run.error && run.status !== "running" && (
           <div role="alert" className="run-error">
-            {run.error}
+            {userErrorMessage(run.error)}
           </div>
         )}
         <div className="assistant-message-row">
@@ -714,7 +715,7 @@ export const RunGroup = memo(function RunGroup({
                     setForking(true);
                     setActionError("");
                     void onFork(run.runId)
-                      .catch((error) => setActionError(String(error)))
+                      .catch((error) => setActionError(userErrorMessage(error)))
                       .finally(() => setForking(false));
                   }}
                 >
@@ -911,9 +912,7 @@ export function Conversation({
     const attempt = `${view.sessionId}:${findQuery}:${historyCursor}`;
     if (attempt === findLoadAttempt.current) return;
     findLoadAttempt.current = attempt;
-    void onLoadEarlier().catch((error) =>
-      setHistoryError(error instanceof Error ? error.message : String(error)),
-    );
+    void onLoadEarlier().catch((error) => setHistoryError(userErrorMessage(error)));
   }, [findQuery, hasEarlier, loadingEarlier, onLoadEarlier, historyCursor, view]);
   const scrollToBottom = () => {
     const el = ref.current;
@@ -954,7 +953,7 @@ export function Conversation({
       .catch((error) => {
         if (historyRequest.current !== request) return;
         prepend.current = null;
-        setHistoryError(error instanceof Error ? error.message : String(error));
+        setHistoryError(userErrorMessage(error));
       })
       .finally(() => {
         if (historyRequest.current === request) historyRequest.current = null;
@@ -1280,7 +1279,7 @@ export function ChatComposer({
         if (active) setSessionCatalog({ id: sessionId, items });
       },
       (error) => {
-        if (active) setSessionCatalog({ id: sessionId, items: [], error: String(error) });
+        if (active) setSessionCatalog({ id: sessionId, items: [], error: userErrorMessage(error) });
       },
     );
     return () => {
@@ -1358,7 +1357,7 @@ export function ChatComposer({
         })
         .catch((e) => {
           if (active) {
-            setFileError(String(e));
+            setFileError(userErrorMessage(e));
             setFileLoading(false);
           }
         });
@@ -1401,7 +1400,7 @@ export function ChatComposer({
       }
       updateValue(id, (old) => ({ ...old, attachments: [...old.attachments, ...images] }));
     } catch (e) {
-      updateValue(id, (old) => ({ ...old, error: String(e) }));
+      updateValue(id, (old) => ({ ...old, error: userErrorMessage(e) }));
     } finally {
       updateValue(id, (old) => ({ ...old, pending: Math.max(0, old.pending - 1) }));
     }
@@ -1678,7 +1677,7 @@ export function ChatComposer({
           const first = queue?.items[0];
           if (first?.state === "queued")
             void sendQueuedNow(first.id).catch((error) =>
-              updateValue(sessionId, (old) => ({ ...old, error: String(error) })),
+              updateValue(sessionId, (old) => ({ ...old, error: userErrorMessage(error) })),
             );
         }
       }}
@@ -1701,7 +1700,7 @@ export function ChatComposer({
           key={sessionId}
           queue={queue}
           actions={{ ...queueActions, edit: editQueued, sendNow: sendQueuedNow }}
-          onError={(error) => updateValue(sessionId, (old) => ({ ...old, error: String(error) }))}
+          onError={(error) => updateValue(sessionId, (old) => ({ ...old, error: userErrorMessage(error) }))}
         />
       )}
       <fieldset
@@ -1768,7 +1767,7 @@ export function ChatComposer({
                         attachments: old.attachments.filter((e) => e.id !== image.id),
                       })),
                     )
-                    .catch((e) => updateValue(sessionId, (old) => ({ ...old, error: String(e) })));
+                    .catch((e) => updateValue(sessionId, (old) => ({ ...old, error: userErrorMessage(e) })));
                 }}
               />
             ))}
@@ -1776,7 +1775,7 @@ export function ChatComposer({
         {value.pending > 0 && <small role="status">正在处理附件…</small>}
         {value.error && (
           <div className="run-error" role="alert">
-            {value.error}
+            {userErrorMessage(value.error)}
             <button
               type="button"
               aria-label="关闭附件错误"

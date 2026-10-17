@@ -184,6 +184,7 @@ beforeEach(() => {
     reset: vi.fn(async () => ok()),
     hide: vi.fn(async () => ok()),
     setComposerHeight: vi.fn(async () => ok()),
+    setNoticeHeight: vi.fn(async () => ok()),
     rendererReady: vi.fn(async () => ok()),
     reportComposerState: vi.fn(async () => ok()),
     onComposerProbe: vi.fn((listener) => {
@@ -233,6 +234,7 @@ afterEach(async () => {
   expect(composerProbeListeners.size).toBe(0);
   container.remove();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -1049,6 +1051,63 @@ test("retains a failed send in compact mode and permits an Enter retry", async (
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
+test("automatically shows error details for three seconds, then reopens on hover or focus", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.mocked(bridge.send).mockResolvedValue({
+    ok: false,
+    error: { code: "provider", message: "provider: 连接失败，请重试。" },
+  });
+  await mount();
+  await type("keep this draft");
+  await key(input(), "Enter");
+  const notice = button("查看错误原因");
+  expect(notice.hasAttribute("title")).toBe(false);
+  expect(query('[role="tooltip"]').textContent).toBe("连接失败，请重试。");
+  expect(query('[role="alert"]').textContent).not.toContain("provider:");
+  await act(async () => vi.advanceTimersByTime(2999));
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(1));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(bridge.setNoticeHeight).toHaveBeenLastCalledWith("quick-session", 0);
+  await act(async () => notice.dispatchEvent(new Event("pointerover", { bubbles: true })));
+  expect(query('[role="tooltip"]').textContent).toContain("连接失败");
+  await act(async () => notice.dispatchEvent(new Event("pointerout", { bubbles: true })));
+  await act(async () => vi.advanceTimersByTime(100));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await act(async () => notice.focus());
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await key(notice, "Escape");
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(bridge.hide).not.toHaveBeenCalled();
+  expect(input().value).toBe("keep this draft");
+  await click(button("关闭提示"));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+test("keeps hovered errors open and gives repeated failures a fresh three seconds", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.mocked(bridge.send).mockResolvedValue({
+    ok: false,
+    error: { code: "provider", message: "连接失败" },
+  });
+  await mount();
+  await type("retry this");
+  await key(input(), "Enter");
+  await act(async () => button("查看错误原因").dispatchEvent(new Event("pointerover", { bubbles: true })));
+  await act(async () => vi.advanceTimersByTime(3000));
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await act(async () => button("查看错误原因").dispatchEvent(new Event("pointerout", { bubbles: true })));
+  await act(async () => vi.advanceTimersByTime(100));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await key(input(), "Enter");
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(3000));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await push({ session: emptySession("replacement") });
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(bridge.setNoticeHeight).toHaveBeenLastCalledWith("replacement", 0);
+});
+
 test.each<[string, KeyboardEventInit]>([
   ["IME key", { isComposing: true }],
   ["IME compatibility key", { keyCode: 229 }],
@@ -1329,7 +1388,7 @@ test("keeps an early draft through a failed snapshot and successful reload", asy
   await act(async () => request.reject(new Error("暂时无法加载")));
   expect(input().disabled).toBe(false);
   expect(input().value).toBe("do not discard this draft");
-  expect(query('[role="alert"]').getAttribute("title")).toBe("暂时无法加载");
+  expect(query('[role="tooltip"]').textContent).toBe("暂时无法加载");
   await click(query<HTMLButtonElement>(".quick-chat-retry"));
   expect(input().value).toBe("do not discard this draft");
   expect(button("发送").disabled).toBe(false);
@@ -1482,7 +1541,8 @@ test("retries a failed rich output load without disabling stop, reset, Escape, o
     .mockReturnValueOnce(request.promise);
   await mount();
   await push({ session: { ...snapshot.session, runs: [run("running")] } });
-  expect(query('[role="alert"]').textContent).toContain("无法加载对话：chunk unavailable");
+  expect(query('[role="alert"]').textContent).toContain("无法加载对话：操作失败，请重试。");
+  expect(query('[role="alert"]').textContent).not.toContain("chunk unavailable");
   expect(button("停止").disabled).toBe(false);
   expect(button("新对话").disabled).toBe(false);
   expect(container.querySelector('button[aria-label="隐藏"]')).toBeNull();
@@ -1545,13 +1605,16 @@ test("uses the real deferred module through the production loader", async () => 
 });
 
 test("clears the draft and operation error only when an accepted snapshot changes session", async () => {
-  vi.mocked(bridge.send).mockResolvedValue({ ok: false, error: { code: "provider", message: "旧对话错误" } });
+  vi.mocked(bridge.send).mockResolvedValue({
+    ok: false,
+    error: { code: "provider", message: "旧对话发送失败" },
+  });
   await mount();
   await type("old session draft");
   await key(input(), "Enter");
   await push();
   expect(input().value).toBe("old session draft");
-  expect(query('[role="alert"]').textContent).toContain("旧对话错误");
+  expect(query('[role="alert"]').textContent).toContain("旧对话发送失败");
   await key(input(), "Escape");
   await act(async () => window.dispatchEvent(new Event("focus")));
   expect(input().value).toBe("old session draft");
@@ -1681,7 +1744,8 @@ test("ignores old-session link errors while still reporting current-session link
   expect(input().value).toBe("fresh session draft");
   await click(button("来源，1 个网页"));
   await click(query<HTMLButtonElement>(".answer-source-link"));
-  expect(query('[role="alert"]').textContent).toContain("current link failure");
+  expect(query('[role="alert"]').textContent).toContain("输入内容无效，请检查后重试。");
+  expect(query('[role="alert"]').textContent).not.toContain("current link failure");
   expect(input().value).toBe("fresh session draft");
 });
 

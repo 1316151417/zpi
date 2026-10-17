@@ -5,6 +5,7 @@ import type { BrowserState } from "../shared/bridge.ts";
 import { browserAddressAfterNavigation } from "./browser-address.ts";
 import { paneTask } from "./pane-store.ts";
 import { unwrap } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 import "./browser-pane.css";
 export function BrowserPane({ state, visible }: { state: BrowserState; visible: boolean }) {
   const root = useRef<HTMLDivElement>(null),
@@ -167,7 +168,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       </div>
       {state.error && (
         <p className="run-error" role="alert">
-          {state.error}
+          {userErrorMessage(state.error)}
         </p>
       )}
       <div ref={root} className="browser-surface" data-testid="browser-surface" />

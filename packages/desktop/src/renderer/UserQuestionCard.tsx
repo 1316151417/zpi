@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from "
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { UserQuestionRequest, UserQuestionResponse } from "zpi-ui";
 import { type QuestionDraft, questionDrafts, report, unwrap } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 type AnswerDraft = QuestionDraft["answers"][number];
 function preferredOption(question: UserQuestionRequest["questions"][number], answer: AnswerDraft) {
@@ -122,7 +123,7 @@ export function UserQuestionCard({
       unwrap(await window.zpi.respondToQuestion(sessionId, request.id, response));
       if (questionDrafts.get(sessionId)?.requestId === request.id) questionDrafts.delete(sessionId);
     } catch (error) {
-      setError(String(error));
+      setError(userErrorMessage(error));
       submitting.current = false;
       setSending(false);
     }

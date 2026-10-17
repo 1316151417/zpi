@@ -9,6 +9,7 @@ import {
 import { defaultShortcuts, formatShortcut } from "../shared/shortcuts.ts";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 const modelKey = (selection: { provider: string; modelId: string }) =>
   JSON.stringify([selection.provider, selection.modelId]);
@@ -38,7 +39,7 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
     try {
       unwrap(await window.zpi.openQuickChat());
     } catch (error) {
-      setError(String(error));
+      setError(userErrorMessage(error));
     } finally {
       inFlight.current = false;
       setOpening(false);
@@ -55,7 +56,7 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
       useStore.setState({ settings: next });
       setNotice("已保存，将从下一次发送起生效。");
     } catch (error) {
-      setError(`默认模型保存失败，原设置未更改。${error instanceof Error ? error.message : String(error)}`);
+      setError(`默认模型保存失败，原设置未更改。${userErrorMessage(error)}`);
     } finally {
       savingRef.current = false;
       setSaving(false);

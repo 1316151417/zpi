@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { deleteSessionWithPanes } from "./pane-store.ts";
 import { refresh, unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 type ArchivedRecord = SessionRecord & { projectName: string };
 export function ArchivedTasks() {
@@ -19,7 +20,7 @@ export function ArchivedTasks() {
   }, []);
   useEffect(() => {
     void load()
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(userErrorMessage(e)))
       .finally(() => setLoading(false));
   }, [load]);
   const running = (r: ArchivedRecord) => (sessions.get(r.id)?.status ?? r.status) === "running";
@@ -41,7 +42,7 @@ export function ArchivedTasks() {
         try {
           await deleteSessionWithPanes(r.id);
         } catch (e) {
-          failures.push(`${r.title}：${e instanceof Error ? e.message : String(e)}`);
+          failures.push(`${r.title}：${userErrorMessage(e)}`);
         }
       }
       setDeleting(undefined);
@@ -49,7 +50,7 @@ export function ArchivedTasks() {
       await refresh();
       setError(failures.join("\n"));
     } catch (e) {
-      setError(String(e));
+      setError(userErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -137,7 +138,7 @@ export function ArchivedTasks() {
                           .then(unwrap)
                           .then(load)
                           .then(refresh)
-                          .catch((e) => setError(String(e)))
+                          .catch((e) => setError(userErrorMessage(e)))
                           .finally(() => setBusy(false));
                       }}
                     >

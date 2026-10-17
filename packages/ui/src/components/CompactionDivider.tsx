@@ -1,6 +1,7 @@
 // Ported from ZCode v4/ConversationRowView.tsx MarkerDividerRow (Apache-2.0).
 import { Archive } from "lucide-react";
 import type { CompactionView } from "../types.ts";
+import { userErrorMessage } from "../user-error.ts";
 
 export function CompactionDivider({ marker }: { marker: CompactionView }) {
   const running = marker.status === "running";
@@ -19,7 +20,7 @@ export function CompactionDivider({ marker }: { marker: CompactionView }) {
       data-status={marker.status}
       data-origin={marker.origin}
       role="status"
-      title={marker.error}
+      title={marker.error ? userErrorMessage(marker.error) : undefined}
     >
       <span aria-hidden="true" className="compaction-line" />
       <span className="compaction-label">

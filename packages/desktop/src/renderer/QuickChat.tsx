@@ -1,12 +1,24 @@
 import { ArrowUp, CircleAlert, Plus, Square, X } from "lucide-react";
-import { type ComponentType, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ComponentType,
+  type CSSProperties,
+  memo,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { imageLimits } from "zpi-coding-agent/input";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { QuickChatAttachment } from "./QuickChatAttachment.tsx";
 import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
+import { QuickChatError } from "./QuickChatError.tsx";
 import { imageImportError, pastedImages, type QuickChatDraftImage } from "./quick-chat-attachments.ts";
 import { unwrap } from "./unwrap.ts";
+import { userErrorMessage } from "./user-error.ts";
 import "./quick-chat.css";
 
 // Keep the first input independent of settings/model adapters and rich conversation rendering.
@@ -20,10 +32,6 @@ const composerVerticalInset = 16; // 7px padding and a 1px border on each edge.
 const textareaMinHeight = 24;
 const expandedTextareaMaxHeight = 160;
 type ConversationLoader = () => Promise<{ default: ComponentType<QuickChatConversationProps> }>;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 const DeferredConversation = memo(function DeferredConversation({
   loader,
@@ -39,7 +47,7 @@ const DeferredConversation = memo(function DeferredConversation({
         if (active) setContent(() => module.default);
       },
       (reason) => {
-        if (active) setError(errorMessage(reason));
+        if (active) setError(userErrorMessage(reason));
       },
     );
     return () => {
@@ -77,7 +85,13 @@ export function QuickChat({
 }) {
   const [snapshot, setSnapshot] = useState<QuickChatSnapshot>();
   const [snapshotError, setSnapshotError] = useState("");
-  const [error, setError] = useState("");
+  const [error, updateError] = useState("");
+  const [errorVersion, setErrorVersion] = useState(0);
+  const [noticeHeight, setNoticeHeight] = useState(0);
+  const setError = useCallback((value: SetStateAction<string>) => {
+    updateError(value);
+    if (typeof value === "string" && value) setErrorVersion((version) => version + 1);
+  }, []);
   const [draft, setDraft] = useState("");
   const [images, setImages] = useState<QuickChatDraftImage[]>([]);
   const imagesRef = useRef(images);
@@ -110,6 +124,7 @@ export function QuickChat({
   const presentation = useRef<{ token: number; reported: Set<string> }>(undefined);
   const view = snapshot?.session;
   const expanded = snapshot?.expanded ?? Boolean(view?.runs.length);
+  const reservedNoticeHeight = expanded ? 0 : noticeHeight;
   const hasImages = images.length > 0;
   const imagesReady = images.every((item) => item.status === "ready");
   const running = Boolean(view?.runs.some((run) => run.status === "running"));
@@ -127,6 +142,7 @@ export function QuickChat({
       operationGeneration.current += 1;
       const session = currentSession.current;
       if (session) {
+        void window.zpiQuickChat.setNoticeHeight(session, 0).catch(() => {});
         for (const item of imagesRef.current) {
           if (item.image) void window.zpiQuickChat.removeAttachment(session, item.image.id).catch(() => {});
         }
@@ -168,7 +184,7 @@ export function QuickChat({
       .then(unwrap)
       .then(accept)
       .catch((reason) => {
-        if (active && revision.current < 0) setSnapshotError(errorMessage(reason));
+        if (active && revision.current < 0) setSnapshotError(userErrorMessage(reason));
       });
     return () => {
       active = false;
@@ -203,7 +219,7 @@ export function QuickChat({
     if (run.status === "error" && submitted.revision === draftRevision.current) {
       setDraft(submitted.text);
       updateImages(submitted.images);
-      setError(run.error || "发送失败，请重试。");
+      setError(run.error ? userErrorMessage(run.error) : "发送失败，请重试。");
     }
   }, [snapshot, pending, updateImages]);
 
@@ -221,6 +237,9 @@ export function QuickChat({
 
   const sessionId = view?.sessionId;
   const presentationVersion = snapshot?.presentationVersion ?? 0;
+  useLayoutEffect(() => {
+    if (sessionId) void window.zpiQuickChat.setNoticeHeight(sessionId, reservedNoticeHeight).catch(() => {});
+  }, [sessionId, reservedNoticeHeight]);
   const importImage = useCallback(
     async (item: QuickChatDraftImage) => {
       const importSession = currentSession.current;
@@ -251,7 +270,7 @@ export function QuickChat({
         update({ image, status: "ready" });
       } catch (reason) {
         if (!active() || !imagesRef.current.some((entry) => entry.key === item.key)) return;
-        const message = errorMessage(reason);
+        const message = userErrorMessage(reason);
         update({ status: "failed", error: message });
         setError(message);
       }
@@ -286,7 +305,7 @@ export function QuickChat({
         updateImages(imagesRef.current.filter((entry) => entry.key !== item.key));
     } catch (reason) {
       if (!mounted.current || generation !== operationGeneration.current) return;
-      const message = errorMessage(reason);
+      const message = userErrorMessage(reason);
       updateImages(
         imagesRef.current.map((entry) =>
           entry.key === item.key ? { ...entry, status: "ready", error: message } : entry,
@@ -298,7 +317,7 @@ export function QuickChat({
 
   const reportConversationError = useCallback(
     (message: string) => {
-      if (sessionId === currentSession.current) setError(message);
+      if (sessionId === currentSession.current) setError(userErrorMessage(message));
     },
     [sessionId],
   );
@@ -468,7 +487,7 @@ export function QuickChat({
     try {
       unwrap(await window.zpiQuickChat.hide());
     } catch (reason) {
-      if (generation === operationGeneration.current) setError(errorMessage(reason));
+      if (generation === operationGeneration.current) setError(userErrorMessage(reason));
     } finally {
       hiding.current = false;
     }
@@ -490,7 +509,7 @@ export function QuickChat({
     } catch (reason) {
       if (generation === operationGeneration.current) {
         if (action === "send") lastSubmission.current = undefined;
-        setError(errorMessage(reason));
+        setError(userErrorMessage(reason));
       }
     } finally {
       if (generation === operationGeneration.current) {
@@ -542,6 +561,7 @@ export function QuickChat({
     <main
       className={`quick-chat${expanded ? " quick-chat-expanded" : " quick-chat-compact"}${hasImages ? " quick-chat-has-images" : ""}`}
       aria-label="快速对话"
+      style={{ "--quick-chat-notice-height": `${reservedNoticeHeight}px` } as CSSProperties}
       data-testid="quick-chat"
       data-state={expanded ? "expanded" : "compact"}
     >
@@ -672,9 +692,12 @@ export function QuickChat({
               }}
             />
             {visibleError && (
-              <div className="quick-chat-error" role="alert" title={visibleError}>
-                <CircleAlert className="quick-chat-notice-icon" size={15} aria-hidden="true" />
-                <span className="quick-chat-notice-text">{visibleError}</span>
+              <QuickChatError
+                message={visibleError}
+                occurrence={errorVersion}
+                reservedHeight={reservedNoticeHeight}
+                onHeightChange={setNoticeHeight}
+              >
                 {!snapshot ? (
                   <button
                     type="button"
@@ -692,7 +715,7 @@ export function QuickChat({
                     <X size={14} aria-hidden="true" />
                   </button>
                 )}
-              </div>
+              </QuickChatError>
             )}
             {configurationRequired && (
               <div

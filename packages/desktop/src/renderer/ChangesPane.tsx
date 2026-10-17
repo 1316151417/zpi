@@ -4,6 +4,7 @@ import type { DiffItem } from "../shared/bridge.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, paneTask } from "./pane-store.ts";
 import { unwrap, useStore } from "./store.ts";
+import { userErrorMessage } from "./user-error.ts";
 export function ChangesPane({
   sessionId,
   runId,
@@ -58,7 +59,7 @@ export function ChangesPane({
         if (active) setEntries(value);
       })
       .catch((error) => {
-        if (active) setError(String(error));
+        if (active) setError(userErrorMessage(error));
       })
       .finally(() => {
         if (active) setLoading(false);

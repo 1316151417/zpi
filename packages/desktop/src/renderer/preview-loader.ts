@@ -1,10 +1,5 @@
 import { createPreviewLoader } from "zpi-ui";
-import type { Result } from "../shared/bridge.ts";
-
-const unwrap = <T>(result: Result<T>): T => {
-  if (!result.ok) throw new Error(result.error.message);
-  return result.value;
-};
+import { unwrap } from "./unwrap.ts";
 export const previewLoader = createPreviewLoader({
   getChangedPaths: async (id, runId) => {
     const changes = unwrap(await window.zpi.getChanges(id, runId, false));

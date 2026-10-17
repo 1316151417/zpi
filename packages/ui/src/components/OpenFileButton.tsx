@@ -2,6 +2,7 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import type { FileAction, FileActionHandler } from "../types.ts";
+import { userErrorMessage } from "../user-error.ts";
 
 export function OpenFileButton({
   path,
@@ -24,7 +25,7 @@ export function OpenFileButton({
     try {
       await onAction(path, action);
     } catch (error) {
-      onError(error instanceof Error ? error.message : String(error));
+      onError(userErrorMessage(error));
     } finally {
       setBusy(false);
     }

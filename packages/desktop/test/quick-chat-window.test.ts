@@ -58,6 +58,7 @@ function fixture(
   const windows: ReturnType<typeof makeWindow>[] = [];
   const configs: BrowserWindowConstructorOptions[] = [];
   const copyText = vi.fn();
+  const onError = vi.fn();
   const openExternal = vi.fn(async () => {});
   function makeWindow(config: BrowserWindowConstructorOptions) {
     let bounds = { x: config.x ?? 0, y: config.y ?? 0, width: config.width ?? 0, height: config.height ?? 0 };
@@ -140,6 +141,7 @@ function fixture(
     workspaceNotifications,
     copyText,
     openExternal,
+    onError,
     loadSourceIcon: vi.fn(async () => undefined),
   });
   return {
@@ -149,6 +151,7 @@ function fixture(
     configs,
     copyText,
     openExternal,
+    onError,
     getDisplay,
     workspaceNotifications,
     spaceChanged: () => spaceChanged(),
@@ -183,6 +186,24 @@ function fixture(
     },
   };
 }
+
+test("retains original IPC failures for diagnostics without depending on the logger", async () => {
+  const f = fixture();
+  const error = new Error("provider: private diagnostic");
+  f.host.send.mockImplementation(() => {
+    throw error;
+  });
+  await expect(f.quick.call("send", ["hello"])).resolves.toMatchObject({ ok: false });
+  expect(f.onError).toHaveBeenCalledWith(error, "send");
+  f.onError.mockImplementation(() => {
+    throw new Error("logger unavailable");
+  });
+  await expect(f.quick.call("send", ["hello"])).resolves.toMatchObject({
+    ok: false,
+    error: { code: "provider", message: error.message },
+  });
+  await f.quick.dispose();
+});
 
 test("quick window is lazy, isolated, and toggles without affecting its request or the main task", async () => {
   const f = fixture();
@@ -649,6 +670,10 @@ test.each([
     await f.quick.show();
     const window = f.windows[0];
     expect(window.getBounds()).toEqual({ x, y: bottom - 44, width: 360, height: 44 });
+    await f.quick.call("setNoticeHeight", ["session-1", 172]);
+    expect(window.getBounds()).toEqual({ x, y: bottom - 216, width: 360, height: 216 });
+    await f.quick.call("setNoticeHeight", ["session-1", 0]);
+    expect(window.getBounds()).toEqual({ x, y: bottom - 44, width: 360, height: 44 });
     f.emitHistory(true);
     expect(window.getBounds().y + window.getBounds().height).toBe(bottom);
     expect(window.getBounds().x + window.getBounds().width / 2).toBe(bounds.x + bounds.width / 2);
@@ -821,6 +846,183 @@ test("composer growth keeps its bottom anchor, clamps to the screen, and rejects
   f.changeSession("new-session");
   await f.quick.call("setComposerHeight", ["session-1", 184]);
   expect(window.getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("notice space grows upward independently of the composer and shrinks on close or remeasurement", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  const initial = window.getBounds();
+  const bottom = initial.y + initial.height;
+  for (const [method, height, total] of [
+    ["setNoticeHeight", 52.4, 96],
+    ["setComposerHeight", 184, 236],
+    ["setNoticeHeight", 172, 356],
+    ["setComposerHeight", 240, 412],
+    ["setNoticeHeight", 84.6, 325],
+    ["setNoticeHeight", 0, 240],
+    ["setNoticeHeight", 172, 412],
+    ["setComposerHeight", 44, 216],
+    ["setNoticeHeight", 0, 44],
+  ] as const) {
+    expect(await f.quick.call(method, ["session-1", height])).toEqual({ ok: true, value: undefined });
+    expect(window.getBounds()).toEqual({ ...initial, y: bottom - total, height: total });
+  }
+  expect(window.setMinimumSize).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("notice height validates its IPC shape and finite range before ignoring stale sessions", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  await f.quick.call("setNoticeHeight", ["session-1", 60]);
+  const bounds = window.getBounds();
+  window.setBounds.mockClear();
+  for (const args of [
+    [],
+    ["session-1"],
+    ["session-1", 60, 0],
+    [null, 60],
+    ["s".repeat(257), 60],
+    ...[-0.01, 172.01, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, "60", null].map(
+      (height) => ["session-1", height],
+    ),
+    ["old-session", -1],
+  ]) {
+    expect(await f.quick.call("setNoticeHeight", args)).toMatchObject({
+      ok: false,
+      error: { code: "invalid_input" },
+    });
+  }
+  for (const [sessionId, height] of [
+    ["session-1", 60.1],
+    ["old-session", 0],
+    ["old-session", 172],
+  ]) {
+    expect(await f.quick.call("setNoticeHeight", [sessionId, height])).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  }
+  expect(window.getBounds()).toEqual(bounds);
+  expect(window.setBounds).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("session changes clear notice space and stale calls cannot reopen or close the current notice", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  const bottom = window.getBounds().y + window.getBounds().height;
+  await f.quick.call("setComposerHeight", ["session-1", 184]);
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  f.changeSession("fresh");
+  expect(window.getBounds().height).toBe(44);
+  expect(window.getBounds().y + 44).toBe(bottom);
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  expect(window.getBounds().height).toBe(44);
+  await f.quick.call("setNoticeHeight", ["fresh", 84]);
+  const bounds = window.getBounds();
+  expect(bounds.height).toBe(128);
+  window.setBounds.mockClear();
+  await f.quick.call("setNoticeHeight", ["session-1", 0]);
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  expect(window.getBounds()).toEqual(bounds);
+  expect(window.setBounds).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("expansion clears notice space and expanded calls cannot affect bounds or a later compact window", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const window = f.windows[0];
+  await f.quick.call("setComposerHeight", ["session-1", 140]);
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  expect(window.getBounds().height).toBe(312);
+  f.emitHistory(true);
+  const expanded = window.getBounds();
+  expect(expanded).toMatchObject({ width: 660, height: 560 });
+  window.setBounds.mockClear();
+  for (const height of [0, 172])
+    expect(await f.quick.call("setNoticeHeight", ["session-1", height])).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  expect(await f.quick.call("setNoticeHeight", ["session-1", 173])).toMatchObject({ ok: false });
+  expect(window.getBounds()).toEqual(expanded);
+  expect(window.setBounds).not.toHaveBeenCalled();
+  f.emitHistory(false);
+  expect(window.getBounds().height).toBe(140);
+  await f.quick.dispose();
+});
+
+test("notice plus composer height clamps to the work area without losing the composer's own height", async () => {
+  const f = fixture();
+  f.getDisplay.mockReturnValue({
+    bounds: { x: -320, y: -100, width: 320, height: 300 },
+    workArea: { x: -320, y: -100, width: 320, height: 300 },
+  });
+  await f.quick.show();
+  const window = f.windows[0];
+  await f.quick.call("setComposerHeight", ["session-1", 140]);
+  const composer = window.getBounds();
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  expect(window.getBounds()).toEqual({ x: -320, y: -100, width: 320, height: 300 });
+  await f.quick.call("setNoticeHeight", ["session-1", 0]);
+  expect(window.getBounds()).toEqual(composer);
+  await f.quick.dispose();
+});
+
+test("renderer reload clears only notice space and stale renderer events cannot clear replacement space", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const old = f.windows[0];
+  await f.quick.call("setComposerHeight", ["session-1", 92]);
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  for (const navigation of [
+    { isMainFrame: false, isSameDocument: false, url: old.webContents.getURL() },
+    { isMainFrame: true, isSameDocument: true, url: old.webContents.getURL() },
+    { isMainFrame: true, isSameDocument: false, url: "https://blocked.invalid/" },
+  ]) {
+    old.webContents.emit("did-start-navigation", navigation);
+    expect(old.getBounds().height).toBe(264);
+  }
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: false,
+    url: old.webContents.getURL(),
+  });
+  expect(old.getBounds().height).toBe(92);
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  old.webContents.emit("render-process-gone");
+  await f.quick.show();
+  const replacement = f.windows[1];
+  expect(replacement.getBounds().height).toBe(92);
+  await f.quick.call("setNoticeHeight", ["session-1", 72]);
+  old.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: false,
+    url: old.webContents.getURL(),
+  });
+  old.emit("closed");
+  expect(replacement.getBounds().height).toBe(164);
+  await f.quick.dispose();
+});
+
+test("window recreation clears notice space even before the destroyed window sends its closed event", async () => {
+  const f = fixture();
+  await f.quick.show();
+  const old = f.windows[0];
+  await f.quick.call("setNoticeHeight", ["session-1", 172]);
+  old.isDestroyed = () => true;
+  await f.quick.show();
+  const replacement = f.windows[1];
+  expect(f.configs[1]).toMatchObject({ height: 44, minHeight: 44 });
+  await f.quick.call("setNoticeHeight", ["session-1", 84]);
+  old.emit("closed");
+  expect(replacement.getBounds().height).toBe(128);
   await f.quick.dispose();
 });
 

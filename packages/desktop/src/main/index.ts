@@ -302,6 +302,7 @@ async function launch(): Promise<void> {
   );
   const quickChat = new QuickChatWindow({
     host: quickChatHost,
+    onError: (error, method) => errors.write("quick-chat.ipc", error, { method }),
     ...(process.env.ZPI_QUICK_CHAT_TIMING === "1"
       ? { timing: new QuickChatTiming(app.getPath("userData"), true) }
       : {}),

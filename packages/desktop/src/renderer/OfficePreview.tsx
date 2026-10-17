@@ -5,6 +5,7 @@ import { useAppearance } from "zpi-ui";
 import type { FilePreview } from "../shared/bridge.ts";
 import DocxPreview from "./DocxPreview.tsx";
 import { installDocumentLinkSafety } from "./office-preview-model.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 const LegacyDocPreview = lazy(() => import("./LegacyDocPreview.tsx"));
 
@@ -88,7 +89,7 @@ export default function OfficePreview({
           )}
           errorState={(error) => (
             <p role="alert" className="run-error">
-              {error.message}
+              {userErrorMessage(error)}
             </p>
           )}
         />

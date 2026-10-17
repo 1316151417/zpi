@@ -10,6 +10,7 @@
     "./selections": "./src/conversation-selections.ts",
     "./code-language": "./src/code-language.ts",
     "./links": "./src/link-target.ts",
+    "./errors": "./src/user-error.ts",
     "./media-preview": "./src/preview/media-preview.ts"
   },
   "dependencies": {

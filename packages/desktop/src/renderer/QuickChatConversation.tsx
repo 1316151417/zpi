@@ -1,6 +1,7 @@
 import { type ComposerContext, Conversation, type SessionView } from "zpi-ui";
 import { readQuickChatAttachment } from "./quick-chat-attachments.ts";
 import { unwrap } from "./unwrap.ts";
+import { userErrorMessage } from "./user-error.ts";
 
 export interface QuickChatConversationProps {
   view: SessionView;
@@ -33,7 +34,7 @@ export default function QuickChatConversation({ view, onError }: QuickChatConver
         void window.zpiQuickChat
           .openExternal(url)
           .then(unwrap)
-          .catch((reason) => onError(reason instanceof Error ? reason.message : String(reason)));
+          .catch((reason) => onError(userErrorMessage(reason)));
       }}
       onFile={() => onError("快速对话不支持预览本地文件")}
     />

@@ -13,6 +13,7 @@ import { ArrowUpFromLine, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
 import { parseMentions } from "zpi-coding-agent/input";
 import type { InputQueue, QueuedInput } from "../types.ts";
+import { userErrorMessage } from "../user-error.ts";
 import { ActionHint } from "./MessageActions.tsx";
 
 export interface QueueActions {
@@ -194,7 +195,7 @@ export const ConversationQueuePanel = memo(function ConversationQueuePanel({
       )}
       {queue.error && (
         <small role="alert" className="queue-error">
-          {queue.error}
+          {userErrorMessage(queue.error)}
         </small>
       )}
       <DndContext

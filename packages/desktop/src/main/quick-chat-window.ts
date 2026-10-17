@@ -33,6 +33,7 @@ interface Options {
   >;
   copyText: (text: string) => void;
   openExternal: (url: string) => Promise<void>;
+  onError?: (error: unknown, method: string) => void;
 }
 /** Lazy floating window. Hiding never touches the run, and renderer reloads recover from the host. */
 export class QuickChatWindow {
@@ -49,6 +50,7 @@ export class QuickChatWindow {
   private hasRuns = false;
   private resettingPresentation?: { sessionId: string; expanded: boolean };
   private composerHeight = 44;
+  private noticeHeight = 0;
   private sessionId: string;
   private snapshotRevision = 0;
   private presentationVersion = 0;
@@ -81,6 +83,7 @@ export class QuickChatWindow {
         );
         this.sessionId = snapshot.session.sessionId;
         this.composerHeight = 44;
+        this.noticeHeight = 0;
         this.cancelComposerProbe();
         this.invalidateFrame();
       }
@@ -124,7 +127,7 @@ export class QuickChatWindow {
     const display = this.options.getDisplay(previous);
     const area = display.workArea;
     const width = Math.min(expanded ? 660 : 360, area.width);
-    const height = Math.min(expanded ? 560 : this.composerHeight, area.height);
+    const height = Math.min(expanded ? 560 : this.composerHeight + this.noticeHeight, area.height);
     // Public geometry only, in DIP. A visible bottom Dock/taskbar is an estimate
     // of its height; side/auto-hidden Docks have no useful bottom inset.
     const bottomInset = Math.max(0, display.bounds.y + display.bounds.height - area.y - area.height);
@@ -144,6 +147,7 @@ export class QuickChatWindow {
   private setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return;
     this.expanded = expanded;
+    if (expanded) this.noticeHeight = 0;
     this.invalidateFrame();
     const window = this.window;
     if (!window || window.isDestroyed()) return;
@@ -170,6 +174,23 @@ export class QuickChatWindow {
       current.height !== bounds.height
     )
       window.setBounds(bounds);
+  }
+  private setCompactHeight(
+    field: "composerHeight" | "noticeHeight",
+    sessionId: string,
+    height: unknown,
+    min: number,
+    max: number,
+    label: string,
+  ): void {
+    if (typeof height !== "number" || !Number.isFinite(height) || height < min || height > max)
+      throw new Error(`invalid_input: ${label}`);
+    if (sessionId !== this.options.host.sessionId || this.expanded) return;
+    const next = Math.round(height);
+    if (next === this[field]) return;
+    this[field] = next;
+    const window = this.window;
+    if (window && !window.isDestroyed()) this.applyBounds(window, this.bounds(false, window.getBounds()));
   }
   private finishPresentation(outcome: "shown" | "hidden" | "failed" | "cancelled" | "timeout"): void {
     if (!this.presentation) return;
@@ -251,6 +272,7 @@ export class QuickChatWindow {
     }
     if (this.window && !this.window.isDestroyed()) return this.window;
     this.expanded = this.keepExpanded || this.hasRuns;
+    this.noticeHeight = 0;
     const bounds = this.bounds(this.expanded);
     const minimum = this.minimumSize(bounds);
     const window = this.options.createWindow({
@@ -363,6 +385,10 @@ export class QuickChatWindow {
         details.url.split("#")[0] === window.webContents.getURL().split("#")[0]
       ) {
         this.options.host.discardDraftAttachments();
+        if (this.noticeHeight) {
+          this.noticeHeight = 0;
+          this.applyBounds(window, this.bounds(this.expanded, window.getBounds()));
+        }
         this.invalidateFrame();
       }
     });
@@ -590,6 +616,7 @@ export class QuickChatWindow {
         openExternal: 1,
         readWebSourceIcon: 3,
         setComposerHeight: 2,
+        setNoticeHeight: 2,
         rendererReady: 2,
         reportComposerState: 3,
         reportPresentation: 2,
@@ -630,20 +657,12 @@ export class QuickChatWindow {
             probe.resolve(occupied);
           break;
         }
-        case "setComposerHeight": {
-          const sessionId = text(256);
-          const height = args[1];
-          if (typeof height !== "number" || !Number.isFinite(height) || height < 44 || height > 240)
-            throw new Error("invalid_input: 输入框高度无效");
-          if (sessionId !== host.sessionId || this.expanded) break;
-          const next = Math.round(height);
-          if (next === this.composerHeight) break;
-          this.composerHeight = next;
-          const window = this.window;
-          if (window && !window.isDestroyed())
-            this.applyBounds(window, this.bounds(false, window.getBounds()));
+        case "setComposerHeight":
+          this.setCompactHeight("composerHeight", text(256), args[1], 44, 240, "输入框高度无效");
           break;
-        }
+        case "setNoticeHeight":
+          this.setCompactHeight("noticeHeight", text(256), args[1], 0, 172, "提示区域高度无效");
+          break;
         case "reportPresentation": {
           const token = args[0];
           const stage = args[1];
@@ -715,6 +734,11 @@ export class QuickChatWindow {
       }
       return { ok: true, value };
     } catch (error) {
+      try {
+        this.options.onError?.(error, typeof method === "string" ? method : "unknown");
+      } catch {
+        // Logging must not prevent the operation failure from reaching the renderer.
+      }
       const message = error instanceof Error ? error.message : String(error);
       const code =
         (["configuration", "busy", "not_found", "provider", "storage", "invalid_input"] as ErrorCode[]).find(
