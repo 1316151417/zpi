@@ -1846,9 +1846,14 @@ test("pastes an image, shows its thumbnail and sends image-only input using an a
 });
 
 test.each(["task", "compact", "expanded"] as const)(
-  "centers the image remove icon in the %s composer without padding overflow",
+  "keeps the image remove control centered and dark on hover in the %s composer",
   async (mode) => {
     const style = quickChatStyles();
+    // Preserve selector specificity while emulating pointer/focus-visible state.
+    // Happy DOM checks the CSS cascade, not real pointer behavior or painted pixels.
+    style.textContent = style.textContent
+      .replaceAll(":hover", "[data-test-hover]")
+      .replaceAll(":focus-visible", "[data-test-focus-visible]");
     const removeAttachment = vi.fn(async () => {});
     try {
       if (mode === "task") {
@@ -1906,6 +1911,53 @@ test.each(["task", "compact", "expanded"] as const)(
         expect(icon?.getAttribute("height")).toBe("12");
         expect(getComputedStyle(icon as SVGSVGElement).display).toBe("block");
         expect(getComputedStyle(icon as SVGSVGElement).flexShrink).toBe("0");
+      }
+      const chip = remove.parentElement as HTMLElement;
+      const preview = chip.querySelector("button:first-child") as HTMLButtonElement;
+      const originalTheme = document.documentElement.dataset.theme;
+      try {
+        for (const theme of ["light", "dark"]) {
+          document.documentElement.dataset.theme = theme;
+          for (const interaction of ["hover", "normal", "chip-hover", "focus", "disabled-hover"]) {
+            chip.toggleAttribute("data-test-hover", interaction.includes("hover"));
+            remove.toggleAttribute(
+              "data-test-hover",
+              interaction === "hover" || interaction === "disabled-hover",
+            );
+            remove.toggleAttribute("data-test-focus-visible", interaction === "focus");
+            remove.disabled = interaction === "disabled-hover";
+            if (interaction === "focus") {
+              remove.focus();
+              expect(document.activeElement).toBe(remove);
+            } else remove.blur();
+            const css = getComputedStyle(remove);
+            expect(css.backgroundColor, `${theme}/${interaction}`).toBe(
+              interaction === "hover" ? "#454648" : "#191c1f",
+            );
+            expect(css.color).toBe("#fff");
+            expect(icon?.getAttribute("stroke")).toBe("currentColor");
+            expect(["", "none"]).toContain(css.filter);
+            expect(css.opacity).toBe(mode === "task" && interaction === "normal" ? "0" : "1");
+            expect(css.width).toBe("14px");
+            expect(css.height).toBe("14px");
+            expect(css.padding).toBe("0px");
+            expect(css.top).toBe("2px");
+            expect(css.right).toBe("2px");
+            expect(getComputedStyle(preview).backgroundColor).not.toBe("#454648");
+          }
+          preview.setAttribute("data-test-hover", "");
+          expect(getComputedStyle(preview).backgroundColor).toBe(
+            theme === "light" ? "rgba(13, 13, 13, 0.05)" : "rgba(255, 255, 255, 0.05)",
+          );
+          preview.removeAttribute("data-test-hover");
+          chip.removeAttribute("data-test-hover");
+          remove.removeAttribute("data-test-hover");
+          remove.removeAttribute("data-test-focus-visible");
+          remove.disabled = false;
+        }
+      } finally {
+        if (originalTheme === undefined) delete document.documentElement.dataset.theme;
+        else document.documentElement.dataset.theme = originalTheme;
       }
       expect(remove.disabled).toBe(false);
       if (mode === "task") {

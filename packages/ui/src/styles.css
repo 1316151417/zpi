@@ -1861,9 +1861,15 @@ small {
   opacity: 0;
 }
 .image-chip > .chip-remove {
+  /* Image overlays stay dark with a white icon in both themes. */
+  background: #191c1f;
+  color: #fff;
   /* Keep the 12px icon inside the 14px grid instead of overflowing a padded 10px cell. */
   padding: 0;
   line-height: 0;
+}
+.image-chip > .chip-remove:hover:not(:disabled) {
+  background: #454648;
 }
 .image-chip > :where(.chip-remove) > svg {
   display: block;
