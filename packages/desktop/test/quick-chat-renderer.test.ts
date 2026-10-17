@@ -1336,13 +1336,36 @@ test("pastes an image, shows its thumbnail and sends image-only input using an a
   expect(event.defaultPrevented).toBe(true);
   expect(bridge.importAttachment).toHaveBeenCalledExactlyOnceWith("quick-session", file);
   expect(bridge.readAttachment).toHaveBeenCalledExactlyOnceWith("quick-session", "image-clipboard.png");
-  expect(query<HTMLImageElement>(".quick-chat-attachment img").src).toBe("data:image/png;base64,aW1hZ2U=");
+  const thumbnail = query<HTMLImageElement>(".quick-chat-attachment img");
+  expect(thumbnail.src).toBe("data:image/png;base64,aW1hZ2U=");
+  expect(thumbnail.alt).toBe(file.name);
+  expect(query(".quick-chat-attachment").textContent).toBe("");
+  expect(container.querySelector(".quick-chat-attachment-status")).toBeNull();
+  expect(button(`预览 ${file.name}`).disabled).toBe(false);
+  expect(button(`移除 ${file.name}`).disabled).toBe(false);
   expect(button("发送").disabled).toBe(false);
   expect(conversationLoader).not.toHaveBeenCalled();
   await key(input(), "Enter");
   expect(bridge.send).toHaveBeenCalledExactlyOnceWith("", ["image-clipboard.png"]);
   expect(container.querySelector(".quick-chat-attachments")).toBeNull();
   expect(bridge.removeAttachment).not.toHaveBeenCalled();
+});
+
+test("keeps draft image preview and dismissal available without a filename below the thumbnail", async () => {
+  await mount();
+  await paste([clipboardImage()]);
+  await click(button("预览 clipboard.png"));
+  const dialog = query<HTMLDialogElement>('dialog[aria-label="图片预览"]');
+  expect(dialog.open).toBe(true);
+  expect(dialog.querySelector("img")?.alt).toBe("clipboard.png");
+  await click(button("关闭图片预览"));
+  expect(container.querySelector("dialog")).toBeNull();
+  expect(query(".quick-chat-attachment").textContent).toBe("");
+  await click(button("预览 clipboard.png"));
+  await key(query("dialog"), "Escape");
+  expect(container.querySelector("dialog")).toBeNull();
+  expect(query(".quick-chat-attachment").textContent).toBe("");
+  expect(bridge.hide).not.toHaveBeenCalled();
 });
 
 test("keeps plain text and data URLs on the browser paste path, without importing images", async () => {
@@ -1379,10 +1402,13 @@ test("retains early text and queued clipboard images when the first snapshot arr
   await type("before connection");
   await paste([clipboardImage()]);
   expect(bridge.importAttachment).not.toHaveBeenCalled();
+  expect(query(".quick-chat-attachment-status").textContent).toBe("处理中…");
+  expect(query(".quick-chat-attachment").textContent).not.toContain("clipboard.png");
   expect(button("发送").disabled).toBe(true);
   await act(async () => request.resolve({ ok: true, value: snapshot }));
   expect(input().value).toBe("before connection");
   expect(bridge.importAttachment).toHaveBeenCalledOnce();
+  expect(container.querySelector(".quick-chat-attachment-status")).toBeNull();
   expect(button("发送").disabled).toBe(false);
 });
 
@@ -1394,6 +1420,9 @@ test("reserves the image count across consecutive pastes while imports are pendi
     await paste([clipboardImage(`${index}.png`)]);
   expect(bridge.importAttachment).toHaveBeenCalledTimes(imageLimits.count);
   expect(container.querySelectorAll(".quick-chat-attachment")).toHaveLength(imageLimits.count);
+  expect(
+    [...container.querySelectorAll(".quick-chat-attachment-status")].map((item) => item.textContent),
+  ).toEqual(Array(imageLimits.count).fill("处理中…"));
   expect(query('[role="alert"]').textContent).toContain("最多可添加 8 张图片");
   await type("wait for images");
   await key(input(), "Enter");
@@ -1413,9 +1442,13 @@ test("keeps a rejected clipboard file and text for an explicit import retry", as
   expect(input().value).toBe("keep my text");
   expect(container.querySelector(".quick-chat-attachment img")).toBeNull();
   expect(query('[role="alert"]').textContent).toContain("图片损坏");
+  expect(button("重试 clipboard.png").textContent).toBe("重试");
+  expect(button("重试 clipboard.png").title).toBe("图片损坏");
+  expect(query(".quick-chat-attachment").textContent).not.toContain("clipboard.png");
   expect(button("发送").disabled).toBe(true);
   await click(button("重试 clipboard.png"));
   expect(bridge.importAttachment).toHaveBeenNthCalledWith(2, "quick-session", file);
+  expect(container.querySelector(".quick-chat-attachment-status")).toBeNull();
   expect(button("发送").disabled).toBe(false);
 });
 
@@ -1442,11 +1475,27 @@ test("retries a thumbnail read without reimporting its validated attachment", as
   await mount();
   await paste([clipboardImage()]);
   expect(button("重试 clipboard.png").title).toContain("暂时无法预览");
+  expect(button("重试 clipboard.png").textContent).toBe("重试");
+  expect(query(".quick-chat-attachment").textContent).not.toContain("clipboard.png");
   expect(button("发送").disabled).toBe(false);
   await click(button("重试 clipboard.png"));
   expect(bridge.importAttachment).toHaveBeenCalledOnce();
   expect(bridge.readAttachment).toHaveBeenCalledTimes(2);
   expect(container.querySelector(".quick-chat-attachment img")).not.toBeNull();
+  expect(container.querySelector(".quick-chat-attachment-status")).toBeNull();
+});
+
+test("shows processing while removing an image and keeps the accessible filename", async () => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge.removeAttachment).mockReturnValueOnce(request.promise);
+  await mount();
+  await paste([clipboardImage()]);
+  await click(button("移除 clipboard.png"));
+  expect(query(".quick-chat-attachment-status").textContent).toBe("处理中…");
+  expect(query(".quick-chat-attachment").textContent).not.toContain("clipboard.png");
+  expect(button("移除 clipboard.png").disabled).toBe(true);
+  await act(async () => request.resolve(ok()));
+  expect(container.querySelector(".quick-chat-attachments")).toBeNull();
 });
 
 test("keeps an image when removal fails, then allows a removal retry", async () => {

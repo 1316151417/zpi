@@ -90,13 +90,17 @@ export class QuickChatWindow {
     return { ...snapshot, expanded: this.expanded || snapshot.session.runs.length > 0 };
   }
   private resetConversation(): Promise<void> {
-    const presentation = { sessionId: this.options.host.sessionId, expanded: this.expanded };
+    const window = this.window;
+    const presentation = {
+      sessionId: this.options.host.sessionId,
+      expanded: Boolean(this.expanded && window && !window.isDestroyed() && window.isVisible()),
+    };
     this.resettingPresentation = presentation;
     return this.options.host.reset().finally(() => {
       if (this.resettingPresentation === presentation) this.resettingPresentation = undefined;
     });
   }
-  /** Explicit new conversation preserves an already expanded presentation, even when hidden. */
+  /** Explicit new preserves expanded mode only when its native window is visible at invocation. */
   newConversation(): Promise<void> {
     if (this.disposed) return Promise.resolve();
     return this.show(this.startTrace(), this.resetConversation());

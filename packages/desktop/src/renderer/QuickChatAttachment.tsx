@@ -81,9 +81,9 @@ export function QuickChatAttachment({
         >
           重试
         </button>
-      ) : (
-        <span className="quick-chat-attachment-status">{busy ? "处理中…" : item.file.name}</span>
-      )}
+      ) : busy ? (
+        <span className="quick-chat-attachment-status">处理中…</span>
+      ) : null}
       {expanded && (
         <dialog
           ref={(element) => {

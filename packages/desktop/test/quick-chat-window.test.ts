@@ -987,7 +987,7 @@ test("explicit new keeps expanded presentation in pushes, snapshots and recreate
 });
 
 test.each([false, true])(
-  "new-conversation shortcut shows a fresh session and preserves expanded=%s",
+  "new-conversation shortcut from a hidden window always opens compact, previous history=%s",
   async (history) => {
     const f = fixture({ history });
     await f.quick.show();
@@ -996,7 +996,7 @@ test.each([false, true])(
     const opening = f.quick.newConversation();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(f.windows[0].show).toHaveBeenCalledOnce();
-    expect(f.windows[0].getBounds().height).toBe(history ? 560 : 44);
+    expect(f.windows[0].getBounds().height).toBe(44);
     await f.quick.call("rendererReady", ["session-1"]);
     expect(f.windows[0].show).toHaveBeenCalledOnce();
     await f.quick.call("rendererReady", ["shortcut-new"]);
@@ -1046,7 +1046,7 @@ test("repeated explicit new while resetting uses the newest visibility intent wi
   await Promise.all([first, second]);
   await f.quick.call("rendererReady", ["session-1"]);
   expect(f.windows[0].show).toHaveBeenCalledOnce();
-  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].getBounds().height).toBe(44);
   const reopened = f.quick.toggle();
   await f.quick.call("rendererReady", ["shared-new"]);
   await reopened;
@@ -1054,7 +1054,7 @@ test("repeated explicit new while resetting uses the newest visibility intent wi
   await f.quick.dispose();
 });
 
-test("explicit new during a pending expiry preserves the latest expanded intent", async () => {
+test("explicit new during a pending hidden expiry preserves the compact invocation intent", async () => {
   const f = fixture({ history: true });
   await f.quick.show();
   f.quick.hide();
@@ -1073,7 +1073,7 @@ test("explicit new during a pending expiry preserves the latest expanded intent"
   await new Promise((resolve) => setTimeout(resolve, 0));
   await f.quick.call("rendererReady", ["shared-new"]);
   await Promise.all([expired, explicit]);
-  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].getBounds().height).toBe(44);
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   await f.quick.dispose();
 });
@@ -1170,5 +1170,134 @@ test("renderer reload and destruction release draft images, never ordinary hide 
   old.emit("closed");
   expect(f.host.discardDraftAttachments).toHaveBeenCalledTimes(2);
   expect(f.host.reset).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("visible expanded new captures its mode before a later hide and never reopens from a late reset", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  let finish!: () => void;
+  f.host.reset.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          f.changeSession("visible-intent");
+          resolve();
+        };
+      }),
+  );
+  const opening = f.quick.newConversation();
+  f.quick.hide();
+  finish();
+  await opening;
+  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.call("rendererReady", ["visible-intent"]);
+  await f.quick.toggle();
+  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("hidden new remains compact even if a normal show presents the old session during reset", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  let finish!: () => void;
+  f.host.reset.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          f.changeSession("hidden-intent");
+          resolve();
+        };
+      }),
+  );
+  const opening = f.quick.newConversation();
+  await f.quick.show();
+  expect(f.windows[0].isVisible()).toBe(true);
+  finish();
+  await opening;
+  expect(f.windows[0].getBounds().height).toBe(44);
+  expect(await f.quick.call("getSnapshot", [])).toMatchObject({ ok: true, value: { expanded: false } });
+  await f.quick.dispose();
+});
+
+test("the latest hidden new intent wins when two explicit actions share one pending reset", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  let finish!: () => void;
+  const resetting = new Promise<void>((resolve) => {
+    finish = () => {
+      f.changeSession("latest-hidden");
+      resolve();
+    };
+  });
+  f.host.reset.mockReturnValue(resetting);
+  const visibleNew = f.quick.newConversation();
+  f.quick.hide();
+  const hiddenNew = f.quick.newConversation();
+  finish();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.quick.call("rendererReady", ["session-1"]);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.call("rendererReady", ["latest-hidden"]);
+  await Promise.all([visibleNew, hiddenNew]);
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test.each(["blur", "space"])(
+  "new after %s hiding resets compact while ordinary toggle still restores history",
+  async (reason) => {
+    const f = fixture({ history: true, platform: "darwin" });
+    await f.quick.show();
+    if (reason === "space") f.spaceChanged();
+    else f.windows[0].blur();
+    await f.quick.toggle();
+    expect(f.windows[0].getBounds().height).toBe(560);
+    expect(f.host.reset).not.toHaveBeenCalled();
+    if (reason === "space") f.spaceChanged();
+    else f.windows[0].blur();
+    f.host.reset.mockImplementationOnce(async () => f.changeSession("hidden-new"));
+    const opening = f.quick.newConversation();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await f.quick.call("rendererReady", ["hidden-new"]);
+    await opening;
+    expect(f.windows[0].getBounds().height).toBe(44);
+    await f.quick.dispose();
+  },
+);
+
+test("visible expanded new does not require focus, and destroyed retained windows are never queried for visibility", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.windows[0].isFocused.mockReturnValue(false);
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("visible-unfocused"));
+  await f.quick.call("reset", []);
+  expect(f.windows[0].getBounds().height).toBe(560);
+  const old = f.windows[0];
+  old.isDestroyed = () => true;
+  old.isVisible.mockImplementation(() => {
+    throw new Error("Object has been destroyed");
+  });
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("after-destroy"));
+  const opening = f.quick.newConversation();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.quick.call("rendererReady", ["after-destroy"]);
+  await opening;
+  expect(f.windows[1].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("desired visibility in hidden test mode is not native visibility for a new conversation", async () => {
+  const f = fixture({ history: true, hidden: true });
+  await f.quick.show();
+  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(f.windows[0].isVisible()).toBe(false);
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("never-presented"));
+  await f.quick.call("reset", []);
+  expect(f.windows[0].getBounds().height).toBe(44);
   await f.quick.dispose();
 });

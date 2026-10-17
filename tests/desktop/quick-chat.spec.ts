@@ -132,19 +132,20 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
       );
     });
     expect(rejected).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+    // Background desktop tests never present the native window, so explicit new starts compact.
     await input.fill("新对话应清空草稿");
     await quick.getByRole("button", { name: "新对话", exact: true }).click();
     await expect(quick.getByTestId("run")).toHaveCount(0);
-    await expect.poll(quickBounds).toMatchObject({ width: 660, height: 560 });
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 44 });
     await expect(input).toHaveValue("");
-    await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "expanded");
+    await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "compact");
     await expect(quick.getByRole("button", { name: "发送", exact: true })).toBeDisabled();
-    await expect(quick.getByRole("button", { name: "新对话", exact: true })).toBeVisible();
+    await expect(quick.getByRole("button", { name: "新对话", exact: true })).toHaveCount(0);
     await input.press("Escape");
     await quick.reload();
     await main.evaluate(() => window.zpi.openQuickChat());
-    await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "expanded");
-    await expect.poll(quickBounds).toMatchObject({ width: 660, height: 560 });
+    await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "compact");
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 44 });
     await expect(quick.getByTestId("run")).toHaveCount(0);
     expect(await main.evaluate(() => window.zpi.listRecentSessions())).toEqual(before);
     expect(app.windows()).toHaveLength(2);
@@ -299,7 +300,7 @@ test("quick chat pastes, previews and sends temporary images without creating ma
     await expect(quick.getByTestId("run")).toHaveCount(0);
     await expect(pendingImages).toHaveCount(0);
     await expect(input).toHaveValue("");
-    await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "expanded");
+    await expect(quick.getByTestId("quick-chat")).toHaveAttribute("data-state", "compact");
     expect(
       await quick.evaluate(({ sessionId, id }) => window.zpiQuickChat.readAttachment(sessionId, id), {
         sessionId,
