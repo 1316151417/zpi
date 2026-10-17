@@ -59,7 +59,7 @@ Fetch URL 只允许无凭据的公网 HTTP(S) 地址，屏蔽本地/私有 IP �
 
 回复操作栏「来源」从当前 run、当前回复消息之前的成功 web 工具元数据派生，URL 去重并补全信息，不扫描其他轮次或子任务，不改变模型 payload。按钮最多显示五个不同 hostname，浮窗只显示有界纯文本摘要；点击来源通过 `forceInApp` 打开内置浏览器。来源随当前投影重新计算，session/run/answer 改变会关闭旧浮窗。
 
-站点图标是独立的受限图片通路：renderer 只提交 session/run/source URL，主进程先在该轮已记录的成功搜索结果中查找 `site_icon`，再使用共享缓存。仅接受 HTTPS 默认端口；DNS 所有地址必须为公网，并将连接绑定到已校验 IP。禁止跳转和环境代理，不发送 Cookie、Authorization 或 Referer。总期限 5 秒包含排队、DNS、响应与解码，最多 4 并发、50 排队、256 KiB 响应、1M 输入像素；仅 PNG/JPEG/GIF/WebP 类型与签名相符时用 sharp 转为 32px PNG（最多 16 KiB）。不支持 SVG/ICO 等格式，所有失败使用联网图标。缓存最多 128 项，失败短暂缓存；不使用第三方 favicon 服务。UI 只接收有界 PNG data URL，不把远端地址交给 img。
+站点图标是独立的受限图片通路：renderer 只提交 session/run/source URL，主进程先在该轮已记录的成功搜索结果中查找 `site_icon`，再使用共享缓存。仅接受 HTTPS 默认端口；DNS 所有地址必须为公网，并将连接绑定到已校验 IP。禁止跳转和环境代理，不发送 Cookie、Authorization 或 Referer。总期限 5 秒包含排队、DNS、响应与解码，最多 4 并发、50 排队、256 KiB 响应、1M 输入像素；按实际字节识别 PNG/JPEG/GIF/WebP/ICO，再解码转为 32px PNG（最多 16 KiB），不依赖 CDN 可能错误的 Content-Type。ICO 目录最多 64 帧、每帧尺寸最多 256px，仅支持嵌入 PNG 或 40 字节头的未压缩 Windows BI_RGB DIB（1/4/8/24/32 位）；验证边界后解码单帧，并保留透明度。SVG、HTML、损坏或不支持的编码仍使用联网图标。缓存最多 128 项，失败短暂缓存；不使用第三方 favicon 服务。UI 只接收有界 PNG data URL，不把远端地址交给 img。
 
 单元与集成测试全部使用注入的 mock transport 和隔离 HOME，不发送付费请求。真实桌面端验收仍需使用本指南的共享隐藏 Electron 测试启动器，不能把 SSR 或静态样式检查当作 GUI 验收。
 

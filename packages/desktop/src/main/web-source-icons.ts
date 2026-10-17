@@ -3,8 +3,8 @@ import { lookup } from "node:dns/promises";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import { type RequestOptions, request } from "node:https";
 import { isIP } from "node:net";
-import sharp from "sharp";
 import { publicWebUrl } from "./web-client.ts";
+import { decodeIconImage, iconImageFormat } from "./web-icon-image.ts";
 
 const MAX_BYTES = 256 * 1024;
 const MAX_OUTPUT_BYTES = 16 * 1024;
@@ -12,7 +12,6 @@ const DEADLINE_MS = 5_000;
 const CACHE_SIZE = 128;
 const MAX_ACTIVE = 4;
 const MAX_QUEUED = 50;
-const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 type Dependencies = {
   lookup?: (hostname: string) => Promise<LookupAddress[]>;
@@ -51,33 +50,6 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-// SVG, HTML, ICO and unknown formats deliberately use the renderer's generic icon.
-function raster(body: Buffer, mime: string): boolean {
-  if (mime === "image/png") return body.subarray(0, 8).equals(PNG);
-  if (mime === "image/jpeg") return body[0] === 255 && body[1] === 216 && body[2] === 255;
-  if (mime === "image/gif") return /^(GIF87a|GIF89a)$/.test(body.subarray(0, 6).toString("ascii"));
-  return (
-    mime === "image/webp" &&
-    body.subarray(0, 4).toString("ascii") === "RIFF" &&
-    body.subarray(8, 12).toString("ascii") === "WEBP"
-  );
-}
-
-async function decode(body: Buffer, signal: AbortSignal): Promise<Buffer> {
-  if (signal.aborted) throw new Error("Icon unavailable");
-  const image = sharp(body, { limitInputPixels: 1_048_576, pages: 1, failOn: "warning" })
-    .timeout({ seconds: 2 })
-    .resize(32, 32, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png();
-  const abort = () => image.destroy();
-  signal.addEventListener("abort", abort, { once: true });
-  try {
-    return await image.toBuffer();
-  } finally {
-    signal.removeEventListener("abort", abort);
-  }
-}
-
 /** Main-process only. Callers must authorize the DeepSeek source record before passing its site_icon. */
 export class WebSourceIcons {
   private readonly dependencies: Required<Dependencies>;
@@ -90,7 +62,7 @@ export class WebSourceIcons {
     this.dependencies = {
       lookup: (hostname) => lookup(hostname, { all: true, verbatim: true }),
       request,
-      decode,
+      decode: decodeIconImage,
       now: Date.now,
       ...dependencies,
     };
@@ -216,7 +188,7 @@ export class WebSourceIcons {
       signal.aborted ||
       this.dependencies.now() >= deadline ||
       png.length > MAX_OUTPUT_BYTES ||
-      !raster(png, "image/png")
+      iconImageFormat(png) !== "png"
     )
       return undefined;
     return `data:image/png;base64,${png.toString("base64")}`;
@@ -257,7 +229,10 @@ export class WebSourceIcons {
               if (options.all) callback(null, [pinned]);
               else callback(null, pinned.address, pinned.family);
             },
-            headers: { Accept: "image/png,image/jpeg,image/gif,image/webp", "Accept-Encoding": "identity" },
+            headers: {
+              Accept: "image/png,image/jpeg,image/gif,image/webp,image/x-icon,image/vnd.microsoft.icon",
+              "Accept-Encoding": "identity",
+            },
             signal,
           },
           (res) => {
@@ -265,11 +240,9 @@ export class WebSourceIcons {
             res.on("error", abort);
             res.on("aborted", abort);
             if (settled) return void res.destroy();
-            const mime = res.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() ?? "";
             const length = res.headers["content-length"];
             if (
               res.statusCode !== 200 ||
-              !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime) ||
               (res.headers["content-encoding"] && res.headers["content-encoding"] !== "identity") ||
               (length !== undefined && (!/^\d+$/.test(length) || Number(length) > MAX_BYTES))
             )
@@ -285,7 +258,9 @@ export class WebSourceIcons {
             res.on("end", () => {
               if (settled) return;
               const body = buffer.subarray(0, bytes);
-              finish(raster(body, mime) ? body : undefined);
+              // DeepSeek's CDN serves valid PNG/ICO as binary/octet-stream or image/pnetvue.
+              // Identify the bytes, then fully decode and re-encode them; never pass raw content to UI.
+              finish(iconImageFormat(body) ? body : undefined);
             });
           },
         );

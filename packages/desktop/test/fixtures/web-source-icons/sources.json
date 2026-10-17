@@ -1,0 +1,51 @@
+[
+  {
+    "file": "tmtpost.com.ico",
+    "url": "https://cdn.deepseek.com/site-icons/tmtpost.com",
+    "contentType": "binary/octet-stream",
+    "bytes": 16958,
+    "sha256": "928139c6c29560c58386a413781f763017225063253da340b487ef55d6f1dfca"
+  },
+  {
+    "file": "dahecube.com.png",
+    "url": "https://cdn.deepseek.com/site-icons/dahecube.com",
+    "contentType": "binary/octet-stream",
+    "bytes": 513,
+    "sha256": "60497460cff14df6b0c9676dddce091906b1b0357d889948f9d273131f704e9b"
+  },
+  {
+    "file": "qq.com.png",
+    "url": "https://cdn.deepseek.com/site-icons/qq.com",
+    "contentType": "binary/octet-stream",
+    "bytes": 3446,
+    "sha256": "81aecc63dd1e46f38af8ddf5d7562799d561a1b5a0e2cb4aecc6ba0fdf129782"
+  },
+  {
+    "file": "xhby.net.ico",
+    "url": "https://cdn.deepseek.com/site-icons/xhby.net",
+    "contentType": "image/pnetvue",
+    "bytes": 9662,
+    "sha256": "0b1b325e2a80a748d250151817ff4897182e0b84b65d7b1023728f2e4e0c58ec"
+  },
+  {
+    "file": "eastmoney.com.jpg",
+    "url": "https://cdn.deepseek.com/site-icons/eastmoney.com",
+    "contentType": "image/jpeg",
+    "bytes": 1742,
+    "sha256": "2aabb8faaafcaec57f418c01d15b8b552965b38f2443d463daf97c68616bc5b7"
+  },
+  {
+    "file": "marketscreener.com.ico",
+    "url": "https://cdn.deepseek.com/site-icons/marketscreener.com",
+    "contentType": "binary/octet-stream",
+    "bytes": 15406,
+    "sha256": "05b2844d7612726ffe4f1588db605d449eca8f2e0f39313e6fbf2e24f5196b2a"
+  },
+  {
+    "file": "hkcna.hk.webp",
+    "url": "https://cdn.deepseek.com/site-icons/hkcna.hk",
+    "contentType": "binary/octet-stream",
+    "bytes": 1294,
+    "sha256": "d82d3c195e120571712039a64b7f60c61b5510a43bfacaa534faacb8e5bee941"
+  }
+]

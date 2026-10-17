@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import type { LookupAddress } from "node:dns";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import type { ClientRequest, IncomingHttpHeaders, IncomingMessage } from "node:http";
 import type { RequestOptions } from "node:https";
 import { PassThrough } from "node:stream";
@@ -165,7 +167,7 @@ describe("source icon URL and DNS isolation", () => {
     for (const { options } of h.requests) {
       expect(options.agent).toBe(false);
       expect(options.headers).toEqual({
-        Accept: "image/png,image/jpeg,image/gif,image/webp",
+        Accept: "image/png,image/jpeg,image/gif,image/webp,image/x-icon,image/vnd.microsoft.icon",
         "Accept-Encoding": "identity",
       });
       expect(options).not.toHaveProperty("auth");
@@ -186,16 +188,15 @@ describe("source icon body and decode isolation", () => {
   it.each([
     { type: "image/svg+xml", chunks: [Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')] },
     { type: "text/html", chunks: [Buffer.from("<script>alert(1)</script>")] },
-    { type: "image/x-icon", chunks: [Buffer.from([0, 0, 1, 0, 1, 0])] },
     { type: "image/png", chunks: [Buffer.from("<html>not an image</html>")] },
-    { type: "image/jpeg", chunks: [MAGIC] },
-    { type: "application/octet-stream", chunks: [MAGIC] },
+    { type: "binary/octet-stream", chunks: [Buffer.from('<svg onload="alert(1)"/>')] },
+    { type: "image/pnetvue", chunks: [Buffer.from("not an image")] },
     { chunks: [MAGIC], headers: { "content-encoding": "gzip" } },
     { chunks: [MAGIC], headers: { "content-length": "262145" } },
     { chunks: [MAGIC], headers: { "content-length": "invalid" } },
     { chunks: [MAGIC, Buffer.alloc(256 * 1024)] },
     { chunks: [] },
-  ])("rejects unsupported, mismatched, compressed, oversized or empty content: %j", async (reply) => {
+  ])("rejects unsupported bytes, compressed, oversized or empty content: %j", async (reply) => {
     const h = harness(reply);
     expect(await h.icons.load(URL)).toBeUndefined();
     expect(h.decode).not.toHaveBeenCalled();
@@ -203,10 +204,14 @@ describe("source icon body and decode isolation", () => {
 
   it.each([
     { type: "image/png; charset=binary", chunks: [MAGIC] },
+    { type: "binary/octet-stream", chunks: [MAGIC] },
+    { type: "application/octet-stream", chunks: [MAGIC] },
+    { type: "image/pnetvue", chunks: [MAGIC] },
+    { type: "image/jpeg", chunks: [MAGIC] },
     { type: "image/jpeg", chunks: [Buffer.from([255, 216, 255, 224])] },
     { type: "image/gif", chunks: [Buffer.from("GIF89a")] },
     { type: "image/webp", chunks: [Buffer.from("RIFF1234WEBP")] },
-  ])("requires matching MIME and raster magic before invoking the decoder: %j", async (reply) => {
+  ])("recognizes supported image bytes independently of unreliable response MIME: %j", async (reply) => {
     const h = harness(reply);
     expect(await h.icons.load(URL)).toBe(`data:image/png;base64,${png.toString("base64")}`);
     expect(h.decode).toHaveBeenCalledTimes(1);
@@ -234,6 +239,33 @@ describe("source icon body and decode isolation", () => {
     expect(metadata).toMatchObject({ format: "png", width: 32, height: 32 });
     expect(metadata.exif).toBeUndefined();
   });
+
+  const realSources = JSON.parse(
+    readFileSync(new globalThis.URL("./fixtures/web-source-icons/sources.json", import.meta.url), "utf8"),
+  ) as Array<{ file: string; url: string; contentType: string; bytes: number; sha256: string }>;
+  it.each(realSources)(
+    "renders actual DeepSeek CDN response $file ($contentType) through mock transport and real decode",
+    async ({ file, url, contentType, bytes, sha256 }) => {
+      const body = readFileSync(new globalThis.URL(`./fixtures/web-source-icons/${file}`, import.meta.url));
+      expect(body.length).toBe(bytes);
+      expect(createHash("sha256").update(body).digest("hex")).toBe(sha256);
+      const h = harness({ type: contentType, chunks: [body] });
+      const icons = new WebSourceIcons({ lookup: h.lookup, request: h.request });
+      const result = await icons.load(url);
+      expect(h.lookup).toHaveBeenCalledExactlyOnceWith("cdn.deepseek.com");
+      expect(h.request).toHaveBeenCalledTimes(1);
+      expect(result).toMatch(/^data:image\/png;base64,/);
+      const output = Buffer.from(result?.split(",")[1] ?? "", "base64");
+      expect(output.length).toBeLessThanOrEqual(16 * 1024);
+      const metadata = await sharp(output).metadata();
+      expect(metadata).toMatchObject({ format: "png", width: 32, height: 32 });
+      expect(metadata.exif).toBeUndefined();
+      expect(metadata.icc).toBeUndefined();
+      const { data, info } = await sharp(output).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      expect(info.channels).toBe(4);
+      expect(data.some((value, index) => index % 4 === 3 && value > 0)).toBe(true);
+    },
+  );
 
   it("rejects corrupted images and images exceeding the one-megapixel decode limit", async () => {
     const large = await sharp({ create: { width: 1025, height: 1025, channels: 3, background: "red" } })
