@@ -453,7 +453,7 @@ test.each(["aborted", "interrupted"] as const)(
   },
 );
 
-test("SSR is closed and side-effect free, and the control is last in the answer action row", () => {
+test("SSR is closed and side-effect free, with answer actions ordered copy, fork, sources, time", () => {
   const readIcon = vi.fn(async () => png);
   const sources = collect([tool()]);
   const markup = renderToStaticMarkup(
@@ -482,15 +482,20 @@ test("SSR is closed and side-effect free, and the control is last in the answer 
     );
   const view = run([tool(), answer()]);
   const runMarkup = renderRun(view);
-  expect(runMarkup.indexOf("answer-sources-trigger")).toBeGreaterThan(runMarkup.indexOf("message-time"));
-  expect(runMarkup.indexOf("answer-sources-trigger")).toBeGreaterThan(runMarkup.indexOf('aria-label="分叉"'));
+  const actions = runMarkup.slice(runMarkup.indexOf('class="message-actions assistant-message-actions"'));
+  const order = ['aria-label="复制"', 'aria-label="分叉"', "answer-sources-trigger", "message-time"].map(
+    (marker) => actions.indexOf(marker),
+  );
+  expect(order.every((index) => index >= 0)).toBe(true);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
   expect(renderRun(run([answer()]))).not.toContain("answer-sources-trigger");
   expect(renderRun({ ...view, status: "running" })).not.toContain("answer-sources-trigger");
   expect(renderRun(run([tool(), answer(), tool("later")]))).not.toContain("answer-sources-trigger");
 });
 
-test("portaled popover owns bounded scroll, narrow viewport and keyboard focus styling", () => {
+test("source trigger uses the action row gap and preserves bounded popover and narrow viewport styling", () => {
   const css = readFileSync(new URL("../src/components/answer-sources.css", import.meta.url), "utf8");
+  const sharedCss = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   expect(css).toContain(".answer-sources-popover {");
   expect(css).toContain("--radix-popover-content-available-width");
   expect(css).toContain("--radix-popover-content-available-height");
@@ -498,14 +503,16 @@ test("portaled popover owns bounded scroll, narrow viewport and keyboard focus s
   expect(css).toContain("overscroll-behavior: contain");
   expect(css).toContain("overflow: auto");
   expect(css).toContain(".answer-source-link:focus-visible");
-  expect(css).toContain("margin-left: auto");
   const declarations = (selector: string) =>
     [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
       .filter((match) => match[1].trim() === selector)
       .map((match) => match[2])
       .join("\n");
-  expect(declarations(".message-action.answer-sources-trigger")).toMatch(/flex-shrink:\s*1/);
-  expect(declarations(".message-action.answer-sources-trigger")).toMatch(/min-width:\s*0/);
+  const trigger = declarations(".message-action.answer-sources-trigger");
+  expect(trigger).not.toMatch(/margin(?:-[\w-]+)?\s*:/);
+  expect(sharedCss).toMatch(/\.message-actions\s*\{[^}]*gap:\s*4px/);
+  expect(trigger).toMatch(/flex-shrink:\s*1/);
+  expect(trigger).toMatch(/min-width:\s*0/);
   expect(declarations(".answer-sources-icons")).toMatch(/overflow:\s*hidden/);
   expect(declarations(".answer-sources-icons")).toMatch(/min-width:\s*0/);
   expect(declarations(".answer-sources-trigger > span:last-child")).toMatch(/flex-shrink:\s*0/);

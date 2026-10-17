@@ -719,7 +719,6 @@ export const RunGroup = memo(function RunGroup({
                   <TrendingUpDown size={14} />
                 </MessageAction>
               )}
-              <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
               {answerSources.length > 0 && (
                 <AnswerSources
                   key={JSON.stringify([sessionId, run.runId, answer.id])}
@@ -730,6 +729,7 @@ export const RunGroup = memo(function RunGroup({
                   onLink={onLink}
                 />
               )}
+              <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
             </div>
           )}
           {actionError && (

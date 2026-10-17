@@ -3,50 +3,13 @@
   flex-direction: column;
   gap: 16px;
 }
-.web-search-provider-panel {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
-  background: var(--color-surface);
-  overflow: hidden;
+/* The one-provider web form uses the model editor, without its provider navigation column. */
+.settings-screen .model-provider-panel.web-search-provider-panel {
+  min-height: 0;
 }
-.web-search-editor {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  min-width: 0;
-  padding: 24px;
+.web-search-settings .provider-detail-heading {
+  flex-wrap: wrap;
 }
-.web-search-heading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.web-search-heading-copy {
-  flex: 1;
-  min-width: 0;
-}
-.settings-screen .web-search-enable {
-  flex-shrink: 0;
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: var(--radius-control);
-}
-.settings-screen .web-search-enable.primary {
-  color: var(--color-on-primary);
-  background: var(--color-primary);
-}
-.settings-screen .web-search-enable.primary:hover:not(:disabled) {
-  color: var(--color-on-primary);
-  background: color-mix(in srgb, var(--color-primary) 85%, var(--color-on-primary));
-}
-.settings-screen .web-search-heading h2 {
-  margin: 0;
-  font-size: var(--text-heading);
-  font-weight: 600;
-}
-.web-search-heading p,
 .web-search-note,
 .web-search-storage-note {
   margin: 0;
@@ -54,39 +17,29 @@
   color: var(--color-text-subtle);
   line-height: 1.6;
 }
-.web-search-heading p {
-  margin-top: 4px;
-}
-.web-search-key-label {
-  margin-bottom: -8px;
-  color: var(--color-text-subtle);
-  font-size: var(--text-body);
-}
-.web-search-key-control {
-  position: relative;
-  display: flex;
-}
-.settings-screen .web-search-key-control input {
-  width: 100%;
-  min-width: 0;
-  height: 36px;
-  padding: 6px 40px 6px 12px;
-  border: 1px solid var(--color-border);
+/* Match the model editor's 32px actions; secondary actions retain a visible boundary. */
+.settings-screen .web-search-settings :is(.primary, .secondary) {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
   border-radius: var(--radius-nested);
-  color: var(--color-text);
-  background: var(--color-input);
   font-size: var(--text-body);
+  flex-shrink: 0;
 }
-.web-search-key-visibility {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  color: var(--color-text-subtle);
+.settings-screen .web-search-settings .secondary {
+  color: var(--color-foreground);
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
+}
+.settings-screen .web-search-settings .secondary:hover:not(:disabled) {
+  background: var(--color-menu-hover);
+}
+.settings-screen .web-search-settings .web-search-remove {
+  color: var(--color-error);
+}
+/* Global outline suppression requires a shadow for a visible keyboard focus state. */
+.settings-screen .web-search-settings :is(button, input):focus-visible {
+  box-shadow: 0 0 0 2px var(--color-focus);
 }
 .web-search-storage-note {
   padding: 8px 10px;
@@ -94,44 +47,10 @@
   color: var(--color-waiting);
   background: var(--color-warning-surface);
 }
-.web-search-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-.settings-screen .web-search-actions button {
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: var(--radius-control);
-}
-.settings-screen .web-search-actions .web-search-save {
-  color: var(--color-on-primary);
-  background: var(--color-primary);
-}
-.settings-screen .web-search-actions .web-search-save:hover:not(:disabled) {
-  color: var(--color-on-primary);
-  background: color-mix(in srgb, var(--color-primary) 85%, var(--color-on-primary));
-}
-.settings-screen .web-search-actions .web-search-remove {
-  color: var(--color-error);
-}
-.settings-screen .web-search-actions .web-search-remove:hover:not(:disabled) {
-  color: var(--color-error);
-  background: var(--color-danger-surface);
-}
 .web-search-remove-confirm {
-  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--color-border);
-}
-.web-search-remove-confirm p {
-  margin: 0;
-  font-size: var(--text-small);
-  color: var(--color-text-subtle);
-}
-@media (max-width: 820px) {
-  .web-search-editor {
-    padding: 16px;
-  }
 }
