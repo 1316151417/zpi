@@ -33,13 +33,22 @@ it("retries HTTP 429 and 5xx before streaming, respects headers and never repeat
   const request = () =>
     streamSimple(fakeModel(server.url), normalizeContext({ messages: [] }), { apiKey: "local" });
   const start = Date.now();
-  const stream = request();
+  const onRetry = vi.fn();
+  const stream = streamSimple(fakeModel(server.url), normalizeContext({ messages: [] }), {
+    apiKey: "local",
+    onRetry,
+  });
   const types: string[] = [];
   for await (const event of stream) types.push(event.type);
   expect((await stream.result()).stopReason).toBe("stop");
   expect(server.requests).toHaveLength(3);
   expect(types.filter((type) => type === "start")).toHaveLength(1);
   expect(Date.now() - start).toBeGreaterThanOrEqual(750);
+  expect(onRetry.mock.calls).toEqual([
+    [{ attempt: 1, maxRetries: 2, retryDelayMs: 10, errorStatus: 429 }],
+    [{ attempt: 2, maxRetries: 2, retryDelayMs: expect.any(Number), errorStatus: 503 }],
+    [null],
+  ]);
   mode = "bad";
   expect((await request().result()).stopReason).toBe("error");
   expect(server.requests).toHaveLength(4);

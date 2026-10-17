@@ -159,6 +159,7 @@ export function reorderPaneTab(id: string, targetId: string) {
   usePane.setState({ tabs: state.tabs.map((tab) => (ids.has(tab.id) ? (reordered[index++] ?? tab) : tab)) });
 }
 export const terminalOutput = new Map<string, string>();
+export const terminalExited = new Set<string>();
 export const terminalListeners = new Map<string, (event: Extract<PaneEvent, { type: "terminal" }>) => void>();
 export function listenPanes() {
   restorePane();
@@ -182,6 +183,7 @@ export function listenPanes() {
   const offEvents = window.zpi.onPaneEvent((event) => {
     if (event.type === "terminal") {
       terminalOutput.set(event.id, ((terminalOutput.get(event.id) ?? "") + event.data).slice(-524288));
+      if (event.exited) terminalExited.add(event.id);
       terminalListeners.get(event.id)?.(event);
     } else {
       const current = usePane.getState();
@@ -538,6 +540,7 @@ export async function closeTab(id: string) {
   if (tab.type === "terminal") {
     unwrap(await window.zpi.closeTerminal(id));
     terminalOutput.delete(id);
+    terminalExited.delete(id);
   }
   if (tab.type === "browser") unwrap(await window.zpi.closeBrowser(id));
   if (tab.type === "subagent") retainedSessionViews.delete(tab.childSessionId);

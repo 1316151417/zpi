@@ -11,6 +11,7 @@ import {
   openWebLink,
   reorderPaneTab,
   setPaneOpen,
+  terminalExited,
   terminalOutput,
   usePane,
   visiblePaneTabs,
@@ -96,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   off();
   terminalOutput.clear();
+  terminalExited.clear();
   vi.unstubAllGlobals();
 });
 
@@ -193,6 +195,9 @@ it("updates inactive browser state and terminal output without revealing that ta
   event({ type: "terminal", id: "terminal-a", data: "still running" });
   expect(usePane.getState()).toMatchObject({ open: false, active: undefined });
   expect(terminalOutput.get("terminal-a")).toBe("still running");
+  event({ type: "terminal", id: "terminal-a", data: "exited", exited: true });
+  expect(terminalExited.has("terminal-a")).toBe(true);
+  expect(terminalOutput.get("terminal-a")).toBe("still runningexited");
   select("A");
   expect(visiblePaneTabs("A")[0]).toMatchObject({ state: { url: "https://example.test/next" } });
 });

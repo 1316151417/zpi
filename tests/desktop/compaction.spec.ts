@@ -5,12 +5,14 @@ import type { ElectronApplication } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { testStorageDirectory } from "../helpers/storage.ts";
 import { expect, test } from "../helpers/test.ts";
 
 test("automatic overflow compaction uses the same divider and stays visible after the work is collapsed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-auto-compaction-divider-"));
-  await mkdir(join(dir, "agent"));
-  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
+  const agentDir = join(testStorageDirectory(dir), "agent");
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   const release = deferred();
   let recovered = false;
   const server = await fakeServer(async (body, response) => {
@@ -64,11 +66,9 @@ test("automatic overflow compaction uses the same divider and stays visible afte
 for (const outcome of ["completed", "error", "aborted"] as const) {
   test(`manual compaction is a timeline divider, persists ${outcome} and preserves chat history`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "zpi-compaction-divider-"));
-    await mkdir(join(dir, "agent"));
-    await writeFile(
-      join(dir, "agent/settings.json"),
-      JSON.stringify({ compaction: { keepRecentTokens: 0 } }),
-    );
+    const agentDir = join(testStorageDirectory(dir), "agent");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
     const release = deferred();
     const server = await fakeServer(async (body, response) => {
       const compacting = JSON.stringify(body.messages).includes("ONLY output the structured summary");

@@ -244,13 +244,6 @@ export function fuzzyFindText(content: string, oldText: string): FuzzyMatchResul
   };
 }
 
-function countOccurrences(content: string, oldText: string): number {
-  const fuzzyContent = normalizeForFuzzyMatch(content);
-  const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-  if (!fuzzyOldText.length) return content.split(oldText).length - 1;
-  return fuzzyContent.split(fuzzyOldText).length - 1;
-}
-
 function getNotFoundError(path: string, editIndex: number, totalEdits: number): Error {
   if (totalEdits === 1) {
     return new Error(
@@ -330,7 +323,11 @@ export function applyEditsToNormalizedContent(
       throw getNotFoundError(path, i, normalizedEdits.length);
     }
 
-    const occurrences = countOccurrences(replacementBaseContent, edit.oldText);
+    const matchedText = replacementBaseContent.slice(
+      matchResult.index,
+      matchResult.index + matchResult.matchLength,
+    );
+    const occurrences = replacementBaseContent.split(matchedText).length - 1;
     if (occurrences > 1) {
       throw getDuplicateError(path, i, normalizedEdits.length, occurrences);
     }

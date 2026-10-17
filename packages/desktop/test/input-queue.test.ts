@@ -1,10 +1,46 @@
 import { join } from "node:path";
 import sharp from "sharp";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { buildSelectionPrompt } from "zpi-ui/selections";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
+import { SessionInputQueue } from "../src/main/input-queue.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
+
+it("does not resurrect an accepted recovery item after asynchronous input preparation", async () => {
+  const preparing = deferred(),
+    release = deferred();
+  const prepared = {
+    text: "next",
+    attachments: [],
+    fileReferences: [],
+    selection: { provider: "p", modelId: "m", reasoning: "off" },
+  };
+  const queue = new SessionInputQueue({
+    check() {},
+    running: () => true,
+    prepare: async () => {
+      preparing.resolve();
+      await release.promise;
+      return prepared;
+    },
+    retain: async () => {},
+    discard: async () => {},
+    withdraw: async () => {},
+    start: async () => ({ runId: "run" }),
+    stop: async () => {},
+    save: vi.fn(),
+    publish: vi.fn(),
+  });
+  queue.restore("session", { items: [{ ...prepared, id: "recovery", state: "queued" }], autoDrain: false });
+  const pending = queue.submit({ sessionId: "session", text: "next" });
+  await preparing.promise;
+  queue.restore("session", { items: [], autoDrain: true });
+  release.resolve();
+  await pending;
+  expect(queue.get("session").items.map((item) => item.text)).toEqual(["next"]);
+  expect(queue.get("session").autoDrain).toBe(true);
+});
 
 it("queued inputs reorder, withdraw, preempt and drain once without entering history early", async () => {
   const release = deferred();

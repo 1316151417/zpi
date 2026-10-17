@@ -29,8 +29,7 @@ export const answerSourceLimits = {
 function shortText(value: unknown, limit: number): string | undefined {
   if (typeof value !== "string") return undefined;
   // Bound work as well as output, even for an unexpectedly large restored field.
-  const text = value
-    .slice(0, limit * 8)
+  const text = decodeString(value.slice(0, limit * 8))
     .replace(/\s+/gu, " ")
     .trim();
   if (!text) return undefined;
@@ -56,10 +55,7 @@ function fetchExcerpt(value: unknown): string | undefined {
     .replace(/\bhttps?:\/\/[^\s<>()]+/gu, " ")
     .replace(/^[ \t]*(?:#{1,6}\s+|>\s*|[-+*]\s+|\d+[.)]\s+)/gmu, "")
     .replace(/[*~`]|(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "");
-  return shortText(
-    decodeString(text).replace(/\s+([,.;:!?，。；：！？])/gu, "$1"),
-    answerSourceLimits.excerpt,
-  );
+  return shortText(text.replace(/\s+([,.;:!?，。；：！？])/gu, "$1"), answerSourceLimits.excerpt);
 }
 
 /** Project this answer's preceding tool metadata only; never parse model output. */

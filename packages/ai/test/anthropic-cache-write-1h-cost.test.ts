@@ -69,6 +69,18 @@ function eventsWithCacheCreation(
 const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: Date.now() }] });
 
 describe("Anthropic 1h cache write cost", () => {
+  it("updates the cache breakdown reported only in the final delta", async () => {
+    const events = eventsWithCacheCreation(undefined);
+    const delta = JSON.parse(events[4].data);
+    delta.usage.cache_creation = { ephemeral_1h_input_tokens: 400_000, ephemeral_5m_input_tokens: 600_000 };
+    events[4].data = JSON.stringify(delta);
+    const result = await streamAnthropic(getModel("anthropic", "claude-opus-4-8"), context, {
+      client: createFakeAnthropicClient(createSseResponse(events)),
+    }).result();
+    expect(result.usage.cacheWrite1h).toBe(400_000);
+    expect(result.usage.cost.cacheWrite).toBeCloseTo(7.75, 10);
+  });
+
   it("prices the 1h portion at 2x input and the rest at the 5m rate", async () => {
     const model = getModel("anthropic", "claude-opus-4-8");
     const response = createSseResponse(

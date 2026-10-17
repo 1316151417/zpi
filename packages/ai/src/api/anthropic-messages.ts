@@ -351,7 +351,9 @@ const ANTHROPIC_MESSAGE_EVENTS: ReadonlySet<string> = new Set([
 ]);
 
 function flushSseEvent(state: SseDecoderState): ServerSentEvent | null {
-  if (!state.event && state.data.length === 0) {
+  if (state.data.length === 0) {
+    state.event = null;
+    state.raw = [];
     return null;
   }
 
@@ -404,11 +406,12 @@ function nextLineBreakIndex(text: string): number {
   return Math.min(carriageReturnIndex, newlineIndex);
 }
 
-function consumeLine(text: string): { line: string; rest: string } | null {
+function consumeLine(text: string, final = false): { line: string; rest: string } | null {
   const lineBreakIndex = nextLineBreakIndex(text);
   if (lineBreakIndex === -1) {
     return null;
   }
+  if (!final && text[lineBreakIndex] === "\r" && lineBreakIndex === text.length - 1) return null;
 
   let nextIndex = lineBreakIndex + 1;
   if (text[lineBreakIndex] === "\r" && text[nextIndex] === "\n") {
@@ -429,6 +432,9 @@ async function* iterateSseMessages(
   const decoder = new TextDecoder();
   const state: SseDecoderState = { event: null, data: [], raw: [] };
   let buffer = "";
+  let finished = false;
+  const cancel = () => reader.cancel().catch(() => {});
+  signal?.addEventListener("abort", cancel, { once: true });
 
   try {
     while (true) {
@@ -438,6 +444,7 @@ async function* iterateSseMessages(
 
       const { value, done } = await reader.read();
       if (done) {
+        finished = true;
         break;
       }
 
@@ -454,14 +461,14 @@ async function* iterateSseMessages(
     }
 
     buffer += decoder.decode();
-    let consumed = consumeLine(buffer);
+    let consumed = consumeLine(buffer, true);
     while (consumed) {
       buffer = consumed.rest;
       const event = decodeSseLine(consumed.line, state);
       if (event) {
         yield event;
       }
-      consumed = consumeLine(buffer);
+      consumed = consumeLine(buffer, true);
     }
 
     if (buffer.length > 0) {
@@ -476,6 +483,8 @@ async function* iterateSseMessages(
       yield trailingEvent;
     }
   } finally {
+    signal?.removeEventListener("abort", cancel);
+    if (!finished) await cancel();
     reader.releaseLock();
   }
 }
@@ -616,6 +625,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
           maxRetries: options?.maxRetries ?? 2,
           maxRetryDelayMs: options?.maxRetryDelayMs,
           signal: options?.signal,
+          onRetry: options?.onRetry,
         },
       );
       await options?.onResponse?.(
@@ -820,6 +830,12 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
             if (event.usage.cache_creation_input_tokens != null) {
               output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
             }
+            const cacheCreation = (
+              event.usage as { cache_creation?: { ephemeral_1h_input_tokens?: number | null } }
+            ).cache_creation;
+            if (cacheCreation?.ephemeral_1h_input_tokens != null) {
+              output.usage.cacheWrite1h = cacheCreation.ephemeral_1h_input_tokens;
+            }
             // Anthropic reports reasoning tokens as a subset of output tokens.
             const thinkingTokens = event.usage.output_tokens_details?.thinking_tokens;
             if (thinkingTokens != null) {
@@ -943,11 +959,15 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
         const request = payload as MessageCreateParamsStreaming;
         const next = { ...request, ...mapped };
         if (thinking?.type === "enabled" && typeof thinking.budget_tokens === "number") {
-          next.thinking = {
-            ...thinking,
-            type: "enabled",
-            budget_tokens: Math.min(thinking.budget_tokens, Math.max(0, request.max_tokens - 1024)),
-          };
+          const budget = boundedThinkingBudget(thinking.budget_tokens, request.max_tokens);
+          next.thinking =
+            budget === undefined
+              ? { type: "disabled" }
+              : {
+                  ...thinking,
+                  type: "enabled",
+                  budget_tokens: budget,
+                };
         }
         return (await options?.onPayload?.(next, requestModel)) ?? next;
       },
@@ -1119,6 +1139,11 @@ function getBetaFeatures(
   return [...new Set(features)];
 }
 
+function boundedThinkingBudget(budget: number, maxTokens: number): number | undefined {
+  const available = maxTokens - 1024;
+  return available < 1024 ? undefined : Math.max(1024, Math.min(budget, available));
+}
+
 function buildParams(
   model: Model<"anthropic-messages">,
   context: TranscriptContext,
@@ -1257,11 +1282,15 @@ function buildParams(
         }
       } else {
         // Budget-based thinking for older models
-        params.thinking = {
-          type: "enabled",
-          budget_tokens: options.thinkingBudgetTokens || 1024,
-          display,
-        };
+        const budget = boundedThinkingBudget(options.thinkingBudgetTokens ?? 1024, params.max_tokens);
+        params.thinking =
+          budget === undefined
+            ? { type: "disabled" }
+            : {
+                type: "enabled",
+                budget_tokens: budget,
+                display,
+              };
       }
     } else if (options?.thinkingEnabled === false && model.thinkingLevelMap?.off !== null) {
       params.thinking = { type: "disabled" };
@@ -1589,6 +1618,7 @@ function mapStopReason(
     case "end_turn":
       return { stopReason: "stop" };
     case "max_tokens":
+    case "model_context_window_exceeded":
       return { stopReason: "length" };
     case "tool_use":
       return { stopReason: "toolUse" };
@@ -1604,7 +1634,7 @@ function mapStopReason(
     case "sensitive": // Content flagged by safety filters (not yet in SDK types)
       return { stopReason: "error", errorMessage: "Provider stopped with: sensitive" };
     default:
-      // Handle unknown stop reasons gracefully (API may add new values)
+      // Unknown reasons must not turn an incomplete or rejected request into success.
       throw new Error(`Unhandled stop reason: ${reason}`);
   }
 }

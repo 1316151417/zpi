@@ -52,6 +52,12 @@ function render(overrides: Partial<ComponentProps<typeof DiffView>> = {}) {
 }
 
 describe("diff preview", () => {
+  it("does not retain carriage returns in the large-patch plain view", () => {
+    const patch = `--- a/file.txt\r\n+++ b/file.txt\r\n@@ -1 +1,1300 @@\r\n-old\r\n${"+new\r\n".repeat(1300)}`;
+    const html = render({ entries: [{ ...entry, patch }] });
+    expect(html).toContain("diff-plain");
+    expect(html).not.toContain("\r");
+  });
   it("renders one shared header without duplicate file navigation or area and mode headings", () => {
     const openFile = vi.fn();
     const renderHeader = vi.fn((path: string, _openFile: () => void) => createElement("header", null, path));

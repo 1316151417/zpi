@@ -35,6 +35,14 @@ afterEach(async () => {
 });
 
 describe("custom command Markdown", () => {
+  it("ignores comments in continued scalars while preserving literal block content", () => {
+    expect(
+      parseCustomCommandMarkdown("---\ndescription: Summary\n  # note\n  continued\n---\nPrompt").description,
+    ).toBe("Summary continued");
+    expect(parseCustomCommandMarkdown("---\ndescription: |\n  # heading\n---\nPrompt").description).toBe(
+      "# heading",
+    );
+  });
   it("reads scalar, quoted, CRLF, folded and literal metadata without interpreting prompt text", () => {
     expect(
       parseCustomCommandMarkdown(
@@ -144,6 +152,9 @@ describe("custom command IDs", () => {
 });
 
 describe("custom command storage", () => {
+  it.each(["init", "COMPACT", "side", "btw"])("rejects creating a reserved command %s", async (name) => {
+    await expect(store.create({ name, prompt: "unreachable" })).rejects.toThrow("reserved");
+  });
   it.each(["", "Short", "x".repeat(256 * 1024)])(
     "reads empty, small and maximum-size commands with a size-based buffer (%#)",
     async (content) => {

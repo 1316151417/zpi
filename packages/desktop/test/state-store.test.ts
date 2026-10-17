@@ -46,6 +46,18 @@ afterEach(() => {
   for (const path of paths.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 describe("authoritative SQLite state", () => {
+  it("keeps appended project order after updates and reopening", () => {
+    const { value: s, file } = store();
+    const project = (id: string) => ({ id, name: id, path: `/${id}`, updatedAt: 1 });
+    s.setProjects([project("z"), project("y")]);
+    s.upsertProject(project("a"));
+    s.upsertProject({ ...project("z"), name: "renamed" });
+    expect(
+      store(file)
+        .value.listProjects()
+        .map((p) => p.id),
+    ).toEqual(["z", "y", "a"]);
+  });
   it("lists tasks with one query and the same authoritative column overrides as getTask", () => {
     const { value: s } = store();
     s.upsertProject({ id: "project", name: "Project", path: "/work", updatedAt: 1 });

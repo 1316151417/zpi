@@ -80,7 +80,7 @@ export class SessionInputQueue {
       const prepared = await this.runtime.prepare(input);
       if (this.closing) throw new Error("busy: 应用正在关闭");
       if (
-        queue.items.some((item) =>
+        this.get(id).items.some((item) =>
           item.attachments.some((image) => prepared.attachments.some((incoming) => incoming.id === image.id)),
         )
       )
@@ -88,12 +88,13 @@ export class SessionInputQueue {
       const item: QueuedInput = { ...prepared, id: randomUUID(), state: "queued" };
       await this.runtime.retain(id, item, true);
       try {
-        this.commit(id, { ...queue, items: [...queue.items, item] });
+        const current = this.get(id);
+        this.commit(id, { ...current, items: [...current.items, item] });
       } catch (error) {
         await this.runtime.retain(id, item, false);
         throw error;
       }
-      if (!this.runtime.running(id) && queue.autoDrain) void this.resume(id).catch(() => {});
+      if (!this.runtime.running(id) && this.get(id).autoDrain) void this.resume(id).catch(() => {});
       return { queueItemId: item.id };
     });
   }

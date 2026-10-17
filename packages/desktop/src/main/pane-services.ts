@@ -10,6 +10,7 @@ import { readTerminalProfile } from "./terminal-profile.ts";
 import { terminalShell } from "./terminal-shell.ts";
 export class PaneServices {
   private disposed = false;
+  private epoch = 0;
   private terminals = new Map<string, IPty>();
   private browsers = new Map<string, { view: WebContentsView; error?: string }>();
   private shown?: string;
@@ -29,10 +30,11 @@ export class PaneServices {
     this.modifier = modifier;
   }
   async createTerminal(cwd: string) {
+    const epoch = this.epoch;
     if (this.disposed) throw new Error("not_found: 窗口已关闭");
     if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
     const [{ spawn }, profile] = await Promise.all([import("node-pty"), readTerminalProfile()]);
-    if (this.disposed) throw new Error("not_found: 窗口已关闭");
+    if (this.disposed || epoch !== this.epoch) throw new Error("not_found: 窗口已关闭或重载");
     if (this.terminals.size >= 12) throw new Error("busy: 请先关闭部分终端");
     const { shell, args } = terminalShell();
     const env = Object.fromEntries(
@@ -271,15 +273,19 @@ export class PaneServices {
     if (!entry) return;
     if (this.shown === id) {
       this.modifier?.resetFor(entry.view.webContents);
-      this.window.contentView.removeChildView(entry.view);
+      if (!this.window.isDestroyed()) this.window.contentView.removeChildView(entry.view);
       this.shown = undefined;
     }
     this.browsers.delete(id);
-    entry.view.webContents.close({ waitForBeforeUnload: false });
+    if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close({ waitForBeforeUnload: false });
+  }
+  reset() {
+    this.epoch++;
+    for (const id of this.terminals.keys()) this.closeTerminal(id);
+    for (const id of this.browsers.keys()) this.closeBrowser(id);
   }
   close() {
     this.disposed = true;
-    for (const id of this.terminals.keys()) this.closeTerminal(id);
-    for (const id of this.browsers.keys()) this.closeBrowser(id);
+    this.reset();
   }
 }

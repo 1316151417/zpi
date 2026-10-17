@@ -82,7 +82,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(key).toHaveValue("*".repeat("fake-desktop-web-key".length));
       await page.getByRole("button", { name: "供应商操作", exact: true }).click();
       await page.getByRole("menuitem", { name: "移除 API Key", exact: true }).click();
-      await page.getByRole("button", { name: "取消esc", exact: true }).click();
+      await page.getByRole("button", { name: "取消", exact: true }).click();
       await page.getByRole("button", { name: "供应商操作", exact: true }).click();
       await expect(page.getByRole("menuitem", { name: "移除 API Key", exact: true })).toBeVisible();
       await page.getByRole("menuitem", { name: "移除 API Key", exact: true }).click();

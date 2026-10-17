@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { observeAppearance } from "zpi-ui";
 import type { TerminalProfile } from "../shared/bridge.ts";
-import { openBrowser, paneTask, terminalListeners, terminalOutput } from "./pane-store.ts";
+import { openBrowser, paneTask, terminalExited, terminalListeners, terminalOutput } from "./pane-store.ts";
 import { report, unwrap } from "./store.ts";
 import { terminalCssColor, terminalOptions, terminalTheme } from "./terminal-presentation.ts";
 export function TerminalPane({
@@ -42,8 +42,14 @@ export function TerminalPane({
     term.loadAddon(new WebLinksAddon(openLink));
     term.open(element);
     term.write(terminalOutput.get(id) ?? "");
-    terminalListeners.set(id, (event) => term.write(event.data));
-    const input = term.onData((data) => paneTask(window.zpi.terminalInput(id, data).then(unwrap)));
+    term.options.disableStdin = terminalExited.has(id);
+    terminalListeners.set(id, (event) => {
+      term.write(event.data);
+      if (event.exited) term.options.disableStdin = true;
+    });
+    const input = term.onData((data) => {
+      if (!terminalExited.has(id)) paneTask(window.zpi.terminalInput(id, data).then(unwrap));
+    });
     const resize = term.onResize(({ cols, rows }) =>
       paneTask(window.zpi.resizeTerminal(id, cols, rows).then(unwrap)),
     );

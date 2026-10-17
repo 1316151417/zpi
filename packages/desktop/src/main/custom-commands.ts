@@ -87,12 +87,12 @@ function metadataValue(lines: string[], wanted: string): string | undefined {
   const index = lines.findIndex((line) => keyLine(line)?.[1].toLowerCase() === wanted);
   if (index < 0) return undefined;
   const initial = keyLine(lines[index])?.[2] ?? "";
+  const block = /^[|>][-+]?\d?$/.test(initial);
   const continuation: string[] = [];
   for (let i = index + 1; i < lines.length; i++) {
     if (/^[^\s#]/.test(lines[i])) break;
-    if (/^\s+\S/.test(lines[i])) continuation.push(lines[i].trim());
+    if (/^\s+\S/.test(lines[i]) && (block || !/^\s*#/.test(lines[i]))) continuation.push(lines[i].trim());
   }
-  const block = /^[|>][-+]?\d?$/.test(initial);
   const value = block
     ? continuation.join(initial.startsWith("|") ? "\n" : " ")
     : [scalar(initial), ...continuation].filter(Boolean).join(" ");
@@ -149,6 +149,8 @@ export function validateCustomCommandName(name: string): string {
   const normalized = name.replace(/^\//, "");
   if (!/^[A-Za-z0-9_-]{1,50}$/.test(normalized))
     fail("invalid_input", "Use 1–50 letters, numbers, underscores, or hyphens for a command name");
+  if (["init", "compact", "side", "btw"].includes(normalized.toLowerCase()))
+    fail("invalid_input", "Command name is reserved for a built-in command");
   return normalized;
 }
 export function isCustomCommandId(id: unknown): id is string {
@@ -481,6 +483,7 @@ export class CustomCommandsStore {
       let entriesSeen = 0;
       let bytesRead = 0;
       let exhausted = false;
+      let entryLimitReached = false;
       const visit = async (directory: string, prefix: string, depth: number): Promise<void> => {
         if (!(await safeDirectory(directory))) return;
         const entries: string[] = [];
@@ -489,6 +492,7 @@ export class CustomCommandsStore {
           entriesSeen++;
           if (entriesSeen > this.limits.maxEntries) {
             exhausted = true;
+            entryLimitReached = true;
             diagnostics.push({
               code: "scan_limit",
               message: "Command scan entry limit reached",
@@ -499,6 +503,7 @@ export class CustomCommandsStore {
           if (!entry.name.startsWith(".")) entries.push(entry.name);
         }
         for (const entry of entries.sort()) {
+          if (exhausted) break;
           if (commands.length >= this.limits.maxCommands || bytesRead >= this.limits.maxTotalBytes) {
             exhausted = true;
             diagnostics.push({
@@ -556,6 +561,7 @@ export class CustomCommandsStore {
       } catch (error) {
         diagnostics.push(diagnostic(error, this.rootDirectory));
       }
+      if (entryLimitReached) commands.length = 0;
       commands.sort((a, b) =>
         a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
       );
@@ -570,7 +576,10 @@ export class CustomCommandsStore {
           });
         } else {
           selected.set(key, command);
-          if (!/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(command.name))
+          if (
+            !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(command.name) ||
+            ["/init", "/compact", "/side", "/btw"].includes(command.name.toLowerCase())
+          )
             diagnostics.push({
               code: "unsupported_name",
               message: `Command ${command.name} can be edited but its name is not supported by slash invocation`,

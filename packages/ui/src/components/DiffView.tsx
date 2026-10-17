@@ -115,7 +115,7 @@ function PlainPatch({
   let old = 0,
     current = 0;
   const targets = patchFindTargets(id, "", patch);
-  const lines = patch.split("\n");
+  const lines = patch.split(/\r?\n/);
   let targetIndex = 0;
   const keys = lines.map((line) =>
     /^[ +-]/.test(line) && !/^(---|\+\+\+) /.test(line) ? targets[targetIndex++]?.key : undefined,

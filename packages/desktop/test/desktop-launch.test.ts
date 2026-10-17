@@ -42,6 +42,7 @@ test("verifies startup isolation and automatically closes each launch once", asy
   const input = await fixture();
   const close = vi.fn();
   const application = {
+    firstWindow: vi.fn().mockResolvedValue({}),
     evaluate: vi.fn().mockResolvedValueOnce(automationContract).mockResolvedValue([]),
     close,
   };
@@ -62,7 +63,11 @@ test("verifies startup isolation and automatically closes each launch once", asy
 test("failed startup verification closes Electron and preserves the setup error", async () => {
   const error = new Error("isolation failed");
   const close = vi.fn().mockRejectedValue(new Error("already exited"));
-  electron.launch.mockResolvedValue({ evaluate: vi.fn().mockRejectedValue(error), close });
+  electron.launch.mockResolvedValue({
+    firstWindow: vi.fn().mockResolvedValue({}),
+    evaluate: vi.fn().mockRejectedValue(error),
+    close,
+  });
   await expect(launchDesktop(await fixture())).rejects.toBe(error);
   expect(close).toHaveBeenCalledOnce();
 });
@@ -70,6 +75,7 @@ test("failed startup verification closes Electron and preserves the setup error"
 test("caught native-action violations still fail cleanup", async () => {
   const close = vi.fn();
   electron.launch.mockResolvedValue({
+    firstWindow: vi.fn().mockResolvedValue({}),
     evaluate: vi.fn().mockResolvedValueOnce(automationContract).mockResolvedValue(["window.show"]),
     close,
   });

@@ -21,6 +21,7 @@ async function createGroup(page: Page, name: string) {
   await input.fill(name);
   await input.press("Enter");
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitemradio", { name: "灰色", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: `分组 ${name}`, exact: true })).toBeVisible();
 }
 
@@ -48,7 +49,7 @@ test("grouped task archive uses the menu icon and retains history while draft X 
       return task;
     });
     await grouped(page);
-    const row = page.locator(`.task-groups [data-session-id="${task.id}"]`);
+    const row = page.locator(`[data-testid="session-row"][data-session-id="${task.id}"]`);
     await row.hover();
     const archive = row.getByRole("button", { name: "归档任务", exact: true });
     await expect(archive.locator("svg.lucide-archive")).toHaveCount(1);
@@ -115,7 +116,10 @@ test("group menus preserve focus/expansion, names/IME and colors survive reload,
     for (const expanded of [true, false]) {
       if (!expanded) await header.click();
       await page.getByRole("button", { name: "分组颜色 设计组", exact: true }).click();
-      await page.getByRole("menuitemradio", { name: expanded ? "紫色" : "绿色", exact: true }).click();
+      const option = page.getByRole("menuitemradio", { name: expanded ? "紫色" : "绿色", exact: true });
+      await expect(option).toBeVisible();
+      await option.click();
+      await expect(option).toBeHidden();
       await expect(header).toHaveAttribute("aria-expanded", String(expanded));
     }
     await header.click({ button: "right" });
@@ -221,7 +225,9 @@ test("long grouped/root lists virtualize, sticky headers remain usable, and draf
     await expect(page.locator(".task-group-content [data-testid=grouped-draft-row]")).toHaveCount(1);
     await page.getByRole("button", { name: "新建任务", exact: true }).first().click();
     await expect(page.locator(".task-group-content [data-testid=grouped-draft-row]")).toHaveCount(1);
-    await page.getByRole("button", { name: "关闭新任务", exact: true }).click();
+    const draft = page.getByTestId("grouped-draft-row");
+    await draft.hover();
+    await draft.getByRole("button", { name: "关闭新任务", exact: true }).click();
     await expect(page.getByTestId("grouped-draft-row")).toHaveCount(0);
   } finally {
     await runCleanup([
@@ -389,7 +395,7 @@ test("grouped task menu reuses header actions, icons and pin behavior", async ()
     app = await launchDesktop({ dir, project, url: "" });
     const page = await app.firstWindow();
     await grouped(page);
-    const row = page.locator(`.task-groups [data-session-id="${task.id}"]`);
+    const row = page.locator(`[data-testid="session-row"][data-session-id="${task.id}"]`);
     await row.click();
     await page.getByRole("button", { name: "任务菜单", exact: true }).click();
     const header = await page.locator(".task-menu [role=menuitem]").allTextContents();
@@ -407,8 +413,9 @@ test("grouped task menu reuses header actions, icons and pin behavior", async ()
     await menu.getByRole("menuitem", { name: "置顶", exact: true }).click();
     await expect(page.locator(`.pinned-tasks [data-session-id="${task.id}"]`)).toBeVisible();
     await page.reload();
-    await row.click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "取消置顶", exact: true }).click();
+    const pinned = page.locator(`.pinned-tasks [data-session-id="${task.id}"]`);
+    await pinned.hover();
+    await pinned.getByRole("button", { name: /^取消置顶任务 / }).click();
     await expect(page.locator(`.pinned-tasks [data-session-id="${task.id}"]`)).toHaveCount(0);
     await row.click({ button: "right" });
     await menu.getByRole("menuitem", { name: "重命名任务", exact: true }).click();

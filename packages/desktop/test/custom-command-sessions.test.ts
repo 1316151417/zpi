@@ -1,8 +1,25 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, symlink, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { fixture } from "./helpers/host-fixture.ts";
+
+it("canonicalizes trusted home aliases before checking command storage descendants", async () => {
+  const { SessionHost } = await import("../src/main/session-host.ts");
+  const { cleanup } = await import("./helpers/host-fixture.ts");
+  const f = await fixture((_, response) => done(response));
+  await f.host.close();
+  const home = join(f.dir, "home"),
+    alias = join(f.dir, "home-alias");
+  await mkdir(home);
+  await symlink(home, alias, "dir");
+  const host = new SessionHost(f.dir, f.settings, alias);
+  cleanup.push(() => host.close());
+  await host.init();
+  const command = await host.customCommands.create({ name: "review", prompt: "Review changes" });
+  expect(command.filePath).toBe(join(await realpath(home), ".zpi", "commands", "review.md"));
+  expect((await host.customCommands.list()).commands.map((item) => item.name)).toEqual(["/review"]);
+});
 
 it("uses the submitting session project before user commands and preserves original slash history", async () => {
   const { host, a, b, server } = await fixture((_, response) => {
@@ -59,7 +76,11 @@ it("fresh disk content is used at invocation without scanning other framework di
 
 it("built-in init remains authoritative over a conflicting custom command", async () => {
   const { host, a, server } = await fixture((_, response) => done(response));
-  await host.customCommands.create({ name: "init", prompt: "SHADOWED BUILTIN" });
+  await mkdir(host.customCommands.rootDirectory, { recursive: true });
+  await writeFile(join(host.customCommands.rootDirectory, "init.md"), "SHADOWED BUILTIN");
+  expect(
+    (await host.customCommands.list()).diagnostics.some((item) => item.code === "unsupported_name"),
+  ).toBe(true);
   const session = host.createSession(a.id);
   await host.startRun({ sessionId: session.id, text: "/init" });
   await host.activeRuns.get(session.id)?.done;

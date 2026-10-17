@@ -56,6 +56,24 @@ const run = (orderedBlocks: ViewBlock[], runId = "run"): RunView => ({
   startedAt: 1,
 });
 const collect = (blocks: ViewBlock[]) => collectAnswerSources(run([...blocks, answer()]), "answer");
+
+test("decodes source entities once in search snippets and fetch excerpts", () => {
+  const sources = collect([
+    tool("search", {
+      kind: "web_search",
+      status: "success",
+      results: [source({ title: "A &amp; B", snippet: "One &amp; two &lt;three&gt;" })],
+    }),
+    tool("fetch", {
+      kind: "web_fetch",
+      status: "success",
+      url: "https://fetch.example/",
+      content: "<p>Fish &amp; chips &amp;lt;tag&amp;gt;</p>",
+    }),
+  ]);
+  expect(sources[0]).toMatchObject({ title: "A & B", excerpt: "One & two <three>" });
+  expect(sources[1].excerpt).toBe("Fish & chips &lt;tag&gt;");
+});
 const png =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6i0AAAAASUVORK5CYII=";
 const iconSource = (index = 0): AnswerSource => ({

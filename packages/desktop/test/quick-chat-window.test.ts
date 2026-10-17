@@ -218,6 +218,34 @@ test("quick window is lazy, isolated, and toggles without affecting its request 
   expect(f.host.close).toHaveBeenCalledOnce();
 });
 
+test("opening an already visible quick chat does not expire its session", async () => {
+  const f = fixture();
+  await f.quick.show();
+  f.host.resetIfExpired.mockClear();
+  await f.quick.show();
+  expect(f.host.resetIfExpired).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("a reloaded hidden renderer must acknowledge its new frame before being shown", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  const window = f.windows[0];
+  f.quick.hide();
+  window.webContents.emit("did-start-navigation", {
+    isMainFrame: true,
+    isSameDocument: false,
+    url: window.webContents.getURL(),
+  });
+  const opening = f.quick.show();
+  await Promise.resolve();
+  expect(window.show).toHaveBeenCalledTimes(1);
+  await f.rendererReady();
+  await opening;
+  expect(window.show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
 test("repeated toggles while loading preserve the latest visibility intent", async () => {
   const f = fixture({ autoLoad: false });
   const first = f.quick.toggle();

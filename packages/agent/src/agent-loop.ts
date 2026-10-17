@@ -102,7 +102,7 @@ async function run(
           else {
             assistant = event.partial;
             await emit({ type: "message_update", message: assistant, assistantMessageEvent: event });
-            if (event.type === "reset") {
+            if (event.type === "reset" && !recovering) {
               const closed = assistant.content.filter((c) => c.type === "toolCall");
               streamed = await coordinator.interrupt(closed);
               recovering = closed.length > 0;
@@ -121,6 +121,24 @@ async function run(
         assistant.stopReason = signal?.aborted ? "aborted" : "error";
         assistant.errorMessage = error instanceof Error ? error.message : String(error);
       }
+      const seenCallIds = new Set<string>();
+      let duplicateId: string | undefined;
+      const uniqueContent = assistant.content.filter((part) => {
+        if (part.type !== "toolCall") return true;
+        if (seenCallIds.has(part.id)) {
+          duplicateId = part.id;
+          return false;
+        }
+        seenCallIds.add(part.id);
+        return true;
+      });
+      if (duplicateId !== undefined)
+        assistant = {
+          ...assistant,
+          content: uniqueContent,
+          stopReason: "error",
+          errorMessage: `Provider returned duplicate tool call ID: ${duplicateId}`,
+        };
       const calls = assistant.content.filter((c) => c.type === "toolCall");
       try {
         if (!recovering) {

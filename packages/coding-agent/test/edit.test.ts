@@ -45,6 +45,15 @@ it("whitespace edits require a real match and reject multiple exact matches", as
   ).rejects.toThrow("2 occurrences");
 });
 
+it.each([
+  ["foo \nbar\nfoo\n", "foo ", "FOO ", "FOO \nbar\nfoo\n"],
+  ['“foo”\n"foo"\n', "“foo”", "bar", 'bar\n"foo"\n'],
+])("uses exact uniqueness when editing %j", async (before, oldText, newText, after) => {
+  const file = editable(before);
+  await file.edit.execute("exact", { path: "example.txt", edits: [{ oldText, newText }] });
+  expect(file.content()).toBe(after);
+});
+
 it("successful custom writes and edits remain successful when aborted during the write", async () => {
   for (const name of ["write", "edit"] as const) {
     const controller = new AbortController();

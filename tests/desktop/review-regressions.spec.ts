@@ -7,6 +7,7 @@ import { done, fakeServer } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { readStoredDraft } from "../helpers/storage.ts";
 import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
@@ -14,6 +15,35 @@ interface DraftSaveGate {
   entered: boolean;
   release: () => void;
 }
+
+test("a service cleanup failure is logged and does not reopen a partially closed app", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quit-cleanup-failure-"));
+  let app: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    await page.getByLabel("消息", { exact: true }).fill("saved before shutdown");
+    const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+    await app.evaluate(({ ipcMain }) => {
+      const remove = ipcMain.removeHandler.bind(ipcMain);
+      let failed = false;
+      ipcMain.removeHandler = (channel) => {
+        if (channel === "zpi:quick-chat" && !failed) {
+          failed = true;
+          throw new Error("Synthetic cleanup failure");
+        }
+        remove(channel);
+      };
+    });
+    await app.close();
+    expect(readStoredDraft(dir, id)?.text).toBe("saved before shutdown");
+    expect(await readFile(join(dir, "agent", "logs", "error.log"), "utf8")).toContain(
+      "main.quit.quick-chat-ipc",
+    );
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
 
 for (const mode of ["scheduled", "in flight"] as const) {
   test(`quitting waits for ${mode} draft saves even after repeated quit requests`, async () => {
@@ -55,15 +85,15 @@ for (const mode of ["scheduled", "in flight"] as const) {
       await expect.poll(entered).toBe(true);
       expect(app.process().exitCode).toBeNull();
       expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isEnabled())).toBe(
-        false,
+        true,
       );
       await expect(page.getByLabel("消息", { exact: true })).toHaveText("草稿必须保存后才能退出");
       await app.evaluate(() =>
         (globalThis as unknown as { draftSaveGate: DraftSaveGate }).draftSaveGate.release(),
       );
       await app.close();
-      const draft = JSON.parse(await readFile(join(dir, "drafts", `${id}.json`), "utf8"));
-      expect(draft.text).toBe("草稿必须保存后才能退出");
+      const draft = readStoredDraft(dir, id);
+      expect(draft?.text).toBe("草稿必须保存后才能退出");
     } finally {
       await runCleanup([
         () => rm(dir, { recursive: true, force: true }),
@@ -117,8 +147,8 @@ test("draft save failure cancels quitting and allows a successful retry", async 
       (globalThis as unknown as { restoreDraftHandler: () => void }).restoreDraftHandler(),
     );
     await app.close();
-    const draft = JSON.parse(await readFile(join(dir, "drafts", `${id}.json`), "utf8"));
-    expect(draft.text).toBe("保存失败后仍然保留的草稿");
+    const draft = readStoredDraft(dir, id);
+    expect(draft?.text).toBe("保存失败后仍然保留的草稿");
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
@@ -175,8 +205,9 @@ test("reading position survives immediate session switching and closing before t
     app = await launchDesktop({ dir, url: server.url });
     let page = await app.firstWindow();
     await select(page, first.id);
+    await expect(page.getByTestId("run")).toHaveCount(10);
     const scroll = await page.locator(".conversation").evaluate((element) => {
-      element.scrollTop = 100;
+      element.scrollTop = element.scrollHeight / 2;
       element.dispatchEvent(new Event("scroll", { bubbles: true }));
       return element.scrollTop;
     });
@@ -186,7 +217,7 @@ test("reading position survives immediate session switching and closing before t
       .poll(() => page.locator(".conversation").evaluate((element) => element.scrollTop))
       .toBe(scroll);
     const last = await page.locator(".conversation").evaluate((element) => {
-      element.scrollTop = 150;
+      element.scrollTop = element.scrollHeight / 2 + 50;
       element.dispatchEvent(new Event("scroll", { bubbles: true }));
       return element.scrollTop;
     });

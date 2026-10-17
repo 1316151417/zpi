@@ -107,7 +107,7 @@ export function TaskGroupRow({
         draggable.setNodeRef(element);
         droppable.setNodeRef(element);
       }}
-      {...(!overlay ? draggable.attributes : {})}
+      {...(!overlay && !renaming ? draggable.attributes : {})}
       {...(!overlay ? draggable.listeners : {})}
       role={overlay ? undefined : "button"}
       tabIndex={overlay ? undefined : 0}

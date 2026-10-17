@@ -332,7 +332,8 @@ export class StateStore {
   upsertProject(value: ProjectRecord): void {
     this.transaction("project.upsert", value.id, () => {
       this.db
-        .prepare(`INSERT INTO projects(id,name,path,hidden,updated_at,data) VALUES (?,?,?,?,?,?)
+        .prepare(`INSERT INTO projects(id,name,path,hidden,updated_at,data,sort_key)
+        VALUES (?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_key),-1)+1 FROM projects))
         ON CONFLICT(id) DO UPDATE SET name=excluded.name,path=excluded.path,hidden=excluded.hidden,
         updated_at=excluded.updated_at,data=excluded.data,revision=projects.revision+1`)
         .run(value.id, value.name, value.path, Number(Boolean(value.hidden)), value.updatedAt, encode(value));

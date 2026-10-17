@@ -12,6 +12,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
   const submittedAddress = useRef<string | null>(null);
   const previousUrl = useRef(state.url);
   const editingAddress = useRef(false);
+  const hasUrl = Boolean(state.url);
   useEffect(() => {
     const changed = previousUrl.current !== state.url;
     previousUrl.current = state.url;
@@ -31,7 +32,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
   }, [state]);
   useEffect(() => {
     const element = root.current;
-    if (!element || !visible || !state.url) return;
+    if (!element || !visible || !hasUrl) return;
     const panel = element.closest(".right-pane-frame");
     let frame = 0,
       last = "",
@@ -96,7 +97,7 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
       cancelAnimationFrame(frame);
       paneTask(window.zpi.browserBounds(state.id, null).then(unwrap));
     };
-  }, [state.id, state.url, visible]);
+  }, [state.id, hasUrl, visible]);
   const action = (name: "back" | "forward" | "reload") =>
     paneTask(window.zpi.browserAction(state.id, name).then(unwrap));
   return (

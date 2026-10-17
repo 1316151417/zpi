@@ -21,6 +21,7 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
     app = await launchDesktop({ dir, url: server.url });
     const main = await app.firstWindow();
     await main.getByLabel("消息", { exact: true }).fill("保留主窗口草稿");
+    await expect.poll(() => main.evaluate(() => localStorage.getItem("zpi.selectedSession"))).not.toBeNull();
     const before = await main.evaluate(() => window.zpi.listRecentSessions());
     await main.evaluate(() => window.zpi.openQuickChat());
     // Reuse the prewarmed page when present instead of relying on a new-window event.
@@ -114,7 +115,7 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
     await expect(quick.getByTestId("run").nth(1)).toHaveAttribute("data-status", "completed");
     await expect(quick.getByTestId("run").nth(1)).toHaveCSS("padding-top", "12px");
     await expect(quick.getByTestId("run").nth(1)).toHaveCSS("padding-bottom", "16px");
-    await expect(main.getByLabel("消息", { exact: true })).toHaveValue("保留主窗口草稿");
+    await expect(main.getByLabel("消息", { exact: true })).toHaveText("保留主窗口草稿");
     expect(await main.evaluate(() => window.zpi.listRecentSessions())).toEqual(before);
     expect(await quick.evaluate(() => Object.keys(localStorage))).toEqual([]);
     const rejected = await app.evaluate(async ({ BrowserWindow, ipcMain }) => {
@@ -206,6 +207,7 @@ test("quick chat pastes, previews and sends temporary images without creating ma
     await configureImageModel(main, true);
     const mainInput = main.getByLabel("消息", { exact: true });
     await mainInput.fill("主任务文字和图片列表不变");
+    await expect.poll(() => main.evaluate(() => localStorage.getItem("zpi.selectedSession"))).not.toBeNull();
     const before = await main.evaluate(() => window.zpi.listRecentSessions());
     await main.evaluate(() => window.zpi.openQuickChat());
     const quickPage = () => app?.windows().find((page) => page.url().includes("view=quick-chat"));
@@ -315,7 +317,7 @@ test("quick chat pastes, previews and sends temporary images without creating ma
         id: firstImage.id,
       }),
     ).toMatchObject({ ok: false, error: { code: "not_found" } });
-    await expect(mainInput).toHaveValue("主任务文字和图片列表不变");
+    await expect(mainInput).toHaveText("主任务文字和图片列表不变");
     await expect(main.locator(".composer .image-chip")).toHaveCount(0);
     expect(await main.evaluate(() => window.zpi.listRecentSessions())).toEqual(before);
     expect(await quick.evaluate(() => Object.keys(localStorage))).toEqual([]);
@@ -345,6 +347,7 @@ test("quick chat restores text and image drafts after a provider failure and can
     app = await launchDesktop({ dir, url: server.url });
     const main = await app.firstWindow();
     await configureImageModel(main, true);
+    await expect.poll(() => main.evaluate(() => localStorage.getItem("zpi.selectedSession"))).not.toBeNull();
     const before = await main.evaluate(() => window.zpi.listRecentSessions());
     await main.evaluate(() => window.zpi.openQuickChat());
     const quickPage = () => app?.windows().find((page) => page.url().includes("view=quick-chat"));
