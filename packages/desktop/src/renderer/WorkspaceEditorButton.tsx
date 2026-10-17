@@ -18,7 +18,7 @@ export function WorkspaceEditorButton({ sessionId }: { sessionId: string }) {
   };
   const label = `在 ${editor.name} 中打开`;
   return (
-    <div className="workspace-editor-group">
+    <div className="workspace-editor-group" data-platform={window.zpi.platform}>
       <button
         type="button"
         className="workspace-editor-open"
@@ -34,13 +34,14 @@ export function WorkspaceEditorButton({ sessionId }: { sessionId: string }) {
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Content
-            className="selection-menu workspace-editor-menu"
+            className="parity-menu workspace-editor-menu"
             data-platform={window.zpi.platform}
             align="end"
-            sideOffset={4}
+            sideOffset={2}
             loop
           >
             <Menu.RadioGroup
+              className="parity-menu-group"
               value={editor.id}
               onValueChange={(id) => {
                 const selected = editors.find((candidate) => candidate.id === id);
@@ -48,12 +49,12 @@ export function WorkspaceEditorButton({ sessionId }: { sessionId: string }) {
               }}
             >
               {editors.map((candidate) => (
-                <Menu.RadioItem key={candidate.id} value={candidate.id} className="menu-item">
-                  <Menu.ItemIndicator className="workspace-editor-check">
-                    <Check size={14} />
-                  </Menu.ItemIndicator>
+                <Menu.RadioItem key={candidate.id} value={candidate.id} className="parity-menu-radio">
                   <img src={candidate.iconDataUrl} alt="" />
                   {candidate.name}
+                  <Menu.ItemIndicator className="parity-menu-indicator">
+                    <Check size={16} />
+                  </Menu.ItemIndicator>
                 </Menu.RadioItem>
               ))}
             </Menu.RadioGroup>
