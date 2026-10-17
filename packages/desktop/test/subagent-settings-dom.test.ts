@@ -13,10 +13,6 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: (select: (value: typeof state) => unknown) => select(state),
-  unwrap: (result: Result<unknown>) => {
-    if (!result.ok) throw new Error(result.error.message);
-    return result.value;
-  },
 }));
 
 import { SubagentSettings } from "../src/renderer/SubagentSettings.tsx";

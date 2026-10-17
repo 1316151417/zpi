@@ -21,8 +21,3 @@ export const MEDIA_PREVIEW_FORMATS: readonly MediaPreviewFormat[] = [
   { extension: ".flac", kind: "audio", mediaType: "audio/flac" },
   { extension: ".weba", kind: "audio", mediaType: "audio/webm" },
 ];
-
-export function getMediaPreviewFormat(path: string): MediaPreviewFormat | null {
-  const normalizedPath = path.replace(/\\/g, "/").toLowerCase();
-  return MEDIA_PREVIEW_FORMATS.find(({ extension }) => normalizedPath.endsWith(extension)) ?? null;
-}

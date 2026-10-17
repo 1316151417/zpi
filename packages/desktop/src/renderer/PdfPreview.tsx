@@ -7,7 +7,7 @@ import type { HTMLAttributes, KeyboardEvent as ReactKeyboardEvent } from "react"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { readPdfRange } from "./pdf-range.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import "react-pdf/dist/Page/TextLayer.css";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 

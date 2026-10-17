@@ -1,7 +1,7 @@
 import type { PreviewServices } from "zpi-ui";
 import { openBrowser, openFile } from "./pane-store.ts";
 import { previewLoader } from "./preview-loader.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 export const previewServices: PreviewServices = {
   load: previewLoader.load,
   openFile,

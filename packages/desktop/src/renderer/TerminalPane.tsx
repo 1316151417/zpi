@@ -6,8 +6,9 @@ import "@xterm/xterm/css/xterm.css";
 import { observeAppearance } from "zpi-ui";
 import type { TerminalProfile } from "../shared/bridge.ts";
 import { openBrowser, paneTask, terminalExited, terminalListeners, terminalOutput } from "./pane-store.ts";
-import { report, unwrap } from "./store.ts";
+import { report } from "./store.ts";
 import { terminalCssColor, terminalOptions, terminalTheme } from "./terminal-presentation.ts";
+import { unwrap } from "./unwrap.ts";
 export function TerminalPane({
   id,
   sessionId,

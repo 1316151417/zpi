@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { type EditorInfo, selectedEditor, sortEditors } from "../shared/editors.ts";
 import { readEditorPreference, saveEditorPreference } from "./editor-preference-storage.ts";
 import { logRendererError } from "./error-log.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 const listeners = new Set<() => void>();
 let currentPreference: string | null | undefined;

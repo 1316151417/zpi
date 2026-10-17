@@ -20,7 +20,8 @@ import { createPortal } from "react-dom";
 import { ActionHint } from "zpi-ui";
 import type { CustomCommand, CustomCommandInput } from "../shared/custom-commands.ts";
 import { CommandImportDialog } from "./CommandImportDialog.tsx";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 import "./command-settings.css";
 

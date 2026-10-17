@@ -24,10 +24,10 @@ import {
   refreshSuggestions,
   report,
   retainedSessionViews,
-  unwrap,
   useStore,
 } from "./store.ts";
 import { terminalTitle } from "./terminal-presentation.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 export type PaneTab = (
   | { id: string; type: "background-task"; title: string; sessionId: string; taskId: string }

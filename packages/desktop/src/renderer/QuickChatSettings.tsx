@@ -8,7 +8,8 @@ import {
 } from "../shared/quick-chat-settings.ts";
 import { defaultShortcuts, formatShortcut } from "../shared/shortcuts.ts";
 import { SettingsSelect } from "./SettingsSelect.tsx";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 const modelKey = (selection: { provider: string; modelId: string }) =>

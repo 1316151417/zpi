@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProviderRecord, PublicSettings } from "../shared/bridge.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 export function ChatGPTConnection({

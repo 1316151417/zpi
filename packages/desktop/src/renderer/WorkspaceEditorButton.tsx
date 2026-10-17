@@ -3,7 +3,7 @@ import { Check, ChevronDown } from "lucide-react";
 import type { EditorInfo } from "../shared/editors.ts";
 import { usePreferredEditor } from "./editor-preference.ts";
 import { logRendererError } from "./error-log.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import "./editor-buttons.css";
 
 export function WorkspaceEditorButton({ sessionId }: { sessionId: string }) {

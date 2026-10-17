@@ -1,7 +1,5 @@
 // Adapted from Pi cd34e17ff039502f3664d8363b3c0a23f93a2ca3.
 // Copyright (c) 2025 Mario Zechner. MIT: THIRD_PARTY_NOTICES.md.
-import { parse as partialParse } from "partial-json";
-
 const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
 
 function isControlCharacter(char: string): boolean {
@@ -93,34 +91,5 @@ export function parseJsonWithRepair<T>(json: string): T {
       return JSON.parse(repairedJson) as T;
     }
     throw error;
-  }
-}
-
-/**
- * Attempts to parse potentially incomplete JSON during streaming.
- * Always returns a valid object, even if the JSON is incomplete.
- *
- * @param partialJson The partial JSON string from streaming
- * @returns Parsed object or empty object if parsing fails
- */
-export function parseStreamingJson<T = Record<string, unknown>>(partialJson: string | undefined): T {
-  if (!partialJson || partialJson.trim() === "") {
-    return {} as T;
-  }
-
-  try {
-    return parseJsonWithRepair<T>(partialJson);
-  } catch {
-    try {
-      const result = partialParse(partialJson);
-      return (result ?? {}) as T;
-    } catch {
-      try {
-        const result = partialParse(repairJson(partialJson));
-        return (result ?? {}) as T;
-      } catch {
-        return {} as T;
-      }
-    }
   }
 }

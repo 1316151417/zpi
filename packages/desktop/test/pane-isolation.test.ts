@@ -27,10 +27,6 @@ vi.mock("../src/renderer/store.ts", async () => {
     report: vi.fn(),
     closeSideChat: actual.closeSideChat,
     retainedSessionViews: actual.retainedSessionViews,
-    unwrap: <T>(result: Result<T>) => {
-      if (!result.ok) throw new Error(result.error.message);
-      return result.value;
-    },
   };
 });
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -294,7 +290,9 @@ it("does not remove a tab when native cleanup fails", async () => {
     ok: false,
     error: { code: "storage", message: "close failed" },
   });
-  await expect(closeTab(id)).rejects.toThrow("close failed");
+  await expect(closeTab(id)).rejects.toMatchObject({
+    cause: { code: "storage", message: "close failed" },
+  });
   expect(usePane.getState()).toMatchObject({ open: true, active: id });
   expect(visiblePaneTabs("A")).toHaveLength(1);
 });
@@ -430,7 +428,9 @@ it("does not close task panes when permanent deletion fails", async () => {
     ok: false,
     error: { code: "storage", message: "delete failed" },
   });
-  await expect(deleteSessionWithPanes("A")).rejects.toThrow("delete failed");
+  await expect(deleteSessionWithPanes("A")).rejects.toMatchObject({
+    cause: { code: "storage", message: "delete failed" },
+  });
   expect(visiblePaneTabs("A")).toEqual(tabs);
   expect(usePane.getState().deletedSessionIds.has("A")).toBe(false);
   expect(bridge.closeTerminal).not.toHaveBeenCalled();
@@ -698,7 +698,9 @@ it("does not create an HTML browser when validation fails", async () => {
     ok: false,
     error: { code: "not_found", message: "missing" },
   });
-  await expect(openFile("A", "/shared/page.html", undefined, "markdown-link")).rejects.toThrow("missing");
+  await expect(openFile("A", "/shared/page.html", undefined, "markdown-link")).rejects.toMatchObject({
+    cause: { code: "not_found", message: "missing" },
+  });
   expect(bridge.createBrowser).not.toHaveBeenCalled();
 });
 

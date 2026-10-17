@@ -1,6 +1,12 @@
 // Adapted from ZCode conversation-preview-artifacts.ts (Apache-2.0), commit 872ad960.
 // See THIRD_PARTY_NOTICES.md and docs/specs/assistant-previews-and-sidebar.md.
 import { MEDIA_PREVIEW_FORMATS } from "./media-preview.ts";
+import {
+  getPathLeaf,
+  isAbsoluteFilePath,
+  normalizeWorkspaceRelativeFilePath,
+  parseFileUrlPath,
+} from "./path.ts";
 
 export type ConversationPreviewFileKind =
   | "markdown"
@@ -122,45 +128,6 @@ function cleanPath(path: string): string {
     .replace(/:\d+(?::\d+)?$/u, "");
 }
 
-function decodePath(path: string): string {
-  try {
-    return decodeURI(path);
-  } catch {
-    return path;
-  }
-}
-
-function parseFileUrlPath(value: string): string | null {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "file:") return null;
-    const pathname = decodePath(url.pathname);
-    if (/^\/[a-zA-Z]:\//u.test(pathname)) return pathname.slice(1);
-    if (url.hostname && url.hostname !== "localhost") return `//${url.hostname}${pathname}`;
-    return pathname;
-  } catch {
-    return null;
-  }
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith("/") || /^[a-zA-Z]:[\\/]/u.test(path) || path.startsWith("\\\\");
-}
-
-function normalizeRelativePath(path: string): string | null {
-  const segments: string[] = [];
-  for (const segment of normalizeSlashes(path).split("/")) {
-    if (!segment || segment === ".") continue;
-    if (segment === "..") {
-      if (segments.length === 0) return null;
-      segments.pop();
-      continue;
-    }
-    segments.push(segment);
-  }
-  return segments.join("/");
-}
-
 function normalizeAbsolutePath(path: string): string {
   const normalized = normalizeSlashes(path).replace(/\/{2,}/gu, "/");
   const prefix = normalized.startsWith("/") ? "/" : "";
@@ -182,8 +149,8 @@ export function resolveConversationPreviewPath(workspacePath: string, rawPath: s
   if (/^~[\\/]/u.test(cleaned)) return null;
   const filePath = /^file:\/\//iu.test(cleaned) ? parseFileUrlPath(cleaned) : cleaned;
   if (!filePath) return null;
-  if (isAbsolutePath(filePath)) return normalizeAbsolutePath(filePath);
-  const relative = normalizeRelativePath(filePath);
+  if (isAbsoluteFilePath(filePath)) return normalizeAbsolutePath(filePath);
+  const relative = normalizeWorkspaceRelativeFilePath(filePath);
   if (relative === null) return null;
   const workspace = normalizeAbsolutePath(workspacePath).replace(/\/$/u, "");
   return `${workspace}/${relative}`;
@@ -196,11 +163,6 @@ export function getConversationPreviewFileType(path: string): PreviewFileTypeDef
       definition.extensions.some((extension) => normalized.endsWith(extension)),
     ) ?? null
   );
-}
-
-function getPathLeaf(path: string): string {
-  const segments = normalizeSlashes(path).replace(/\/+$/u, "").split("/").filter(Boolean);
-  return segments.at(-1) ?? path;
 }
 
 function isInsideWorkspace(path: string, workspacePath: string): boolean {

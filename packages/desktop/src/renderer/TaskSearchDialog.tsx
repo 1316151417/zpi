@@ -8,7 +8,7 @@ import type { ProjectRecord, SessionRecord, TaskSearchChange, TaskSearchResult }
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import { HighlightedMatchText } from "./HighlightedMatchText.tsx";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
-import { report, unwrap, useStore } from "./store.ts";
+import { report, useStore } from "./store.ts";
 import {
   type CommandCenterSearchHistoryEntry,
   type CommandCenterSearchScope,
@@ -18,6 +18,7 @@ import {
 } from "./task-search-history.ts";
 import { Trash2 } from "./task-search-icons.ts";
 import { resolveSearchScope, searchScopePrefix, taskSearchRows } from "./task-search-model.ts";
+import { unwrap } from "./unwrap.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
 import { userErrorMessage } from "./user-error.ts";

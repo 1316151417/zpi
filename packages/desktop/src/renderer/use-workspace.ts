@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WorkspaceInfo } from "../shared/bridge.ts";
-import { report, unwrap, useStore } from "./store.ts";
+import { report, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 export function useWorkspace(sessionId: string | undefined) {
   const cwd = useStore((state) => (sessionId ? state.sessions.get(sessionId)?.cwd : undefined));

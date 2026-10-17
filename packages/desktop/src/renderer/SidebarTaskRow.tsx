@@ -3,7 +3,8 @@ import type { CSSProperties } from "react";
 import { ActionHint, TaskTitleOverflowText } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
-import { report, unwrap } from "./store.ts";
+import { report } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 export function SidebarTaskRow({
   record: r,

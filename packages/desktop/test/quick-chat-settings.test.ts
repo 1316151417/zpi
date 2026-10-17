@@ -37,10 +37,6 @@ vi.mock("../src/renderer/store.ts", () => ({
       },
     },
   ),
-  unwrap: (result: { ok: boolean; error?: { message: string }; value?: unknown }) => {
-    if (!result.ok) throw new Error(result.error?.message);
-    return result.value;
-  },
 }));
 
 type Element = ReactElement<Record<string, unknown>>;

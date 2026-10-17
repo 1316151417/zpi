@@ -6,16 +6,9 @@ import { ModelPerformance } from "./ModelPerformance.tsx";
 import { openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { SessionToolbar } from "./SessionToolbar.tsx";
-import {
-  addConversationSelection,
-  drafts,
-  loadEarlier,
-  queueActions,
-  report,
-  unwrap,
-  useStore,
-} from "./store.ts";
+import { addConversationSelection, drafts, loadEarlier, queueActions, report, useStore } from "./store.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
+import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
 export function SideChatPane({

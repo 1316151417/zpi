@@ -3,7 +3,8 @@ import { Archive, Copy, Pencil, Pin, PinOff } from "lucide-react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { taskPinLimit } from "../shared/config.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
-import { archiveSession, refresh, report, unwrap, useStore } from "./store.ts";
+import { archiveSession, refresh, report, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 /** Shared actions and ordering for the header dropdown and grouped-task context menu. */
 export function TaskMenuItems({

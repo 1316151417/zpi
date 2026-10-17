@@ -6,7 +6,8 @@ import { ActionHint } from "zpi-ui";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import "./web-search-settings.css";
 
 export function WebSearchSettings() {

@@ -1,7 +1,6 @@
 // Adapted from ZCode (Apache-2.0); imports and host integration changed for ZPI.
 export const PPTX_MIN_ZOOM_PERCENT = 25;
 export const PPTX_MAX_ZOOM_PERCENT = 300;
-export const PPTX_ZOOM_STEP_PERCENT = 25;
 
 export function clampPresentationPageNumber(target: number, pageCount: number): number {
   const safePageCount = Math.max(1, Math.floor(pageCount));

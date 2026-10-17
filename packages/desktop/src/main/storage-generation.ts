@@ -15,7 +15,6 @@ import {
 import { join, resolve } from "node:path";
 import { validateStateDatabase } from "./state-store.ts";
 
-export const storageFormat = 2;
 export interface StorageGeneration {
   format: 2;
   generationId: string;

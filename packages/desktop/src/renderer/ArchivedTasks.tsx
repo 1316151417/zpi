@@ -3,7 +3,8 @@ import { Folder, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { deleteSessionWithPanes } from "./pane-store.ts";
-import { refresh, unwrap, useStore } from "./store.ts";
+import { refresh, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 type ArchivedRecord = SessionRecord & { projectName: string };

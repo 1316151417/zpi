@@ -30,10 +30,6 @@ vi.mock("../src/renderer/store.ts", async () => {
         },
       },
     ),
-    unwrap: (result: { ok: boolean; value?: unknown; error?: { message: string } }) => {
-      if (!result.ok) throw new Error(result.error?.message);
-      return result.value;
-    },
   };
 });
 

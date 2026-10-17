@@ -217,6 +217,7 @@ export class BackgroundTasks {
         const settle = async (code: number | null, error?: string) => {
           if (settled) return;
           settled = true;
+          update = undefined;
           await terminating;
           clearTimeout(timeout);
           clearInterval(watchdog);
@@ -252,6 +253,9 @@ export class BackgroundTasks {
           execution.task = { ...execution.task, autoBackgrounded: !params.run_in_background };
           clearTimeout(timeout);
           signal?.removeEventListener("abort", abort);
+          // The persistent watchdog must release callbacks from the completed agent turn.
+          update = undefined;
+          signal = undefined;
           this.publish(execution.task);
           if (child) lifetime = setTimeout(execution.stop, 3600000);
           resolveOutcome(true);

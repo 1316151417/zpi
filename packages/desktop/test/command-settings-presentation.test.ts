@@ -6,7 +6,6 @@ import type { CustomCommand } from "../src/shared/custom-commands.ts";
 
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: (select: (state: { projects: unknown[] }) => unknown) => select({ projects: [] }),
-  unwrap: (value: unknown) => value,
 }));
 
 const command: CustomCommand = {

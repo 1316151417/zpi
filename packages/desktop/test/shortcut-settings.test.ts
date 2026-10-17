@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: (select: (state: typeof mocks) => unknown) => select(mocks),
   report: vi.fn(),
-  unwrap: vi.fn(),
 }));
 
 afterEach(() => vi.unstubAllGlobals());

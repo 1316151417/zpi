@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat, truncate, writeFile } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import type { AgentToolUpdateCallback } from "zpi-agent";
 import { SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { BackgroundTasks } from "../src/main/background-tasks.ts";
@@ -17,8 +18,8 @@ async function fixture() {
   const port = { publish: vi.fn(), notify: vi.fn(async () => {}), error: vi.fn() };
   const runtime = new BackgroundTasks(dir, port);
   cleanup.push(() => runtime.close());
-  const invoke = (params: unknown, signal?: AbortSignal, cwd = dir) =>
-    runtime.tool("owner", cwd).execute("call", params, signal, undefined, {
+  const invoke = (params: unknown, signal?: AbortSignal, cwd = dir, update?: AgentToolUpdateCallback) =>
+    runtime.tool("owner", cwd).execute("call", params, signal, update, {
       cwd,
       model: fakeModel(""),
       sessionManager: SessionManager.inMemory(),
@@ -98,6 +99,43 @@ test("sleep deadlines and foreground cancellation terminate instead of backgroun
   await expect(run).rejects.toThrow();
   expect(f.runtime.list("owner")).toHaveLength(0);
 });
+
+test("foreground commands publish previews and retain turn cancellation", async () => {
+  const f = await fixture();
+  const abort = new AbortController();
+  const update = vi.fn<AgentToolUpdateCallback>(() => abort.abort());
+  await expect(f.invoke({ command: "echo ready; sleep 30" }, abort.signal, f.dir, update)).rejects.toThrow();
+  expect(update).toHaveBeenCalledWith({
+    content: [{ type: "text", text: "ready\n" }],
+    details: undefined,
+    isError: false,
+  });
+  expect(f.runtime.list("owner")).toHaveLength(0);
+  expect(f.port.error).not.toHaveBeenCalled();
+});
+
+test.each([false, true])(
+  "background handoff stops turn previews with run_in_background=%s",
+  async (background) => {
+    const f = await fixture();
+    const abort = new AbortController();
+    const update = vi.fn<AgentToolUpdateCallback>();
+    await f.invoke(
+      { command: "echo ready; sleep 30", timeout: 10, run_in_background: background },
+      abort.signal,
+      f.dir,
+      update,
+    );
+    const task = f.runtime.list("owner")[0];
+    abort.abort();
+    const result = await f.runtime.output("owner", { task_id: task.taskId, timeout: 1200 });
+    expect(result.details.retrieval_status).toBe("timeout");
+    expect(result.details.task.output).toBe("ready\n");
+    await f.runtime.stop("owner", task.taskId);
+    expect(update).not.toHaveBeenCalled();
+    expect(f.port.error).not.toHaveBeenCalled();
+  },
+);
 
 test("TaskOutput supports nonblocking reads, timed waits and aborts without stopping the task", async () => {
   const f = await fixture();

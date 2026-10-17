@@ -48,7 +48,6 @@ vi.mock("zpi-ui", async () => ({
 }));
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: () => harness.incoming,
-  unwrap: (value: unknown) => value,
 }));
 vi.mock("../src/renderer/pane-store.ts", () => ({ openFile: vi.fn(), paneTask: vi.fn() }));
 vi.mock("../src/renderer/PreviewHeader.tsx", () => ({ PreviewHeader: () => null }));

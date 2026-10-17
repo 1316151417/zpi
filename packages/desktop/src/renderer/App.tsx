@@ -93,7 +93,6 @@ import {
   resetSession,
   selectSession,
   subscribeEvents,
-  unwrap,
   useStore,
 } from "./store.ts";
 import { TaskActivity } from "./TaskActivity.tsx";
@@ -105,6 +104,7 @@ import { expandTaskGroup } from "./task-group-expansion.ts";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { PanelLeftClose, PanelLeftOpen, SquareTerminal } from "./task-search-icons.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
+import { unwrap } from "./unwrap.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useStopOnEscape } from "./use-stop-on-escape.ts";
 import { useTaskFind } from "./use-task-find.ts";

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { ActionHint } from "zpi-ui";
 import type { GitEnvironment, SessionRecord } from "../shared/bridge.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
-import { focusComposer, report, unwrap, useStore } from "./store.ts";
+import { focusComposer, report, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
 

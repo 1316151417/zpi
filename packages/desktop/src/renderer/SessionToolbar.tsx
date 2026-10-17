@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { ActionHint, type SessionView } from "zpi-ui";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
-import { accept, focusComposer, refresh, report, unwrap, useStore } from "./store.ts";
+import { accept, focusComposer, refresh, report, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
 export function SessionToolbar({
   view,

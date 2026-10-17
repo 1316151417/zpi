@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { CapabilityName, PublicSettings, Result } from "../shared/bridge.ts";
 import { defaultCapabilities } from "../shared/config.ts";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 const capabilities: {

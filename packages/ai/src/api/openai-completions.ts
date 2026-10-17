@@ -21,6 +21,7 @@ import { reasoningParameterKeys, reasoningParameters } from "../utils/reasoning.
 import { redactProviderError } from "../utils/redact-error.ts";
 import {
   assertSupportedOptions,
+  contentText,
   emptyAssistant,
   getCurrentSystemPrompt,
   getCurrentTools,
@@ -108,11 +109,7 @@ function serialize(context: TranscriptContext, model: Model): ChatCompletionMess
       messages.push({
         role: "tool",
         tool_call_id: m.toolCallId,
-        content:
-          m.content
-            .filter((c) => c.type === "text")
-            .map((c) => c.text)
-            .join("\n") || "Image result attached.",
+        content: contentText(m.content) || "Image result attached.",
       });
       // Keep every tool result adjacent to its assistant batch before sending visual input.
       const images = m.content.filter((c) => c.type === "image");

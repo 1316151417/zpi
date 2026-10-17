@@ -6,6 +6,8 @@ import { prepareTerminal } from "./prepare-terminal.ts";
 
 await prepareTerminal();
 await buildAppIcon();
-await build({ ...mainBuild, clean: true });
-await build({ ...preloadBuild, clean: true });
-await viteBuild({ configFile: "packages/desktop/vite.config.ts" });
+await Promise.all([
+  build({ ...mainBuild, clean: true }),
+  build({ ...preloadBuild, clean: true }),
+  viteBuild({ configFile: "packages/desktop/vite.config.ts" }),
+]);

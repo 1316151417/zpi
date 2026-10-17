@@ -1,7 +1,8 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Folder, FolderPlus, MessageCircle, Search, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { focusComposer, newSession, refresh, report, unwrap, useStore } from "./store.ts";
+import { focusComposer, newSession, refresh, report, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 export function DraftProjectPicker({ projectId }: { projectId: string | null }) {
   const projects = useStore((state) => state.projects);

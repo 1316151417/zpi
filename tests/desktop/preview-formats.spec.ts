@@ -77,7 +77,9 @@ test("Office, PDF and media cards preview actual existing files without turn cha
     };
     const close = () => page.getByLabel("收起右侧栏", { exact: true }).click();
     await open("报告.docx");
-    await expect(page.locator('[data-office-preview-kind="docx"]')).toContainText("真实 Word 预览");
+    await expect(page.locator('.file-office-preview[data-office-preview-kind="docx"]')).toContainText(
+      "真实 Word 预览",
+    );
     await close();
     await open("报表.xlsx");
     await expect(page.locator('[data-office-preview-kind="excel"] canvas').first()).toBeVisible();

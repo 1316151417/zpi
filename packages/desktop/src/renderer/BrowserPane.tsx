@@ -4,7 +4,7 @@ import { ActionHint } from "zpi-ui";
 import type { BrowserState } from "../shared/bridge.ts";
 import { browserAddressAfterNavigation } from "./browser-address.ts";
 import { paneTask } from "./pane-store.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 import "./browser-pane.css";
 export function BrowserPane({ state, visible }: { state: BrowserState; visible: boolean }) {

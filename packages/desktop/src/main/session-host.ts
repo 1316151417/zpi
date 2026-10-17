@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { Value } from "typebox/value";
-import { isJsonObject } from "zpi-ai";
+import { contentText, isJsonObject } from "zpi-ai";
 import {
   type AgentSession,
   buildSessionMentionMarkdown,
@@ -712,20 +712,21 @@ export class SessionHost {
   searchTasks(query: string, workspaceKey: string | null = null): TaskSearchResult[] {
     if (typeof query !== "string" || query.length > 500) throw new Error("invalid_input: 任务查询无效");
     const needle = query.trim().toLocaleLowerCase();
-    return this.listRecentSessions()
+    const candidates = this.listRecentSessions()
       .filter((record) => !record.draft && (!workspaceKey || record.cwd === workspaceKey))
-      .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id))
-      .filter(
-        (record) =>
-          !needle ||
-          record.title.toLocaleLowerCase().includes(needle) ||
-          this.indexes.get(record.id)?.hasSearchText(needle),
-      )
-      .slice(0, 80)
-      .map((record) => ({
+      .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+    const results: TaskSearchResult[] = [];
+    for (const record of candidates) {
+      const index = this.indexes.get(record.id);
+      if (needle && !record.title.toLocaleLowerCase().includes(needle) && !index?.hasSearchText(needle))
+        continue;
+      results.push({
         ...record,
-        snippets: buildTaskSearchSnippets(this.indexes.get(record.id)?.searchTextFor(needle) ?? [], needle),
-      }));
+        snippets: needle ? buildTaskSearchSnippets(index?.searchTextFor(needle) ?? [], needle) : [],
+      });
+      if (results.length === 80) break;
+    }
+    return results;
   }
   async getTaskSearchChanges(id: string): Promise<TaskSearchChange[]> {
     const writes = this.recordedChanges(id, null);
@@ -2895,10 +2896,7 @@ export class SessionHost {
     const childTask = this.subagents.taskForChild(id);
     if (childTask) {
       const messages = run.session?.messages ?? [];
-      const result = last?.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n");
+      const result = last ? contentText(last.content) : undefined;
       try {
         this.subagents.update(childTask.agentId, {
           status: continueInbox ? "running" : status,

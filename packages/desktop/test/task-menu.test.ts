@@ -15,7 +15,6 @@ vi.mock("../src/renderer/store.ts", () => ({
   refresh: state.refresh,
   archiveSession: state.archive,
   report: vi.fn(),
-  unwrap: (result: { value: unknown }) => result.value,
 }));
 vi.mock("@radix-ui/react-dropdown-menu", () => ({
   Item: (props: { children: ReactNode; disabled?: boolean; onSelect?: () => void }) => {

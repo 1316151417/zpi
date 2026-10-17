@@ -13,9 +13,10 @@ export function buildTaskSearchSnippets(
   segments: readonly TaskSearchText[],
   query: string,
 ): TaskSearchSnippet[] {
-  const text = segments.map((segment) => segment.text).join("\n");
   const needle = query.trim().toLocaleLowerCase();
-  if (!needle || !text.trim()) return [];
+  if (!needle) return [];
+  const text = segments.map((segment) => segment.text).join("\n");
+  if (!text.trim()) return [];
   const folded = text.toLocaleLowerCase();
   const snippets: TaskSearchSnippet[] = [];
   const ranges: { start: number; end: number }[] = [];

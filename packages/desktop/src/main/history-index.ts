@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, createReadStream, fsyncSync, openSync, readSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
-import { isJsonObject } from "zpi-ai";
+import { contentText, isJsonObject } from "zpi-ai";
 import { maxSessionEntryBytes, type SessionEntry, type SessionHeader } from "zpi-coding-agent";
 import type {
   IndexedSessionEntry,
@@ -25,11 +25,6 @@ import {
 export interface Span {
   start: number;
   end: number;
-}
-export interface CallBoundary extends Span {
-  runId: string;
-  ordinal: number;
-  complete: boolean;
 }
 export interface GenerationHooks {
   prepare(oldPath: string, newPath: string, header: SessionHeader): void;
@@ -484,10 +479,7 @@ export class HistoryIndex implements TranscriptStore {
     )
       text = entry.data.text;
     if (entry.type === "message" && entry.message.role === "assistant")
-      text = entry.message.content
-        .filter((p) => p.type === "text")
-        .map((p) => p.text)
-        .join("\n");
+      text = contentText(entry.message.content);
     if (text) {
       const bounded = text.slice(0, Math.max(0, 200000 - this.searchChars));
       if (bounded) {

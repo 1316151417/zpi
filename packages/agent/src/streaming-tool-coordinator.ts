@@ -48,7 +48,7 @@ export function createStreamingToolCoordinator(
   if (signal?.aborted) abort();
   signal?.addEventListener("abort", abort, { once: true });
   const handles = new Map<string, Promise<ToolResultMessage | undefined>>();
-  const accepted = new Map<string, ToolCall>();
+  const accepted = new Set<string>();
   const ended = new Set<string>();
   let active = true;
   let preparation = Promise.resolve();
@@ -68,7 +68,7 @@ export function createStreamingToolCoordinator(
       if (accepted.has(call.id)) return;
       // Arguments belong to the closed call, never to a later mutable stream partial.
       const closed = structuredClone(call);
-      accepted.set(call.id, closed);
+      accepted.add(call.id);
       if (!shouldExecuteDuringStream(context, config, closed)) return;
       const executor = createToolExecutor(
         context,

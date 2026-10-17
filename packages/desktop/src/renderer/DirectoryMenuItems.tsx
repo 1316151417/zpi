@@ -1,7 +1,8 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Copy } from "lucide-react";
 import type { Result } from "../shared/bridge.ts";
-import { report, unwrap } from "./store.ts";
+import { report } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 export function DirectoryMenuItems({
   getPath,

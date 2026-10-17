@@ -26,6 +26,33 @@ export function decodeFilePathUriEscapes(path: string): string {
   }
 }
 
+export function parseFileUrlPath(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "file:") return null;
+    const pathname = decodeFilePathUriEscapes(url.pathname);
+    if (/^\/[a-zA-Z]:\//.test(pathname)) return pathname.slice(1);
+    if (url.hostname && url.hostname !== "localhost") return `//${url.hostname}${pathname}`;
+    return pathname;
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeWorkspaceRelativeFilePath(relativePath: string): string | null {
+  const segments: string[] = [];
+  for (const segment of relativePath.replace(/\\/g, "/").split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      if (segments.length === 0) return null;
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.join("/");
+}
+
 export function joinFilePath(basePath: string, childPath: string): string {
   if (!childPath) {
     return basePath;

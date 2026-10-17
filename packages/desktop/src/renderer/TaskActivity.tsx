@@ -18,7 +18,8 @@ import {
 import { memo, useEffect, useMemo, useState } from "react";
 import { ActionHint, type BackgroundTask, type SubagentTask, subagentStatusLabels } from "zpi-ui";
 import { openBackgroundTask, openSubagent, openTaskDirectory, paneTask } from "./pane-store.ts";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 type Task = SubagentTask | BackgroundTask;
 type PanelMode = "auto" | "panel" | "mini";

@@ -17,11 +17,11 @@ import {
   refresh,
   report,
   selectSession,
-  unwrap,
 } from "./store.ts";
 import { TaskMenuItems } from "./TaskMenuItems.tsx";
 import { TaskGroupColorMark } from "./task-group-colors.tsx";
 import { refreshTaskGroupChangeSummary } from "./task-group-tooltip.ts";
+import { unwrap } from "./unwrap.ts";
 
 export function TaskGroupRow({
   record,

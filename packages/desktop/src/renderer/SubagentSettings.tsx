@@ -27,7 +27,8 @@ import {
 } from "../shared/subagents.ts";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 const agentColorLabels: Record<(typeof agentColors)[number], string> = {

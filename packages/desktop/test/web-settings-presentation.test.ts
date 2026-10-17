@@ -17,7 +17,6 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: (selector: (state: unknown) => unknown) => selector({ settings: fixture }),
-  unwrap: (value: unknown) => value,
 }));
 
 import { CapabilitySettings } from "../src/renderer/CapabilitySettings.tsx";

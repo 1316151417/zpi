@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { usePreferredEditor } from "./editor-preference.ts";
 import { logRendererError } from "./error-log.ts";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 
 export function PreviewEditorButton({
   sessionId,

@@ -35,7 +35,8 @@ import { readMarkdownImage } from "./markdown-image.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, openSideChat, openWebLink, paneTask, useSideChatBlocked } from "./pane-store.ts";
 import { inferPreviewLanguage } from "./preview-language.ts";
-import { addConversationSelection, drafts, unwrap, useStore } from "./store.ts";
+import { addConversationSelection, drafts, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { userErrorMessage } from "./user-error.ts";
 

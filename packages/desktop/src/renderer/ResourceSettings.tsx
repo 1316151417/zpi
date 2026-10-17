@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PromptPreview, SkillSettings, ToolInfo } from "../shared/bridge.ts";
-import { refresh, unwrap, useStore } from "./store.ts";
+import { refresh, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills" }) {
   const settings = useStore((s) => s.settings);

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, open, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join } from "node:path";
+import { contentText } from "zpi-ai";
 import {
   type Attachment,
   createReadTool,
@@ -295,12 +296,7 @@ export class AttachmentStore {
           operations: { access: async () => undefined, readFile: async () => Buffer.from(prefix) },
         }).execute("attachment", { path: metadata.path });
         files.push(
-          `${header}\n${result.content
-            .filter((part) => part.type === "text")
-            .map((part) => part.text)
-            .join(
-              "\n",
-            )}${info.size > 64 * 1024 ? "\n[Partial attachment preview. Use read with this path to continue.]" : ""}`,
+          `${header}\n${contentText(result.content)}${info.size > 64 * 1024 ? "\n[Partial attachment preview. Use read with this path to continue.]" : ""}`,
         );
       } else files.push(reference);
     }

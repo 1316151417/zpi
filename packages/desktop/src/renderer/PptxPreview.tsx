@@ -9,7 +9,8 @@ import { hitTestPresentationElement } from "./presentation/element-model.ts";
 import { exportPresentationPdf } from "./presentation/export.ts";
 import { createPresentationSelection } from "./presentation/reference.ts";
 import type { PresentationPageElement, PresentationPreviewDocument } from "./presentation/types.ts";
-import { addConversationSelection, unwrap } from "./store.ts";
+import { addConversationSelection } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 import "./PptxPreview.css";
 

@@ -2,7 +2,15 @@
 // See THIRD_PARTY_NOTICES.md and docs/specs/assistant-previews-and-sidebar.md.
 
 import { stripBalancedAssistantPathQuotes } from "./assistant-path-quotes.ts";
-import { decodeFilePathUriEscapes, isAbsoluteFilePath, joinFilePath } from "./path.ts";
+import {
+  decodeFilePathUriEscapes,
+  isAbsoluteFilePath,
+  joinFilePath,
+  normalizeWorkspaceRelativeFilePath,
+  parseFileUrlPath,
+} from "./path.ts";
+
+export { normalizeWorkspaceRelativeFilePath } from "./path.ts";
 
 interface ParsedMarkdownFileLink {
   path: string;
@@ -117,53 +125,8 @@ function isPathInsideWorkspaceRoot(path: string, workspacePath: string): boolean
   );
 }
 
-function parseFileUrlPath(path: string): string | null {
-  if (!FILE_URL_PROTOCOL_RE.test(path)) {
-    return null;
-  }
-
-  try {
-    const url = new URL(path);
-    if (url.protocol !== "file:") {
-      return null;
-    }
-
-    const decodedPathname = decodeFilePathUriEscapes(url.pathname);
-    if (/^\/[a-zA-Z]:\//.test(decodedPathname)) {
-      return decodedPathname.slice(1);
-    }
-
-    if (url.hostname && url.hostname !== "localhost") {
-      return `//${url.hostname}${decodedPathname}`;
-    }
-
-    return decodedPathname;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeMarkdownFilePath(path: string): string {
-  return parseFileUrlPath(path) ?? decodeFilePathUriEscapes(path);
-}
-
-export function normalizeWorkspaceRelativeFilePath(relativePath: string): string | null {
-  const segments: string[] = [];
-  for (const segment of relativePath.replace(/\\/g, "/").split("/")) {
-    if (!segment || segment === ".") {
-      continue;
-    }
-    if (segment === "..") {
-      if (segments.length === 0) {
-        return null;
-      }
-      segments.pop();
-      continue;
-    }
-    segments.push(segment);
-  }
-
-  return segments.join("/");
+  return (FILE_URL_PROTOCOL_RE.test(path) ? parseFileUrlPath(path) : null) ?? decodeFilePathUriEscapes(path);
 }
 
 function resolveContainedWorkspaceRelativePath(workspacePath: string, relativePath: string): string | null {

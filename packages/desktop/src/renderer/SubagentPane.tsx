@@ -2,8 +2,9 @@ import { Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { openChanges, openFile, openWebLink, type PaneTab, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
-import { loadEarlier, unwrap, useStore } from "./store.ts";
+import { loadEarlier, useStore } from "./store.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
+import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
 export function SubagentPane({ tab }: { tab: Extract<PaneTab, { type: "subagent" }> }) {

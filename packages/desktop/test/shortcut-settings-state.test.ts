@@ -29,7 +29,6 @@ vi.mock("react", async () => ({
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: Object.assign(() => undefined, { setState: mocks.setState }),
   report: vi.fn(),
-  unwrap: (result: { value: unknown }) => result.value,
 }));
 
 type Element = ReactElement<Record<string, unknown>>;

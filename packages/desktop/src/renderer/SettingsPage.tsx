@@ -51,7 +51,8 @@ import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { ShortcutSettings } from "./ShortcutSettings.tsx";
 import { SubagentSettings } from "./SubagentSettings.tsx";
-import { refresh, unwrap, useStore } from "./store.ts";
+import { refresh, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 import { WebSearchSettings } from "./WebSearchSettings.tsx";
 

@@ -11,10 +11,14 @@ import {
   isBalancedAssistantPathQuotePair,
   stripBalancedAssistantPathQuotes,
 } from "./assistant-path-quotes.ts";
-import { MEDIA_PREVIEW_FORMATS } from "./media-preview.ts";
-import { decodeFilePathUriEscapes, joinFilePath } from "./path.ts";
-import { extractConversationPreviewFileReferences } from "./preview-artifacts.ts";
+import { joinFilePath, parseFileUrlPath as parseAssistantFileUrlPath } from "./path.ts";
+import {
+  extractConversationPreviewFileReferences,
+  getConversationPreviewFileType,
+} from "./preview-artifacts.ts";
 import { type MarkdownFileLinkResolveOptions, resolveMarkdownFileLink } from "./preview-file-path.ts";
+
+export { parseAssistantFileUrlPath };
 
 export type AssistantPreviewFileKind =
   | "markdown"
@@ -51,26 +55,6 @@ export interface AssistantFileReference {
 }
 
 export type AssistantFilePathResolveOptions = MarkdownFileLinkResolveOptions;
-const ASSISTANT_PREVIEW_FILE_TYPES: readonly AssistantPreviewFileTypeDefinition[] = [
-  { extensions: [".md"], kind: "markdown", subtitleId: "chat.previewCards.markdown" },
-  {
-    extensions: [".html", ".htm"],
-    kind: "html",
-    subtitleId: "chat.previewCards.htmlWebsite",
-  },
-  { extensions: [".docx"], kind: "docx", subtitleId: "chat.previewCards.docx" },
-  { extensions: [".xlsx"], kind: "xlsx", subtitleId: "chat.previewCards.xlsx" },
-  { extensions: [".pptx"], kind: "pptx", subtitleId: "chat.previewCards.pptx" },
-  { extensions: [".pdf"], kind: "pdf", subtitleId: "chat.previewCards.pdf" },
-  ...MEDIA_PREVIEW_FORMATS.map(
-    ({ extension, kind }): AssistantPreviewFileTypeDefinition => ({
-      extensions: [extension],
-      kind,
-      subtitleId: kind === "video" ? "chat.previewCards.video" : "chat.previewCards.audio",
-    }),
-  ),
-];
-
 const FILE_URL_RE = /\bfile:\/\/[^\s<>()\]`"'*“”‘’，。！？；：、]+/gi;
 const MARKDOWN_LINK_RE = /\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const DELIMITED_FILE_PATH_RE =
@@ -88,32 +72,18 @@ export function cleanAssistantFilePathCandidate(candidate: string): string {
 export function getAssistantPreviewFileTypeDefinition(
   path: string,
 ): AssistantPreviewFileTypeDefinition | null {
-  const normalizedPath = cleanAssistantFilePathCandidate(path).toLowerCase();
-  return (
-    ASSISTANT_PREVIEW_FILE_TYPES.find((definition) =>
-      definition.extensions.some((extension) => normalizedPath.endsWith(extension)),
-    ) ?? null
-  );
+  const definition = getConversationPreviewFileType(path);
+  if (!definition) return null;
+  return {
+    extensions: definition.extensions,
+    kind: definition.kind,
+    subtitleId:
+      definition.kind === "html" ? "chat.previewCards.htmlWebsite" : `chat.previewCards.${definition.kind}`,
+  };
 }
 
 export function isAssistantPreviewHtmlPath(path: string): boolean {
   return getAssistantPreviewFileTypeDefinition(path)?.kind === "html";
-}
-
-export function parseAssistantFileUrlPath(url: string): string | null {
-  try {
-    const parsedUrl = new URL(url);
-    if (parsedUrl.protocol !== "file:") return null;
-
-    const decodedPathname = decodeFilePathUriEscapes(parsedUrl.pathname);
-    if (/^\/[a-zA-Z]:\//.test(decodedPathname)) return decodedPathname.slice(1);
-    if (parsedUrl.hostname && parsedUrl.hostname !== "localhost") {
-      return `//${parsedUrl.hostname}${decodedPathname}`;
-    }
-    return decodedPathname;
-  } catch {
-    return null;
-  }
 }
 
 export function resolveAssistantRawFilePath(

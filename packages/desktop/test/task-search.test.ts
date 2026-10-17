@@ -1,11 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { resolveSearchScope, taskSearchRows } from "../src/renderer/task-search-model.ts";
 import { buildTaskSearchSnippets } from "../src/shared/task-search.ts";
 import { seedHistory } from "./helpers/history-fixture.ts";
 import { cleanup, setup } from "./helpers/session-fixture.ts";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("task list search", () => {
   it("finds unopened history, rebuilds old indexes, excludes drafts/children/archives and ignores tools/thinking", async () => {
@@ -27,7 +30,9 @@ describe("task list search", () => {
     expect(host.searchTasks("工具结果")).toEqual([]);
     expect(host.searchTasks("思考")).toEqual([]);
     host.createSession(null);
-    expect(host.searchTasks("").map((task) => task.id)).toEqual([seed.id]);
+    const searchText = vi.spyOn(HistoryIndex.prototype, "searchTextFor");
+    expect(host.searchTasks("  ")).toMatchObject([{ id: seed.id, snippets: [] }]);
+    expect(searchText).not.toHaveBeenCalled();
     host.renameSession(seed.id, "Needle task");
     expect(host.searchTasks("  NEEDLE  ")[0]).toMatchObject({ id: seed.id, title: "Needle task" });
     await host.archiveSession(seed.id);
@@ -41,6 +46,31 @@ describe("task list search", () => {
     cleanup.push(() => reopened.close());
     expect(reopened.searchTasks("最终回复 0")[0].id).toBe(seed.id);
     expect(() => reopened.searchTasks("x".repeat(501))).toThrow("任务查询无效");
+  });
+
+  it("stops searching history after the 80 most recent matches", async () => {
+    const f = await setup();
+    const seed = (updatedAt: number, calls: number) => {
+      const { id } = seedHistory(f.settings.state, f.dir, f.cwd, calls);
+      const task = f.settings.state.getTask(id);
+      if (!task) throw new Error("Missing seeded task");
+      f.settings.state.upsertTask({ ...task, updatedAt });
+      return id;
+    };
+    const ids = Array.from({ length: 82 }, (_, i) => seed(i, 1));
+    // A newer nonmatch must not consume a result slot.
+    seed(100, 0);
+    await f.host.close();
+    const host = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.cwd);
+    await host.init();
+    cleanup.push(() => host.close());
+    const hasText = vi.spyOn(HistoryIndex.prototype, "hasSearchText");
+    const searchText = vi.spyOn(HistoryIndex.prototype, "searchTextFor");
+    const results = host.searchTasks("最终回复");
+    expect(results.map((task) => task.id)).toEqual(ids.reverse().slice(0, 80));
+    expect(results.every((task) => task.snippets[0]?.runId === "run-0")).toBe(true);
+    expect(hasText).toHaveBeenCalledTimes(81);
+    expect(searchText).toHaveBeenCalledTimes(80);
   });
 
   it("searches across projects, sorts by activity and discovers files beyond mention suggestions", async () => {

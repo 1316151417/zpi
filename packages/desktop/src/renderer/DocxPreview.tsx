@@ -1,14 +1,10 @@
 // Adapted from ZCode previewPaneOfficeDocxContent.tsx (Apache-2.0).
 
 import { type Options, renderAsync } from "docx-preview";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logRendererError } from "./error-log.ts";
-import {
-  calculateDocxPreviewFit,
-  type DocxPreviewFit,
-  installDocumentLinkSafety,
-  isSameDocxPreviewFit,
-} from "./office-preview-model.ts";
+import { installDocumentLinkSafety } from "./office-preview-model.ts";
+import { useDocxPreviewFit } from "./use-docx-preview-fit.ts";
 
 const DOCX_RENDER_OPTIONS = {
   breakPages: true,
@@ -52,36 +48,13 @@ export default function DocxPreview({
   onOpenBrowserUrl?: (url: string) => void;
   sourcePath: string;
 }) {
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
   const renderContainerRef = useRef<HTMLDivElement | null>(null);
   const [previewClassName] = useState(createDocxPreviewClassName);
-  const [fit, setFit] = useState<DocxPreviewFit | null>(null);
   const [renderState, setRenderState] = useState<"loading" | "ready" | "error">("loading");
-
-  const updateFit = useCallback(() => {
-    const viewport = viewportRef.current;
-    const content = contentRef.current;
-    if (!viewport || !content || renderState !== "ready") {
-      return;
-    }
-
-    const next = calculateDocxPreviewFit({
-      availableWidth: viewport.clientWidth,
-      naturalHeight: content.offsetHeight,
-      naturalWidth: content.offsetWidth,
-    });
-    if (!next) {
-      return;
-    }
-
-    setFit((current) => {
-      if (isSameDocxPreviewFit(current, next)) {
-        return current;
-      }
-      return next;
-    });
-  }, [renderState, sourcePath]);
+  const { viewportRef, contentRef, resetFit, frameStyle, contentStyle } = useDocxPreviewFit(
+    sourcePath,
+    renderState === "ready",
+  );
 
   useEffect(() => {
     const visibleContainer = renderContainerRef.current;
@@ -101,7 +74,7 @@ export default function DocxPreview({
     renderRoot.append(styleContainer, bodyContainer);
 
     setRenderState("loading");
-    setFit(null);
+    resetFit();
     visibleContainer.replaceChildren();
 
     void renderAsync(buffer, bodyContainer, styleContainer, {
@@ -153,29 +126,7 @@ export default function DocxPreview({
       renderRoot.remove();
       visibleContainer.replaceChildren();
     };
-  }, [buffer, onOpenBrowserUrl, previewClassName, sourcePath]);
-
-  useLayoutEffect(() => {
-    if (renderState !== "ready") {
-      return;
-    }
-
-    updateFit();
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(updateFit);
-    if (viewportRef.current) {
-      resizeObserver.observe(viewportRef.current);
-    }
-    if (contentRef.current) {
-      resizeObserver.observe(contentRef.current);
-    }
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [renderState, updateFit]);
+  }, [buffer, onOpenBrowserUrl, previewClassName, resetFit, sourcePath]);
 
   return (
     <div
@@ -195,29 +146,10 @@ export default function DocxPreview({
         }
       >
         <div ref={viewportRef} className="w-full min-w-0" data-docx-fit-viewport>
-          <div
-            className="relative mx-auto"
-            data-docx-fit-frame
-            style={fit ? { width: fit.width, height: fit.height } : undefined}
-          >
+          <div className="relative mx-auto" data-docx-fit-frame style={frameStyle}>
             {/* docx-preview 保留纸张原始宽度；窄 Preview Pane 需要只缩小不放大，
                 并同步包装层宽高，避免单独 transform 后仍保留未缩放的横向滚动区。 */}
-            <div
-              ref={contentRef}
-              className="w-max"
-              data-docx-fit-content
-              style={
-                fit
-                  ? {
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      transform: `scale(${fit.scale})`,
-                      transformOrigin: "top left",
-                    }
-                  : undefined
-              }
-            >
+            <div ref={contentRef} className="w-max" data-docx-fit-content style={contentStyle}>
               <div ref={renderContainerRef} />
             </div>
           </div>

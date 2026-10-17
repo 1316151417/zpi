@@ -11,7 +11,7 @@ import type {
   CommandImportResult,
 } from "../shared/command-import.ts";
 import { SettingsSelect } from "./SettingsSelect.tsx";
-import { unwrap } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { userErrorMessage } from "./user-error.ts";
 import "./command-import.css";

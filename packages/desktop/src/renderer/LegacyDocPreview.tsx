@@ -9,14 +9,10 @@ import {
   useDocxModel,
 } from "@extend-ai/react-docx";
 import docxWasmUrl from "@extend-ai/react-docx/docx_wasm_bg.wasm?url";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
 import { logRendererError } from "./error-log.ts";
-import {
-  calculateDocxPreviewFit,
-  type DocxPreviewFit,
-  installDocumentLinkSafety,
-  isSameDocxPreviewFit,
-} from "./office-preview-model.ts";
+import { installDocumentLinkSafety } from "./office-preview-model.ts";
+import { useDocxPreviewFit } from "./use-docx-preview-fit.ts";
 
 setWasmSource(docxWasmUrl);
 
@@ -49,9 +45,7 @@ function ResponsiveDocxEditorViewer({
     initialFileName: sourcePath,
     initialDocumentTheme: "light",
   });
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [fit, setFit] = useState<DocxPreviewFit | null>(null);
+  const { viewportRef, contentRef, fit, frameStyle, contentStyle } = useDocxPreviewFit(sourcePath);
   // 外层使用 transform 缩放页面，但 react-docx 的虚拟列表不会自动识别 transform。
   // 必须同步传入相同 zoomScale，否则滚动坐标会按未缩放页高计算，导致闪白或末页无法挂载。
   const pageVirtualization = useMemo<DocxPageVirtualizationOptions>(
@@ -59,75 +53,21 @@ function ResponsiveDocxEditorViewer({
     [fit?.scale],
   );
 
-  const updateFit = useCallback(() => {
-    const viewport = viewportRef.current;
-    const content = contentRef.current;
-    if (!viewport || !content) {
-      return;
-    }
-
-    const next = calculateDocxPreviewFit({
-      availableWidth: viewport.clientWidth,
-      naturalHeight: content.offsetHeight,
-      naturalWidth: content.offsetWidth,
-    });
-    if (!next) {
-      return;
-    }
-
-    setFit((current) => {
-      if (isSameDocxPreviewFit(current, next)) {
-        return current;
-      }
-      return next;
-    });
-  }, [sourcePath]);
-
   useLayoutEffect(() => {
     const content = contentRef.current;
-    const disposeLinkSafety = content ? installDocumentLinkSafety(content, onOpenBrowserUrl) : null;
-    updateFit();
-    if (typeof ResizeObserver === "undefined") {
-      return disposeLinkSafety ?? undefined;
-    }
-
-    const resizeObserver = new ResizeObserver(updateFit);
-    if (viewportRef.current) {
-      resizeObserver.observe(viewportRef.current);
-    }
-    if (contentRef.current) {
-      resizeObserver.observe(contentRef.current);
-    }
-    return () => {
-      resizeObserver.disconnect();
-      disposeLinkSafety?.();
-    };
-  }, [onOpenBrowserUrl, updateFit]);
+    return content ? installDocumentLinkSafety(content, onOpenBrowserUrl) : undefined;
+  }, [contentRef, onOpenBrowserUrl, sourcePath]);
 
   return (
     <div ref={viewportRef} className="w-full min-w-0" data-docx-fit-viewport>
-      <div
-        className="relative mx-auto"
-        data-docx-fit-frame
-        style={fit ? { width: fit.width, height: fit.height } : undefined}
-      >
+      <div className="relative mx-auto" data-docx-fit-frame style={frameStyle}>
         {/* react-docx 按纸张原始像素宽度渲染，窄 Preview Pane 会被 794px 页面撑破。
             只缩小不放大，并同步包装层宽高，避免单独 transform 后仍保留未缩放的横向滚动区。 */}
         <div
           ref={contentRef}
           className="theme-zai-light min-w-max text-foreground"
           data-docx-fit-content
-          style={
-            fit
-              ? {
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  transform: `scale(${fit.scale})`,
-                  transformOrigin: "top left",
-                }
-              : undefined
-          }
+          style={contentStyle}
         >
           <DocxEditorViewer
             className="min-w-max"

@@ -14,6 +14,7 @@ import { reasoningParameters } from "../utils/reasoning.ts";
 import { redactProviderError } from "../utils/redact-error.ts";
 import {
   assertSupportedOptions,
+  contentText,
   emptyAssistant,
   getCurrentSystemPrompt,
   getCurrentTools,
@@ -66,10 +67,7 @@ export function responsesInput(model: Model, context: TranscriptContext): Respon
         }
       }
     } else {
-      const text = message.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
+      const text = contentText(message.content);
       input.push({
         type: "function_call_output",
         call_id: message.toolCallId.split("|")[0],

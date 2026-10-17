@@ -2,7 +2,6 @@ import { type ComponentProps, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import type { Conversation } from "zpi-ui";
-import type { Result } from "../src/shared/bridge.ts";
 
 const f = vi.hoisted(() => ({
   props: undefined as ComponentProps<typeof Conversation> | undefined,
@@ -25,10 +24,6 @@ vi.mock("zpi-ui", () => ({
 }));
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: (select: (state: typeof f.state) => unknown) => select(f.state),
-  unwrap: (r: Result<unknown>) => {
-    if (!r.ok) throw new Error(r.error.message);
-    return r.value;
-  },
   drafts: {},
   loadEarlier: vi.fn(),
   queueActions: () => ({}),

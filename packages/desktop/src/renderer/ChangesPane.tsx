@@ -10,7 +10,8 @@ import {
 import type { DiffItem } from "../shared/bridge.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, paneTask } from "./pane-store.ts";
-import { unwrap, useStore } from "./store.ts";
+import { useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 const emptyEntries: DiffItem[] = [];

@@ -4,7 +4,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { FileIcon } from "zpi-ui";
 import { PreviewEditorButton } from "./PreviewEditorButton.tsx";
 import { previewBreadcrumb } from "./preview-breadcrumb.ts";
-import { report, unwrap } from "./store.ts";
+import { report } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
 export function PreviewHeader({

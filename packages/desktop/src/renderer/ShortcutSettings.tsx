@@ -15,7 +15,8 @@ import {
 } from "../shared/shortcuts.ts";
 import { ShortcutRecordingRequest } from "./shortcut-recording.ts";
 import { matchesShortcutSearch, shortcutScopeLabels } from "./shortcut-settings-model.ts";
-import { report, unwrap, useStore } from "./store.ts";
+import { report, useStore } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 type Capture = ShortcutCommand | "key-search";

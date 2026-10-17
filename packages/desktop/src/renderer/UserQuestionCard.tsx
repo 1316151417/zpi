@@ -3,7 +3,8 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { UserQuestionRequest, UserQuestionResponse } from "zpi-ui";
-import { type QuestionDraft, questionDrafts, report, unwrap } from "./store.ts";
+import { type QuestionDraft, questionDrafts, report } from "./store.ts";
+import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 type AnswerDraft = QuestionDraft["answers"][number];
