@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.2.95",
+  "version": "0.2.96",
   "private": true,
   "type": "module",
   "workspaces": [

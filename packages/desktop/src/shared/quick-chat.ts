@@ -9,6 +9,7 @@ export interface QuickChatSnapshot {
   selection: CombinedSelection | null;
   cwd: string;
   expanded?: boolean;
+  presentationVersion?: number;
 }
 /** Only this bridge is exposed to the temporary window. No task or privileged desktop API. */
 export interface QuickChatBridge {
@@ -21,7 +22,9 @@ export interface QuickChatBridge {
   reset(): Promise<Result<void>>;
   hide(): Promise<Result<void>>;
   setComposerHeight(sessionId: string, height: number): Promise<Result<void>>;
-  rendererReady(sessionId: string): Promise<Result<void>>;
+  rendererReady(sessionId: string, presentationVersion: number): Promise<Result<void>>;
+  onComposerProbe(listener: (token: number, sessionId: string) => void): () => void;
+  reportComposerState(token: number, sessionId: string, occupied: boolean): Promise<Result<void>>;
   onPresentation(listener: (token: number) => void): () => void;
   reportPresentation(
     token: number,

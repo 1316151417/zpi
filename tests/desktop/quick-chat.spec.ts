@@ -230,7 +230,15 @@ test("quick chat pastes, previews and sends temporary images without creating ma
     await expect(pendingImages.locator(".image-chip")).toHaveCount(2);
     await expect(pendingImages.getByRole("button", { name: "预览 keep.png", exact: true })).toBeEnabled();
     await expect(pendingImages.getByRole("button", { name: "预览 remove.png", exact: true })).toBeEnabled();
-    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 264, y: compactBottom - 264 });
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 240, y: compactBottom - 240 });
+    // Native layout acceptance: the removed filename must not retain its old 24px row.
+    expect(
+      await quick.locator(".quick-chat-composer").evaluate((composer) => {
+        const images = composer.querySelector(".quick-chat-attachments")?.getBoundingClientRect();
+        const row = composer.querySelector(".quick-chat-composer-input-row")?.getBoundingClientRect();
+        return images && row ? { height: images.height, gap: row.top - images.bottom } : null;
+      }),
+    ).toEqual({ height: 48, gap: 8 });
     await expect(input).toHaveCSS("overflow-y", "auto");
     await pendingImages.getByRole("button", { name: "预览 keep.png", exact: true }).click();
     const preview = quick.getByRole("dialog", { name: "图片预览", exact: true });
@@ -249,9 +257,9 @@ test("quick chat pastes, previews and sends temporary images without creating ma
     await main.evaluate(() => window.zpi.openQuickChat());
     await expect(input).toHaveValue("图片附带的长草稿\n".repeat(20));
     await expect(pendingImages.getByRole("button", { name: "预览 keep.png", exact: true })).toBeEnabled();
-    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 264, y: compactBottom - 264 });
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 240, y: compactBottom - 240 });
     await input.fill("说明截图");
-    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 124, y: compactBottom - 124 });
+    await expect.poll(quickBounds).toMatchObject({ width: 360, height: 100, y: compactBottom - 100 });
     await sendButton.click();
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(pendingImages).toHaveCount(0);

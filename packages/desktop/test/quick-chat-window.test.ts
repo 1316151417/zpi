@@ -3,6 +3,7 @@ import fs from "node:fs";
 import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain, IpcMainInvokeEvent } from "electron";
 import { expect, test, vi } from "vitest";
 import type { QuickChatHost } from "../src/main/quick-chat-host.ts";
+import { resumeQuickChatExpanded } from "../src/main/quick-chat-presentation.ts";
 import type { QuickChatTiming } from "../src/main/quick-chat-timing.ts";
 import { installQuickChatIpc, QuickChatWindow } from "../src/main/quick-chat-window.ts";
 import type { QuickChatSnapshot } from "../src/shared/quick-chat.ts";
@@ -151,6 +152,14 @@ function fixture(
     getDisplay,
     workspaceNotifications,
     spaceChanged: () => spaceChanged(),
+    rendererReady: async (sessionId = host.sessionId, version?: number) => {
+      const result = await quick.call("getSnapshot", []);
+      if (!result.ok) return result;
+      return quick.call("rendererReady", [
+        sessionId,
+        version ?? (result.value as QuickChatSnapshot).presentationVersion,
+      ]);
+    },
     changeSession: (id: string) => {
       snapshot = {
         ...snapshot,
@@ -166,6 +175,11 @@ function fixture(
         session: { sessionId: snapshot.session.sessionId, runs: history ? [{}] : [] },
       } as QuickChatSnapshot;
       listener(snapshot);
+      const published = windows.at(-1)?.webContents.send.mock.calls.at(-1)?.[1] as
+        | QuickChatSnapshot
+        | undefined;
+      if (published?.presentationVersion !== undefined)
+        void quick.call("rendererReady", [host.sessionId, published.presentationVersion]);
     },
   };
 }
@@ -547,7 +561,7 @@ test("delayed warmup stays hidden, is idempotent, and is cancelled on disposal",
 test("Space change or toggle while an expired run is stopping cancels the pending show", async () => {
   const f = fixture({ platform: "darwin" });
   await f.quick.prepare();
-  await f.quick.call("rendererReady", ["session-1"]);
+  await f.rendererReady("session-1");
   let expired!: () => void;
   f.host.resetIfExpired.mockImplementationOnce(
     () =>
@@ -707,9 +721,9 @@ test("expired show waits for the new rendered session and rejects old acknowledg
   const opening = f.quick.show();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(f.windows[0].show).toHaveBeenCalledOnce();
-  await f.quick.call("rendererReady", ["session-1"]);
+  await f.rendererReady("session-1");
   expect(f.windows[0].show).toHaveBeenCalledOnce();
-  await f.quick.call("rendererReady", ["new-session"]);
+  await f.rendererReady("new-session");
   await opening;
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   expect(f.windows[0].getBounds().height).toBe(44);
@@ -728,7 +742,7 @@ test("hiding before a new-session frame does not permit a later warm open to fla
   const latest = f.quick.toggle();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(f.windows[0].show).toHaveBeenCalledOnce();
-  await f.quick.call("rendererReady", ["new-session"]);
+  await f.rendererReady("new-session");
   await latest;
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   await f.quick.dispose();
@@ -745,7 +759,7 @@ test("new-session waits release on Space change or disposal without a late ackno
     if (dispose) await f.quick.dispose();
     else f.spaceChanged();
     await opening;
-    await f.quick.call("rendererReady", ["replacement"]);
+    await f.rendererReady("replacement");
     expect(f.windows[0].show).toHaveBeenCalledOnce();
     await f.quick.dispose();
   }
@@ -763,7 +777,7 @@ test("composer growth keeps its bottom anchor, clamps to the screen, and rejects
   await f.quick.call("setComposerHeight", ["session-1", 140]);
   await f.quick.call("setComposerHeight", ["old-session", 184]);
   expect(window.setBounds).not.toHaveBeenCalled();
-  for (const height of [0, 43, 265, Number.NaN, Number.POSITIVE_INFINITY, "100"]) {
+  for (const height of [0, 43, 241, Number.NaN, Number.POSITIVE_INFINITY, "100"]) {
     expect(await f.quick.call("setComposerHeight", ["session-1", height])).toMatchObject({ ok: false });
   }
   f.getDisplay.mockReturnValue({
@@ -997,9 +1011,9 @@ test.each([false, true])(
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(f.windows[0].show).toHaveBeenCalledOnce();
     expect(f.windows[0].getBounds().height).toBe(44);
-    await f.quick.call("rendererReady", ["session-1"]);
+    await f.rendererReady("session-1");
     expect(f.windows[0].show).toHaveBeenCalledOnce();
-    await f.quick.call("rendererReady", ["shortcut-new"]);
+    await f.rendererReady("shortcut-new");
     await opening;
     expect(f.windows[0].show).toHaveBeenCalledTimes(2);
     expect(f.host.resetIfExpired).toHaveBeenCalledTimes(1); // Initial show only, never another reset during explicit new.
@@ -1012,14 +1026,14 @@ test("new shortcut is not a toggle when already visible, and cold new remains co
   f.host.reset.mockImplementationOnce(async () => f.changeSession("cold-new"));
   const cold = f.quick.newConversation();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  await f.quick.call("rendererReady", ["cold-new"]);
+  await f.rendererReady("cold-new");
   await cold;
   expect(f.windows[0].getBounds().height).toBe(44);
   f.emitHistory(true);
   f.host.reset.mockImplementationOnce(async () => f.changeSession("visible-new"));
   const next = f.quick.newConversation();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  await f.quick.call("rendererReady", ["visible-new"]);
+  await f.rendererReady("visible-new");
   await next;
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   expect(f.windows[0].hide).not.toHaveBeenCalled();
@@ -1044,11 +1058,11 @@ test("repeated explicit new while resetting uses the newest visibility intent wi
   await f.quick.toggle();
   complete();
   await Promise.all([first, second]);
-  await f.quick.call("rendererReady", ["session-1"]);
+  await f.rendererReady("session-1");
   expect(f.windows[0].show).toHaveBeenCalledOnce();
   expect(f.windows[0].getBounds().height).toBe(44);
   const reopened = f.quick.toggle();
-  await f.quick.call("rendererReady", ["shared-new"]);
+  await f.rendererReady("shared-new");
   await reopened;
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   await f.quick.dispose();
@@ -1071,7 +1085,7 @@ test("explicit new during a pending hidden expiry preserves the compact invocati
   const explicit = f.quick.newConversation();
   complete();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  await f.quick.call("rendererReady", ["shared-new"]);
+  await f.rendererReady("shared-new");
   await Promise.all([expired, explicit]);
   expect(f.windows[0].getBounds().height).toBe(44);
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
@@ -1114,19 +1128,19 @@ test("image attachment IPC accepts bytes and owned identifiers, never paths or d
   await f.quick.dispose();
 });
 
-test("image draft height grows upward to 264 and still clamps to the native work area", async () => {
+test("image draft height grows upward to 240 and still clamps to the native work area", async () => {
   const f = fixture();
   await f.quick.show();
   const window = f.windows[0];
   const bottom = window.getBounds().y + window.getBounds().height;
-  await f.quick.call("setComposerHeight", ["session-1", 264]);
-  expect(window.getBounds().height).toBe(264);
-  expect(window.getBounds().y + 264).toBe(bottom);
+  await f.quick.call("setComposerHeight", ["session-1", 240]);
+  expect(window.getBounds().height).toBe(240);
+  expect(window.getBounds().y + 240).toBe(bottom);
   f.getDisplay.mockReturnValue({
     bounds: { x: 0, y: 0, width: 320, height: 80 },
     workArea: { x: 0, y: 0, width: 320, height: 80 },
   });
-  await f.quick.call("setComposerHeight", ["session-1", 263]);
+  await f.quick.call("setComposerHeight", ["session-1", 239]);
   expect(window.getBounds()).toEqual({ x: 0, y: 0, width: 320, height: 80 });
   await f.quick.dispose();
 });
@@ -1192,7 +1206,7 @@ test("visible expanded new captures its mode before a later hide and never reope
   await opening;
   expect(f.windows[0].getBounds().height).toBe(560);
   expect(f.windows[0].show).toHaveBeenCalledOnce();
-  await f.quick.call("rendererReady", ["visible-intent"]);
+  await f.rendererReady("visible-intent");
   await f.quick.toggle();
   expect(f.windows[0].getBounds().height).toBe(560);
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
@@ -1239,9 +1253,9 @@ test("the latest hidden new intent wins when two explicit actions share one pend
   const hiddenNew = f.quick.newConversation();
   finish();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  await f.quick.call("rendererReady", ["session-1"]);
+  await f.rendererReady("session-1");
   expect(f.windows[0].show).toHaveBeenCalledOnce();
-  await f.quick.call("rendererReady", ["latest-hidden"]);
+  await f.rendererReady("latest-hidden");
   await Promise.all([visibleNew, hiddenNew]);
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   expect(f.windows[0].getBounds().height).toBe(44);
@@ -1263,7 +1277,7 @@ test.each(["blur", "space"])(
     f.host.reset.mockImplementationOnce(async () => f.changeSession("hidden-new"));
     const opening = f.quick.newConversation();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await f.quick.call("rendererReady", ["hidden-new"]);
+    await f.rendererReady("hidden-new");
     await opening;
     expect(f.windows[0].getBounds().height).toBe(44);
     await f.quick.dispose();
@@ -1285,7 +1299,7 @@ test("visible expanded new does not require focus, and destroyed retained window
   f.host.reset.mockImplementationOnce(async () => f.changeSession("after-destroy"));
   const opening = f.quick.newConversation();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  await f.quick.call("rendererReady", ["after-destroy"]);
+  await f.rendererReady("after-destroy");
   await opening;
   expect(f.windows[1].getBounds().height).toBe(44);
   await f.quick.dispose();
@@ -1299,5 +1313,296 @@ test("desired visibility in hidden test mode is not native visibility for a new 
   f.host.reset.mockImplementationOnce(async () => f.changeSession("never-presented"));
   await f.quick.call("reset", []);
   expect(f.windows[0].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+const latestSnapshot = (f: ReturnType<typeof fixture>) =>
+  f.windows
+    .at(-1)
+    ?.webContents.send.mock.calls.filter(([channel]) => channel === "zpi:quick-chat-snapshot")
+    .at(-1)?.[1] as QuickChatSnapshot;
+const latestProbe = (f: ReturnType<typeof fixture>) =>
+  f.windows
+    .at(-1)
+    ?.webContents.send.mock.calls.filter(([channel]) => channel === "zpi:quick-chat-composer")
+    .at(-1) as [string, number, string];
+async function emptyExpanded() {
+  const f = fixture({ history: true, platform: "darwin" });
+  await f.quick.show();
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("empty-new"));
+  await f.quick.call("reset", []);
+  await f.rendererReady();
+  expect(latestSnapshot(f)).toMatchObject({ expanded: true, session: { runs: [] } });
+  return f;
+}
+
+test.each([
+  [false, false, false, false],
+  [false, false, true, false],
+  [false, false, undefined, false],
+  [true, false, false, false],
+  [true, false, true, true],
+  [true, false, undefined, true],
+  [false, true, false, true],
+  [false, true, true, true],
+  [false, true, undefined, true],
+  [true, true, false, true],
+  [true, true, true, true],
+  [true, true, undefined, true],
+] as const)(
+  "resume presentation matrix expanded=%s history=%s occupied=%s → %s",
+  (expanded, history, occupied, expected) => {
+    expect(resumeQuickChatExpanded(expanded, history, occupied)).toBe(expected);
+  },
+);
+
+test("visible new stays expanded once, but empty hidden resume folds only after a matching compact frame", async () => {
+  const f = await emptyExpanded();
+  const old = latestSnapshot(f);
+  const window = f.windows[0];
+  expect(window.getBounds().height).toBe(560);
+  await f.quick.toggle();
+  const opening = f.quick.toggle();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  await f.quick.call("reportComposerState", [token, sessionId, false]);
+  await tick();
+  const compact = latestSnapshot(f);
+  expect(compact).toMatchObject({ expanded: false, session: { sessionId, runs: [] } });
+  expect(compact.revision).toBeGreaterThan(old.revision);
+  expect(compact.presentationVersion).toBeGreaterThan(old.presentationVersion as number);
+  expect(window.getBounds().height).toBe(44);
+  expect(window.show).toHaveBeenCalledOnce();
+  await f.rendererReady(sessionId, old.presentationVersion);
+  expect(window.show).toHaveBeenCalledOnce();
+  await f.rendererReady();
+  await opening;
+  expect(window.show).toHaveBeenCalledTimes(2);
+  window.webContents.send.mockClear();
+  for (let index = 0; index < 3; index++) {
+    await f.quick.toggle();
+    await f.quick.toggle();
+    expect(window.getBounds().height).toBe(44);
+  }
+  expect(window.webContents.send.mock.calls.some(([channel]) => channel === "zpi:quick-chat-composer")).toBe(
+    false,
+  );
+  expect(f.host.reset).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("occupied empty-history drafts keep expanded; clearing them retires the new-chat allowance", async () => {
+  const f = await emptyExpanded();
+  for (const occupied of [true, true, false]) {
+    f.quick.hide();
+    const opening = f.quick.show();
+    await tick();
+    const [, token, sessionId] = latestProbe(f);
+    await f.quick.call("reportComposerState", [token, sessionId, occupied]);
+    await tick();
+    if (!occupied) await f.rendererReady();
+    await opening;
+    expect(f.windows[0].getBounds().height).toBe(occupied ? 560 : 44);
+  }
+  await f.quick.dispose();
+});
+
+test("probe timeout preserves unknown drafts, retries on the next resume, and never destroys the renderer", async () => {
+  const f = await emptyExpanded();
+  vi.useFakeTimers();
+  try {
+    f.quick.hide();
+    const opening = f.quick.show();
+    await vi.advanceTimersByTimeAsync(250);
+    await opening;
+    expect(f.windows[0].getBounds().height).toBe(560);
+    expect(f.windows[0].destroy).not.toHaveBeenCalled();
+    expect(f.host.discardDraftAttachments).not.toHaveBeenCalled();
+    const old = latestProbe(f);
+    f.quick.hide();
+    const second = f.quick.show();
+    await vi.advanceTimersByTimeAsync(0);
+    const next = latestProbe(f);
+    expect(next[1]).not.toBe(old[1]);
+    await f.quick.call("reportComposerState", [old[1], old[2], false]);
+    expect(f.windows[0].getBounds().height).toBe(560);
+    await f.quick.call("reportComposerState", [next[1], next[2], true]);
+    await second;
+  } finally {
+    vi.useRealTimers();
+    await f.quick.dispose();
+  }
+});
+
+test.each(["toggle", "space", "dispose", "crash"] as const)(
+  "%s cancels pending occupancy without stale replies reviving the window",
+  async (action) => {
+    const f = await emptyExpanded();
+    f.quick.hide();
+    const opening = f.quick.show();
+    await tick();
+    const [, token, sessionId] = latestProbe(f);
+    if (action === "toggle") await f.quick.toggle();
+    else if (action === "space") f.spaceChanged();
+    else if (action === "crash") f.windows[0].webContents.emit("render-process-gone");
+    else await f.quick.dispose();
+    await opening;
+    await f.quick.call("reportComposerState", [token, sessionId, false]);
+    await f.rendererReady();
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    await f.quick.dispose();
+  },
+);
+
+test("third toggle starts a fresh probe and ignores the cancelled second-toggle reply", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const first = f.quick.toggle();
+  await tick();
+  const old = latestProbe(f);
+  await f.quick.toggle();
+  await first;
+  const current = f.quick.toggle();
+  await tick();
+  const next = latestProbe(f);
+  await f.quick.call("reportComposerState", [old[1], old[2], false]);
+  expect(f.windows[0].getBounds().height).toBe(560);
+  await f.quick.call("reportComposerState", [next[1], next[2], true]);
+  await current;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("a host run accepted while probing wins over an empty composer reply", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const opening = f.quick.show();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  f.emitHistory(true);
+  await f.quick.call("reportComposerState", [token, sessionId, false]);
+  await opening;
+  expect(f.windows[0].getBounds().height).toBe(560);
+  expect(await f.quick.call("getSnapshot", [])).toMatchObject({ value: { expanded: true } });
+  await f.quick.dispose();
+});
+
+test("new session invalidates a pending probe and old version; only the current frame may show", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const opening = f.quick.show();
+  await tick();
+  const old = latestProbe(f);
+  const oldVersion = latestSnapshot(f).presentationVersion;
+  f.changeSession("expired");
+  await tick();
+  await f.quick.call("reportComposerState", [old[1], old[2], true]);
+  await f.rendererReady("expired", oldVersion);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.rendererReady();
+  await opening;
+  expect(f.windows[0].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("frame version changes while waiting continue with the latest projection instead of timing out", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const opening = f.quick.show();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  await f.quick.call("reportComposerState", [token, sessionId, false]);
+  await tick();
+  const foldedVersion = latestSnapshot(f).presentationVersion;
+  f.changeSession("newer-session");
+  await tick();
+  await f.rendererReady("newer-session", foldedVersion);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.rendererReady();
+  await opening;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("probe and frame IPC reject malformed data and ignore foreign sessions", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const opening = f.quick.show();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  for (const args of [
+    [token, sessionId, "false"],
+    [Number.NaN, sessionId, false],
+    [token, sessionId],
+  ])
+    expect(await f.quick.call("reportComposerState", args)).toMatchObject({ ok: false });
+  for (const args of [[sessionId], [sessionId, -1], [sessionId, Number.NaN], [sessionId, "1"]])
+    expect(await f.quick.call("rendererReady", args)).toMatchObject({ ok: false });
+  await f.quick.call("reportComposerState", [token, "other", false]);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.quick.call("reportComposerState", [token, sessionId, true]);
+  await opening;
+  await f.quick.dispose();
+});
+
+test("warm history resume does not clone snapshots or probe the renderer", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  f.host.getSnapshot.mockClear();
+  f.windows[0].webContents.send.mockClear();
+  const opening = f.quick.show();
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.host.getSnapshot).not.toHaveBeenCalled();
+  expect(f.windows[0].webContents.send).not.toHaveBeenCalled();
+  await opening;
+  await f.quick.dispose();
+});
+
+test("hide intent retires blank expansion even if native visibility has not caught up", async () => {
+  const f = await emptyExpanded();
+  const window = f.windows[0];
+  window.hide.mockImplementationOnce(() => {});
+  f.quick.hide();
+  expect(window.isVisible()).toBe(true);
+  const opening = f.quick.show();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  await f.quick.call("reportComposerState", [token, sessionId, false]);
+  await tick();
+  await f.rendererReady();
+  await opening;
+  expect(window.getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("explicit reset cancels a pending probe before an old run finishes stopping", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const opening = f.quick.show();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  let finish!: () => void;
+  f.host.reset.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          f.changeSession("explicit-latest");
+          resolve();
+        };
+      }),
+  );
+  const reset = f.quick.call("reset", []);
+  await opening;
+  await f.quick.call("reportComposerState", [token, sessionId, false]);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  finish();
+  await reset;
+  expect(latestSnapshot(f)).toMatchObject({ expanded: false, session: { sessionId: "explicit-latest" } });
+  const latest = f.quick.show();
+  await f.rendererReady();
+  await latest;
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   await f.quick.dispose();
 });

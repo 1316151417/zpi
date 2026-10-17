@@ -18,7 +18,15 @@ const bridge: QuickChatBridge = {
   reset: () => call("reset"),
   hide: () => call("hide"),
   setComposerHeight: (sessionId, height) => call("setComposerHeight", sessionId, height),
-  rendererReady: (sessionId) => call("rendererReady", sessionId),
+  rendererReady: (sessionId, version) => call("rendererReady", sessionId, version),
+  reportComposerState: (token, sessionId, occupied) =>
+    call("reportComposerState", token, sessionId, occupied),
+  onComposerProbe(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, token: number, sessionId: string) =>
+      listener(token, sessionId);
+    ipcRenderer.on("zpi:quick-chat-composer", handler);
+    return () => ipcRenderer.removeListener("zpi:quick-chat-composer", handler);
+  },
   reportPresentation: (token, stage) => call("reportPresentation", token, stage),
   onPresentation(listener) {
     const handler = (_event: Electron.IpcRendererEvent, token: number) => listener(token);

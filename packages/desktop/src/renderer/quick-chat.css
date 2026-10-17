@@ -224,9 +224,10 @@ html[data-quick-chat="true"] #root {
 .quick-chat-attachments {
   display: flex;
   flex-shrink: 1;
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 8px;
-  height: 72px;
+  height: 48px;
   min-width: 0;
   min-height: 0;
   margin: 0;
@@ -234,11 +235,20 @@ html[data-quick-chat="true"] #root {
   border: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /* Keep classic scrollbars from consuming the fixed thumbnail height. */
+  scrollbar-width: none;
 }
 
 .quick-chat-attachment {
-  flex: 0 0 56px;
+  position: relative;
+  flex: 0 0 48px;
+  height: 48px;
   min-width: 0;
+}
+
+.quick-chat-attachment .image-chip {
+  /* A block-level flex box avoids the shared inline chip's baseline whitespace. */
+  display: flex;
 }
 
 .quick-chat-attachment .image-chip > button:first-child {
@@ -253,12 +263,19 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-attachment-status {
+  position: absolute;
+  bottom: 0;
+  left: 0;
   display: block;
-  max-width: 56px;
+  width: 48px;
+  height: 20px;
   padding: 0;
+  border-radius: 0 0 8px 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
+  background: var(--color-surface);
   color: var(--color-text-muted);
   font-size: var(--text-small);
   line-height: 20px;

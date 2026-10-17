@@ -1,6 +1,9 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ElectronApplication } from "@playwright/test";
+import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
@@ -79,10 +82,10 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
   });
   const pendingImages = quick.getByRole("group", { name: "待发送图片", exact: true });
   await expect(pendingImages.getByRole("button", { name: "预览 focus.png", exact: true })).toBeEnabled();
-  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 264, y: compactBottom - 264 } });
+  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 240, y: compactBottom - 240 } });
   await expect(input).toBeFocused();
   await input.fill("跨桌面仍保留的草稿");
-  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 124, y: compactBottom - 124 } });
+  await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 100, y: compactBottom - 100 } });
   for (let index = 0; index < 3; index++) {
     await input.press("Escape");
     await expect.poll(state).toMatchObject({ quickVisible: false, mainVisible: false });
@@ -95,10 +98,71 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
       quickFocused: true,
       mainVisible: false,
       mainFocused: false,
-      bounds: { width: 360, height: 124, y: compactBottom - 124 },
+      bounds: { width: 360, height: 100, y: compactBottom - 100 },
     });
   }
   await pendingImages.getByRole("button", { name: "移除 focus.png", exact: true }).click();
   await expect(pendingImages).toHaveCount(0);
   await expect.poll(state).toMatchObject({ bounds: { width: 360, height: 44, y: compactBounds.y } });
+});
+
+// Real visible-window acceptance for the formerly sticky empty-expanded state.
+// This is an app-API sequence; actual Option+N remains manual macOS acceptance.
+test("interactive: visible new stays large once and empty hidden resume returns to compact", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-resume-"));
+  const server = await fakeServer(async (_request, response) => {
+    send(response, chunk({ content: "已完成" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const main = await app.firstWindow();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
+    await main.evaluate(() => window.zpi.openQuickChat());
+    await expect.poll(() => app?.windows().some((page) => page.url().includes("view=quick-chat"))).toBe(true);
+    const quick = app.windows().find((page) => page.url().includes("view=quick-chat"));
+    if (!quick) throw new Error("Missing quick-chat page");
+    const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
+    const mode = quick.getByTestId("quick-chat");
+    const native = () =>
+      app?.evaluate(({ BrowserWindow }) => {
+        const quick = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().includes("view=quick-chat"),
+        );
+        return { visible: quick?.isVisible(), height: quick?.getBounds().height };
+      });
+    const reopen = async () => {
+      await input.press("Escape");
+      await expect.poll(native).toMatchObject({ visible: false });
+      await main.evaluate(() => window.zpi.openQuickChat());
+      await expect.poll(native).toMatchObject({ visible: true });
+      await expect(input).toBeFocused();
+    };
+    await input.fill("建立可见历史");
+    await input.press("Enter");
+    await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await quick.getByRole("button", { name: "新对话", exact: true }).click();
+    await expect(quick.getByTestId("run")).toHaveCount(0);
+    await expect(mode).toHaveAttribute("data-state", "expanded");
+    await expect.poll(native).toMatchObject({ visible: true, height: 560 });
+    await input.fill("保留未发草稿");
+    await reopen();
+    await expect(mode).toHaveAttribute("data-state", "expanded");
+    await expect(input).toHaveValue("保留未发草稿");
+    await input.fill("");
+    for (let index = 0; index < 3; index++) {
+      await reopen();
+      await expect(mode).toHaveAttribute("data-state", "compact");
+      await expect.poll(native).toMatchObject({ visible: true, height: 44 });
+      await expect(input).toHaveValue("");
+    }
+    expect(server.requests).toHaveLength(1);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
 });

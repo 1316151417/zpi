@@ -20,6 +20,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "getSnapshot",
     "hide",
     "importAttachment",
+    "onComposerProbe",
     "onPresentation",
     "onSnapshot",
     "openExternal",
@@ -27,6 +28,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "readWebSourceIcon",
     "removeAttachment",
     "rendererReady",
+    "reportComposerState",
     "reportPresentation",
     "reset",
     "send",
@@ -71,8 +73,21 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
   ]);
   await bridge.setComposerHeight("session", 92);
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "setComposerHeight", ["session", 92]);
-  await bridge.rendererReady("session");
-  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "rendererReady", ["session"]);
+  await bridge.rendererReady("session", 3);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "rendererReady", ["session", 3]);
+  await bridge.reportComposerState(7, "session", false);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "reportComposerState", [
+    7,
+    "session",
+    false,
+  ]);
+  const probed = vi.fn();
+  const offProbe = bridge.onComposerProbe(probed);
+  const [probeChannel, probeHandler] = electron.on.mock.calls[electron.on.mock.calls.length - 1];
+  probeHandler({}, 7, "session");
+  expect(probed).toHaveBeenCalledWith(7, "session");
+  offProbe();
+  expect(electron.removeListener).toHaveBeenCalledWith(probeChannel, probeHandler);
   await bridge.reportPresentation(1, "renderer-frame");
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "reportPresentation", [
     1,

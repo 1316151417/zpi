@@ -15,7 +15,7 @@ const configurationMessage = "默认模型不可用，请到主窗口「设置 �
 const loadConversation = () => import("./QuickChatConversation.tsx");
 const compactComposerMinHeight = 44;
 const compactComposerMaxHeight = 184;
-const attachmentRowHeight = 80; // 72px thumbnails/status and an 8px gap.
+const attachmentRowHeight = 56; // 48px thumbnails (with status overlays) and an 8px gap.
 const composerVerticalInset = 16; // 7px padding and a 1px border on each edge.
 const textareaMinHeight = 24;
 const expandedTextareaMaxHeight = 160;
@@ -104,6 +104,7 @@ export function QuickChat({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const revision = useRef(-1);
   const currentSession = useRef<string>(undefined);
+  const visibleErrorRef = useRef("");
   const operationGeneration = useRef(0);
   const reportedHeight = useRef<{ sessionId: string; height: number }>(undefined);
   const presentation = useRef<{ token: number; reported: Set<string> }>(undefined);
@@ -117,6 +118,7 @@ export function QuickChat({
   const selectionValid = Boolean(snapshot?.selection);
   const configurationRequired = Boolean(snapshot && !selectionValid);
   const visibleError = error || snapshotError;
+  visibleErrorRef.current = visibleError;
 
   useEffect(() => {
     mounted.current = true;
@@ -174,6 +176,23 @@ export function QuickChat({
     };
   }, [attempt, updateImages]);
 
+  useEffect(
+    () =>
+      window.zpiQuickChat.onComposerProbe((token, sessionId) => {
+        if (sessionId !== currentSession.current) return;
+        // Read live local state, including imports and in-flight actions, without
+        // copying draft text or image contents across the presentation boundary.
+        const occupied = Boolean(
+          textarea.current?.value.length ||
+            imagesRef.current.length ||
+            lock.current ||
+            visibleErrorRef.current,
+        );
+        void window.zpiQuickChat.reportComposerState(token, sessionId, occupied).catch(() => {});
+      }),
+    [],
+  );
+
   useEffect(() => {
     const submitted = lastSubmission.current;
     if (!submitted?.accepted || !snapshot || submitted.generation !== operationGeneration.current) return;
@@ -201,6 +220,7 @@ export function QuickChat({
   }, [preferences.theme, preferences.fontSize]);
 
   const sessionId = view?.sessionId;
+  const presentationVersion = snapshot?.presentationVersion ?? 0;
   const importImage = useCallback(
     async (item: QuickChatDraftImage) => {
       const importSession = currentSession.current;
@@ -355,19 +375,19 @@ export function QuickChat({
 
   useLayoutEffect(() => {
     if (!sessionId) return;
-    // A replacement session must apply its cleared DOM before the native window is shown.
+    // Session and mode changes must commit their DOM before native presentation.
     // Two animation callbacks provide a frame opportunity, not proof of compositor paint.
     let second: number | undefined;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => {
-        void window.zpiQuickChat.rendererReady(sessionId).catch(() => {});
+        void window.zpiQuickChat.rendererReady(sessionId, presentationVersion).catch(() => {});
       });
     });
     return () => {
       cancelAnimationFrame(first);
       if (second !== undefined) cancelAnimationFrame(second);
     };
-  }, [sessionId]);
+  }, [sessionId, presentationVersion, expanded]);
 
   const reportPresentation = useCallback((stage: "renderer-ready" | "renderer-focus" | "renderer-frame") => {
     const current = presentation.current;

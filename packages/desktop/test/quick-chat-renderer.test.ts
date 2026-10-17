@@ -1,10 +1,14 @@
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
+import type { BrowserWindow, BrowserWindowConstructorOptions, Rectangle } from "electron";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { type ImageAttachment, imageLimits } from "zpi-coding-agent/input";
 import { Conversation } from "zpi-ui";
 import { emptySession } from "zpi-ui/projection";
+import type { QuickChatHost } from "../src/main/quick-chat-host.ts";
+import { QuickChatWindow } from "../src/main/quick-chat-window.ts";
 import { QuickChat } from "../src/renderer/QuickChat.tsx";
 import QuickChatConversation, {
   type QuickChatConversationProps,
@@ -61,6 +65,7 @@ let snapshot: QuickChatSnapshot;
 let bridge: QuickChatBridge;
 let listeners: Set<(snapshot: QuickChatSnapshot) => void>;
 let presentationListeners: Set<(token: number) => void>;
+let composerProbeListeners: Set<(token: number, sessionId: string) => void>;
 let storageWrite: ReturnType<typeof vi.spyOn>;
 let conversationLoader: ReturnType<typeof vi.fn<() => Promise<{ default: typeof QuickChatConversation }>>>;
 
@@ -126,6 +131,11 @@ const emit = (patch: Partial<QuickChatSnapshot> = {}) => {
 const push = async (patch: Partial<QuickChatSnapshot> = {}) => {
   await act(async () => emit(patch));
 };
+const probe = async (token: number, sessionId = snapshot.session.sessionId) => {
+  await act(async () => {
+    for (const listener of composerProbeListeners) listener(token, sessionId);
+  });
+};
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -157,6 +167,7 @@ beforeEach(() => {
   conversationLoader = vi.fn(async () => ({ default: QuickChatConversation }));
   listeners = new Set();
   presentationListeners = new Set();
+  composerProbeListeners = new Set();
   bridge = {
     getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     send: vi.fn(async () => ok()),
@@ -174,6 +185,13 @@ beforeEach(() => {
     hide: vi.fn(async () => ok()),
     setComposerHeight: vi.fn(async () => ok()),
     rendererReady: vi.fn(async () => ok()),
+    reportComposerState: vi.fn(async () => ok()),
+    onComposerProbe: vi.fn((listener) => {
+      composerProbeListeners.add(listener);
+      return () => {
+        composerProbeListeners.delete(listener);
+      };
+    }),
     reportPresentation: vi.fn(async () => ok()),
     onPresentation: vi.fn((listener) => {
       presentationListeners.add(listener);
@@ -212,6 +230,7 @@ afterEach(async () => {
   });
   expect(listeners.size).toBe(0);
   expect(presentationListeners.size).toBe(0);
+  expect(composerProbeListeners.size).toBe(0);
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -244,6 +263,17 @@ function measureInput(height: () => number, available?: () => number) {
   if (available) Object.defineProperty(input(), "clientHeight", { configurable: true, get: available });
 }
 
+function quickChatStyles() {
+  const style = document.createElement("style");
+  style.textContent = [
+    readFileSync(new URL("../../ui/src/tokens.css", import.meta.url), "utf8"),
+    readFileSync(new URL("../../ui/src/styles.css", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/renderer/quick-chat.css", import.meta.url), "utf8"),
+  ].join("\n");
+  document.head.append(style);
+  return style;
+}
+
 function animationClock() {
   let next = 0;
   const frames = new Map<number, FrameRequestCallback>();
@@ -258,6 +288,150 @@ function animationClock() {
     await act(async () => {
       for (const [, callback] of current) callback(performance.now());
     });
+  };
+}
+
+// The presentation integration uses the real renderer and window controller.
+// Only native window operations and the model-independent session projection are fake.
+function presentationHost() {
+  let projection: QuickChatSnapshot = {
+    ...snapshot,
+    session: { ...snapshot.session, runs: [run("completed")] },
+  };
+  let hostListener: (next: QuickChatSnapshot) => void = () => {};
+  let nextSession = 0;
+  const publish = () => hostListener(projection);
+  const host = {
+    get sessionId() {
+      return projection.session.sessionId;
+    },
+    getSnapshot: () => projection,
+    subscribe: (listener: typeof hostListener) => {
+      hostListener = listener;
+      return () => {
+        hostListener = () => {};
+      };
+    },
+    reset: async () => {
+      projection = {
+        ...projection,
+        revision: projection.revision + 1,
+        session: emptySession(`new-session-${++nextSession}`),
+      };
+      publish();
+    },
+    resetIfExpired: () => undefined,
+    close: async () => {},
+    discardDraftAttachments: () => {},
+  };
+  const delivered: QuickChatSnapshot[] = [];
+  function createNative(options: BrowserWindowConstructorOptions) {
+    let bounds = {
+      x: options.x ?? 0,
+      y: options.y ?? 0,
+      width: options.width ?? 0,
+      height: options.height ?? 0,
+    };
+    let visible = false;
+    let focused = false;
+    let destroyed = false;
+    let url = "";
+    const contents = Object.assign(new EventEmitter(), {
+      session: Object.assign(new EventEmitter(), {
+        setPermissionRequestHandler: () => {},
+        setPermissionCheckHandler: () => {},
+        webRequest: { onBeforeRequest: () => {} },
+      }),
+      isDestroyed: () => destroyed,
+      getURL: () => url,
+      setWindowOpenHandler: () => {},
+      send: vi.fn((channel: string, ...args: unknown[]) => {
+        if (channel === "zpi:quick-chat-snapshot") {
+          const next = args[0] as QuickChatSnapshot;
+          delivered.push(next);
+          for (const listener of listeners) listener(next);
+        } else if (channel === "zpi:quick-chat-composer") {
+          for (const listener of composerProbeListeners) listener(args[0] as number, args[1] as string);
+        } else if (channel === "zpi:quick-chat-presentation") {
+          for (const listener of presentationListeners) listener(args[0] as number);
+        }
+      }),
+    });
+    const native = Object.assign(new EventEmitter(), {
+      webContents: contents,
+      isDestroyed: () => destroyed,
+      isMinimized: () => false,
+      isVisible: () => visible,
+      isFocused: () => focused,
+      getBounds: () => ({ ...bounds }),
+      setBounds: (next: Rectangle) => {
+        bounds = next;
+      },
+      setMinimumSize: () => {},
+      restore: () => {},
+      show: vi.fn(() => {
+        visible = true;
+        native.emit("show");
+      }),
+      focus: () => {
+        focused = true;
+        native.emit("focus");
+      },
+      hide: () => {
+        visible = false;
+        focused = false;
+        native.emit("hide");
+      },
+      destroy: () => {
+        destroyed = true;
+        contents.emit("destroyed");
+        native.emit("closed");
+      },
+      loadURL: async (next: string) => {
+        url = next;
+        queueMicrotask(() => contents.emit("did-finish-load"));
+      },
+    });
+    return native;
+  }
+  let native!: ReturnType<typeof createNative>;
+  const quick = new QuickChatWindow({
+    host: host as unknown as QuickChatHost,
+    createWindow: (options) => {
+      native = createNative(options);
+      return native as unknown as BrowserWindow;
+    },
+    rendererUrl: "file:///app/renderer/quick-chat.html",
+    preload: "/app/preload/quick-chat.cjs",
+    hiddenTestMode: false,
+    platform: "linux",
+    getDisplay: () => ({
+      bounds: { x: 0, y: 0, width: 1440, height: 900 },
+      workArea: { x: 0, y: 25, width: 1440, height: 825 },
+    }),
+    copyText: () => {},
+    openExternal: async () => {},
+    loadSourceIcon: async () => undefined,
+  });
+  const call = <T>(method: string, args: unknown[] = []) => quick.call(method, args) as Promise<Result<T>>;
+  vi.mocked(bridge.getSnapshot).mockImplementation(() => call<QuickChatSnapshot>("getSnapshot"));
+  vi.mocked(bridge.reset).mockImplementation(() => call<void>("reset"));
+  vi.mocked(bridge.hide).mockImplementation(() => call<void>("hide"));
+  vi.mocked(bridge.setComposerHeight).mockImplementation((...args) => call<void>("setComposerHeight", args));
+  vi.mocked(bridge.rendererReady).mockImplementation((...args) => call<void>("rendererReady", args));
+  vi.mocked(bridge.reportComposerState).mockImplementation((...args) =>
+    call<void>("reportComposerState", args),
+  );
+  return {
+    quick,
+    publish,
+    delivered,
+    get native() {
+      return native;
+    },
+    get projection() {
+      return projection;
+    },
   };
 }
 
@@ -455,11 +629,271 @@ test("acknowledges only the current session after two frame opportunities and ke
   await frame();
   expect(bridge.rendererReady).not.toHaveBeenCalled();
   await frame();
-  expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("fresh-session");
+  expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("fresh-session", 0);
   await push();
   await frame();
   await frame();
   expect(bridge.rendererReady).toHaveBeenCalledOnce();
+});
+
+test("acknowledges the latest presentation version after a same-session mode change", async () => {
+  const frame = animationClock();
+  snapshot = { ...snapshot, expanded: true, presentationVersion: 3 };
+  await mount();
+  await frame();
+  await push({ expanded: false, presentationVersion: 4 });
+  expect(state()).toBe("compact");
+  await frame();
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  await frame();
+  expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("quick-session", 4);
+  await push();
+  await frame();
+  await frame();
+  expect(bridge.rendererReady).toHaveBeenCalledOnce();
+});
+
+test("probes live blank, typed, whitespace, and deleted drafts without transmitting their contents", async () => {
+  await mount();
+  await probe(1);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(1, "quick-session", false);
+  // A native edit may occur immediately before React handles its input event.
+  Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set?.call(
+    input(),
+    "private unsent draft",
+  );
+  await probe(2);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(2, "quick-session", true);
+  await type(" ");
+  await probe(3);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(3, "quick-session", true);
+  await type("");
+  await probe(4);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(4, "quick-session", false);
+  await push();
+  await push({ session: emptySession("fresh-session") });
+  await probe(5, "quick-session");
+  expect(bridge.reportComposerState).toHaveBeenCalledTimes(4);
+  await probe(6, "fresh-session");
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(6, "fresh-session", false);
+  expect(bridge.onComposerProbe).toHaveBeenCalledOnce();
+  expect(vi.mocked(bridge.reportComposerState).mock.calls.every((call) => call.length === 3)).toBe(true);
+});
+
+test("probes queued, importing, failed, ready, and removing images as occupied until removal completes", async () => {
+  const request = deferred<Result<QuickChatSnapshot>>();
+  const importing = deferred<Result<ImageAttachment>>();
+  vi.mocked(bridge.getSnapshot).mockReturnValue(request.promise);
+  vi.mocked(bridge.importAttachment).mockReturnValueOnce(importing.promise);
+  await mount();
+  await paste([clipboardImage()]);
+  await probe(1);
+  expect(bridge.reportComposerState).not.toHaveBeenCalled();
+  expect(bridge.importAttachment).not.toHaveBeenCalled();
+  // The accepted session is known before queued imports' effects get a chance to run.
+  await act(async () => {
+    emit();
+    for (const listener of composerProbeListeners) listener(2, "quick-session");
+  });
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(2, "quick-session", true);
+  expect(bridge.importAttachment).toHaveBeenCalledOnce();
+  await probe(3);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(3, "quick-session", true);
+  await act(async () =>
+    importing.resolve({ ok: false, error: { code: "invalid_input", message: "图片损坏" } }),
+  );
+  await probe(4);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(4, "quick-session", true);
+  await click(button("重试 clipboard.png"));
+  await probe(5);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(5, "quick-session", true);
+  const removing = deferred<Result<void>>();
+  vi.mocked(bridge.removeAttachment).mockReturnValueOnce(removing.promise);
+  await click(button("移除 clipboard.png"));
+  await probe(6);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(6, "quick-session", true);
+  await act(async () => removing.resolve(ok()));
+  await probe(7);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(7, "quick-session", false);
+});
+
+test("keeps a pending send and its retryable error occupied after the user clears the draft", async () => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValueOnce(request.promise);
+  await mount();
+  await type("send this");
+  await key(input(), "Enter");
+  await type("");
+  await probe(1);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(1, "quick-session", true);
+  await act(async () => request.resolve({ ok: false, error: { code: "provider", message: "稍后重试" } }));
+  expect(input().value).toBe("");
+  await probe(2);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(2, "quick-session", true);
+  await click(button("关闭提示"));
+  await probe(3);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(3, "quick-session", false);
+  await type("retry this");
+  await key(input(), "Enter");
+  expect(bridge.send).toHaveBeenCalledTimes(2);
+  await probe(4);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(4, "quick-session", false);
+});
+
+test.each(["reset", "stop"] as const)("keeps a pending %s occupied even with no draft", async (action) => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge[action]).mockReturnValueOnce(request.promise);
+  snapshot = {
+    ...snapshot,
+    expanded: true,
+    session: { ...snapshot.session, runs: action === "stop" ? [run("running")] : [] },
+  };
+  await mount();
+  await click(button(action === "reset" ? "新对话" : "停止"));
+  await probe(1);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(1, "quick-session", true);
+  await act(async () => request.resolve(ok()));
+  await probe(2);
+  expect(bridge.reportComposerState).toHaveBeenLastCalledWith(2, "quick-session", false);
+});
+
+test("does not treat the permanent model configuration notice as occupied", async () => {
+  snapshot = { ...snapshot, expanded: true, selection: null };
+  await mount();
+  expect(query(".quick-chat-configuration")).toBeDefined();
+  await probe(1);
+  expect(bridge.reportComposerState).toHaveBeenCalledExactlyOnceWith(1, "quick-session", false);
+});
+
+test("bridges visible history, new empty conversation, hidden resume, and compact frame acknowledgement", async () => {
+  const frame = animationClock();
+  const f = presentationHost();
+  try {
+    await f.quick.show();
+    await mount();
+    await frame();
+    await frame();
+    expect(state()).toBe("expanded");
+    expect(container.textContent).toContain("hello");
+    expect(f.native.getBounds()).toMatchObject({ width: 660, height: 560 });
+    await click(button("新对话"));
+    expect(f.projection.session.runs).toHaveLength(0);
+    expect(f.projection.session.sessionId).toBe("new-session-1");
+    expect(state()).toBe("expanded");
+    expect(f.native.getBounds()).toMatchObject({ width: 660, height: 560 });
+    expect(input().value).toBe("");
+    await frame();
+    await frame();
+    const oldPresentation = f.delivered.at(-1) as QuickChatSnapshot;
+    await key(input(), "Escape");
+    expect(f.native.isVisible()).toBe(false);
+    f.native.show.mockClear();
+    let opening!: Promise<void>;
+    await act(async () => {
+      opening = f.quick.show();
+    });
+    expect(bridge.reportComposerState).toHaveBeenLastCalledWith(expect.any(Number), "new-session-1", false);
+    expect(state()).toBe("compact");
+    const compact = f.delivered.at(-1) as QuickChatSnapshot;
+    expect(compact.presentationVersion).toBeGreaterThan(oldPresentation.presentationVersion as number);
+    expect(compact.revision).toBeGreaterThan(oldPresentation.revision);
+    expect(f.native.show).not.toHaveBeenCalled();
+    await f.quick.call("rendererReady", ["new-session-1", oldPresentation.presentationVersion]);
+    await frame();
+    expect(f.native.show).not.toHaveBeenCalled();
+    await frame();
+    await opening;
+    expect(bridge.rendererReady).toHaveBeenLastCalledWith("new-session-1", compact.presentationVersion);
+    expect(f.native.show).toHaveBeenCalledOnce();
+    expect(f.native.getBounds()).toMatchObject({ width: 360, height: 44 });
+    expect(f.native.isVisible()).toBe(true);
+    expect(input().disabled).toBe(false);
+  } finally {
+    await f.quick.dispose();
+  }
+});
+
+test.each(["text", "image"] as const)(
+  "bridges a preserved %s draft across expanded resume and compacts after it is cleared",
+  async (kind) => {
+    const frame = animationClock();
+    const f = presentationHost();
+    try {
+      await f.quick.show();
+      await mount();
+      await click(button("新对话"));
+      await frame();
+      await frame();
+      if (kind === "text") await type("unsent local draft");
+      else await paste([clipboardImage()]);
+      await key(input(), "Escape");
+      await act(async () => {
+        await f.quick.show();
+      });
+      expect(bridge.reportComposerState).toHaveBeenLastCalledWith(expect.any(Number), "new-session-1", true);
+      expect(state()).toBe("expanded");
+      expect(f.native.getBounds()).toMatchObject({ width: 660, height: 560 });
+      if (kind === "text") {
+        expect(input().value).toBe("unsent local draft");
+        await type("");
+      } else {
+        expect(button("预览 clipboard.png").disabled).toBe(false);
+        await click(button("移除 clipboard.png"));
+      }
+      await key(input(), "Escape");
+      let opening!: Promise<void>;
+      await act(async () => {
+        opening = f.quick.show();
+      });
+      expect(bridge.reportComposerState).toHaveBeenLastCalledWith(expect.any(Number), "new-session-1", false);
+      expect(state()).toBe("compact");
+      expect(f.native.isVisible()).toBe(false);
+      await frame();
+      await frame();
+      await opening;
+      expect(f.native.getBounds()).toMatchObject({ width: 360, height: 44 });
+      expect(f.native.isVisible()).toBe(true);
+      expect(bridge.send).not.toHaveBeenCalled();
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
+
+test("rejects a late expanded getSnapshot after a newer compact presentation of the same host revision", async () => {
+  const frame = animationClock();
+  const f = presentationHost();
+  try {
+    await f.quick.show();
+    await f.quick.call("reset", []);
+    const hostRevision = f.projection.revision;
+    const oldResponse = await bridge.getSnapshot();
+    const request = deferred<Result<QuickChatSnapshot>>();
+    vi.mocked(bridge.getSnapshot).mockReturnValueOnce(request.promise);
+    await mount();
+    await act(async () => f.publish());
+    expect(state()).toBe("expanded");
+    await frame();
+    await frame();
+    await key(input(), "Escape");
+    let opening!: Promise<void>;
+    await act(async () => {
+      opening = f.quick.show();
+    });
+    await frame();
+    await frame();
+    await opening;
+    expect(f.projection.revision).toBe(hostRevision);
+    expect(state()).toBe("compact");
+    await act(async () => request.resolve(oldResponse));
+    expect(state()).toBe("compact");
+    expect(f.native.getBounds()).toMatchObject({ width: 360, height: 44 });
+    expect(f.projection.session.sessionId).toBe("new-session-1");
+    await type("still usable after the late reply");
+    expect(input().value).toBe("still usable after the late reply");
+  } finally {
+    await f.quick.dispose();
+  }
 });
 
 test("reports diagnostic input readiness, actual focus and double-frame opportunity for the latest token", async () => {
@@ -510,13 +944,7 @@ test("cancels pending session and diagnostic frame acknowledgements when the ren
 });
 
 test("uses quick-only compact conversation spacing and circular controls without changing task defaults", async () => {
-  const style = document.createElement("style");
-  style.textContent = [
-    readFileSync(new URL("../../ui/src/tokens.css", import.meta.url), "utf8"),
-    readFileSync(new URL("../../ui/src/styles.css", import.meta.url), "utf8"),
-    readFileSync(new URL("../src/renderer/quick-chat.css", import.meta.url), "utf8"),
-  ].join("\n");
-  document.head.append(style);
+  const style = quickChatStyles();
   try {
     await mount();
     expect(getComputedStyle(button("发送")).borderRadius).toBe("50%");
@@ -1344,11 +1772,123 @@ test("pastes an image, shows its thumbnail and sends image-only input using an a
   expect(button(`预览 ${file.name}`).disabled).toBe(false);
   expect(button(`移除 ${file.name}`).disabled).toBe(false);
   expect(button("发送").disabled).toBe(false);
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 100);
   expect(conversationLoader).not.toHaveBeenCalled();
   await key(input(), "Enter");
   expect(bridge.send).toHaveBeenCalledExactlyOnceWith("", ["image-clipboard.png"]);
   expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 44);
   expect(bridge.removeAttachment).not.toHaveBeenCalled();
+});
+
+test.each([
+  { expanded: false, count: 1 },
+  { expanded: false, count: imageLimits.count },
+  { expanded: true, count: 1 },
+  { expanded: true, count: imageLimits.count },
+])(
+  "uses a thumbnail-sized single row for $count images (expanded: $expanded)",
+  async ({ expanded, count }) => {
+    const style = quickChatStyles();
+    try {
+      await mount();
+      if (expanded) await push({ expanded: true });
+      container.style.width = "240px";
+      vi.mocked(bridge.setComposerHeight).mockClear();
+      await paste(Array.from({ length: count }, (_, index) => clipboardImage(`${index}.png`)));
+      const row = getComputedStyle(query(".quick-chat-attachments"));
+      expect(row.display).toBe("flex");
+      expect(row.flexWrap).toBe("nowrap");
+      expect(row.height).toBe("48px");
+      expect(row.gap).toBe("8px");
+      expect(row.overflowX).toBe("auto");
+      expect(row.overflowY).toBe("hidden");
+      expect(row.scrollbarWidth).toBe("none");
+      expect(getComputedStyle(query(".quick-chat-composer")).gap).toBe("8px");
+      const attachments = [...container.querySelectorAll(".quick-chat-attachment")];
+      expect(attachments).toHaveLength(count);
+      for (const attachment of attachments) {
+        const css = getComputedStyle(attachment);
+        expect(css.flexBasis).toBe("48px");
+        expect(css.flexShrink).toBe("0");
+        expect(css.height).toBe("48px");
+        const chip = attachment.querySelector(".image-chip") as HTMLElement;
+        expect(getComputedStyle(chip).display).toBe("flex");
+        expect(getComputedStyle(chip).height).toBe("48px");
+        const preview = chip.firstElementChild as HTMLButtonElement;
+        expect(getComputedStyle(preview).height).toBe("48px");
+        expect(getComputedStyle(preview).padding).toBe("0px");
+        expect(getComputedStyle(preview.querySelector("img") as HTMLImageElement).height).toBe("48px");
+        expect(attachment.querySelector(".quick-chat-attachment-status")).toBeNull();
+      }
+      if (expanded) expect(bridge.setComposerHeight).not.toHaveBeenCalled();
+      else expect(bridge.setComposerHeight).toHaveBeenCalledExactlyOnceWith("quick-session", 100);
+      // These CSS contracts keep narrow layouts horizontal; happy-dom does not measure overflow pixels.
+      const taskChip = document.createElement("div");
+      taskChip.className = "image-chip";
+      container.append(taskChip);
+      expect(getComputedStyle(taskChip).display).toBe("inline-flex");
+      await click(button("移除 0.png"));
+      if (count > 1) {
+        expect(container.querySelectorAll(".quick-chat-attachment")).toHaveLength(count - 1);
+        if (!expanded) expect(bridge.setComposerHeight).toHaveBeenCalledOnce();
+      } else if (!expanded) {
+        expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 44);
+      }
+    } finally {
+      style.remove();
+    }
+  },
+);
+
+test("overlays processing and retry controls without adding a status row or native height", async () => {
+  const style = quickChatStyles();
+  const importing = deferred<Result<ImageAttachment>>();
+  vi.mocked(bridge.importAttachment).mockReturnValueOnce(importing.promise);
+  snapshot = { ...snapshot, settings: { ...settings, interface: { ...settings.interface, fontSize: 20 } } };
+  try {
+    await mount();
+    expect(document.documentElement.style.getPropertyValue("--ui-font-size")).toBe("20px");
+    await paste([clipboardImage()]);
+    const expectOverlay = () => {
+      const status = getComputedStyle(query(".quick-chat-attachment-status"));
+      expect(status.position).toBe("absolute");
+      expect(status.bottom).toBe("0px");
+      expect(status.height).toBe("20px");
+      expect(status.lineHeight).toBe("20px");
+      expect(status.width).toBe("48px");
+      expect(getComputedStyle(query(".quick-chat-attachment")).position).toBe("relative");
+      const remove = getComputedStyle(button("移除 clipboard.png"));
+      expect(remove.top).toBe("2px");
+      expect(remove.height).toBe("14px");
+      expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+      expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 100);
+    };
+    expectOverlay();
+    expect(button("移除 clipboard.png").disabled).toBe(false);
+    await act(async () =>
+      importing.resolve({ ok: false, error: { code: "invalid_input", message: "图片损坏" } }),
+    );
+    expectOverlay();
+    expect(button("重试 clipboard.png").disabled).toBe(false);
+    await click(button("重试 clipboard.png"));
+    expect(container.querySelector(".quick-chat-attachment-status")).toBeNull();
+    expect(button("预览 clipboard.png").disabled).toBe(false);
+    expect(bridge.setComposerHeight).toHaveBeenCalledTimes(2);
+    const removing = deferred<Result<void>>();
+    vi.mocked(bridge.removeAttachment).mockReturnValueOnce(removing.promise);
+    await click(button("移除 clipboard.png"));
+    expectOverlay();
+    expect(button("移除 clipboard.png").disabled).toBe(true);
+    await act(async () => removing.resolve({ ok: false, error: { code: "busy", message: "稍后移除" } }));
+    expectOverlay();
+    expect(button("重试 clipboard.png").disabled).toBe(false);
+    await click(button("重试 clipboard.png"));
+    expect(container.querySelector(".quick-chat-attachments")).toBeNull();
+    expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 44);
+  } finally {
+    style.remove();
+  }
 });
 
 test("keeps draft image preview and dismissal available without a filename below the thumbnail", async () => {
@@ -1524,17 +2064,27 @@ test("removes a pending placeholder and cleans up its eventual import without re
   expect(container.querySelector(".quick-chat-attachments")).toBeNull();
 });
 
-test("caps the compact composer at 264px with an image row and returns to its text-only height", async () => {
+test("caps the compact image composer at 240px and shrinks with text and image removal", async () => {
   await mount();
   measureInput(() => input().value.split("\n").length * 24);
   await paste([clipboardImage()]);
-  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 124);
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 100);
   await type(Array.from({ length: 12 }, () => "line").join("\n"));
   expect(input().style.height).toBe("168px");
   expect(input().style.overflowY).toBe("auto");
-  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 264);
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 240);
+  await type("first\nsecond");
+  expect(input().style.height).toBe("48px");
+  expect(input().style.overflowY).toBe("hidden");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 120);
+  await type("");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 100);
+  await type(Array.from({ length: 12 }, () => "line").join("\n"));
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 240);
   await click(button("移除 clipboard.png"));
   expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 184);
+  await type("");
+  expect(bridge.setComposerHeight).toHaveBeenLastCalledWith("quick-session", 44);
 });
 
 test("preserves hidden images and clears them on a manual reset that stays expanded", async () => {

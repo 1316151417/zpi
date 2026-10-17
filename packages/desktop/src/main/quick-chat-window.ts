@@ -14,6 +14,7 @@ import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { isPathInside } from "./path-bounds.ts";
 import type { QuickChatHost } from "./quick-chat-host.ts";
+import { resumeQuickChatExpanded } from "./quick-chat-presentation.ts";
 import type { QuickChatStage, QuickChatTiming, QuickChatTrace } from "./quick-chat-timing.ts";
 
 interface Options {
@@ -45,13 +46,17 @@ export class QuickChatWindow {
   private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
   private keepExpanded = false;
+  private hasRuns = false;
   private resettingPresentation?: { sessionId: string; expanded: boolean };
   private composerHeight = 44;
   private sessionId: string;
-  private rendererSessionId?: string;
+  private snapshotRevision = 0;
+  private presentationVersion = 0;
+  private rendererVersion?: number;
+  private composerProbe?: { token: number; sessionId: string; resolve: (occupied?: boolean) => void };
   private needsSessionFrame = false;
   private minimum?: [number, number];
-  private readyWaiters = new Set<{ sessionId: string; resolve: (ready: boolean) => void }>();
+  private readyWaiters = new Set<{ version: number; resolve: (ready: boolean) => void }>();
   private presentation?: { trace: QuickChatTrace; timer: ReturnType<typeof setTimeout> };
   private disposed = false;
   private unsubscribe: () => void;
@@ -59,6 +64,7 @@ export class QuickChatWindow {
   constructor(options: Options) {
     this.options = options;
     this.sessionId = options.host.sessionId;
+    this.hasRuns = options.host.getSnapshot().session.runs.length > 0;
     if (options.platform === "darwin" && options.workspaceNotifications) {
       // A panel can remain key across Spaces. Blur alone is not proof that the
       // user has stayed on the invocation Space; hide on the native notification.
@@ -75,10 +81,11 @@ export class QuickChatWindow {
         );
         this.sessionId = snapshot.session.sessionId;
         this.composerHeight = 44;
-        this.rendererSessionId = undefined;
-        this.needsSessionFrame = true;
+        this.cancelComposerProbe();
+        this.invalidateFrame();
       }
-      this.setExpanded(this.keepExpanded || snapshot.session.runs.length > 0);
+      this.hasRuns = snapshot.session.runs.length > 0;
+      this.setExpanded(this.keepExpanded || this.hasRuns);
       const window = this.window;
       if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
         if (changedSession) this.applyBounds(window, this.bounds(this.expanded, window.getBounds()));
@@ -87,7 +94,12 @@ export class QuickChatWindow {
     });
   }
   private snapshot(snapshot = this.options.host.getSnapshot()): QuickChatSnapshot {
-    return { ...snapshot, expanded: this.expanded || snapshot.session.runs.length > 0 };
+    return {
+      ...snapshot,
+      revision: ++this.snapshotRevision,
+      presentationVersion: this.presentationVersion,
+      expanded: this.expanded || snapshot.session.runs.length > 0,
+    };
   }
   private resetConversation(): Promise<void> {
     const window = this.window;
@@ -95,6 +107,9 @@ export class QuickChatWindow {
       sessionId: this.options.host.sessionId,
       expanded: Boolean(this.expanded && window && !window.isDestroyed() && window.isVisible()),
     };
+    this.visibilityEpoch++;
+    this.cancelComposerProbe();
+    this.cancelReadyWaiters();
     this.resettingPresentation = presentation;
     return this.options.host.reset().finally(() => {
       if (this.resettingPresentation === presentation) this.resettingPresentation = undefined;
@@ -129,6 +144,7 @@ export class QuickChatWindow {
   private setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return;
     this.expanded = expanded;
+    this.invalidateFrame();
     const window = this.window;
     if (!window || window.isDestroyed()) return;
     const bounds = this.bounds(expanded, window.getBounds());
@@ -161,16 +177,45 @@ export class QuickChatWindow {
     this.presentation.trace.finish(outcome);
     this.presentation = undefined;
   }
+  private invalidateFrame(): void {
+    this.presentationVersion++;
+    this.cancelReadyWaiters();
+    this.rendererVersion = undefined;
+    this.needsSessionFrame = true;
+  }
+  private cancelComposerProbe(): void {
+    this.composerProbe?.resolve();
+  }
+  private probeComposer(window: BrowserWindow, epoch: number): Promise<boolean | undefined> {
+    this.cancelComposerProbe();
+    return new Promise((resolve) => {
+      const probe = {
+        token: epoch,
+        sessionId: this.sessionId,
+        resolve: (occupied?: boolean) => {
+          clearTimeout(timer);
+          if (this.composerProbe === probe) this.composerProbe = undefined;
+          resolve(occupied);
+        },
+      };
+      // A missing renderer response must not lose a draft or strand the shortcut.
+      // Unknown preserves the large window and the next resume can ask again.
+      const timer = setTimeout(() => probe.resolve(), 250);
+      timer.unref();
+      this.composerProbe = probe;
+      window.webContents.send("zpi:quick-chat-composer", probe.token, probe.sessionId);
+    });
+  }
   private cancelReadyWaiters(): void {
     for (const waiter of [...this.readyWaiters]) waiter.resolve(false);
   }
-  private waitForSession(sessionId: string, epoch: number): Promise<boolean> {
+  private waitForSession(version: number, epoch: number): Promise<boolean> {
     if (epoch !== this.visibilityEpoch || !this.visible || this.disposed) return Promise.resolve(false);
-    if (this.rendererSessionId === sessionId) return Promise.resolve(true);
+    if (this.rendererVersion === version) return Promise.resolve(true);
     const window = this.window;
     return new Promise((resolveReady, reject) => {
       const waiter = {
-        sessionId,
+        version,
         resolve: (ready: boolean) => {
           clearTimeout(timer);
           this.readyWaiters.delete(waiter);
@@ -205,7 +250,7 @@ export class QuickChatWindow {
       return this.window;
     }
     if (this.window && !this.window.isDestroyed()) return this.window;
-    this.expanded = this.keepExpanded || this.options.host.getSnapshot().session.runs.length > 0;
+    this.expanded = this.keepExpanded || this.hasRuns;
     const bounds = this.bounds(this.expanded);
     const minimum = this.minimumSize(bounds);
     const window = this.options.createWindow({
@@ -239,7 +284,7 @@ export class QuickChatWindow {
     });
     trace?.mark("window-created");
     this.minimum = minimum;
-    this.rendererSessionId = undefined;
+    this.rendererVersion = undefined;
     this.needsSessionFrame = false;
     this.window = window;
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -286,6 +331,7 @@ export class QuickChatWindow {
         return;
       }
       this.visible = false;
+      this.cancelComposerProbe();
       this.cancelReadyWaiters();
       this.recordState("native-hidden");
       this.finishPresentation("hidden");
@@ -323,7 +369,8 @@ export class QuickChatWindow {
         this.options.host.discardDraftAttachments();
         this.window = undefined;
         this.visible = false;
-        this.rendererSessionId = undefined;
+        this.rendererVersion = undefined;
+        this.cancelComposerProbe();
         this.cancelReadyWaiters();
         this.finishPresentation("cancelled");
       }
@@ -416,12 +463,16 @@ export class QuickChatWindow {
       trace?.finish("cancelled");
       return Promise.resolve();
     }
+    const wasHidden = !this.visible || !this.window || this.window.isDestroyed() || !this.window.isVisible();
     this.visible = true;
     const epoch = ++this.visibilityEpoch;
+    this.cancelComposerProbe();
+    this.cancelReadyWaiters();
     const resetting = reset ?? this.options.host.resetIfExpired();
     if (!resetting) trace?.mark("expiry-ready");
     const warm = this.window && !this.window.isDestroyed() && !this.loading;
-    if (warm && !resetting && !this.needsSessionFrame) {
+    const checkComposer = !resetting && wasHidden && this.expanded && !this.hasRuns;
+    if (warm && !resetting && !checkComposer && !this.needsSessionFrame) {
       // The retained-window hot path stays in the global-shortcut callback stack.
       trace?.mark("window-ready");
       this.present(this.window as BrowserWindow, epoch, trace);
@@ -441,12 +492,35 @@ export class QuickChatWindow {
           trace?.finish("cancelled");
           return;
         }
-        // Expiry sent a new snapshot, but the old renderer frame may still exist.
-        // Only this path waits for the new session's post-commit frame acknowledgement.
-        if (
-          (resetting || this.needsSessionFrame) &&
-          !(await this.waitForSession(this.options.host.sessionId, epoch))
-        ) {
+        if (checkComposer) {
+          const sessionId = this.sessionId;
+          const occupied = await this.probeComposer(window, epoch);
+          if (
+            epoch !== this.visibilityEpoch ||
+            !this.visible ||
+            this.disposed ||
+            window !== this.window ||
+            window.isDestroyed()
+          ) {
+            trace?.finish("cancelled");
+            return;
+          }
+          if (sessionId === this.sessionId) {
+            const expanded = resumeQuickChatExpanded(this.expanded, this.hasRuns, occupied);
+            if (expanded !== this.expanded) {
+              this.keepExpanded = false;
+              this.setExpanded(expanded);
+              window.webContents.send("zpi:quick-chat-snapshot", this.snapshot());
+            }
+          }
+        }
+        // Expiry or a mode change sent a snapshot, but the old renderer frame may still exist.
+        // Ordinary retained-history opens skip this post-commit frame acknowledgement.
+        while (resetting || this.needsSessionFrame) {
+          const version = this.presentationVersion;
+          if (await this.waitForSession(version, epoch)) break;
+          if (version !== this.presentationVersion && epoch === this.visibilityEpoch && this.visible)
+            continue;
           trace?.finish("cancelled");
           return;
         }
@@ -492,6 +566,7 @@ export class QuickChatWindow {
     this.recordState(reason);
     this.visibilityEpoch++;
     this.visible = false;
+    this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.finishPresentation("hidden");
     if (this.window && !this.window.isDestroyed()) this.window.hide();
@@ -513,7 +588,8 @@ export class QuickChatWindow {
         openExternal: 1,
         readWebSourceIcon: 3,
         setComposerHeight: 2,
-        rendererReady: 1,
+        rendererReady: 2,
+        reportComposerState: 3,
         reportPresentation: 2,
       };
       const count = counts[method];
@@ -532,17 +608,30 @@ export class QuickChatWindow {
       switch (method) {
         case "rendererReady": {
           const sessionId = text(256);
-          if (sessionId !== host.sessionId) break;
-          this.rendererSessionId = sessionId;
+          const version = args[1];
+          if (!Number.isSafeInteger(version) || (version as number) < 0)
+            throw new Error("invalid_input: 展示版本无效");
+          if (sessionId !== host.sessionId || version !== this.presentationVersion) break;
+          this.rendererVersion = version as number;
           this.needsSessionFrame = false;
-          for (const waiter of [...this.readyWaiters])
-            if (waiter.sessionId === sessionId) waiter.resolve(true);
+          for (const waiter of [...this.readyWaiters]) if (waiter.version === version) waiter.resolve(true);
+          break;
+        }
+        case "reportComposerState": {
+          const token = args[0];
+          const sessionId = text(256, 1);
+          const occupied = args[2];
+          if (!Number.isSafeInteger(token) || typeof occupied !== "boolean")
+            throw new Error("invalid_input: 输入状态无效");
+          const probe = this.composerProbe;
+          if (probe && probe.token === token && probe.sessionId === sessionId && sessionId === host.sessionId)
+            probe.resolve(occupied);
           break;
         }
         case "setComposerHeight": {
           const sessionId = text(256);
           const height = args[1];
-          if (typeof height !== "number" || !Number.isFinite(height) || height < 44 || height > 264)
+          if (typeof height !== "number" || !Number.isFinite(height) || height < 44 || height > 240)
             throw new Error("invalid_input: 输入框高度无效");
           if (sessionId !== host.sessionId || this.expanded) break;
           const next = Math.round(height);
@@ -638,6 +727,7 @@ export class QuickChatWindow {
     clearTimeout(this.warmup);
     this.warmup = undefined;
     this.visible = false;
+    this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.finishPresentation("cancelled");
     this.unsubscribe();
