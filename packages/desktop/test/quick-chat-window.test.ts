@@ -1334,10 +1334,14 @@ test.each([false, true])(
   },
 );
 
-test.each(["load", "reset", "frame"] as const)(
-  "second new shortcut cancels pending %s and late readiness cannot reopen it",
-  async (stage) => {
-    const f = fixture({ autoLoad: stage !== "load" });
+test.each(
+  ["load", "reset", "frame"].flatMap((stage) =>
+    [false, true].flatMap((history) => [2, 3, 4, 8].map((presses) => ({ stage, history, presses }))),
+  ),
+)(
+  "new shortcut keeps opening through $presses presses during $stage, history=$history",
+  async ({ stage, history, presses }) => {
+    const f = fixture({ autoLoad: stage !== "load", history });
     let finish = () => {};
     f.host.reset.mockImplementationOnce(
       () =>
@@ -1349,27 +1353,30 @@ test.each(["load", "reset", "frame"] as const)(
           if (stage !== "reset") finish();
         }),
     );
-    const first = f.quick.toggle(true);
+    const calls = [f.quick.toggle(true)];
     if (stage === "frame") await tick();
-    await f.quick.toggle(true);
-    expect(f.host.reset).toHaveBeenCalledOnce();
+    for (let index = 1; index < presses; index++) calls.push(f.quick.toggle(true));
     if (stage === "reset") finish();
     if (stage === "load") f.windows[0].webContents.emit("did-finish-load");
     await f.rendererReady("session-1", 0);
     await f.rendererReady();
-    await first;
-    expect(f.windows[0].show).not.toHaveBeenCalled();
-    expect(f.windows[0].isVisible()).toBe(false);
+    await Promise.all(calls);
+    const window = f.windows[0];
+    expect(window.show).toHaveBeenCalledOnce();
+    expect(window.isVisible()).toBe(true);
+    expect(window.getBounds().height).toBe(44);
+    expect(f.host.reset).toHaveBeenCalledOnce();
+    expect(window.hide).not.toHaveBeenCalled();
     expect(f.host.discardDraftAttachments).not.toHaveBeenCalled();
-    await f.quick.toggle();
-    expect(f.windows[0].show).toHaveBeenCalledOnce();
-    expect(f.host.sessionId).toBe("pending-new");
+    // Only the press after the native presentation is visible and focused hides it.
+    await f.quick.toggle(true);
+    expect(window.isVisible()).toBe(false);
     expect(f.host.reset).toHaveBeenCalledOnce();
     await f.quick.dispose();
   },
 );
 
-test("three rapid new shortcuts honor the final opening intent and ignore the old acknowledgement", async () => {
+test("rapid new shortcuts share one reset and reject the old session acknowledgement", async () => {
   const f = fixture({ history: true });
   await f.quick.show();
   f.quick.hide();
@@ -1381,19 +1388,242 @@ test("three rapid new shortcuts honor the final opening intent and ignore the ol
     };
   });
   f.host.reset.mockReturnValue(resetting);
-  const first = f.quick.toggle(true);
-  await f.quick.toggle(true);
-  const third = f.quick.toggle(true);
+  const calls = [f.quick.toggle(true), f.quick.toggle(true), f.quick.toggle(true)];
   finish();
   await tick();
   await f.rendererReady("session-1");
   await f.rendererReady("latest-new", 0);
   expect(f.windows[0].show).toHaveBeenCalledOnce();
   await f.rendererReady();
-  await Promise.all([first, third]);
+  await Promise.all(calls);
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   expect(f.windows[0].getBounds().height).toBe(44);
+  expect(f.host.reset).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test.each(["load", "frame"] as const)(
+  "coalesced new %s failure reports once and the next shortcut can retry",
+  async (stage) => {
+    const f = fixture({ autoLoad: stage !== "load" });
+    let session = 0;
+    f.host.reset.mockImplementation(async () => f.changeSession(`retry-new-${++session}`));
+    vi.useFakeTimers();
+    try {
+      const reportError = vi.fn();
+      const calls = Array.from({ length: 8 }, () => f.quick.toggle(true).catch(reportError));
+      if (stage === "load") {
+        f.windows[0].webContents.emit("did-fail-load", {}, -2, "load failed", "", true);
+      } else await vi.advanceTimersByTimeAsync(5000);
+      await Promise.all(calls);
+      expect(reportError).toHaveBeenCalledOnce();
+      expect(f.windows[0].show).not.toHaveBeenCalled();
+      expect(f.windows[0].destroy).toHaveBeenCalledOnce();
+      const retry = f.quick.toggle(true);
+      const repeated = f.quick.toggle(true);
+      if (stage === "load") f.windows[1].webContents.emit("did-finish-load");
+      await vi.advanceTimersByTimeAsync(0);
+      await f.rendererReady("retry-new-1");
+      expect(f.windows[1].show).not.toHaveBeenCalled();
+      await f.rendererReady();
+      await Promise.all([retry, repeated]);
+      expect(f.windows[1].show).toHaveBeenCalledOnce();
+      expect(f.host.reset).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      await f.quick.dispose();
+    }
+  },
+);
+
+test.each(["hide", "space", "close", "ordinary-toggle"] as const)(
+  "new after %s while reset is pending survives old completion and repeated shortcuts",
+  async (action) => {
+    const f = fixture({ platform: "darwin", history: true });
+    let finish!: () => void;
+    const resetting = new Promise<void>((resolve) => {
+      finish = () => {
+        f.changeSession("shared-reset");
+        resolve();
+      };
+    });
+    // QuickChatHost.reset shares one reset until its active run has stopped.
+    f.host.reset.mockReturnValue(resetting);
+    const old = f.quick.toggle(true);
+    if (action === "space") f.spaceChanged();
+    else if (action === "close") f.windows[0].emit("close", { preventDefault: vi.fn() });
+    else if (action === "ordinary-toggle") await f.quick.toggle();
+    else f.quick.hide();
+    const current = f.quick.toggle(true);
+    const repeated = f.quick.toggle(true);
+    finish();
+    await old; // Its finally must not erase the newer pending presentation.
+    await tick();
+    const afterOldCompletion = f.quick.toggle(true);
+    await f.rendererReady("session-1", 0);
+    expect(f.windows[0].show).not.toHaveBeenCalled();
+    await f.rendererReady();
+    await Promise.all([current, repeated, afterOldCompletion]);
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    expect(f.windows[0].isFocused()).toBe(true);
+    expect(f.windows[0].getBounds().height).toBe(44);
+    expect(f.host.reset).toHaveBeenCalledTimes(2);
+    await f.quick.dispose();
+  },
+);
+
+test.each(["space", "close", "dispose"] as const)(
+  "%s still cancels a coalesced new presentation and ignores late readiness",
+  async (action) => {
+    const f = fixture({ platform: "darwin" });
+    let finish!: () => void;
+    f.host.reset.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            f.changeSession("cancelled-new");
+            resolve();
+          };
+        }),
+    );
+    const calls = [f.quick.toggle(true), f.quick.toggle(true), f.quick.toggle(true)];
+    if (action === "space") f.spaceChanged();
+    else if (action === "close") f.windows[0].emit("close", { preventDefault: vi.fn() });
+    else await f.quick.dispose();
+    finish();
+    await f.rendererReady();
+    await Promise.all(calls);
+    expect(f.windows[0].show).not.toHaveBeenCalled();
+    expect(f.host.reset).toHaveBeenCalledOnce();
+    if (action === "dispose") {
+      await f.quick.toggle(true);
+      expect(f.windows).toHaveLength(1);
+      expect(f.host.reset).toHaveBeenCalledOnce();
+    } else {
+      f.host.reset.mockImplementationOnce(async () => f.changeSession("reopened-new"));
+      const reopened = f.quick.toggle(true);
+      await tick();
+      await f.rendererReady("cancelled-new");
+      expect(f.windows[0].show).not.toHaveBeenCalled();
+      await f.rendererReady();
+      await reopened;
+      expect(f.windows[0].show).toHaveBeenCalledOnce();
+    }
+    await f.quick.dispose();
+  },
+);
+
+test("new shortcut replaces a pending ordinary resume instead of keeping its old history", async () => {
+  const f = fixture({ autoLoad: false, history: true });
+  const resume = f.quick.toggle();
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("fresh-instead"));
+  const fresh = f.quick.toggle(true);
+  const repeated = f.quick.toggle(true);
+  f.windows[0].webContents.emit("did-finish-load");
+  await tick();
+  await f.rendererReady("session-1", 0);
+  expect(f.windows[0].show).not.toHaveBeenCalled();
+  await f.rendererReady();
+  await Promise.all([resume, fresh, repeated]);
+  expect(f.host.sessionId).toBe("fresh-instead");
+  expect(f.windows[0].getBounds().height).toBe(44);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  expect(f.host.reset).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("new shortcut replaces a pending composer probe and ignores its stale occupied reply", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  const resume = f.quick.toggle();
+  await tick();
+  const [, token, sessionId] = latestProbe(f);
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("fresh-after-probe"));
+  const fresh = f.quick.toggle(true);
+  const repeated = f.quick.toggle(true);
+  await resume;
+  await f.quick.call("reportComposerState", [token, sessionId, true]);
+  await f.rendererReady(sessionId);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.rendererReady();
+  await Promise.all([fresh, repeated]);
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].getBounds().height).toBe(44);
+  expect(f.host.reset).toHaveBeenCalledTimes(2); // Initial expanded new plus this fresh shortcut.
+  await f.quick.dispose();
+});
+
+test("new shortcut hides a visible focused window even while its explicit new reset is pending", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  let finish!: () => void;
+  f.host.reset.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          f.changeSession("visible-new");
+          resolve();
+        };
+      }),
+  );
+  const explicit = f.quick.newConversation();
+  await f.quick.toggle(true);
+  expect(f.windows[0].isVisible()).toBe(false);
+  finish();
+  await f.rendererReady();
+  await explicit;
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  expect(f.host.reset).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("new shortcut still focuses through show-time blur and a real blur allows a fresh reopen", async () => {
+  const f = fixture({ platform: "darwin", history: true });
+  await f.quick.prepare();
+  const window = f.windows[0];
+  const nativeShow = window.show.getMockImplementation();
+  window.show.mockImplementation(() => {
+    nativeShow?.();
+    window.emit("blur");
+  });
+  let session = 0;
+  f.host.reset.mockImplementation(async () => f.changeSession(`focus-new-${++session}`));
+  for (let index = 0; index < 3; index++) {
+    const opening = f.quick.toggle(true);
+    const repeated = f.quick.toggle(true);
+    await tick();
+    await f.rendererReady();
+    await Promise.all([opening, repeated]);
+    expect(window.isVisible()).toBe(true);
+    expect(window.isFocused()).toBe(true);
+    expect(window.show).toHaveBeenCalledTimes(index + 1);
+    window.emit("blur"); // Queued blur while native focus is retained is ignored.
+    expect(window.isVisible()).toBe(true);
+    window.blur();
+    expect(window.isVisible()).toBe(false);
+  }
+  expect(f.host.reset).toHaveBeenCalledTimes(3);
+  await f.quick.dispose();
+});
+
+test("hidden automation mode coalesces pending new then toggles logical presentation without native focus", async () => {
+  const f = fixture({ hidden: true });
+  let session = 0;
+  f.host.reset.mockImplementation(async () => f.changeSession(`hidden-${++session}`));
+  const first = f.quick.toggle(true);
+  const repeated = f.quick.toggle(true);
+  await tick();
+  await f.rendererReady();
+  await Promise.all([first, repeated]);
+  await f.quick.toggle(true);
+  expect(f.host.reset).toHaveBeenCalledOnce();
+  const reopened = f.quick.toggle(true);
+  await tick();
+  await f.rendererReady();
+  await reopened;
   expect(f.host.reset).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].show).not.toHaveBeenCalled();
+  expect(f.windows[0].focus).not.toHaveBeenCalled();
   await f.quick.dispose();
 });
 
@@ -1422,7 +1652,7 @@ test("new shortcut brings forward an unfocused native panel using the ordinary t
   await f.quick.dispose();
 });
 
-test("new shortcut cancels a pending expiry without starting another reset", async () => {
+test("new shortcut joins a pending expiry without hiding or starting another reset", async () => {
   const f = fixture({ history: true });
   await f.quick.show();
   f.quick.hide();
@@ -1437,13 +1667,11 @@ test("new shortcut cancels a pending expiry without starting another reset", asy
       }),
   );
   const opening = f.quick.toggle();
-  await f.quick.toggle(true);
+  const fresh = f.quick.toggle(true);
   finish();
   await f.rendererReady();
-  await opening;
-  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await Promise.all([opening, fresh]);
   expect(f.host.reset).not.toHaveBeenCalled();
-  await f.quick.toggle();
   expect(f.windows[0].show).toHaveBeenCalledTimes(2);
   expect(f.windows[0].getBounds().height).toBe(44);
   await f.quick.dispose();
@@ -1863,7 +2091,7 @@ test("probe timeout preserves unknown drafts, retries on the next resume, and ne
   }
 });
 
-test.each(["toggle", "new-toggle", "space", "dispose", "crash"] as const)(
+test.each(["toggle", "space", "dispose", "crash"] as const)(
   "%s cancels pending occupancy without stale replies reviving the window",
   async (action) => {
     const f = await emptyExpanded();
@@ -1872,7 +2100,6 @@ test.each(["toggle", "new-toggle", "space", "dispose", "crash"] as const)(
     await tick();
     const [, token, sessionId] = latestProbe(f);
     if (action === "toggle") await f.quick.toggle();
-    else if (action === "new-toggle") await f.quick.toggle(true);
     else if (action === "space") f.spaceChanged();
     else if (action === "crash") f.windows[0].webContents.emit("render-process-gone");
     else await f.quick.dispose();

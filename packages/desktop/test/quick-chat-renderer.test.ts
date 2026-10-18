@@ -725,8 +725,59 @@ test("new shortcut hides without losing text or image drafts, normal resume rest
   }
 });
 
+test.each(
+  [false, true].flatMap((history) => ["before-frame", "queued-task"].map((stage) => ({ history, stage }))),
+)(
+  "rapid new shortcuts keep the current renderer frame, history=$history stage=$stage",
+  async ({ history, stage }) => {
+    const frame = animationClock();
+    const f = presentationHost(history);
+    try {
+      await f.quick.show();
+      await mount();
+      await frame();
+      await frame.task();
+      await type("old draft");
+      await paste([clipboardImage()]);
+      f.quick.hide();
+      f.native.show.mockClear();
+      vi.mocked(bridge.rendererReady).mockClear();
+      let first!: Promise<void>;
+      await act(async () => {
+        first = f.quick.toggle(true);
+      });
+      expect(input().value).toBe("");
+      expect(container.querySelector(".quick-chat-attachment, .conversation")).toBeNull();
+      if (stage === "queued-task") await frame();
+      const snapshots = f.delivered.length;
+      // Do not await pending opens before allowing their renderer frame to commit.
+      const repeated = Array.from({ length: 7 }, () => f.quick.toggle(true));
+      expect(f.delivered).toHaveLength(snapshots);
+      expect(f.projection.session.sessionId).toBe("new-session-1");
+      expect(f.native.show).not.toHaveBeenCalled();
+      expect(bridge.rendererReady).not.toHaveBeenCalled();
+      if (stage === "before-frame") await frame();
+      expect(f.native.show).not.toHaveBeenCalled();
+      await frame.task();
+      await Promise.all([first, ...repeated]);
+      expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("new-session-1", expect.any(Number));
+      expect(f.native.show).toHaveBeenCalledOnce();
+      expect(f.native.isVisible()).toBe(true);
+      expect(input().disabled).toBe(false);
+      expect(state()).toBe("compact");
+      await type("keep after presentation");
+      await f.quick.toggle(true);
+      expect(f.native.isVisible()).toBe(false);
+      expect(input().value).toBe("keep after presentation");
+      expect(f.projection.session.sessionId).toBe("new-session-1");
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
+
 test.each([false, true])(
-  "rapid new shortcut cancels its queued frame and honors reopening=%s",
+  "explicit hide cancels a new shortcut queued frame and honors reopening=%s",
   async (reopen) => {
     const frame = animationClock();
     const f = presentationHost();
@@ -742,7 +793,7 @@ test.each([false, true])(
         first = f.quick.toggle(true);
       });
       await frame();
-      await f.quick.toggle(true);
+      f.quick.hide();
       let latest: Promise<void> | undefined;
       if (reopen)
         await act(async () => {

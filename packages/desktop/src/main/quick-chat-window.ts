@@ -42,7 +42,7 @@ export class QuickChatWindow {
   private loading?: Promise<void>;
   private visible = false;
   private visibilityEpoch = 0;
-  private opening = 0;
+  private opening?: { epoch: number; resetting: boolean; promise: Promise<void> };
   private presenting = false;
   private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
@@ -513,8 +513,7 @@ export class QuickChatWindow {
       this.present(this.window as BrowserWindow, epoch, trace);
       return Promise.resolve();
     }
-    this.opening++;
-    return Promise.all([this.ready(trace), resetting?.then(() => trace?.mark("expiry-ready"))])
+    const promise = Promise.all([this.ready(trace), resetting?.then(() => trace?.mark("expiry-ready"))])
       .then(async ([window]) => {
         trace?.mark("window-ready");
         if (
@@ -570,16 +569,30 @@ export class QuickChatWindow {
         throw error;
       })
       .finally(() => {
-        this.opening--;
+        if (this.opening?.epoch === epoch) this.opening = undefined;
       });
+    this.opening = { epoch, resetting: Boolean(resetting), promise };
+    return promise;
   }
-  /** Both global shortcuts cancel an open/pending presentation; only their opening action differs. */
+  /** New shortcuts coalesce before presentation; ordinary toggles can still cancel a pending open. */
   toggle(newConversation = false): Promise<void> {
     if (this.disposed) return Promise.resolve();
-    const trace = this.startTrace(newConversation ? "new" : "open");
     const window = this.window;
     const nativeFocused = window && !window.isDestroyed() && window.isVisible() && window.isFocused();
-    if (nativeFocused || (this.visible && (this.opening || this.loading || this.options.hiddenTestMode))) {
+    const opening = this.visible && this.opening?.epoch === this.visibilityEpoch ? this.opening : undefined;
+    // The user has not seen this fresh session yet. Keep its reset/load/frame wait
+    // alive instead of turning rapid retries into alternating show cancellations.
+    if (newConversation && !nativeFocused && opening?.resetting) {
+      // The initiating invocation owns failure reporting; retries must not open
+      // another error dialog for the same failed presentation.
+      return opening.promise.catch(() => {});
+    }
+    const trace = this.startTrace(newConversation ? "new" : "open");
+    if (
+      nativeFocused ||
+      (this.visible &&
+        ((!newConversation && (opening || this.loading)) || (this.options.hiddenTestMode && !opening)))
+    ) {
       this.hide("toggle-hide");
       trace?.finish("hidden");
       return Promise.resolve();
