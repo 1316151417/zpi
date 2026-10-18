@@ -959,8 +959,16 @@ small {
 .queue-row.pending {
   opacity: 0.6;
 }
-.queue-text {
+.queue-content {
+  display: flex;
   flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.queue-text {
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;

@@ -12,8 +12,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { ArrowUpFromLine, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
 import { parseMentions } from "zpi-coding-agent/input";
+import { type ConversationSelection, parseSelectionPrompt } from "../conversation-selections.ts";
 import type { InputQueue, QueuedInput } from "../types.ts";
 import { userErrorMessage } from "../user-error.ts";
+import { SelectionReferenceChip } from "./ConversationSelections.tsx";
 import { ActionHint } from "./MessageActions.tsx";
 
 export interface QueueActions {
@@ -41,13 +43,24 @@ const restrictQueueDragToPanel: Modifier = ({
         : transform.y,
   };
 };
-function displayText(item: QueuedInput) {
+// 排队行只展示可见正文与引用，不能把 userselect 传输格式当成用户文字。
+function queuedContent(item: QueuedInput): {
+  text: string;
+  selections: ConversationSelection[];
+} {
   if (item.subagentNotification)
-    return `${item.subagentNotification.agentType} 已回传 · ${item.subagentNotification.description}`;
-  let text = item.text;
+    return {
+      text: `${item.subagentNotification.agentType} 已回传 · ${item.subagentNotification.description}`,
+      selections: [],
+    };
+  const parsed = parseSelectionPrompt(item.text);
+  let text = parsed.text;
   for (const mention of parseMentions(text).reverse())
     text = text.slice(0, mention.start) + mention.label + text.slice(mention.end);
-  return text || item.attachments.map((image) => image.name).join("、") || item.fileReferences.join("、");
+  return {
+    text: text || item.attachments.map((image) => image.name).join("、") || item.fileReferences.join("、"),
+    selections: parsed.selections,
+  };
 }
 const QueueRow = memo(function QueueRow({
   item,
@@ -66,6 +79,7 @@ const QueueRow = memo(function QueueRow({
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging, transform, transition } =
     useSortable({ id: item.id, disabled: locked });
   const compact = /^\/compact(?:\s|$)/.test(item.text);
+  const content = queuedContent(item);
   return (
     <li
       ref={setNodeRef}
@@ -93,8 +107,11 @@ const QueueRow = memo(function QueueRow({
           <GripVertical size={16} />
         </button>
       </ActionHint>
-      <span className={`queue-text${compact ? " compact" : ""}`} title={displayText(item)}>
-        {compact ? "/compact" : displayText(item)}
+      <span className="queue-content" title={content.text}>
+        <span className={`queue-text${compact ? " compact" : ""}`}>
+          {compact ? "/compact" : content.text}
+        </span>
+        {content.selections.length > 0 && <SelectionReferenceChip references={content.selections} />}
       </span>
       <button
         type="button"
