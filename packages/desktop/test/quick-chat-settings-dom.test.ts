@@ -92,8 +92,8 @@ test("navigates from the real settings sidebar to quick chat and the existing sh
   expect(labels.indexOf("快速对话")).toBe(labels.indexOf("子智能体") + 1);
   await click(query('button[aria-label="快速对话"]'));
   expect(query('button[aria-label="快速对话"]').getAttribute("aria-pressed")).toBe("true");
-  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("显示或隐藏：⌥N");
-  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("新建：⌥⇧N");
+  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("显示或隐藏：⌥Space");
+  expect(query('section[aria-label="快速对话设置"]').textContent).toContain("新建：⌥⇧Space");
   expect(container.textContent).toContain("临时对话，不保存到任务列表");
   expect(container.textContent).toContain("可用 read、bash 及已启用的联网工具");
   expect(container.textContent).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
@@ -315,7 +315,7 @@ test("records the new quick-chat physical dead key, rejects duplicates, and pers
   await click(button("保存快捷键"));
   expect(currentSettings().shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+B");
   await click(edit());
-  await key({ key: "Dead", code: "KeyN", altKey: true });
+  await key({ key: "\u00a0", code: "Space", altKey: true });
   expect(row().textContent).toContain("冲突");
   expect(recorder().getAttribute("aria-pressed")).toBe("true");
   await key({ key: "Escape" });
@@ -338,10 +338,10 @@ test("cancels new shortcut recording on blur and page exit without saving a draf
     window.dispatchEvent(new Event("blur"));
   });
   expect(releaseCapture).toHaveBeenLastCalledWith(false);
-  expect(query('[data-shortcut-command="quick-chat-new"] .shortcut-recorder').textContent).toBe("⌥⇧N");
+  expect(query('[data-shortcut-command="quick-chat-new"] .shortcut-recorder').textContent).toBe("⌥⇧Space");
   await click(query('button[aria-label="编辑新建快速对话快捷键"]'));
   await click(query('button[aria-label="快速对话"]'));
   expect(releaseCapture).toHaveBeenLastCalledWith(false);
-  expect(currentSettings().shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+N");
+  expect(currentSettings().shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+Space");
   expect(updateShortcuts).not.toHaveBeenCalled();
 });

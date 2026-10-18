@@ -186,8 +186,12 @@ it.each([undefined, 1, 2])(
     raw.shortcuts.enabled = false;
     const snapshot = structuredClone(raw);
     const migrated = migrateLegacySettings(raw);
-    expect(migrated.shortcuts.bindings["quick-chat"]).toBe("Alt+N");
-    expect(migrated.shortcuts.bindings["quick-chat-new"]).toBe("Alt+Shift+N");
+    expect(migrated.shortcuts.bindings["quick-chat"]).toBe(
+      defaultShortcuts(process.platform).bindings["quick-chat"],
+    );
+    expect(migrated.shortcuts.bindings["quick-chat-new"]).toBe(
+      defaultShortcuts(process.platform).bindings["quick-chat-new"],
+    );
     expect(migrated.shortcuts.enabled).toBe(false);
     expect(raw).toEqual(snapshot);
   },
@@ -204,11 +208,12 @@ it.each([undefined, 1, 2])(
   (version) => {
     const raw = { ...fixture(), ...(version === undefined ? {} : { shortcutDefaultsVersion: version }) };
     Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
-    raw.shortcuts.bindings["quick-chat"] = "Shift+Option+N";
+    raw.shortcuts.bindings["quick-chat"] =
+      process.platform === "darwin" ? "Shift+Option+Space" : "Shift+Option+N";
     const before = structuredClone(raw);
     const migrated = migrateLegacySettings(raw);
     expect(migrated.shortcuts.bindings["quick-chat-new"]).toBeNull();
-    expect(migrated.shortcuts.bindings["quick-chat"]).toBe("Shift+Option+N");
+    expect(migrated.shortcuts.bindings["quick-chat"]).toBe(raw.shortcuts.bindings["quick-chat"]);
     expect(raw).toEqual(before);
   },
 );

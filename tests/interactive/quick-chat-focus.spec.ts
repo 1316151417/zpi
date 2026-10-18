@@ -107,7 +107,7 @@ test("interactive: quick chat takes input focus without showing a hidden main wi
 });
 
 // Real visible-window acceptance for the formerly sticky empty-expanded state.
-// This is an app-API sequence; actual Option+N remains manual macOS acceptance.
+// This is an app-API sequence; actual Option+Space remains manual macOS acceptance.
 test("interactive: visible new stays large once and empty hidden resume returns to compact", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-resume-"));
   const server = await fakeServer(async (_request, response) => {

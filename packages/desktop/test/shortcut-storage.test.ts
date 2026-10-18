@@ -59,6 +59,8 @@ it("uses current menu defaults and preserves explicitly restored old keys or cle
       "toggle-pane": "CmdOrCtrl+Shift+T",
       "select-model": "CmdOrCtrl+;",
       "focus-composer": null,
+      "quick-chat": "Alt+N",
+      "quick-chat-new": "Alt+Shift+N",
     });
     store.updateShortcuts(custom);
     const saved = store.state.getSetting<SettingsData>("app");
@@ -158,13 +160,14 @@ it("adds new quick chat without stealing a custom shortcut and preserves saved, 
     const raw = store.state.getSetting<SettingsData>("app");
     if (!raw) throw new Error("Missing settings fixture");
     Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
-    raw.shortcuts.bindings["quick-chat"] = "Shift+Option+N";
+    raw.shortcuts.bindings["quick-chat"] =
+      process.platform === "darwin" ? "Shift+Option+Space" : "Shift+Option+N";
     raw.shortcuts.bindings["toggle-sidebar"] = null;
     raw.shortcuts.enabled = false;
     store.state.setSetting("app", raw);
     const next = new SettingsStore(dir, encryption, store.state);
     expect(next.get().shortcuts.bindings["quick-chat-new"]).toBeNull();
-    expect(next.get().shortcuts.bindings["quick-chat"]).toBe("Shift+Option+N");
+    expect(next.get().shortcuts.bindings["quick-chat"]).toBe(raw.shortcuts.bindings["quick-chat"]);
     expect(next.get().shortcuts.bindings["toggle-sidebar"]).toBeNull();
     expect(next.get().shortcuts.enabled).toBe(false);
     expect(store.state.getSetting("app")).toEqual(raw);
@@ -174,7 +177,9 @@ it("adds new quick chat without stealing a custom shortcut and preserves saved, 
       next.updateShortcuts(settings);
       const reopened = new SettingsStore(dir, encryption, store.state);
       expect(reopened.get().shortcuts.bindings["quick-chat-new"]).toBe(binding);
-      expect(reopened.get().shortcuts.bindings["quick-chat"]).toBe("Alt+Shift+N");
+      expect(reopened.get().shortcuts.bindings["quick-chat"]).toBe(
+        process.platform === "darwin" ? "Alt+Shift+Space" : "Alt+Shift+N",
+      );
       expect(reopened.get().shortcuts.enabled).toBe(false);
     }
   } finally {

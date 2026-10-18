@@ -128,8 +128,8 @@ describe("quick-chat settings", () => {
     expect(text(render())).toContain("可用 read、bash 及已启用的联网工具");
     expect(text(render())).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
     expect(text(render())).not.toContain("工具仅允许只读");
-    expect(text(render())).toContain("⌥N");
-    expect(text(render())).toContain("⌥⇧N");
+    expect(text(render())).toContain("⌥Space");
+    expect(text(render())).toContain("⌥⇧Space");
     expect(button("修改快捷键").props.className).toBe("settings-action-button");
     (button("修改快捷键").props.onClick as () => void)();
     expect(mocks.editShortcut).toHaveBeenCalledOnce();
@@ -141,7 +141,7 @@ describe("quick-chat settings", () => {
     mocks.settings.shortcuts.bindings["quick-chat"] = "Alt+B";
     mocks.settings.shortcuts.enabled = false;
     expect(text(render())).toContain("显示或隐藏：⌥B");
-    expect(text(render())).toContain("新建：⌥⇧N（快捷键已停用）");
+    expect(text(render())).toContain("新建：⌥⇧Space（快捷键已停用）");
     expect(button("打开快速对话").props.disabled).toBe(false);
     mocks.settings.shortcuts.bindings["quick-chat"] = null;
     mocks.settings.shortcuts.bindings["quick-chat-new"] = null;
@@ -152,8 +152,8 @@ describe("quick-chat settings", () => {
     expect(text(render())).toContain("暂无可用模型");
     expect(select("快速对话默认模型").props.disabled).toBe(true);
     mocks.settings = undefined;
-    expect(text(render())).toContain("⌥N");
-    expect(text(render())).toContain("⌥⇧N");
+    expect(text(render())).toContain("⌥Space");
+    expect(text(render())).toContain("⌥⇧Space");
   });
 
   it("opens through the bridge once while pending and becomes available after completion", async () => {

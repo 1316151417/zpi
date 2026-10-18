@@ -174,7 +174,7 @@ describe("multiple global shortcut transactions", () => {
   it("dispatches the two global actions independently and respects clearing and master disable", () => {
     const { controller, callbacks, settings, execute, original } = fixture(false, true);
     callbacks.get(original)?.();
-    callbacks.get("Alt+N")?.();
+    callbacks.get("Alt+Space")?.();
     expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
     settings.bindings["quick-chat"] = null;
     controller.update(settings, () => undefined);
@@ -199,9 +199,9 @@ describe("multiple global shortcut transactions", () => {
       failure === "registration" ? "全局快捷键注册失败" : "disk full",
     );
     expect(persist).toHaveBeenCalledTimes(failure === "registration" ? 0 : 1);
-    expect([...callbacks.keys()]).toEqual([original, "Alt+N"]);
+    expect([...callbacks.keys()]).toEqual([original, "Alt+Space"]);
     callbacks.get(original)?.();
-    callbacks.get("Alt+N")?.();
+    callbacks.get("Alt+Space")?.();
     expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
   });
 
@@ -239,7 +239,7 @@ describe("multiple global shortcut transactions", () => {
 
   it("reuses an old accelerator moved to the other command while registering a fresh one", () => {
     const { controller, callbacks, settings, execute, original } = fixture(false, true);
-    const staleQuickChat = callbacks.get("Alt+N");
+    const staleQuickChat = callbacks.get("Alt+Space");
     settings.bindings["toggle-window"] = "Control+Command+T";
     settings.bindings["quick-chat"] = original;
     controller.update(settings, () => {
@@ -275,7 +275,7 @@ describe("multiple global shortcut transactions", () => {
     for (const callback of staleCallbacks) callback();
     expect(execute).not.toHaveBeenCalled();
     callbacks.get(original)?.();
-    callbacks.get("Alt+N")?.();
+    callbacks.get("Alt+Space")?.();
     expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"]]);
   });
 
@@ -323,23 +323,23 @@ describe("multiple global shortcut transactions", () => {
 describe("new quick-chat global shortcut", () => {
   it("dispatches, swaps, clears and disables all three commands independently", () => {
     const { controller, callbacks, registry, settings, execute, original } = fixture(false, true, true);
-    for (const binding of [original, "Alt+N", "Alt+Shift+N"]) callbacks.get(binding)?.();
+    for (const binding of [original, "Alt+Space", "Alt+Shift+Space"]) callbacks.get(binding)?.();
     expect(execute.mock.calls).toEqual([["toggle-window"], ["quick-chat"], ["quick-chat-new"]]);
     registry.register.mockClear();
     registry.unregister.mockClear();
-    settings.bindings["quick-chat"] = "Alt+Shift+N";
-    settings.bindings["quick-chat-new"] = "Alt+N";
+    settings.bindings["quick-chat"] = "Alt+Shift+Space";
+    settings.bindings["quick-chat-new"] = "Alt+Space";
     controller.update(settings, () => undefined);
     execute.mockClear();
-    callbacks.get("Alt+N")?.();
-    callbacks.get("Alt+Shift+N")?.();
+    callbacks.get("Alt+Space")?.();
+    callbacks.get("Alt+Shift+Space")?.();
     expect(execute.mock.calls).toEqual([["quick-chat-new"], ["quick-chat"]]);
     expect(registry.register).not.toHaveBeenCalled();
     expect(registry.unregister).not.toHaveBeenCalled();
-    const staleNew = callbacks.get("Alt+N");
+    const staleNew = callbacks.get("Alt+Space");
     settings.bindings["quick-chat-new"] = null;
     controller.update(settings, () => undefined);
-    expect([...callbacks.keys()]).toEqual([original, "Alt+Shift+N"]);
+    expect([...callbacks.keys()]).toEqual([original, "Alt+Shift+Space"]);
     execute.mockClear();
     staleNew?.();
     expect(execute).not.toHaveBeenCalled();
@@ -348,7 +348,7 @@ describe("new quick-chat global shortcut", () => {
     expect(callbacks.size).toBe(0);
     settings.enabled = true;
     controller.update(settings, () => undefined);
-    expect([...callbacks.keys()]).toEqual([original, "Alt+Shift+N"]);
+    expect([...callbacks.keys()]).toEqual([original, "Alt+Shift+Space"]);
   });
 
   it.each(["Control+Command+T", "Alt+B", "Alt+Shift+B", "persistence"])(
@@ -373,7 +373,7 @@ describe("new quick-chat global shortcut", () => {
         failure === "persistence" ? "disk full" : "全局快捷键注册失败",
       );
       expect(persist).toHaveBeenCalledTimes(failure === "persistence" ? 1 : 0);
-      expect([...callbacks.keys()]).toEqual([original, "Alt+N", "Alt+Shift+N"]);
+      expect([...callbacks.keys()]).toEqual([original, "Alt+Space", "Alt+Shift+Space"]);
       for (const [, callback] of registry.register.mock.calls) callback();
       expect(execute).not.toHaveBeenCalled();
       for (const callback of callbacks.values()) callback();

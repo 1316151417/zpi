@@ -124,8 +124,8 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
     enabled: true,
     bindings: {
       "toggle-window": platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
-      "quick-chat": "Alt+N",
-      "quick-chat-new": "Alt+Shift+N",
+      "quick-chat": platform === "darwin" ? "Alt+Space" : "Alt+N",
+      "quick-chat-new": platform === "darwin" ? "Alt+Shift+Space" : "Alt+Shift+N",
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
       "focus-composer": `${primary}+I`,
@@ -163,6 +163,7 @@ export function shortcutFromEvent(
   let key: string | undefined;
   if (/^Key[A-Z]$/.test(event.code ?? "")) key = event.code?.slice(3);
   else if (/^Digit\d$/.test(event.code ?? "")) key = event.code?.slice(5);
+  else if (event.code === "Space") key = "Space";
   else if (event.code && Object.hasOwn(punctuation, event.code)) key = punctuation[event.code];
   else key = event.key === " " ? "Space" : event.key === "+" ? "Plus" : keyName(event.key);
   if (!key || (modifiers as readonly string[]).includes(key)) return null;
@@ -237,12 +238,12 @@ function reservedShortcut(binding: string, command: ShortcutCommand, platform: s
   )
     return "此组合保留给系统导航或文本编辑";
   if (key === "Escape") return "Escape 组合保留给系统或弹窗操作";
-  const quickChatAltLetter =
+  const quickChatAltShortcut =
     (command === "quick-chat" || command === "quick-chat-new") &&
     held.has("Alt") &&
     [...held].every((modifier) => modifier === "Alt" || modifier === "Shift") &&
-    /^[A-Z]$/.test(key);
-  if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key) && !quickChatAltLetter)
+    (/^[A-Z]$/.test(key) || (platform === "darwin" && key === "Space"));
+  if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key) && !quickChatAltShortcut)
     return "请包含 Ctrl 或 Command，避免影响正常输入";
   const primary = platform === "darwin" ? "Command" : "Control";
   if (
