@@ -30,9 +30,10 @@ test("native quick-chat lifecycle records reset, frame and input latency", async
     },
   });
   const release = deferred();
-  const server = await fakeServer(async (_request, response, index) => {
+  const server = await fakeServer(async (request, response) => {
     send(response, chunk({ content: "完成的隔离历史" }));
-    if (index === 1) {
+    const rows = request.messages as unknown as { role: string; content: unknown }[];
+    if (rows.some((row) => row.role === "user" && row.content === "取消运行")) {
       await release.promise;
       send(response, chunk({ content: "迟到旧结果" }));
     }
@@ -90,6 +91,15 @@ test("native quick-chat lifecycle records reset, frame and input latency", async
     samples.push({ case: "idle history resume", ms: await invoke("toggle") });
     await expect.poll(state).toMatchObject({ visible: true, focused: true, height: 560 });
     samples.push({ case: "visible history new", ms: await invoke("new") });
+    await expect(quick.getByTestId("run")).toHaveCount(0);
+    await expect.poll(state).toMatchObject({ visible: true, height: 560 });
+    await invoke("toggle");
+    samples.push({ case: "history new then immediate ordinary compact resume", ms: await invoke("toggle") });
+    await expect.poll(state).toMatchObject({ visible: true, focused: true, height: 44 });
+    await input.fill("重建用于测试加号的历史");
+    await input.press("Enter");
+    await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await invoke("new");
     await expect(quick.getByTestId("run")).toHaveCount(0);
     await expect.poll(state).toMatchObject({ visible: true, height: 560 });
     const sessionId = async () =>

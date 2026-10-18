@@ -113,6 +113,8 @@ macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应
 
 0.2.113 已在本机真实 macOS 面板中复现隐藏后的迟到 blur 取消新唤起，并通过实体全局快捷键定位到空闲 reset 的无效 await。opening 现在区分隐藏准备与已呈现，空闲 reset 在预留并发 promise 后同步发布新 session；运行中取消仍等待完成。诊断进一步记录 shortcut-register/received、host-stop/dispose/selection/published、snapshot、React commit、ACK 及 opening phase，commit IPC 只在诊断开启时发送。实体键盘前后计时、用户反馈、原生重复回归及尚未验证的边界见 [本机验收记录](evidence/quick-chat-lifecycle-20261018/README.md)。
 
+0.2.114 补充实体键盘复现「历史大窗新建→普通隐藏→普通恢复为紧凑窗」：已收到全局快捷键，但 warm `ready` 的 Promise 链在首个 composer IPC 前空等 1042ms；probe、折叠和帧确认随后很快完成。已就绪且无需 reset 的窗口现在直接进入准备函数，在快捷键调用栈发出探测。草稿保护、超时、session/epoch 校验和折叠帧确认不变。同机前后及原生回归见 [紧凑恢复验收记录](evidence/quick-chat-compact-resume-20261018/README.md)。
+
 0.2.112 在未修改的 0.2.111 上用真实 React QuickChat + 窗口控制器重现：可见历史大窗按新建键后 session 未改变、旧对话仍保留。修复覆盖历史/运行中大窗完整新建→隐藏→普通恢复流程、紧凑与展开文字/图片/导入/失败草稿、空白二次收起，以及可见 pending 的连续 8 次按键和「＋」帧等待合并。主进程 probe 超时、版本/session 替换、取消与失败重试有确定性单测；没有运行原生 Mac 或性能验收。
 
 0.2.111 的回归测试在未修改的 0.2.110 窗口实现上重现：重置尚未完成时连续按两次新建键，随后重置完成并确认当前会话帧，空白和有历史两种情况都没有调用原生 show。修复后覆盖加载、重置和帧等待期间的 2/3/4/8 次按键序列。这是窗口替身的确定性复现，不证明用户 Mac 的全部事件顺序或原生验收通过。

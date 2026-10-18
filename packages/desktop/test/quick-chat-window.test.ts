@@ -2034,6 +2034,26 @@ async function emptyExpanded() {
   return f;
 }
 
+test("warm blank-expanded resume sends its composer request in the invocation stack", async () => {
+  const f = await emptyExpanded();
+  f.quick.hide();
+  f.windows[0].webContents.send.mockClear();
+  const opening = f.quick.toggle();
+  expect(f.windows[0].webContents.send).toHaveBeenCalledWith(
+    "zpi:quick-chat-composer",
+    expect.any(Number),
+    f.host.sessionId,
+  );
+  const [, token, sessionId] = latestProbe(f);
+  await f.quick.call("reportComposerState", [token, sessionId, false]);
+  await tick();
+  await f.rendererReady();
+  await opening;
+  expect(f.windows[0].isVisible()).toBe(true);
+  expect(f.windows[0].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
 test.each(["blur", "hide"] as const)(
   "a queued native %s cannot cancel the ordinary blank-expanded resume",
   async (event) => {

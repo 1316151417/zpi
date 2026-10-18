@@ -606,57 +606,65 @@ export class QuickChatWindow {
       this.present(this.window as BrowserWindow, epoch, trace);
       return Promise.resolve();
     }
-    const promise = Promise.all([this.ready(trace), resetting?.then(() => trace?.mark("expiry-ready"))])
-      .then(async ([window]) => {
-        trace?.mark("window-ready");
+    const prepare = async (window: BrowserWindow | undefined) => {
+      trace?.mark("window-ready");
+      if (
+        !window ||
+        window.isDestroyed() ||
+        this.disposed ||
+        epoch !== this.visibilityEpoch ||
+        !this.visible
+      ) {
+        trace?.finish("cancelled");
+        return;
+      }
+      if (checkComposer) {
+        const sessionId = this.sessionId;
+        const occupied = await this.probeComposer(window, epoch);
         if (
-          !window ||
-          window.isDestroyed() ||
-          this.disposed ||
           epoch !== this.visibilityEpoch ||
-          !this.visible
+          !this.visible ||
+          this.disposed ||
+          window !== this.window ||
+          window.isDestroyed()
         ) {
           trace?.finish("cancelled");
           return;
         }
-        if (checkComposer) {
-          const sessionId = this.sessionId;
-          const occupied = await this.probeComposer(window, epoch);
-          if (
-            epoch !== this.visibilityEpoch ||
-            !this.visible ||
-            this.disposed ||
-            window !== this.window ||
-            window.isDestroyed()
-          ) {
-            trace?.finish("cancelled");
-            return;
-          }
-          if (sessionId === this.sessionId) {
-            const expanded = resumeQuickChatExpanded(this.expanded, this.hasRuns, occupied);
-            if (expanded !== this.expanded) {
-              this.keepExpanded = false;
-              this.setExpanded(expanded);
-              window.webContents.send("zpi:quick-chat-snapshot", this.snapshot());
-            }
+        if (sessionId === this.sessionId) {
+          const expanded = resumeQuickChatExpanded(this.expanded, this.hasRuns, occupied);
+          if (expanded !== this.expanded) {
+            this.keepExpanded = false;
+            this.setExpanded(expanded);
+            window.webContents.send("zpi:quick-chat-snapshot", this.snapshot());
           }
         }
-        // Expiry or a mode change sent a snapshot, but the old renderer frame may still exist.
-        // Ordinary retained-history opens skip this post-commit frame acknowledgement.
-        while (resetting || this.needsSessionFrame) {
-          const version = this.presentationVersion;
-          trace?.mark("session-frame-wait");
-          if (await this.waitForSession(version, epoch)) {
-            trace?.mark("session-frame-ready");
-            break;
-          }
-          if (version !== this.presentationVersion && epoch === this.visibilityEpoch && this.visible)
-            continue;
-          trace?.finish("cancelled");
-          return;
+      }
+      // Expiry or a mode change sent a snapshot, but the old renderer frame may still exist.
+      // Ordinary retained-history opens skip this post-commit frame acknowledgement.
+      while (resetting || this.needsSessionFrame) {
+        const version = this.presentationVersion;
+        trace?.mark("session-frame-wait");
+        if (await this.waitForSession(version, epoch)) {
+          trace?.mark("session-frame-ready");
+          break;
         }
-        this.present(window, epoch, trace);
-      })
+        if (version !== this.presentationVersion && epoch === this.visibilityEpoch && this.visible) continue;
+        trace?.finish("cancelled");
+        return;
+      }
+      this.present(window, epoch, trace);
+    };
+    // A warm window can start its first IPC in the native shortcut stack. An
+    // already-resolved ready() promise can otherwise leave this work waiting
+    // for the next event-loop wakeup before even asking about the draft.
+    const preparing =
+      warm && !resetting
+        ? prepare(this.window)
+        : Promise.all([this.ready(trace), resetting?.then(() => trace?.mark("expiry-ready"))]).then(
+            ([window]) => prepare(window),
+          );
+    const promise = preparing
       .catch((error: unknown) => {
         trace?.finish("failed");
         throw error;
