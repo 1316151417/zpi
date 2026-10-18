@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { build } from "tsup";
+import { join } from "node:path";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { launchQuickChatFixture } from "../helpers/quick-chat-fixture.ts";
 import { expect, test } from "../helpers/test.ts";
 
 // App API, not OS hotkeys. No synthetic ACKs, timers, native visibility or renderer.
@@ -12,23 +12,6 @@ test("native quick-chat lifecycle records reset, frame and input latency", async
 }, info) => {
   void desktopIsolation;
   const dir = await mkdtemp(join(tmpdir(), "zpi-native-lifecycle-"));
-  await symlink(resolve("node_modules"), join(dir, "node_modules"), "dir");
-  await build({
-    entry: ["tests/helpers/quick-chat-app.ts"],
-    outDir: dir,
-    format: ["esm"],
-    bundle: true,
-    splitting: false,
-    target: "node24",
-    removeNodeProtocol: false,
-    noExternal: ["zpi-ai", "zpi-agent", "zpi-coding-agent", "typebox"],
-    external: ["electron", "sharp", "node-pty"],
-    silent: true,
-    define: { "process.env.ZPI_QUICK_CHAT_FIXTURE_ASSETS": JSON.stringify(resolve("packages/desktop/dist")) },
-    banner: {
-      js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
-    },
-  });
   const release = deferred();
   const server = await fakeServer(async (request, response) => {
     send(response, chunk({ content: "完成的隔离历史" }));
@@ -39,7 +22,7 @@ test("native quick-chat lifecycle records reset, frame and input latency", async
     }
     done(response);
   });
-  const app = await launchDesktop({ dir, url: server.url, entry: join(dir, "quick-chat-app.js") });
+  const app = await launchQuickChatFixture(dir, server.url);
   const quick = await app.firstWindow();
   const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
   const invoke = (kind: "toggle" | "new" | "show" | "hide") =>
@@ -69,6 +52,45 @@ test("native quick-chat lifecycle records reset, frame and input latency", async
     await invoke("show");
     await expect(input).toBeFocused();
     await expect.poll(state).toMatchObject({ visible: true, focused: true });
+    await input.fill("保留已有草稿");
+    await invoke("hide");
+    const captureSession = await quick.evaluate(async () => {
+      const result = await window.zpiQuickChat.getSnapshot();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value.session.sessionId;
+    });
+    await app.evaluate(async (_electron, sessionId) => {
+      const control = (
+        globalThis as typeof globalThis & {
+          quickChatFixture: {
+            openWithDraft(
+              input: import("../../packages/desktop/src/shared/quick-chat.ts").QuickChatDraftInput,
+              sessionId: string,
+            ): Promise<void>;
+          };
+        }
+      ).quickChatFixture;
+      await control.openWithDraft(
+        {
+          text: "带入的选中文字",
+          image: {
+            name: "capture.png",
+            bytes: Buffer.from(
+              "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWN415H2riONAUIBADY+B3G73tFAAAAAAElFTkSuQmCC",
+              "base64",
+            ),
+          },
+        },
+        sessionId,
+      );
+    }, captureSession);
+    await expect(input).toHaveValue("保留已有草稿\n带入的选中文字");
+    await expect(quick.locator(".quick-chat-attachment img")).toHaveCount(1);
+    await expect(quick.getByTestId("run")).toHaveCount(0);
+    await expect(input).toBeFocused();
+    await invoke("new");
+    await expect(input).toHaveValue("");
+    await expect(quick.locator(".quick-chat-attachment")).toHaveCount(0);
     for (let i = 0; i < 10; i++) {
       await invoke("hide");
       const started = performance.now();

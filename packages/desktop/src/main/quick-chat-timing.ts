@@ -15,6 +15,8 @@ const stageValues = [
   "new-coalesced",
   "snapshot-sent",
   "composer-probe",
+  "draft-offered",
+  "draft-taken",
   "composer-reply",
   "composer-timeout",
   "renderer-commit",

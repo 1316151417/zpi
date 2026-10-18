@@ -3,6 +3,9 @@ export const shortcutCommands = [
   { id: "toggle-window", label: "显示或隐藏窗口", scope: "global" },
   { id: "quick-chat", label: "快速对话", scope: "global" },
   { id: "quick-chat-new", label: "新建快速对话", scope: "global" },
+  { id: "quick-chat-screenshot", label: "截图带入快速对话", scope: "global" },
+  { id: "quick-chat-selection", label: "选中文字带入快速对话", scope: "global" },
+  { id: "quick-chat-clipboard", label: "剪贴板带入快速对话", scope: "global" },
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
   { id: "focus-composer", label: "聚焦任务输入框", scope: "app" },
@@ -126,6 +129,9 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
       "toggle-window": platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
       "quick-chat": platform === "darwin" ? "Alt+Space" : "Alt+N",
       "quick-chat-new": platform === "darwin" ? "Alt+Shift+Space" : "Alt+Shift+N",
+      "quick-chat-screenshot": platform === "darwin" ? "Alt+Shift+A" : null,
+      "quick-chat-selection": platform === "darwin" ? "Alt+Shift+C" : null,
+      "quick-chat-clipboard": platform === "darwin" ? "Alt+Shift+V" : null,
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
       "focus-composer": `${primary}+I`,
@@ -191,7 +197,7 @@ export function shortcutForEvent(
   return shortcutCommands.find(({ id }) => {
     const saved = settings.bindings[id];
     return (
-      (event.key !== "Dead" || id === "quick-chat" || id === "quick-chat-new") &&
+      (event.key !== "Dead" || id.startsWith("quick-chat")) &&
       saved !== null &&
       normalizeShortcut(saved, platform) === binding
     );
@@ -239,7 +245,7 @@ function reservedShortcut(binding: string, command: ShortcutCommand, platform: s
     return "此组合保留给系统导航或文本编辑";
   if (key === "Escape") return "Escape 组合保留给系统或弹窗操作";
   const quickChatAltShortcut =
-    (command === "quick-chat" || command === "quick-chat-new") &&
+    command.startsWith("quick-chat") &&
     held.has("Alt") &&
     [...held].every((modifier) => modifier === "Alt" || modifier === "Shift") &&
     (/^[A-Z]$/.test(key) || (platform === "darwin" && key === "Space"));
@@ -373,4 +379,14 @@ export function withQuickChatNewShortcut(settings: ShortcutSettings, platform: s
     "quick-chat-new",
     () => defaultShortcuts(platform).bindings["quick-chat-new"],
   );
+}
+
+export function withQuickChatCaptureShortcuts(
+  settings: ShortcutSettings,
+  platform: string,
+): ShortcutSettings {
+  const defaults = defaultShortcuts(platform).bindings;
+  for (const command of ["quick-chat-screenshot", "quick-chat-selection", "quick-chat-clipboard"] as const)
+    settings = withMissingShortcut(settings, platform, command, () => defaults[command]);
+  return settings;
 }

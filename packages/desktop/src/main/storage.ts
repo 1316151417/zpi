@@ -52,6 +52,7 @@ import {
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
+  withQuickChatCaptureShortcuts,
   withQuickChatNewShortcut,
   withQuickChatShortcut,
   withTaskMenuShortcut,
@@ -151,8 +152,11 @@ export class SettingsStore {
       let migrated = false;
       if (raw !== undefined) {
         if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
-        raw.shortcuts = withQuickChatNewShortcut(
-          withQuickChatShortcut(withTaskMenuShortcut(raw.shortcuts, process.platform), process.platform),
+        raw.shortcuts = withQuickChatCaptureShortcuts(
+          withQuickChatNewShortcut(
+            withQuickChatShortcut(withTaskMenuShortcut(raw.shortcuts, process.platform), process.platform),
+            process.platform,
+          ),
           process.platform,
         );
         if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)

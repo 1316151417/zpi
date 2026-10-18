@@ -299,6 +299,48 @@ export function QuickChat({
     }
   }, [sessionId, images, importImage]);
 
+  useEffect(() => {
+    if (!sessionId) return;
+    let active = true;
+    const receive = () => {
+      const generation = operationGeneration.current;
+      void window.zpiQuickChat
+        .takeDraftInput(sessionId)
+        .then(unwrap)
+        .then((input) => {
+          if (!active || generation !== operationGeneration.current || !input) return;
+          const text = input.text ?? "";
+          const current = textarea.current?.value ?? "";
+          const separator = current && text ? "\n" : "";
+          if (current.length + separator.length + text.length > 32_000) {
+            setError("带入后文字超过 32000 字，请缩短选区或剪贴板内容。");
+            return;
+          }
+          if (input.image && imagesRef.current.length >= imageLimits.count) {
+            setError(`每条消息最多可添加 ${imageLimits.count} 张图片。`);
+            return;
+          }
+          draftRevision.current += 1;
+          if (text) setDraft((value) => value + (value ? "\n" : "") + text);
+          if (input.image) {
+            const file = new File([Uint8Array.from(input.image.bytes)], input.image.name, {
+              type: "image/png",
+            });
+            updateImages([...imagesRef.current, { key: ++nextImageKey.current, file, status: "queued" }]);
+          }
+        })
+        .catch((reason) => {
+          if (active && generation === operationGeneration.current) setError(userErrorMessage(reason));
+        });
+    };
+    const off = window.zpiQuickChat.onDraftInput(receive);
+    receive();
+    return () => {
+      active = false;
+      off();
+    };
+  }, [sessionId, updateImages]);
+
   const removeImage = async (item: QuickChatDraftImage) => {
     if (lock.current || item.status === "removing") return;
     draftRevision.current += 1;

@@ -21,6 +21,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "hide",
     "importAttachment",
     "onComposerProbe",
+    "onDraftInput",
     "onPresentation",
     "onSnapshot",
     "openExternal",
@@ -36,6 +37,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "setComposerHeight",
     "setNoticeHeight",
     "stop",
+    "takeDraftInput",
   ]);
   await bridge.send("question");
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", ["question"]);

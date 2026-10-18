@@ -78,6 +78,15 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
               {" · "}新建：{formatShortcut(shortcuts.bindings["quick-chat-new"], window.zpi.platform)}
               {!shortcuts.enabled && "（快捷键已停用）"}
             </small>
+            {window.zpi.platform === "darwin" && (
+              <small>
+                截图：{formatShortcut(shortcuts.bindings["quick-chat-screenshot"], window.zpi.platform)}
+                {" · "}选中文字：
+                {formatShortcut(shortcuts.bindings["quick-chat-selection"], window.zpi.platform)}
+                {" · "}剪贴板：
+                {formatShortcut(shortcuts.bindings["quick-chat-clipboard"], window.zpi.platform)}
+              </small>
+            )}
           </span>
           <button type="button" className="settings-action-button" disabled={saving} onClick={onEditShortcut}>
             修改快捷键

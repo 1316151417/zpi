@@ -132,6 +132,8 @@ it("adds quick chat to existing settings without rewriting storage and preserves
     Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat");
     Reflect.deleteProperty(raw.shortcuts.bindings, "quick-chat-new");
     Reflect.deleteProperty(raw.shortcuts.bindings, "task-menu");
+    for (const id of ["quick-chat-screenshot", "quick-chat-selection", "quick-chat-clipboard"] as const)
+      Reflect.deleteProperty(raw.shortcuts.bindings, id);
     raw.shortcuts.enabled = false;
     store.state.setSetting("app", raw);
     const next = new SettingsStore(dir, encryption, store.state);

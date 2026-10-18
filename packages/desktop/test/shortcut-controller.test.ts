@@ -5,7 +5,7 @@ import {
   setWindowMenuShortcutsIgnored,
   toggleShortcutWindow,
 } from "../src/main/shortcut-controller.ts";
-import { defaultShortcuts } from "../src/shared/shortcuts.ts";
+import { defaultShortcuts, shortcutCommands } from "../src/shared/shortcuts.ts";
 
 function fixture(testMode = false, quickChat = false, quickChatNew = false) {
   const callbacks = new Map<string, () => void>();
@@ -23,6 +23,9 @@ function fixture(testMode = false, quickChat = false, quickChatNew = false) {
   const ignoreMenuShortcuts = vi.fn();
   const controller = new ShortcutController(registry, "darwin", execute, testMode, ignoreMenuShortcuts);
   const settings = defaultShortcuts("darwin");
+  settings.bindings["quick-chat-screenshot"] = null;
+  settings.bindings["quick-chat-selection"] = null;
+  settings.bindings["quick-chat-clipboard"] = null;
   if (!quickChat) settings.bindings["quick-chat"] = null;
   if (!quickChatNew) settings.bindings["quick-chat-new"] = null;
   controller.initialize(settings);
@@ -295,9 +298,9 @@ describe("multiple global shortcut transactions", () => {
       const execute = vi.fn();
       const controller = new ShortcutController(registry, "darwin", execute);
       expect(() => controller.initialize(settings)).toThrow("全局快捷键注册失败");
-      const available = (["toggle-window", "quick-chat", "quick-chat-new"] as const).filter(
-        (command) => command !== blocked,
-      );
+      const available = shortcutCommands
+        .filter(({ id, scope }) => scope === "global" && id !== blocked)
+        .map(({ id }) => id);
       const bindings = available.map((command) => settings.bindings[command] ?? "");
       expect([...callbacks.keys()]).toEqual(bindings);
       for (const binding of bindings) callbacks.get(binding)?.();
@@ -588,8 +591,9 @@ describe("menu shortcut window lifecycle", () => {
     expect(controller.isCapturing).toBe(false);
     expect(getContents).not.toHaveBeenCalled();
     expect(contents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
-    expect(registry.register).toHaveBeenCalledTimes(3);
-    expect(registry.unregister).toHaveBeenCalledTimes(3);
+    const globals = shortcutCommands.filter(({ scope }) => scope === "global").length;
+    expect(registry.register).toHaveBeenCalledTimes(globals);
+    expect(registry.unregister).toHaveBeenCalledTimes(globals);
   });
 
   it("does not hide unexpected errors from live webContents", () => {

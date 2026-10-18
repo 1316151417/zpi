@@ -66,6 +66,7 @@ let bridge: QuickChatBridge;
 let listeners: Set<(snapshot: QuickChatSnapshot) => void>;
 let presentationListeners: Set<(token: number) => void>;
 let composerProbeListeners: Set<(token: number, sessionId: string) => void>;
+let draftInputListeners: Set<() => void>;
 let storageWrite: ReturnType<typeof vi.spyOn>;
 let conversationLoader: ReturnType<typeof vi.fn<() => Promise<{ default: typeof QuickChatConversation }>>>;
 
@@ -168,7 +169,15 @@ beforeEach(() => {
   listeners = new Set();
   presentationListeners = new Set();
   composerProbeListeners = new Set();
+  draftInputListeners = new Set();
   bridge = {
+    takeDraftInput: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    onDraftInput: vi.fn((listener) => {
+      draftInputListeners.add(listener);
+      return () => {
+        draftInputListeners.delete(listener);
+      };
+    }),
     getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     send: vi.fn(async () => ok()),
     importAttachment: vi.fn(async (_sessionId, file) => ({
@@ -233,6 +242,7 @@ afterEach(async () => {
   expect(listeners.size).toBe(0);
   expect(presentationListeners.size).toBe(0);
   expect(composerProbeListeners.size).toBe(0);
+  expect(draftInputListeners.size).toBe(0);
   container.remove();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -257,6 +267,44 @@ test("opens as a slim input with the task send control, theme, and isolated brid
   expect(conversationLoader).not.toHaveBeenCalled();
   expect("setSelection" in bridge).toBe(false);
   expect(storageWrite).not.toHaveBeenCalled();
+});
+
+test("captured text and images append to the current draft without sending or losing existing attachments", async () => {
+  await mount();
+  await type("existing draft");
+  await paste([clipboardImage("existing.png")]);
+  const incoming = vi.mocked(bridge.takeDraftInput);
+  incoming.mockResolvedValueOnce({ ok: true, value: { text: "selected text" } });
+  await act(async () => {
+    for (const receive of draftInputListeners) receive();
+  });
+  expect(input().value).toBe("existing draft\nselected text");
+  incoming.mockResolvedValueOnce({
+    ok: true,
+    value: { image: { name: "captured.png", bytes: new Uint8Array([1, 2, 3]) } },
+  });
+  await act(async () => {
+    for (const receive of draftInputListeners) receive();
+  });
+  expect(input().value).toBe("existing draft\nselected text");
+  expect(container.querySelectorAll(".quick-chat-attachment")).toHaveLength(2);
+  expect(bridge.send).not.toHaveBeenCalled();
+  expect(bridge.reset).not.toHaveBeenCalled();
+});
+
+test("late capture response cannot append into a replacement session", async () => {
+  await mount();
+  const incoming = Promise.withResolvers<Awaited<ReturnType<QuickChatBridge["takeDraftInput"]>>>();
+  vi.mocked(bridge.takeDraftInput).mockReturnValueOnce(incoming.promise);
+  await act(async () => {
+    for (const receive of draftInputListeners) receive();
+  });
+  await push({ session: emptySession("replacement") });
+  await act(async () => {
+    incoming.resolve({ ok: true, value: { text: "old selection" } });
+  });
+  expect(input().value).toBe("");
+  expect(bridge.send).not.toHaveBeenCalled();
 });
 
 // happy-dom runs real React state/effects/events, but not text layout or a compositor.

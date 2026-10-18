@@ -8,6 +8,7 @@ import {
   shortcutForEvent,
   shortcutFromEvent,
   validateShortcuts,
+  withQuickChatCaptureShortcuts,
   withQuickChatNewShortcut,
   withQuickChatShortcut,
   withTaskMenuShortcut,
@@ -178,7 +179,7 @@ describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platfo
         settings.bindings[command] = binding;
         expect(validateShortcuts(settings, platform)).toBeUndefined();
         for (const { id, scope } of shortcutCommands) {
-          if (id === "quick-chat" || id === "quick-chat-new") continue;
+          if (id.startsWith("quick-chat")) continue;
           const previous = settings.bindings[id];
           settings.bindings[id] = binding;
           expect(validateShortcuts(settings, platform), `${scope}: ${id}`).toContain("Ctrl 或 Command");
@@ -235,6 +236,23 @@ describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platfo
 });
 
 describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s", (platform) => {
+  it("adds capture commands without stealing custom keys, overwriting clears, or enabling shortcuts", () => {
+    const settings = defaultShortcuts(platform);
+    const bindings = settings.bindings;
+    for (const id of ["quick-chat-screenshot", "quick-chat-selection", "quick-chat-clipboard"] as const)
+      Reflect.deleteProperty(bindings, id);
+    bindings["quick-chat"] = "Shift+Option+A";
+    bindings["quick-chat-selection"] = null;
+    settings.enabled = false;
+    const before = structuredClone(settings);
+    const next = withQuickChatCaptureShortcuts(settings, platform);
+    expect(next.bindings["quick-chat-screenshot"]).toBeNull();
+    expect(next.bindings["quick-chat-selection"]).toBeNull();
+    expect(next.bindings["quick-chat-clipboard"]).toBe(platform === "darwin" ? "Alt+Shift+V" : null);
+    expect(next.enabled).toBe(false);
+    expect(settings).toEqual(before);
+    expect(validateShortcuts(next, platform)).toBeUndefined();
+  });
   it("appends missing commands in migration order without changing existing bindings or the input", () => {
     const settings = defaultShortcuts(platform);
     settings.enabled = false;

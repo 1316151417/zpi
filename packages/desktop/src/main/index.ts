@@ -39,11 +39,13 @@ import { ErrorLog } from "./error-log.ts";
 import { performFileAction } from "./file-actions.ts";
 import { readFilePreview, readPreviewRange } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
+import { macQuickChatCapture } from "./mac-quick-chat-capture.ts";
 import { PaneServices } from "./pane-services.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
 import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
 import { previewPrintHostScript, previewPrintIsolationCss } from "./preview-print-host.ts";
 import { openProjectFromDialog } from "./project-picker.ts";
+import { QuickChatCapture } from "./quick-chat-capture.ts";
 import { QuickChatHost } from "./quick-chat-host.ts";
 import { QuickChatTiming } from "./quick-chat-timing.ts";
 import { installQuickChatIpc, QuickChatWindow } from "./quick-chat-window.ts";
@@ -323,11 +325,42 @@ async function launch(): Promise<void> {
     openExternal: (url) => shell.openExternal(url),
   });
   const removeQuickChatIpc = installQuickChatIpc(ipcMain, quickChat);
+  const quickChatCapture = new QuickChatCapture({
+    sessionId: () => quickChatHost.sessionId,
+    hide: () => quickChat.hide(),
+    open: (input, sessionId) => quickChat.openWithDraft(input, sessionId),
+    read: macQuickChatCapture({
+      platform: process.platform,
+      testMode,
+      temporaryDirectory: app.getPath("temp"),
+      selectionHelper: join(dir, "../native/selected-text").replace(/\.asar([/\\])/, ".asar.unpacked$1"),
+      clipboard,
+      accessibilityAccess: () => systemPreferences.isTrustedAccessibilityClient(true),
+    }),
+  });
   const shortcuts = new ShortcutController(
     globalShortcut,
     process.platform,
     (command) => {
       if (ending) return;
+      if (
+        command === "quick-chat-screenshot" ||
+        command === "quick-chat-selection" ||
+        command === "quick-chat-clipboard"
+      ) {
+        const kind =
+          command === "quick-chat-screenshot"
+            ? "screenshot"
+            : command === "quick-chat-selection"
+              ? "selection"
+              : "clipboard";
+        void quickChatCapture.invoke(kind).catch((error) => {
+          if (ending) return;
+          errors.write("quick-chat.capture", error);
+          if (!testMode) dialog.showErrorBox("无法带入快速对话", String(error));
+        });
+        return;
+      }
       if (command === "quick-chat" || command === "quick-chat-new") {
         const action = quickChat.toggle(command === "quick-chat-new");
         void action.catch((error) => {
@@ -1245,6 +1278,7 @@ async function launch(): Promise<void> {
         // Drafts are durable now. Finish shutdown even if one service fails;
         // returning to a partially disposed application is not recoverable.
         for (const [scope, close] of [
+          ["quick-chat-capture", () => quickChatCapture.dispose()],
           ["quick-chat", () => quickChat.dispose()],
           ["quick-chat-ipc", removeQuickChatIpc],
           ["chatgpt-auth", () => chatgptAuth.close()],

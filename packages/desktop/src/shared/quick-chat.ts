@@ -11,8 +11,15 @@ export interface QuickChatSnapshot {
   expanded?: boolean;
   presentationVersion?: number;
 }
+/** User-invoked capture only; never sent to a model until the composer is submitted. */
+export interface QuickChatDraftInput {
+  text?: string;
+  image?: { name: string; bytes: Uint8Array };
+}
 /** Only this bridge is exposed to the temporary window. No task or privileged desktop API. */
 export interface QuickChatBridge {
+  takeDraftInput(sessionId: string): Promise<Result<QuickChatDraftInput | undefined>>;
+  onDraftInput(listener: () => void): () => void;
   getSnapshot(): Promise<Result<QuickChatSnapshot>>;
   send(text: string, attachments?: string[]): Promise<Result<void>>;
   importAttachment(sessionId: string, file: File): Promise<Result<ImageAttachment>>;

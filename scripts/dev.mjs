@@ -6,6 +6,7 @@ import electron from "electron";
 import { build } from "tsup";
 import { createServer } from "vite";
 import { buildAppIcon } from "./app-icon.mjs";
+import { buildMacCapture } from "./build-native.mjs";
 import { mainBuild, preloadBuild } from "./desktop-build.mjs";
 import { stopDesktopProcess } from "./dev-process.ts";
 import { prepareTerminal } from "./prepare-terminal.ts";
@@ -14,6 +15,7 @@ if (process.env.ZPI_TEST_SCOPE || process.env.ZPI_TEST_MODE || process.env.VITES
   throw new Error("Tests must use launchDesktop; the development launcher is interactive");
 
 await prepareTerminal();
+await buildMacCapture();
 await buildAppIcon();
 let executable = electron;
 if (process.platform === "darwin") {

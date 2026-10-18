@@ -121,6 +121,14 @@ macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应
 
 0.2.112 及以前的上述云端记录仅更新这些原生用例并做静态校验/`--list` 发现检查，当时没有运行 Electron GUI、真实 API 或用户 Mac；macOS Space/Dock/跨应用焦点、真实系统剪贴板图片与粘贴、真实全局快捷键事件顺序与原生毫秒延迟均未实测。不能将脚本更新、DOM/窗口模拟通过或 `--list` 成功写成原生验收通过，不承诺 0ms。
 
+### macOS 快速对话内容带入
+
+`quick-chat-screenshot` / `quick-chat-selection` / `quick-chat-clipboard` 默认分别为 Option+Shift+A / C / V；其他系统默认不绑定。读取旧设置时只补缺失命令，冲突时留空；自定义、清空项和总开关保持不变。快捷键读取内容后才唤起，追加当前草稿，不新建、不自动发送。单次采集期间连续按键合并，显式新建后的迟到采集丢弃；窗口的单次交付同时核对 session 和 visibility epoch，隐藏或重置取消待领取内容。renderer 领取后再走原有图片导入、预览、限额与错误重试管线。
+
+截图调用 macOS 自带的交互式框选工具，按 Esc 取消；输出放在独立临时目录，成功、失败和取消均清理。截图前收起浮窗但保留草稿。剪贴板仅在该快捷键触发时读取，图片优先于其附带文字，不模拟复制或改写剪贴板。选区通过轻量 AppKit / ApplicationServices helper 读取前台应用的 AXSelectedText；未授权、无选区或应用不支持时明确报错，提示手动复制后用剪贴板入口。不会自动向模型发送采集结果，也不记录文本或图片内容；诊断仅增加 draft-offered / draft-taken 状态事件。
+
+macOS 构建通过 Xcode Command Line Tools 的 clang 编译 `packages/desktop/native/selected-text.m`，产物位于 dist/native，打包时解包到 app.asar.unpacked；运行用户无需编译器。`npm run dev` 与 `npm run build` 均准备该助手。默认桌面测试禁止真实选区、截图和剪贴板采集；单测注入假读取器和命令执行器。原生交付集成用例使用真实 Electron、preload 和 renderer 追加测试文字/PNG；系统权限、实体全局键和实际截图/选区另做手动验收。
+
 ### 文件工具的资源与并发边界
 
 本地文本 `read` 以流式扫描计算行数和内容哈希，仅保留当前输出范围的有界内容；超长单行也不整行缓存。为了精确的续读提示和内容复用判断，仍会扫描全文件，分页不等于只读取请求范围的磁盘字节。自定义 `ReadOperations` 保持原有接口，由实现方负责读取资源限制。

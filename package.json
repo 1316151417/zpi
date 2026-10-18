@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.2.115",
+  "version": "0.2.116",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -86,6 +86,7 @@
       }
     ],
     "asarUnpack": [
+      "packages/desktop/dist/native/**/*",
       "**/node_modules/sharp/**/*",
       "**/node_modules/@img/**/*",
       "**/node_modules/node-pty/**/*"

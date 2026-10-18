@@ -4,6 +4,12 @@ import type { QuickChatBridge, QuickChatSnapshot } from "../shared/quick-chat.ts
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:quick-chat", method, args);
 const bridge: QuickChatBridge = {
+  takeDraftInput: (sessionId) => call("takeDraftInput", sessionId),
+  onDraftInput(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("zpi:quick-chat-draft", handler);
+    return () => ipcRenderer.removeListener("zpi:quick-chat-draft", handler);
+  },
   getSnapshot: () => call("getSnapshot"),
   send: (text, attachments) =>
     attachments === undefined ? call("send", text) : call("send", text, attachments),

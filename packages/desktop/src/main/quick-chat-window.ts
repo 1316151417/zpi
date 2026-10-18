@@ -10,7 +10,7 @@ import type {
   SystemPreferences,
 } from "electron";
 import type { ErrorCode, Result } from "../shared/bridge.ts";
-import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
+import type { QuickChatDraftInput, QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { isPathInside } from "./path-bounds.ts";
 import type { QuickChatHost } from "./quick-chat-host.ts";
@@ -76,6 +76,7 @@ export class QuickChatWindow {
   private readyWaiters = new Set<{ version: number; resolve: (ready: boolean) => void }>();
   private presentation?: { trace: QuickChatTrace; timer: ReturnType<typeof setTimeout> };
   private disposed = false;
+  private draftInput?: { epoch: number; sessionId: string; input: QuickChatDraftInput };
   private unsubscribe: () => void;
   private spaceSubscription?: number;
   constructor(options: Options) {
@@ -94,6 +95,7 @@ export class QuickChatWindow {
       this.recordEvent("snapshot-received");
       const changedSession = snapshot.session.sessionId !== this.sessionId;
       if (changedSession) {
+        this.draftInput = undefined;
         this.keepExpanded = Boolean(
           this.resettingPresentation?.sessionId === this.sessionId && this.resettingPresentation.expanded,
         );
@@ -400,6 +402,7 @@ export class QuickChatWindow {
         return;
       }
       this.visible = false;
+      this.draftInput = undefined;
       this.cancelComposerProbe();
       this.cancelReadyWaiters();
       this.recordState("native-hidden");
@@ -550,7 +553,12 @@ export class QuickChatWindow {
     trace?.mark(stage, { ...this.timingState(), ...details });
     trace?.finish("ready");
   }
-  private present(window: BrowserWindow, epoch: number, trace?: QuickChatTrace): void {
+  private present(
+    window: BrowserWindow,
+    epoch: number,
+    trace?: QuickChatTrace,
+    input?: QuickChatDraftInput,
+  ): void {
     if (
       epoch !== this.visibilityEpoch ||
       !this.visible ||
@@ -560,6 +568,11 @@ export class QuickChatWindow {
     ) {
       trace?.finish("cancelled");
       return;
+    }
+    if (input) {
+      this.draftInput = { epoch, sessionId: this.sessionId, input };
+      this.recordEvent("draft-offered");
+      window.webContents.send("zpi:quick-chat-draft");
     }
     if (trace) {
       this.finishPresentation("cancelled");
@@ -586,7 +599,11 @@ export class QuickChatWindow {
     // Settings mutations already publish their updates. Reopening must not clone
     // and resend the entire conversation or schedule a rich renderer rerender.
   }
-  show(trace = this.startTrace(), reset?: Promise<void>): Promise<void> {
+  openWithDraft(input: QuickChatDraftInput, expectedSessionId: string): Promise<void> {
+    if (expectedSessionId !== this.sessionId) return Promise.resolve();
+    return this.show(this.startTrace(), undefined, input);
+  }
+  show(trace = this.startTrace(), reset?: Promise<void>, input?: QuickChatDraftInput): Promise<void> {
     if (this.disposed) {
       trace?.finish("cancelled");
       return Promise.resolve();
@@ -594,6 +611,7 @@ export class QuickChatWindow {
     const wasHidden = !this.visible || !this.window || this.window.isDestroyed() || !this.window.isVisible();
     this.visible = true;
     const epoch = ++this.visibilityEpoch;
+    this.draftInput = undefined;
     this.cancelComposerProbe();
     this.cancelReadyWaiters();
     const resetting = reset ?? (wasHidden ? this.options.host.resetIfExpired() : undefined);
@@ -603,7 +621,7 @@ export class QuickChatWindow {
     if (warm && !resetting && !checkComposer && !this.needsSessionFrame) {
       // The retained-window hot path stays in the global-shortcut callback stack.
       trace?.mark("window-ready");
-      this.present(this.window as BrowserWindow, epoch, trace);
+      this.present(this.window as BrowserWindow, epoch, trace, input);
       return Promise.resolve();
     }
     const prepare = async (window: BrowserWindow | undefined) => {
@@ -653,7 +671,7 @@ export class QuickChatWindow {
         trace?.finish("cancelled");
         return;
       }
-      this.present(window, epoch, trace);
+      this.present(window, epoch, trace, input);
     };
     // A warm window can start its first IPC in the native shortcut stack. An
     // already-resolved ready() promise can otherwise leave this work waiting
@@ -780,6 +798,7 @@ export class QuickChatWindow {
     return this.visible && this.opening?.epoch === this.visibilityEpoch && this.opening.phase === "preparing";
   }
   hide(reason: QuickChatStage = "program-hide"): void {
+    this.draftInput = undefined;
     this.recordState(reason);
     this.visibilityEpoch++;
     this.visible = false;
@@ -793,6 +812,7 @@ export class QuickChatWindow {
       if (this.disposed) throw new Error("busy: 快速对话正在关闭");
       if (typeof method !== "string" || !Array.isArray(args)) throw new Error("invalid_input: 未知 IPC 方法");
       const counts: Record<string, number | number[]> = {
+        takeDraftInput: 1,
         getSnapshot: 0,
         send: [1, 2],
         importAttachment: 3,
@@ -825,6 +845,16 @@ export class QuickChatWindow {
       const host = this.options.host;
       let value: unknown;
       switch (method) {
+        case "takeDraftInput": {
+          const sessionId = text(256);
+          const pending = this.draftInput;
+          if (!pending || sessionId !== pending.sessionId) break;
+          this.draftInput = undefined;
+          if (pending.epoch === this.visibilityEpoch && this.visible && sessionId === host.sessionId)
+            value = pending.input;
+          if (value) this.recordEvent("draft-taken");
+          break;
+        }
         case "rendererCommitted":
         case "rendererReady": {
           const sessionId = text(256);
@@ -951,6 +981,7 @@ export class QuickChatWindow {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.draftInput = undefined;
     clearTimeout(this.warmup);
     this.warmup = undefined;
     this.visible = false;

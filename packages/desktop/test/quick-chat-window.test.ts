@@ -205,6 +205,37 @@ test("retains original IPC failures for diagnostics without depending on the log
   await f.quick.dispose();
 });
 
+test("captured content is handed to the active renderer once and invalidated by hide or reset", async () => {
+  const f = fixture();
+  await f.quick.openWithDraft({ text: "captured" }, f.host.sessionId);
+  expect(f.windows[0].isVisible()).toBe(true);
+  expect(f.windows[0].webContents.send).toHaveBeenCalledWith("zpi:quick-chat-draft");
+  await expect(f.quick.call("takeDraftInput", ["wrong-session"])).resolves.toMatchObject({
+    ok: true,
+    value: undefined,
+  });
+  await expect(f.quick.call("takeDraftInput", [f.host.sessionId])).resolves.toEqual({
+    ok: true,
+    value: { text: "captured" },
+  });
+  await expect(f.quick.call("takeDraftInput", [f.host.sessionId])).resolves.toMatchObject({
+    ok: true,
+    value: undefined,
+  });
+  await f.quick.openWithDraft({ text: "hidden" }, f.host.sessionId);
+  f.quick.hide();
+  await expect(f.quick.call("takeDraftInput", [f.host.sessionId])).resolves.toMatchObject({
+    ok: true,
+    value: undefined,
+  });
+  f.changeSession("next");
+  await f.quick.openWithDraft({ text: "stale" }, "session-1");
+  expect(f.windows[0].isVisible()).toBe(false);
+  expect(f.host.send).not.toHaveBeenCalled();
+  expect(f.host.reset).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
 test("quick window is lazy, isolated, and toggles without affecting its request or the main task", async () => {
   const f = fixture();
   expect(f.windows).toHaveLength(0);
