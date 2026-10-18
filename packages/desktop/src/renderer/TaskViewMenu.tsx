@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Check, Clock3, Folder, GripVertical, Hash, ListFilter, MessageCirclePlus } from "lucide-react";
+import { Check, Clock3, Folder, Hash, ListFilter, MessageCirclePlus } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { ActionHint } from "zpi-ui";
 import type { TaskPreferences } from "./sidebar-task-model.ts";
@@ -41,10 +41,7 @@ export function TaskViewMenu({
         </button>
       </fieldset>
     );
-  const grouped = value.organizeBy === "grouped";
-  const sortBy = grouped ? (value.groupSortBy ?? "updated") : value.sortBy;
-  const sortLabels = { updated: "更新时间", created: "创建时间", manual: "手动排序" };
-  const label = grouped ? `任务排序：${sortLabels[sortBy]}` : "筛选和排序";
+  const label = "筛选和排序";
   const option = (id: string, label: string, icon: ReactNode) => (
     <Menu.RadioItem className="parity-menu-radio" value={id}>
       {icon}
@@ -58,43 +55,35 @@ export function TaskViewMenu({
     <Menu.Root>
       <ActionHint label={label} appearance="control">
         <Menu.Trigger className="task-view-trigger" aria-label={label}>
-          {grouped && sortBy === "manual" ? <GripVertical size={14} /> : <ListFilter size={14} />}
+          <ListFilter size={14} />
         </Menu.Trigger>
       </ActionHint>
       <Menu.Portal>
         <Menu.Content className="parity-menu task-view-menu" align="end" sideOffset={2} aria-label={label}>
-          {!grouped && (
-            <>
-              <Menu.Label className="parity-menu-label">视图</Menu.Label>
-              <Menu.RadioGroup
-                className="parity-menu-group"
-                value={value.organizeBy}
-                onValueChange={(organizeBy) => {
-                  if (organizeBy === "project" || organizeBy === "chronological")
-                    onChange({ ...value, organizeBy });
-                }}
-              >
-                {option("project", "按项目", <Folder size={16} />)}
-                {option("chronological", "时间线", <Clock3 size={16} />)}
-              </Menu.RadioGroup>
-              <Menu.Separator className="parity-menu-separator" />
-            </>
-          )}
-          <Menu.Label className="parity-menu-label">{grouped ? "任务排序" : "排序方式"}</Menu.Label>
+          <Menu.Label className="parity-menu-label">视图</Menu.Label>
           <Menu.RadioGroup
             className="parity-menu-group"
-            value={sortBy}
+            value={value.organizeBy}
+            onValueChange={(organizeBy) => {
+              if (organizeBy === "project" || organizeBy === "chronological")
+                onChange({ ...value, organizeBy });
+            }}
+          >
+            {option("project", "按项目", <Folder size={16} />)}
+            {option("chronological", "时间线", <Clock3 size={16} />)}
+          </Menu.RadioGroup>
+          <Menu.Separator className="parity-menu-separator" />
+          <Menu.Label className="parity-menu-label">排序方式</Menu.Label>
+          <Menu.RadioGroup
+            className="parity-menu-group"
+            value={value.sortBy}
             onValueChange={(sortBy) => {
-              if (grouped && (sortBy === "manual" || sortBy === "created" || sortBy === "updated"))
-                onChange({ ...value, groupSortBy: sortBy });
-              else if (sortBy === "created" || sortBy === "updated") onChange({ ...value, sortBy });
+              if (sortBy === "created" || sortBy === "updated") onChange({ ...value, sortBy });
             }}
           >
             {option("updated", "更新时间", <TaskUpdatedIcon size={16} />)}
             {option("created", "创建时间", <MessageCirclePlus size={16} />)}
-            {grouped && option("manual", "手动排序", <GripVertical size={16} />)}
           </Menu.RadioGroup>
-          {grouped && <Menu.Label className="parity-menu-label">拖拽请选手动排序</Menu.Label>}
         </Menu.Content>
       </Menu.Portal>
     </Menu.Root>

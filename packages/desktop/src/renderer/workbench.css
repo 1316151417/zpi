@@ -5335,6 +5335,12 @@
   color: var(--color-text-subtle);
   border-radius: 6px;
 }
+.grouped-task-archive-hint {
+  display: inline-flex;
+}
+.grouped-task-actions button:disabled {
+  opacity: 0.45;
+}
 .task-group-content {
   margin-left: 16px;
   border-left: 1px solid
@@ -5895,12 +5901,6 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-.grouped-task-added {
-  color: var(--color-diff-added, #22c55e);
-}
-.grouped-task-removed {
-  color: var(--color-diff-removed, #ef4444);
 }
 .task-group-body-grid {
   display: grid;

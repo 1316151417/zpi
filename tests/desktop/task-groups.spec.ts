@@ -33,13 +33,9 @@ async function expectToolbarFits(page: Page) {
     .toEqual([]);
 }
 
-async function grouped(page: Page, manual = true) {
+async function grouped(page: Page) {
   await page.getByRole("button", { name: "分组", exact: true }).click();
   await expect(page.getByRole("button", { name: "新建分组", exact: true })).toBeVisible();
-  if (manual) {
-    await page.getByRole("button", { name: /^任务排序：/ }).click();
-    await page.getByRole("menuitemradio", { name: "手动排序", exact: true }).click();
-  }
 }
 async function createGroup(page: Page, name: string) {
   await page.getByRole("button", { name: "新建分组", exact: true }).click();
@@ -53,7 +49,7 @@ async function createGroup(page: Page, name: string) {
   await expect(page.getByRole("button", { name: `分组 ${name}`, exact: true })).toBeVisible();
 }
 
-test("grouped tasks default to recent activity and retain independent manual order through sorting and reload", async () => {
+test("grouped tasks keep manual order and hide the sort menu while project sorting stays independent", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-group-sort-"));
   const project = join(dir, "workspace");
   await mkdir(project);
@@ -69,7 +65,7 @@ test("grouped tasks default to recent activity and retain independent manual ord
   try {
     app = await launchDesktop({ dir, project, url: "" });
     const page = await app.firstWindow();
-    const saved = await page.evaluate(async () => {
+    await page.evaluate(async () => {
       const created = await window.zpi.updateTaskGroups({ type: "create" });
       if (!created.ok) throw new Error(created.error.message);
       const groupId = created.value.groups[0].id;
@@ -79,54 +75,144 @@ test("grouped tasks default to recent activity and retain independent manual ord
       }
       const ordered = await window.zpi.updateTaskGroups({ type: "taskTop", id: "root-new" });
       if (!ordered.ok) throw new Error(ordered.error.message);
-      return ordered.value;
     });
     await page.reload();
-    await grouped(page, false);
+    await grouped(page);
     await expectToolbarFits(page);
     const rootRows = page.locator(".task-groups > .grouped-task-wrapper [data-testid=session-row]");
     const groupRows = page.locator(".task-group-content [data-testid=session-row]");
     const ids = (rows: typeof rootRows) =>
       rows.evaluateAll((elements) => elements.map((row) => row.getAttribute("data-session-id")));
-    await expect.poll(() => ids(rootRows)).toEqual(["root-old", "root-new"]);
-    await expect.poll(() => ids(groupRows)).toEqual(["group-old", "group-new"]);
-    await rootRows.first().hover();
-    await expect(rootRows.first().getByRole("button", { name: /^移动到顶部 / })).toHaveCount(0);
-    await page.screenshot({ path: test.info().outputPath("grouped-updated-order.png") });
-    const sort = page.getByRole("button", { name: /^任务排序：/ });
-    await sort.click();
-    await expect(page.getByRole("menuitemradio", { name: "更新时间", exact: true })).toBeChecked();
-    await expect(page.getByRole("menuitemradio", { name: "时间线", exact: true })).toHaveCount(0);
-    await page.getByRole("menuitemradio", { name: "创建时间", exact: true }).click();
     await expect.poll(() => ids(rootRows)).toEqual(["root-new", "root-old"]);
     await expect.poll(() => ids(groupRows)).toEqual(["group-new", "group-old"]);
-    await sort.click();
-    await page.getByRole("menuitemradio", { name: "手动排序", exact: true }).click();
-    await expect.poll(() => ids(groupRows)).toEqual(saved.members[saved.groups[0].id]);
+    await expect(page.getByRole("button", { name: "筛选和排序", exact: true })).toHaveCount(0);
     await rootRows.first().hover();
     await expect(rootRows.first().getByRole("button", { name: /^移动到顶部 / })).toBeVisible();
+    const workspaceTooltip = page.getByRole("tooltip", { name: "workspace", exact: true });
+    await expect(workspaceTooltip).toBeVisible();
+    await expect(workspaceTooltip).toHaveText("workspace");
+    await page.screenshot({ path: test.info().outputPath("grouped-manual-order.png") });
+    const second = rootRows.nth(1);
+    await second.hover();
+    await second.getByRole("button", { name: /^移动到顶部 / }).click();
+    await expect.poll(() => ids(rootRows)).toEqual(["root-old", "root-new"]);
     await page.reload();
-    await expect(sort).toHaveAccessibleName("任务排序：手动排序");
-    await expect.poll(() => ids(groupRows)).toEqual(saved.members[saved.groups[0].id]);
+    await grouped(page);
+    await expect.poll(() => ids(rootRows)).toEqual(["root-old", "root-new"]);
+    await expect.poll(() => ids(groupRows)).toEqual(["group-new", "group-old"]);
     expect(
       await page.evaluate(async () => {
         const result = await window.zpi.getTaskGroups();
         if (!result.ok) throw new Error(result.error.message);
-        return result.value;
+        return result.value.roots.filter((node) => node.type === "task").map((node) => node.id);
       }),
-    ).toEqual(saved);
+    ).toEqual(["root-old", "root-new"]);
     await page.getByRole("button", { name: "项目", exact: true }).click();
     await page.getByRole("button", { name: "筛选和排序", exact: true }).click();
     await expect(page.getByRole("menuitemradio", { name: "更新时间", exact: true })).toBeChecked();
+    await page.getByRole("menuitemradio", { name: "创建时间", exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await page.reload();
+    await page.getByRole("button", { name: "筛选和排序", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "创建时间", exact: true })).toBeChecked();
     await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "分组", exact: true }).click();
+    await expect(page.getByRole("button", { name: "筛选和排序", exact: true })).toHaveCount(0);
+    await expect.poll(() => ids(rootRows)).toEqual(["root-old", "root-new"]);
+    await expect.poll(() => ids(groupRows)).toEqual(["group-new", "group-old"]);
     await page.evaluate(async () => {
       const result = await window.zpi.updatePreferences({ sidebarWidth: 200, fontSize: 20 });
       if (!result.ok) throw new Error(result.error.message);
     });
     await page.reload();
-    await grouped(page, false);
+    await grouped(page);
     await expectToolbarFits(page);
     await page.screenshot({ path: test.info().outputPath("grouped-narrow-toolbar.png") });
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
+
+test("grouped task drag persists the dropped order through reload", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-task-drag-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const now = Date.now();
+  seedHistory(dir, project, 0, { id: "drag-a", createdAt: now - 2000, updatedAt: now - 2000 });
+  seedHistory(dir, project, 0, { id: "drag-b", createdAt: now - 1000, updatedAt: now - 1000 });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    await grouped(page);
+    const rootRows = page.locator(".task-groups > .grouped-task-wrapper [data-testid=session-row]");
+    const ids = () =>
+      rootRows.evaluateAll((elements) => elements.map((row) => row.getAttribute("data-session-id")));
+    const roots = () =>
+      page.evaluate(async () => {
+        const result = await window.zpi.getTaskGroups();
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value.roots.filter((node) => node.type === "task").map((node) => node.id);
+      });
+    const initial = await ids();
+    expect(initial).toHaveLength(2);
+    const source = await rootRows.nth(0).boundingBox();
+    const target = await rootRows.nth(1).boundingBox();
+    if (!source || !target) throw new Error("missing task row bounds");
+    await page.mouse.move(source.x + 40, source.y + source.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + 40, target.y + target.height / 2, { steps: 10 });
+    await page.mouse.up();
+    const expected = [initial[1], initial[0]];
+    await expect.poll(ids).toEqual(expected);
+    await expect.poll(roots).toEqual(expected);
+    await page.reload();
+    await grouped(page);
+    await expect.poll(ids).toEqual(expected);
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
+
+test("grouped group drag persists the dropped order through reload", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-group-drag-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    await grouped(page);
+    await createGroup(page, "拖拽甲");
+    await createGroup(page, "拖拽乙");
+    const state = await page.evaluate(async () => {
+      const result = await window.zpi.getTaskGroups();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
+    });
+    const initial = state.roots.filter((node) => node.type === "group").map((node) => node.id);
+    expect(initial).toHaveLength(2);
+    const title = (id: string) => state.groups.find((group) => group.id === id)?.title;
+    const groupOrder = () =>
+      page.evaluate(async () => {
+        const result = await window.zpi.getTaskGroups();
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value.roots.filter((node) => node.type === "group").map((node) => node.id);
+      });
+    const sourceHeader = page.getByRole("button", { name: `分组 ${title(initial[0])}`, exact: true });
+    const targetHeader = page.getByRole("button", { name: `分组 ${title(initial[1])}`, exact: true });
+    const source = await sourceHeader.locator(".task-group-title").boundingBox();
+    const target = await targetHeader.boundingBox();
+    if (!source || !target) throw new Error("missing group header bounds");
+    await page.mouse.move(source.x + 8, source.y + source.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + 40, target.y + target.height / 2, { steps: 10 });
+    await page.mouse.up();
+    const expected = [initial[1], initial[0]];
+    await expect.poll(groupOrder).toEqual(expected);
+    await page.reload();
+    await grouped(page);
+    await expect.poll(groupOrder).toEqual(expected);
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
@@ -195,6 +281,36 @@ test("grouped task archive uses the menu icon and retains history while draft X 
     await page.reload();
     await expect(page.locator(`[data-session-id="${draftId}"]`)).toHaveCount(0);
     await expect(row).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("grouped running task fades archive and explains why it is disabled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-running-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const server = await fakeServer((_, response) => send(response, chunk({ content: "live response" })));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByLabel("添加项目", { exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("运行中的任务");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await grouped(page);
+    const row = page.locator(".task-groups [data-testid=session-row]").first();
+    await row.hover();
+    const archive = row.getByRole("button", { name: "归档任务", exact: true });
+    await expect(archive).toBeDisabled();
+    await expect(archive).toHaveCSS("opacity", "0.45");
+    await archive.hover();
+    await expect(page.getByRole("tooltip", { name: "请先停止运行", exact: true })).toBeVisible();
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

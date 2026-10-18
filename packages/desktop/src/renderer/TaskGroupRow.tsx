@@ -20,7 +20,6 @@ import {
 } from "./store.ts";
 import { TaskMenuItems } from "./TaskMenuItems.tsx";
 import { TaskGroupColorMark } from "./task-group-colors.tsx";
-import { refreshTaskGroupChangeSummary } from "./task-group-tooltip.ts";
 import { unwrap } from "./unwrap.ts";
 
 export function TaskGroupRow({
@@ -31,7 +30,6 @@ export function TaskGroupRow({
   overlay = false,
   tooltipsDisabled = false,
   interactionDisabled = false,
-  manualOrder = true,
 }: {
   record: SessionRecord;
   state: TaskGroupState;
@@ -40,26 +38,9 @@ export function TaskGroupRow({
   overlay?: boolean;
   tooltipsDisabled?: boolean;
   interactionDisabled?: boolean;
-  manualOrder?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [changes, setChanges] = useState<{ added: number; removed: number }>();
-  const changeRequest = useRef(false);
   const workspaceLabel = record.cwd?.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "ZPI";
-  const changeRevision = useRef(record.updatedAt);
-  changeRevision.current = record.updatedAt;
-  const loadChanges = () => {
-    if (record.draft) return;
-    const revision = record.updatedAt;
-    setChanges(undefined);
-    void refreshTaskGroupChangeSummary(
-      changeRequest,
-      () => window.zpi.getTaskSearchChanges(record.id).then(unwrap),
-      (summary) => {
-        if (revision === changeRevision.current) setChanges(summary);
-      },
-    ).catch(() => {});
-  };
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(record.title);
   const input = useRef<HTMLInputElement>(null);
@@ -67,12 +48,12 @@ export function TaskGroupRow({
   const composing = useRef(false);
   const draggable = useDraggable({
     id: `task:${record.id}`,
-    disabled: !manualOrder || interactionDisabled || overlay || menuOpen || renaming || Boolean(record.draft),
+    disabled: interactionDisabled || overlay || menuOpen || renaming || Boolean(record.draft),
     data: { type: "task", id: record.id },
   });
   const droppable = useDroppable({
     id: `task:${record.id}`,
-    disabled: !manualOrder || interactionDisabled || overlay || Boolean(record.draft),
+    disabled: interactionDisabled || overlay || Boolean(record.draft),
     data: { type: "task", id: record.id },
   });
   const groupId = taskGroupFor(state, record.id);
@@ -178,39 +159,39 @@ export function TaskGroupRow({
             </span>
             {!overlay && (
               <span className="grouped-task-actions">
-                {manualOrder && (
-                  <ActionHint
-                    label="移动到顶部"
-                    appearance="control"
-                    open={tooltipsDisabled ? false : undefined}
-                  >
-                    <button
-                      aria-label={`移动到顶部 ${record.title}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        moveTop();
-                      }}
-                    >
-                      <ArrowUpToLine size={14} />
-                    </button>
-                  </ActionHint>
-                )}
                 <ActionHint
-                  label="归档任务"
+                  label="移动到顶部"
+                  appearance="control"
+                  open={tooltipsDisabled ? false : undefined}
+                >
+                  <button
+                    aria-label={`移动到顶部 ${record.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      moveTop();
+                    }}
+                  >
+                    <ArrowUpToLine size={14} />
+                  </button>
+                </ActionHint>
+                <ActionHint
+                  label={record.running ? "请先停止运行" : "归档任务"}
                   appearance="control"
                   hideWhenDetached
                   open={tooltipsDisabled ? false : undefined}
                 >
-                  <button
-                    aria-label="归档任务"
-                    disabled={record.running || Boolean(record.diagnostic)}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      close();
-                    }}
-                  >
-                    <Archive size={14} />
-                  </button>
+                  <span className="grouped-task-archive-hint">
+                    <button
+                      aria-label="归档任务"
+                      disabled={record.running || Boolean(record.diagnostic)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        close();
+                      }}
+                    >
+                      <Archive size={14} />
+                    </button>
+                  </span>
                 </ActionHint>
               </span>
             )}
@@ -265,12 +246,7 @@ export function TaskGroupRow({
   return (
     <Context.Root open={menuOpen} onOpenChange={setMenuOpen}>
       <Tooltip.Provider delayDuration={0}>
-        <Tooltip.Root
-          open={tooltipsDisabled || menuOpen ? false : undefined}
-          onOpenChange={(open) => {
-            if (open) loadChanges();
-          }}
-        >
+        <Tooltip.Root open={tooltipsDisabled || menuOpen ? false : undefined}>
           <Tooltip.Trigger asChild>
             <Context.Trigger asChild>
               <div className="grouped-task-wrapper">{row}</div>
@@ -285,13 +261,6 @@ export function TaskGroupRow({
             >
               <Folder size={14} />
               <span>{workspaceLabel}</span>
-              {changes && (changes.added > 0 || changes.removed > 0) && (
-                <>
-                  <span>·</span>
-                  {changes.added > 0 && <span className="grouped-task-added">+{changes.added}</span>}
-                  {changes.removed > 0 && <span className="grouped-task-removed">-{changes.removed}</span>}
-                </>
-              )}
             </Tooltip.Content>
           </Tooltip.Portal>
         </Tooltip.Root>
@@ -343,12 +312,10 @@ export function TaskGroupRow({
                 </Context.SubContent>
               </Context.Portal>
             </Context.Sub>
-            {manualOrder && (
-              <Context.Item className="menu-item" onSelect={moveTop}>
-                <ArrowUpToLine size={16} />
-                移动到顶部
-              </Context.Item>
-            )}
+            <Context.Item className="menu-item" onSelect={moveTop}>
+              <ArrowUpToLine size={16} />
+              移动到顶部
+            </Context.Item>
             <Context.Separator className="menu-separator" />
             <TaskMenuItems
               record={record}

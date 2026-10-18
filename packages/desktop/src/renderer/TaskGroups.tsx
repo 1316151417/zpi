@@ -35,7 +35,6 @@ import {
   taskGroupColors,
   taskGroupFor,
 } from "../shared/task-groups.ts";
-import type { GroupTaskSortBy } from "./sidebar-task-model.ts";
 import { changeTaskGroups, newSession, report, useStore } from "./store.ts";
 import { TaskGroupRow } from "./TaskGroupRow.tsx";
 import { TaskGroupVirtualList } from "./TaskGroupVirtualList.tsx";
@@ -53,7 +52,6 @@ import {
   pruneCollapsedTaskGroups,
   taskGroupCollapsedKey,
 } from "./task-group-expansion.ts";
-import { orderTaskGroups } from "./task-group-order.ts";
 
 function readCollapsed(): string[] {
   try {
@@ -132,13 +130,11 @@ function DropZone({
   empty,
   onCreate,
   disabled = false,
-  manualOrder = true,
 }: {
   groupId: string;
   empty?: boolean;
   onCreate(): void;
   disabled?: boolean;
-  manualOrder?: boolean;
 }) {
   const drop = useDroppable({
     disabled,
@@ -153,7 +149,7 @@ function DropZone({
       onClick={onCreate}
     >
       <MessageCirclePlus size={14} />
-      {manualOrder ? "新建任务，或拖拽到这里。" : "新建任务"}
+      新建任务，或拖拽到这里。
     </button>
   ) : (
     <div ref={drop.setNodeRef} className="task-group-footer-drop" />
@@ -170,7 +166,6 @@ function GroupItem({
   newGroup,
   onSetup,
   dragging,
-  manualOrder,
 }: {
   group: TaskGroup;
   tasks: SessionRecord[];
@@ -182,7 +177,6 @@ function GroupItem({
   newGroup: boolean;
   onSetup(): void;
   dragging?: TaskGroupNode;
-  manualOrder: boolean;
 }) {
   const section = useRef<HTMLElement>(null);
   const [renderContent, setRenderContent] = useState(!collapsed);
@@ -223,12 +217,11 @@ function GroupItem({
   const colorMenu = useRef<HTMLDivElement>(null);
   const draggable = useDraggable({
     id: `group:${group.id}`,
-    disabled: renaming || !manualOrder,
+    disabled: renaming,
     data: { type: "group", id: group.id },
   });
   const headerDrop = useDroppable({
     id: `header:${group.id}`,
-    disabled: !manualOrder,
     data: { type: collapsed ? "collapsed" : "header", id: group.id },
   });
   const run = (command: TaskGroupCommand) => void changeTaskGroups(command).catch(report);
@@ -487,22 +480,15 @@ function GroupItem({
                         record={record}
                         state={state}
                         selected={selected}
-                        manualOrder={manualOrder}
                         {...taskGroupRowDragProps(dragging, record.id, collapsed)}
                       />
                     )}
                   />
                 ) : !tasks.length ? (
-                  <DropZone
-                    groupId={group.id}
-                    empty
-                    onCreate={createTask}
-                    disabled={collapsed || !manualOrder}
-                    manualOrder={manualOrder}
-                  />
+                  <DropZone groupId={group.id} empty onCreate={createTask} disabled={collapsed} />
                 ) : null}
               </div>
-              <DropZone groupId={group.id} onCreate={createTask} disabled={collapsed || !manualOrder} />
+              <DropZone groupId={group.id} onCreate={createTask} disabled={collapsed} />
             </>
           )}
         </div>
@@ -513,7 +499,6 @@ function GroupItem({
 export function TaskGroups({
   state,
   records,
-  sortBy = "updated",
   selected,
   collapsed,
   setCollapsed,
@@ -522,7 +507,6 @@ export function TaskGroups({
 }: {
   state: TaskGroupState;
   records: SessionRecord[];
-  sortBy?: GroupTaskSortBy;
   selected?: string;
   collapsed: string[];
   setCollapsed(value: string[] | ((current: string[]) => string[])): void;
@@ -537,8 +521,7 @@ export function TaskGroups({
   const origin = useRef(state);
   const motion = useRef<TaskGroupDragMotion>({ deltaY: 0, position: "after" });
   const sensors = useSensors(useSensor(GroupPointerSensor, { activationConstraint: { distance: 6 } }));
-  const manualOrder = sortBy === "manual";
-  const display = preview ?? orderTaskGroups(state, records, sortBy);
+  const display = preview ?? state;
   const allSessions = useStore((store) => store.sessions);
   const draft = selected ? allSessions.get(selected) : undefined;
   const rootDraft =
@@ -606,7 +589,7 @@ export function TaskGroups({
     dragging?.type === "group" ? state.groups.find((group) => group.id === dragging.id) : undefined;
   return (
     <DndContext
-      sensors={manualOrder ? sensors : []}
+      sensors={sensors}
       collisionDetection={closestCenter}
       autoScroll={{ threshold: { x: 0.1, y: 0.1 } }}
       onDragStart={({ active }) => {
@@ -630,7 +613,7 @@ export function TaskGroups({
         if (command) void changeTaskGroups(command).catch(report);
       }}
     >
-      <div ref={list} className="task-groups" data-drag-active={Boolean(dragging)} data-sort-by={sortBy}>
+      <div ref={list} className="task-groups" data-drag-active={Boolean(dragging)}>
         {rootDraft && <TaskGroupRow record={rootDraft} state={display} selected={selected} />}
         <TaskGroupVirtualList
           items={display.roots.filter(
@@ -653,7 +636,6 @@ export function TaskGroups({
                   record={record}
                   state={display}
                   selected={selected}
-                  manualOrder={manualOrder}
                   {...taskGroupRowDragProps(dragging, record.id)}
                 />
               ) : null;
@@ -665,7 +647,6 @@ export function TaskGroups({
                 key={`group:${group.id}`}
                 group={group}
                 state={display}
-                manualOrder={manualOrder}
                 tasks={(display.members[group.id] ?? []).flatMap((id) => rows.get(id) ?? [])}
                 selected={selected}
                 collapsed={
