@@ -11,7 +11,7 @@ interface Options {
   platform: string;
   testMode: boolean;
   temporaryDirectory: string;
-  selectionHelper: string;
+  copyHelper: string;
   clipboard: Pick<Clipboard, "readText" | "readImage">;
   accessibilityAccess(): boolean;
   run?: (
@@ -31,15 +31,17 @@ function checkedImage(bytes: Uint8Array): Uint8Array {
   return bytes;
 }
 
-/** OS access stays here, outside the host/SDK. No clipboard writes or automatic copy keystrokes. */
+/** OS access stays here, outside the host/SDK. Only selection explicitly requests Copy. */
 export function macQuickChatCapture(options: Options) {
   const execute = options.run ?? run;
   async function selection(signal: AbortSignal): Promise<QuickChatDraftInput | undefined> {
     if (!options.accessibilityAccess())
-      throw new Error("configuration: 请在系统设置 → 隐私与安全性 → 辅助功能中允许 ZPI 读取选中文字，再重试");
+      throw new Error(
+        "configuration: 请在系统设置 → 隐私与安全性 → 辅助功能中允许 ZPI 执行复制快捷键，再重试",
+      );
     let stdout: string | Buffer;
     try {
-      ({ stdout } = await execute(options.selectionHelper, [], {
+      ({ stdout } = await execute(options.copyHelper, [], {
         signal,
         timeout: 5000,
         maxBuffer: 256 * 1024,
@@ -47,20 +49,20 @@ export function macQuickChatCapture(options: Options) {
     } catch (cause) {
       if (signal.aborted) return;
       throw new Error(
-        "configuration: 读取选中文字失败，请检查辅助功能权限和目标应用；也可先复制，再用剪贴板带入",
+        "configuration: 复制选中文字失败，请检查辅助功能权限和目标应用；也可手动复制，再用剪贴板带入",
         { cause },
       );
     }
     if (!String(stdout).trim())
-      throw new Error("configuration: 选中文字读取未返回结果，请重试；也可先复制，再用剪贴板带入");
-    const result: { text?: string; error?: string } = JSON.parse(String(stdout));
+      throw new Error("configuration: 复制选中文字未返回结果，请重试；也可手动复制，再用剪贴板带入");
+    const result: { copied?: boolean; text?: string; error?: string } = JSON.parse(String(stdout));
     if (result.error === "permission")
-      throw new Error("configuration: 选中文字读取未获辅助功能权限，请授权后重试");
+      throw new Error("configuration: 复制选中文字未获辅助功能权限，请授权后重试");
+    if (["focus_changed", "no_update", "no_text", "empty", "unavailable"].includes(result.error ?? ""))
+      return;
     if (result.error === "too_large") throw new Error("invalid_input: 选中文字超过 32000 字，请缩短选区");
-    if (typeof result.text !== "string" || !result.text.trim())
-      throw new Error(
-        "invalid_input: 未读到选中文字，或当前应用未提供选区。请先复制，再使用剪贴板带入快捷键",
-      );
+    if (typeof result.text !== "string" || !result.text.trim()) return;
+    if (result.copied !== true) throw new Error("configuration: 选区助手未完成复制，请重启最新版本后重试");
     return { text: checkedText(result.text) };
   }
   async function screenshot(signal: AbortSignal): Promise<QuickChatDraftInput | undefined> {

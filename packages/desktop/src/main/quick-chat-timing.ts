@@ -44,6 +44,7 @@ const stageValues = [
   "native-show",
   "focus",
   "native-focus",
+  "native-keydown",
   "settings",
   "renderer-focus",
   "renderer-frame",

@@ -101,9 +101,9 @@ pending 操作按 visibility epoch 归属，旧 promise 结束不得清掉后一
 
 本地诊断默认关闭；启动 ZPI 时显式设置 `ZPI_QUICK_CHAT_TIMING=1` 才记录，开发启动示例为 `ZPI_QUICK_CHAT_TIMING=1 npm run dev`。输出位置是 Electron `userData/agent/logs/quick-chat-timing.json`，最多保留当前进程的 64 条记录、文件上限 128 KiB，不上传。记录字段仅允许固定种类、冷/加载中/热启动模式、结果、阶段、实际快捷键及注册版本、临时 session 标识、呈现/renderer 版本、visibility epoch、opening 阶段、等待数量、原生可见/聚焦/展开及显示意图，以及进程单调/相对毫秒；不包含消息/草稿、session 正文、文件路径、URL、模型密钥或绝对时间。这里的 `userData` 路径是输出位置，日志内容不包含用户路径。写入在唤起调用栈返回后排队，失败不阻止浮窗。
 
-计时种类用 `new` 区分显式新建与普通 `open`。新增 `reset-start` → `reset-ready` 记录主进程重置（包含运行中停止），`session-frame-wait` → `session-frame-ready` 记录等待当前 session/呈现版本确认；两段可用于区分清理和 renderer 准备延迟，后者包含 IPC/React/帧调度，不等于像素显示时间。其余阶段区分预热、创建/加载、过期检查、几何、`show` / 原生 show 事件、`focus` / 原生 focus 事件，以及 renderer ready、输入框焦点和帧回调；固定隐藏原因包括快捷键、Esc/IPC、真实失焦、Space 变化及被忽略的迟到事件。记录不是持续系统追踪，`renderer-frame` 只代表双帧回调而非像素显示证明，缺失确认或超时也不能当作成功。分析时应分别观察冷启动、热唤起与过期重置，结合实际可见性/输入焦点复核，不把模拟计时换算成原生快捷键延迟。
+计时种类用 `new` 区分显式新建与普通 `open`。新增 `reset-start` → `reset-ready` 记录主进程重置（包含运行中停止），`session-frame-wait` → `session-frame-ready` 记录等待当前 session/呈现版本确认；两段可用于区分清理和 renderer 准备延迟，后者包含 IPC/React/帧调度，不等于像素显示时间。其余阶段区分预热、创建/加载、过期检查、几何、`show` / 原生 show 事件、`focus` / 原生 focus 事件，以及 renderer ready、输入框焦点、帧回调和 `native-keydown`（仅记录到达，不记录按键内容）；固定隐藏原因包括快捷键、Esc/IPC、真实失焦、Space 变化及被忽略的迟到事件。记录不是持续系统追踪，`renderer-frame` 只代表双帧回调而非像素显示证明，缺失确认或超时也不能当作成功。分析时应分别观察冷启动、热唤起与过期重置，结合实际可见性/输入焦点复核，不把模拟计时换算成原生快捷键延迟。
 
-macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应用激活 API。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；普通隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器几何仅用于位置，Space 行为依赖原生面板。依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
+macOS 保持 Electron `type: "panel"`，不设置主窗为 parent。显示面板后调用 `app.focus({ steal: true })`，再聚焦面板；不能因 `isFocused()` 已为 true 而省略这两步，原生 key-window 标记不保证实体按键进入该进程。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；普通隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器几何仅用于位置，Space 行为依赖原生面板。依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
 
 受控性能回归使用真实 React 与窗口控制器、模拟 session 投影和原生窗口、16ms 帧间隔及 0ms task；在隐藏空白和隐藏已完成历史两种情况下，snapshot 分发均在逻辑时刻 0，`rendererReady` / 模拟 `show` 从 32ms（两个帧机会）降为 16ms（一个帧机会后 task）。这是调度预算验证，未计入真实 IPC、OS/Chromium 调度或绘制成本，不能作为 Mac 延迟实测，也不能据此认定用户的明显卡顿已全部解决。真实环境应分别记录空白/历史 idle 的 `new` 诊断及实际输入可用时间；该受控帧测试当时未运行 Mac 原生验收；0.2.113 的本机记录见下。
 
@@ -121,13 +121,17 @@ macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应
 
 0.2.112 及以前的上述云端记录仅更新这些原生用例并做静态校验/`--list` 发现检查，当时没有运行 Electron GUI、真实 API 或用户 Mac；macOS Space/Dock/跨应用焦点、真实系统剪贴板图片与粘贴、真实全局快捷键事件顺序与原生毫秒延迟均未实测。不能将脚本更新、DOM/窗口模拟通过或 `--list` 成功写成原生验收通过，不承诺 0ms。
 
+0.2.117 在本机复现了 VS Code AX 选区不可用与面板自报聚焦却收不到实体键盘事件。C 改为用户确认的复制并保留剪贴板；面板显示后显式激活应用、重新取焦点。实体输入、长文字末尾与跨 Space 的前后对照、模态错误框替换和验证边界见 [选区与焦点验收记录](evidence/quick-chat-selection-20261018/README.md)。
+
 ### macOS 快速对话内容带入
 
-`quick-chat-screenshot` / `quick-chat-selection` / `quick-chat-clipboard` 默认分别为 Option+Shift+A / C / V；其他系统默认不绑定。读取旧设置时只补缺失命令，冲突时留空；自定义、清空项和总开关保持不变。快捷键读取内容后才唤起，追加当前草稿，不新建、不自动发送。单次采集期间连续按键合并，显式新建后的迟到采集丢弃；窗口的单次交付同时核对 session 和 visibility epoch，隐藏或重置取消待领取内容。renderer 领取后再走原有图片导入、预览、限额与错误重试管线。
+`quick-chat-screenshot` / `quick-chat-selection` / `quick-chat-clipboard` 默认分别为 Option+Shift+A / C / V；其他系统默认不绑定。读取旧设置时只补缺失命令，冲突时留空；自定义、清空项和总开关保持不变。快捷键读取内容后才唤起，追加当前草稿，不新建、不自动发送。单次采集期间连续按键合并，显式新建后的迟到采集丢弃；窗口的单次交付同时核对 session 和 visibility epoch，隐藏或重置取消待领取内容。renderer 领取后再走原有图片导入、预览、限额与错误重试管线。成功带入会提交合并草稿、把光标放到最后并滚动到末行，方便继续输入。
 
-截图调用 macOS 自带的交互式框选工具，按 Esc 取消；输出放在独立临时目录，成功、失败和取消均清理。截图前收起浮窗但保留草稿。剪贴板仅在该快捷键触发时读取，图片优先于其附带文字，不模拟复制或改写剪贴板。选区通过轻量 AppKit / ApplicationServices helper 读取前台应用的 AXSelectedText；未授权、无选区或应用不支持时明确报错，提示手动复制后用剪贴板入口。不会自动向模型发送采集结果，也不记录文本或图片内容；诊断仅增加 draft-offered / draft-taken 状态事件。
+截图调用 macOS 自带的交互式框选工具，按 Esc 取消；输出放在独立临时目录，成功、失败和取消均清理。截图前收起浮窗但保留草稿。V 只读取已有剪贴板，图片优先于其附带文字。C 按用户确认的新语义，由 AppKit / ApplicationServices helper 向按键时的前台进程发送一次 Command+C；不依赖目标编辑器的 AXSelectedText，不更改编辑器设置，不还原复制后的剪贴板。C 沿用来源应用的复制行为，VS Code 无选区时可能复制整行。
 
-macOS 构建通过 Xcode Command Line Tools 的 clang 编译 `packages/desktop/native/selected-text.m`，产物位于 dist/native，打包时解包到 app.asar.unpacked；运行用户无需编译器。`npm run dev` 与 `npm run build` 均准备该助手。默认桌面测试禁止真实选区、截图和剪贴板采集；单测注入假读取器和命令执行器。原生交付集成用例使用真实 Electron、preload 和 renderer 追加测试文字/PNG；系统权限、实体全局键和实际截图/选区另做手动验收。
+C 记录原剪贴板 changeCount，按需轮询到首次更新且拿到稳定文字便立即返回；1 秒期限只用于应用未响应复制的失败边界，不是固定等待。不清空剪贴板，不接受未更新的旧内容，读取中剪贴板再次变化则继续核对，切换前台应用时取消带入。无更新、非文字、空文本或前台变化时静默结束；未授权或超限在浮窗内提示。采集错误通过现有单次交付通道在浮窗内展示，保留草稿，不使用同步系统错误框阻塞回调。不会自动向模型发送采集结果，也不记录文本或图片内容；诊断仅含 draft-offered / draft-taken 等状态事件。
+
+macOS 构建通过 Xcode Command Line Tools 的 clang 编译 `packages/desktop/native/copy-selection.m`，产物位于 dist/native，打包时解包到 app.asar.unpacked；运行用户无需编译器。编译至临时文件后原子替换，避免构建期间截断正在使用的助手。`npm run dev` 与 `npm run build` 均准备该助手。默认桌面测试禁止真实复制、截图和剪贴板采集；单测注入假读取器和命令执行器。原生交付集成用例使用真实 Electron、preload 和 renderer 追加测试文字/PNG；系统权限、实体全局键和实际截图/复制另做手动验收。
 
 ### 文件工具的资源与并发边界
 

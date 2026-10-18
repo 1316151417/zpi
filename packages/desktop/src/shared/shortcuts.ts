@@ -4,7 +4,7 @@ export const shortcutCommands = [
   { id: "quick-chat", label: "快速对话", scope: "global" },
   { id: "quick-chat-new", label: "新建快速对话", scope: "global" },
   { id: "quick-chat-screenshot", label: "截图带入快速对话", scope: "global" },
-  { id: "quick-chat-selection", label: "选中文字带入快速对话", scope: "global" },
+  { id: "quick-chat-selection", label: "复制选中文字并带入快速对话", scope: "global" },
   { id: "quick-chat-clipboard", label: "剪贴板带入快速对话", scope: "global" },
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },

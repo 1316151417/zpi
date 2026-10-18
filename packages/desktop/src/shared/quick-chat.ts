@@ -15,6 +15,7 @@ export interface QuickChatSnapshot {
 export interface QuickChatDraftInput {
   text?: string;
   image?: { name: string; bytes: Uint8Array };
+  error?: string;
 }
 /** Only this bridge is exposed to the temporary window. No task or privileged desktop API. */
 export interface QuickChatBridge {

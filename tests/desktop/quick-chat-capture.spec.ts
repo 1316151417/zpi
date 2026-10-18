@@ -14,6 +14,7 @@ test("captured content wakes a retained renderer and appends draft text and PNG 
     const quick = await app.firstWindow();
     const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
     await input.fill("保留草稿");
+    await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(0, 0));
     const sessionId = await quick.evaluate(async () => {
       const result = await window.zpiQuickChat.getSnapshot();
       if (!result.ok) throw new Error(result.error.message);
@@ -29,9 +30,23 @@ test("captured content wakes a retained renderer and appends draft text and PNG 
         }
       ).quickChatFixture;
       control.hide();
+      await control.openWithDraft({ error: "当前应用未更新剪贴板" }, sessionId);
+    }, sessionId);
+    await expect(quick.getByRole("alert")).toContainText("当前应用未更新剪贴板");
+    await expect(input).toHaveValue("保留草稿");
+    await app.evaluate(async (_electron, sessionId) => {
+      const control = (
+        globalThis as typeof globalThis & {
+          quickChatFixture: {
+            hide(): void;
+            openWithDraft(input: QuickChatDraftInput, sessionId: string): Promise<void>;
+          };
+        }
+      ).quickChatFixture;
+      control.hide();
       await control.openWithDraft(
         {
-          text: "选中文字",
+          text: `${"选中文字\n".repeat(40)}最后一行`,
           image: {
             name: "capture.png",
             bytes: Buffer.from(
@@ -43,7 +58,18 @@ test("captured content wakes a retained renderer and appends draft text and PNG 
         sessionId,
       );
     }, sessionId);
-    await expect(input).toHaveValue("保留草稿\n选中文字");
+    await expect(input).toHaveValue(`保留草稿\n${"选中文字\n".repeat(40)}最后一行`);
+    await expect
+      .poll(() =>
+        input.evaluate((element: HTMLTextAreaElement) => ({
+          focused: document.activeElement === element,
+          cursorAtEnd:
+            element.selectionStart === element.value.length && element.selectionEnd === element.value.length,
+          bottomVisible: element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
+        })),
+      )
+      .toEqual({ focused: true, cursorAtEnd: true, bottomVisible: true });
+    await expect(quick.getByRole("alert")).toHaveCount(0);
     await expect(quick.locator(".quick-chat-attachment img")).toHaveCount(1);
     await expect(quick.getByRole("button", { name: "移除 capture.png", exact: true })).toBeEnabled();
     await expect(quick.getByTestId("run")).toHaveCount(0);

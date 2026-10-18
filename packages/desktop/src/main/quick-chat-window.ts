@@ -37,6 +37,7 @@ interface Options {
     "subscribeWorkspaceNotification" | "unsubscribeWorkspaceNotification"
   >;
   copyText: (text: string) => void;
+  activateApp?: () => void;
   openExternal: (url: string) => Promise<void>;
   onError?: (error: unknown, method: string) => void;
 }
@@ -331,9 +332,8 @@ export class QuickChatWindow {
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
-      // Electron's nonactivating panel takes key focus without activating ZPI
-      // or switching to the main window's Space. It already joins all Spaces;
-      // toggling setVisibleOnAllWorkspaces would only add process-type changes.
+      // The panel joins all Spaces without moving the main window. Activation
+      // after showing it is still needed for reliable native keyboard routing.
       ...(this.options.platform === "darwin" ? { type: "panel", hiddenInMissionControl: true } : {}),
       backgroundColor: "#00000000",
       webPreferences: {
@@ -389,6 +389,9 @@ export class QuickChatWindow {
         this.presentation?.trace.mark("native-focus");
         this.recordEvent("native-focus");
       }
+    });
+    window.webContents.on("before-input-event", (_event, input) => {
+      if (this.window === window && input.type === "keyDown") this.recordEvent("native-keydown");
     });
     window.on("close", (event) => {
       if (this.disposed || this.window !== window) return;
@@ -590,7 +593,15 @@ export class QuickChatWindow {
         if (this.opening?.epoch === epoch) this.opening.phase = "presenting";
         window.show();
         trace?.mark("show");
-        if (this.visible && !window.isDestroyed() && !window.isFocused()) window.focus();
+        if (this.visible && !window.isDestroyed()) {
+          if (this.options.platform === "darwin") this.options.activateApp?.();
+          if (
+            this.visible &&
+            !window.isDestroyed() &&
+            (this.options.platform === "darwin" || !window.isFocused())
+          )
+            window.focus();
+        }
         trace?.mark("focus");
       } finally {
         this.presenting = false;

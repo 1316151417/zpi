@@ -19,6 +19,7 @@ import {
 } from "electron";
 import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
 import { listCommands } from "zpi-coding-agent";
+import { userErrorMessage } from "zpi-ui/errors";
 import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
@@ -322,6 +323,7 @@ async function launch(): Promise<void> {
     loadSourceIcon: (url, signal) => webSourceIcons.load(url, signal),
     ...(process.platform === "darwin" ? { workspaceNotifications: systemPreferences } : {}),
     copyText: (text) => clipboard.writeText(text),
+    activateApp: () => app.focus({ steal: true }),
     openExternal: (url) => shell.openExternal(url),
   });
   const removeQuickChatIpc = installQuickChatIpc(ipcMain, quickChat);
@@ -333,7 +335,7 @@ async function launch(): Promise<void> {
       platform: process.platform,
       testMode,
       temporaryDirectory: app.getPath("temp"),
-      selectionHelper: join(dir, "../native/selected-text").replace(/\.asar([/\\])/, ".asar.unpacked$1"),
+      copyHelper: join(dir, "../native/copy-selection").replace(/\.asar([/\\])/, ".asar.unpacked$1"),
       clipboard,
       accessibilityAccess: () => systemPreferences.isTrustedAccessibilityClient(true),
     }),
@@ -354,10 +356,13 @@ async function launch(): Promise<void> {
             : command === "quick-chat-selection"
               ? "selection"
               : "clipboard";
+        const sessionId = quickChatHost.sessionId;
         void quickChatCapture.invoke(kind).catch((error) => {
           if (ending) return;
           errors.write("quick-chat.capture", error);
-          if (!testMode) dialog.showErrorBox("无法带入快速对话", String(error));
+          void quickChat
+            .openWithDraft({ error: userErrorMessage(error) }, sessionId)
+            .catch((reason) => errors.write("quick-chat.capture-notice", reason));
         });
         return;
       }

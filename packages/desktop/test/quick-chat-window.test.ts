@@ -58,6 +58,7 @@ function fixture(
   const windows: ReturnType<typeof makeWindow>[] = [];
   const configs: BrowserWindowConstructorOptions[] = [];
   const copyText = vi.fn();
+  const activateApp = vi.fn();
   const onError = vi.fn();
   const openExternal = vi.fn(async () => {});
   function makeWindow(config: BrowserWindowConstructorOptions) {
@@ -140,6 +141,7 @@ function fixture(
     getDisplay,
     workspaceNotifications,
     copyText,
+    activateApp,
     openExternal,
     onError,
     loadSourceIcon: vi.fn(async () => undefined),
@@ -150,6 +152,7 @@ function fixture(
     windows,
     configs,
     copyText,
+    activateApp,
     openExternal,
     onError,
     getDisplay,
@@ -367,7 +370,21 @@ test("both modes fit a small active display and reopening leaves old display coo
   await f.quick.dispose();
 });
 
-test("macOS uses a nonactivating unparented panel and visible-but-unfocused toggle brings it forward", async () => {
+test("macOS activates the app after showing its panel even when the native window already reports key focus", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.prepare();
+  const window = f.windows[0];
+  const calls: string[] = [];
+  window.show.mockImplementation(() => calls.push("show"));
+  window.isFocused.mockReturnValue(true);
+  f.activateApp.mockImplementation(() => calls.push("activate"));
+  window.focus.mockImplementation(() => calls.push("focus"));
+  await f.quick.show();
+  expect(calls).toEqual(["show", "activate", "focus"]);
+  await f.quick.dispose();
+});
+
+test("macOS uses an unparented all-Spaces panel and visible-but-unfocused toggle brings it forward", async () => {
   const f = fixture({ platform: "darwin" });
   await f.quick.toggle();
   const window = f.windows[0];
@@ -441,11 +458,30 @@ test("a Space change during native show does not refocus and resurrect the hidde
   f.quick.hide();
   const window = f.windows[0];
   window.focus.mockClear();
+  f.activateApp.mockClear();
   window.show.mockImplementationOnce(() => f.spaceChanged());
   await f.quick.show();
   expect(window.focus).not.toHaveBeenCalled();
+  expect(f.activateApp).not.toHaveBeenCalled();
   await f.quick.toggle();
   expect(window.focus).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("a Space change during application activation cancels focus rather than resurrecting the panel", async () => {
+  const f = fixture({ platform: "darwin" });
+  f.activateApp.mockImplementation(() => f.spaceChanged());
+  await f.quick.show();
+  expect(f.windows[0].isVisible()).toBe(false);
+  expect(f.windows[0].focus).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("hidden macOS automation never activates the application", async () => {
+  const f = fixture({ platform: "darwin", hidden: true });
+  await f.quick.show();
+  expect(f.activateApp).not.toHaveBeenCalled();
+  expect(f.windows[0].show).not.toHaveBeenCalled();
   await f.quick.dispose();
 });
 

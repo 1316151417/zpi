@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -16,8 +16,10 @@ export async function buildMacCapture() {
     "AppKit",
     "-framework",
     "ApplicationServices",
-    "packages/desktop/native/selected-text.m",
+    "packages/desktop/native/copy-selection.m",
     "-o",
-    `${output}/selected-text`,
+    `${output}/copy-selection.tmp`,
   ]);
+  await rename(`${output}/copy-selection.tmp`, `${output}/copy-selection`);
+  await rm(`${output}/selected-text`, { force: true });
 }

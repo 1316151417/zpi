@@ -309,6 +309,10 @@ export function QuickChat({
         .then(unwrap)
         .then((input) => {
           if (!active || generation !== operationGeneration.current || !input) return;
+          if (input.error) {
+            setError(input.error);
+            return;
+          }
           const text = input.text ?? "";
           const current = textarea.current?.value ?? "";
           const separator = current && text ? "\n" : "";
@@ -320,13 +324,24 @@ export function QuickChat({
             setError(`每条消息最多可添加 ${imageLimits.count} 张图片。`);
             return;
           }
-          draftRevision.current += 1;
-          if (text) setDraft((value) => value + (value ? "\n" : "") + text);
-          if (input.image) {
-            const file = new File([Uint8Array.from(input.image.bytes)], input.image.name, {
-              type: "image/png",
-            });
-            updateImages([...imagesRef.current, { key: ++nextImageKey.current, file, status: "queued" }]);
+          // Commit and measure the appended draft before placing its caret and
+          // scrolling, otherwise the next controlled-input update can undo them.
+          flushSync(() => {
+            setError("");
+            draftRevision.current += 1;
+            if (text) setDraft((value) => value + (value ? "\n" : "") + text);
+            if (input.image) {
+              const file = new File([Uint8Array.from(input.image.bytes)], input.image.name, {
+                type: "image/png",
+              });
+              updateImages([...imagesRef.current, { key: ++nextImageKey.current, file, status: "queued" }]);
+            }
+          });
+          const element = textarea.current;
+          if (element) {
+            element.focus();
+            element.setSelectionRange(element.value.length, element.value.length);
+            element.scrollTop = element.scrollHeight;
           }
         })
         .catch((reason) => {

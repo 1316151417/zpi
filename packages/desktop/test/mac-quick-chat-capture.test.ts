@@ -14,10 +14,10 @@ function fixture() {
     platform: "darwin",
     testMode: false,
     temporaryDirectory: tmpdir(),
-    selectionHelper: "/fake/selected-text",
+    copyHelper: "/fake/copy-selection",
     clipboard: { readText: vi.fn(() => "clipboard"), readImage: vi.fn(() => image as never) },
     accessibilityAccess: () => true,
-    run: vi.fn(async () => ({ stdout: JSON.stringify({ text: "selection" }) })),
+    run: vi.fn(async () => ({ stdout: JSON.stringify({ copied: true, text: "selection" }) })),
   };
   const signal = new AbortController().signal;
   return {
@@ -39,22 +39,35 @@ test("clipboard reads text or prefers a bounded image without writing or simulat
   f.options.clipboard.readText = () => "x".repeat(32_001);
   expect(() => f.read("clipboard")).toThrow("32000");
 });
-test("missing accessibility permission does not launch a helper; unsupported selections are explicit", async () => {
+test("missing accessibility permission does not launch Copy; its result comes from the native helper", async () => {
   const f = fixture();
   f.options.accessibilityAccess = () => false;
   await expect(f.read("selection")).rejects.toThrow("辅助功能");
   expect(f.options.run).not.toHaveBeenCalled();
   f.options.accessibilityAccess = () => true;
   expect(await f.read("selection")).toEqual({ text: "selection" });
+  expect(f.options.run).toHaveBeenCalledWith("/fake/copy-selection", [], expect.any(Object));
   f.options.run = vi.fn(async () => ({ stdout: '{"error":"unavailable"}' }));
-  await expect(f.read("selection")).rejects.toThrow("复制");
+  expect(await f.read("selection")).toBeUndefined();
 });
 test("an empty native selection result gives an actionable error and permits a retry", async () => {
   const f = fixture();
   f.options.run = vi.fn(async () => ({ stdout: "" }));
   await expect(f.read("selection")).rejects.toThrow("未返回结果");
-  f.options.run = vi.fn(async () => ({ stdout: '{"text":"retry"}' }));
+  f.options.run = vi.fn(async () => ({ stdout: '{"copied":true,"text":"retry"}' }));
   expect(await f.read("selection")).toEqual({ text: "retry" });
+});
+test("selection requires a new copy; no result or a changed source app quietly keeps the draft untouched", async () => {
+  const f = fixture();
+  f.options.run = vi.fn(async () => ({ stdout: '{"text":"old AX result"}' }));
+  await expect(f.read("selection")).rejects.toThrow("未完成复制");
+  f.options.run = vi.fn(async () => ({ stdout: '{"error":"no_update"}' }));
+  expect(await f.read("selection")).toBeUndefined();
+  f.options.run = vi.fn(async () => ({ stdout: '{"error":"focus_changed"}' }));
+  expect(await f.read("selection")).toBeUndefined();
+  f.options.run = vi.fn(async () => ({ stdout: '{"error":"no_text"}' }));
+  expect(await f.read("selection")).toBeUndefined();
+  expect(f.options.clipboard.readText).not.toHaveBeenCalled();
 });
 test.each(["capture", "escape", "failure"] as const)(
   "interactive screenshot %s cleans up its isolated temporary files",

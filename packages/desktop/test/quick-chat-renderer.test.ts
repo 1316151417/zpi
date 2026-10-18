@@ -307,6 +307,25 @@ test("late capture response cannot append into a replacement session", async () 
   expect(bridge.send).not.toHaveBeenCalled();
 });
 
+test("capture errors stay inline without changing the draft and a successful retry clears them", async () => {
+  await mount();
+  await type("preserved draft");
+  const incoming = vi.mocked(bridge.takeDraftInput);
+  incoming.mockResolvedValueOnce({ ok: true, value: { error: "当前应用未更新剪贴板" } });
+  await act(async () => {
+    for (const receive of draftInputListeners) receive();
+  });
+  expect(container.textContent).toContain("当前应用未更新剪贴板");
+  expect(input().value).toBe("preserved draft");
+  incoming.mockResolvedValueOnce({ ok: true, value: { text: "copied" } });
+  await act(async () => {
+    for (const receive of draftInputListeners) receive();
+  });
+  expect(container.textContent).not.toContain("当前应用未更新剪贴板");
+  expect(input().value).toBe("preserved draft\ncopied");
+  expect(bridge.send).not.toHaveBeenCalled();
+});
+
 // happy-dom runs real React state/effects/events, but not text layout or a compositor.
 // Only the browser's measured geometry and animation clock are supplied by these tests.
 function measureInput(height: () => number, available?: () => number) {
