@@ -213,7 +213,11 @@ export async function createAgentSession(
     options.modelPerformanceTotals,
   );
   session.subscribe((event) => {
-    if (event.type === "compaction" && event.status === "completed") fileReadState.clear();
+    if (
+      (event.type === "compaction" && event.status === "completed") ||
+      (event.type === "entry_appended" && event.entry.type === "microcompact")
+    )
+      fileReadState.clear();
   });
   return { session };
 }

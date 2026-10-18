@@ -106,3 +106,30 @@ it("never throws when the log directory cannot be written, and warns once", asyn
   expect(stderr).toHaveBeenCalledTimes(1);
   expect(await readFile(file, "utf8")).toBe("existing file");
 });
+
+it("persists all media omission fields and the originating session ID without media data", async () => {
+  const log = new ErrorLog(await directory());
+  log.mediaProjection(
+    {
+      omittedMediaCount: 3,
+      projectedMediaBytes: 40,
+      retainedMediaCount: 2,
+      totalMediaBytes: 80,
+      evictionFrontier: { messageIndex: 4, blockIndex: 1 },
+    },
+    { sessionId: "media-session", provider: "fake", modelId: "fake" },
+  );
+  const record = JSON.parse(await readFile(log.path, "utf8"));
+  expect(record).toMatchObject({
+    source: "model.media_projection",
+    sessionId: "media-session",
+    provider: "fake",
+    modelId: "fake",
+    omittedMediaCount: 3,
+    projectedMediaBytes: 40,
+    retainedMediaCount: 2,
+    totalMediaBytes: 80,
+    evictionFrontier: { messageIndex: 4, blockIndex: 1 },
+  });
+  expect(record).not.toHaveProperty("data");
+});

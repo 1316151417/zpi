@@ -39,11 +39,35 @@ export class MediaBudgetError extends Error {
 export function mediaBlockToText(block: ContentBlock): string {
   return `[Attached ${block.mimeType ?? block.mediaType ?? block.type}${block.name ? `: ${block.name}` : ""}]`;
 }
+/** UTF-8 size without Node globals or allocating an encoded copy of large media strings. */
+function utf8ByteLength(value: string): number {
+  let bytes = value.length;
+  const firstNonAscii = value.search(/[\u0080-\uffff]/);
+  if (firstNonAscii < 0) return bytes;
+  for (let index = firstNonAscii; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x7f) continue;
+    if (code <= 0x7ff) bytes++;
+    else {
+      bytes += 2;
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = value.charCodeAt(index + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) index++;
+      }
+    }
+  }
+  return bytes;
+}
 export function mediaRequestBytes(block: ContentBlock): number {
   if (block.type !== "image" && block.type !== "video" && !(block.type === "file" && !block.text)) return 0;
-  const dataUrl =
-    block.dataUrl ?? (block.data !== undefined ? `data:${block.mimeType};base64,${block.data}` : "");
-  return Buffer.byteLength(dataUrl, "utf8");
+  if (block.dataUrl !== undefined && block.dataUrl !== "") return utf8ByteLength(block.dataUrl);
+  if (block.dataUrl === undefined && block.data !== undefined)
+    return utf8ByteLength(`data:${block.mimeType};base64,`) + utf8ByteLength(block.data);
+  // Only inline payloads are supported. A future source.uri image needs an explicit
+  // request policy; silently counting a missing payload as zero would bypass this budget.
+  if (block.type === "image" || block.type === "video")
+    throw new Error("MEDIA_PAYLOAD_MISSING: Inline media requires data or dataUrl.");
+  return 0;
 }
 export function omittedMediaBlock(block: ContentBlock) {
   // Byte-stable provider history: editing this text invalidates cached prefixes.
@@ -68,8 +92,12 @@ export function projectMessagesForMediaBudget<T extends MediaMessage>(
   const latestUserIndex =
     options.preserveLatestUserMedia === false
       ? -1
-      : (options.latestRealUserMessageIndex ??
-        messages.findLastIndex((message) => message.role === "user" && message.synthetic !== true));
+      : options.latestRealUserMessageIndex !== undefined &&
+          Number.isInteger(options.latestRealUserMessageIndex) &&
+          options.latestRealUserMessageIndex >= -1 &&
+          options.latestRealUserMessageIndex < messages.length
+        ? options.latestRealUserMessageIndex
+        : messages.findLastIndex((message) => message.role === "user" && message.synthetic !== true);
   const media = messages.flatMap((message, messageIndex) =>
     typeof message.content === "string"
       ? []
@@ -113,6 +141,7 @@ export function projectMessagesForMediaBudget<T extends MediaMessage>(
   stats.omittedMediaCount = media.length - retained.size;
   stats.retainedMediaCount = retained.size;
   stats.projectedMediaBytes = maxMediaBytes - remaining;
+  const omitted = new Set(media.filter((item) => !retained.has(key(item))).map(key));
   // Recomputed from canonical history every request: no persistence, idle gate, minimum
   // savings, low-water mark or hysteresis. Evicting an early image invalidates the prefix
   // from there. Read's 200,000-byte intake makes eviction rare, but does not solve KV caching.
@@ -125,9 +154,7 @@ export function projectMessagesForMediaBudget<T extends MediaMessage>(
         : {
             ...message,
             content: message.content.map((block, blockIndex) =>
-              mediaRequestBytes(block) && !retained.has(key({ messageIndex, blockIndex }))
-                ? omittedMediaBlock(block)
-                : block,
+              omitted.has(key({ messageIndex, blockIndex })) ? omittedMediaBlock(block) : block,
             ),
           },
     ) as T[],
@@ -159,10 +186,7 @@ export function projectContextForModelMediaPolicy(
         };
       });
   const { messages, ...stats } = projectMessagesForMediaBudget(capable, options);
-  if (stats.omittedMediaCount) {
-    if (options.onProjection) options.onProjection(stats);
-    else console.debug("Model request media budget projection", stats);
-  }
+  if (stats.omittedMediaCount) options.onProjection?.(stats);
   return messages === context.messages ? context : { ...context, messages };
 }
 
@@ -180,7 +204,9 @@ export function projectCompactMediaForRetry<T extends MediaMessage>(
             if (
               block.type === "image" ||
               block.type === "video" ||
-              (block.type === "file" && !block.text && block.dataUrl)
+              (block.type === "file" &&
+                !block.text &&
+                (block.dataUrl !== undefined || block.data !== undefined))
             ) {
               replacedMediaCount++;
               return { type: "text", text: block.type === "file" ? "[document]" : `[${block.type}]` };

@@ -1,4 +1,4 @@
-import { fitsImageBudget, ImageProcessorError, imageBudget } from "./image-budget.ts";
+import { ImageProcessorError } from "./image-budget.ts";
 import { formatDimensionNote, type ImageResizeOptions } from "./image-resize.ts";
 import { resizeImageInProcess } from "./image-resize-core.ts";
 
@@ -17,9 +17,12 @@ export async function processImage(
   options?: ProcessImageOptions,
 ): Promise<ProcessImageResult> {
   try {
-    if (options?.autoResizeImages === false && !fitsImageBudget(bytes, imageBudget(options.resizeOptions)))
-      throw new ImageProcessorError("too_large", "Image exceeds the inline image budget");
-    const resized = await resizeImageInProcess(bytes, mimeType, options?.resizeOptions);
+    const resized = await resizeImageInProcess(
+      bytes,
+      mimeType,
+      options?.resizeOptions,
+      options?.autoResizeImages,
+    );
     const hints: string[] = resized.animated ? ["[Animated image: only the first frame is sent.]"] : [];
     if (resized.originalMimeType !== resized.mimeType)
       hints.push(`[Image converted from ${resized.originalMimeType} to ${resized.mimeType}.]`);

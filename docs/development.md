@@ -338,15 +338,19 @@ npm run test:unit -- packages/desktop/test/file-comments.test.ts packages/ui/tes
 
 用户附件有意不传图片 token 预算，因此允许到 5 MiB base64，约为 Read 的 26 倍；导入仍保留单张 10 MiB 与像素校验。尺寸和预算内的原图原字节保留，包括元数据、EXIF 和 GIF 动画；需要转换的 GIF 只保留首帧。PNG 仅有一次原尺寸无损优化机会，随后转 JPEG；透明图转 JPEG 为黑底。JPEG 质量可降到 20，兜底最长边可降至 200px，截图小字、按钮、布局细节可能无法辨认；压缩成功不代表内容可读。
 
-所有 provider 请求先做模型能力投影，再做 40 MiB 聚合媒体预算。主会话、侧边会话、子代理、快速对话和标题请求经 `ModelRuntime`；摘要及直接协议调用也执行同一媒体策略。只计媒体 data URL 的 UTF-8 字节（包含前缀），不计正文、工具和 JSON，因此 **40 MiB 不能保证 HTTP body 上限**。当前真实用户附件受到保护，单独超限则在调用 provider 前拒绝；工具结果没有当前轮保护。只改请求副本，原历史和附件缓存保留。省略日志字段为 `omittedMediaCount`、`projectedMediaBytes`、`retainedMediaCount`、`totalMediaBytes`、`evictionFrontier`。
+编解码栈分工：Sharp 负责输入/像素守卫、BMP RLE 解码、动画 PNG 的首帧解码与尺寸/动画探测；Jimp 负责复刻候选顺序、PNG deflate 参数、JPEG 质量阶梯和 GIF 编码。普通非 WebP 图片先经 Sharp 守卫解码，再由 `Jimp.read()` 解码，二次解码是已知性能成本。PNG 若因尾部字节等兼容性差异被 Jimp 拒绝，仅在 Sharp 已完整校验通过后用其 RGBA 解码结果进入相同候选阶梯；预算内仍保留原始字节。Sharp 是 native external，Jimp 是纯 JS 运行时依赖，必须随应用分发；主进程构建通过 `noExternal: ["jimp"]` 将其及编码器打入 bundle，不能仅保留开发机上的依赖。
+
+SDK 的 `autoResizeImages: false` 禁止缩放和压缩，尺寸或字节预算超限则返回 `too_large`；BMP 允许必要的同尺寸 PNG 格式转换，转换结果也须满足预算。WebP 保持上述独立直通规则。导入动画提示仅说明压缩转换会保留首帧；预算内原图不再被误报为已拍平。
+
+所有 provider 请求先做模型能力投影，再做 40 MiB 聚合媒体预算。主会话、侧边会话、子代理、快速对话和标题请求经 `ModelRuntime`；摘要及直接协议调用也执行同一媒体策略。只计媒体 data URL 的 UTF-8 字节（包含前缀），不计正文、工具和 JSON，因此 **40 MiB 不能保证 HTTP body 上限**。当前真实用户附件受到保护，单独超限则在调用 provider 前拒绝；工具结果没有当前轮保护。只改请求副本，原历史和附件缓存保留。省略事件通过可选通用 `onMediaProjection(stats, context)` 钩子报告，未注入时不输出日志。桌面主会话、侧边会话、子代理、标题及快速对话将其写入 `agent/logs/error.log`，附带原始 `sessionId`（摘要缓存路由 ID 独立）。字段为 `omittedMediaCount`、`projectedMediaBytes`、`retainedMediaCount`、`totalMediaBytes`、`evictionFrontier`，前沿保留结构化 messageIndex/blockIndex；不记录图片数据。
 
 相对 ZCode 唯一批准的淘选差异是历史扫描遇到放不下的媒体时 `break`，保留连续的最新后缀；被大图挡住的小图也会丢弃。等尺寸截图批次与上游 `continue` 结果相同。追加历史且保护集不变时不会复活旧图；新用户轮次改变保护集后无此单调保证。此策略提供可预测性，不宣称提高缓存命中率。每次从原历史重算，无低水位、滞回、空闲门控或最小收益门槛；靠前图片被省略会让该点之后的缓存前缀失效。单图小预算降低聚合裁剪频率，不解决 KV cache 问题。
 
-Anthropic 缓存保持 stable 内容、dynamic sections 各自的 system 断点和最新非 system 尾断点；`skipCacheWrite` 将尾断点前移，system 标记保留。标记经 Anthropic Messages 协议传输，适用于使用该协议的 DeepSeek 配置；不按模型品牌忽略标记。
+Anthropic 缓存保持 stable 内容、dynamic sections 各自的 system 断点和最新非 system 尾断点；构造请求时校验 system、工具和消息内容上的 `cache_control` 总数不超过 4（不扫描用户工具入参）；`skipCacheWrite` 将尾断点前移，system 标记保留。标记经 Anthropic Messages 协议传输，适用于使用该协议的 DeepSeek 配置；不按模型品牌忽略标记。
 
-`compaction.microcompact.enabled` 默认关闭，显式开启后，在空闲超过 60 分钟或本地 token 估算达阈值时只清理白名单中的旧纯文本工具结果，保留最近 5 组；有 image/video/file 的结果全部跳过。节省少于 256 token 则整体回滚。`microcompact` transcript boundary 记录 trigger、strategy、前后估算与 tool call IDs，恢复时投影工具结果，不覆盖原始记录。默认阈值为 `min(floor(autoCompactThreshold × 0.9), autoCompactThreshold - 2000)`，复用 ZPI 的上下文预留设置。
+`compaction.microcompact.enabled` 默认关闭，显式开启后，在空闲超过 60 分钟或本地 token 估算达阈值时只清理白名单中的旧纯文本工具结果，保留最近 5 组助手工具调用（`keepRecentToolResults` 按组计数）；有 image/video/file 的结果全部跳过。节省少于 256 token 则整体回滚。`microcompact` transcript boundary 记录 trigger、strategy、前后估算与 tool call IDs，恢复时投影工具结果，不覆盖原始记录。SDK 在写入 boundary 时清空文件读取去重状态，避免再次读取只返回指向已清除正文的“文件未变化”存根。默认阈值为 `min(floor(autoCompactThreshold × 0.9), autoCompactThreshold - 2000)`，复用 ZPI 的上下文预留设置。
 
-本地图片 token 估算使用短占位，不反映实际图片体积；已有 provider usage 锚点仍会参与自动压缩，所以 token 压缩不能替代字节预算。裸 `413 Failed to buffer the request body: length limit exceeded` 不扩展为上下文或媒体错误，不自动恢复，UI 提示压缩对话或开启新会话。摘要仅在明确识别的媒体过大错误上去媒体重试，明确上下文溢出时有界截断重试；未知错误不做此降级。
+本地图片 token 估算使用短占位，不反映实际图片体积；Read 的 0.125 比例也是本地预算换算，不是供应商的视觉 token 或像素上限保证。已有 provider usage 锚点仍会参与自动压缩，所以 token 压缩不能替代字节预算。裸 `413 Failed to buffer the request body: length limit exceeded` 不扩展为上下文或媒体错误，不自动恢复，UI 提示压缩对话或开启新会话。摘要仅在明确识别的媒体过大错误上去媒体重试，明确上下文溢出时有界截断重试；未知错误不做此降级。去媒体重试是通用摘要接口的防御措施，当前内置摘要序列化通常已是纯文本。
 
 聚焦回归：`npx vitest run packages/coding-agent/test/read-image-budget.test.ts packages/coding-agent/test/media-request-session.test.ts packages/ai/test/media-policy.test.ts packages/coding-agent/test/microcompact.test.ts`。42 张临时生成图片经真实 session/read 工具、43 次本地测试 provider 请求验证，并额外加入超预算旧图片历史；不依赖真实凭据，也不代表已经通过供应商线上网关验收。ZPI 目前没有独立记忆代理、内置 PDF 页面提取或 MCP 图片入口，本次不引入这些能力。
 
@@ -361,5 +365,9 @@ Anthropic 缓存保持 stable 内容、dynamic sections 各自的 system 断点�
 | 快速对话 | `quick-chat-host.ts` → `createAgentSession` → 同一模型运行时 |
 | 标题 | `session-title.ts` → `ModelRuntime.streamSimple` |
 | 对话 / 回合摘要 | `compaction.ts:completeSummarization`（包括注入 stream 和直接调用）→ 共同媒体策略 |
-| AI 协议公开接口 | `stream.ts` 以及 `api/{anthropic-messages,openai-completions,openai-responses}.ts` → 共同媒体策略 |
+| AI 协议公开接口 | `stream.ts` 负责路由；三个 `api` 请求入口执行共同媒体策略，自定义 provider 在 `ModelRuntime` 边界执行 |
 | 记忆代理 | 当前仓库不存在独立实现；未新增 provider 旁路 |
+
+原生 provider 的媒体策略只在协议请求入口计算，共用 stream 包装层和普通 `ModelRuntime` 调用不再重复投影。摘要注入 stream 可能绕过协议，因此保留防御性投影并传递同一 observer；下游已投影请求无新增省略，不重复上报。显式最新用户索引仅在整数且 `-1 ≤ index < messages.length` 时采用，非法值回退到真实用户判定。image/video 必须有内联 `data` 或 `dataUrl`；缺失时返回 `MEDIA_PAYLOAD_MISSING`，未来 URI 图片须显式接入请求策略，不能按零字节静默绕过。
+
+媒体字节计算在共享 AI 层直接统计 UTF-8 长度，不依赖 Node `Buffer`，也不拼接完整 data URL 或创建编码副本；投影复用已统计的位置。compact 重试同时识别 `data`/`dataUrl` 形式的无提取文本文件，含提取文本的文件保持原样。

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { Jimp, JimpMime } from "jimp";
 import sharp from "sharp";
 import { expect, it, vi } from "vitest";
+import { SessionManager } from "zpi-coding-agent";
+import { fakeModel } from "../../../tests/fake-server.ts";
 import { READ_IMAGE_EFFECTIVE_BASE64_BYTES, READ_IMAGE_MAX_INPUT_BYTES } from "../src/core/image-limits.ts";
 import { prepareInlineImage } from "../src/core/images.ts";
 import { createReadToolDefinition } from "../src/core/tools/pi/read.ts";
@@ -63,6 +65,16 @@ it("keeps fitting 64×32 originals byte-identical and gives PNG one original-siz
     ]);
   } finally {
     spy.mockRestore();
+  }
+});
+it("accepts fully decodable PNGs with trailing bytes without changing the compression ladder", async () => {
+  for (const noise of [false, true]) {
+    const source = await png(noise ? 320 : 64, noise ? 320 : 32, noise);
+    const padded = Buffer.concat([source, Buffer.from([0])]);
+    const result = await resizeImageInProcess(padded, "image/png", readOptions);
+    expect(result.data.length).toBeLessThanOrEqual(200_000);
+    if (noise) expect(result.mimeType).toBe("image/jpeg");
+    else expect(Buffer.from(result.data, "base64")).toEqual(padded);
   }
 });
 it("passes oversized-dimension WebP through without decoding and reports unsupported above budget", async () => {
@@ -158,5 +170,50 @@ it("tries the exact JPEG ladder, non-cumulative scales and original-based fallba
     ).toBe(true);
   } finally {
     spy.mockRestore();
+  }
+});
+
+it("uses one resize snapshot for processing and the defensive budget check", async () => {
+  const readProfile = vi.fn().mockReturnValueOnce({ maxBytes: 200 }).mockReturnValue({ maxBytes: 500 });
+  const model = {
+    ...fakeModel(""),
+    inputLimits: {
+      images: {
+        get resize() {
+          return readProfile();
+        },
+      },
+    },
+  };
+  const processSpy = vi.spyOn(processor, "processImage").mockResolvedValue({
+    ok: true,
+    data: Buffer.alloc(300).toString("base64"),
+    mimeType: "image/png",
+    hints: [],
+  });
+  try {
+    const read = createReadToolDefinition(process.cwd(), {
+      operations: {
+        access: async () => {},
+        detectImageMimeType: async () => "image/png",
+        readFile: async () => Buffer.alloc(1),
+      },
+    });
+    const result = await read.execute("profile", { path: "image.png" }, undefined, undefined, {
+      cwd: process.cwd(),
+      model,
+      sessionManager: SessionManager.inMemory(),
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: "Read image file [image/png]\n[Image omitted: read_image_budget_exceeded.]" },
+    ]);
+    expect(readProfile).toHaveBeenCalledOnce();
+    expect(processSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      "image/png",
+      expect.objectContaining({ resizeOptions: expect.objectContaining({ maxBytes: 200 }) }),
+    );
+  } finally {
+    processSpy.mockRestore();
   }
 });

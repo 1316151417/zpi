@@ -1,7 +1,9 @@
 import { expect, it, vi } from "vitest";
 import {
   emptyAssistant,
+  mediaRequestBytes,
   normalizeContext,
+  projectCompactMediaForRetry,
   projectContextForModelMediaPolicy,
   projectMessagesForMediaBudget,
   streamSimple,
@@ -9,7 +11,14 @@ import {
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { isModelContextExceededMessage, isModelMediaTooLargeMessage } from "../src/utils/overflow.ts";
 
-type Block = { type: string; dataUrl?: string; text?: string; mediaType?: string; name?: string };
+type Block = {
+  type: string;
+  data?: string;
+  dataUrl?: string;
+  text?: string;
+  mediaType?: string;
+  name?: string;
+};
 const image = (bytes: number, name = "image"): Block => ({
   type: "image",
   mediaType: "image/png",
@@ -19,6 +28,44 @@ const image = (bytes: number, name = "image"): Block => ({
 const message = (content: Block[], role = "toolResult") => ({ role, content });
 const retainedNames = (messages: ReturnType<typeof message>[]) =>
   messages.flatMap((m) => m.content.filter((b) => b.type === "image").map((b) => b.name));
+
+it("counts UTF-8 inline payloads without Node globals or constructing a combined data URL", () => {
+  const values = ["a".repeat(1_000_000), "é", "中", "😀", "\ud800x\udc00", "a😀é中z"];
+  const expected = values.map((value) => Buffer.byteLength(value, "utf8"));
+  vi.stubGlobal("Buffer", undefined);
+  try {
+    for (const [index, value] of values.entries()) {
+      expect(mediaRequestBytes({ type: "image", dataUrl: value })).toBe(expected[index]);
+      expect(mediaRequestBytes({ type: "image", mimeType: "image/png", data: value })).toBe(
+        22 + expected[index],
+      );
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+it("replaces inline files using either encoding during compact retry and preserves extracted text", () => {
+  const messages = [
+    message([
+      { type: "image", dataUrl: "image" },
+      { type: "video", dataUrl: "video" },
+      { type: "file", dataUrl: "file" },
+      { type: "file", data: "base64" },
+      { type: "file", data: "base64", text: "extracted" },
+    ]),
+  ];
+  const original = structuredClone(messages);
+  const result = projectCompactMediaForRetry(messages);
+  expect(result.replacedMediaCount).toBe(4);
+  expect(result.messages[0].content).toEqual([
+    { type: "text", text: "[image]" },
+    { type: "text", text: "[video]" },
+    { type: "text", text: "[document]" },
+    { type: "text", text: "[document]" },
+    messages[0].content[4],
+  ]);
+  expect(messages).toEqual(original);
+});
 
 it("returns the same message array and objects below budget", () => {
   const messages = [message([image(30)])];
@@ -135,3 +182,66 @@ it("uses the exact ZCode error predicates without silently widening bare 413", (
   expect(isModelMediaTooLargeMessage("payload too large")).toBe(false);
   expect(emptyAssistant(fakeModel("http://unused")).stopReason).toBe("stop");
 });
+
+it.each([3, 8, 1.5, -2, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+  "falls back from invalid latest-user index %s without losing attachment protection",
+  (latestRealUserMessageIndex) => {
+    const messages = [
+      message([image(2, "old")], "user"),
+      message([image(4, "current")], "user"),
+      message([image(6, "tool")]),
+    ];
+    const result = projectMessagesForMediaBudget(messages, { maxMediaBytes: 7, latestRealUserMessageIndex });
+    expect(retainedNames(result.messages)).toEqual(["current"]);
+  },
+);
+it("honors explicit -1 and valid request-local user indexes", () => {
+  const messages = [
+    message([image(2, "old")], "user"),
+    message([image(4, "current")], "user"),
+    message([image(6, "tool")]),
+  ];
+  expect(
+    retainedNames(
+      projectMessagesForMediaBudget(messages, { maxMediaBytes: 7, latestRealUserMessageIndex: -1 }).messages,
+    ),
+  ).toEqual(["tool"]);
+  expect(
+    retainedNames(
+      projectMessagesForMediaBudget(messages, { maxMediaBytes: 7, latestRealUserMessageIndex: 0 }).messages,
+    ),
+  ).toEqual(["old"]);
+});
+it("reports omissions once and stays silent for requests below budget or without a hook", () => {
+  const context = normalizeContext({
+    messages: [
+      { role: "user", timestamp: 0, content: [{ type: "image", data: "abcd", mimeType: "image/png" }] },
+      { role: "user", timestamp: 1, content: "current prompt" },
+    ],
+  });
+  const model = { input: ["text", "image"] as ("text" | "image")[] };
+  const onProjection = vi.fn();
+  projectContextForModelMediaPolicy(context, model, { onProjection });
+  expect(onProjection).not.toHaveBeenCalled();
+  const projected = projectContextForModelMediaPolicy(context, model, { maxMediaBytes: 0, onProjection });
+  projectContextForModelMediaPolicy(projected, model, { maxMediaBytes: 0, onProjection });
+  expect(onProjection).toHaveBeenCalledExactlyOnceWith({
+    omittedMediaCount: 1,
+    projectedMediaBytes: 0,
+    retainedMediaCount: 0,
+    totalMediaBytes: 26,
+    evictionFrontier: { messageIndex: 0, blockIndex: 0 },
+  });
+  expect(() => projectContextForModelMediaPolicy(context, model, { maxMediaBytes: 0 })).not.toThrow();
+});
+it.each(["image", "video"])(
+  "rejects %s blocks without an inline payload instead of silently treating them as free",
+  (type) => {
+    expect(() => projectMessagesForMediaBudget([message([{ type, mediaType: "image/png" }])])).toThrow(
+      "MEDIA_PAYLOAD_MISSING",
+    );
+    expect(() => projectMessagesForMediaBudget([message([{ type, dataUrl: "" }])])).toThrow(
+      "MEDIA_PAYLOAD_MISSING",
+    );
+  },
+);

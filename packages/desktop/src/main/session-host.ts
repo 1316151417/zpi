@@ -2485,7 +2485,13 @@ export class SessionHost {
           inputReferences = await this.resolveInputReferences(id, references);
         }
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
-        const runtime = this.runtimes.get(id) ?? (await ModelRuntime.create({ fetch: this.requestFetch }));
+        const runtime =
+          this.runtimes.get(id) ??
+          (await ModelRuntime.create({
+            fetch: this.requestFetch,
+            onMediaProjection: (stats, context) =>
+              this.errors.mediaProjection(stats, { ...context, sessionId: id }),
+          }));
         this.configure(runtime, selected.provider, config);
         this.runtimes.set(id, runtime);
         const model = runtime.getModel(selected.provider, selected.modelId);
@@ -2811,7 +2817,11 @@ export class SessionHost {
     const controller = new AbortController();
     const done = (async () => {
       try {
-        const runtime = await ModelRuntime.create({ fetch: this.requestFetch });
+        const runtime = await ModelRuntime.create({
+          fetch: this.requestFetch,
+          onMediaProjection: (stats, context) =>
+            this.errors.mediaProjection(stats, { ...context, sessionId: id }),
+        });
         this.configure(runtime, model.provider, config);
         const title = await generateSessionTitle(
           runtime,

@@ -59,8 +59,6 @@ export function userErrorMessage(error: unknown): string {
   const status = typeof details?.status === "number" ? details.status : undefined;
   if (/MEDIA_BUDGET_CURRENT_ATTACHMENT_TOO_LARGE/i.test(signal))
     return "本次附件过大，请移除或压缩附件后重试。";
-  if (status === 413 || details?.statusCode === 413 || /\b413\b/.test(signal))
-    return "本次请求内容过大（历史图片较多），请压缩对话或开启新会话后重试。";
   if (/\bENOENT\b|no such file or directory|file not found|找不到文件|文件不存在/i.test(signal)) {
     const path =
       typeof details?.path === "string"
@@ -76,6 +74,13 @@ export function userErrorMessage(error: unknown): string {
     return "没有权限完成此操作，请检查文件或系统权限后重试。";
   if (/\bENOSPC\b|no space left|disk (?:is )?full|磁盘空间不足/i.test(signal))
     return "磁盘空间不足，请清理空间后重试。";
+  if (
+    status === 413 ||
+    details?.statusCode === 413 ||
+    (/^(?:HTTP(?:\/[\d.]+)?\s+|(?:request failed with )?status(?: code)?\s*[:=]?\s*)?413\b/i.test(summary) &&
+      /body|payload|limit|large|exceed/i.test(summary))
+  )
+    return "本次请求内容过大，请压缩对话或开启新会话后重试。";
   if (
     /\b(?:ETIMEDOUT|ESOCKETTIMEDOUT|UND_ERR_CONNECT_TIMEOUT|ERR_TIMED_OUT|TimeoutError)\b|timed?\s*out|timeout|超时/i.test(
       signal,

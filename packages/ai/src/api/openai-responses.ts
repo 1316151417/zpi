@@ -112,6 +112,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       "onPayload",
       "onResponse",
       "onPerformance",
+      "onMediaProjection",
       "samplingParams",
       "reasoning",
       "toolChoice",
@@ -142,7 +143,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
   async function consume(events: MeasuredAssistantStream): Promise<void> {
     output = emptyAssistant(model);
     complete.clear();
-    context = projectContextForModelMediaPolicy(context, model);
+    context = projectContextForModelMediaPolicy(context, model, { onProjection: options.onMediaProjection });
     const client = new OpenAI({
       apiKey: options.apiKey || "ZPI-no-auth",
       adminAPIKey: null,

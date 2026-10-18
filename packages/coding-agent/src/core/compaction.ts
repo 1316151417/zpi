@@ -548,8 +548,9 @@ function createSummarizationOptions(
   signal: AbortSignal | undefined,
   thinkingLevel: ThinkingLevel | undefined,
   sessionId: string | undefined,
+  onMediaProjection?: SimpleStreamOptions["onMediaProjection"],
 ): SimpleStreamOptions {
-  const options: SimpleStreamOptions = { maxTokens, signal, apiKey, headers, sessionId };
+  const options: SimpleStreamOptions = { maxTokens, signal, apiKey, headers, sessionId, onMediaProjection };
   if (model.reasoning && thinkingLevel && thinkingLevel !== "off") {
     options.reasoning = thinkingLevel;
   }
@@ -603,7 +604,13 @@ export async function completeSummarization(
     while (true) {
       requestOptions.signal?.throwIfAborted();
       try {
-        const projected = projectContextForModelMediaPolicy(requestContext, model);
+        // Injected streams may bypass native adapters. Keep this defensive projection;
+        // an adapter reached through the injected stream sees no new omissions and reports nothing twice.
+        const projected = streamFn
+          ? projectContextForModelMediaPolicy(requestContext, model, {
+              onProjection: requestOptions.onMediaProjection,
+            })
+          : requestContext;
         const result = await (streamFn
           ? await streamFn(model, projected, requestOptions)
           : streamSimple(model, projected, requestOptions)
@@ -691,6 +698,7 @@ export async function generateSummaryWithUsage(
   retry?: RetryPolicy,
   callbacks?: RetryCallbacks,
   sessionId?: string,
+  onMediaProjection?: SimpleStreamOptions["onMediaProjection"],
 ): Promise<{ text: string; usage: Usage }> {
   const maxTokens = Math.min(
     Math.floor(0.8 * reserveTokens),
@@ -723,6 +731,7 @@ export async function generateSummaryWithUsage(
     signal,
     thinkingLevel,
     sessionId,
+    onMediaProjection,
   );
 
   const response = await completeSummarization(
@@ -887,6 +896,7 @@ export async function compact(
   retry?: RetryPolicy,
   callbacks?: RetryCallbacks,
   sessionId?: string,
+  onMediaProjection?: SimpleStreamOptions["onMediaProjection"],
 ): Promise<CompactionResult> {
   const {
     firstKeptEntryId,
@@ -921,6 +931,7 @@ export async function compact(
         retry,
         callbacks,
         sessionId,
+        onMediaProjection,
       );
       historyText = historyResult.text;
       historyUsage = historyResult.usage;
@@ -937,6 +948,7 @@ export async function compact(
       retry,
       callbacks,
       sessionId,
+      onMediaProjection,
     );
     // Merge into single summary
     summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
@@ -957,6 +969,7 @@ export async function compact(
       retry,
       callbacks,
       sessionId,
+      onMediaProjection,
     );
     summary = result.text;
     summaryUsage = result.usage;
@@ -994,6 +1007,7 @@ async function generateTurnPrefixSummary(
   retry?: RetryPolicy,
   callbacks?: RetryCallbacks,
   sessionId?: string,
+  onMediaProjection?: SimpleStreamOptions["onMediaProjection"],
 ): Promise<{ text: string; usage: Usage }> {
   const maxTokens = Math.min(
     Math.floor(0.5 * reserveTokens),
@@ -1006,7 +1020,16 @@ async function generateTurnPrefixSummary(
   const response = await completeSummarization(
     model,
     buildSummarizationContext(promptText),
-    createSummarizationOptions(model, maxTokens, apiKey, headers, signal, thinkingLevel, sessionId),
+    createSummarizationOptions(
+      model,
+      maxTokens,
+      apiKey,
+      headers,
+      signal,
+      thinkingLevel,
+      sessionId,
+      onMediaProjection,
+    ),
     streamFn,
     retry,
     callbacks,

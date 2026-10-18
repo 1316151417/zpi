@@ -500,6 +500,7 @@ export class AgentSession {
         onRetryFinished: () => this.notify({ type: "model_retry", status: null }),
       },
       randomUUID(),
+      this.runtime.mediaProjectionObserver(this.model, this.sessionId),
     );
     signal?.throwIfAborted();
     this.manager.appendCompaction(

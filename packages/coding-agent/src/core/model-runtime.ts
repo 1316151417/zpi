@@ -2,6 +2,7 @@ import type {
   Api,
   AssistantMessageEventStream,
   Context,
+  MediaBudgetStats,
   Model,
   SimpleStreamOptions,
   TranscriptContext,
@@ -33,18 +34,36 @@ export interface ProviderConfigInput {
     options?: SimpleStreamOptions,
   ) => AssistantMessageEventStream;
 }
+export interface MediaProjectionContext {
+  sessionId?: string;
+  provider: string;
+  modelId: string;
+}
+export interface ModelRuntimeOptions {
+  fetch?: typeof fetch;
+  /** Optional local diagnostics; the SDK has no dependency on a logging backend. */
+  onMediaProjection?: (stats: MediaBudgetStats, context: MediaProjectionContext) => void;
+}
 export class ModelRuntime {
   private providers = new Map<string, ProviderConfigInput>();
   private keys = new Map<string, string>();
   private requestFetch?: typeof fetch;
-  constructor(requestFetch?: typeof fetch) {
-    this.requestFetch = requestFetch;
+  private onMediaProjection?: ModelRuntimeOptions["onMediaProjection"];
+  constructor(requestFetch?: typeof fetch, options: ModelRuntimeOptions = {}) {
+    this.requestFetch = requestFetch ?? options.fetch;
+    this.onMediaProjection = options.onMediaProjection;
   }
   get fetch(): typeof fetch {
     return this.requestFetch ?? globalThis.fetch;
   }
-  static async create(options: { fetch?: typeof fetch } = {}): Promise<ModelRuntime> {
-    return new ModelRuntime(options.fetch);
+  static async create(options: ModelRuntimeOptions = {}): Promise<ModelRuntime> {
+    return new ModelRuntime(options.fetch, options);
+  }
+  mediaProjectionObserver(model: Model, sessionId?: string): SimpleStreamOptions["onMediaProjection"] {
+    const report = this.onMediaProjection;
+    return report
+      ? (stats) => report(stats, { sessionId, provider: model.provider, modelId: model.id })
+      : undefined;
   }
   clearProviders(): void {
     this.providers.clear();
@@ -116,15 +135,28 @@ export class ModelRuntime {
   streamSimple(model: Model, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream {
     const p = this.providers.get(model.provider);
     if (!p) throw new Error(`Provider not configured: ${model.provider}`);
-    const transcript = projectContextForModelMediaPolicy(normalizeContext(context), model);
+    const transcript = normalizeContext(context);
     const opts = {
       ...options,
       fetch: options?.fetch ?? this.requestFetch,
       apiKey: options?.apiKey ?? this.keys.get(model.provider),
+      onMediaProjection:
+        options?.onMediaProjection ?? this.mediaProjectionObserver(model, options?.sessionId),
     };
     const customStream = p.streamSimple;
     if (customStream)
-      return guardModelStream(model, (guarded) => customStream(model, transcript, guarded), opts);
+      return guardModelStream(
+        model,
+        (guarded) =>
+          customStream(
+            model,
+            projectContextForModelMediaPolicy(transcript, model, { onProjection: opts.onMediaProjection }),
+            guarded,
+          ),
+        opts,
+      );
+    // Native protocols own their request boundary, including direct API callers.
+    // Only custom providers need projection here; the common stream wrapper does not repeat it.
     return streamSimple(model, transcript, {
       ...opts,
       ...(p.getApiKey && options?.apiKey === undefined ? { getApiKey: p.getApiKey } : {}),

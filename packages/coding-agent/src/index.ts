@@ -8,7 +8,12 @@ export * from "./core/images.ts";
 export * from "./core/mentions.ts";
 export type { ModelPerformance, ModelPerformanceTotals } from "./core/model-performance.ts";
 export { modelPerformance, SessionPerformance, validPerformanceTotals } from "./core/model-performance.ts";
-export type { ProviderChatModelConfig, ProviderConfigInput } from "./core/model-runtime.ts";
+export type {
+  MediaProjectionContext,
+  ModelRuntimeOptions,
+  ProviderChatModelConfig,
+  ProviderConfigInput,
+} from "./core/model-runtime.ts";
 export { ModelRuntime } from "./core/model-runtime.ts";
 export { readFileBounded } from "./core/read-file-bounded.ts";
 export { isSessionEntry, isSessionHeader, maxSessionEntryBytes } from "./core/record-validation.ts";

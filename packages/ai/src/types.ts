@@ -286,6 +286,8 @@ export interface ModelPerformanceSample {
   generationMs?: number;
 }
 export interface StreamOptions {
+  /** Request-local media omission statistics; omitted when the request fits. Never sent to the provider. */
+  onMediaProjection?: (stats: import("./utils/media-policy.ts").MediaBudgetStats) => void;
   /** Move the tail cache breakpoint before the final request-local prompt. */
   skipCacheWrite?: boolean;
   /** Transient measurements from actual provider attempts; an empty sample starts a fresh attempt. */

@@ -1,8 +1,9 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { MediaBudgetStats } from "zpi-ai";
 
 export const maxErrorLogBytes = 5 * 1024 * 1024;
-type Context = Record<string, string | number | boolean | undefined>;
+type Context = Record<string, string | number | boolean | undefined | MediaBudgetStats["evictionFrontier"]>;
 
 function redact(value: string): string {
   return value
@@ -64,6 +65,17 @@ export class ErrorLog {
       }
       if (size && size + Buffer.byteLength(entry) > maxErrorLogBytes) renameSync(this.path, `${this.path}.1`);
       appendFileSync(this.path, entry, { mode: 0o600 });
+    });
+  }
+
+  mediaProjection(
+    stats: MediaBudgetStats,
+    context: { sessionId?: string; provider?: string; modelId?: string },
+  ): void {
+    this.write("model.media_projection", "Media omitted from provider request", {
+      level: "debug",
+      ...context,
+      ...stats,
     });
   }
 

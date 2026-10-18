@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { expect, test } from "vitest";
 import { imageLimits } from "../src/core/image-limits.ts";
 import { prepareInlineImage, processImage } from "../src/core/images.ts";
-import { resizeImage } from "../src/core/tools/pi/utils/image-resize.ts";
+import { resizeImageInProcess } from "../src/core/tools/pi/utils/image-resize-core.ts";
 import { detectSupportedImageMimeType } from "../src/core/tools/pi/utils/mime.ts";
 
 async function image(width: number, height: number) {
@@ -102,6 +102,45 @@ test("inline resizing preserves lossless data that fits and clamps very thin ima
   }
 });
 
+test("disabling automatic resizing keeps fitting originals and rejects dimension or byte overflow", async () => {
+  const fitting = await image(3, 2);
+  expect(await prepareInlineImage(fitting, "image/png", { autoResizeImages: false })).toMatchObject({
+    ok: true,
+    data: fitting.toString("base64"),
+    strategy: "original",
+  });
+  for (const [width, height] of [
+    [6000, 1],
+    [1, 6000],
+  ]) {
+    expect(
+      await prepareInlineImage(await image(width, height), "image/png", {
+        autoResizeImages: false,
+      }),
+    ).toMatchObject({ ok: false, code: "too_large" });
+  }
+  expect(
+    await prepareInlineImage(fitting, "image/png", {
+      autoResizeImages: false,
+      resizeOptions: { maxBytes: 1 },
+    }),
+  ).toMatchObject({ ok: false, code: "too_large" });
+  const source = bmp.encode({ data: Buffer.from([0, 0, 0, 255]), width: 1, height: 1 }).data;
+  const converted = await prepareInlineImage(source, "image/bmp", { autoResizeImages: false });
+  expect(converted).toMatchObject({ ok: true, mimeType: "image/png" });
+  if (converted.ok)
+    expect(await sharp(Buffer.from(converted.data, "base64")).metadata()).toMatchObject({
+      width: 1,
+      height: 1,
+    });
+  expect(
+    await prepareInlineImage(source, "image/bmp", {
+      autoResizeImages: false,
+      resizeOptions: { maxBytes: 1 },
+    }),
+  ).toMatchObject({ ok: false, code: "too_large" });
+});
+
 test("fitting EXIF originals retain orientation metadata and displayed dimensions", async () => {
   const original = await sharp(await image(30, 20))
     .jpeg()
@@ -167,16 +206,40 @@ test("fitting animated GIFs preserve original frames and bytes", async () => {
     bytes: original,
     width: 1,
     height: 1,
-    warning: "动画图片仅发送首帧",
+    warning: "动画图片在压缩转换时仅保留首帧",
   });
   const prepared = await prepareInlineImage(original, "image/gif");
   expect(prepared.ok).toBe(true);
   if (!prepared.ok) return;
   expect(prepared.mimeType).toBe("image/gif");
   expect(Buffer.from(prepared.data, "base64")).toEqual(original);
+  expect(prepared.hints.join("\n")).not.toContain("Animated image");
+  expect((await sharp(Buffer.from(prepared.data, "base64")).metadata()).pages).toBe(2);
   expect(await sharp(Buffer.from(prepared.data, "base64")).removeAlpha().raw().toBuffer()).toEqual(
     Buffer.from([255, 0, 0]),
   );
+});
+
+test("animated GIF compression reports first-frame output only when it actually converts", async () => {
+  const pixels = Buffer.from([
+    ...Array.from({ length: 4 }, () => [255, 0, 0]).flat(),
+    ...Array.from({ length: 4 }, () => [0, 255, 0]).flat(),
+  ]);
+  const original = await sharp(pixels, { raw: { width: 2, height: 4, channels: 3, pageHeight: 2 } })
+    .gif({ delay: [100, 100], loop: 0 })
+    .toBuffer();
+  expect((await sharp(original).metadata()).pages).toBe(2);
+  const prepared = await prepareInlineImage(original, "image/gif", {
+    resizeOptions: { maxWidth: 1, maxHeight: 1 },
+  });
+  expect(prepared.ok).toBe(true);
+  if (!prepared.ok) return;
+  expect(prepared.hints).toContain("[Animated image: only the first frame is sent.]");
+  expect(await sharp(Buffer.from(prepared.data, "base64")).metadata()).toMatchObject({
+    width: 1,
+    height: 1,
+  });
+  expect((await sharp(Buffer.from(prepared.data, "base64")).metadata()).pages ?? 1).toBe(1);
 });
 
 test("BMP conversion, invalid images and resize settings use the same guarded pipeline", async () => {
@@ -191,7 +254,9 @@ test("BMP conversion, invalid images and resize settings use the same guarded pi
   expect(await prepareInlineImage(png, "image/png", { resizeOptions: { maxWidth: 0 } })).toMatchObject({
     ok: false,
   });
-  expect(await resizeImage(png, "image/png", { maxBytes: png.toString("base64").length })).toMatchObject({
+  expect(
+    await resizeImageInProcess(png, "image/png", { maxBytes: png.toString("base64").length }),
+  ).toMatchObject({
     data: png.toString("base64"),
     wasResized: false,
   });
@@ -411,9 +476,7 @@ test("tight encoded payload budgets reduce dimensions or omit an image without l
   })
     .png()
     .toBuffer();
-  const resized = await resizeImage(original, "image/png", { maxBytes: 1100 });
-  expect(resized).not.toBeNull();
-  if (!resized) return;
+  const resized = await resizeImageInProcess(original, "image/png", { maxBytes: 1100 });
   expect(resized.data.length).toBeLessThanOrEqual(1100);
   expect(resized.width).toBeGreaterThanOrEqual(1);
   expect(resized.height).toBeGreaterThanOrEqual(1);
@@ -422,7 +485,9 @@ test("tight encoded payload budgets reduce dimensions or omit an image without l
     width: resized.width,
     height: resized.height,
   });
-  expect(await resizeImage(original, "image/png", { maxBytes: 1 })).toBeNull();
+  await expect(resizeImageInProcess(original, "image/png", { maxBytes: 1 })).rejects.toMatchObject({
+    code: "too_large",
+  });
   expect((await processImage(original)).bytes.equals(original)).toBe(true);
 });
 
@@ -436,7 +501,9 @@ test("invalid budgets and corrupt or over-limit sources cannot become inline pay
     { maxBytes: 1.5 },
     { jpegQuality: 101 },
   ]) {
-    expect(await resizeImage(original, "image/png", options)).toBeNull();
+    await expect(resizeImageInProcess(original, "image/png", options)).rejects.toMatchObject({
+      code: "invalid_request",
+    });
   }
   const corrupt = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
@@ -527,12 +594,13 @@ test("animated PNGs are recognized even when the decoder reports only their firs
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
   expect(detectSupportedImageMimeType(original)).toBe("image/png");
-  expect(await processImage(original)).toMatchObject({ warning: "动画图片仅发送首帧" });
+  expect(await processImage(original)).toMatchObject({ warning: "动画图片在压缩转换时仅保留首帧" });
   const prepared = await prepareInlineImage(original, "image/png");
   expect(prepared.ok).toBe(true);
   if (!prepared.ok) return;
   const bytes = Buffer.from(prepared.data, "base64");
   expect(bytes).toEqual(original);
+  expect(prepared.hints.join("\n")).not.toContain("Animated image");
   expect(await sharp(bytes).rotate().removeAlpha().raw().toBuffer()).toEqual(Buffer.from([255, 0, 0]));
 });
 

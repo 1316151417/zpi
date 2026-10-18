@@ -15,6 +15,7 @@ import type { CombinedSelection } from "../shared/bridge.ts";
 import { toThinking } from "../shared/config.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { quickChatSelection } from "../shared/quick-chat-settings.ts";
+import type { ErrorLog } from "./error-log.ts";
 import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { projectEvent } from "./projection.ts";
 import { QuickChatAttachments, type QuickChatImages } from "./quick-chat-attachments.ts";
@@ -58,12 +59,15 @@ export class QuickChatHost {
     cwd: string,
     requestFetch: typeof fetch = fetch,
     now: () => number = () => performance.now(),
+    errors?: ErrorLog,
   ) {
     this.now = now;
     this.settings = settings;
     this.cwd = resolve(cwd);
     this.requestFetch = requestFetch;
-    this.runtime = new ModelRuntime(requestFetch);
+    this.runtime = new ModelRuntime(requestFetch, {
+      onMediaProjection: errors ? (stats, context) => errors.mediaProjection(stats, context) : undefined,
+    });
     this.selection = this.initialSelection();
     this.webTools = new WebTools({
       getApiKey: () => {

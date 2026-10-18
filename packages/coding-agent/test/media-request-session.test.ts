@@ -30,8 +30,8 @@ it("reads 42 screenshot files through a real session while bounding every provid
       timestamp: i,
       content: [{ type: "image", data: screenshot.toString("base64"), mimeType: "image/png" }],
     });
-  const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
-  const runtime = new ModelRuntime();
+  const onMediaProjection = vi.fn();
+  const runtime = new ModelRuntime(undefined, { onMediaProjection });
   let requests = 0;
   let peakMediaBytes = 0;
   let peakBodyBytes = 0;
@@ -89,7 +89,7 @@ it("reads 42 screenshot files through a real session while bounding every provid
     expect(
       manager.getEntries().filter((entry) => entry.type === "message" && entry.message.role === "toolResult"),
     ).toHaveLength(42);
-    const stats = debug.mock.calls.map((call) => call[1]);
+    const stats = onMediaProjection.mock.calls.map((call) => call[0]);
     expect(stats.some((stat) => stat.omittedMediaCount > 0 && stat.evictionFrontier !== null)).toBe(true);
     expect(stats[0]).toEqual(
       expect.objectContaining({
@@ -112,12 +112,10 @@ it("reads 42 screenshot files through a real session while bounding every provid
             : [];
         }),
     ).toHaveLength(57);
-    debug.mockRestore();
     process.stdout.write(
       `42-screenshot regression ${JSON.stringify({ requests, maxReadBase64Bytes, peakMediaBytes, peakBodyBytes, omittedMediaCount: stats[0].omittedMediaCount, evictionFrontier: stats[0].evictionFrontier })}\n`,
     );
   } finally {
     session.dispose();
-    debug.mockRestore();
   }
 }, 60_000);

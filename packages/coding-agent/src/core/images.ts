@@ -16,7 +16,7 @@ export async function validateImageSource(bytes: Uint8Array) {
     mimeType: source.mimeType,
     width: source.width,
     height: source.height,
-    ...(source.animated ? { warning: "动画图片仅发送首帧" } : {}),
+    ...(source.animated ? { warning: "动画图片在压缩转换时仅保留首帧" } : {}),
   };
 }
 

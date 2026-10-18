@@ -100,7 +100,7 @@ export function createReadToolDefinition(
       sideEffectScope: "none",
     },
     label: "read",
-    description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images up to 20 MiB are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
+    description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Image sources up to 20 MiB are processed under separate inline budgets; over-budget WebP images are omitted because transcoding is unavailable. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     promptSnippet: readToolSystemPromptContribution.snippet,
     promptGuidelines: [...readToolSystemPromptContribution.guidelines],
     parameters: readSchema,
@@ -149,23 +149,17 @@ export function createReadToolDefinition(
                 // Older/custom readers may ignore the optional I/O limit. Never decode oversized results.
                 if (buffer.length > imageLimits.readSourceBytes)
                   throw new Error(`Image exceeds the ${imageLimits.readSourceBytes} byte size limit`);
+                const resizeOptions = readImageResizeOptions(
+                  ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
+                );
                 let processed = await processImage(buffer, mimeType, {
                   autoResizeImages,
-                  resizeOptions: readImageResizeOptions(
-                    ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
-                  ),
+                  resizeOptions,
                 });
                 // Defensive check for replacement adapters: never send an over-budget Read result.
                 if (
                   processed.ok &&
-                  !fitsImageBudget(
-                    Buffer.from(processed.data, "base64"),
-                    imageBudget(
-                      readImageResizeOptions(
-                        ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
-                      ),
-                    ),
-                  )
+                  !fitsImageBudget(Buffer.from(processed.data, "base64"), imageBudget(resizeOptions))
                 )
                   processed = {
                     ok: false,

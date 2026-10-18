@@ -1,8 +1,22 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, it } from "vitest";
-import { emptyAssistant, type Message, type ToolResultMessage } from "zpi-ai";
-import { SessionManager, SettingsManager } from "zpi-coding-agent";
-import { fakeModel } from "../../../tests/fake-server.ts";
+import {
+  createAssistantMessageEventStream,
+  emptyAssistant,
+  type Message,
+  type ToolResultMessage,
+} from "zpi-ai";
+import {
+  createAgentSession,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+  StaticResourceLoader,
+} from "zpi-coding-agent";
+import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { buildDefaultMicrocompactThreshold, maybeMicrocompact } from "../src/core/microcompact.ts";
+import { directory } from "./helpers/session-fixture.ts";
 
 function groups(size = 1600): Message[] {
   return Array.from({ length: 7 }, (_, i): Message[] => [
@@ -122,4 +136,68 @@ it("counts system text in token-pressure decisions", () => {
     config,
   });
   expect(result.boundary?.trigger).toBe("token_pressure");
+});
+
+it("makes unchanged files readable again when microcompact removes their earlier contents", async () => {
+  const cwd = await directory();
+  const content = "file content ".repeat(400);
+  await writeFile(join(cwd, "source.txt"), content);
+  const requests: Message[][] = [];
+  const runtime = new ModelRuntime();
+  runtime.registerProvider("fake", {
+    models: [{ ...fakeConfig(""), contextWindow: 1_000_000 }],
+    streamSimple(model, context) {
+      requests.push(context.messages);
+      const response = emptyAssistant(model);
+      if (requests.length <= 3) {
+        response.content = [
+          {
+            type: "toolCall",
+            id: `read-${requests.length}`,
+            name: "read",
+            arguments: { path: "source.txt" },
+          },
+        ];
+        response.stopReason = "toolUse";
+      } else response.content = [{ type: "text", text: "done" }];
+      const stream = createAssistantMessageEventStream();
+      stream.end(response);
+      return stream;
+    },
+  });
+  const manager = SessionManager.inMemory(cwd);
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir: join(cwd, "agent"),
+    homeDir: join(cwd, "home"),
+    modelRuntime: runtime,
+    sessionManager: manager,
+    tools: ["read"],
+    resourceLoader: new StaticResourceLoader(),
+    settingsManager: SettingsManager.inMemory({
+      compaction: { microcompact: { enabled: true, thresholdTokens: 1, keepRecentToolResults: 1 } },
+    }),
+  });
+  try {
+    await session.prompt("Read source.txt three times");
+    expect(requests).toHaveLength(4);
+    expect(
+      requests[2].find((message) => message.role === "toolResult" && message.toolCallId === "read-1"),
+    ).toMatchObject({ content: [{ type: "text", text: "[Old tool result content cleared]" }] });
+    expect(
+      requests[3].find((message) => message.role === "toolResult" && message.toolCallId === "read-3"),
+    ).toMatchObject({ content: [{ type: "text", text: content }] });
+    expect(manager.getEntries()).toContainEqual(expect.objectContaining({ type: "microcompact" }));
+    const original = manager
+      .getEntries()
+      .find(
+        (entry) =>
+          entry.type === "message" &&
+          entry.message.role === "toolResult" &&
+          entry.message.toolCallId === "read-1",
+      );
+    expect(original).toMatchObject({ message: { content: [{ type: "text", text: content }] } });
+  } finally {
+    session.dispose();
+  }
 });

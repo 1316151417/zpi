@@ -51,6 +51,7 @@ const commonOptions = [
   "onPayload",
   "onResponse",
   "onPerformance",
+  "onMediaProjection",
   "samplingParams",
 ];
 function imagePart(c: ImageContent): { type: "image_url"; image_url: { url: string } } {
@@ -161,7 +162,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
   async function consume(events: MeasuredAssistantStream): Promise<void> {
     output = emptyAssistant(model);
     completeCalls.clear();
-    context = projectContextForModelMediaPolicy(context, model);
+    context = projectContextForModelMediaPolicy(context, model, { onProjection: options.onMediaProjection });
     const client = new OpenAI({
       // OpenAI's constructor requires a nonempty value; the explicit no-auth path removes its header.
       apiKey: options.apiKey || "ZPI-no-auth",

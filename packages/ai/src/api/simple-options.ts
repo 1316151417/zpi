@@ -48,6 +48,7 @@ export function buildBaseOptions(
     onPayload: options?.onPayload,
     onResponse: options?.onResponse,
     onPerformance: options?.onPerformance,
+    onMediaProjection: options?.onMediaProjection,
     timeoutMs: options?.timeoutMs,
     maxRetries: options?.maxRetries,
     maxRetryDelayMs: options?.maxRetryDelayMs,

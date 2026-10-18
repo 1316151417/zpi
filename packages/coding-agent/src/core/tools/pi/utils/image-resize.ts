@@ -1,15 +1,8 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
-import { type ResizedImage, resizeImageInProcess } from "./image-resize-core.ts";
+import type { ResizedImage } from "./image-resize-core.ts";
 
 export type { ImageResizeOptions, ResizedImage } from "./image-resize-core.ts";
-export async function resizeImage(...args: Parameters<typeof resizeImageInProcess>) {
-  try {
-    return await resizeImageInProcess(...args);
-  } catch {
-    return null;
-  }
-}
 export function formatDimensionNote(result: ResizedImage): string | undefined {
   if (!result.wasResized) {
     return undefined;

@@ -303,6 +303,8 @@ async function launch(): Promise<void> {
     settings,
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
     requestFetch,
+    undefined,
+    errors,
   );
   const quickChatTiming =
     process.env.ZPI_QUICK_CHAT_TIMING === "1"

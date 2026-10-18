@@ -108,7 +108,7 @@ test("resize and animation hints are retained for model input alongside original
     "base64",
   );
   const gif = await store.import("animation.gif", animated);
-  expect(gif.warning).toBe("动画图片仅发送首帧");
+  expect(gif.warning).toBe("动画图片在压缩转换时仅保留首帧");
   expect(store.load([gif.id]).images[0]?.data).toBe(animated.toString("base64"));
 });
 

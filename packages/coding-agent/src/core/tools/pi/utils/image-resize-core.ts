@@ -38,6 +38,7 @@ export async function resizeImageInProcess(
   inputBytes: Uint8Array,
   mimeType: string,
   options?: ImageResizeOptions,
+  autoResizeImages = true,
 ): Promise<ResizedImage> {
   const budget = imageBudget(options);
   const maxWidth = options?.maxWidth ?? READ_IMAGE_MAX_DIMENSION;
@@ -80,15 +81,23 @@ export async function resizeImageInProcess(
     const source = await openImage(inputBytes);
     await source.pipeline.stats();
     animated = source.animated;
+    const decodeWithSharp = async () => {
+      const { data, info } = await source.pipeline.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      return Jimp.fromBitmap({ data, width: info.width, height: info.height });
+    };
     // Retain ZPI's guarded BMP decoder (including RLE/bitfields unsupported by Jimp).
-    image =
-      sourceMime === "image/bmp" || (sourceMime === "image/png" && source.animated)
-        ? Jimp.fromBitmap({
-            data: await source.pipeline.ensureAlpha().raw().toBuffer(),
-            width: source.width,
-            height: source.height,
-          })
-        : await Jimp.read(Buffer.from(inputBytes));
+    if (sourceMime === "image/bmp" || (sourceMime === "image/png" && source.animated))
+      image = await decodeWithSharp();
+    else {
+      try {
+        image = await Jimp.read(Buffer.from(inputBytes));
+      } catch (error) {
+        // PNG decoders differ on trailing bytes. Sharp already validated the complete
+        // first frame above; feed its pixels to the same Jimp encoding ladder.
+        if (sourceMime !== "image/png") throw error;
+        image = await decodeWithSharp();
+      }
+    }
   } catch {
     throw new ImageProcessorError("processing_failed", "Unable to decode image data");
   }
@@ -135,6 +144,18 @@ export async function resizeImageInProcess(
           : await candidate.getBuffer(JimpMime.png, { deflateLevel: 9, deflateStrategy: 3 });
     return fitsImageBudget(data, budget) ? result(data, outputMime, candidate, strategy) : undefined;
   };
+  if (!autoResizeImages) {
+    // Disabling automatic compression never disables request limits. BMP still needs
+    // format normalization, but neither resampling nor lossy fallback is allowed.
+    if (withinDimensions && sourceMime === "image/bmp") {
+      const fitted = await encode(image, JimpMime.png, "preserve-format");
+      if (fitted) return fitted;
+    }
+    throw new ImageProcessorError(
+      "too_large",
+      "Image exceeds the inline image limits; automatic resizing is disabled",
+    );
+  }
   const jpeg = async (candidate: DecodedImage) => {
     for (const step of [quality, ...JPEG_QUALITY_STEPS.filter((step) => step < quality)]) {
       const fitted = await encode(candidate, JimpMime.jpeg, "jpeg-quality", step);

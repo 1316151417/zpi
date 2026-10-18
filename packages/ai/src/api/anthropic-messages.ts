@@ -43,7 +43,7 @@ import { parseJsonWithRepair } from "../utils/json-parse.ts";
 import { projectContextForModelMediaPolicy } from "../utils/media-policy.ts";
 import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
-import { finalizeProviderCacheControl } from "../utils/provider-cache.ts";
+import { assertProviderCacheControlLimit, finalizeProviderCacheControl } from "../utils/provider-cache.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
@@ -51,6 +51,7 @@ import { redactProviderError } from "../utils/redact-error.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import {
+  contentText,
   getCurrentTools,
   getDeclaredTools,
   getInitialSystemMessage,
@@ -572,7 +573,9 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
     const completeCalls = new Set<ToolCall>();
     let invalidToolInput: unknown;
     try {
-      normalizedContext = projectContextForModelMediaPolicy(normalizedContext, model);
+      normalizedContext = projectContextForModelMediaPolicy(normalizedContext, model, {
+        onProjection: options?.onMediaProjection,
+      });
       let client: Anthropic;
       let isOAuth: boolean;
       let usageModel = model;
@@ -1159,9 +1162,7 @@ function buildParams(
   const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
   const initialSystemSegments = initialSystemMessage
     ? [
-        typeof initialSystemMessage.content === "string"
-          ? initialSystemMessage.content
-          : initialSystemMessage.content.map((block) => block.text).join("\n\n"),
+        contentText(initialSystemMessage.content),
         Object.values(initialSystemMessage.sections ?? {})
           .filter((value): value is string => value !== null)
           .join("\n\n"),
@@ -1330,6 +1331,7 @@ function buildParams(
     params.fallbacks = allowedFallbackModels.map((fallback) => ({ model: fallback.model }));
   }
 
+  assertProviderCacheControlLimit(params);
   return params;
 }
 
