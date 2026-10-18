@@ -979,6 +979,15 @@ small {
 .queue-text.compact {
   font-family: var(--font-code);
 }
+.queue-attachments {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-small);
+  color: var(--color-text-subtle);
+}
 .queue-icon,
 .queue-drag,
 .queue-now {

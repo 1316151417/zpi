@@ -47,19 +47,24 @@ const restrictQueueDragToPanel: Modifier = ({
 function queuedContent(item: QueuedInput): {
   text: string;
   selections: ConversationSelection[];
+  attachments: string[];
 } {
   if (item.subagentNotification)
     return {
       text: `${item.subagentNotification.agentType} 已回传 · ${item.subagentNotification.description}`,
       selections: [],
+      attachments: [],
     };
   const parsed = parseSelectionPrompt(item.text);
   let text = parsed.text;
   for (const mention of parseMentions(text).reverse())
     text = text.slice(0, mention.start) + mention.label + text.slice(mention.end);
+  const attachments = item.attachments.map((image) => image.name);
   return {
-    text: text || item.attachments.map((image) => image.name).join("、") || item.fileReferences.join("、"),
+    // 图片名称单独成行；只有旧记录的纯文件引用才回退到正文位。
+    text: text || (parsed.selections.length || attachments.length ? "" : item.fileReferences.join("、")),
     selections: parsed.selections,
+    attachments,
   };
 }
 const QueueRow = memo(function QueueRow({
@@ -107,11 +112,19 @@ const QueueRow = memo(function QueueRow({
           <GripVertical size={16} />
         </button>
       </ActionHint>
-      <span className="queue-content" title={content.text}>
-        <span className={`queue-text${compact ? " compact" : ""}`}>
-          {compact ? "/compact" : content.text}
-        </span>
+      <span
+        className="queue-content"
+        title={content.text || content.attachments.join("、") || item.fileReferences.join("、")}
+      >
+        {content.text && (
+          <span className={`queue-text${compact ? " compact" : ""}`}>
+            {compact ? "/compact" : content.text}
+          </span>
+        )}
         {content.selections.length > 0 && <SelectionReferenceChip references={content.selections} />}
+        {content.attachments.length > 0 && (
+          <span className="queue-attachments">{content.attachments.join("、")}</span>
+        )}
       </span>
       <button
         type="button"
