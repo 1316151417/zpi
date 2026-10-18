@@ -1279,7 +1279,7 @@ test.each([false, true])(
     await f.quick.show();
     f.quick.hide();
     f.host.reset.mockImplementationOnce(async () => f.changeSession("shortcut-new"));
-    const opening = f.quick.newConversation();
+    const opening = f.quick.toggle(true);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(f.windows[0].show).toHaveBeenCalledOnce();
     expect(f.windows[0].getBounds().height).toBe(44);
@@ -1293,7 +1293,163 @@ test.each([false, true])(
   },
 );
 
-test("new shortcut is not a toggle when already visible, and cold new remains compact", async () => {
+test.each([false, true])(
+  "new shortcut opens, hides without reset, then starts fresh, history=%s",
+  async (history) => {
+    const f = fixture();
+    let session = 0;
+    f.host.reset.mockImplementation(async () => f.changeSession(`shortcut-${++session}`));
+    const first = f.quick.toggle(true);
+    await tick();
+    await f.rendererReady();
+    await first;
+    const window = f.windows[0];
+    expect(window.isVisible()).toBe(true);
+    expect(window.getBounds().height).toBe(44);
+    if (history) f.emitHistory(true);
+    await f.quick.toggle(true);
+    expect(window.isVisible()).toBe(false);
+    expect(f.host.sessionId).toBe("shortcut-1");
+    expect(f.host.reset).toHaveBeenCalledOnce();
+    expect(f.host.stop).not.toHaveBeenCalled();
+    expect(f.host.discardDraftAttachments).not.toHaveBeenCalled();
+    // The ordinary shortcut can still resume exactly the conversation that was hidden.
+    await f.quick.toggle();
+    expect(f.host.sessionId).toBe("shortcut-1");
+    expect(window.getBounds().height).toBe(history ? 560 : 44);
+    await f.quick.toggle();
+    const third = f.quick.toggle(true);
+    await tick();
+    await f.rendererReady("shortcut-1");
+    expect(window.show).toHaveBeenCalledTimes(2);
+    await f.rendererReady();
+    await third;
+    expect(f.host.reset).toHaveBeenCalledTimes(2);
+    expect(f.host.sessionId).toBe("shortcut-2");
+    expect(window.getBounds().height).toBe(44);
+    expect(window.show).toHaveBeenCalledTimes(3);
+    await f.quick.dispose();
+    await f.quick.toggle(true);
+    expect(f.host.reset).toHaveBeenCalledTimes(2);
+  },
+);
+
+test.each(["load", "reset", "frame"] as const)(
+  "second new shortcut cancels pending %s and late readiness cannot reopen it",
+  async (stage) => {
+    const f = fixture({ autoLoad: stage !== "load" });
+    let finish = () => {};
+    f.host.reset.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            f.changeSession("pending-new");
+            resolve();
+          };
+          if (stage !== "reset") finish();
+        }),
+    );
+    const first = f.quick.toggle(true);
+    if (stage === "frame") await tick();
+    await f.quick.toggle(true);
+    expect(f.host.reset).toHaveBeenCalledOnce();
+    if (stage === "reset") finish();
+    if (stage === "load") f.windows[0].webContents.emit("did-finish-load");
+    await f.rendererReady("session-1", 0);
+    await f.rendererReady();
+    await first;
+    expect(f.windows[0].show).not.toHaveBeenCalled();
+    expect(f.windows[0].isVisible()).toBe(false);
+    expect(f.host.discardDraftAttachments).not.toHaveBeenCalled();
+    await f.quick.toggle();
+    expect(f.windows[0].show).toHaveBeenCalledOnce();
+    expect(f.host.sessionId).toBe("pending-new");
+    expect(f.host.reset).toHaveBeenCalledOnce();
+    await f.quick.dispose();
+  },
+);
+
+test("three rapid new shortcuts honor the final opening intent and ignore the old acknowledgement", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  let finish!: () => void;
+  const resetting = new Promise<void>((resolve) => {
+    finish = () => {
+      f.changeSession("latest-new");
+      resolve();
+    };
+  });
+  f.host.reset.mockReturnValue(resetting);
+  const first = f.quick.toggle(true);
+  await f.quick.toggle(true);
+  const third = f.quick.toggle(true);
+  finish();
+  await tick();
+  await f.rendererReady("session-1");
+  await f.rendererReady("latest-new", 0);
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  await f.rendererReady();
+  await Promise.all([first, third]);
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].getBounds().height).toBe(44);
+  expect(f.host.reset).toHaveBeenCalledTimes(2);
+  await f.quick.dispose();
+});
+
+test("new shortcut brings forward an unfocused native panel using the ordinary toggle decision", async () => {
+  const f = fixture({ history: true, platform: "darwin" });
+  await f.quick.show();
+  const window = f.windows[0];
+  window.isFocused.mockReturnValue(false);
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 1440, y: 0, width: 1000, height: 700 },
+    workArea: { x: 1440, y: 0, width: 1000, height: 700 },
+  });
+  f.host.reset.mockImplementationOnce(async () => f.changeSession("unfocused-new"));
+  const opening = f.quick.toggle(true);
+  await tick();
+  await f.rendererReady();
+  await opening;
+  expect(window.show).toHaveBeenCalledTimes(2);
+  expect(window.hide).not.toHaveBeenCalled();
+  expect(window.getBounds()).toMatchObject({ width: 660, height: 560 });
+  expect(window.getBounds().x).toBeGreaterThanOrEqual(1440);
+  window.isFocused.mockReturnValue(true);
+  await f.quick.toggle(true);
+  expect(window.hide).toHaveBeenCalledOnce();
+  expect(f.host.reset).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("new shortcut cancels a pending expiry without starting another reset", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  f.quick.hide();
+  let finish!: () => void;
+  f.host.resetIfExpired.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          f.changeSession("expired-new");
+          resolve();
+        };
+      }),
+  );
+  const opening = f.quick.toggle();
+  await f.quick.toggle(true);
+  finish();
+  await f.rendererReady();
+  await opening;
+  expect(f.windows[0].show).toHaveBeenCalledOnce();
+  expect(f.host.reset).not.toHaveBeenCalled();
+  await f.quick.toggle();
+  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+  expect(f.windows[0].getBounds().height).toBe(44);
+  await f.quick.dispose();
+});
+
+test("explicit new remains unconditional when already visible, and cold new remains compact", async () => {
   const f = fixture();
   f.host.reset.mockImplementationOnce(async () => f.changeSession("cold-new"));
   const cold = f.quick.newConversation();
@@ -1707,7 +1863,7 @@ test("probe timeout preserves unknown drafts, retries on the next resume, and ne
   }
 });
 
-test.each(["toggle", "space", "dispose", "crash"] as const)(
+test.each(["toggle", "new-toggle", "space", "dispose", "crash"] as const)(
   "%s cancels pending occupancy without stale replies reviving the window",
   async (action) => {
     const f = await emptyExpanded();
@@ -1716,6 +1872,7 @@ test.each(["toggle", "space", "dispose", "crash"] as const)(
     await tick();
     const [, token, sessionId] = latestProbe(f);
     if (action === "toggle") await f.quick.toggle();
+    else if (action === "new-toggle") await f.quick.toggle(true);
     else if (action === "space") f.spaceChanged();
     else if (action === "crash") f.windows[0].webContents.emit("render-process-gone");
     else await f.quick.dispose();
@@ -1723,6 +1880,7 @@ test.each(["toggle", "space", "dispose", "crash"] as const)(
     await f.quick.call("reportComposerState", [token, sessionId, false]);
     await f.rendererReady();
     expect(f.windows[0].show).toHaveBeenCalledOnce();
+    expect(f.host.reset).toHaveBeenCalledOnce(); // Only the initial explicit new; cancellation never resets.
     await f.quick.dispose();
   },
 );

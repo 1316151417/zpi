@@ -680,6 +680,96 @@ test.each([
   },
 );
 
+test("new shortcut hides without losing text or image drafts, normal resume restores them, and reopening new clears them", async () => {
+  const frame = animationClock();
+  const f = presentationHost();
+  try {
+    await f.quick.show();
+    await mount();
+    await frame();
+    await frame.task();
+    f.quick.hide();
+    let opening!: Promise<void>;
+    await act(async () => {
+      opening = f.quick.toggle(true);
+    });
+    await frame();
+    await frame.task();
+    await opening;
+    await type("keep this draft");
+    await paste([clipboardImage()]);
+    const snapshots = f.delivered.length;
+    await f.quick.toggle(true);
+    expect(f.native.isVisible()).toBe(false);
+    expect(f.projection.session.sessionId).toBe("new-session-1");
+    expect(f.delivered).toHaveLength(snapshots);
+    expect(input().value).toBe("keep this draft");
+    expect(container.querySelector(".quick-chat-attachment")).not.toBeNull();
+    await f.quick.toggle();
+    expect(f.native.isVisible()).toBe(true);
+    expect(input().value).toBe("keep this draft");
+    expect(container.querySelector(".quick-chat-attachment")).not.toBeNull();
+    await f.quick.toggle(true);
+    await act(async () => {
+      opening = f.quick.toggle(true);
+    });
+    expect(input().value).toBe("");
+    expect(container.querySelector(".quick-chat-attachment, .conversation")).toBeNull();
+    expect(f.projection.session.sessionId).toBe("new-session-2");
+    await frame();
+    await frame.task();
+    await opening;
+    expect(f.native.isVisible()).toBe(true);
+  } finally {
+    await f.quick.dispose();
+  }
+});
+
+test.each([false, true])(
+  "rapid new shortcut cancels its queued frame and honors reopening=%s",
+  async (reopen) => {
+    const frame = animationClock();
+    const f = presentationHost();
+    try {
+      await f.quick.show();
+      await mount();
+      await frame();
+      await frame.task();
+      f.quick.hide();
+      f.native.show.mockClear();
+      let first!: Promise<void>;
+      await act(async () => {
+        first = f.quick.toggle(true);
+      });
+      await frame();
+      await f.quick.toggle(true);
+      let latest: Promise<void> | undefined;
+      if (reopen)
+        await act(async () => {
+          latest = f.quick.toggle(true);
+        });
+      await frame.task();
+      await first;
+      expect(f.native.show).not.toHaveBeenCalled();
+      if (reopen) {
+        await frame();
+        await frame.task();
+        await latest;
+        expect(f.native.show).toHaveBeenCalledOnce();
+        expect(f.projection.session.sessionId).toBe("new-session-2");
+      } else {
+        await f.quick.toggle();
+        expect(f.native.show).toHaveBeenCalledOnce();
+        expect(f.projection.session.sessionId).toBe("new-session-1");
+      }
+      expect(input().value).toBe("");
+      expect(state()).toBe("compact");
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
+
 test("acknowledges only the current session after a rendering opportunity and keeps early typing usable", async () => {
   const frame = animationClock();
   await mount();

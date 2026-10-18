@@ -573,8 +573,10 @@ export class QuickChatWindow {
         this.opening--;
       });
   }
-  toggle(): Promise<void> {
-    const trace = this.startTrace();
+  /** Both global shortcuts cancel an open/pending presentation; only their opening action differs. */
+  toggle(newConversation = false): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    const trace = this.startTrace(newConversation ? "new" : "open");
     const window = this.window;
     const nativeFocused = window && !window.isDestroyed() && window.isVisible() && window.isFocused();
     if (nativeFocused || (this.visible && (this.opening || this.loading || this.options.hiddenTestMode))) {
@@ -582,7 +584,7 @@ export class QuickChatWindow {
       trace?.finish("hidden");
       return Promise.resolve();
     }
-    return this.show(trace);
+    return this.show(trace, newConversation ? this.resetConversation(trace) : undefined);
   }
   private recordState(stage: QuickChatStage): void {
     const window = this.window;
