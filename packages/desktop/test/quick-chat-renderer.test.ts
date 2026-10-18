@@ -680,50 +680,125 @@ test.each([
   },
 );
 
-test("new shortcut hides without losing text or image drafts, normal resume restores them, and reopening new clears them", async () => {
-  const frame = animationClock();
-  const f = presentationHost();
-  try {
-    await f.quick.show();
-    await mount();
-    await frame();
-    await frame.task();
-    f.quick.hide();
-    let opening!: Promise<void>;
-    await act(async () => {
-      opening = f.quick.toggle(true);
-    });
-    await frame();
-    await frame.task();
-    await opening;
-    await type("keep this draft");
-    await paste([clipboardImage()]);
-    const snapshots = f.delivered.length;
-    await f.quick.toggle(true);
-    expect(f.native.isVisible()).toBe(false);
-    expect(f.projection.session.sessionId).toBe("new-session-1");
-    expect(f.delivered).toHaveLength(snapshots);
-    expect(input().value).toBe("keep this draft");
-    expect(container.querySelector(".quick-chat-attachment")).not.toBeNull();
-    await f.quick.toggle();
-    expect(f.native.isVisible()).toBe(true);
-    expect(input().value).toBe("keep this draft");
-    expect(container.querySelector(".quick-chat-attachment")).not.toBeNull();
-    await f.quick.toggle(true);
-    await act(async () => {
-      opening = f.quick.toggle(true);
-    });
-    expect(input().value).toBe("");
-    expect(container.querySelector(".quick-chat-attachment, .conversation")).toBeNull();
-    expect(f.projection.session.sessionId).toBe("new-session-2");
-    await frame();
-    await frame.task();
-    await opening;
-    expect(f.native.isVisible()).toBe(true);
-  } finally {
-    await f.quick.dispose();
-  }
-});
+test.each(["completed", "running"] as const)(
+  "global new replaces visible %s history in the same large window and ordinary reopen stays blank",
+  async (status) => {
+    const frame = animationClock();
+    const f = presentationHost();
+    try {
+      await f.quick.show();
+      await mount();
+      await frame();
+      await frame.task();
+      await act(async () => {
+        f.projection.session.runs[0].status = status;
+        f.publish();
+      });
+      expect(container.textContent).toContain("hello");
+      let opening!: Promise<void>;
+      await act(async () => {
+        opening = f.quick.toggle(true);
+      });
+      expect(f.projection.session.sessionId).toBe("new-session-1");
+      expect(f.projection.session.runs).toEqual([]);
+      expect(container.textContent).not.toContain("hello");
+      expect(f.native.isVisible()).toBe(true);
+      expect(f.native.getBounds()).toMatchObject({ width: 660, height: 560 });
+      const repeated = Array.from({ length: 7 }, () => f.quick.toggle(true));
+      await frame();
+      await frame.task();
+      await Promise.all([opening, ...repeated]);
+      expect(f.projection.session.sessionId).toBe("new-session-1");
+      expect(state()).toBe("expanded");
+      await f.quick.toggle();
+      await act(async () => {
+        opening = f.quick.toggle();
+      });
+      await frame();
+      await frame.task();
+      await opening;
+      expect(f.native.isVisible()).toBe(true);
+      expect(f.native.getBounds()).toMatchObject({ width: 360, height: 44 });
+      expect(state()).toBe("compact");
+      expect(container.textContent).not.toContain("hello");
+      expect(f.projection.session.sessionId).toBe("new-session-1");
+      await f.quick.toggle(true);
+      expect(f.native.isVisible()).toBe(false);
+      await f.quick.toggle();
+      expect(f.native.isVisible()).toBe(true);
+      expect(f.projection.session.sessionId).toBe("new-session-1");
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
+
+test.each(
+  [false, true].flatMap((history) =>
+    ["text", "image", "importing", "failed"].map((content) => ({ history, content })),
+  ),
+)(
+  "global new replaces a visible $content draft, history=$history, while ordinary toggle preserves it",
+  async ({ history, content }) => {
+    const frame = animationClock();
+    const f = presentationHost(history);
+    const importing = deferred<Result<ImageAttachment>>();
+    try {
+      await f.quick.show();
+      await mount();
+      await frame();
+      await frame.task();
+      if (history) {
+        await click(button("新对话"));
+        await frame();
+        await frame.task();
+      }
+      if (content === "text") await type("draft to replace");
+      else {
+        if (content === "importing")
+          vi.mocked(bridge.importAttachment).mockReturnValueOnce(importing.promise);
+        if (content === "failed")
+          vi.mocked(bridge.importAttachment).mockResolvedValueOnce({
+            ok: false,
+            error: { code: "storage", message: "import failed" },
+          });
+        await paste([clipboardImage()]);
+      }
+      const previousSession = f.projection.session.sessionId;
+      await f.quick.toggle();
+      let opening!: Promise<void>;
+      await act(async () => {
+        opening = f.quick.toggle();
+      });
+      await opening;
+      expect(f.projection.session.sessionId).toBe(previousSession);
+      expect(
+        content === "text" ? input().value : container.querySelector(".quick-chat-attachment"),
+      ).toBeTruthy();
+      await act(async () => {
+        opening = f.quick.toggle(true);
+      });
+      const repeated = Array.from({ length: 7 }, () => f.quick.toggle(true));
+      expect(f.projection.session.sessionId).not.toBe(previousSession);
+      expect(f.native.isVisible()).toBe(true);
+      expect(f.native.getBounds().width).toBe(history ? 660 : 360);
+      expect(input().value).toBe("");
+      expect(container.querySelector(".quick-chat-attachment")).toBeNull();
+      await frame();
+      await frame.task();
+      await Promise.all([opening, ...repeated]);
+      if (content === "importing") {
+        await act(async () => importing.resolve({ ok: true, value: imageMetadata("late-image") }));
+        expect(bridge.removeAttachment).toHaveBeenCalledWith(previousSession, "late-image");
+        expect(container.querySelector(".quick-chat-attachment")).toBeNull();
+      }
+      await f.quick.toggle(true);
+      expect(f.native.isVisible()).toBe(false);
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
 
 test.each(
   [false, true].flatMap((history) => ["before-frame", "queued-task"].map((stage) => ({ history, stage }))),
@@ -765,10 +840,9 @@ test.each(
       expect(f.native.isVisible()).toBe(true);
       expect(input().disabled).toBe(false);
       expect(state()).toBe("compact");
-      await type("keep after presentation");
       await f.quick.toggle(true);
       expect(f.native.isVisible()).toBe(false);
-      expect(input().value).toBe("keep after presentation");
+      expect(input().value).toBe("");
       expect(f.projection.session.sessionId).toBe("new-session-1");
     } finally {
       await f.quick.dispose();
@@ -2827,4 +2901,60 @@ test("keeps an emergency small-display layout for the expanded input and send ro
   expect(compactViewportRules).toContain("padding-block: 2px");
   expect(compactViewportRules).toContain("gap: 0");
   expect(compactViewportRules).toContain("min-height: 28px");
+});
+
+test("typing after an empty probe reply remains recoverable after the shortcut hides the window", async () => {
+  const frame = animationClock();
+  const f = presentationHost(false);
+  try {
+    await f.quick.show();
+    await mount();
+    await frame();
+    await frame.task();
+    const report = vi.mocked(bridge.reportComposerState).getMockImplementation();
+    if (!report) throw new Error("missing composer reporter");
+    let reply!: () => Promise<Result<void>>;
+    vi.mocked(bridge.reportComposerState).mockImplementation((...args) => {
+      expect(args[2]).toBe(false);
+      reply = () => report(...args);
+      return Promise.resolve(ok());
+    });
+    const hiding = f.quick.toggle(true);
+    await type("typed after the empty response was sent");
+    await reply();
+    await hiding;
+    expect(f.native.isVisible()).toBe(false);
+    expect(input().value).toBe("typed after the empty response was sent");
+    await f.quick.toggle();
+    expect(f.native.isVisible()).toBe(true);
+    expect(input().value).toBe("typed after the empty response was sent");
+    expect(f.projection.session.sessionId).toBe("quick-session");
+  } finally {
+    await f.quick.dispose();
+  }
+});
+
+test("global new joins the + replacement frame and only a subsequent blank invocation hides it", async () => {
+  const frame = animationClock();
+  const f = presentationHost();
+  try {
+    await f.quick.show();
+    await mount();
+    await frame();
+    await frame.task();
+    await click(button("新对话"));
+    expect(f.projection.session.sessionId).toBe("new-session-1");
+    const shortcuts = Array.from({ length: 8 }, () => f.quick.toggle(true));
+    expect(f.native.isVisible()).toBe(true);
+    expect(f.projection.session.sessionId).toBe("new-session-1");
+    await frame();
+    await frame.task();
+    await Promise.all(shortcuts);
+    expect(state()).toBe("expanded");
+    await f.quick.toggle(true);
+    expect(f.native.isVisible()).toBe(false);
+    expect(f.projection.session.sessionId).toBe("new-session-1");
+  } finally {
+    await f.quick.dispose();
+  }
 });

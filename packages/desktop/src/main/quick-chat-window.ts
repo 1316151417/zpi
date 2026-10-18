@@ -42,13 +42,18 @@ export class QuickChatWindow {
   private loading?: Promise<void>;
   private visible = false;
   private visibilityEpoch = 0;
-  private opening?: { epoch: number; resetting: boolean; promise: Promise<void> };
+  private opening?: { epoch: number; creating: boolean; promise: Promise<void> };
   private presenting = false;
   private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
   private keepExpanded = false;
   private hasRuns = false;
-  private resettingPresentation?: { sessionId: string; expanded: boolean };
+  private resettingPresentation?: {
+    sessionId: string;
+    expanded: boolean;
+    promise?: Promise<void>;
+    ready: boolean;
+  };
   private composerHeight = 44;
   private noticeHeight = 0;
   private sessionId: string;
@@ -107,22 +112,30 @@ export class QuickChatWindow {
   private resetConversation(trace?: QuickChatTrace): Promise<void> {
     trace?.mark("reset-start");
     const window = this.window;
-    const presentation = {
+    const presentation: NonNullable<QuickChatWindow["resettingPresentation"]> = {
       sessionId: this.options.host.sessionId,
+      ready: false,
       expanded: Boolean(this.expanded && window && !window.isDestroyed() && window.isVisible()),
     };
     this.visibilityEpoch++;
     this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.resettingPresentation = presentation;
-    return this.options.host
-      .reset()
-      .then(() => {
+    presentation.promise = this.options.host.reset().then(
+      () => {
         trace?.mark("reset-ready");
-      })
-      .finally(() => {
+        presentation.ready = true;
+        // The + button does not open the window, but its new session is still
+        // pending until the renderer has committed the replacement frame.
+        if (this.resettingPresentation === presentation && this.rendererVersion === this.presentationVersion)
+          this.resettingPresentation = undefined;
+      },
+      (error: unknown) => {
         if (this.resettingPresentation === presentation) this.resettingPresentation = undefined;
-      });
+        throw error;
+      },
+    );
+    return presentation.promise;
   }
   /** Explicit new preserves expanded mode only when its native window is visible at invocation. */
   newConversation(): Promise<void> {
@@ -207,6 +220,7 @@ export class QuickChatWindow {
   }
   private invalidateFrame(): void {
     this.presentationVersion++;
+    this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.rendererVersion = undefined;
     this.needsSessionFrame = true;
@@ -226,8 +240,8 @@ export class QuickChatWindow {
           resolve(occupied);
         },
       };
-      // A missing renderer response must not lose a draft or strand the shortcut.
-      // Unknown preserves the large window and the next resume can ask again.
+      // Missing responses are unknown, never evidence of an empty composer.
+      // Resume preserves drafts; an explicit new intent can still reset them.
       const timer = setTimeout(() => probe.resolve(), 250);
       timer.unref();
       this.composerProbe = probe;
@@ -571,33 +585,88 @@ export class QuickChatWindow {
       .finally(() => {
         if (this.opening?.epoch === epoch) this.opening = undefined;
       });
-    this.opening = { epoch, resetting: Boolean(resetting), promise };
+    this.opening = { epoch, creating: Boolean(resetting), promise };
     return promise;
   }
-  /** New shortcuts coalesce before presentation; ordinary toggles can still cancel a pending open. */
+  /** A new shortcut may hide only a confirmed empty, already presented session. */
+  private toggleEmptyConversation(window: BrowserWindow, trace?: QuickChatTrace): Promise<void> {
+    this.visible = true;
+    const epoch = ++this.visibilityEpoch;
+    const sessionId = this.sessionId;
+    const version = this.presentationVersion;
+    const promise = this.probeComposer(window, epoch)
+      .then((occupied) => {
+        if (
+          epoch !== this.visibilityEpoch ||
+          sessionId !== this.sessionId ||
+          !this.visible ||
+          this.disposed ||
+          window !== this.window ||
+          window.isDestroyed()
+        ) {
+          trace?.finish("cancelled");
+          return;
+        }
+        // Runs may arrive while asking the renderer. A changed frame or missing
+        // reply is unknown, never proof that the draft is empty. Explicit new
+        // still means reset in that case; ordinary toggle never uses this path.
+        if (!this.hasRuns && version === this.presentationVersion && occupied === false) {
+          this.hide("toggle-hide");
+          trace?.finish("hidden");
+          return;
+        }
+        return this.show(trace, this.resetConversation(trace));
+      })
+      .catch((error: unknown) => {
+        trace?.finish("failed");
+        throw error;
+      })
+      .finally(() => {
+        if (this.opening?.epoch === epoch) this.opening = undefined;
+      });
+    this.opening = { epoch, creating: true, promise };
+    return promise;
+  }
+  /** Pending new intents coalesce; ordinary toggle remains a visibility action. */
   toggle(newConversation = false): Promise<void> {
     if (this.disposed) return Promise.resolve();
     const window = this.window;
     const nativeFocused = window && !window.isDestroyed() && window.isVisible() && window.isFocused();
     const opening = this.visible && this.opening?.epoch === this.visibilityEpoch ? this.opening : undefined;
-    // The user has not seen this fresh session yet. Keep its reset/load/frame wait
-    // alive instead of turning rapid retries into alternating show cancellations.
-    if (newConversation && !nativeFocused && opening?.resetting) {
-      // The initiating invocation owns failure reporting; retries must not open
-      // another error dialog for the same failed presentation.
-      return opening.promise.catch(() => {});
-    }
+    // Old pixels can still be visible/focused during reset or its frame wait.
+    // Repeated new must not cancel that operation or start another reset chain.
+    if (newConversation && opening?.creating) return opening.promise.catch(() => {});
     const trace = this.startTrace(newConversation ? "new" : "open");
-    if (
-      nativeFocused ||
-      (this.visible &&
-        ((!newConversation && (opening || this.loading)) || (this.options.hiddenTestMode && !opening)))
-    ) {
+    if (newConversation) {
+      const resetting = this.visible ? this.resettingPresentation?.promise : undefined;
+      if (resetting) {
+        // The + operation owns reset errors; this shortcut owns only a later
+        // presentation failure. Neither should report the same failed reset twice.
+        let resetFailed = false;
+        return this.show(
+          trace,
+          resetting.catch((error: unknown) => {
+            resetFailed = true;
+            throw error;
+          }),
+        ).catch((error: unknown) => {
+          if (!resetFailed) throw error;
+        });
+      }
+      if (
+        !this.hasRuns &&
+        window &&
+        (nativeFocused || (this.visible && this.options.hiddenTestMode && !opening))
+      )
+        return this.toggleEmptyConversation(window, trace);
+      return this.show(trace, this.resetConversation(trace));
+    }
+    if (nativeFocused || (this.visible && (opening || this.loading || this.options.hiddenTestMode))) {
       this.hide("toggle-hide");
       trace?.finish("hidden");
       return Promise.resolve();
     }
-    return this.show(trace, newConversation ? this.resetConversation(trace) : undefined);
+    return this.show(trace);
   }
   private recordState(stage: QuickChatStage): void {
     const window = this.window;
@@ -669,6 +738,7 @@ export class QuickChatWindow {
           if (sessionId !== host.sessionId || version !== this.presentationVersion) break;
           this.rendererVersion = version as number;
           this.needsSessionFrame = false;
+          if (this.resettingPresentation?.ready) this.resettingPresentation = undefined;
           for (const waiter of [...this.readyWaiters]) if (waiter.version === version) waiter.resolve(true);
           break;
         }
