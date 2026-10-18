@@ -701,12 +701,7 @@ export const RunGroup = memo(function RunGroup({
           />
           {answer && (
             <div className="message-actions assistant-message-actions">
-              <CopyMessage
-                text={run.orderedBlocks
-                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                  .join("\n\n")}
-                onCopy={onCopy}
-              />
+              <CopyMessage text={answer.text} onCopy={onCopy} />
               {onFork && (
                 <MessageAction
                   label="分叉"

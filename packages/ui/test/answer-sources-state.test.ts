@@ -169,6 +169,56 @@ test("unmounted and changed-source requests cannot display stale icons", async (
     expect(component(AnswerSourceIcon, changed).some((node) => node.type === "img")).toBe(false);
 });
 
+test.each([false, true])(
+  "assistant copy contains only the final answer when expanded=%s",
+  async (expanded) => {
+    const onCopy = vi.fn(async (_text: string) => {});
+    const run: RunView = {
+      runId: "run",
+      status: "completed",
+      userMessage: "Question",
+      startedAt: 1,
+      orderedBlocks: [
+        { id: "intro", messageId: "first", type: "text", text: "I will inspect the code." },
+        {
+          id: "read",
+          messageId: "first",
+          type: "tool",
+          toolCallId: "call",
+          name: "read",
+          argsText: "{}",
+          status: "completed",
+          output: "Tool output",
+        },
+        { id: "progress", messageId: "second", type: "text", text: "I found the cause." },
+        { id: "thinking", messageId: "second", type: "thinking", text: "Internal reasoning" },
+        { id: "answer", messageId: "last", type: "text", text: "## Fixed\n\nThe final answer." },
+      ],
+      finalAnswerBlockIds: ["intro", "progress", "answer"],
+    };
+    const nodes = component(
+      (RunGroup as unknown as { type: (props: ComponentProps<typeof RunGroup>) => ReactNode }).type,
+      {
+        run,
+        onLink: vi.fn(),
+        onCopy,
+        expanded,
+        onToggle: vi.fn(),
+        blocks: {},
+        onBlockToggle: vi.fn(),
+      },
+    );
+    const copies = nodes.filter((node) => node.type === CopyMessage);
+    expect(copies.map((node) => node.props.text)).toEqual(["Question", "## Fixed\n\nThe final answer."]);
+    const copy = copies.at(-1);
+    if (!copy) throw new Error("Missing assistant copy action");
+    const button = component(CopyMessage, copy.props as ComponentProps<typeof CopyMessage>);
+    call(button[0].props, "onClick");
+    await tick();
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith("## Fixed\n\nThe final answer.");
+  },
+);
+
 test("the parent keys popover state by session, run and answer and drops source controls on empty history", () => {
   const current: RunView = {
     runId: "same-run",
