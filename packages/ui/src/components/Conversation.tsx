@@ -937,7 +937,8 @@ export function Conversation({
     const root = ref.current;
     if (!root) return;
     const wheel = (event: WheelEvent) => {
-      if (event.deltaY >= 0) return;
+      // At the top of the conversation an upward gesture has nothing to reveal.
+      if (event.deltaY >= 0 || root.scrollTop <= 0) return;
       for (
         let node = event.target instanceof Element ? event.target : null;
         node && node !== root;
@@ -1084,13 +1085,13 @@ export function Conversation({
             if (el) {
               // Layout growth and delayed diagram rendering must not disable following.
               // Only movement towards older content changes the reading mode.
-              if (
-                el.scrollTop < lastScrollTop.current - 1 &&
-                el.scrollHeight - el.scrollTop - el.clientHeight >= 60
-              )
-                following.current = false;
+              const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+              if (el.scrollTop < lastScrollTop.current - 1 && distance >= 60) following.current = false;
+              // Returning to the bottom resumes following. Only downward movement counts, so
+              // momentum scrolling away from the bottom cannot re-snap mid-gesture.
+              else if (el.scrollTop > lastScrollTop.current + 1 && distance <= 8) following.current = true;
               lastScrollTop.current = el.scrollTop;
-              setShowLatest(el.scrollHeight - el.scrollTop - el.clientHeight >= 60);
+              setShowLatest(distance >= 60);
               saveReading();
             }
           }}
