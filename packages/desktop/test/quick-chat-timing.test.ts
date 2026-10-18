@@ -18,6 +18,10 @@ const directories: string[] = [];
 const allStages: QuickChatStage[] = [
   "start",
   "expiry-ready",
+  "reset-start",
+  "reset-ready",
+  "session-frame-wait",
+  "session-frame-ready",
   "window-created",
   "window-loaded",
   "window-ready",

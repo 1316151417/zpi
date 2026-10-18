@@ -2,12 +2,16 @@ import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 
-const kindValues = ["open", "warmup", "hide"] as const;
+const kindValues = ["open", "new", "warmup", "hide"] as const;
 const modeValues = ["cold", "loading", "warm"] as const;
 const outcomeValues = ["shown", "hidden", "failed", "ready", "cancelled", "timeout"] as const;
 const stageValues = [
   "start",
   "expiry-ready",
+  "reset-start",
+  "reset-ready",
+  "session-frame-wait",
+  "session-frame-ready",
   "window-created",
   "window-loaded",
   "window-ready",

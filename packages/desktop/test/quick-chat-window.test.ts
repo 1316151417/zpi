@@ -1146,6 +1146,48 @@ test("optional timings follow only the current numeric token and record post-fra
   expect(timing.flush).toHaveBeenCalledOnce();
 });
 
+test("diagnostics distinguish explicit new, reset cleanup and renderer frame wait", async () => {
+  const trace = { id: 1, mark: vi.fn(), finish: vi.fn() };
+  const timing = { start: vi.fn(() => trace), flush: vi.fn(async () => {}) };
+  const f = fixture({ timing: timing as unknown as QuickChatTiming });
+  await f.quick.prepare();
+  trace.mark.mockClear();
+  let complete!: () => void;
+  f.host.reset.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        complete = () => {
+          f.changeSession("new");
+          resolve();
+        };
+      }),
+  );
+  const opening = f.quick.newConversation();
+  expect(timing.start).toHaveBeenLastCalledWith("new", "warm");
+  expect(trace.mark.mock.calls.map(([stage]) => stage)).toEqual(["reset-start"]);
+  complete();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(trace.mark.mock.calls.map(([stage]) => stage)).toEqual([
+    "reset-start",
+    "reset-ready",
+    "expiry-ready",
+    "window-ready",
+    "session-frame-wait",
+  ]);
+  expect(f.windows[0].show).not.toHaveBeenCalled();
+  await f.rendererReady("new");
+  await opening;
+  expect(trace.mark.mock.calls.map(([stage]) => stage).slice(5)).toEqual([
+    "session-frame-ready",
+    "geometry",
+    "native-show",
+    "show",
+    "native-focus",
+    "focus",
+  ]);
+  await f.quick.dispose();
+});
+
 test("background discovered models also refresh the retained quick-chat snapshot", () => {
   const source = fs.readFileSync(new URL("../src/main/index.ts", import.meta.url), "utf8");
   const discovery = source.slice(

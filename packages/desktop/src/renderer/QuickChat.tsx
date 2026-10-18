@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { imageLimits } from "zpi-coding-agent/input";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
@@ -118,6 +119,7 @@ export function QuickChat({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const revision = useRef(-1);
   const currentSession = useRef<string>(undefined);
+  const currentPresentationVersion = useRef<number>(undefined);
   const visibleErrorRef = useRef("");
   const operationGeneration = useRef(0);
   const reportedHeight = useRef<{ sessionId: string; height: number }>(undefined);
@@ -162,21 +164,34 @@ export function QuickChat({
     let active = true;
     const accept = (next: QuickChatSnapshot) => {
       if (!active || next.revision < revision.current) return;
-      revision.current = next.revision;
       const nextSession = next.session.sessionId;
-      if (currentSession.current !== undefined && currentSession.current !== nextSession) {
-        operationGeneration.current += 1;
-        lastSubmission.current = undefined;
-        lock.current = false;
-        setPending(undefined);
-        setDraft("");
-        updateImages([]);
-        setError("");
-        composing.current = false;
-      }
-      currentSession.current = nextSession;
-      setSnapshot(next);
-      setSnapshotError("");
+      const nextVersion = next.presentationVersion ?? 0;
+      const presentationChanged =
+        currentSession.current !== undefined &&
+        (currentSession.current !== nextSession || currentPresentationVersion.current !== nextVersion);
+      const commit = () => {
+        revision.current = next.revision;
+        if (currentSession.current !== undefined && currentSession.current !== nextSession) {
+          operationGeneration.current += 1;
+          lastSubmission.current = undefined;
+          lock.current = false;
+          setPending(undefined);
+          setDraft("");
+          updateImages([]);
+          setError("");
+          composing.current = false;
+        }
+        currentSession.current = nextSession;
+        currentPresentationVersion.current = nextVersion;
+        setSnapshot(next);
+        setSnapshotError("");
+      };
+      // IPC events (or the initial request's continuation) are outside React's
+      // lifecycle. Commit a discrete new/mode change now, so native presentation
+      // does not wait for React's ordinary background update scheduling. Streaming
+      // snapshots keep their existing batching and never take this synchronous path.
+      if (presentationChanged) flushSync(commit);
+      else commit();
     };
     const off = window.zpiQuickChat.onSnapshot(accept);
     void window.zpiQuickChat
@@ -394,17 +409,18 @@ export function QuickChat({
 
   useLayoutEffect(() => {
     if (!sessionId) return;
-    // Session and mode changes must commit their DOM before native presentation.
-    // Two animation callbacks provide a frame opportunity, not proof of compositor paint.
-    let second: number | undefined;
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => {
+    // A task queued inside rAF runs after that rendering opportunity, without
+    // waiting for a second vsync. A microtask/Promise would run before rendering.
+    // Like the former double-rAF barrier, this is not compositor-pixel proof.
+    let task: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      task = setTimeout(() => {
         void window.zpiQuickChat.rendererReady(sessionId, presentationVersion).catch(() => {});
-      });
+      }, 0);
     });
     return () => {
-      cancelAnimationFrame(first);
-      if (second !== undefined) cancelAnimationFrame(second);
+      cancelAnimationFrame(frame);
+      clearTimeout(task);
     };
   }, [sessionId, presentationVersion, expanded]);
 

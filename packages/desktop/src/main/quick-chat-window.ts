@@ -104,7 +104,8 @@ export class QuickChatWindow {
       expanded: this.expanded || snapshot.session.runs.length > 0,
     };
   }
-  private resetConversation(): Promise<void> {
+  private resetConversation(trace?: QuickChatTrace): Promise<void> {
+    trace?.mark("reset-start");
     const window = this.window;
     const presentation = {
       sessionId: this.options.host.sessionId,
@@ -114,14 +115,20 @@ export class QuickChatWindow {
     this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.resettingPresentation = presentation;
-    return this.options.host.reset().finally(() => {
-      if (this.resettingPresentation === presentation) this.resettingPresentation = undefined;
-    });
+    return this.options.host
+      .reset()
+      .then(() => {
+        trace?.mark("reset-ready");
+      })
+      .finally(() => {
+        if (this.resettingPresentation === presentation) this.resettingPresentation = undefined;
+      });
   }
   /** Explicit new preserves expanded mode only when its native window is visible at invocation. */
   newConversation(): Promise<void> {
     if (this.disposed) return Promise.resolve();
-    return this.show(this.startTrace(), this.resetConversation());
+    const trace = this.startTrace("new");
+    return this.show(trace, this.resetConversation(trace));
   }
   private bounds(expanded: boolean, previous?: Rectangle): Rectangle {
     const display = this.options.getDisplay(previous);
@@ -445,9 +452,9 @@ export class QuickChatWindow {
     }, 1500);
     this.warmup.unref();
   }
-  private startTrace(): QuickChatTrace | undefined {
+  private startTrace(kind: "open" | "new" = "open"): QuickChatTrace | undefined {
     return this.options.timing?.start(
-      "open",
+      kind,
       this.loading ? "loading" : this.window && !this.window.isDestroyed() ? "warm" : "cold",
     );
   }
@@ -546,7 +553,11 @@ export class QuickChatWindow {
         // Ordinary retained-history opens skip this post-commit frame acknowledgement.
         while (resetting || this.needsSessionFrame) {
           const version = this.presentationVersion;
-          if (await this.waitForSession(version, epoch)) break;
+          trace?.mark("session-frame-wait");
+          if (await this.waitForSession(version, epoch)) {
+            trace?.mark("session-frame-ready");
+            break;
+          }
           if (version !== this.presentationVersion && epoch === this.visibilityEpoch && this.visible)
             continue;
           trace?.finish("cancelled");

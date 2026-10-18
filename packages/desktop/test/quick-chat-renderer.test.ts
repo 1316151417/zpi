@@ -277,6 +277,7 @@ function quickChatStyles() {
 }
 
 function animationClock() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let next = 0;
   const frames = new Map<number, FrameRequestCallback>();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -284,21 +285,26 @@ function animationClock() {
     return next;
   });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-  return async () => {
+  const task = async () => {
+    await act(async () => vi.advanceTimersByTime(0));
+  };
+  const frame = async () => {
+    await task();
     const current = [...frames];
     frames.clear();
     await act(async () => {
       for (const [, callback] of current) callback(performance.now());
     });
   };
+  return Object.assign(frame, { task });
 }
 
 // The presentation integration uses the real renderer and window controller.
 // Only native window operations and the model-independent session projection are fake.
-function presentationHost() {
+function presentationHost(history = true) {
   let projection: QuickChatSnapshot = {
     ...snapshot,
-    session: { ...snapshot.session, runs: [run("completed")] },
+    session: { ...snapshot.session, runs: history ? [run("completed")] : [] },
   };
   let hostListener: (next: QuickChatSnapshot) => void = () => {};
   let nextSession = 0;
@@ -618,7 +624,63 @@ test("grows expanded input to 160px with internal scrolling without resizing the
   expect(input().style.overflowY).toBe("hidden");
 });
 
-test("acknowledges only the current session after two frame opportunities and keeps early typing usable", async () => {
+test.each([false, true])(
+  "commits a new session synchronously with no stale draft or history, history=%s",
+  async (history) => {
+    snapshot = { ...snapshot, session: { ...snapshot.session, runs: history ? [run("completed")] : [] } };
+    await mount();
+    await type("unsent previous draft");
+    await paste([clipboardImage()]);
+    act(() => {
+      emit({ session: emptySession("fresh-session"), expanded: false, presentationVersion: 1 });
+      expect(input().value).toBe("");
+      expect(container.querySelector(".quick-chat-attachment, .conversation")).toBeNull();
+      expect(container.textContent).not.toContain("hello");
+      expect(state()).toBe("compact");
+      expect(input().disabled).toBe(false);
+    });
+  },
+);
+
+test.each([
+  [false, false],
+  [false, true],
+  [true, false],
+  [true, true],
+])(
+  "presents a warm new conversation after one rendering opportunity, history=%s visible=%s",
+  async (history, visible) => {
+    const frame = animationClock();
+    const f = presentationHost(history);
+    try {
+      await f.quick.show();
+      await mount();
+      await frame();
+      await frame();
+      if (!visible) f.quick.hide();
+      await type("previous draft");
+      f.native.show.mockClear();
+      let opening!: Promise<void>;
+      await act(async () => {
+        opening = f.quick.newConversation();
+      });
+      expect(input().value).toBe("");
+      expect(container.textContent).not.toContain("hello");
+      expect(f.native.show).not.toHaveBeenCalled();
+      await frame();
+      expect(f.native.show).not.toHaveBeenCalled();
+      await frame.task();
+      expect(f.native.show).toHaveBeenCalledOnce();
+      await opening;
+      expect(f.native.getBounds()).toMatchObject({ width: visible && history ? 660 : 360 });
+      expect(input().disabled).toBe(false);
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
+
+test("acknowledges only the current session after a rendering opportunity and keeps early typing usable", async () => {
   const frame = animationClock();
   await mount();
   await type("before native presentation");
@@ -630,7 +692,7 @@ test("acknowledges only the current session after two frame opportunities and ke
   expect(input().value).toBe("");
   await frame();
   expect(bridge.rendererReady).not.toHaveBeenCalled();
-  await frame();
+  await frame.task();
   expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("fresh-session", 0);
   await push();
   await frame();
@@ -647,12 +709,107 @@ test("acknowledges the latest presentation version after a same-session mode cha
   expect(state()).toBe("compact");
   await frame();
   expect(bridge.rendererReady).not.toHaveBeenCalled();
-  await frame();
+  await frame.task();
   expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("quick-session", 4);
   await push();
   await frame();
   await frame();
   expect(bridge.rendererReady).toHaveBeenCalledOnce();
+});
+
+test("cancels an already queued readiness task on a newer session or presentation version", async () => {
+  const frame = animationClock();
+  snapshot = { ...snapshot, expanded: true, presentationVersion: 1 };
+  await mount();
+  await frame();
+  act(() => {
+    emit({ expanded: false, presentationVersion: 2 });
+    expect(state()).toBe("compact");
+  });
+  await frame.task();
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  await frame();
+  await push({ session: emptySession("replacement"), presentationVersion: 3 });
+  await frame.task();
+  expect(bridge.rendererReady).not.toHaveBeenCalled();
+  await frame();
+  await frame.task();
+  expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("replacement", 3);
+});
+
+test.each(["hide", "new"] as const)(
+  "does not present an obsolete queued frame task after %s",
+  async (action) => {
+    const frame = animationClock();
+    const f = presentationHost();
+    try {
+      await f.quick.show();
+      await mount();
+      await frame();
+      await frame();
+      f.quick.hide();
+      f.native.show.mockClear();
+      vi.mocked(bridge.rendererReady).mockClear();
+      let opening!: Promise<void>;
+      await act(async () => {
+        opening = f.quick.newConversation();
+      });
+      await frame();
+      let latest: Promise<void> | undefined;
+      await act(async () => {
+        if (action === "hide") f.quick.hide();
+        else latest = f.quick.newConversation();
+      });
+      await frame.task();
+      await opening;
+      expect(f.native.show).not.toHaveBeenCalled();
+      if (action === "new") {
+        expect(bridge.rendererReady).not.toHaveBeenCalled();
+        await frame();
+        await frame.task();
+        await latest;
+        expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("new-session-2", expect.any(Number));
+        expect(f.native.show).toHaveBeenCalledOnce();
+      } else {
+        expect(f.native.isVisible()).toBe(false);
+        // The completed frame can be reused by a later explicit user invocation.
+        await f.quick.toggle();
+        expect(f.native.show).toHaveBeenCalledOnce();
+      }
+    } finally {
+      await f.quick.dispose();
+    }
+  },
+);
+
+test("coalesces same-turn new invocations without acknowledging or showing the superseded session", async () => {
+  const frame = animationClock();
+  const f = presentationHost();
+  try {
+    await f.quick.show();
+    await mount();
+    await frame();
+    await frame();
+    f.quick.hide();
+    f.native.show.mockClear();
+    vi.mocked(bridge.rendererReady).mockClear();
+    let first!: Promise<void>;
+    let latest!: Promise<void>;
+    await act(async () => {
+      first = f.quick.newConversation();
+      latest = f.quick.newConversation();
+    });
+    await first;
+    expect(f.native.show).not.toHaveBeenCalled();
+    await frame();
+    await frame.task();
+    await latest;
+    expect(bridge.rendererReady).toHaveBeenCalledExactlyOnceWith("new-session-2", expect.any(Number));
+    expect(f.native.show).toHaveBeenCalledOnce();
+    expect(f.native.getBounds()).toMatchObject({ width: 360, height: 44 });
+  } finally {
+    await f.quick.dispose();
+  }
 });
 
 test("probes live blank, typed, whitespace, and deleted drafts without transmitting their contents", async () => {
