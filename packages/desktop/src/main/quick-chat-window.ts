@@ -199,12 +199,13 @@ export class QuickChatWindow {
       Math.min(this.expanded ? 360 : 44, bounds.height),
     ];
   }
-  private applyBounds(window: BrowserWindow, bounds: Rectangle): void {
+  private applyBounds(window: BrowserWindow, bounds: Rectangle, valid?: () => boolean): void {
     const minimum = this.minimumSize(bounds);
     if (!this.minimum || minimum.some((size, index) => size !== this.minimum?.[index])) {
-      window.setMinimumSize(...minimum);
       this.minimum = minimum;
+      window.setMinimumSize(...minimum);
     }
+    if (window.isDestroyed() || (valid && !valid())) return;
     const current = window.getBounds();
     if (
       current.x !== bounds.x ||
@@ -565,20 +566,27 @@ export class QuickChatWindow {
     trace?: QuickChatTrace,
     input?: QuickChatDraftInput,
   ): void {
-    if (
-      epoch !== this.visibilityEpoch ||
-      !this.visible ||
-      this.disposed ||
-      window !== this.window ||
-      window.isDestroyed()
-    ) {
+    const current = () =>
+      epoch === this.visibilityEpoch &&
+      this.visible &&
+      !this.disposed &&
+      window === this.window &&
+      !window.isDestroyed();
+    const cancelled = () => {
+      if (current()) return false;
       trace?.finish("cancelled");
-      return;
-    }
+      // A native call may complete its show after reentering hide. Only retire
+      // this cancelled intent, never a newer invocation of the same window.
+      if (window === this.window && !window.isDestroyed() && !this.visible && window.isVisible())
+        window.hide();
+      return true;
+    };
+    if (cancelled()) return;
     if (input) {
       this.draftInput = { epoch, sessionId: this.sessionId, input };
       this.recordEvent("draft-offered");
       window.webContents.send("zpi:quick-chat-draft");
+      if (cancelled()) return;
     }
     if (trace) {
       this.finishPresentation("cancelled");
@@ -586,28 +594,35 @@ export class QuickChatWindow {
       timer.unref();
       this.presentation = { trace, timer };
       window.webContents.send("zpi:quick-chat-presentation", trace.id);
+      if (cancelled()) return;
     }
     if (!this.options.hiddenTestMode) {
       this.presenting = true;
       try {
         if (window.isMinimized()) window.restore();
-        this.applyBounds(window, this.bounds(this.expanded));
+        if (cancelled()) return;
+        // A hidden or unfocused invocation follows the pointer display. Content
+        // brought into the focused panel must not undo its dragged position.
+        if (!window.isVisible() || !window.isFocused())
+          this.applyBounds(window, this.bounds(this.expanded), current);
+        if (cancelled()) return;
         trace?.mark("geometry");
         if (this.opening?.epoch === epoch) this.opening.phase = "presenting";
         window.show();
         trace?.mark("show");
-        if (this.visible && !window.isDestroyed()) {
-          if (this.options.platform === "darwin") {
-            const restore = this.options.activateApp?.();
-            if (restore && !this.returnFocus) this.returnFocus = restore;
+        if (cancelled()) return;
+        if (this.options.platform === "darwin") {
+          let restore: (() => void) | undefined;
+          try {
+            restore = this.options.activateApp?.();
+          } catch (error) {
+            this.options.onError?.(error, "activateApp");
           }
-          if (
-            this.visible &&
-            !window.isDestroyed() &&
-            (this.options.platform === "darwin" || !window.isFocused())
-          )
-            window.focus();
+          if (cancelled()) return;
+          if (restore && !this.returnFocus) this.returnFocus = restore;
         }
+        if (this.options.platform === "darwin" || !window.isFocused()) window.focus();
+        if (cancelled()) return;
         trace?.mark("focus");
       } finally {
         this.presenting = false;
@@ -634,8 +649,10 @@ export class QuickChatWindow {
     const resetting = reset ?? (wasHidden ? this.options.host.resetIfExpired() : undefined);
     if (!resetting) trace?.mark("expiry-ready");
     const warm = this.window && !this.window.isDestroyed() && !this.loading;
-    const checkComposer = !resetting && wasHidden && this.expanded && !this.hasRuns;
-    if (warm && !resetting && !checkComposer && !this.needsSessionFrame) {
+    // An ordinary resume may be waiting for an explicit reset. Decide against
+    // its resulting session, not the old history before that reset finishes.
+    const checkComposer = () => !reset && wasHidden && this.expanded && !this.hasRuns;
+    if (warm && !resetting && !checkComposer() && !this.needsSessionFrame) {
       // The retained-window hot path stays in the global-shortcut callback stack.
       trace?.mark("window-ready");
       this.present(this.window as BrowserWindow, epoch, trace, input);
@@ -653,7 +670,7 @@ export class QuickChatWindow {
         trace?.finish("cancelled");
         return;
       }
-      if (checkComposer) {
+      if (checkComposer()) {
         const sessionId = this.sessionId;
         const occupied = await this.probeComposer(window, epoch);
         if (
@@ -756,7 +773,7 @@ export class QuickChatWindow {
     return promise;
   }
   /** Pending new intents coalesce; ordinary toggle remains a visibility action. */
-  toggle(newConversation = false): Promise<void> {
+  async toggle(newConversation = false): Promise<void> {
     if (this.disposed) return Promise.resolve();
     const window = this.window;
     const nativeFocused = window && !window.isDestroyed() && window.isVisible() && window.isFocused();
@@ -834,9 +851,14 @@ export class QuickChatWindow {
         !window.isDestroyed() &&
         window.isVisible() &&
         window.isFocused() &&
-        (reason === "toggle-hide" || reason === "ipc-hide" || reason === "native-close")
+        (reason === "toggle-hide" ||
+          reason === "ipc-hide" ||
+          reason === "native-close" ||
+          reason === "capture-hide")
       )
         returnFocus?.();
+    } catch (error) {
+      this.options.onError?.(error, "returnFocus");
     } finally {
       if (epoch === this.visibilityEpoch && window === this.window && window && !window.isDestroyed())
         window.hide();

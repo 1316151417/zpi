@@ -1,0 +1,150 @@
+[
+  {
+    "complete": false,
+    "capturing": {
+      "native": {
+        "front": 75494,
+        "details": [
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75494,
+            "bounds": {
+              "X": 60,
+              "Height": 600,
+              "Y": 60,
+              "Width": 850
+            }
+          },
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75197,
+            "bounds": {
+              "X": 120,
+              "Height": 560,
+              "Y": 120,
+              "Width": 740
+            }
+          }
+        ]
+      },
+      "main": {
+        "visible": true,
+        "focused": false,
+        "appHidden": false
+      }
+    }
+  },
+  {
+    "complete": false,
+    "after": {
+      "native": {
+        "front": 75494,
+        "details": [
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75494,
+            "bounds": {
+              "X": 60,
+              "Height": 600,
+              "Y": 60,
+              "Width": 850
+            }
+          },
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75197,
+            "bounds": {
+              "X": 120,
+              "Height": 560,
+              "Y": 120,
+              "Width": 740
+            }
+          }
+        ]
+      },
+      "main": {
+        "visible": true,
+        "focused": false,
+        "appHidden": false
+      }
+    }
+  },
+  {
+    "complete": true,
+    "capturing": {
+      "native": {
+        "front": 75494,
+        "details": [
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75494,
+            "bounds": {
+              "X": 60,
+              "Height": 600,
+              "Y": 60,
+              "Width": 850
+            }
+          },
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75197,
+            "bounds": {
+              "X": 120,
+              "Height": 560,
+              "Y": 120,
+              "Width": 740
+            }
+          }
+        ]
+      },
+      "main": {
+        "visible": true,
+        "focused": false,
+        "appHidden": false
+      }
+    }
+  },
+  {
+    "complete": true,
+    "after": {
+      "native": {
+        "front": 75494,
+        "details": [
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75494,
+            "bounds": {
+              "X": 60,
+              "Height": 600,
+              "Y": 60,
+              "Width": 850
+            }
+          },
+          {
+            "layer": 0,
+            "alpha": 1,
+            "pid": 75197,
+            "bounds": {
+              "X": 120,
+              "Height": 560,
+              "Y": 120,
+              "Width": 740
+            }
+          }
+        ]
+      },
+      "main": {
+        "visible": true,
+        "focused": false,
+        "appHidden": false
+      }
+    }
+  }
+]

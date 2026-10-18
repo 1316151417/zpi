@@ -82,3 +82,16 @@ test("captured content wakes a retained renderer and appends draft text and PNG 
     await app.close();
   }
 });
+
+test("a capture fixture can start again after the preceding test scope was cleaned up", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-capture-restart-"));
+  const app = await launchQuickChatFixture(dir, "");
+  try {
+    const quick = await app.firstWindow();
+    const input = quick.getByRole("textbox", { name: "输入消息", exact: true });
+    await input.fill("独立作用域");
+    await expect(input).toHaveValue("独立作用域");
+  } finally {
+    await app.close();
+  }
+});

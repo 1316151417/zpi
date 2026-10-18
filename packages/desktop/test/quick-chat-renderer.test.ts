@@ -1664,6 +1664,43 @@ test("Escape stops the current run once and only hides after stopping has finish
   expect(bridge.reset).not.toHaveBeenCalled();
 });
 
+test.each([false, true])("Escape queues stop during send IPC, with started snapshot=%s", async (started) => {
+  const sending = deferred<Result<void>>();
+  const stopping = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValue(sending.promise);
+  vi.mocked(bridge.stop).mockReturnValue(stopping.promise);
+  await mount();
+  await type("question");
+  await key(input(), "Enter");
+  if (started) await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  await key(input(), "Escape");
+  await key(input(), "Escape");
+  expect(bridge.hide).not.toHaveBeenCalled();
+  await act(async () => sending.resolve(ok()));
+  expect(bridge.stop).toHaveBeenCalledOnce();
+  await key(input(), "Escape");
+  expect(bridge.hide).not.toHaveBeenCalled();
+  await act(async () => stopping.resolve(ok()));
+  if (started) await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+  await key(input(), "Escape");
+  expect(bridge.hide).toHaveBeenCalledOnce();
+});
+
+test("a stop queued behind an old send cannot stop a replacement session", async () => {
+  const sending = deferred<Result<void>>();
+  vi.mocked(bridge.send).mockReturnValue(sending.promise);
+  await mount();
+  await type("old question");
+  await key(input(), "Enter");
+  await key(input(), "Escape");
+  await push({ session: { ...snapshot.session, sessionId: "replacement", runs: [run("running")] } });
+  await type("new draft");
+  await act(async () => sending.resolve(ok()));
+  expect(bridge.stop).not.toHaveBeenCalled();
+  expect(bridge.hide).not.toHaveBeenCalled();
+  expect(input().value).toBe("new draft");
+});
+
 test("hides and reopens without discarding the expanded conversation or draft", async () => {
   await mount();
   await push({ session: { ...snapshot.session, runs: [run("completed")] } });

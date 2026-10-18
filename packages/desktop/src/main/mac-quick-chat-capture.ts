@@ -108,7 +108,7 @@ export function macQuickChatCapture(options: Options) {
       return { image: { name: "剪贴板.png", bytes: checkedImage(image.toPNG()) } };
     }
     const text = checkedText(options.clipboard.readText());
-    if (!text.trim()) throw new Error("invalid_input: 剪贴板里没有可带入的文字或图片");
+    if (!text.trim()) return;
     return { text };
   };
 }

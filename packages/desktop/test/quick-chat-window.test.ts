@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain, IpcMainInvokeEvent } from "electron";
 import { expect, test, vi } from "vitest";
+import { QuickChatCapture } from "../src/main/quick-chat-capture.ts";
 import type { QuickChatHost } from "../src/main/quick-chat-host.ts";
 import { resumeQuickChatExpanded } from "../src/main/quick-chat-presentation.ts";
 import type { QuickChatTiming } from "../src/main/quick-chat-timing.ts";
@@ -482,6 +483,87 @@ test("a Space change during application activation cancels focus rather than res
   await f.quick.dispose();
 });
 
+test.each(["restore", "setMinimumSize", "setBounds"] as const)(
+  "a hide reentering %s cancels the remaining native presentation",
+  async (step) => {
+    const f = fixture({ platform: "darwin" });
+    await f.quick.show();
+    f.quick.hide();
+    const window = f.windows[0];
+    window.show.mockClear();
+    window.isMinimized.mockReturnValue(step === "restore");
+    const width = step === "setMinimumSize" ? 320 : 1000;
+    f.getDisplay.mockReturnValue({
+      bounds: { x: 1440, y: 0, width, height: 700 },
+      workArea: { x: 1440, y: 0, width, height: 700 },
+    });
+    window[step].mockImplementationOnce(() => f.spaceChanged());
+    await f.quick.show();
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.isVisible()).toBe(false);
+    await f.quick.dispose();
+  },
+);
+
+test("activation cancelled by a Space change cannot leave the old focus owner on the next invocation", async () => {
+  const f = fixture({ platform: "darwin" });
+  f.activateApp.mockImplementationOnce(() => {
+    f.spaceChanged();
+    return f.returnFocus;
+  });
+  await f.quick.show();
+  const nextOwner = vi.fn();
+  f.activateApp.mockReturnValueOnce(nextOwner);
+  await f.quick.show();
+  f.quick.hide("ipc-hide");
+  expect(nextOwner).toHaveBeenCalledOnce();
+  expect(f.returnFocus).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test("screenshot hiding returns focus before capture and recaptures the source on reopening", async () => {
+  const f = fixture({ platform: "darwin" });
+  let front = "source";
+  const restore = vi.fn(() => {
+    front = "source";
+  });
+  f.activateApp.mockImplementation(() => {
+    const previous = front;
+    front = "zpi";
+    return previous === "source" ? restore : undefined;
+  });
+  await f.quick.show();
+  const capture = new QuickChatCapture({
+    sessionId: () => f.host.sessionId,
+    hide: () => f.quick.hide("capture-hide"),
+    read: () => {
+      expect(front).toBe("source");
+      return { text: "isolated screenshot stand-in" };
+    },
+    open: (input, sessionId) => f.quick.openWithDraft(input, sessionId),
+  });
+  await capture.invoke("screenshot");
+  f.quick.hide("toggle-hide");
+  expect(restore).toHaveBeenCalledTimes(2);
+  expect(front).toBe("source");
+  capture.dispose();
+  await f.quick.dispose();
+});
+
+test("bringing content into a focused visible window preserves its dragged position across pointer displays", async () => {
+  const f = fixture({ history: true });
+  await f.quick.show();
+  const bounds = { x: 10, y: 100, width: 660, height: 560 };
+  f.windows[0].setBounds(bounds);
+  f.getDisplay.mockReturnValue({
+    bounds: { x: 1440, y: 0, width: 1000, height: 700 },
+    workArea: { x: 1440, y: 0, width: 1000, height: 700 },
+  });
+  await f.quick.openWithDraft({ text: "append" }, f.host.sessionId);
+  expect(f.windows[0].getBounds()).toEqual(bounds);
+  await f.quick.dispose();
+});
+
 test("hidden macOS automation never activates the application", async () => {
   const f = fixture({ platform: "darwin", hidden: true });
   await f.quick.show();
@@ -550,7 +632,11 @@ test("focus return failure still hides its panel and a reentrant opening is not 
   f.returnFocus.mockImplementationOnce(() => {
     throw new Error("focus unavailable");
   });
-  expect(() => f.quick.hide("ipc-hide")).toThrow("focus unavailable");
+  expect(() => f.quick.hide("ipc-hide")).not.toThrow();
+  expect(f.onError).toHaveBeenCalledWith(
+    expect.objectContaining({ message: "focus unavailable" }),
+    "returnFocus",
+  );
   expect(f.windows[0].isVisible()).toBe(false);
   await f.quick.show();
   f.windows[0].hide.mockClear();
@@ -1998,31 +2084,43 @@ test("renderer reload and destruction release draft images, never ordinary hide 
   await f.quick.dispose();
 });
 
-test("visible expanded new captures its mode before a later hide and never reopens from a late reset", async () => {
-  const f = fixture({ history: true });
-  await f.quick.show();
-  let finish!: () => void;
-  f.host.reset.mockImplementationOnce(
-    () =>
-      new Promise<void>((resolve) => {
-        finish = () => {
-          f.changeSession("visible-intent");
-          resolve();
-        };
-      }),
-  );
-  const opening = f.quick.newConversation();
-  f.quick.hide();
-  finish();
-  await opening;
-  expect(f.windows[0].getBounds().height).toBe(560);
-  expect(f.windows[0].show).toHaveBeenCalledOnce();
-  await f.rendererReady("visible-intent");
-  await f.quick.toggle();
-  expect(f.windows[0].getBounds().height).toBe(560);
-  expect(f.windows[0].show).toHaveBeenCalledTimes(2);
-  await f.quick.dispose();
-});
+test.each(["before", "after"])(
+  "hidden empty new resumes compact when reset completes %s the resume",
+  async (completion) => {
+    const f = fixture({ history: true });
+    await f.quick.show();
+    const resetting = Promise.withResolvers<void>();
+    let resetFinished = false;
+    const finish = () => {
+      f.changeSession("visible-intent");
+      resetFinished = true;
+      resetting.resolve();
+    };
+    f.host.resetIfExpired.mockImplementation(() => (resetFinished ? undefined : resetting.promise));
+    f.host.reset.mockImplementationOnce(() => resetting.promise);
+    const opening = f.quick.newConversation();
+    f.quick.hide();
+    if (completion === "before") {
+      finish();
+      await opening;
+      expect(f.windows[0].show).toHaveBeenCalledOnce();
+      await f.rendererReady("visible-intent");
+    }
+    const resuming = f.quick.toggle();
+    if (completion === "after") finish();
+    await opening;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const probe = f.windows[0].webContents.send.mock.calls.findLast(
+      ([channel]) => channel === "zpi:quick-chat-composer",
+    );
+    if (probe) await f.quick.call("reportComposerState", [probe[1], probe[2], false]);
+    await f.rendererReady("visible-intent");
+    await resuming;
+    expect(f.windows[0].getBounds().height).toBe(44);
+    expect(f.windows[0].show).toHaveBeenCalledTimes(2);
+    await f.quick.dispose();
+  },
+);
 
 test("hidden new remains compact even if a normal show presents the old session during reset", async () => {
   const f = fixture({ history: true });

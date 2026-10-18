@@ -58,6 +58,7 @@ const stageValues = [
   "ipc-hide",
   "native-close",
   "program-hide",
+  "capture-hide",
   "finished",
 ] as const;
 

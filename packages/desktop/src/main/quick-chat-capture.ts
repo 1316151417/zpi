@@ -24,7 +24,6 @@ export class QuickChatCapture {
     if (this.pending) return this.pending.promise.catch(() => {});
     const abort = new AbortController();
     const sessionId = this.options.sessionId();
-    if (kind === "screenshot") this.options.hide();
     const deliver = (input: QuickChatDraftInput | undefined) => {
       if (!input || abort.signal.aborted || sessionId !== this.options.sessionId()) return;
       return this.options.open(input, sessionId);
@@ -38,6 +37,7 @@ export class QuickChatCapture {
     };
     this.pending = pending;
     try {
+      if (kind === "screenshot") this.options.hide();
       const input = this.options.read(kind, abort.signal);
       // Clipboard reads and the warm open start in the native callback stack.
       const opening = input instanceof Promise ? input.then(deliver) : deliver(input);

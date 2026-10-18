@@ -113,7 +113,10 @@ export function QuickChat({
   }, []);
   const [pending, setPending] = useState<"send" | "stop" | "reset">();
   const [attempt, setAttempt] = useState(0);
-  const lock = useRef(false);
+  const lock = useRef<{
+    action: NonNullable<typeof pending>;
+    done: ReturnType<typeof Promise.withResolvers<void>>;
+  }>(undefined);
   const hiding = useRef(false);
   const composing = useRef(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -174,7 +177,7 @@ export function QuickChat({
         if (currentSession.current !== undefined && currentSession.current !== nextSession) {
           operationGeneration.current += 1;
           lastSubmission.current = undefined;
-          lock.current = false;
+          lock.current = undefined;
           setPending(undefined);
           setDraft("");
           updateImages([]);
@@ -544,8 +547,8 @@ export function QuickChat({
       )
         return;
       event.preventDefault();
-      if (running) void perform("stop", () => window.zpiQuickChat.stop());
-      else if (pending !== "stop") void hide();
+      if (running || lock.current?.action === "send") void perform("stop", () => window.zpiQuickChat.stop());
+      else if (lock.current?.action !== "stop") void hide();
     };
     window.addEventListener("focus", focus);
     window.addEventListener("keydown", keydown);
@@ -553,7 +556,7 @@ export function QuickChat({
       window.removeEventListener("focus", focus);
       window.removeEventListener("keydown", keydown);
     };
-  }, [running, pending]);
+  }, [running]);
 
   async function hide() {
     if (hiding.current) return;
@@ -573,12 +576,18 @@ export function QuickChat({
     operation: () => Promise<Result<void>>,
     complete?: () => void,
   ) {
-    if (lock.current) return;
-    lock.current = true;
+    const previous = lock.current;
+    if (previous && !(action === "stop" && previous.action === "send")) return;
+    const operationState = { action, done: Promise.withResolvers<void>() };
+    lock.current = operationState;
     const generation = operationGeneration.current;
     setPending(action);
     setError("");
     try {
+      // A stop arriving before send's acknowledgement must run after the host
+      // accepted or rejected it. It owns pending meanwhile, so Esc cannot hide.
+      if (previous) await previous.done.promise;
+      if (generation !== operationGeneration.current) return;
       unwrap(await operation());
       if (generation === operationGeneration.current) complete?.();
     } catch (reason) {
@@ -587,10 +596,11 @@ export function QuickChat({
         setError(userErrorMessage(reason));
       }
     } finally {
-      if (generation === operationGeneration.current) {
-        lock.current = false;
+      if (generation === operationGeneration.current && lock.current === operationState) {
+        lock.current = undefined;
         setPending(undefined);
       }
+      operationState.done.resolve();
     }
   }
 
@@ -810,7 +820,7 @@ export function QuickChat({
                 className="send stop"
                 aria-label="停止"
                 title="停止生成"
-                disabled={Boolean(pending)}
+                disabled={pending !== undefined && pending !== "send"}
                 onClick={() => void perform("stop", () => window.zpiQuickChat.stop())}
               >
                 <Square size={16} fill="currentColor" aria-hidden="true" />

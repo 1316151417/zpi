@@ -63,3 +63,17 @@ test("failed capture releases admission and a retry can open", async () => {
   await f.capture.invoke("selection");
   expect(f.open).toHaveBeenCalledExactlyOnceWith({ text: "retry" }, "first");
 });
+test("a synchronous screenshot hide failure rejects its promise and releases admission", async () => {
+  const f = fixture();
+  f.hide.mockImplementationOnce(() => {
+    throw new Error("native hide failed");
+  });
+  let pending: Promise<void> | undefined;
+  expect(() => {
+    pending = f.capture.invoke("screenshot");
+  }).not.toThrow();
+  await expect(pending).rejects.toThrow("native hide failed");
+  f.read.mockReturnValue({ text: "retry" });
+  await f.capture.invoke("clipboard");
+  expect(f.open).toHaveBeenCalledExactlyOnceWith({ text: "retry" }, "first");
+});

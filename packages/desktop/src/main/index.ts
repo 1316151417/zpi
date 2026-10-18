@@ -326,14 +326,18 @@ async function launch(): Promise<void> {
     copyText: (text) => clipboard.writeText(text),
     activateApp:
       process.platform === "darwin" && !hiddenTestMode
-        ? macQuickChatFocus(join(dir, "../native"))
+        ? macQuickChatFocus(
+            join(dir, "../native"),
+            () => app.focus({ steal: true }),
+            (error) => errors.write("quick-chat.focus", error),
+          )
         : undefined,
     openExternal: (url) => shell.openExternal(url),
   });
   const removeQuickChatIpc = installQuickChatIpc(ipcMain, quickChat);
   const quickChatCapture = new QuickChatCapture({
     sessionId: () => quickChatHost.sessionId,
-    hide: () => quickChat.hide(),
+    hide: () => quickChat.hide("capture-hide"),
     open: (input, sessionId) => quickChat.openWithDraft(input, sessionId),
     read: macQuickChatCapture({
       platform: process.platform,

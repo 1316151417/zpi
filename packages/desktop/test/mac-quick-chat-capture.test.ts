@@ -39,6 +39,11 @@ test("clipboard reads text or prefers a bounded image without writing or simulat
   f.options.clipboard.readText = () => "x".repeat(32_001);
   expect(() => f.read("clipboard")).toThrow("32000");
 });
+test.each(["", " \n\t"])("empty clipboard %j quietly leaves the current draft and window alone", (text) => {
+  const f = fixture();
+  f.options.clipboard.readText = () => text;
+  expect(f.read("clipboard")).toBeUndefined();
+});
 test("missing accessibility permission does not launch Copy; its result comes from the native helper", async () => {
   const f = fixture();
   f.options.accessibilityAccess = () => false;
