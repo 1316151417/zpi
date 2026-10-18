@@ -32,7 +32,7 @@ test("an absolute Java link outside the task workspace can be sent, while a rela
     await expect(
       page.locator(".user-message-text").getByRole("button", { name: "BasicMetric.java", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".error-toast")).toHaveCount(0);
+    await expect(page.locator(".notice-window")).toHaveCount(0);
     expect(JSON.stringify(server.requests[0].messages)).toContain(path);
     await composer.fill("[越界引用](<../external project/BasicMetric.java>)");
     await composer.press("Enter");

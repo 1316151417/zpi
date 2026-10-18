@@ -14,6 +14,7 @@ import {
   readFileBounded,
   validateImageSource,
 } from "zpi-coding-agent";
+import { attachmentLimitMessage } from "zpi-ui/errors";
 import { atomicJson } from "./storage.ts";
 
 type Saved = Attachment & {
@@ -90,7 +91,7 @@ export class AttachmentStore {
     return this.serial(sessionId, async () => {
       const entries = await this.list(sessionId);
       if (entries.filter((e) => !e.used && !e.queued).length >= imageLimits.count)
-        throw new Error("invalid_input: 每个草稿最多 8 个附件");
+        throw new Error(`invalid_input: ${attachmentLimitMessage}`);
       const id = randomUUID();
       const item: FileAttachment = {
         id,
@@ -172,7 +173,7 @@ export class AttachmentStore {
       const processed = await validateImageSource(input);
       const entries = await this.list(sessionId);
       if (entries.filter((e) => !e.used && !e.queued).length >= imageLimits.count)
-        throw new Error("invalid_input: 每个草稿最多 8 个附件");
+        throw new Error(`invalid_input: ${attachmentLimitMessage}`);
       const item: Saved = {
         id: randomUUID(),
         name,

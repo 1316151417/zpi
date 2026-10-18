@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { userErrorMessage } from "../src/renderer/user-error.ts";
+import { attachmentLimitMessage, userErrorMessage } from "../src/renderer/user-error.ts";
 
 const fallback = "操作失败，请重试。如果问题持续，请重启应用。";
 
@@ -21,7 +21,7 @@ describe("userErrorMessage", () => {
     ["invalid_input: 图片损坏", "图片损坏"],
     ["稍后重试", "稍后重试"],
     ["离线", "离线"],
-    [{ code: "invalid_input", message: "每个草稿最多 8 个附件" }, "每个草稿最多 8 个附件"],
+    [{ code: "invalid_input", message: attachmentLimitMessage }, attachmentLimitMessage],
     ["认证失败，请检查 API Key 或重新登录后重试。", "认证失败，请检查 API Key 或重新登录后重试。"],
   ])("retains safe copy without transport/code prefixes: %j", (error, expected) => {
     expect(userErrorMessage(error)).toBe(expected);

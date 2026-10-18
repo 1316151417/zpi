@@ -18,8 +18,8 @@ import {
   systemPreferences,
 } from "electron";
 import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
-import { listCommands } from "zpi-coding-agent";
-import { userErrorMessage } from "zpi-ui/errors";
+import { imageLimits, listCommands } from "zpi-coding-agent";
+import { attachmentLimitMessage, userErrorMessage } from "zpi-ui/errors";
 import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
@@ -859,7 +859,7 @@ async function launch(): Promise<void> {
                   properties: ["openFile", "multiSelections"],
                 })
               ).filePaths;
-          if (paths.length > 8) throw new Error("invalid_input: 每条消息最多 8 个附件");
+          if (paths.length > imageLimits.count) throw new Error(`invalid_input: ${attachmentLimitMessage}`);
           const imported = [];
           try {
             for (const path of paths) {

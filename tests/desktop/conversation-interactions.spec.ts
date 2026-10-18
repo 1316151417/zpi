@@ -116,6 +116,40 @@ test("side chats reuse the smallest free number and retain other conversations",
   }
 });
 
+test("side chat submits through the composer without renderer-only fields", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-side-chat-send-"));
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "辅助回复" }));
+    done(response);
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByLabel("消息", { exact: true }).fill("主对话");
+    await page.getByLabel("发送", { exact: true }).click();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
+    const side = page.getByRole("region", { name: "辅助对话", exact: true });
+    const editor = side.getByLabel("消息", { exact: true });
+    await editor.fill("辅助对话消息");
+    await editor.press("Enter");
+    await expect
+      .poll(() => server.requests.some((body) => JSON.stringify(body).includes("辅助对话消息")))
+      .toBe(true);
+    await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(side.locator(".answer").last()).toContainText("辅助回复");
+    await expect(side.locator(".notice-input")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("clicking inside the current task clears a completion dot and persists the acknowledgement", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-read-current-task-"));
   const finish = deferred();
@@ -203,7 +237,7 @@ test("an absolute HTML link previews the streamed write before the file exists a
     await expect(readFile(path)).rejects.toThrow("ENOENT");
     await chip.click();
     await expect(page.locator(".pending-file-preview")).toContainText(source);
-    await expect(page.locator(".error-toast")).toHaveCount(0);
+    await expect(page.locator(".notice-window")).toHaveCount(0);
     finish.resolve();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(page.locator(".pending-file-preview")).toHaveCount(0);
@@ -211,7 +245,7 @@ test("an absolute HTML link previews the streamed write before the file exists a
     await page.locator(".changes-pane").getByRole("button", { name: "打开文件", exact: true }).click();
     await expect(page.getByLabel("浏览器地址", { exact: true })).toBeVisible();
     await expect(page.getByRole("tab", { name: "写入中的预览", exact: true })).toBeVisible();
-    await expect(page.locator(".error-toast")).toHaveCount(0);
+    await expect(page.locator(".notice-window")).toHaveCount(0);
   } finally {
     finish.resolve();
     await runCleanup([

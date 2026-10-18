@@ -24,6 +24,7 @@ import {
   type FileAction,
   type FileLocation,
   type FileOpenOrigin,
+  Notice,
   type SubagentTask,
   TaskFindBar,
   type WebOpenOptions,
@@ -45,7 +46,6 @@ import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
-import { ErrorToast } from "./ErrorToast.tsx";
 import { ModelPerformance } from "./ModelPerformance.tsx";
 import {
   canOpenSideChat,
@@ -172,7 +172,7 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
               名称
               <input aria-label="名称" value={value} onChange={(e) => setValue(e.target.value)} />
             </label>
-            {error && <div className="run-error">{error}</div>}
+            {error && <Notice scope="input" message={error} />}
             <div className="modal-actions">
               <button type="button" onClick={onClose}>
                 取消
@@ -628,6 +628,7 @@ export function App() {
           "--left-sidebar-width": `${width}px`,
           "--sidebar-content-width": `${boundedWidth(dragWidth ?? prefs?.sidebarWidth ?? sidebarLimits.default)}px`,
           "--right-pane-width": `${paneWidth}px`,
+          "--right-pane-offset": `${paneOpen ? paneWidth : 0}px`,
           "--workspace-panel-radius": `${window.zpi.workspacePanelRadius}px`,
         } as CSSProperties
       }
@@ -1018,10 +1019,15 @@ export function App() {
           </header>
           {state.settings?.providers.some((p) => p.hasApiKey || p.chatgptAccount?.connected) &&
             !state.settings.credentialsPersisted && (
-              <div className="banner">系统加密不可用，凭据仅保存在本次应用内存中。</div>
+              <Notice scope="config" tone="warning" message="系统加密不可用，凭据仅保存在本次应用内存中。" />
             )}
           {!state.settings?.providers.some((p) => p.models.length) && state.ready && (
-            <div className="banner">先在设置中添加提供商和模型。</div>
+            <Notice
+              scope="config"
+              tone="warning"
+              message="先在设置中添加提供商和模型。"
+              action={{ label: "去设置", onClick: () => setSettingsOpen(true) }}
+            />
           )}
           {view ? (
             <div className="task-body">
@@ -1157,7 +1163,7 @@ export function App() {
                       />
                     }
                     suggestions={state.activeSuggestions ?? []}
-                    onSubmit={async (text, input) => {
+                    onSubmit={async (text, input, { draftRevision }) => {
                       try {
                         const result = await window.zpi.submitInput({
                           sessionId: view.sessionId,
@@ -1176,7 +1182,8 @@ export function App() {
                         useStore.setState({ error: undefined });
                         void refresh().catch(report);
                       } catch (e) {
-                        if (!(e instanceof Error && e.message === "selection_required")) report(e);
+                        if (!(e instanceof Error && e.message === "selection_required"))
+                          report(e, { input: view.sessionId, revision: draftRevision });
                         throw e;
                       }
                     }}
@@ -1202,7 +1209,9 @@ export function App() {
           onFindStateChange={find.update}
         />
       </div>
-      {state.error && <ErrorToast key={state.errorVersion} message={state.error} onDismiss={dismissError} />}
+      {state.error && (
+        <Notice key={state.errorVersion} scope="window" message={state.error} onDismiss={dismissError} />
+      )}
       {action && <ActionModal action={action} onClose={() => setAction(undefined)} />}
       {useMemo(
         () => (settingsOpen ? <SettingsPage onClose={() => setSettingsOpen(false)} /> : null),

@@ -51,7 +51,10 @@ export class ComposerDraftStore extends Map<string, ComposerDraft> {
       !previous ||
       previous.text !== draft.text ||
       JSON.stringify(previous.fileReferences) !== JSON.stringify(draft.fileReferences) ||
-      JSON.stringify(previous.selections) !== JSON.stringify(draft.selections)
+      JSON.stringify(previous.selections) !== JSON.stringify(draft.selections) ||
+      // Attachments are part of the draft; late submit results must see them as a newer revision.
+      JSON.stringify(previous.attachments.map((attachment) => attachment.id)) !==
+        JSON.stringify(draft.attachments.map((attachment) => attachment.id))
     )
       this.contentRevisions.set(id, this.revision(id) + 1);
     super.set(id, draft);

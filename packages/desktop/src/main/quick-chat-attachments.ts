@@ -47,7 +47,7 @@ export class QuickChatAttachments {
     )
       throw new Error("invalid_input: 图片导入参数无效（单张最多 10 MiB）");
     if ([...this.entries.values()].filter((entry) => !entry.used).length + this.pending >= imageLimits.count)
-      throw new Error("invalid_input: 每个草稿最多 8 张图片");
+      throw new Error(`invalid_input: 每个草稿最多 ${imageLimits.count} 张图片`);
     this.checkBudget(bytes.length);
     const source = Buffer.from(bytes);
     const generation = this.generation;
@@ -111,7 +111,7 @@ export class QuickChatAttachments {
       ids.some((id) => typeof id !== "string") ||
       new Set(ids).size !== ids.length
     )
-      throw new Error("invalid_input: 图片列表无效（最多 8 张）");
+      throw new Error(`invalid_input: 图片列表无效（最多 ${imageLimits.count} 张）`);
     const entries = ids.map((id) => this.entry(id));
     if (
       entries.reduce((sum, entry) => sum + entry.metadata.width * entry.metadata.height, 0) >

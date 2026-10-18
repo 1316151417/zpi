@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 const domTests = [
-  "packages/desktop/test/error-toast.test.ts",
+  "packages/ui/test/notice.test.ts",
   "packages/desktop/test/web-settings-actions.test.ts",
   "packages/desktop/test/quick-chat-renderer.test.ts",
   "packages/desktop/test/quick-chat-settings-dom.test.ts",

@@ -108,6 +108,30 @@ it("reports friendly error copy while retaining diagnostics and replacing identi
   f.unsubscribe();
 });
 
+it("keeps a late input-scoped failure off a draft changed after submit", async () => {
+  const f = await setup();
+  f.store.useStore.setState({ selected: f.session.id });
+  f.store.drafts.set(f.session.id, { text: "old", fileReferences: [], attachments: [], pending: 0 });
+  const revision = f.store.drafts.revision(f.session.id);
+  f.store.report(new Error("not_found: 文件不存在：/private/missing.md"), {
+    input: f.session.id,
+    revision,
+  });
+  expect(f.store.drafts.get(f.session.id)?.error).toContain("找不到文件");
+  expect(f.store.useStore.getState().error).toBeUndefined();
+
+  f.store.drafts.set(f.session.id, { text: "new", fileReferences: [], attachments: [], pending: 0 });
+  f.store.report(new Error("not_found: 文件不存在：/private/missing.md"), {
+    input: f.session.id,
+    revision,
+  });
+  expect(f.store.drafts.get(f.session.id)?.error).toBeUndefined();
+  expect(f.store.useStore.getState().error).toBe(
+    "上一次发送失败：找不到文件“missing.md”，请确认文件是否已移动或删除。",
+  );
+  f.unsubscribe();
+});
+
 it("lists built-in commands without auxiliary slash shortcuts", async () => {
   const f = await setup();
   const { listCommands } = await import("zpi-coding-agent");

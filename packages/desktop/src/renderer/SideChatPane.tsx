@@ -100,13 +100,13 @@ export function SideChatPane({
               />
             }
             onStop={stop}
-            onSubmit={async (text, input) => {
+            onSubmit={async (text, input, { draftRevision }) => {
               try {
                 const result = unwrap(await window.zpi.submitInput({ sessionId, text, ...input }));
                 if (result.confirmationRequired) return "confirmationRequired";
               } catch (error) {
                 if (!view.controls?.selectionValid) setModelOpen(true);
-                report(error);
+                report(error, { input: sessionId, revision: draftRevision });
                 throw error;
               }
             }}

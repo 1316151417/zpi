@@ -270,9 +270,27 @@ function apply(events: DesktopEventEnvelope[]): void {
   }
   if (views !== state.views || records !== state.sessions) useStore.setState({ views, sessions: records });
 }
-export function report(error: unknown): void {
+export type ReportScope = "window" | { input: string; revision?: number };
+export function report(error: unknown, scope: ReportScope = "window"): void {
   logRendererError("reported", error);
-  useStore.setState((state) => ({ error: userErrorMessage(error), errorVersion: state.errorVersion + 1 }));
+  const message = userErrorMessage(error);
+  // Input-scoped failures stay with the draft the user can still retry; everything else is window-scoped.
+  if (scope !== "window") {
+    const draft = drafts.get(scope.input);
+    if (draft && (scope.revision === undefined || drafts.revision(scope.input) === scope.revision)) {
+      drafts.set(scope.input, { ...draft, error: message });
+      return;
+    }
+    if (scope.revision !== undefined) {
+      // A late failure must not label a draft the user already changed.
+      useStore.setState((state) => ({
+        error: `上一次发送失败：${message}`,
+        errorVersion: state.errorVersion + 1,
+      }));
+      return;
+    }
+  }
+  useStore.setState((state) => ({ error: message, errorVersion: state.errorVersion + 1 }));
 }
 export function subscribeEvents(): () => void {
   const flush = () => void flushDrafts().catch(report);

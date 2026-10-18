@@ -58,7 +58,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
     await expect(run()).toHaveAttribute("data-status", "running");
-    await expect(run().locator(".run-error")).toHaveCount(0);
+    await expect(run().locator(".notice-turn")).toHaveCount(0);
     await expect(page.getByTestId("api-retry-status")).toHaveAttribute("title", /HTTP 429/);
     await expect(page.getByTestId("api-retry-status")).toHaveCSS("height", "28px");
     await expect(page.locator(".api-retry-label")).toHaveCSS("animation-duration", "4s");
@@ -96,14 +96,14 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     expect(counts.get("stop")).toBe(1);
     await submit("quota");
     await expect(run()).toHaveAttribute("data-status", "error");
-    await expect(run().locator(".run-error")).toContainText("Rate limit reached");
+    await expect(run().locator(".notice-turn")).toContainText("服务请求过于频繁或额度不足");
     expect(counts.get("quota")).toBe(3);
     await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ retry: { baseDelayMs: 0 } }));
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await submit("exhaust");
     await expect(run()).toHaveAttribute("data-status", "error");
     expect(counts.get("exhaust")).toBe(33);
-    await expect(run().locator(".run-error")).toContainText("Rate limit reached");
+    await expect(run().locator(".notice-turn")).toContainText("服务请求过于频繁或额度不足");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
   } finally {
     finishRecoveredStream.resolve();
@@ -156,7 +156,7 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
     await submit("stall");
     const run = () => page.getByTestId("run").last();
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
-    await expect(run().locator(".run-error")).toHaveCount(0);
+    await expect(run().locator(".notice-turn")).toHaveCount(0);
     await expect.poll(() => closed).toContain("stall");
     await page.reload();
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");

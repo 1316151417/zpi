@@ -198,7 +198,7 @@ test("write Parameters follow ZCode's empty input, partial input, content and re
     await write.locator(".tool-file-chip").click();
     const pendingPreview = page.locator(".pending-file-preview");
     await expect(pendingPreview).toContainText('"path": "streamed.ts"');
-    await expect(page.locator(".error-toast")).toHaveCount(0);
+    await expect(page.locator(".notice-window")).toHaveCount(0);
 
     content.resolve();
     const preview = write.locator(".tool-content-preview");
@@ -231,7 +231,7 @@ test("write Parameters follow ZCode's empty input, partial input, content and re
     await expect(write.locator(".tool-parameters")).toHaveCount(0);
     await expect(pendingPreview).toHaveCount(0);
     await expect(page.locator(".changes-pane [data-diff-id]")).toHaveCount(1);
-    await expect(page.locator(".error-toast")).toHaveCount(0);
+    await expect(page.locator(".notice-window")).toHaveCount(0);
     expect(await readFile(join(project, "streamed.ts"), "utf8")).toBe(source);
     finish.resolve();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");

@@ -9,6 +9,8 @@ export { ComposerDraftStore } from "./components/InputContext.tsx";
 export { Markdown } from "./components/Markdown.tsx";
 export { MermaidBlock } from "./components/MermaidBlock.tsx";
 export { ActionHint } from "./components/MessageActions.tsx";
+export type { NoticeAction, NoticeProps, NoticeScope, NoticeTone } from "./components/Notice.tsx";
+export { Notice } from "./components/Notice.tsx";
 export { FileIcon } from "./components/Reference.tsx";
 export { SortableList } from "./components/SortableList.tsx";
 export { subagentStatusLabels } from "./components/SubagentToolBlock.tsx";

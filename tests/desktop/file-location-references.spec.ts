@@ -34,7 +34,7 @@ test("copied links with line, column and range suffixes send and open at their o
     await composer.fill(text);
     await composer.press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
-    await expect(page.locator(".error-toast")).toHaveCount(0);
+    await expect(page.locator(".notice-window")).toHaveCount(0);
     const user = page.locator(".user-message-text");
     await expect(user.locator("button.inline-mention.file")).toHaveCount(4);
     const messages = server.requests[0].messages as { role: string; content: string }[];

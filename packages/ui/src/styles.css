@@ -1199,11 +1199,99 @@ small {
 .latest:active:not(:disabled) {
   transform: translateX(-50%);
 }
-.banner {
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--text-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.notice > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.notice-error > svg {
+  color: var(--color-error);
+}
+.notice-warning > svg {
+  color: var(--color-waiting);
+}
+.notice-info > svg {
+  color: var(--color-text-muted);
+}
+.notice-message {
+  flex: 1;
+  min-width: 0;
+}
+.notice-action {
+  flex: 0 0 auto;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.notice .notice-action:hover {
+  background: transparent;
+  color: var(--color-focus);
+}
+.notice-dismiss {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: -2px -2px 0 0;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+}
+.notice .notice-dismiss:hover {
+  background: var(--color-fill-hover);
+  color: var(--color-text);
+}
+.notice-input {
+  padding: 0 2px;
+  color: var(--color-text);
+}
+.notice-turn {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.conversation-inner > .notice-turn {
+  margin: 0 16px var(--space-3);
+}
+.notice-window {
+  position: absolute;
+  top: 64px;
+  right: calc(var(--right-pane-offset, 0px) + 20px);
+  z-index: 70;
+  width: max-content;
+  max-width: min(440px, calc(100% - 40px));
+  max-height: calc(100% - 84px);
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  overflow-y: auto;
+}
+/* Settings replaces the workspace, so anchor the transient notice to the window instead. */
+.shell.show-settings .notice-window {
+  right: 20px;
+}
+.notice-config {
+  align-items: center;
   padding: var(--space-3) var(--space-6);
   background: var(--color-warning-surface);
   color: var(--color-waiting);
-  font-size: var(--text-small);
 }
 .modal-backdrop {
   background: rgb(0 0 0 / 0.6);
@@ -1298,50 +1386,6 @@ small {
   color: var(--color-text-muted);
   font-size: var(--text-small);
   line-height: var(--line-body);
-}
-.error-toast {
-  position: absolute;
-  top: 64px;
-  right: 20px;
-  z-index: 70;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: max-content;
-  max-width: min(440px, calc(100% - 40px));
-  max-height: calc(100% - 84px);
-  padding: 12px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-popover);
-  color: var(--color-text);
-  font-size: var(--text-small);
-  line-height: 1.5;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-}
-.error-toast > svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--color-error);
-}
-.error-toast > span {
-  flex: 1;
-  min-width: 0;
-}
-.error-toast > button {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  color: var(--color-text-muted);
-}
-.error-toast > button:hover {
-  background: var(--color-fill-hover);
-  color: var(--color-text);
 }
 .settings-layout {
   gap: var(--space-6);

@@ -57,7 +57,7 @@ import type {
   SubagentTask,
   ViewBlock,
 } from "../types.ts";
-import { userErrorMessage } from "../user-error.ts";
+import { attachmentLimitMessage, userErrorMessage } from "../user-error.ts";
 import { AnswerSources } from "./AnswerSources.tsx";
 import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCards.tsx";
 import { collectAnswerSources } from "./answer-sources.ts";
@@ -84,6 +84,7 @@ import {
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
 import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
+import { Notice } from "./Notice.tsx";
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
 import { displayReferences, FileIcon, Reference } from "./Reference.tsx";
@@ -666,9 +667,7 @@ export const RunGroup = memo(function RunGroup({
           </div>
         )}
         {run.error && run.status !== "running" && (
-          <div role="alert" className="run-error">
-            {userErrorMessage(run.error)}
-          </div>
+          <Notice scope="turn" message={userErrorMessage(run.error)} />
         )}
         <div className="assistant-message-row">
           {answer && (
@@ -730,11 +729,7 @@ export const RunGroup = memo(function RunGroup({
               <span className="message-time">{messageTime(answer.startedAt ?? run.startedAt)}</span>
             </div>
           )}
-          {actionError && (
-            <div className="run-error" role="alert">
-              {actionError}
-            </div>
-          )}
+          {actionError && <Notice scope="turn" message={actionError} />}
         </div>
       </div>
     </article>
@@ -1107,11 +1102,7 @@ export function Conversation({
                 {loadingEarlier ? "正在加载…" : historyError ? "加载失败，点击重试" : "加载更早的十次调用"}
               </button>
             )}
-            {historyError && (
-              <p role="alert" className="run-error">
-                {historyError}
-              </p>
-            )}
+            {historyError && <Notice scope="turn" message={historyError} />}
             {view.runs.length ? (
               view.runs.map((run) => (
                 <Fragment key={run.runId}>
@@ -1228,6 +1219,7 @@ export function ChatComposer({
       queueDisposition?: "keep" | "clear";
       workspaceMode?: "preserve" | "rewind";
     },
+    context: { draftRevision: number },
   ) => Promise<void> | Promise<"confirmationRequired" | "blocked" | undefined>;
   onStop: () => void;
   sessionId: string;
@@ -1416,7 +1408,7 @@ export function ChatComposer({
       }
       if (old.attachments.length + images.length > imageLimits.count) {
         await Promise.all(images.map((image) => context?.removeAttachment(id, image.id)));
-        throw new Error("每条消息最多 8 个附件");
+        throw new Error(attachmentLimitMessage);
       }
       updateValue(id, (old) => ({ ...old, attachments: [...old.attachments, ...images] }));
     } catch (e) {
@@ -1570,19 +1562,23 @@ export function ChatComposer({
     drafts.current.submitting.add(submittedSession);
     setSubmitting(true);
     try {
-      const result = await onSubmit(buildSelectionPrompt(submitted.text, submitted.selections ?? []), {
-        ...(workspaceMode ? { workspaceMode } : {}),
-        ...(queueDisposition ? { queueDisposition } : {}),
-        fileReferences: [
-          ...new Set([
-            ...submitted.fileReferences,
-            ...parseMentions(submitted.text)
-              .filter((m) => m.kind === "file")
-              .map((m) => m.path),
-          ]),
-        ],
-        attachments: submitted.attachments.map((e) => e.id),
-      });
+      const result = await onSubmit(
+        buildSelectionPrompt(submitted.text, submitted.selections ?? []),
+        {
+          ...(workspaceMode ? { workspaceMode } : {}),
+          ...(queueDisposition ? { queueDisposition } : {}),
+          fileReferences: [
+            ...new Set([
+              ...submitted.fileReferences,
+              ...parseMentions(submitted.text)
+                .filter((m) => m.kind === "file")
+                .map((m) => m.path),
+            ]),
+          ],
+          attachments: submitted.attachments.map((e) => e.id),
+        },
+        { draftRevision: submittedRevision },
+      );
       if (result === "confirmationRequired") {
         if (currentSession.current === submittedSession) setQueueConfirmation(true);
         return;
@@ -1794,16 +1790,11 @@ export function ChatComposer({
         </div>
         {value.pending > 0 && <small role="status">正在处理附件…</small>}
         {value.error && (
-          <div className="run-error" role="alert">
-            {userErrorMessage(value.error)}
-            <button
-              type="button"
-              aria-label="关闭附件错误"
-              onClick={() => updateValue(sessionId, (old) => ({ ...old, error: undefined }))}
-            >
-              ×
-            </button>
-          </div>
+          <Notice
+            scope="input"
+            message={userErrorMessage(value.error)}
+            onDismiss={() => updateValue(sessionId, (old) => ({ ...old, error: undefined }))}
+          />
         )}
         {fileQuery && (
           <div

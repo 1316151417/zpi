@@ -35,6 +35,10 @@ macOS 数据目录：
 
 达到 5 MB 后轮换为 `error.log.1`，保留一份旧日志。日志仅存本机，不记录 IPC 参数、完整请求或聊天内容，并屏蔽常见凭据格式；日志写入失败不影响原有错误处理。
 
+### 错误提示落点
+
+主窗口的异常统一走 `Notice`（`packages/ui/src/components/Notice.tsx`），落点由 scope 决定：`input` 留在 composer 草稿里，供用户改完重试；`turn` 留在该轮消息末尾（运行失败随会话保存）；`window` 浮在主区域右上角，5 秒自动消失且悬停暂停；`config` 常驻标题下，修好配置后才消失。窗口提示挂在 `.workspace-surface` 之外，打开设置时仍然可见，并通过 `--right-pane-offset` 对齐主区域。同一个失败只出现一次，新增错误时复用这四个 scope，不要再发明位置。默认 `report()` 走窗口级；能就地重试的提交失败传 `{ input: sessionId, revision: draftRevision }`，版本不匹配的迟到失败只进带“上一次发送失败”上下文的窗口提示。
+
 ## 工具与会话边界
 
 - `packages/coding-agent` 的默认工具是 `read`、`write`、`edit`、`bash`。SDK 用 `customTools` 增加工具，用 `toolOverrides` 显式替换同名基础工具，不依赖 Electron。

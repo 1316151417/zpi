@@ -202,11 +202,43 @@ test("add panel imports multiple attachments and retains the draft when the pick
     );
     await add.click();
     await panel.press(" ");
-    await expect(page.getByRole("alert")).toContainText("ENOENT");
+    await expect(page.getByRole("alert")).toContainText("找不到文件");
+    await expect(page.locator(".composer .notice-input")).toContainText("找不到文件");
     await expect(editor).toHaveText("保留草稿X");
     await expect(editor).toBeFocused();
     await expect(page.locator(".composer .image-chip")).toHaveCount(1);
     expect(server.requests).toHaveLength(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("submit failures stay with the draft instead of the window overlay", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-error-scope-"));
+  const server = await fakeServer((_, response) => done(response));
+  let app: ElectronApplication | undefined;
+  try {
+    const cwd = join(dir, "workspace");
+    await mkdir(cwd);
+    const id = seedHistory(dir, cwd, 1).id;
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await select(page, id);
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill(`保留 [missing](${join(cwd, "missing.txt")})`);
+    await editor.press("Enter");
+    const notice = page.locator(".composer .notice-input");
+    await expect(notice).toContainText("找不到文件");
+    await expect(page.locator(".notice-window")).toHaveCount(0);
+    await expect(editor).toContainText("保留");
+    expect(server.requests).toHaveLength(0);
+    await page.getByRole("button", { name: "关闭错误", exact: true }).click();
+    await expect(notice).toHaveCount(0);
+    await expect(editor).toContainText("保留");
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
