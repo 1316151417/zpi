@@ -99,23 +99,25 @@ pending 操作按 visibility epoch 归属，旧 promise 结束不得清掉后一
 
 针对 0.2.91 基线的窗口替身可稳定重现一个事件顺序缺口：在 `show()` 调用栈内发出 `blur`，旧处理会立即隐藏并使后续 `focus` 无法执行，连续三次唤起均失败。本轮把显示期间的失焦复核推迟到同步焦点步骤之后，同时核对窗口身份、可见性 epoch 与实际聚焦状态；迟到的 `hide` 也先核对原生可见状态。真实失焦仍收起，旧事件不得撤销新的显示意图。这个模拟复现证明代码对该事件顺序的处理有缺口；尚未在真实 Mac 采到同一事件序列，不能据此宣称已经确定用户机器上快捷键症状的真实根因。
 
-本地诊断默认关闭；启动 ZPI 时显式设置 `ZPI_QUICK_CHAT_TIMING=1` 才记录，开发启动示例为 `ZPI_QUICK_CHAT_TIMING=1 npm run dev`。输出位置是 Electron `userData/agent/logs/quick-chat-timing.json`，最多保留当前进程的 64 条记录、文件上限 128 KiB，不上传。记录字段仅允许固定种类、冷/加载中/热启动模式、结果、阶段、数值标识、可见/聚焦/展开布尔状态及相对毫秒；不包含消息/草稿、session 内容、文件路径、URL、模型密钥或绝对时间。这里的 `userData` 路径是输出位置，日志内容不包含用户路径。写入在唤起调用栈返回后排队，失败不阻止浮窗。
+本地诊断默认关闭；启动 ZPI 时显式设置 `ZPI_QUICK_CHAT_TIMING=1` 才记录，开发启动示例为 `ZPI_QUICK_CHAT_TIMING=1 npm run dev`。输出位置是 Electron `userData/agent/logs/quick-chat-timing.json`，最多保留当前进程的 64 条记录、文件上限 128 KiB，不上传。记录字段仅允许固定种类、冷/加载中/热启动模式、结果、阶段、实际快捷键及注册版本、临时 session 标识、呈现/renderer 版本、visibility epoch、opening 阶段、等待数量、原生可见/聚焦/展开及显示意图，以及进程单调/相对毫秒；不包含消息/草稿、session 正文、文件路径、URL、模型密钥或绝对时间。这里的 `userData` 路径是输出位置，日志内容不包含用户路径。写入在唤起调用栈返回后排队，失败不阻止浮窗。
 
 计时种类用 `new` 区分显式新建与普通 `open`。新增 `reset-start` → `reset-ready` 记录主进程重置（包含运行中停止），`session-frame-wait` → `session-frame-ready` 记录等待当前 session/呈现版本确认；两段可用于区分清理和 renderer 准备延迟，后者包含 IPC/React/帧调度，不等于像素显示时间。其余阶段区分预热、创建/加载、过期检查、几何、`show` / 原生 show 事件、`focus` / 原生 focus 事件，以及 renderer ready、输入框焦点和帧回调；固定隐藏原因包括快捷键、Esc/IPC、真实失焦、Space 变化及被忽略的迟到事件。记录不是持续系统追踪，`renderer-frame` 只代表双帧回调而非像素显示证明，缺失确认或超时也不能当作成功。分析时应分别观察冷启动、热唤起与过期重置，结合实际可见性/输入焦点复核，不把模拟计时换算成原生快捷键延迟。
 
 macOS 保持 Electron `type: "panel"`，不设置主窗为 parent，不调用应用激活 API。面板本身覆盖所有 Spaces，配合失焦隐藏与 `NSWorkspaceActiveSpaceDidChangeNotification` 在切换 Space 时隐藏，避免把 `isVisible` 误当当前桌面可见证据；普通隐藏不取消请求。订阅仅在 macOS 注册并在退出时移除。显示器几何仅用于位置，Space 行为依赖原生面板。依据：[Electron panel](https://www.electronjs.org/docs/latest/api/base-window#new-basewindowoptions)、[Electron 41.10.7 非激活 Show/Focus 实现](https://github.com/electron/electron/blob/v41.10.7/shell/browser/native_window_mac.mm)、[workspace 通知 API](https://www.electronjs.org/docs/latest/api/system-preferences#systempreferencessubscribeworkspacenotificationevent-callback)、[Apple Space 变化通知](https://developer.apple.com/documentation/appkit/nsworkspace/activespacedidchangenotification)。不要用 `setVisibleOnAllWorkspaces(true/false)` 的临时切换替代这套行为：panel 自带 all-Spaces，额外调用可能转换整个应用的进程类型。
 
-受控性能回归使用真实 React 与窗口控制器、模拟 session 投影和原生窗口、16ms 帧间隔及 0ms task；在隐藏空白和隐藏已完成历史两种情况下，snapshot 分发均在逻辑时刻 0，`rendererReady` / 模拟 `show` 从 32ms（两个帧机会）降为 16ms（一个帧机会后 task）。这是调度预算验证，未计入真实 IPC、OS/Chromium 调度或绘制成本，不能作为 Mac 延迟实测，也不能据此认定用户的明显卡顿已全部解决。真实环境应分别记录空白/历史 idle 的 `new` 诊断及实际输入可用时间；当前云端未运行 Mac 原生验收。
+受控性能回归使用真实 React 与窗口控制器、模拟 session 投影和原生窗口、16ms 帧间隔及 0ms task；在隐藏空白和隐藏已完成历史两种情况下，snapshot 分发均在逻辑时刻 0，`rendererReady` / 模拟 `show` 从 32ms（两个帧机会）降为 16ms（一个帧机会后 task）。这是调度预算验证，未计入真实 IPC、OS/Chromium 调度或绘制成本，不能作为 Mac 延迟实测，也不能据此认定用户的明显卡顿已全部解决。真实环境应分别记录空白/历史 idle 的 `new` 诊断及实际输入可用时间；该受控帧测试当时未运行 Mac 原生验收；0.2.113 的本机记录见下。
 
 快速对话测试应覆盖工具 allowlist 与真实 `bash` 边界、内存会话与 15 分钟过期、文字/图片草稿清理、图片尺寸/数量/像素/内存预算、跨 session 与迟到导入、失败重试、纯图片/多模态 payload、含历史图片的非视觉模型拒绝、独立默认模型与 fallback、两组快捷键冲突恢复、IPC/来源图标/导航边界，以及 Happy DOM 的紧凑输入高度上报、发送按钮、左上新对话、无窗口关闭按钮、IME、设置导航和默认模型选择。窗口模拟验证普通快捷键的打开/收起/恢复，以及新建键的隐藏新建、可见有内容新建、已呈现空白再次收起、新建 pending 的连续按键合并、普通 pending 恢复升级为新建、旧操作 finally 不干扰新打开、失败去重与重新打开、迟到重置与帧确认、隐藏不清草稿/停止请求、DIP 几何与底锚点、预热不显示或抢焦点、加载时收起、可见但未聚焦的再次唤起、show 栈内 blur、迟到 blur/hide、过期帧后确认/取消/超时、Space 通知及清理；诊断验证默认关闭、字段白名单与记录/字节上限。Happy DOM 和窗口模拟不证明真实 macOS 全局热键、Space 切换、跨应用焦点、像素布局或真实模型服务可用。
 
 原生验收：用隔离测试配置运行 `tests/desktop/quick-chat.spec.ts`（44→184 DIP 文字及最高 240 DIP 图片草稿增高、内滚、删除收缩、底锚点、圆形发送按钮、展开输入 160px、首轮/后续轮次间距、合成 paste→附件 IPC→fake provider 多模态/纯图片、预览移除、失败保留、历史图片模型校验、Esc 隐藏/重载、后台隐藏窗口新建回紧凑及主任务隔离），显式交互测试可运行 `tests/interactive/quick-chat-focus.spec.ts`（隐藏主窗时浮窗取焦点、文字/图片草稿增高底锚点、合成图片粘贴与恢复、连续三次 Esc 隐藏/唤起）。两者仍使用 app API，不注册真实全局快捷键。另在 Mac 手动将主窗留在桌面 A、当前应用放在桌面 B，按 Option+N 应只在 B 出现输入框且不切回 A；再次按应收起。浮窗隐藏时按 Option+Shift+N 应显示空白紧凑输入框；保持空白再按才收起，Option+N 恢复仍为空白。已有回答的大窗按 Option+Shift+N 应在同一大窗开始空白会话，随后 Option+N 收起再恢复应是空白紧凑窗，不能回到老会话。有文字、图片或导入中草稿时按新建键应清空并新建；普通 Option+N 收起/恢复仍保留它们。初始化、probe、重置或等待新会话帧时连续按新建键应保持同一次打开，即使旧大窗仍可见也不反复取消或重置。Esc、关闭、Space 切换仍取消 pending 展示，迟到确认不能重新弹出。原生大窗可见但已失焦时，新对话快捷键应重新唤起并保持 660 × 560 DIP。点击可见大窗口左上「＋」应当次保持展开；不输入任何内容，连续隐藏/Option+N 恢复应稳定回到紧凑输入；分别保留文字、图片处理中/失败/待发送草稿再恢复应保持展开，删空全部草稿后再隐藏恢复应回到紧凑输入。已有回答的普通 Option+N 仍恢复原会话。分别从截图工具和其他应用复制图片，使用系统粘贴确认预览、移除、纯图片及文字配图，再检查收起恢复与发送失败保留。发送后切到桌面 C 应收起，再按应在 C 展开并保留回答，连续重复至少三次并确认可立即输入；发生失败时保留上述本地诊断，核对实际事件顺序。重复全屏 Space、多显示器、底部/侧边/自动隐藏 Dock、小屏、输入法候选、打开回答链接和流式停止/新对话流程。确认隐藏预热不显示、不抢焦点，也不发起模型请求；超过最后一次发送 15 分钟后再次唤起应进入空白紧凑输入框，旧内容、文字和图片草稿不能短暂闪现。
 
+0.2.113 已在本机真实 macOS 面板中复现隐藏后的迟到 blur 取消新唤起，并通过实体全局快捷键定位到空闲 reset 的无效 await。opening 现在区分隐藏准备与已呈现，空闲 reset 在预留并发 promise 后同步发布新 session；运行中取消仍等待完成。诊断进一步记录 shortcut-register/received、host-stop/dispose/selection/published、snapshot、React commit、ACK 及 opening phase，commit IPC 只在诊断开启时发送。实体键盘前后计时、用户反馈、原生重复回归及尚未验证的边界见 [本机验收记录](evidence/quick-chat-lifecycle-20261018/README.md)。
+
 0.2.112 在未修改的 0.2.111 上用真实 React QuickChat + 窗口控制器重现：可见历史大窗按新建键后 session 未改变、旧对话仍保留。修复覆盖历史/运行中大窗完整新建→隐藏→普通恢复流程、紧凑与展开文字/图片/导入/失败草稿、空白二次收起，以及可见 pending 的连续 8 次按键和「＋」帧等待合并。主进程 probe 超时、版本/session 替换、取消与失败重试有确定性单测；没有运行原生 Mac 或性能验收。
 
 0.2.111 的回归测试在未修改的 0.2.110 窗口实现上重现：重置尚未完成时连续按两次新建键，随后重置完成并确认当前会话帧，空白和有历史两种情况都没有调用原生 show。修复后覆盖加载、重置和帧等待期间的 2/3/4/8 次按键序列。这是窗口替身的确定性复现，不证明用户 Mac 的全部事件顺序或原生验收通过。
 
-本轮云端仅更新这些原生用例并做静态校验/`--list` 发现检查，没有运行 Electron GUI、真实 API 或用户 Mac；macOS Space/Dock/跨应用焦点、真实系统剪贴板图片与粘贴、真实全局快捷键事件顺序与原生毫秒延迟均未实测。不能将脚本更新、DOM/窗口模拟通过或 `--list` 成功写成原生验收通过，不承诺 0ms。
+0.2.112 及以前的上述云端记录仅更新这些原生用例并做静态校验/`--list` 发现检查，当时没有运行 Electron GUI、真实 API 或用户 Mac；macOS Space/Dock/跨应用焦点、真实系统剪贴板图片与粘贴、真实全局快捷键事件顺序与原生毫秒延迟均未实测。不能将脚本更新、DOM/窗口模拟通过或 `--list` 成功写成原生验收通过，不承诺 0ms。
 
 ### 文件工具的资源与并发边界
 

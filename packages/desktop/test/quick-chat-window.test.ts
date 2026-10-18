@@ -1095,7 +1095,8 @@ test.each(["restore", "bounds"])(
 test("optional timings follow only the current numeric token and record post-frame hiding without user data", async () => {
   const traces: { id: number; mark: ReturnType<typeof vi.fn>; finish: ReturnType<typeof vi.fn> }[] = [];
   const timing = {
-    start: vi.fn(() => {
+    start: vi.fn((kind: string) => {
+      if (kind === "event") return;
       const trace = { id: traces.length + 1, mark: vi.fn(), finish: vi.fn() };
       traces.push(trace);
       return trace;
@@ -1121,19 +1122,25 @@ test("optional timings follow only the current numeric token and record post-fra
   expect(traces[1].finish).toHaveBeenCalledExactlyOnceWith("shown");
   for (const [index, event] of ["blur", "hide"].entries()) {
     f.windows[0].emit(event);
-    expect(traces[index + 2].mark).toHaveBeenCalledWith(`${event}-ignored`, {
-      visible: true,
-      focused: true,
-      expanded: true,
-    });
+    expect(traces[index + 2].mark).toHaveBeenCalledWith(
+      `${event}-ignored`,
+      expect.objectContaining({
+        visible: true,
+        focused: true,
+        expanded: true,
+      }),
+    );
     expect(traces[index + 2].finish).toHaveBeenCalledWith("shown");
   }
   f.windows[0].blur();
-  expect(traces[4].mark).toHaveBeenCalledWith("blur-unfocused", {
-    visible: true,
-    focused: false,
-    expanded: true,
-  });
+  expect(traces[4].mark).toHaveBeenCalledWith(
+    "blur-unfocused",
+    expect.objectContaining({
+      visible: true,
+      focused: false,
+      expanded: true,
+    }),
+  );
   expect(traces[4].finish).toHaveBeenCalledWith("hidden");
   await f.quick.show();
   const latest = traces[traces.length - 1];
@@ -1148,7 +1155,10 @@ test("optional timings follow only the current numeric token and record post-fra
 
 test("diagnostics distinguish explicit new, reset cleanup and renderer frame wait", async () => {
   const trace = { id: 1, mark: vi.fn(), finish: vi.fn() };
-  const timing = { start: vi.fn(() => trace), flush: vi.fn(async () => {}) };
+  const timing = {
+    start: vi.fn((kind: string) => (kind === "event" ? undefined : trace)),
+    flush: vi.fn(async () => {}),
+  };
   const f = fixture({ timing: timing as unknown as QuickChatTiming });
   await f.quick.prepare();
   trace.mark.mockClear();
@@ -1164,11 +1174,17 @@ test("diagnostics distinguish explicit new, reset cleanup and renderer frame wai
   );
   const opening = f.quick.newConversation();
   expect(timing.start).toHaveBeenLastCalledWith("new", "warm");
-  expect(trace.mark.mock.calls.map(([stage]) => stage)).toEqual(["reset-start"]);
+  expect(trace.mark.mock.calls.map(([stage]) => stage)).toEqual([
+    "open-request",
+    "reset-start",
+    "reset-dispatched",
+  ]);
   complete();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(trace.mark.mock.calls.map(([stage]) => stage)).toEqual([
+    "open-request",
     "reset-start",
+    "reset-dispatched",
     "reset-ready",
     "expiry-ready",
     "window-ready",
@@ -1177,7 +1193,7 @@ test("diagnostics distinguish explicit new, reset cleanup and renderer frame wai
   expect(f.windows[0].show).not.toHaveBeenCalled();
   await f.rendererReady("new");
   await opening;
-  expect(trace.mark.mock.calls.map(([stage]) => stage).slice(5)).toEqual([
+  expect(trace.mark.mock.calls.map(([stage]) => stage).slice(7)).toEqual([
     "session-frame-ready",
     "geometry",
     "native-show",
@@ -1967,6 +1983,37 @@ test("desired visibility in hidden test mode is not native visibility for a new 
 });
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+test.each(["blur", "hide"] as const)(
+  "a queued native %s from hide cannot cancel a hidden new preparation",
+  async (event) => {
+    const f = fixture({ platform: "darwin" });
+    await f.quick.show();
+    f.quick.hide();
+    let finish!: () => void;
+    f.host.reset.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            f.changeSession("queued-native-new");
+            resolve();
+          };
+        }),
+    );
+    const opening = f.quick.toggle(true);
+    f.windows[0].emit(event);
+    const joined = f.quick.toggle(true);
+    finish();
+    await tick();
+    f.windows[0].emit(event);
+    await f.rendererReady();
+    await Promise.all([opening, joined]);
+    expect(f.host.reset).toHaveBeenCalledOnce();
+    expect(f.windows[0].isVisible()).toBe(true);
+    expect(f.windows[0].isFocused()).toBe(true);
+    await f.quick.dispose();
+  },
+);
 const latestSnapshot = (f: ReturnType<typeof fixture>) =>
   f.windows
     .at(-1)
@@ -1986,6 +2033,27 @@ async function emptyExpanded() {
   expect(latestSnapshot(f)).toMatchObject({ expanded: true, session: { runs: [] } });
   return f;
 }
+
+test.each(["blur", "hide"] as const)(
+  "a queued native %s cannot cancel the ordinary blank-expanded resume",
+  async (event) => {
+    const f = await emptyExpanded();
+    f.quick.hide();
+    const opening = f.quick.toggle();
+    await tick();
+    f.windows[0].emit(event);
+    const [, token, sessionId] = latestProbe(f);
+    await f.quick.call("reportComposerState", [token, sessionId, false]);
+    await tick();
+    f.windows[0].emit(event);
+    await f.rendererReady();
+    await opening;
+    expect(f.windows[0].isVisible()).toBe(true);
+    expect(f.windows[0].isFocused()).toBe(true);
+    expect(f.windows[0].getBounds().height).toBe(44);
+    await f.quick.dispose();
+  },
+);
 
 test.each([
   [false, false, false, false],

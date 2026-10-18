@@ -27,6 +27,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "readAttachment",
     "readWebSourceIcon",
     "removeAttachment",
+    "rendererCommitted",
     "rendererReady",
     "reportComposerState",
     "reportPresentation",

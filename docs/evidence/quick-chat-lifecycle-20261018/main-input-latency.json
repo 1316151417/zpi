@@ -1,0 +1,16 @@
+[
+  {
+    "run": "quick-chat-lifecycle-nativ-e8ef7-ut-readiness-for-comparison-interactive",
+    "values": [254.9109580000004, 59.42770799999926, 56.29791600000135, 33.605499999999665, 24.45729200000096]
+  },
+  {
+    "run": "quick-chat-lifecycle-nativ-e8ef7-ut-readiness-for-comparison-interactive-repeat1",
+    "values": [
+      342.8545000000013, 31.107208999999784, 48.71333299999969, 43.464749999999185, 33.87800000000061
+    ]
+  },
+  {
+    "run": "quick-chat-lifecycle-nativ-e8ef7-ut-readiness-for-comparison-interactive-repeat2",
+    "values": [300.11375000000044, 44.481292000000394, 48.9758329999986, 33.25312499999927, 34.35070799999994]
+  }
+]

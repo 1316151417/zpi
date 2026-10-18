@@ -2,13 +2,34 @@ import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 
-const kindValues = ["open", "new", "warmup", "hide"] as const;
+const kindValues = ["open", "new", "warmup", "hide", "event"] as const;
 const modeValues = ["cold", "loading", "warm"] as const;
 const outcomeValues = ["shown", "hidden", "failed", "ready", "cancelled", "timeout"] as const;
 const stageValues = [
   "start",
+  "shortcut-register",
+  "shortcut-received",
+  "shortcut-ignored",
+  "shortcut-unregister",
+  "open-request",
+  "new-coalesced",
+  "snapshot-sent",
+  "composer-probe",
+  "composer-reply",
+  "composer-timeout",
+  "renderer-commit",
+  "renderer-ack",
+  "renderer-ack-ignored",
+  "native-blur",
   "expiry-ready",
   "reset-start",
+  "reset-dispatched",
+  "host-stop-ready",
+  "host-dispose-ready",
+  "host-selection-ready",
+  "host-published",
+  "snapshot-received",
+  "snapshot-bounds",
   "reset-ready",
   "session-frame-wait",
   "session-frame-ready",
@@ -52,6 +73,20 @@ export interface QuickChatTimingState {
   visible: boolean;
   focused: boolean;
   expanded: boolean;
+  intent?: boolean;
+  epoch?: number;
+  opening?: number;
+  openingPhase?: "preparing" | "presenting";
+  resetting?: boolean;
+  sessionId?: string;
+  version?: number;
+  rendererVersion?: number;
+  waiters?: number;
+  probe?: number;
+  windowId?: number;
+  binding?: string;
+  registered?: boolean;
+  registrationVersion?: number;
 }
 
 export const maxQuickChatTimingRecords = 64;
@@ -65,6 +100,7 @@ const stages = new Set<unknown>(stageValues);
 
 interface TimingRecord {
   id: number;
+  at: number;
   kind: QuickChatKind;
   mode: QuickChatMode;
   outcome: QuickChatOutcome;
@@ -78,8 +114,35 @@ function copyState(state: QuickChatTimingState | undefined): QuickChatTimingStat
     const visible = Object.getOwnPropertyDescriptor(state, "visible")?.value;
     const focused = Object.getOwnPropertyDescriptor(state, "focused")?.value;
     const expanded = Object.getOwnPropertyDescriptor(state, "expanded")?.value;
-    if (typeof visible === "boolean" && typeof focused === "boolean" && typeof expanded === "boolean")
-      return { visible, focused, expanded };
+    if (typeof visible !== "boolean" || typeof focused !== "boolean" || typeof expanded !== "boolean")
+      return undefined;
+    const result: QuickChatTimingState = { visible, focused, expanded };
+    for (const key of ["intent", "resetting", "registered"] as const) {
+      const value = Object.getOwnPropertyDescriptor(state, key)?.value;
+      if (typeof value === "boolean") result[key] = value;
+    }
+    for (const key of [
+      "epoch",
+      "opening",
+      "version",
+      "rendererVersion",
+      "waiters",
+      "probe",
+      "windowId",
+      "registrationVersion",
+    ] as const) {
+      const value = Object.getOwnPropertyDescriptor(state, key)?.value;
+      if (Number.isSafeInteger(value) && value >= 0) result[key] = value;
+    }
+    const sessionId = Object.getOwnPropertyDescriptor(state, "sessionId")?.value;
+    const openingPhase = Object.getOwnPropertyDescriptor(state, "openingPhase")?.value;
+    if (openingPhase === "preparing" || openingPhase === "presenting") result.openingPhase = openingPhase;
+    if (typeof sessionId === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(sessionId))
+      result.sessionId = sessionId;
+    const binding = Object.getOwnPropertyDescriptor(state, "binding")?.value;
+    if (typeof binding === "string" && /^[a-zA-Z0-9+[\],.;/=' -]{1,80}$/.test(binding))
+      result.binding = binding;
+    return result;
   } catch {
     // Invalid or revoked proxies must not interrupt the window operation either.
   }
@@ -138,7 +201,7 @@ export class QuickChatTiming {
         if (!this.active.has(id) || !outcomes.has(outcome)) return;
         mark("finished");
         this.active.delete(id);
-        this.records.push({ id, kind, mode, outcome, stages: marks });
+        this.records.push({ id, at: started, kind, mode, outcome, stages: marks });
         if (this.records.length > maxQuickChatTimingRecords) this.records.shift();
         this.dirty = true;
         this.scheduleWrite();

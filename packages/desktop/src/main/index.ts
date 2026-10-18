@@ -300,12 +300,14 @@ async function launch(): Promise<void> {
     testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
     requestFetch,
   );
+  const quickChatTiming =
+    process.env.ZPI_QUICK_CHAT_TIMING === "1"
+      ? new QuickChatTiming(app.getPath("userData"), true)
+      : undefined;
   const quickChat = new QuickChatWindow({
     host: quickChatHost,
     onError: (error, method) => errors.write("quick-chat.ipc", error, { method }),
-    ...(process.env.ZPI_QUICK_CHAT_TIMING === "1"
-      ? { timing: new QuickChatTiming(app.getPath("userData"), true) }
-      : {}),
+    timing: quickChatTiming,
     createWindow: createDesktopWindow,
     rendererUrl: new URL("quick-chat.html", rendererUrl).href,
     preload: join(dir, "../preload/quick-chat.cjs"),
@@ -341,6 +343,7 @@ async function launch(): Promise<void> {
     },
     testMode,
     (ignore) => setWindowMenuShortcutsIgnored(window, ignore),
+    quickChatTiming ? quickChat.recordShortcut : undefined,
   );
   let shortcutSettings = settings.get().shortcuts;
   const shortcutModifier = new ShortcutModifier(

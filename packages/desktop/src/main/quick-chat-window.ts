@@ -15,7 +15,12 @@ import { loadRenderer } from "./load-renderer.ts";
 import { isPathInside } from "./path-bounds.ts";
 import type { QuickChatHost } from "./quick-chat-host.ts";
 import { resumeQuickChatExpanded } from "./quick-chat-presentation.ts";
-import type { QuickChatStage, QuickChatTiming, QuickChatTrace } from "./quick-chat-timing.ts";
+import type {
+  QuickChatStage,
+  QuickChatTiming,
+  QuickChatTimingState,
+  QuickChatTrace,
+} from "./quick-chat-timing.ts";
 
 interface Options {
   host: QuickChatHost;
@@ -42,7 +47,12 @@ export class QuickChatWindow {
   private loading?: Promise<void>;
   private visible = false;
   private visibilityEpoch = 0;
-  private opening?: { epoch: number; creating: boolean; promise: Promise<void> };
+  private opening?: {
+    epoch: number;
+    creating: boolean;
+    phase: "preparing" | "presenting";
+    promise: Promise<void>;
+  };
   private presenting = false;
   private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
@@ -81,6 +91,7 @@ export class QuickChatWindow {
       );
     }
     this.unsubscribe = options.host.subscribe((snapshot) => {
+      this.recordEvent("snapshot-received");
       const changedSession = snapshot.session.sessionId !== this.sessionId;
       if (changedSession) {
         this.keepExpanded = Boolean(
@@ -97,7 +108,9 @@ export class QuickChatWindow {
       const window = this.window;
       if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
         if (changedSession) this.applyBounds(window, this.bounds(this.expanded, window.getBounds()));
+        this.recordEvent("snapshot-bounds");
         window.webContents.send("zpi:quick-chat-snapshot", this.snapshot(snapshot));
+        this.recordEvent("snapshot-sent");
       }
     });
   }
@@ -121,7 +134,9 @@ export class QuickChatWindow {
     this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.resettingPresentation = presentation;
-    presentation.promise = this.options.host.reset().then(
+    const resetting = this.options.host.reset(trace);
+    trace?.mark("reset-dispatched");
+    presentation.promise = resetting.then(
       () => {
         trace?.mark("reset-ready");
         presentation.ready = true;
@@ -242,9 +257,13 @@ export class QuickChatWindow {
       };
       // Missing responses are unknown, never evidence of an empty composer.
       // Resume preserves drafts; an explicit new intent can still reset them.
-      const timer = setTimeout(() => probe.resolve(), 250);
+      const timer = setTimeout(() => {
+        this.recordEvent("composer-timeout");
+        probe.resolve();
+      }, 250);
       timer.unref();
       this.composerProbe = probe;
+      this.recordEvent("composer-probe");
       window.webContents.send("zpi:quick-chat-composer", probe.token, probe.sessionId);
     });
   }
@@ -323,6 +342,7 @@ export class QuickChatWindow {
         sandbox: true,
         webSecurity: true,
         backgroundThrottling: false,
+        additionalArguments: this.options.timing ? ["--zpi-quick-chat-timing"] : [],
       },
     });
     trace?.mark("window-created");
@@ -357,10 +377,16 @@ export class QuickChatWindow {
       }
     });
     window.on("show", () => {
-      if (this.window === window) this.presentation?.trace.mark("native-show");
+      if (this.window === window) {
+        this.presentation?.trace.mark("native-show");
+        this.recordEvent("native-show");
+      }
     });
     window.on("focus", () => {
-      if (this.window === window) this.presentation?.trace.mark("native-focus");
+      if (this.window === window) {
+        this.presentation?.trace.mark("native-focus");
+        this.recordEvent("native-focus");
+      }
     });
     window.on("close", (event) => {
       if (this.disposed || this.window !== window) return;
@@ -369,7 +395,7 @@ export class QuickChatWindow {
     });
     window.on("hide", () => {
       if (this.window !== window) return;
-      if (window.isVisible()) {
+      if (window.isVisible() || this.preparingHiddenWindow()) {
         this.recordState("hide-ignored");
         return;
       }
@@ -381,11 +407,19 @@ export class QuickChatWindow {
     });
     window.on("blur", () => {
       if (this.window !== window) return;
+      this.recordEvent("native-blur");
       const epoch = this.visibilityEpoch;
       const reconcile = () => {
         if (this.window !== window || window.isDestroyed() || epoch !== this.visibilityEpoch || !this.visible)
           return;
         if (window.isFocused()) {
+          this.recordState("blur-ignored");
+          return;
+        }
+        // Cocoa can deliver hide()'s blur after the next invocation has started.
+        // A still-hidden renderer preparing a replacement has no current native
+        // surface to dismiss. Only a presented window can lose user focus.
+        if (!window.isVisible() && this.preparingHiddenWindow()) {
           this.recordState("blur-ignored");
           return;
         }
@@ -467,10 +501,54 @@ export class QuickChatWindow {
     this.warmup.unref();
   }
   private startTrace(kind: "open" | "new" = "open"): QuickChatTrace | undefined {
-    return this.options.timing?.start(
+    const trace = this.options.timing?.start(
       kind,
       this.loading ? "loading" : this.window && !this.window.isDestroyed() ? "warm" : "cold",
     );
+    if (!trace) return;
+    trace.mark("open-request", this.timingState());
+    return {
+      id: trace.id,
+      mark: (stage, state) => trace.mark(stage, { ...this.timingState(), ...state }),
+      finish: (outcome) => trace.finish(outcome),
+    };
+  }
+  private timingState(): QuickChatTimingState {
+    const window = this.window;
+    const live = window && !window.isDestroyed();
+    return {
+      visible: Boolean(live && window.isVisible()),
+      focused: Boolean(live && window.isFocused()),
+      expanded: this.expanded,
+      intent: this.visible,
+      epoch: this.visibilityEpoch,
+      opening: this.opening?.epoch,
+      openingPhase: this.opening?.phase,
+      resetting: Boolean(this.resettingPresentation),
+      sessionId: this.sessionId,
+      version: this.presentationVersion,
+      rendererVersion: this.rendererVersion,
+      waiters: this.readyWaiters.size,
+      probe: this.composerProbe?.token,
+      windowId: live ? window.id : undefined,
+    };
+  }
+  recordShortcut = (
+    stage: QuickChatStage,
+    binding: string,
+    registrationVersion: number,
+    registered: boolean,
+  ): void => {
+    this.recordEvent(stage, { binding, registrationVersion, registered });
+  };
+  private recordEvent(stage: QuickChatStage, details?: Partial<QuickChatTimingState>): void {
+    if (!this.options.timing) return;
+    const trace = this.options.timing.start(
+      "event",
+      this.loading ? "loading" : this.window ? "warm" : "cold",
+    );
+    trace?.mark(stage, { ...this.timingState(), ...details });
+    trace?.finish("ready");
   }
   private present(window: BrowserWindow, epoch: number, trace?: QuickChatTrace): void {
     if (
@@ -496,6 +574,7 @@ export class QuickChatWindow {
         if (window.isMinimized()) window.restore();
         this.applyBounds(window, this.bounds(this.expanded));
         trace?.mark("geometry");
+        if (this.opening?.epoch === epoch) this.opening.phase = "presenting";
         window.show();
         trace?.mark("show");
         if (this.visible && !window.isDestroyed() && !window.isFocused()) window.focus();
@@ -585,7 +664,13 @@ export class QuickChatWindow {
       .finally(() => {
         if (this.opening?.epoch === epoch) this.opening = undefined;
       });
-    this.opening = { epoch, creating: Boolean(resetting), promise };
+    this.opening = {
+      epoch,
+      creating: Boolean(resetting),
+      phase:
+        this.window && !this.window.isDestroyed() && this.window.isVisible() ? "presenting" : "preparing",
+      promise,
+    };
     return promise;
   }
   /** A new shortcut may hide only a confirmed empty, already presented session. */
@@ -624,7 +709,7 @@ export class QuickChatWindow {
       .finally(() => {
         if (this.opening?.epoch === epoch) this.opening = undefined;
       });
-    this.opening = { epoch, creating: true, promise };
+    this.opening = { epoch, creating: true, phase: "presenting", promise };
     return promise;
   }
   /** Pending new intents coalesce; ordinary toggle remains a visibility action. */
@@ -635,7 +720,10 @@ export class QuickChatWindow {
     const opening = this.visible && this.opening?.epoch === this.visibilityEpoch ? this.opening : undefined;
     // Old pixels can still be visible/focused during reset or its frame wait.
     // Repeated new must not cancel that operation or start another reset chain.
-    if (newConversation && opening?.creating) return opening.promise.catch(() => {});
+    if (newConversation && opening?.creating) {
+      this.recordEvent("new-coalesced");
+      return opening.promise.catch(() => {});
+    }
     const trace = this.startTrace(newConversation ? "new" : "open");
     if (newConversation) {
       const resetting = this.visible ? this.resettingPresentation?.promise : undefined;
@@ -669,12 +757,7 @@ export class QuickChatWindow {
     return this.show(trace);
   }
   private recordState(stage: QuickChatStage): void {
-    const window = this.window;
-    const state = {
-      visible: Boolean(window && !window.isDestroyed() && window.isVisible()),
-      focused: Boolean(window && !window.isDestroyed() && window.isFocused()),
-      expanded: this.expanded,
-    };
+    const state = this.timingState();
     if (this.presentation) this.presentation.trace.mark(stage, state);
     else {
       const trace = this.options.timing?.start(
@@ -684,6 +767,9 @@ export class QuickChatWindow {
       trace?.mark(stage, state);
       trace?.finish(stage === "blur-ignored" || stage === "hide-ignored" ? "shown" : "hidden");
     }
+  }
+  private preparingHiddenWindow(): boolean {
+    return this.visible && this.opening?.epoch === this.visibilityEpoch && this.opening.phase === "preparing";
   }
   hide(reason: QuickChatStage = "program-hide"): void {
     this.recordState(reason);
@@ -713,6 +799,7 @@ export class QuickChatWindow {
         setComposerHeight: 2,
         setNoticeHeight: 2,
         rendererReady: 2,
+        rendererCommitted: 2,
         reportComposerState: 3,
         reportPresentation: 2,
       };
@@ -730,12 +817,21 @@ export class QuickChatWindow {
       const host = this.options.host;
       let value: unknown;
       switch (method) {
+        case "rendererCommitted":
         case "rendererReady": {
           const sessionId = text(256);
           const version = args[1];
           if (!Number.isSafeInteger(version) || (version as number) < 0)
             throw new Error("invalid_input: 展示版本无效");
-          if (sessionId !== host.sessionId || version !== this.presentationVersion) break;
+          if (sessionId !== host.sessionId || version !== this.presentationVersion) {
+            this.recordEvent("renderer-ack-ignored");
+            break;
+          }
+          if (method === "rendererCommitted") {
+            this.recordEvent("renderer-commit");
+            break;
+          }
+          this.recordEvent("renderer-ack");
           this.rendererVersion = version as number;
           this.needsSessionFrame = false;
           if (this.resettingPresentation?.ready) this.resettingPresentation = undefined;
@@ -749,6 +845,7 @@ export class QuickChatWindow {
           if (!Number.isSafeInteger(token) || typeof occupied !== "boolean")
             throw new Error("invalid_input: 输入状态无效");
           const probe = this.composerProbe;
+          this.recordEvent("composer-reply");
           if (probe && probe.token === token && probe.sessionId === sessionId && sessionId === host.sessionId)
             probe.resolve(occupied);
           break;

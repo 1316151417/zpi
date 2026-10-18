@@ -103,6 +103,31 @@ async function run(host: QuickChatHost, text = "hello") {
   host.send(text);
   await host.waitForIdle();
 }
+
+test("idle reset publishes before yielding and reserves the replacement against reentrant work", async () => {
+  const f = await fixture();
+  const before = f.host.sessionId;
+  let reentrant: Promise<void> | undefined;
+  let rejectedSend: unknown;
+  const observed: string[] = [];
+  f.host.subscribe((snapshot) => {
+    observed.push(snapshot.session.sessionId);
+    reentrant = f.host.reset();
+    try {
+      f.host.send("must wait for reset");
+    } catch (error) {
+      rejectedSend = error;
+    }
+  });
+  const resetting = f.host.reset();
+  expect(f.host.sessionId).not.toBe(before);
+  expect(observed).toEqual([f.host.sessionId]);
+  expect(reentrant).toBe(resetting);
+  expect(rejectedSend).toBeInstanceOf(Error);
+  expect((rejectedSend as Error).message).toContain("busy:");
+  await resetting;
+  expect(f.requests).toHaveLength(0);
+});
 function enableImages(settings: SettingsStore) {
   settings.saveProvider({
     ...settings.snapshot("chat"),

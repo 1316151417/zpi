@@ -20,6 +20,10 @@ const bridge: QuickChatBridge = {
   setComposerHeight: (sessionId, height) => call("setComposerHeight", sessionId, height),
   setNoticeHeight: (sessionId, height) => call("setNoticeHeight", sessionId, height),
   rendererReady: (sessionId, version) => call("rendererReady", sessionId, version),
+  rendererCommitted: (sessionId, version) =>
+    process.argv.includes("--zpi-quick-chat-timing")
+      ? call("rendererCommitted", sessionId, version)
+      : Promise.resolve({ ok: true, value: undefined }),
   reportComposerState: (token, sessionId, occupied) =>
     call("reportComposerState", token, sessionId, occupied),
   onComposerProbe(listener) {

@@ -25,18 +25,26 @@ export class ShortcutController {
   private execute: (command: GlobalShortcutCommand) => void;
   private testMode: boolean;
   private ignoreMenuShortcuts: (ignore: boolean) => void;
+  private diagnose?: (
+    stage: "shortcut-register" | "shortcut-received" | "shortcut-ignored" | "shortcut-unregister",
+    binding: string,
+    version: number,
+    registered: boolean,
+  ) => void;
   constructor(
     registry: GlobalShortcutRegistry,
     platform: string,
     execute: (command: GlobalShortcutCommand) => void,
     testMode = false,
     ignoreMenuShortcuts: (ignore: boolean) => void = () => {},
+    diagnose?: ShortcutController["diagnose"],
   ) {
     this.registry = registry;
     this.platform = platform;
     this.execute = execute;
     this.testMode = testMode;
     this.ignoreMenuShortcuts = ignoreMenuShortcuts;
+    this.diagnose = diagnose;
   }
   get isCapturing(): boolean {
     return this.capturing;
@@ -60,12 +68,16 @@ export class ShortcutController {
     try {
       registered = this.registry.register(binding, () => {
         const command = this.bindings.get(binding);
-        if (command && !this.disposed && !this.capturing && this.registered.get(binding) === version)
-          this.execute(command);
+        const current = Boolean(
+          command && !this.disposed && !this.capturing && this.registered.get(binding) === version,
+        );
+        this.diagnose?.(current ? "shortcut-received" : "shortcut-ignored", binding, version, current);
+        if (command && current) this.execute(command);
       });
     } catch {
       // Electron may reject a platform-specific accelerator before registration.
     }
+    this.diagnose?.("shortcut-register", binding, version, registered);
     if (!registered)
       throw new Error("configuration: 全局快捷键注册失败，可能已被其他应用或系统占用，请更换组合");
     return version;
@@ -76,6 +88,7 @@ export class ShortcutController {
     for (const binding of bindings) {
       try {
         this.registry.unregister(binding);
+        this.diagnose?.("shortcut-unregister", binding, this.registrationVersion, false);
       } catch (error) {
         failure ??= error;
       }

@@ -114,6 +114,7 @@ it("records only allowlisted fields and monotonic relative milliseconds in call 
   expect(await records(dir)).toEqual([
     {
       id: 1,
+      at: 100,
       kind: "open",
       mode: "cold",
       outcome: "shown",
@@ -199,6 +200,7 @@ it("records hide decisions using fixed stages without a free-form reason", async
     {
       id: 1,
       kind: "hide",
+      at: 0,
       mode: "warm",
       outcome: "shown",
       stages: [
@@ -233,7 +235,7 @@ it("retains the latest 64 bounded records in one private file and preserves the 
     Array.from({ length: maxQuickChatTimingRecords }, (_, index) => 1001 - maxQuickChatTimingRecords + index),
   );
   for (const record of saved) {
-    expect(Object.keys(record)).toEqual(["id", "kind", "mode", "outcome", "stages"]);
+    expect(Object.keys(record)).toEqual(["id", "at", "kind", "mode", "outcome", "stages"]);
     expect(record.stages.map((mark) => mark.stage)).toEqual([...allStages, "finished"]);
     for (const mark of record.stages) {
       expect(Object.keys(mark)).toEqual(["stage", "ms"]);

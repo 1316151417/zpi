@@ -409,6 +409,7 @@ export function QuickChat({
 
   useLayoutEffect(() => {
     if (!sessionId) return;
+    void window.zpiQuickChat.rendererCommitted(sessionId, presentationVersion).catch(() => {});
     // A task queued inside rAF runs after that rendering opportunity, without
     // waiting for a second vsync. A microtask/Promise would run before rendering.
     // Like the former double-rAF barrier, this is not compositor-pixel proof.

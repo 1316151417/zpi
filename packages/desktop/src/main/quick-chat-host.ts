@@ -20,6 +20,7 @@ import { projectEvent } from "./projection.ts";
 import { QuickChatAttachments, type QuickChatImages } from "./quick-chat-attachments.ts";
 import { quickChatPromptTemplate } from "./quick-chat-prompt.ts";
 import { recordedQuickChatWebSourceIcon } from "./quick-chat-source-icons.ts";
+import type { QuickChatTrace } from "./quick-chat-timing.ts";
 import type { SettingsStore } from "./storage.ts";
 import { WebTools } from "./web-tools.ts";
 
@@ -316,26 +317,37 @@ export class QuickChatHost {
     await this.session?.abort().catch(() => {});
     await run.done;
   }
-  reset(): Promise<void> {
+  reset(trace?: QuickChatTrace): Promise<void> {
     if (this.closed) return Promise.reject(new Error("busy: 快速对话正在关闭"));
     if (this.resetting) return this.resetting;
-    this.lifetime.abort();
-    this.attachments.clear();
-    this.resetting = this.clearSession().finally(() => {
+    // Reserve before publishing: a synchronous subscriber must not start a run
+    // or a second reset while the replacement snapshot is being delivered.
+    const pending = Promise.withResolvers<void>();
+    this.resetting = pending.promise.finally(() => {
       this.resetting = undefined;
     });
+    void this.clearSession(trace).then(pending.resolve, pending.reject);
     return this.resetting;
   }
-  private async clearSession(): Promise<void> {
-    await this.stop();
+  private async clearSession(trace?: QuickChatTrace): Promise<void> {
+    this.lifetime.abort();
+    this.attachments.clear();
+    // Native shortcut callbacks can defer an idle Promise continuation until
+    // another event wakes the loop. Publish the idle replacement synchronously;
+    // an actual run still has to finish cancelling before its session is retired.
+    if (this.active) await this.stop();
+    trace?.mark("host-stop-ready");
     this.session?.dispose();
     this.session = undefined;
     this.runtime.clearProviders();
+    trace?.mark("host-dispose-ready");
     this.view = emptySession(randomUUID(), "快速对话");
     this.lastAcceptedSend = undefined;
     this.selection = this.initialSelection();
     this.lifetime = new AbortController();
+    trace?.mark("host-selection-ready");
     this.changed(true);
+    trace?.mark("host-published");
   }
   async close(): Promise<void> {
     if (this.closed) return;

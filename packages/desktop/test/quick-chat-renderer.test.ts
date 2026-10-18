@@ -186,6 +186,7 @@ beforeEach(() => {
     setComposerHeight: vi.fn(async () => ok()),
     setNoticeHeight: vi.fn(async () => ok()),
     rendererReady: vi.fn(async () => ok()),
+    rendererCommitted: vi.fn(async () => ok()),
     reportComposerState: vi.fn(async () => ok()),
     onComposerProbe: vi.fn((listener) => {
       composerProbeListeners.add(listener);
