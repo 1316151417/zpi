@@ -95,7 +95,8 @@ test("quick chat streams in its own isolated window, survives hide/reload, and l
         );
       }),
     ).toBe(true);
-    await input.press("Escape");
+    // Visibility shortcuts may hide an active run; Escape now stops it first.
+    await quick.evaluate(() => window.zpiQuickChat.hide());
     await quick.reload();
     await main.evaluate(() => window.zpi.openQuickChat());
     await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "running");

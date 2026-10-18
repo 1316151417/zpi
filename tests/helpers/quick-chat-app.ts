@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, ipcMain, screen, systemPreferences } from "electron";
 import { createDesktopWindow, hiddenTestMode } from "../../packages/desktop/src/main/automation.ts";
+import { macQuickChatFocus } from "../../packages/desktop/src/main/mac-quick-chat-focus.ts";
 import { QuickChatHost } from "../../packages/desktop/src/main/quick-chat-host.ts";
 import { QuickChatTiming } from "../../packages/desktop/src/main/quick-chat-timing.ts";
 import { installQuickChatIpc, QuickChatWindow } from "../../packages/desktop/src/main/quick-chat-window.ts";
@@ -45,6 +46,10 @@ void app.whenReady().then(async () => {
     platform: process.platform,
     getDisplay: (bounds) => (bounds ? screen.getDisplayMatching(bounds) : screen.getPrimaryDisplay()),
     workspaceNotifications: systemPreferences,
+    activateApp:
+      process.platform === "darwin" && !hiddenTestMode
+        ? macQuickChatFocus(join(assets, "native"))
+        : undefined,
     loadSourceIcon: async () => undefined,
     copyText: () => {
       throw new Error("No clipboard in lifecycle fixture");

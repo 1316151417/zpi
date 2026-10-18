@@ -1,0 +1,895 @@
+[
+  {
+    "id": 197,
+    "at": 40093.968375,
+    "kind": "event",
+    "mode": "warm",
+    "outcome": "ready",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "shortcut-received",
+        "ms": 0.025,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "registered": true,
+          "epoch": 39,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "registrationVersion": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2",
+          "binding": "Alt+Space"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.043
+      }
+    ]
+  },
+  {
+    "id": 199,
+    "at": 40123.680209,
+    "kind": "event",
+    "mode": "warm",
+    "outcome": "ready",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "native-focus",
+        "ms": 0.003,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.005
+      }
+    ]
+  },
+  {
+    "id": 198,
+    "at": 40094.033834,
+    "kind": "open",
+    "mode": "warm",
+    "outcome": "shown",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "open-request",
+        "ms": 0.004,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "epoch": 39,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "expiry-ready",
+        "ms": 0.033,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "window-ready",
+        "ms": 0.04,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "geometry",
+        "ms": 0.223,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "show",
+        "ms": 2.487,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "focus",
+        "ms": 6.647,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "renderer-ready",
+        "ms": 27.798,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "renderer-focus",
+        "ms": 27.874,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "native-focus",
+        "ms": 29.64,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "renderer-frame",
+        "ms": 29.75,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 29.755
+      }
+    ]
+  },
+  {
+    "id": 202,
+    "at": 40348.836792,
+    "kind": "event",
+    "mode": "warm",
+    "outcome": "ready",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "shortcut-received",
+        "ms": 0.026,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "registered": true,
+          "epoch": 40,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "registrationVersion": 3,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2",
+          "binding": "Alt+Shift+Space"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.043
+      }
+    ]
+  },
+  {
+    "id": 206,
+    "at": 40349.735042,
+    "kind": "hide",
+    "mode": "warm",
+    "outcome": "hidden",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "toggle-hide",
+        "ms": 0.002,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 41,
+          "opening": 41,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "presenting",
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.008
+      }
+    ]
+  },
+  {
+    "id": 208,
+    "at": 40365.333,
+    "kind": "hide",
+    "mode": "warm",
+    "outcome": "hidden",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "native-hidden",
+        "ms": 0.004,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "epoch": 42,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.01
+      }
+    ]
+  },
+  {
+    "id": 209,
+    "at": 40536.495084,
+    "kind": "event",
+    "mode": "warm",
+    "outcome": "ready",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "shortcut-received",
+        "ms": 0.019,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "registered": true,
+          "epoch": 42,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "registrationVersion": 3,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2",
+          "binding": "Alt+Shift+Space"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.031
+      }
+    ]
+  },
+  {
+    "id": 216,
+    "at": 40566.968667,
+    "kind": "event",
+    "mode": "warm",
+    "outcome": "ready",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "native-focus",
+        "ms": 0.003,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.01
+      }
+    ]
+  },
+  {
+    "id": 210,
+    "at": 40536.538834,
+    "kind": "new",
+    "mode": "warm",
+    "outcome": "shown",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "open-request",
+        "ms": 0.002,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "epoch": 42,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "reset-start",
+        "ms": 0.012,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "epoch": 42,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "host-stop-ready",
+        "ms": 0.184,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": true,
+          "epoch": 43,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "host-dispose-ready",
+        "ms": 0.193,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": true,
+          "epoch": 43,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "host-selection-ready",
+        "ms": 0.485,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": true,
+          "epoch": 43,
+          "version": 7,
+          "rendererVersion": 7,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "89c551c0-7c8e-4355-b724-61490416fce2"
+        }
+      },
+      {
+        "stage": "host-published",
+        "ms": 0.747,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": true,
+          "epoch": 43,
+          "version": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "reset-dispatched",
+        "ms": 0.752,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": true,
+          "epoch": 43,
+          "version": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "reset-ready",
+        "ms": 3.192,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": true,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "preparing",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "expiry-ready",
+        "ms": 3.218,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": true,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "preparing",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "window-ready",
+        "ms": 3.226,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": true,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "preparing",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "session-frame-wait",
+        "ms": 3.23,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": true,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "preparing",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "session-frame-ready",
+        "ms": 4.302,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "preparing",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "geometry",
+        "ms": 4.388,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "preparing",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "show",
+        "ms": 7.441,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "presenting",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "focus",
+        "ms": 11.09,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "opening": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "presenting",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "renderer-ready",
+        "ms": 28.214,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "renderer-focus",
+        "ms": 30.325,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "native-focus",
+        "ms": 30.426,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "renderer-frame",
+        "ms": 30.509,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 30.514
+      }
+    ]
+  },
+  {
+    "id": 218,
+    "at": 40712.848209,
+    "kind": "event",
+    "mode": "warm",
+    "outcome": "ready",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "shortcut-received",
+        "ms": 0.025,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "registered": true,
+          "epoch": 44,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "registrationVersion": 3,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be",
+          "binding": "Alt+Shift+Space"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.042
+      }
+    ]
+  },
+  {
+    "id": 222,
+    "at": 40713.607834,
+    "kind": "hide",
+    "mode": "warm",
+    "outcome": "hidden",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "toggle-hide",
+        "ms": 0.001,
+        "state": {
+          "visible": true,
+          "focused": true,
+          "expanded": false,
+          "intent": true,
+          "resetting": false,
+          "epoch": 45,
+          "opening": 45,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "openingPhase": "presenting",
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.004
+      }
+    ]
+  },
+  {
+    "id": 224,
+    "at": 40730.299042,
+    "kind": "hide",
+    "mode": "warm",
+    "outcome": "hidden",
+    "stages": [
+      {
+        "stage": "start",
+        "ms": 0
+      },
+      {
+        "stage": "native-hidden",
+        "ms": 0.004,
+        "state": {
+          "visible": false,
+          "focused": false,
+          "expanded": false,
+          "intent": false,
+          "resetting": false,
+          "epoch": 46,
+          "version": 8,
+          "rendererVersion": 8,
+          "waiters": 0,
+          "windowId": 2,
+          "sessionId": "2e581ac3-2ea5-4095-8db9-d9a2da4da4be"
+        }
+      },
+      {
+        "stage": "finished",
+        "ms": 0.01
+      }
+    ]
+  }
+]

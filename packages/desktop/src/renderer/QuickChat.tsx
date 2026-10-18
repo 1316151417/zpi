@@ -544,7 +544,8 @@ export function QuickChat({
       )
         return;
       event.preventDefault();
-      void hide();
+      if (running) void perform("stop", () => window.zpiQuickChat.stop());
+      else if (pending !== "stop") void hide();
     };
     window.addEventListener("focus", focus);
     window.addEventListener("keydown", keydown);
@@ -552,7 +553,7 @@ export function QuickChat({
       window.removeEventListener("focus", focus);
       window.removeEventListener("keydown", keydown);
     };
-  }, []);
+  }, [running, pending]);
 
   async function hide() {
     if (hiding.current) return;

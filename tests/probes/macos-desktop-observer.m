@@ -2,8 +2,10 @@
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
 #include <unistd.h>
+#include <string.h>
 
-int main(void) {
+int main(int argc, const char *argv[]) {
+  BOOL once = argc == 2 && strcmp(argv[1], "--once") == 0;
   // A closed stdout also terminates this process if the runner crashes.
   for (;;) {
     @autoreleasepool {
@@ -25,7 +27,7 @@ int main(void) {
       NSDictionary *record = @{
         @"time": @([[NSDate date] timeIntervalSince1970]),
         @"front": @([NSWorkspace sharedWorkspace].frontmostApplication.processIdentifier),
-        @"clipboard": @([NSPasteboard generalPasteboard].changeCount),
+        @"clipboard": once ? @0 : @([NSPasteboard generalPasteboard].changeCount),
         @"windowOwners": pids.allObjects,
         @"details": details
       };
@@ -33,6 +35,7 @@ int main(void) {
       puts([[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding].UTF8String);
       fflush(stdout);
     }
+    if (once) return 0;
     usleep(50000);
   }
 }

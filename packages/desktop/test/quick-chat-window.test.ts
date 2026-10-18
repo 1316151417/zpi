@@ -58,7 +58,8 @@ function fixture(
   const windows: ReturnType<typeof makeWindow>[] = [];
   const configs: BrowserWindowConstructorOptions[] = [];
   const copyText = vi.fn();
-  const activateApp = vi.fn();
+  const returnFocus = vi.fn();
+  const activateApp = vi.fn().mockReturnValue(returnFocus);
   const onError = vi.fn();
   const openExternal = vi.fn(async () => {});
   function makeWindow(config: BrowserWindowConstructorOptions) {
@@ -153,6 +154,7 @@ function fixture(
     configs,
     copyText,
     activateApp,
+    returnFocus,
     openExternal,
     onError,
     getDisplay,
@@ -377,7 +379,10 @@ test("macOS activates the app after showing its panel even when the native windo
   const calls: string[] = [];
   window.show.mockImplementation(() => calls.push("show"));
   window.isFocused.mockReturnValue(true);
-  f.activateApp.mockImplementation(() => calls.push("activate"));
+  f.activateApp.mockImplementation(() => {
+    calls.push("activate");
+    return f.returnFocus;
+  });
   window.focus.mockImplementation(() => calls.push("focus"));
   await f.quick.show();
   expect(calls).toEqual(["show", "activate", "focus"]);
@@ -482,6 +487,79 @@ test("hidden macOS automation never activates the application", async () => {
   await f.quick.show();
   expect(f.activateApp).not.toHaveBeenCalled();
   expect(f.windows[0].show).not.toHaveBeenCalled();
+  await f.quick.dispose();
+});
+
+test.each(["toggle-hide", "ipc-hide", "native-close"] as const)(
+  "%s relinquishes macOS app focus before hiding its focused panel",
+  async (reason) => {
+    const f = fixture({ platform: "darwin" });
+    await f.quick.show();
+    const calls: string[] = [];
+    f.returnFocus.mockImplementation(() => calls.push("app"));
+    f.windows[0].hide.mockImplementation(() => calls.push("panel"));
+    f.quick.hide(reason);
+    expect(calls).toEqual(["app", "panel"]);
+    await f.quick.dispose();
+  },
+);
+
+test.each(["blur-unfocused", "space-changed", "program-hide"] as const)(
+  "%s hides only its panel without hiding the new destination",
+  async (reason) => {
+    const f = fixture({ platform: "darwin" });
+    await f.quick.show();
+    f.quick.hide(reason);
+    expect(f.returnFocus).not.toHaveBeenCalled();
+    expect(f.windows[0].hide).toHaveBeenCalledOnce();
+    await f.quick.dispose();
+  },
+);
+
+test("re-presenting keeps the invocation's focus owner and the next invocation captures a new owner", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.show();
+  const nextOwner = vi.fn();
+  f.activateApp.mockReturnValue(nextOwner);
+  await f.quick.show();
+  f.quick.hide("ipc-hide");
+  expect(f.returnFocus).toHaveBeenCalledOnce();
+  expect(nextOwner).not.toHaveBeenCalled();
+  await f.quick.show();
+  f.quick.hide("ipc-hide");
+  expect(nextOwner).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("an external native hide releases the previous invocation's focus owner", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.show();
+  f.windows[0].hide();
+  const nextOwner = vi.fn();
+  f.activateApp.mockReturnValue(nextOwner);
+  await f.quick.show();
+  f.quick.hide("ipc-hide");
+  expect(f.returnFocus).not.toHaveBeenCalled();
+  expect(nextOwner).toHaveBeenCalledOnce();
+  await f.quick.dispose();
+});
+
+test("focus return failure still hides its panel and a reentrant opening is not hidden by old cleanup", async () => {
+  const f = fixture({ platform: "darwin" });
+  await f.quick.show();
+  f.returnFocus.mockImplementationOnce(() => {
+    throw new Error("focus unavailable");
+  });
+  expect(() => f.quick.hide("ipc-hide")).toThrow("focus unavailable");
+  expect(f.windows[0].isVisible()).toBe(false);
+  await f.quick.show();
+  f.windows[0].hide.mockClear();
+  f.returnFocus.mockImplementationOnce(() => {
+    void f.quick.show();
+  });
+  f.quick.hide("ipc-hide");
+  expect(f.windows[0].isVisible()).toBe(true);
+  expect(f.windows[0].hide).not.toHaveBeenCalled();
   await f.quick.dispose();
 });
 

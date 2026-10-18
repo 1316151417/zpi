@@ -1,0 +1,18 @@
+{
+  "hidden": true,
+  "windows": [
+    {
+      "id": 2,
+      "main": false,
+      "visible": false,
+      "focused": false
+    },
+    {
+      "id": 1,
+      "main": true,
+      "visible": false,
+      "focused": false
+    }
+  ],
+  "events": ["blur:1", "focus:2", "blur:2", "focus:1", "blur:1"]
+}

@@ -37,7 +37,7 @@ interface Options {
     "subscribeWorkspaceNotification" | "unsubscribeWorkspaceNotification"
   >;
   copyText: (text: string) => void;
-  activateApp?: () => void;
+  activateApp?: () => (() => void) | undefined;
   openExternal: (url: string) => Promise<void>;
   onError?: (error: unknown, method: string) => void;
 }
@@ -55,6 +55,7 @@ export class QuickChatWindow {
     promise: Promise<void>;
   };
   private presenting = false;
+  private returnFocus?: () => void;
   private warmup?: ReturnType<typeof setTimeout>;
   private expanded = false;
   private keepExpanded = false;
@@ -405,6 +406,7 @@ export class QuickChatWindow {
         return;
       }
       this.visible = false;
+      this.returnFocus = undefined;
       this.draftInput = undefined;
       this.cancelComposerProbe();
       this.cancelReadyWaiters();
@@ -455,6 +457,7 @@ export class QuickChatWindow {
     });
     window.on("closed", () => {
       if (this.window === window) {
+        this.returnFocus = undefined;
         this.options.host.discardDraftAttachments();
         this.window = undefined;
         this.visible = false;
@@ -594,7 +597,10 @@ export class QuickChatWindow {
         window.show();
         trace?.mark("show");
         if (this.visible && !window.isDestroyed()) {
-          if (this.options.platform === "darwin") this.options.activateApp?.();
+          if (this.options.platform === "darwin") {
+            const restore = this.options.activateApp?.();
+            if (restore && !this.returnFocus) this.returnFocus = restore;
+          }
           if (
             this.visible &&
             !window.isDestroyed() &&
@@ -816,7 +822,25 @@ export class QuickChatWindow {
     this.cancelComposerProbe();
     this.cancelReadyWaiters();
     this.finishPresentation("hidden");
-    if (this.window && !this.window.isDestroyed()) this.window.hide();
+    const window = this.window;
+    const returnFocus = this.returnFocus;
+    this.returnFocus = undefined;
+    const epoch = this.visibilityEpoch;
+    try {
+      if (
+        this.options.platform === "darwin" &&
+        !this.options.hiddenTestMode &&
+        window &&
+        !window.isDestroyed() &&
+        window.isVisible() &&
+        window.isFocused() &&
+        (reason === "toggle-hide" || reason === "ipc-hide" || reason === "native-close")
+      )
+        returnFocus?.();
+    } finally {
+      if (epoch === this.visibilityEpoch && window === this.window && window && !window.isDestroyed())
+        window.hide();
+    }
   }
   async call(method: unknown, args: unknown): Promise<Result<unknown>> {
     try {
@@ -992,6 +1016,7 @@ export class QuickChatWindow {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.returnFocus = undefined;
     this.draftInput = undefined;
     clearTimeout(this.warmup);
     this.warmup = undefined;

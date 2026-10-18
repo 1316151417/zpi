@@ -41,6 +41,7 @@ import { performFileAction } from "./file-actions.ts";
 import { readFilePreview, readPreviewRange } from "./file-preview.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { macQuickChatCapture } from "./mac-quick-chat-capture.ts";
+import { macQuickChatFocus } from "./mac-quick-chat-focus.ts";
 import { PaneServices } from "./pane-services.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
 import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
@@ -323,7 +324,10 @@ async function launch(): Promise<void> {
     loadSourceIcon: (url, signal) => webSourceIcons.load(url, signal),
     ...(process.platform === "darwin" ? { workspaceNotifications: systemPreferences } : {}),
     copyText: (text) => clipboard.writeText(text),
-    activateApp: () => app.focus({ steal: true }),
+    activateApp:
+      process.platform === "darwin" && !hiddenTestMode
+        ? macQuickChatFocus(join(dir, "../native"))
+        : undefined,
     openExternal: (url) => shell.openExternal(url),
   });
   const removeQuickChatIpc = installQuickChatIpc(ipcMain, quickChat);

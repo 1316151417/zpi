@@ -1194,6 +1194,8 @@ test.each(["reset", "stop"] as const)("keeps a pending %s occupied even with no 
   await click(button(action === "reset" ? "新对话" : "停止"));
   await probe(1);
   expect(bridge.reportComposerState).toHaveBeenLastCalledWith(1, "quick-session", true);
+  await key(input(), "Escape");
+  expect(bridge.hide).toHaveBeenCalledTimes(action === "reset" ? 1 : 0);
   await act(async () => request.resolve(ok()));
   await probe(2);
   expect(bridge.reportComposerState).toHaveBeenLastCalledWith(2, "quick-session", false);
@@ -1639,6 +1641,29 @@ test("stops running output without losing the next draft or persisting reading p
   expect(storageWrite).not.toHaveBeenCalled();
 });
 
+test("Escape stops the current run once and only hides after stopping has finished", async () => {
+  const request = deferred<Result<void>>();
+  vi.mocked(bridge.stop).mockReturnValue(request.promise);
+  await mount();
+  await push({ session: { ...snapshot.session, runs: [run("running")] } });
+  await type("keep the next question");
+  await key(input(), "Escape", { isComposing: true });
+  await key(input(), "Escape", { repeat: true });
+  expect(bridge.stop).not.toHaveBeenCalled();
+  await key(input(), "Escape");
+  await key(input(), "Escape");
+  expect(bridge.stop).toHaveBeenCalledOnce();
+  expect(bridge.hide).not.toHaveBeenCalled();
+  await push({ session: { ...snapshot.session, runs: [run("completed")] } });
+  await key(input(), "Escape");
+  expect(bridge.hide).not.toHaveBeenCalled();
+  await act(async () => request.resolve(ok()));
+  await key(input(), "Escape");
+  expect(bridge.hide).toHaveBeenCalledOnce();
+  expect(input().value).toBe("keep the next question");
+  expect(bridge.reset).not.toHaveBeenCalled();
+});
+
 test("hides and reopens without discarding the expanded conversation or draft", async () => {
   await mount();
   await push({ session: { ...snapshot.session, runs: [run("completed")] } });
@@ -1951,6 +1976,7 @@ test("keeps stop and Escape usable before rich output loads, preserving the conv
   await type("keep this next question");
   await click(button("停止"));
   expect(bridge.stop).toHaveBeenCalledOnce();
+  await push({ session: { ...snapshot.session, runs: [run("completed")] } });
   await key(input(), "Escape");
   expect(bridge.hide).toHaveBeenCalledOnce();
   expect(input().value).toBe("keep this next question");
