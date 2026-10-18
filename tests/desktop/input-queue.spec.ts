@@ -37,6 +37,11 @@ test("editing a queued quoted message preserves its reference cards and resubmit
       expect(queued.ok).toBe(true);
       const row = page.getByTestId("queue-item");
       await expect(row).toHaveCount(1);
+      await expect(row.locator("[data-conversation-selection-reference-count]")).toHaveAttribute(
+        "data-conversation-selection-reference-count",
+        "1",
+      );
+      await expect(row).not.toContainText("# userselect:");
       await row.getByLabel("编辑", { exact: true }).click();
       await expect(row).toHaveCount(0);
       await expect(editor).toHaveText(text);

@@ -26,9 +26,7 @@ function renderQueue(text: string) {
       },
     ],
   };
-  return renderToStaticMarkup(
-    createElement(ConversationQueuePanel, { queue, actions, onError: () => {} }),
-  );
+  return renderToStaticMarkup(createElement(ConversationQueuePanel, { queue, actions, onError: () => {} }));
 }
 
 test("queued messages render visible text and a reference chip instead of the wire format", () => {
