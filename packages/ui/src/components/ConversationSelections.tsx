@@ -375,9 +375,15 @@ export function ConversationSelectionMenu({
     const changed = () => {
       if (window.getSelection()?.isCollapsed) close();
     };
+    // Scrolling must follow the selection instead of closing: streaming
+    // stick-to-bottom fires scroll events while the user is still reading.
+    const followScroll = () => {
+      cancelAnimationFrame(frame.current);
+      frame.current = requestAnimationFrame(inspect);
+    };
     root.addEventListener("mouseup", schedule);
     root.addEventListener("touchend", schedule);
-    root.addEventListener("scroll", close, true);
+    root.addEventListener("scroll", followScroll, true);
     document.addEventListener("pointerdown", leaveSelection, true);
     document.addEventListener("focusin", leaveSelection);
     document.addEventListener("keyup", key);
@@ -388,7 +394,7 @@ export function ConversationSelectionMenu({
       cancelAnimationFrame(frame.current);
       root.removeEventListener("mouseup", schedule);
       root.removeEventListener("touchend", schedule);
-      root.removeEventListener("scroll", close, true);
+      root.removeEventListener("scroll", followScroll, true);
       document.removeEventListener("pointerdown", leaveSelection, true);
       document.removeEventListener("focusin", leaveSelection);
       document.removeEventListener("keyup", key);

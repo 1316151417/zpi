@@ -931,6 +931,30 @@ export function Conversation({
     return () => window.removeEventListener("zpi:scroll-to-run", navigate);
   }, [view.sessionId]);
 
+  // An upward wheel gesture is reading intent; disabling following here wins the race
+  // against the next stream chunk's stick-to-bottom snap reverting the user's scroll.
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const wheel = (event: WheelEvent) => {
+      if (event.deltaY >= 0) return;
+      for (
+        let node = event.target instanceof Element ? event.target : null;
+        node && node !== root;
+        node = node.parentElement
+      ) {
+        // An inner scroller still holding content consumes the gesture first.
+        if (node.scrollTop > 0 && node.scrollHeight > node.clientHeight + 1) {
+          const overflow = getComputedStyle(node).overflowY;
+          if (overflow === "auto" || overflow === "scroll") return;
+        }
+      }
+      following.current = false;
+    };
+    root.addEventListener("wheel", wheel, { passive: true });
+    return () => root.removeEventListener("wheel", wheel);
+  }, [view.sessionId]);
+
   const prepend = useRef<{ height: number; top: number; cursor: number | null | undefined } | null>(null);
   const historyTrigger = useRef<HTMLButtonElement>(null);
   const historyRequest = useRef<object | null>(null);
