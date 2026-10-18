@@ -11,7 +11,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { ArrowUpFromLine, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
-import { parseMentions } from "zpi-coding-agent/input";
+import { type Mention, parseMentions } from "zpi-coding-agent/input";
 import { type ConversationSelection, parseSelectionPrompt } from "../conversation-selections.ts";
 import type { InputQueue, QueuedInput } from "../types.ts";
 import { userErrorMessage } from "../user-error.ts";
@@ -44,6 +44,7 @@ const restrictQueueDragToPanel: Modifier = ({
   };
 };
 // 排队行只展示可见正文与引用，不能把 userselect 传输格式当成用户文字。
+const mentionMarkers: Partial<Record<Mention["kind"], string>> = { skill: "$", session: "#" };
 function queuedContent(item: QueuedInput): {
   text: string;
   selections: ConversationSelection[];
@@ -57,8 +58,13 @@ function queuedContent(item: QueuedInput): {
     };
   const parsed = parseSelectionPrompt(item.text);
   let text = parsed.text;
+  // 输入框与已发送消息用图标表达引用类型，排队行只有文字，必须补回 $ / # 标记。
   for (const mention of parseMentions(text).reverse())
-    text = text.slice(0, mention.start) + mention.label + text.slice(mention.end);
+    text =
+      text.slice(0, mention.start) +
+      (mentionMarkers[mention.kind] ?? "") +
+      mention.label +
+      text.slice(mention.end);
   const attachments = item.attachments.map((image) => image.name);
   return {
     // 图片名称单独成行；只有旧记录的纯文件引用才回退到正文位。

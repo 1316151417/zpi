@@ -77,7 +77,8 @@ test("image-only queued messages show the attachment name alone", () => {
 test("mentions, commands and dollar amounts keep their visible text", () => {
   const cases = [
     ["看下 [demo.txt](/tmp/demo.txt)", "看下 demo.txt"],
-    ["用 [$review](/tmp/review/SKILL.md) 检查", "用 review 检查"],
+    ["用 [$review](/tmp/review/SKILL.md) 检查", "用 $review 检查"],
+    ["接着 [#会话](#sess_abc123) 继续", "接着 #会话 继续"],
     ["/init", "/init"],
     ["成本 $100 左右，占比 $5", "成本 $100 左右，占比 $5"],
   ];
