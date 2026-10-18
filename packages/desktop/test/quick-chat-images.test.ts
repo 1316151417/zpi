@@ -26,9 +26,7 @@ test.each(["png", "jpeg", "gif", "webp", "bmp"] as const)(
     const loaded = store.load([metadata.id]);
     expect(loaded.images[0].type).toBe("image");
     expect(await sharp(Buffer.from(loaded.images[0].data, "base64")).stats()).toBeDefined();
-    expect(loaded.images[0].mimeType).toBe(
-      format === "bmp" || format === "gif" ? "image/png" : metadata.mimeType,
-    );
+    expect(loaded.images[0].mimeType).toBe(format === "bmp" ? "image/png" : metadata.mimeType);
   },
 );
 
@@ -111,7 +109,7 @@ test("resize and animation hints are retained for model input alongside original
   );
   const gif = await store.import("animation.gif", animated);
   expect(gif.warning).toBe("动画图片仅发送首帧");
-  expect(store.load([gif.id]).context).toContain("only the first frame");
+  expect(store.load([gif.id]).images[0]?.data).toBe(animated.toString("base64"));
 });
 
 test("reset during decode or preparation rejects late imports without repopulating the cache", async () => {

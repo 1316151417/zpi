@@ -22,6 +22,11 @@ import {
 } from "./compaction.ts";
 import { withHttpIdleTimeout } from "./http-idle-timeout.ts";
 import {
+  applyMicrocompactBoundary,
+  buildDefaultMicrocompactThreshold,
+  maybeMicrocompact,
+} from "./microcompact.ts";
+import {
   type ModelPerformance,
   type ModelPerformanceTotals,
   SessionPerformance,
@@ -88,6 +93,8 @@ export class AgentSession {
   readonly settingsManager: SettingsManager;
   private overflowRecoveryAttempted = false;
   private retryAttempt = 0;
+  private lastAssistantCompletedAtMs?: number;
+  private microcompactClearedIds = new Set<string>();
   private recoveredCalls = new WeakSet<object>();
   private performance: SessionPerformance;
   get modelPerformance(): ModelPerformance {
@@ -142,6 +149,13 @@ export class AgentSession {
         sections: { "zpi.instructions": systemPrompt },
         timestamp: Date.now(),
       });
+    this.lastAssistantCompletedAtMs = manager
+      .buildSessionContext()
+      .messages.findLast(
+        (message) =>
+          message.role === "assistant" && message.stopReason !== "error" && message.stopReason !== "aborted",
+      )?.timestamp;
+    this.microcompactClearedIds = new Set(this.manager.getMicrocompactClearedIds());
     this.agent = new Agent({
       initialState: {
         model,
@@ -150,6 +164,27 @@ export class AgentSession {
         tools: activeTools,
       },
       streamFn: (m, c, o) => this.streamWithRecovery(m, c, o),
+      transformContext: async (messages) => {
+        const config = this.settingsManager.getMicrocompactSettings();
+        const settings = this.settingsManager.getCompactionSettings(this.model);
+        const clearedIds = [...this.microcompactClearedIds];
+        const result = maybeMicrocompact({
+          messages: applyMicrocompactBoundary(messages, clearedIds),
+          config: {
+            ...config,
+            thresholdTokens:
+              config.thresholdTokens ??
+              buildDefaultMicrocompactThreshold(this.model.contextWindow - settings.reserveTokens),
+          },
+          lastAssistantCompletedAtMs: this.lastAssistantCompletedAtMs,
+        });
+        if (result.boundary) {
+          for (const id of result.boundary.clearedToolCallIds) this.microcompactClearedIds.add(id);
+          this.manager.appendMicrocompact(result.boundary);
+          this.notifyLastEntry();
+        }
+        return result.messages;
+      },
       prepareNextTurnWithContext: async (turn, signal) => {
         const settings = this.settingsManager.getCompactionSettings(this.model);
         if (
@@ -182,6 +217,8 @@ export class AgentSession {
           }
         }
         if (event.type === "message_end") {
+          if (event.message.role === "assistant" && !["error", "aborted"].includes(event.message.stopReason))
+            this.lastAssistantCompletedAtMs = Date.now();
           this.manager.appendMessage(event.message);
           this.notifyLastEntry();
         }

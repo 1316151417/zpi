@@ -13,7 +13,12 @@ import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, U
 import {
   calculateContextTokens,
   contentText,
+  isModelContextExceededError,
+  isModelMediaTooLargeError,
+  mediaBlockToText,
   normalizeContext,
+  projectCompactMediaForRetry,
+  projectContextForModelMediaPolicy,
   type RetryCallbacks,
   type RetryPolicy,
   retryAssistantCall,
@@ -235,9 +240,9 @@ export function shouldCompact(
 // Cut point detection
 // ============================================================================
 
-const ESTIMATED_IMAGE_CHARS = 4800;
-
-function estimateTextAndImageContentChars(content: string | Array<{ type: string; text?: string }>): number {
+function estimateTextAndImageContentChars(
+  content: string | Array<{ type: string; text?: string; mimeType?: string }>,
+): number {
   if (typeof content === "string") {
     return content.length;
   }
@@ -247,7 +252,8 @@ function estimateTextAndImageContentChars(content: string | Array<{ type: string
     if (block.type === "text" && block.text) {
       chars += block.text.length;
     } else if (block.type === "image") {
-      chars += ESTIMATED_IMAGE_CHARS;
+      // Local placeholders ignore image bytes; provider usage anchors still affect auto compaction.
+      chars += mediaBlockToText(block).length;
     }
   }
   return chars;
@@ -263,7 +269,7 @@ export function estimateTokens(message: AgentMessage): number {
   switch (message.role) {
     case "user": {
       chars = estimateTextAndImageContentChars(
-        (message as { content: string | Array<{ type: string; text?: string }> }).content,
+        (message as { content: string | Array<{ type: string; text?: string; mimeType?: string }> }).content,
       );
       return Math.ceil(chars / 4);
     }
@@ -572,11 +578,88 @@ export async function completeSummarization(
     cacheRetention: "none",
     sessionId: options.sessionId ?? randomUUID(),
   };
-  const produce = async (): Promise<AssistantMessage> =>
-    streamFn
-      ? (await streamFn(model, context, requestOptions)).result()
-      : streamSimple(model, context, requestOptions).result();
+  const produce = async (): Promise<AssistantMessage> => {
+    let requestContext = context;
+    let strippedMedia = false;
+    let contextTrims = 0;
+    const recover = (error: unknown): boolean => {
+      if (isModelMediaTooLargeError(error) && !strippedMedia) {
+        strippedMedia = true;
+        requestContext = {
+          ...requestContext,
+          messages: projectCompactMediaForRetry(requestContext.messages).messages,
+        };
+        return true;
+      }
+      if (isModelContextExceededError(error) && contextTrims < 3) {
+        const truncated = truncateSummaryRequest(requestContext);
+        if (truncated === requestContext) return false;
+        contextTrims++;
+        requestContext = truncated;
+        return true;
+      }
+      return false;
+    };
+    while (true) {
+      requestOptions.signal?.throwIfAborted();
+      try {
+        const projected = projectContextForModelMediaPolicy(requestContext, model);
+        const result = await (streamFn
+          ? await streamFn(model, projected, requestOptions)
+          : streamSimple(model, projected, requestOptions)
+        ).result();
+        if (
+          result.stopReason === "error" &&
+          recover({
+            message: result.errorMessage,
+            code: result.errorDetails?.code,
+            reason: result.rawStopReason,
+          })
+        )
+          continue;
+        return result;
+      } catch (error) {
+        if (!requestOptions.signal?.aborted && recover(error)) continue;
+        throw error;
+      }
+    }
+  };
   return retryAssistantCall(produce, retry, requestOptions.signal, callbacks);
+}
+
+/** Only recognized context overflow reaches this bounded request-local truncation. */
+function truncateSummaryRequest(context: TranscriptContext): TranscriptContext {
+  let changed = false;
+  const truncate = (text: string) => {
+    if (text.length < 256) return text;
+    changed = true;
+    // Retain the summary instructions and the newest conversation text after dropping older text.
+    const open = text.indexOf("<conversation>\n");
+    const close = text.indexOf("\n</conversation>");
+    if (open >= 0 && close > open) {
+      const start = open + "<conversation>\n".length;
+      return (
+        text.slice(0, start) +
+        "[Earlier conversation truncated]\n" +
+        text.slice(start + Math.floor((close - start) / 2))
+      );
+    }
+    return `[Earlier content truncated]\n${text.slice(Math.floor(text.length / 2))}`;
+  };
+  const messages = context.messages.map((message) =>
+    message.role !== "user"
+      ? message
+      : {
+          ...message,
+          content:
+            typeof message.content === "string"
+              ? truncate(message.content)
+              : message.content.map((block) =>
+                  block.type === "text" ? { ...block, text: truncate(block.text) } : block,
+                ),
+        },
+  );
+  return changed ? { ...context, messages } : context;
 }
 
 /** Build the provider context for a standalone summary request. */
@@ -940,6 +1023,7 @@ async function generateTurnPrefixSummary(
 }
 
 export interface CompactionOptions {
+  microcompact?: import("./microcompact.ts").MicrocompactConfig;
   enabled?: boolean;
   reserveTokens?: number;
   keepRecentTokens?: number;

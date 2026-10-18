@@ -92,6 +92,19 @@ const entry = Type.Intersect([
     Type.Object({ type: Type.Literal("session_info"), name: Type.String() }),
     Type.Object({ type: Type.Literal("custom"), customType: Type.String() }),
     Type.Object({
+      type: Type.Literal("microcompact"),
+      data: Type.Object({
+        trigger: Type.Union([Type.Literal("time_based"), Type.Literal("token_pressure")]),
+        strategy: Type.Literal("local_tool_result_clear"),
+        preMicrocompactTokenCount: Type.Number(),
+        postMicrocompactTokenCount: Type.Number(),
+        tokensSaved: Type.Number(),
+        clearedMessageCount: Type.Number(),
+        clearedToolCallIds: Type.Array(Type.String()),
+        keptToolCallIds: Type.Array(Type.String()),
+      }),
+    }),
+    Type.Object({
       type: Type.Literal("compaction"),
       summary: Type.String(),
       firstKeptEntryId: Type.String(),

@@ -169,6 +169,7 @@ export interface ThinkingContent {
   redacted?: boolean;
 }
 export interface ImageContent {
+  name?: string;
   type: "image";
   data: string;
   mimeType: string;
@@ -187,7 +188,11 @@ export interface Tool<TParameters extends TSchema = TSchema> {
   parameters: TParameters;
   constrainedSampling?: { type: "json_schema"; strict: "prefer" | "require" };
 }
+export interface CacheControl {
+  type: "ephemeral";
+}
 export interface SystemMessage {
+  cacheControl?: CacheControl;
   role: "system";
   content: string | TextContent[];
   timestamp: number;
@@ -196,6 +201,8 @@ export interface SystemMessage {
   toolsRemoved?: { name: string }[];
 }
 export interface UserMessage {
+  cacheControl?: CacheControl;
+  synthetic?: boolean;
   role: "user";
   content: string | (TextContent | ImageContent)[];
   timestamp: number;
@@ -217,6 +224,7 @@ export interface ContextBreakdownItem {
   chars: number;
 }
 export interface AssistantMessage {
+  cacheControl?: CacheControl;
   role: "assistant";
   content: (TextContent | ThinkingContent | ToolCall)[];
   api: Api;
@@ -253,6 +261,7 @@ export interface ModelRetryStatus {
   errorStatus: number | null;
 }
 export interface ToolResultMessage {
+  cacheControl?: CacheControl;
   role: "toolResult";
   toolCallId: string;
   toolName: string;
@@ -277,6 +286,8 @@ export interface ModelPerformanceSample {
   generationMs?: number;
 }
 export interface StreamOptions {
+  /** Move the tail cache breakpoint before the final request-local prompt. */
+  skipCacheWrite?: boolean;
   /** Transient measurements from actual provider attempts; an empty sample starts a fresh attempt. */
   onPerformance?: (sample: ModelPerformanceSample) => void;
   cacheRetention?: CacheRetention;

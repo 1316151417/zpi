@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import type { ThinkingLevel } from "zpi-agent";
 import type { JsonValue, Message, SystemMessage, Usage } from "zpi-ai";
 import { assertSupportedOptions, getCurrentTools, isJsonObject } from "zpi-ai";
+import { applyMicrocompactBoundary, microcompactClearedIds } from "./microcompact.ts";
 import {
   isSessionEntry,
   isSessionHeader,
@@ -48,6 +49,7 @@ export type SessionEntry = EntryBase &
     | { type: "thinking_level_change"; thinkingLevel: ThinkingLevel }
     | { type: "session_info"; name: string }
     | { type: "custom"; customType: string; data?: JsonValue }
+    | { type: "microcompact"; data: import("./microcompact.ts").MicrocompactBoundary }
     | {
         type: "compaction";
         summary: string;
@@ -325,6 +327,13 @@ export class SessionManager {
       rmSync(temporary, { force: true });
     }
   }
+  getMicrocompactClearedIds(): string[] {
+    if (!this.store) return this.entries.flatMap(microcompactClearedIds);
+    const view = this.store.snapshot();
+    return Array.from(this.store.readRange(1, view.endSeq, view, ["microcompact"])).flatMap(({ entry }) =>
+      microcompactClearedIds(entry),
+    );
+  }
   buildSessionContext(snapshot?: TranscriptSnapshot): SessionContext {
     if (!this.store) return buildSessionContext(this.entries);
     const view = snapshot ?? this.store.snapshot();
@@ -346,6 +355,7 @@ export class SessionManager {
         throw new Error("Compaction boundary splits a tool turn");
       const summary: Message = {
         role: "user",
+        synthetic: true,
         content: `Summary of earlier conversation:\n${entry.summary}`,
         timestamp: Date.parse(entry.timestamp),
       };
@@ -359,8 +369,15 @@ export class SessionManager {
       start = boundary.seq;
     }
     const retainedCalls = new Set<string>();
-    for (const { seq, entry } of this.store.readRange(start, view.endSeq, view, ["message"])) {
-      if (entry.type !== "message") continue;
+    for (const { seq, entry } of this.store.readRange(start, view.endSeq, view, [
+      "message",
+      "microcompact",
+    ])) {
+      if (entry.type !== "message") {
+        const projected = applyMicrocompactBoundary(messages, microcompactClearedIds(entry));
+        messages.splice(0, messages.length, ...projected);
+        continue;
+      }
       if (compaction && seq < compaction.seq && entry.message.role === "system") continue;
       if (compaction) {
         if (entry.message.role === "assistant") {
@@ -410,6 +427,9 @@ export class SessionManager {
     }
     return this.append({ type: "session_info", name });
   }
+  appendMicrocompact(data: import("./microcompact.ts").MicrocompactBoundary): string {
+    return this.append({ type: "microcompact", data });
+  }
   appendCustomEntry(customType: string, data?: JsonValue): string {
     return this.append({ type: "custom", customType, data });
   }
@@ -441,6 +461,7 @@ export class SessionManager {
       | Omit<Extract<SessionEntry, { type: "thinking_level_change" }>, keyof EntryBase>
       | Omit<Extract<SessionEntry, { type: "session_info" }>, keyof EntryBase>
       | Omit<Extract<SessionEntry, { type: "custom" }>, keyof EntryBase>
+      | Omit<Extract<SessionEntry, { type: "microcompact" }>, keyof EntryBase>
       | Omit<Extract<SessionEntry, { type: "compaction" }>, keyof EntryBase>,
   ): string {
     if (this.storageError) throw this.storageError;
@@ -516,7 +537,10 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
   }
   const compaction = entries[compactionIndex];
   if (compaction?.type !== "compaction") {
-    context.messages = entries.flatMap(sessionEntryToContextMessages);
+    context.messages = applyMicrocompactBoundary(
+      entries.flatMap(sessionEntryToContextMessages),
+      entries.flatMap(microcompactClearedIds),
+    );
     return context;
   }
   const keepIndex = entries.findIndex((e) => e.id === compaction.firstKeptEntryId);
@@ -530,12 +554,18 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
     );
   context.messages = [
     system,
-    { role: "user", content: `Summary of earlier conversation:\n${compaction.summary}`, timestamp },
+    {
+      role: "user",
+      synthetic: true,
+      content: `Summary of earlier conversation:\n${compaction.summary}`,
+      timestamp,
+    },
     ...entries
       .slice(keepIndex, compactionIndex)
       .flatMap(sessionEntryToContextMessages)
       .filter((m) => m.role !== "system"),
     ...entries.slice(compactionIndex + 1).flatMap(sessionEntryToContextMessages),
   ];
+  context.messages = applyMicrocompactBoundary(context.messages, entries.flatMap(microcompactClearedIds));
   return context;
 }

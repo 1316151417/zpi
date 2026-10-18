@@ -180,3 +180,70 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 export function isRecoverableLength(message: AssistantMessage, desiredMaxOutput: number): boolean {
   return message.stopReason === "length" && desiredMaxOutput > 0 && message.usage.output < desiredMaxOutput;
 }
+
+/** Exact ZCode message predicates. Bare HTTP 413 / length limit exceeded matches neither. */
+export function isModelContextExceededMessage(value: string | undefined): boolean {
+  const message = value?.trim().toLowerCase();
+  return (
+    !!message &&
+    ((message.includes("context") && message.includes("exceed")) ||
+      (message.includes("context") && message.includes("too long")) ||
+      (message.includes("prompt") && message.includes("too long")))
+  );
+}
+export function isModelMediaTooLargeMessage(value: string | undefined): boolean {
+  const message = value?.trim().toLowerCase();
+  return (
+    !!message &&
+    ["media", "image", "document"].some((word) => message.includes(word)) &&
+    (message.includes("too large") || message.includes("exceed"))
+  );
+}
+
+const CONTEXT_MARKERS = new Set([
+  "modelcontextexceeded",
+  "model_context_exceeded",
+  "context_exceeded",
+  "context_length_exceeded",
+  "context_window_exceeded",
+  "model_context_window_exceeded",
+  "prompt_too_long",
+]);
+const MEDIA_MARKERS = new Set([
+  "media_too_large",
+  "media_payload_too_large",
+  "image_too_large",
+  "document_too_large",
+]);
+function matchesModelError(
+  error: unknown,
+  markers: Set<string>,
+  predicate: (message: string | undefined) => boolean,
+): boolean {
+  let current = error;
+  const seen = new Set<object>();
+  const marker = (value: unknown) => typeof value === "string" && markers.has(value.trim().toLowerCase());
+  for (let depth = 0; depth <= 6; depth++) {
+    if (!current || typeof current !== "object" || seen.has(current)) return false;
+    seen.add(current);
+    const record = current as Record<string, unknown>;
+    if (
+      [record.type, record.code, record.reason, record.stopReason].some(marker) ||
+      predicate(typeof record.message === "string" ? record.message : undefined)
+    )
+      return true;
+    const context = record.context;
+    if (context && typeof context === "object") {
+      const fields = context as Record<string, unknown>;
+      if ([fields.type, fields.code, fields.reason].some(marker)) return true;
+    }
+    current = record.cause ?? record.lastError ?? record.error;
+  }
+  return false;
+}
+export function isModelContextExceededError(error: unknown): boolean {
+  return matchesModelError(error, CONTEXT_MARKERS, isModelContextExceededMessage);
+}
+export function isModelMediaTooLargeError(error: unknown): boolean {
+  return matchesModelError(error, MEDIA_MARKERS, isModelMediaTooLargeMessage);
+}

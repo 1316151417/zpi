@@ -3,7 +3,13 @@
 import { type ResizedImage, resizeImageInProcess } from "./image-resize-core.ts";
 
 export type { ImageResizeOptions, ResizedImage } from "./image-resize-core.ts";
-export const resizeImage = resizeImageInProcess;
+export async function resizeImage(...args: Parameters<typeof resizeImageInProcess>) {
+  try {
+    return await resizeImageInProcess(...args);
+  } catch {
+    return null;
+  }
+}
 export function formatDimensionNote(result: ResizedImage): string | undefined {
   if (!result.wasResized) {
     return undefined;

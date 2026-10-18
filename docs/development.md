@@ -330,3 +330,36 @@ npm run test:unit -- packages/desktop/test/file-comments.test.ts packages/ui/tes
 ```
 
 桌面验证仍须使用上述隔离启动器；无 Electron/虚拟显示或浏览器沙箱不可用时，不把 SSR/单元测试当作视觉验证。所有外部程序启动、剪贴板和对话框测试必须使用假服务，不能操作真实系统程序或用户剪贴板。
+
+
+## 模型图片请求预算
+
+内置 `read` 的图片输入最多 20 MiB，已知超限文件在读取正文前拒绝。图片处理使用 ZCode 的 Jimp 候选阶梯，同时校验 raw ≤ 3,932,160 字节、base64 ≤ 5,242,880 字节、图片 token ≤ 25,000（base64 字符比例 0.125）。最紧约束派生出 base64 ≤ **200,000 字节**、raw ≤ **150,000 字节**，与模型输出上限独立。模型级 resize 覆盖只能收紧这些约束。WebP 只按字节/token 预算直通，不解码、不检查尺寸，超限返回 `unsupported`。
+
+用户附件有意不传图片 token 预算，因此允许到 5 MiB base64，约为 Read 的 26 倍；导入仍保留单张 10 MiB 与像素校验。尺寸和预算内的原图原字节保留，包括元数据、EXIF 和 GIF 动画；需要转换的 GIF 只保留首帧。PNG 仅有一次原尺寸无损优化机会，随后转 JPEG；透明图转 JPEG 为黑底。JPEG 质量可降到 20，兜底最长边可降至 200px，截图小字、按钮、布局细节可能无法辨认；压缩成功不代表内容可读。
+
+所有 provider 请求先做模型能力投影，再做 40 MiB 聚合媒体预算。主会话、侧边会话、子代理、快速对话和标题请求经 `ModelRuntime`；摘要及直接协议调用也执行同一媒体策略。只计媒体 data URL 的 UTF-8 字节（包含前缀），不计正文、工具和 JSON，因此 **40 MiB 不能保证 HTTP body 上限**。当前真实用户附件受到保护，单独超限则在调用 provider 前拒绝；工具结果没有当前轮保护。只改请求副本，原历史和附件缓存保留。省略日志字段为 `omittedMediaCount`、`projectedMediaBytes`、`retainedMediaCount`、`totalMediaBytes`、`evictionFrontier`。
+
+相对 ZCode 唯一批准的淘选差异是历史扫描遇到放不下的媒体时 `break`，保留连续的最新后缀；被大图挡住的小图也会丢弃。等尺寸截图批次与上游 `continue` 结果相同。追加历史且保护集不变时不会复活旧图；新用户轮次改变保护集后无此单调保证。此策略提供可预测性，不宣称提高缓存命中率。每次从原历史重算，无低水位、滞回、空闲门控或最小收益门槛；靠前图片被省略会让该点之后的缓存前缀失效。单图小预算降低聚合裁剪频率，不解决 KV cache 问题。
+
+Anthropic 缓存保持 stable 内容、dynamic sections 各自的 system 断点和最新非 system 尾断点；`skipCacheWrite` 将尾断点前移，system 标记保留。标记经 Anthropic Messages 协议传输，适用于使用该协议的 DeepSeek 配置；不按模型品牌忽略标记。
+
+`compaction.microcompact.enabled` 默认关闭，显式开启后，在空闲超过 60 分钟或本地 token 估算达阈值时只清理白名单中的旧纯文本工具结果，保留最近 5 组；有 image/video/file 的结果全部跳过。节省少于 256 token 则整体回滚。`microcompact` transcript boundary 记录 trigger、strategy、前后估算与 tool call IDs，恢复时投影工具结果，不覆盖原始记录。默认阈值为 `min(floor(autoCompactThreshold × 0.9), autoCompactThreshold - 2000)`，复用 ZPI 的上下文预留设置。
+
+本地图片 token 估算使用短占位，不反映实际图片体积；已有 provider usage 锚点仍会参与自动压缩，所以 token 压缩不能替代字节预算。裸 `413 Failed to buffer the request body: length limit exceeded` 不扩展为上下文或媒体错误，不自动恢复，UI 提示压缩对话或开启新会话。摘要仅在明确识别的媒体过大错误上去媒体重试，明确上下文溢出时有界截断重试；未知错误不做此降级。
+
+聚焦回归：`npx vitest run packages/coding-agent/test/read-image-budget.test.ts packages/coding-agent/test/media-request-session.test.ts packages/ai/test/media-policy.test.ts packages/coding-agent/test/microcompact.test.ts`。42 张临时生成图片经真实 session/read 工具、43 次本地测试 provider 请求验证，并额外加入超预算旧图片历史；不依赖真实凭据，也不代表已经通过供应商线上网关验收。ZPI 目前没有独立记忆代理、内置 PDF 页面提取或 MCP 图片入口，本次不引入这些能力。
+
+
+请求入口核对：
+
+| 入口 | 当前调用链与策略接入 |
+| --- | --- |
+| 主会话 / SDK | `session-host.ts` / `sdk.ts` → `AgentSession.measuredStream` → `ModelRuntime.streamSimple` |
+| 侧边会话 | `SessionHost.createSideChat` → 同一会话创建与模型运行时 |
+| 子代理 | `plugins/subagents/runtime.ts` → `SessionHost.createSubagentSession` → 同一模型运行时 |
+| 快速对话 | `quick-chat-host.ts` → `createAgentSession` → 同一模型运行时 |
+| 标题 | `session-title.ts` → `ModelRuntime.streamSimple` |
+| 对话 / 回合摘要 | `compaction.ts:completeSummarization`（包括注入 stream 和直接调用）→ 共同媒体策略 |
+| AI 协议公开接口 | `stream.ts` 以及 `api/{anthropic-messages,openai-completions,openai-responses}.ts` → 共同媒体策略 |
+| 记忆代理 | 当前仓库不存在独立实现；未新增 provider 旁路 |

@@ -6,6 +6,8 @@ export async function readFileBounded(path: string, maxBytes: number): Promise<B
     throw new Error("Invalid file byte limit");
   const file = await open(path, "r");
   try {
+    // Reject known oversized inputs before allocating or reading their contents. The loop also guards growth.
+    if ((await file.stat()).size > maxBytes) throw new Error(`File exceeds the ${maxBytes} byte size limit`);
     const chunks: Buffer[] = [];
     let length = 0;
     while (length <= maxBytes) {

@@ -12,6 +12,7 @@ import { FileReadState } from "./file-read-state.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import { readTextRange } from "./text-range-reader.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
+import { fitsImageBudget, imageBudget, readImageResizeOptions } from "./utils/image-budget.ts";
 import { processImage } from "./utils/image-process.ts";
 import type { ImageResizeOptions as ModelImageResizeOptions } from "./utils/image-resize-core.ts";
 import { detectSupportedImageMimeTypeFromFile } from "./utils/mime.ts";
@@ -148,10 +149,29 @@ export function createReadToolDefinition(
                 // Older/custom readers may ignore the optional I/O limit. Never decode oversized results.
                 if (buffer.length > imageLimits.readSourceBytes)
                   throw new Error(`Image exceeds the ${imageLimits.readSourceBytes} byte size limit`);
-                const processed = await processImage(buffer, mimeType, {
+                let processed = await processImage(buffer, mimeType, {
                   autoResizeImages,
-                  resizeOptions: ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
+                  resizeOptions: readImageResizeOptions(
+                    ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
+                  ),
                 });
+                // Defensive check for replacement adapters: never send an over-budget Read result.
+                if (
+                  processed.ok &&
+                  !fitsImageBudget(
+                    Buffer.from(processed.data, "base64"),
+                    imageBudget(
+                      readImageResizeOptions(
+                        ctx?.model?.inputLimits?.images?.resize ?? fallbackResizeOptions,
+                      ),
+                    ),
+                  )
+                )
+                  processed = {
+                    ok: false,
+                    code: "read_image_budget_exceeded",
+                    message: "[Image omitted: read_image_budget_exceeded.]",
+                  };
                 if (!processed.ok) {
                   let textNote = `Read image file [${mimeType}]\n${processed.message}`;
                   if (nonVisionImageNote) textNote += `\n${nonVisionImageNote}`;

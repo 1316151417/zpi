@@ -14,6 +14,7 @@ import type {
 import { openAICompletionsCompatKeys } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
+import { projectContextForModelMediaPolicy } from "../utils/media-policy.ts";
 import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -37,6 +38,7 @@ const commonOptions = [
   "signal",
   "sessionId",
   "cacheRetention",
+  "skipCacheWrite",
   "apiKey",
   "fetch",
   "headers",
@@ -159,13 +161,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
   async function consume(events: MeasuredAssistantStream): Promise<void> {
     output = emptyAssistant(model);
     completeCalls.clear();
-    if (
-      !model.input.includes("image") &&
-      context.messages.some(
-        (m) => m.role === "user" && Array.isArray(m.content) && m.content.some((c) => c.type === "image"),
-      )
-    )
-      throw new Error("Model does not support images in the effective context");
+    context = projectContextForModelMediaPolicy(context, model);
     const client = new OpenAI({
       // OpenAI's constructor requires a nonempty value; the explicit no-auth path removes its header.
       apiKey: options.apiKey || "ZPI-no-auth",

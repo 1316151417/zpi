@@ -7,6 +7,7 @@ import type {
 import type { Model, SimpleStreamOptions, ThinkingContent, ToolCall, TranscriptContext } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
+import { projectContextForModelMediaPolicy } from "../utils/media-policy.ts";
 import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -98,6 +99,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       "signal",
       "sessionId",
       "cacheRetention",
+      "skipCacheWrite",
       "apiKey",
       "fetch",
       "headers",
@@ -140,13 +142,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
   async function consume(events: MeasuredAssistantStream): Promise<void> {
     output = emptyAssistant(model);
     complete.clear();
-    if (
-      !model.input.includes("image") &&
-      context.messages.some(
-        (m) => m.role === "user" && Array.isArray(m.content) && m.content.some((c) => c.type === "image"),
-      )
-    )
-      throw new Error("Model does not support images in the effective context");
+    context = projectContextForModelMediaPolicy(context, model);
     const client = new OpenAI({
       apiKey: options.apiKey || "ZPI-no-auth",
       adminAPIKey: null,

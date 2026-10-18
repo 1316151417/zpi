@@ -78,7 +78,8 @@ export function encodeTranscriptEntry(value: SessionEntry, seq: number): JsonVal
 export function decodeTranscriptEntry(value: unknown): SessionEntry {
   if (!isJsonObject(value) || !Number.isSafeInteger(value.seq) || Number(value.seq) < 1)
     throw new Error("storage: Invalid v2 sequence");
-  if (value.type === "message" || value.type === "compaction") return validateTranscriptEntry(value);
+  if (value.type === "message" || value.type === "compaction" || value.type === "microcompact")
+    return validateTranscriptEntry(value);
   const customType = Object.keys(factTypes).find((key) => factTypes[key] === value.type);
   if (!customType) throw new Error("storage: Unsupported v2 fact type");
   return validateTranscriptEntry({

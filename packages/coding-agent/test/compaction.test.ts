@@ -49,7 +49,7 @@ it("Pi estimates usage plus trailing text and both image sources; compaction cut
       timestamp: 2,
     },
   ];
-  expect(estimateContextTokens(messages).tokens).toBe(2401);
+  expect(estimateContextTokens(messages).tokens).toBe(11);
   const reply = emptyAssistant(model);
   reply.stopReason = "stop";
   reply.usage.input = 800;

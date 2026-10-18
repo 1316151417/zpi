@@ -238,7 +238,7 @@ test("the provider receives a bounded encoding while the attachment cache keeps 
   })
     .png()
     .toBuffer();
-  expect(original.toString("base64").length).toBeGreaterThan(4.5 * 1024 * 1024);
+  expect(original.toString("base64").length).toBeGreaterThan(5 * 1024 * 1024);
   const image = await f.host.importImage(f.session.id, "large.png", original);
   await run(f, "Inspect the large image", { attachments: [image.id] });
   expect(f.server.requests).toHaveLength(1);
@@ -246,7 +246,7 @@ test("the provider receives a bounded encoding while the attachment cache keeps 
   const payload = /data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/.exec(body)?.[1];
   expect(payload).toBeDefined();
   if (!payload) return;
-  expect(payload.length).toBeLessThanOrEqual(4.5 * 1024 * 1024);
+  expect(payload.length).toBeLessThanOrEqual(5 * 1024 * 1024);
   expect(await sharp(Buffer.from(payload, "base64")).metadata()).toMatchObject({ width: 1600, height: 1600 });
   expect((await f.host.readAttachment(f.session.id, image.id)).data).toBe(original.toString("base64"));
 });

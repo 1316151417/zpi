@@ -90,7 +90,7 @@ it("local image reads reject oversized sources before decoding and retain ordina
     original.copy(aboveAttachmentLimit);
     await writeFile(path, aboveAttachmentLimit);
     const padded = await read.execute("above-attachment-limit", { path });
-    expect(padded.content.some((part) => part.type === "image")).toBe(true);
+    expect(padded.content).toEqual([{ type: "text", text: expect.stringContaining("processing_failed") }]);
     const oversized = Buffer.alloc(imageLimits.readSourceBytes + 1);
     original.copy(oversized);
     await writeFile(path, oversized);

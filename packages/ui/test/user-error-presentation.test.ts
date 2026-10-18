@@ -95,3 +95,16 @@ test("retains technical tool failure output unchanged", () => {
   expect(markup).toContain(technical);
   expect(markup).not.toContain(userErrorMessage(technical));
 });
+
+test.each([
+  "413 Failed to buffer the request body: length limit exceeded",
+  { status: 413, message: "Failed to buffer the request body: length limit exceeded" },
+  { statusCode: 413, message: "Request body too large" },
+])("explains oversized requests with concrete recovery steps", (error) => {
+  expect(userErrorMessage(error)).toBe("本次请求内容过大（历史图片较多），请压缩对话或开启新会话后重试。");
+});
+test("explains current attachment rejection without suggesting automatic recovery", () => {
+  expect(
+    userErrorMessage("MEDIA_BUDGET_CURRENT_ATTACHMENT_TOO_LARGE: Current attachments are too large to send."),
+  ).toBe("本次附件过大，请移除或压缩附件后重试。");
+});

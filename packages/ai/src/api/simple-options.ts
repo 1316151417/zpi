@@ -42,6 +42,7 @@ export function buildBaseOptions(
     apiKey: apiKey || options?.apiKey,
     fetch: options?.fetch,
     cacheRetention: options?.cacheRetention,
+    skipCacheWrite: options?.skipCacheWrite,
     sessionId: options?.sessionId,
     headers: options?.headers,
     onPayload: options?.onPayload,

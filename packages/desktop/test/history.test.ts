@@ -378,3 +378,52 @@ it("reads indexed batches without per-entry SQL lookups and still validates reco
   expect(() => [...index.readRange(130, 130, snapshot)]).toThrow(/boundary mismatch/);
   expect(() => index.readReverse(snapshot)[Symbol.iterator]().next()).toThrow(/boundary mismatch/);
 });
+
+it("persists and replays microcompact facts through the indexed transcript without changing raw tool results", async () => {
+  const { index, append, path } = fixture();
+  append({
+    type: "message",
+    message: {
+      ...emptyAssistant(fakeModel("")),
+      stopReason: "toolUse",
+      content: [{ type: "toolCall", id: "read", name: "read", arguments: {} }],
+    },
+  });
+  append({
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolCallId: "read",
+      toolName: "read",
+      content: [{ type: "text", text: "original result" }],
+      isError: false,
+      timestamp: 0,
+    },
+  });
+  append({
+    type: "microcompact",
+    data: {
+      trigger: "time_based",
+      strategy: "local_tool_result_clear",
+      preMicrocompactTokenCount: 1000,
+      postMicrocompactTokenCount: 100,
+      tokensSaved: 900,
+      clearedMessageCount: 1,
+      clearedToolCallIds: ["read"],
+      keptToolCallIds: [],
+    },
+  });
+  const { SessionManager } = await import("zpi-coding-agent");
+  const manager = SessionManager.fromStore(index);
+  expect(manager.buildSessionContext().messages[1].content).toEqual([
+    { type: "text", text: "[Old tool result content cleared]" },
+  ]);
+  expect(manager.getMicrocompactClearedIds()).toEqual(["read"]);
+  const records = readFileSync(path, "utf8")
+    .trim()
+    .split("\n")
+    .slice(1)
+    .map((line) => JSON.parse(line));
+  expect(records[1].message.content).toEqual([{ type: "text", text: "original result" }]);
+  expect(records[2].type).toBe("microcompact");
+});

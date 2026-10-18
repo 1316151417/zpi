@@ -10,6 +10,7 @@ import {
   assertSupportedOptions,
   guardModelStream,
   normalizeContext,
+  projectContextForModelMediaPolicy,
   streamSimple,
   validateReasoningConfig,
   validateThinkingMap,
@@ -115,7 +116,7 @@ export class ModelRuntime {
   streamSimple(model: Model, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream {
     const p = this.providers.get(model.provider);
     if (!p) throw new Error(`Provider not configured: ${model.provider}`);
-    const transcript = normalizeContext(context);
+    const transcript = projectContextForModelMediaPolicy(normalizeContext(context), model);
     const opts = {
       ...options,
       fetch: options?.fetch ?? this.requestFetch,

@@ -408,3 +408,42 @@ it.each([
     vi.restoreAllMocks();
   }
 });
+
+it("replays indexed microcompact boundaries without reading completed journals or altering original results", async () => {
+  const source = SessionManager.inMemory("/tmp");
+  source.appendMessage({
+    ...emptyAssistant(fakeModel("")),
+    content: [{ type: "toolCall", id: "old", name: "read", arguments: {} }],
+    stopReason: "toolUse",
+  });
+  source.appendMessage({
+    role: "toolResult",
+    toolCallId: "old",
+    toolName: "read",
+    content: [{ type: "text", text: "original result" }],
+    isError: false,
+    timestamp: 0,
+  });
+  source.appendMicrocompact({
+    trigger: "time_based",
+    strategy: "local_tool_result_clear",
+    clearedMessageCount: 1,
+    clearedToolCallIds: ["old"],
+    keptToolCallIds: [],
+    preMicrocompactTokenCount: 1000,
+    postMicrocompactTokenCount: 10,
+    tokensSaved: 990,
+  });
+  const entries = source.getEntries();
+  const index = indexed(entries);
+  const restored = SessionManager.fromStore(index.store);
+  expect(restored.getMicrocompactClearedIds()).toEqual(["old"]);
+  expect(restored.buildSessionContext()).toEqual(source.buildSessionContext());
+  expect(restored.buildSessionContext().messages[1].content).toEqual([
+    { type: "text", text: "[Old tool result content cleared]" },
+  ]);
+  const result = entries[1];
+  expect(result.type === "message" && result.message.content).toEqual([
+    { type: "text", text: "original result" },
+  ]);
+});

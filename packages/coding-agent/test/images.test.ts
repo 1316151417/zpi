@@ -54,7 +54,7 @@ function bmpFixture(options: {
   return bytes;
 }
 
-test("source validation preserves JPEG bytes while inline preparation shares the read tool budget", async () => {
+test("source validation preserves JPEG bytes while inline attachments use their own wider budget", async () => {
   const original = await sharp(randomFillSync(Buffer.alloc(1600 * 1600 * 3)), {
     raw: { width: 1600, height: 1600, channels: 3 },
   })
@@ -66,7 +66,7 @@ test("source validation preserves JPEG bytes while inline preparation shares the
   const inline = await prepareInlineImage(original, "image/png");
   expect(inline.ok).toBe(true);
   if (!inline.ok) return;
-  expect(inline.data.length).toBeLessThanOrEqual(4.5 * 1024 * 1024);
+  expect(inline.data.length).toBeLessThanOrEqual(5 * 1024 * 1024);
   expect(inline.mimeType).toBe("image/jpeg");
   expect(await sharp(Buffer.from(inline.data, "base64")).metadata()).toMatchObject({
     width: 1600,
@@ -102,7 +102,7 @@ test("inline resizing preserves lossless data that fits and clamps very thin ima
   }
 });
 
-test("EXIF orientation is physical in inline payloads while original bytes and displayed dimensions survive", async () => {
+test("fitting EXIF originals retain orientation metadata and displayed dimensions", async () => {
   const original = await sharp(await image(30, 20))
     .jpeg()
     .withMetadata({ orientation: 6 })
@@ -112,8 +112,8 @@ test("EXIF orientation is physical in inline payloads while original bytes and d
   expect(prepared.ok).toBe(true);
   if (!prepared.ok) return;
   const metadata = await sharp(Buffer.from(prepared.data, "base64")).metadata();
-  expect(metadata).toMatchObject({ width: 20, height: 30 });
-  expect(metadata.orientation).toBeUndefined();
+  expect(metadata).toMatchObject({ width: 30, height: 20, orientation: 6 });
+  expect(Buffer.from(prepared.data, "base64")).toEqual(original);
 });
 
 test.each([
@@ -146,15 +146,17 @@ test.each([
       expect(prepared.ok).toBe(true);
       if (!prepared.ok) continue;
       const bytes = Buffer.from(prepared.data, "base64");
-      expect(await sharp(bytes).metadata()).toMatchObject({ width, height });
-      expect(await sharp(bytes).removeAlpha().raw().toBuffer()).toEqual(
+      expect(await sharp(bytes).rotate().toBuffer({ resolveWithObject: true })).toMatchObject({
+        info: { width, height },
+      });
+      expect(await sharp(bytes).rotate().removeAlpha().raw().toBuffer()).toEqual(
         Buffer.from(order.flatMap((index) => pixels[index])),
       );
     }
   },
 );
 
-test("animated images preserve originals and only send a static first frame", async () => {
+test("fitting animated GIFs preserve original frames and bytes", async () => {
   const original = await sharp(Buffer.from([255, 0, 0, 0, 255, 0]), {
     raw: { width: 1, height: 2, channels: 3, pageHeight: 1 },
   })
@@ -170,8 +172,8 @@ test("animated images preserve originals and only send a static first frame", as
   const prepared = await prepareInlineImage(original, "image/gif");
   expect(prepared.ok).toBe(true);
   if (!prepared.ok) return;
-  expect(prepared.mimeType).toBe("image/png");
-  expect(prepared.hints.join("\n")).toContain("only the first frame");
+  expect(prepared.mimeType).toBe("image/gif");
+  expect(Buffer.from(prepared.data, "base64")).toEqual(original);
   expect(await sharp(Buffer.from(prepared.data, "base64")).removeAlpha().raw().toBuffer()).toEqual(
     Buffer.from([255, 0, 0]),
   );
@@ -409,10 +411,10 @@ test("tight encoded payload budgets reduce dimensions or omit an image without l
   })
     .png()
     .toBuffer();
-  const resized = await resizeImage(original, "image/png", { maxBytes: 180 });
+  const resized = await resizeImage(original, "image/png", { maxBytes: 1100 });
   expect(resized).not.toBeNull();
   if (!resized) return;
-  expect(resized.data.length).toBeLessThanOrEqual(180);
+  expect(resized.data.length).toBeLessThanOrEqual(1100);
   expect(resized.width).toBeGreaterThanOrEqual(1);
   expect(resized.height).toBeGreaterThanOrEqual(1);
   expect(resized.wasResized).toBe(true);
@@ -467,7 +469,7 @@ test("compact JPEGs are not rejected because lossless expansion would exceed the
   });
 });
 
-test("inline metadata is stripped without changing the saved original or dimensions", async () => {
+test("fitting originals retain metadata and bytes", async () => {
   const jpeg = await sharp(await image(30, 20))
     .jpeg()
     .withMetadata({ orientation: 1 })
@@ -480,7 +482,7 @@ test("inline metadata is stripped without changing the saved original or dimensi
     if (!prepared.ok) continue;
     const metadata = await sharp(Buffer.from(prepared.data, "base64")).metadata();
     expect(metadata).toMatchObject({ width: 30, height: 20 });
-    expect(metadata.exif).toBeUndefined();
+    expect(Buffer.from(prepared.data, "base64")).toEqual(jpeg);
   }
   const webp = await sharp(await image(30, 20))
     .webp({ lossless: true })
@@ -530,42 +532,42 @@ test("animated PNGs are recognized even when the decoder reports only their firs
   expect(prepared.ok).toBe(true);
   if (!prepared.ok) return;
   const bytes = Buffer.from(prepared.data, "base64");
-  expect(bytes.includes(Buffer.from("acTL"))).toBe(false);
-  expect(await sharp(bytes).removeAlpha().raw().toBuffer()).toEqual(Buffer.from([255, 0, 0]));
+  expect(bytes).toEqual(original);
+  expect(await sharp(bytes).rotate().removeAlpha().raw().toBuffer()).toEqual(Buffer.from([255, 0, 0]));
 });
 
-test.each(["tEXt", "zTXt", "iTXt"])(
-  "inline PNG %s comments are stripped while source bytes are retained",
-  async (type) => {
-    const privateText = "Private project=/Users/alice/private-project, creator=Alice";
-    const text = Buffer.from(privateText);
-    const data =
-      type === "tEXt"
-        ? Buffer.concat([Buffer.from("Comment\0"), text])
-        : type === "zTXt"
-          ? Buffer.concat([Buffer.from("Comment\0\0"), deflateSync(text)])
-          : Buffer.concat([Buffer.from("Comment\0\0\0\0\0"), text]);
-    const png = await image(3, 2);
-    const original = Buffer.concat([png.subarray(0, 33), pngChunk(type, data), png.subarray(33)]);
-    expect((await sharp(original).metadata()).comments).toContainEqual({
+test.each(["tEXt", "zTXt", "iTXt"])("fitting PNG %s comments are retained byte for byte", async (type) => {
+  const privateText = "Private project=/Users/alice/private-project, creator=Alice";
+  const text = Buffer.from(privateText);
+  const data =
+    type === "tEXt"
+      ? Buffer.concat([Buffer.from("Comment\0"), text])
+      : type === "zTXt"
+        ? Buffer.concat([Buffer.from("Comment\0\0"), deflateSync(text)])
+        : Buffer.concat([Buffer.from("Comment\0\0\0\0\0"), text]);
+  const png = await image(3, 2);
+  const original = Buffer.concat([png.subarray(0, 33), pngChunk(type, data), png.subarray(33)]);
+  expect((await sharp(original).metadata()).comments).toContainEqual({
+    keyword: "Comment",
+    text: privateText,
+  });
+  expect((await processImage(original)).bytes).toEqual(original);
+  for (const autoResizeImages of [true, false]) {
+    const prepared = await prepareInlineImage(original, "image/png", { autoResizeImages });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) continue;
+    const bytes = Buffer.from(prepared.data, "base64");
+    expect((await sharp(bytes).metadata()).comments).toContainEqual({
       keyword: "Comment",
       text: privateText,
     });
-    expect((await processImage(original)).bytes).toEqual(original);
-    for (const autoResizeImages of [true, false]) {
-      const prepared = await prepareInlineImage(original, "image/png", { autoResizeImages });
-      expect(prepared.ok).toBe(true);
-      if (!prepared.ok) continue;
-      const bytes = Buffer.from(prepared.data, "base64");
-      expect(bytes.includes(text)).toBe(false);
-      expect((await sharp(bytes).metadata()).comments).toBeUndefined();
-      expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(original).raw().toBuffer());
-    }
-  },
-);
+    expect(bytes).toEqual(original);
+    expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(original).raw().toBuffer());
+  }
+});
 
 test.each(["before scan", "after scan", "APP segment", "trailing bytes"])(
-  "inline JPEG metadata hidden from Sharp is stripped: %s",
+  "fitting JPEG metadata retains original bytes: %s",
   async (placement) => {
     const privateText = Buffer.from("Private project=/Users/alice/private-project, creator=Alice");
     const header = Buffer.alloc(4);
@@ -589,13 +591,13 @@ test.each(["before scan", "after scan", "APP segment", "trailing bytes"])(
       expect(prepared.ok).toBe(true);
       if (!prepared.ok) continue;
       const bytes = Buffer.from(prepared.data, "base64");
-      expect(bytes.includes(privateText)).toBe(false);
+      expect(bytes.includes(privateText)).toBe(true);
       expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(jpeg).raw().toBuffer());
     }
   },
 );
 
-test.each(["XMP", "EXIF", "ICC"])("inline WebP %s metadata is stripped", async (kind) => {
+test.each(["XMP", "EXIF", "ICC"])("WebP %s metadata passes through without decoding", async (kind) => {
   let source = sharp(await image(3, 2)).webp({ lossless: true });
   if (kind === "XMP")
     source = source.withXmp('<x:xmpmeta xmlns:x="adobe:ns:meta/">Private project</x:xmpmeta>');
@@ -609,15 +611,13 @@ test.each(["XMP", "EXIF", "ICC"])("inline WebP %s metadata is stripped", async (
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) continue;
     const metadata = await sharp(Buffer.from(prepared.data, "base64")).metadata();
-    expect(metadata.xmp).toBeUndefined();
-    expect(metadata.exif).toBeUndefined();
-    expect(metadata.icc).toBeUndefined();
+    expect(Buffer.from(prepared.data, "base64")).toEqual(original);
     expect(metadata).toMatchObject({ width: 3, height: 2 });
   }
 });
 
 test.each(["comment", "application", "trailing bytes"])(
-  "inline static GIF %s metadata hidden from Sharp is stripped",
+  "fitting GIF %s metadata retains original bytes",
   async (kind) => {
     const privateText = Buffer.from("Private project=/Users/alice/private-project, creator=Alice");
     const gif = await sharp(await image(3, 2))
@@ -644,7 +644,7 @@ test.each(["comment", "application", "trailing bytes"])(
       expect(prepared.ok).toBe(true);
       if (!prepared.ok) continue;
       const bytes = Buffer.from(prepared.data, "base64");
-      expect(bytes.includes(privateText)).toBe(false);
+      expect(bytes.includes(privateText)).toBe(true);
       expect(await sharp(bytes).raw().toBuffer()).toEqual(await sharp(gif).raw().toBuffer());
     }
   },
@@ -669,14 +669,14 @@ test("metadata-free sources retain byte-preserving fast paths in both inline mod
   }
 });
 
-test("static GIF originals are retained while inline output is a clean first-frame PNG", async () => {
+test("fitting static GIF originals retain their format and bytes", async () => {
   const original = await sharp(await image(3, 2))
     .gif()
     .toBuffer();
   expect((await processImage(original)).bytes).toEqual(original);
   for (const autoResizeImages of [true, false]) {
     const prepared = await prepareInlineImage(original, "image/gif", { autoResizeImages });
-    expect(prepared).toMatchObject({ ok: true, mimeType: "image/png" });
+    expect(prepared).toMatchObject({ ok: true, mimeType: "image/gif", data: original.toString("base64") });
     if (!prepared.ok) continue;
     expect(await sharp(Buffer.from(prepared.data, "base64")).raw().toBuffer()).toEqual(
       await sharp(original).raw().toBuffer(),

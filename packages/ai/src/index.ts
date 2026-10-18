@@ -19,11 +19,19 @@ export {
 export { streamSimple } from "./stream.ts";
 export type * from "./types.ts";
 export { anthropicMessagesCompatKeys, openAICompletionsCompatKeys } from "./types.ts";
-export { calculateContextTokens } from "./utils/estimate.ts";
+export { calculateContextTokens, estimateMessageTokens } from "./utils/estimate.ts";
 export { AssistantMessageEventStream, createAssistantMessageEventStream } from "./utils/event-stream.ts";
 export { guardModelStream } from "./utils/guard-model-stream.ts";
+export * from "./utils/media-policy.ts";
 export { modelFailure } from "./utils/model-retry.ts";
-export { isContextOverflow as isContextOverflowMessage, isRecoverableLength } from "./utils/overflow.ts";
+export {
+  isContextOverflow as isContextOverflowMessage,
+  isModelContextExceededError,
+  isModelContextExceededMessage,
+  isModelMediaTooLargeError,
+  isModelMediaTooLargeMessage,
+  isRecoverableLength,
+} from "./utils/overflow.ts";
 export {
   canControlThinking,
   clampThinkingLevel,

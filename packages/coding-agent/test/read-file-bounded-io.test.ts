@@ -14,6 +14,7 @@ it("reads no more than max + 1 bytes and closes the handle on oversized input", 
       return { bytesRead: length };
     }),
     close,
+    stat: async () => ({ size: 0 }),
   });
   await expect(readFileBounded("growing-image", 100_000)).rejects.toThrow("byte size limit");
   expect(consumed).toBe(100_001);
@@ -23,7 +24,7 @@ it("reads no more than max + 1 bytes and closes the handle on oversized input", 
 it("closes handles on read errors and handles short reads without truncating the source", async () => {
   const close = vi.fn(async () => {});
   const read = vi.fn().mockRejectedValueOnce(new Error("read failed"));
-  open.mockResolvedValue({ read, close });
+  open.mockResolvedValue({ read, close, stat: async () => ({ size: 0 }) });
   await expect(readFileBounded("failed", 10)).rejects.toThrow("read failed");
   expect(close).toHaveBeenCalledOnce();
   let remaining = 7;
@@ -35,4 +36,13 @@ it("closes handles on read errors and handles short reads without truncating the
   });
   expect(await readFileBounded("short-reads", 7)).toEqual(Buffer.alloc(7, 123));
   expect(close).toHaveBeenCalledTimes(2);
+});
+
+it("rejects a known oversized source before reading any bytes", async () => {
+  const read = vi.fn();
+  const close = vi.fn();
+  open.mockResolvedValue({ read, close, stat: async () => ({ size: 11 }) });
+  await expect(readFileBounded("oversized", 10)).rejects.toThrow("byte size limit");
+  expect(read).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledOnce();
 });

@@ -40,8 +40,10 @@ import { formatProviderError, normalizeProviderError } from "../utils/error-body
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair } from "../utils/json-parse.ts";
+import { projectContextForModelMediaPolicy } from "../utils/media-policy.ts";
 import { MeasuredAssistantStream } from "../utils/model-performance.ts";
 import { modelFailure } from "../utils/model-retry.ts";
+import { finalizeProviderCacheControl } from "../utils/provider-cache.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
@@ -536,7 +538,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   options?: AnthropicOptions,
 ): AssistantMessageEventStream => {
   const stream = new MeasuredAssistantStream(options);
-  const normalizedContext = resolveTranscript(
+  let normalizedContext = resolveTranscript(
     context,
     getAnthropicCompat(model).supportsMidConvoSystemMessages,
   );
@@ -570,6 +572,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
     const completeCalls = new Set<ToolCall>();
     let invalidToolInput: unknown;
     try {
+      normalizedContext = projectContextForModelMediaPolicy(normalizedContext, model);
       let client: Anthropic;
       let isOAuth: boolean;
       let usageModel = model;
@@ -1154,7 +1157,27 @@ function buildParams(
   const compat = getAnthropicCompat(model);
   const initialSystemMessage = getInitialSystemMessage(context.messages);
   const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
-  const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+  const initialSystemSegments = initialSystemMessage
+    ? [
+        typeof initialSystemMessage.content === "string"
+          ? initialSystemMessage.content
+          : initialSystemMessage.content.map((block) => block.text).join("\n\n"),
+        Object.values(initialSystemMessage.sections ?? {})
+          .filter((value): value is string => value !== null)
+          .join("\n\n"),
+      ]
+        .filter(Boolean)
+        .map((text) => ({
+          type: "text" as const,
+          text: sanitizeSurrogates(text),
+          ...(cacheControl ? { cache_control: cacheControl } : {}),
+        }))
+    : [];
+  const transformedMessages = transformMessages(
+    finalizeProviderCacheControl(context.messages, { skipCacheWrite: options?.skipCacheWrite }),
+    model,
+    normalizeToolCallId,
+  );
   const conversationMessages = initialSystemMessage ? transformedMessages.slice(1) : transformedMessages;
   // Native tool changes reference tools by name, so a redefined name cannot be expressed,
   // and Anthropic rejects a tool list where every tool is deferred, so there must be an
@@ -1192,25 +1215,15 @@ function buildParams(
       {
         type: "text",
         text: "You are Claude Code, Anthropic's official CLI for Claude.",
-        ...(cacheControl ? { cache_control: cacheControl } : {}),
+        ...(cacheControl && initialSystemSegments.length < 2 ? { cache_control: cacheControl } : {}),
       },
     ];
     if (initialSystemText) {
-      params.system.push({
-        type: "text",
-        text: sanitizeSurrogates(initialSystemText),
-        ...(cacheControl ? { cache_control: cacheControl } : {}),
-      });
+      params.system.push(...initialSystemSegments);
     }
   } else if (initialSystemText) {
     // Add cache control to system prompt for non-OAuth tokens
-    params.system = [
-      {
-        type: "text",
-        text: sanitizeSurrogates(initialSystemText),
-        ...(cacheControl ? { cache_control: cacheControl } : {}),
-      },
-    ];
+    params.system = initialSystemSegments;
   }
 
   // Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
@@ -1325,7 +1338,7 @@ function normalizeToolCallId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 }
 
-function convertToolResult(msg: ToolResultMessage): ContentBlockParam {
+function convertToolResult(msg: ToolResultMessage): Extract<ContentBlockParam, { type: "tool_result" }> {
   return {
     type: "tool_result",
     tool_use_id: msg.toolCallId,
@@ -1362,6 +1375,7 @@ function convertMessages(
 
   for (let i = 0; i < transformedMessages.length; i++) {
     const msg = transformedMessages[i];
+    const firstParamIndex = params.length;
 
     if (msg.role === "system") {
       // Later system messages only reach this point when the model accepts them natively;
@@ -1383,7 +1397,11 @@ function convertMessages(
           });
         }
       }
-      if (blocks.length > 0) pendingSystemMessages.push({ role: "system", content: blocks });
+      if (blocks.length > 0) {
+        const pending: MessageParam = { role: "system", content: blocks };
+        if (msg.cacheControl && cacheControl) markMessageCacheControl(pending, cacheControl);
+        pendingSystemMessages.push(pending);
+      }
     } else if (msg.role === "user") {
       if (typeof msg.content === "string") {
         if (msg.content.trim().length > 0) {
@@ -1496,7 +1514,10 @@ function convertMessages(
       const toolResults: ContentBlockParam[] = [];
       let j = i;
       while (j < transformedMessages.length && transformedMessages[j].role === "toolResult") {
-        toolResults.push(convertToolResult(transformedMessages[j] as ToolResultMessage));
+        const result = transformedMessages[j] as ToolResultMessage;
+        const block = convertToolResult(result);
+        if (result.cacheControl && cacheControl) block.cache_control = cacheControl;
+        toolResults.push(block);
         j++;
       }
 
@@ -1508,38 +1529,11 @@ function convertMessages(
         content: toolResults,
       });
     }
+    if (msg.role !== "toolResult" && msg.cacheControl && cacheControl && params.length > firstParamIndex)
+      markMessageCacheControl(params[params.length - 1], cacheControl);
   }
 
   flushPendingSystemMessages();
-
-  // Add cache_control to the last user or system message to cache conversation history
-  if (cacheControl && params.length > 0) {
-    const lastMessage = params[params.length - 1];
-    if (lastMessage.role === "user" || lastMessage.role === "system") {
-      if (Array.isArray(lastMessage.content)) {
-        const lastBlock = lastMessage.content[lastMessage.content.length - 1];
-        if (
-          lastBlock &&
-          (lastBlock.type === "text" ||
-            lastBlock.type === "image" ||
-            lastBlock.type === "tool_result" ||
-            lastBlock.type === "tool_addition" ||
-            lastBlock.type === "tool_removal")
-        ) {
-          (lastBlock as ContentBlockParam & { cache_control?: CacheControlEphemeral }).cache_control =
-            cacheControl;
-        }
-      } else if (typeof lastMessage.content === "string") {
-        lastMessage.content = [
-          {
-            type: "text",
-            text: lastMessage.content,
-            cache_control: cacheControl,
-          },
-        ];
-      }
-    }
-  }
 
   return { messages: params, assistantLevels };
 }
@@ -1636,5 +1630,17 @@ function mapStopReason(
     default:
       // Unknown reasons must not turn an incomplete or rejected request into success.
       throw new Error(`Unhandled stop reason: ${reason}`);
+  }
+}
+
+function markMessageCacheControl(message: MessageParam, cacheControl: CacheControlEphemeral): void {
+  if (typeof message.content === "string")
+    message.content = [{ type: "text", text: message.content, cache_control: cacheControl }];
+  else {
+    const block = message.content.findLast(
+      (block) => !["thinking", "redacted_thinking"].includes(block.type),
+    );
+    if (block)
+      (block as ContentBlockParam & { cache_control?: CacheControlEphemeral }).cache_control = cacheControl;
   }
 }

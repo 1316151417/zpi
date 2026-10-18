@@ -89,6 +89,14 @@ export class SettingsManager {
       keepRecentTokens: resolve("keepRecentTokens", 20000),
     };
   }
+  getMicrocompactSettings(): import("./microcompact.ts").MicrocompactConfig {
+    return {
+      ...this.settings.compaction?.microcompact,
+      enabled:
+        this.settings.compaction?.enabled !== false &&
+        this.settings.compaction?.microcompact?.enabled === true,
+    };
+  }
   getRetrySettings(): RetryPolicy {
     const config = this.settings.retry;
     return {
