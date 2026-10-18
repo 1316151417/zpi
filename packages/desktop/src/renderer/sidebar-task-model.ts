@@ -1,9 +1,11 @@
 // Ported from ZCode taskListOrdering, taskListItemPresentation, taskTimelineGroups,
 // sidebarTaskPreferences and workspaceTaskPagination (Apache-2.0), 872ad960.
 export type TaskSortBy = "created" | "updated";
+export type GroupTaskSortBy = TaskSortBy | "manual";
 export interface TaskPreferences {
   organizeBy: "grouped" | "project" | "chronological";
   sortBy: TaskSortBy;
+  groupSortBy?: GroupTaskSortBy;
 }
 export const taskPreferencesKey = "zpi.sidebarTaskPreferences";
 export function readTaskPreferences(raw: string | null): TaskPreferences {
@@ -17,6 +19,8 @@ export function readTaskPreferences(raw: string | null): TaskPreferences {
     organizeBy:
       value?.organizeBy === "grouped" || value?.organizeBy === "chronological" ? value.organizeBy : "project",
     sortBy: value?.sortBy === "created" ? "created" : "updated",
+    groupSortBy:
+      value?.groupSortBy === "manual" || value?.groupSortBy === "created" ? value.groupSortBy : "updated",
   };
 }
 interface TaskTime {

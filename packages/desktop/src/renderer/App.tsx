@@ -719,9 +719,7 @@ export function App() {
                       </ActionHint>
                     )}
                   </div>
-                  {taskPreferences.organizeBy !== "grouped" && (
-                    <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} />
-                  )}
+                  <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} />
                 </div>
                 {pinned.length > 0 && (
                   <section className="pinned-tasks" aria-label="置顶任务">
@@ -733,6 +731,7 @@ export function App() {
                   <TaskGroups
                     state={state.taskGroups}
                     records={records}
+                    sortBy={taskPreferences.groupSortBy ?? "updated"}
                     selected={selected}
                     collapsed={collapsedGroups}
                     setCollapsed={setCollapsedGroups}

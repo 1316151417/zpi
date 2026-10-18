@@ -9,9 +9,37 @@ import { expect, test } from "../helpers/test.ts";
 import { expectNoCornerTooltipDuring } from "../helpers/tooltip.ts";
 import { seedHistory } from "../history-fixture.ts";
 
-async function grouped(page: Page) {
+async function expectToolbarFits(page: Page) {
+  await expect
+    .poll(() =>
+      page.locator(".sidebar-task-toolbar").evaluate((toolbar) => {
+        const sidebar = toolbar.closest(".sidebar");
+        if (!sidebar) throw new Error("Missing sidebar");
+        const bounds = sidebar.getBoundingClientRect();
+        return Array.from(toolbar.querySelectorAll("button")).flatMap((button) => {
+          const rect = button.getBoundingClientRect();
+          return rect.left < bounds.left || rect.right > bounds.right || rect.width < 24
+            ? [
+                {
+                  label: button.ariaLabel ?? button.textContent,
+                  width: rect.width,
+                  overflow: rect.right - bounds.right,
+                },
+              ]
+            : [];
+        });
+      }),
+    )
+    .toEqual([]);
+}
+
+async function grouped(page: Page, manual = true) {
   await page.getByRole("button", { name: "分组", exact: true }).click();
   await expect(page.getByRole("button", { name: "新建分组", exact: true })).toBeVisible();
+  if (manual) {
+    await page.getByRole("button", { name: /^任务排序：/ }).click();
+    await page.getByRole("menuitemradio", { name: "手动排序", exact: true }).click();
+  }
 }
 async function createGroup(page: Page, name: string) {
   await page.getByRole("button", { name: "新建分组", exact: true }).click();
@@ -24,6 +52,85 @@ async function createGroup(page: Page, name: string) {
   await expect(page.getByRole("menuitemradio", { name: "灰色", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: `分组 ${name}`, exact: true })).toBeVisible();
 }
+
+test("grouped tasks default to recent activity and retain independent manual order through sorting and reload", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-sort-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const now = Date.now();
+  for (const [id, createdAt, updatedAt] of [
+    ["root-old", now - 400000, now - 60000],
+    ["root-new", now - 300000, now - 200000],
+    ["group-old", now - 200000, now - 60000],
+    ["group-new", now - 100000, now - 100000],
+  ] as const)
+    seedHistory(dir, project, 0, { id, createdAt, updatedAt });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    const saved = await page.evaluate(async () => {
+      const created = await window.zpi.updateTaskGroups({ type: "create" });
+      if (!created.ok) throw new Error(created.error.message);
+      const groupId = created.value.groups[0].id;
+      for (const id of ["group-new", "group-old"]) {
+        const result = await window.zpi.updateTaskGroups({ type: "moveTask", id, groupId });
+        if (!result.ok) throw new Error(result.error.message);
+      }
+      const ordered = await window.zpi.updateTaskGroups({ type: "taskTop", id: "root-new" });
+      if (!ordered.ok) throw new Error(ordered.error.message);
+      return ordered.value;
+    });
+    await page.reload();
+    await grouped(page, false);
+    await expectToolbarFits(page);
+    const rootRows = page.locator(".task-groups > .grouped-task-wrapper [data-testid=session-row]");
+    const groupRows = page.locator(".task-group-content [data-testid=session-row]");
+    const ids = (rows: typeof rootRows) =>
+      rows.evaluateAll((elements) => elements.map((row) => row.getAttribute("data-session-id")));
+    await expect.poll(() => ids(rootRows)).toEqual(["root-old", "root-new"]);
+    await expect.poll(() => ids(groupRows)).toEqual(["group-old", "group-new"]);
+    await rootRows.first().hover();
+    await expect(rootRows.first().getByRole("button", { name: /^移动到顶部 / })).toHaveCount(0);
+    await page.screenshot({ path: test.info().outputPath("grouped-updated-order.png") });
+    const sort = page.getByRole("button", { name: /^任务排序：/ });
+    await sort.click();
+    await expect(page.getByRole("menuitemradio", { name: "更新时间", exact: true })).toBeChecked();
+    await expect(page.getByRole("menuitemradio", { name: "时间线", exact: true })).toHaveCount(0);
+    await page.getByRole("menuitemradio", { name: "创建时间", exact: true }).click();
+    await expect.poll(() => ids(rootRows)).toEqual(["root-new", "root-old"]);
+    await expect.poll(() => ids(groupRows)).toEqual(["group-new", "group-old"]);
+    await sort.click();
+    await page.getByRole("menuitemradio", { name: "手动排序", exact: true }).click();
+    await expect.poll(() => ids(groupRows)).toEqual(saved.members[saved.groups[0].id]);
+    await rootRows.first().hover();
+    await expect(rootRows.first().getByRole("button", { name: /^移动到顶部 / })).toBeVisible();
+    await page.reload();
+    await expect(sort).toHaveAccessibleName("任务排序：手动排序");
+    await expect.poll(() => ids(groupRows)).toEqual(saved.members[saved.groups[0].id]);
+    expect(
+      await page.evaluate(async () => {
+        const result = await window.zpi.getTaskGroups();
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value;
+      }),
+    ).toEqual(saved);
+    await page.getByRole("button", { name: "项目", exact: true }).click();
+    await page.getByRole("button", { name: "筛选和排序", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "更新时间", exact: true })).toBeChecked();
+    await page.keyboard.press("Escape");
+    await page.evaluate(async () => {
+      const result = await window.zpi.updatePreferences({ sidebarWidth: 200, fontSize: 20 });
+      if (!result.ok) throw new Error(result.error.message);
+    });
+    await page.reload();
+    await grouped(page, false);
+    await expectToolbarFits(page);
+    await page.screenshot({ path: test.info().outputPath("grouped-narrow-toolbar.png") });
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
 
 test("grouped task archive uses the menu icon and retains history while draft X discards the draft", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-group-archive-"));

@@ -31,6 +31,7 @@ export function TaskGroupRow({
   overlay = false,
   tooltipsDisabled = false,
   interactionDisabled = false,
+  manualOrder = true,
 }: {
   record: SessionRecord;
   state: TaskGroupState;
@@ -39,6 +40,7 @@ export function TaskGroupRow({
   overlay?: boolean;
   tooltipsDisabled?: boolean;
   interactionDisabled?: boolean;
+  manualOrder?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [changes, setChanges] = useState<{ added: number; removed: number }>();
@@ -65,12 +67,12 @@ export function TaskGroupRow({
   const composing = useRef(false);
   const draggable = useDraggable({
     id: `task:${record.id}`,
-    disabled: interactionDisabled || overlay || menuOpen || renaming || Boolean(record.draft),
+    disabled: !manualOrder || interactionDisabled || overlay || menuOpen || renaming || Boolean(record.draft),
     data: { type: "task", id: record.id },
   });
   const droppable = useDroppable({
     id: `task:${record.id}`,
-    disabled: interactionDisabled || overlay || Boolean(record.draft),
+    disabled: !manualOrder || interactionDisabled || overlay || Boolean(record.draft),
     data: { type: "task", id: record.id },
   });
   const groupId = taskGroupFor(state, record.id);
@@ -176,21 +178,23 @@ export function TaskGroupRow({
             </span>
             {!overlay && (
               <span className="grouped-task-actions">
-                <ActionHint
-                  label="移动到顶部"
-                  appearance="control"
-                  open={tooltipsDisabled ? false : undefined}
-                >
-                  <button
-                    aria-label={`移动到顶部 ${record.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      moveTop();
-                    }}
+                {manualOrder && (
+                  <ActionHint
+                    label="移动到顶部"
+                    appearance="control"
+                    open={tooltipsDisabled ? false : undefined}
                   >
-                    <ArrowUpToLine size={14} />
-                  </button>
-                </ActionHint>
+                    <button
+                      aria-label={`移动到顶部 ${record.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        moveTop();
+                      }}
+                    >
+                      <ArrowUpToLine size={14} />
+                    </button>
+                  </ActionHint>
+                )}
                 <ActionHint
                   label="归档任务"
                   appearance="control"
@@ -339,10 +343,12 @@ export function TaskGroupRow({
                 </Context.SubContent>
               </Context.Portal>
             </Context.Sub>
-            <Context.Item className="menu-item" onSelect={moveTop}>
-              <ArrowUpToLine size={16} />
-              移动到顶部
-            </Context.Item>
+            {manualOrder && (
+              <Context.Item className="menu-item" onSelect={moveTop}>
+                <ArrowUpToLine size={16} />
+                移动到顶部
+              </Context.Item>
+            )}
             <Context.Separator className="menu-separator" />
             <TaskMenuItems
               record={record}

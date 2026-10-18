@@ -619,6 +619,7 @@
 
 /* ZCode keeps task sections in a natural scroll flow and the footer outside it. */
 .sidebar-sections {
+  container-type: inline-size;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -2574,17 +2575,13 @@
   justify-content: flex-end;
 }
 .provider-delete-dialog footer button {
-  display: flex;
-  justify-content: space-between;
+  display: inline-flex;
+  justify-content: center;
   align-items: center;
   gap: 12px;
   height: 36px;
   padding: 4px 16px;
   border-radius: 8px;
-  min-width: 112px;
-}
-.provider-delete-dialog footer .primary {
-  min-width: 128px;
 }
 .provider-delete-dialog footer span {
   font-family: var(--font-code);
@@ -3162,6 +3159,7 @@
 .sidebar .task-view-trigger,
 .sidebar .task-group-toggle {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 24px;
@@ -5171,6 +5169,14 @@
 }
 .sidebar-task-toolbar:has(.task-group-create) .sidebar-task-toolbar-main {
   flex: 1;
+}
+@container (max-width: 220px) {
+  .sidebar .task-primary-tabs button {
+    padding-inline: 4px;
+  }
+  .sidebar .task-primary-tabs svg {
+    display: none;
+  }
 }
 .task-groups {
   min-width: 0;

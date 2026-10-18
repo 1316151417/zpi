@@ -55,13 +55,31 @@ it("formats the activity time using source floor boundaries", () => {
     expect(formatTaskRelativeTime(now - age, now)).toBe(label);
 });
 it("validates both independent preferences including null and malformed JSON", () => {
-  expect(readTaskPreferences(null)).toEqual({ organizeBy: "project", sortBy: "updated" });
+  expect(readTaskPreferences(null)).toEqual({
+    organizeBy: "project",
+    sortBy: "updated",
+    groupSortBy: "updated",
+  });
   expect(readTaskPreferences('{"organizeBy":"chronological","sortBy":"bad"}')).toEqual({
     organizeBy: "chronological",
     sortBy: "updated",
+    groupSortBy: "updated",
   });
   for (const raw of ["null", "{}", "invalid", "[]"])
-    expect(readTaskPreferences(raw)).toEqual({ organizeBy: "project", sortBy: "updated" });
+    expect(readTaskPreferences(raw)).toEqual({
+      organizeBy: "project",
+      sortBy: "updated",
+      groupSortBy: "updated",
+    });
+  for (const groupSortBy of ["updated", "created", "manual"])
+    expect(
+      readTaskPreferences(JSON.stringify({ organizeBy: "grouped", sortBy: "created", groupSortBy })),
+    ).toEqual({
+      organizeBy: "grouped",
+      sortBy: "created",
+      groupSortBy,
+    });
+  expect(readTaskPreferences('{"organizeBy":"grouped","groupSortBy":"invalid"}').groupSortBy).toBe("updated");
 });
 it("paginates at 5/20 boundaries and hides stale hasMore once the current limit is not filled", () => {
   for (const size of [5, 20])

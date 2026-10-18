@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
+import { shortcutCommands } from "../../packages/desktop/src/shared/shortcuts.ts";
 import { done, fakeServer } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
@@ -41,7 +42,7 @@ test("shortcut search, capture, cancel, clear, reset confirmation and failure fe
     const page = await app.firstWindow();
     await settings(page);
     const rows = page.locator("[data-shortcut-command]");
-    await expect(rows).toHaveCount(19);
+    await expect(rows).toHaveCount(shortcutCommands.length);
     const search = page.getByRole("textbox", { name: "搜索命令或快捷键" });
     await search.fill("选择模型");
     await expect(rows).toHaveCount(1);
@@ -64,7 +65,7 @@ test("shortcut search, capture, cancel, clear, reset confirmation and failure fe
     await page.keyboard.press("Backspace");
     await page.keyboard.press("Escape");
     await expect(keySearch).toHaveAttribute("aria-pressed", "false");
-    await expect(rows).toHaveCount(19);
+    await expect(rows).toHaveCount(shortcutCommands.length);
     for (const [command, label, shiftKey] of [
       ["quick-chat", "快速对话", false],
       ["quick-chat-new", "新建快速对话", true],

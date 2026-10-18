@@ -18,6 +18,8 @@ export function seedHistory(
     interrupted?: boolean;
     outputBytes?: number;
     projectId?: string | null;
+    createdAt?: number;
+    updatedAt?: number;
   } = {},
 ) {
   const id = options.id ?? randomUUID();
@@ -37,8 +39,8 @@ export function seedHistory(
     projectId: options.projectId ?? null,
     title: "历史标题",
     draft: false,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: options.createdAt ?? Date.now(),
+    updatedAt: options.updatedAt ?? Date.now(),
     status: options.interrupted ? "running" : "completed",
     cwd,
     sessionFile: relative(dir, file),
