@@ -488,7 +488,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                       [
                         [
                           "showModelPerformance",
-                          "显示模型性能",
+                          "显示模型性能与用量",
                           "在输入框下方显示整个任务的性能与用量，点击查看时间和 token 明细。",
                         ],
                         [

@@ -47,7 +47,7 @@ test("fits cumulative metrics below the composer without changing the bottom hei
     await expect(indicator).toHaveCount(0);
     const settings = page.getByRole("region", { name: "设置", exact: true });
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    const toggle = settings.getByRole("checkbox", { name: "显示模型性能", exact: true });
+    const toggle = settings.getByRole("checkbox", { name: "显示模型性能与用量", exact: true });
     await expect(toggle).toBeChecked();
     await toggle.uncheck();
     await settings.getByLabel("关闭设置").click();
