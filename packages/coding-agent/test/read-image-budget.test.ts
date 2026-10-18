@@ -2,8 +2,8 @@ import { randomFillSync } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Jimp, JimpMime } from "jimp";
-import sharp from "sharp";
+import bmp from "bmp-js";
+import sharp, { type JpegOptions } from "sharp";
 import { expect, it, vi } from "vitest";
 import { SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
@@ -41,30 +41,55 @@ it("enforces three independent budgets at the exact 150,000 / 200,000 boundary",
   ).toMatchObject({ maxBytes: 5 * 1024 * 1024, maxTokens: 25_000, tokenToBase64CharRatio: 0.125 });
 });
 it("compresses a noisy 320×2400 PNG to bounded JPEG, with no resized PNG candidate", async () => {
-  const spy = vi.spyOn(Jimp.prototype, "getBuffer");
+  const source = await png(320, 2400, true);
+  const spy = vi.spyOn(sharp.prototype, "png");
   try {
-    const result = await resizeImageInProcess(await png(320, 2400, true), "image/png", readOptions);
+    const result = await resizeImageInProcess(source, "image/png", readOptions);
     expect(result.mimeType).toBe("image/jpeg");
     expect(result.data.length).toBeLessThanOrEqual(200_000);
     expect(Buffer.from(result.data, "base64").length).toBeLessThanOrEqual(150_000);
     expect(Math.max(result.width, result.height)).toBeLessThanOrEqual(2000);
-    expect(spy.mock.calls.some(([mime]) => mime === JimpMime.png)).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
   } finally {
     spy.mockRestore();
   }
 });
-it("keeps fitting 64×32 originals byte-identical and gives PNG one original-size deflate attempt", async () => {
+it("keeps fitting 64×32 originals byte-identical and gives PNG one original-size lossless attempt", async () => {
   const bytes = await png(64, 32);
   const result = await resizeImageInProcess(bytes, "image/png", readOptions);
   expect(result).toMatchObject({ strategy: "original", data: bytes.toString("base64") });
-  const spy = vi.spyOn(Jimp.prototype, "getBuffer");
+  const source = await png(320, 320, true);
+  const spy = vi.spyOn(sharp.prototype, "png");
+  const resize = vi.spyOn(sharp.prototype, "resize");
+  const jpeg = vi.spyOn(sharp.prototype, "jpeg");
   try {
-    await resizeImageInProcess(await png(320, 320, true), "image/png", readOptions);
-    expect(spy.mock.calls.filter(([mime]) => mime === JimpMime.png)).toEqual([
-      [JimpMime.png, { deflateLevel: 9, deflateStrategy: 3 }],
-    ]);
+    await resizeImageInProcess(source, "image/png", readOptions);
+    expect(spy).toHaveBeenCalledExactlyOnceWith({ compressionLevel: 9, adaptiveFiltering: true });
+    expect(resize.mock.contexts).not.toContain(spy.mock.contexts[0]);
+    expect(jpeg).toHaveBeenCalledExactlyOnceWith({ quality: 80 });
   } finally {
     spy.mockRestore();
+    resize.mockRestore();
+    jpeg.mockRestore();
+  }
+});
+it("stops at a fitting lossless PNG candidate and preserves alpha and pixels", async () => {
+  const pixels = Buffer.from([255, 0, 0, 0, 0, 255, 0, 128, 0, 0, 255, 255, 255, 255, 0, 64]);
+  const source = await sharp(pixels, { raw: { width: 2, height: 2, channels: 4 } })
+    .png()
+    .toBuffer();
+  const jpeg = vi.spyOn(sharp.prototype, "jpeg");
+  try {
+    const result = await resizeImageInProcess(Buffer.concat([source, Buffer.alloc(1024)]), "image/png", {
+      ...readOptions,
+      maxBytes: 512,
+    });
+    expect(result).toMatchObject({ strategy: "png-optimized", width: 2, height: 2, mimeType: "image/png" });
+    expect(result.data.length).toBeLessThanOrEqual(512);
+    expect(await sharp(Buffer.from(result.data, "base64")).raw().toBuffer()).toEqual(pixels);
+    expect(jpeg).not.toHaveBeenCalled();
+  } finally {
+    jpeg.mockRestore();
   }
 });
 it("accepts fully decodable PNGs with trailing bytes without changing the compression ladder", async () => {
@@ -147,31 +172,93 @@ it("rejects source size before reading contents and catches adapters that violat
   }
 });
 
-it("tries the exact JPEG ladder, non-cumulative scales and original-based fallback edges", async () => {
-  const bytes = await png(64, 32, true);
-  const spy = vi.spyOn(Jimp.prototype, "getBuffer");
-  try {
-    await expect(
-      resizeImageInProcess(bytes, "image/png", { ...readOptions, maxBytes: 1 }),
-    ).rejects.toMatchObject({ code: "too_large" });
-    expect(spy.mock.calls).toHaveLength(23);
-    expect(spy.mock.calls.slice(1, 5).map((call) => call[1])).toEqual(
-      [80, 60, 40, 20].map((quality) => ({ quality })),
-    );
-    expect([1, 5, 9, 13, 17].map((index) => spy.mock.contexts[index].bitmap.width)).toEqual([
-      64, 48, 32, 16, 64,
-    ]);
-    expect(
-      spy.mock.calls
-        .slice(17)
-        .every(
-          (call) => call[0] === JimpMime.jpeg && JSON.stringify(call[1]) === JSON.stringify({ quality: 20 }),
-        ),
-    ).toBe(true);
-  } finally {
-    spy.mockRestore();
-  }
-});
+it.each([64, 2400])(
+  "tries the exact JPEG ladder, non-cumulative scales and original-based edges (%ipx)",
+  async (width) => {
+    const bytes = await png(width, width / 2);
+    const jpeg = vi.spyOn(sharp.prototype, "jpeg");
+    const lossless = vi.spyOn(sharp.prototype, "png");
+    const resize = vi.spyOn(sharp.prototype, "resize");
+    const buffers = vi.spyOn(sharp.prototype, "toBuffer");
+    try {
+      await expect(
+        resizeImageInProcess(bytes, "image/png", { ...readOptions, maxBytes: 1 }),
+      ).rejects.toMatchObject({ code: "too_large" });
+      expect(lossless.mock.calls).toHaveLength(width <= 2000 ? 1 : 0);
+      expect(jpeg.mock.calls.map(([options]) => (options as JpegOptions | undefined)?.quality)).toEqual([
+        ...Array.from({ length: 4 }, () => [80, 60, 40, 20]).flat(),
+        ...Array(6).fill(20),
+      ]);
+      const outputs: unknown[] = await Promise.all(buffers.mock.results.map((call) => call.value));
+      const metadata = await Promise.all(
+        outputs.filter(Buffer.isBuffer).map((bytes) => sharp(bytes).metadata()),
+      );
+      const widths = metadata.filter((info) => info.format === "jpeg").map((info) => info.width);
+      const bounded = Math.min(width, 2000);
+      expect(widths).toEqual([
+        ...[1, 0.75, 0.5, 0.25].flatMap((scale) => Array(4).fill(Math.round(bounded * scale))),
+        ...[1000, 800, 600, 400, 300, 200].map((edge) => Math.min(bounded, edge)),
+      ]);
+      expect(resize).toHaveBeenCalledTimes(width <= 2000 ? 3 : 10);
+    } finally {
+      jpeg.mockRestore();
+      lossless.mockRestore();
+      resize.mockRestore();
+      buffers.mockRestore();
+    }
+  },
+);
+
+it.each(["jpeg", "gif", "bmp"] as const)(
+  "retains format-preserving candidates in their original order for %s",
+  async (format) => {
+    const source =
+      format === "bmp"
+        ? bmp.encode({ data: Buffer.alloc(16 * 8 * 4), width: 16, height: 8 }).data
+        : await sharp(await png(16, 8))
+            .toFormat(format)
+            .toBuffer();
+    const jpeg = vi.spyOn(sharp.prototype, "jpeg");
+    const pngEncoder = vi.spyOn(sharp.prototype, "png");
+    const gif = vi.spyOn(sharp.prototype, "gif");
+    try {
+      await expect(
+        resizeImageInProcess(source, `image/${format}`, {
+          ...readOptions,
+          maxWidth: 8,
+          maxHeight: 8,
+          maxBytes: 1,
+        }),
+      ).rejects.toMatchObject({ code: "too_large" });
+      const attempts = [
+        ...jpeg.mock.calls.map(([options], index) => ({
+          order: jpeg.mock.invocationCallOrder[index],
+          name: `jpeg:${(options as JpegOptions | undefined)?.quality}`,
+        })),
+        ...pngEncoder.mock.calls.map((_, index) => ({
+          order: pngEncoder.mock.invocationCallOrder[index],
+          name: "png",
+        })),
+        ...gif.mock.calls.map((_, index) => ({ order: gif.mock.invocationCallOrder[index], name: "gif" })),
+      ]
+        .sort((a, b) => a.order - b.order)
+        .map((attempt) => attempt.name);
+      const qualities = ["jpeg:80", "jpeg:60", "jpeg:40", "jpeg:20"];
+      const preserve = format === "jpeg" ? qualities : [format === "bmp" ? "png" : "gif"];
+      expect(attempts).toEqual([
+        format === "jpeg" ? "jpeg:100" : preserve[0],
+        ...preserve,
+        ...qualities,
+        ...Array.from({ length: 3 }, () => [...preserve, ...qualities]).flat(),
+        ...Array(6).fill("jpeg:20"),
+      ]);
+    } finally {
+      jpeg.mockRestore();
+      pngEncoder.mockRestore();
+      gif.mockRestore();
+    }
+  },
+);
 
 it("uses one resize snapshot for processing and the defensive budget check", async () => {
   const readProfile = vi.fn().mockReturnValueOnce({ maxBytes: 200 }).mockReturnValue({ maxBytes: 500 });

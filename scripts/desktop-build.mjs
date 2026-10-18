@@ -15,7 +15,6 @@ export const mainBuild = {
     "diff",
     "ignore",
     "bmp-js",
-    "jimp",
   ],
   external: ["electron", "node-pty", "sharp"],
   target: "node24",

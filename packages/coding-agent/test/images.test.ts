@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import { imageLimits } from "../src/core/image-limits.ts";
 import { prepareInlineImage, processImage } from "../src/core/images.ts";
 import { resizeImageInProcess } from "../src/core/tools/pi/utils/image-resize-core.ts";
-import { detectSupportedImageMimeType } from "../src/core/tools/pi/utils/mime.ts";
+import { detectSupportedImageMimeType, isAnimatedPng } from "../src/core/tools/pi/utils/mime.ts";
 
 async function image(width: number, height: number) {
   return sharp({ create: { width, height, channels: 3, background: "red" } })
@@ -192,6 +192,17 @@ test.each([
         Buffer.from(order.flatMap((index) => pixels[index])),
       );
     }
+    // Force an actual re-encode so orientation must be applied to pixels before metadata is removed.
+    const converted = await prepareInlineImage(Buffer.concat([original, Buffer.alloc(1024)]), "image/png", {
+      resizeOptions: { maxBytes: 512 },
+    });
+    expect(converted).toMatchObject({ ok: true, mimeType: "image/png", strategy: "png-optimized" });
+    if (!converted.ok) return;
+    const convertedBytes = Buffer.from(converted.data, "base64");
+    expect(await sharp(convertedBytes).metadata()).toMatchObject({ width, height });
+    expect(await sharp(convertedBytes).removeAlpha().raw().toBuffer()).toEqual(
+      Buffer.from(order.flatMap((index) => pixels[index])),
+    );
   },
 );
 
@@ -517,6 +528,19 @@ test("invalid budgets and corrupt or over-limit sources cannot become inline pay
   oversizedBmp.writeInt32LE(imageLimits.pixels + 1, 18);
   await expect(processImage(oversizedBmp)).rejects.toThrow("像素超限");
   expect(await prepareInlineImage(oversizedBmp, "image/bmp")).toMatchObject({ ok: false });
+  const header = Buffer.from(original.subarray(16, 29));
+  header.writeUInt32BE(8000, 0);
+  header.writeUInt32BE(6000, 4);
+  const oversizedPng = Buffer.concat([
+    original.subarray(0, 8),
+    pngChunk("IHDR", header),
+    original.subarray(33),
+  ]);
+  await expect(processImage(oversizedPng)).rejects.toThrow("pixel limit");
+  expect(await prepareInlineImage(oversizedPng, "image/png")).toMatchObject({
+    ok: false,
+    code: "processing_failed",
+  });
   await expect(processImage(Buffer.alloc(imageLimits.sourceBytes + 1))).rejects.toThrow("10 MiB");
 });
 
@@ -602,6 +626,15 @@ test("animated PNGs are recognized even when the decoder reports only their firs
   expect(bytes).toEqual(original);
   expect(prepared.hints.join("\n")).not.toContain("Animated image");
   expect(await sharp(bytes).rotate().removeAlpha().raw().toBuffer()).toEqual(Buffer.from([255, 0, 0]));
+  const converted = await prepareInlineImage(Buffer.concat([original, Buffer.alloc(1024)]), "image/png", {
+    resizeOptions: { maxBytes: 512 },
+  });
+  expect(converted).toMatchObject({ ok: true, mimeType: "image/png", strategy: "png-optimized" });
+  if (!converted.ok) return;
+  expect(converted.hints).toContain("[Animated image: only the first frame is sent.]");
+  const convertedBytes = Buffer.from(converted.data, "base64");
+  expect(isAnimatedPng(convertedBytes)).toBe(false);
+  expect(await sharp(convertedBytes).removeAlpha().raw().toBuffer()).toEqual(Buffer.from([255, 0, 0]));
 });
 
 test.each(["tEXt", "zTXt", "iTXt"])("fitting PNG %s comments are retained byte for byte", async (type) => {
