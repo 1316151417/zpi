@@ -38,6 +38,12 @@ html[data-quick-chat="true"] #root {
   -webkit-app-region: no-drag;
 }
 
+/* The fixed image preview covers the header; a drag region there would swallow the
+   close button and backdrop clicks, so suspend dragging while the preview is open. */
+.quick-chat:has(.image-lightbox) .quick-chat-header {
+  -webkit-app-region: no-drag;
+}
+
 .quick-chat-icon-button {
   display: grid;
   place-items: center;

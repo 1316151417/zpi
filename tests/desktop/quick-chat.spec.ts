@@ -396,11 +396,17 @@ test("quick chat pastes, previews and sends temporary images without creating ma
     expect(firstSnapshot.value.session.runs[0].attachments).toHaveLength(1);
     expect(firstImage).toMatchObject({ name: "keep.png", width: 2, height: 2, mimeType: "image/png" });
     await quick.getByTestId("run").getByRole("button", { name: "预览 keep.png", exact: true }).click();
+    const header = quick.locator(".quick-chat-header");
+    await expect(header).toHaveCount(1);
     await expect(preview.getByRole("img", { name: "keep.png", exact: true })).toHaveAttribute(
       "src",
       /^data:image\/png;base64,/,
     );
+    // The preview covers the native drag header, which would otherwise move the window instead of clicking.
+    await expect(header).toHaveCSS("app-region", "no-drag");
     await preview.getByRole("button", { name: "关闭图片预览", exact: true }).click();
+    await expect(preview).toHaveCount(0);
+    await expect(header).toHaveCSS("app-region", "drag");
     await pasteImages(input, ["solo.png"]);
     await expect(sendButton).toBeEnabled();
     await expect(input).toHaveValue("");
