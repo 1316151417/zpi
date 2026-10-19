@@ -178,6 +178,88 @@ test("one compact task panel manages agents and services and retains finished hi
   }
 });
 
+test("rename dialog covers the task capsule and expanded panel in both themes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-task-panel-modal-"));
+  const server = await fakeServer((body, response) => {
+    const messages = body.messages as { role: string }[];
+    if (messages.some((message) => message.role === "tool")) {
+      send(response, chunk({ content: "Task finished" }));
+      done(response);
+      return;
+    }
+    send(
+      response,
+      chunk({
+        tool_calls: [
+          {
+            index: 0,
+            id: "background-task",
+            type: "function",
+            function: {
+              name: "bash",
+              arguments: JSON.stringify({ command: "echo done", run_in_background: true }),
+            },
+          },
+        ],
+      }),
+    );
+    done(response, "tool_calls");
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("Run a background task");
+    await editor.press("Enter");
+    await expect(page.locator("main .answer")).toContainText("Task finished");
+    const panel = page.locator(".task-activity");
+    await expect(panel).toHaveAttribute("data-running", "false");
+    await panel.getByRole("button", { name: "展开状态", exact: true }).click();
+    await panel.getByRole("button", { name: "收起为胶囊", exact: true }).click();
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((theme) => window.zpi.updatePreferences({ theme }), theme);
+      for (const mode of ["mini", "panel"]) {
+        if (mode === "panel") await panel.getByRole("button", { name: "展开状态", exact: true }).click();
+        await expect(panel).toHaveAttribute("data-display-mode", mode);
+        await page.locator(".topbar .task-more").click();
+        await page.getByRole("menuitem", { name: "重命名任务", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "重命名任务", exact: true });
+        await expect(dialog.getByRole("textbox", { name: "名称", exact: true })).toBeFocused();
+        const covered = await panel.evaluate((element) => {
+          const overlay = document.querySelector(".modal-backdrop");
+          const bounds = element.getBoundingClientRect();
+          const previous = element.style.pointerEvents;
+          // Radix disables background hit testing; enable it to test actual paint order.
+          element.style.pointerEvents = "auto";
+          try {
+            return [0.25, 0.5, 0.75].every((x) =>
+              overlay?.contains(document.elementFromPoint(bounds.left + bounds.width * x, bounds.top + 16)),
+            );
+          } finally {
+            element.style.pointerEvents = previous;
+          }
+        });
+        expect(covered).toBe(true);
+        await page.screenshot({
+          path: test.info().outputPath(`task-rename-${theme}-${mode}.png`),
+          animations: "disabled",
+        });
+        await dialog.getByRole("button", { name: "取消", exact: true }).click();
+        await expect(dialog).toBeHidden();
+        await expect(panel).toHaveAttribute("data-display-mode", mode);
+      }
+      await panel.getByRole("button", { name: "收起为胶囊", exact: true }).click();
+    }
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("terminal capsule matches ZCode and automatic layout follows the conversation width", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-terminal-status-"));
   const server = await fakeServer((body, response) => {
