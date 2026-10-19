@@ -130,6 +130,7 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const confirming = useRef(false);
+  const compositionActive = useRef(false);
   return (
     <Dialog.Root
       open={open}
@@ -140,7 +141,7 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
       <Dialog.Portal>
         <Dialog.Overlay className="modal-backdrop" />
         <Dialog.Content
-          className="modal"
+          className="modal task-rename-dialog"
           aria-label={action.title}
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
@@ -150,7 +151,10 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
         >
           <form
             onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229))
+              if (
+                event.key === "Enter" &&
+                (compositionActive.current || event.nativeEvent.isComposing || event.keyCode === 229)
+              )
                 event.preventDefault();
             }}
             onSubmit={(event) => {
@@ -168,13 +172,21 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
             <Dialog.Title asChild>
               <h2>{action.title}</h2>
             </Dialog.Title>
-            <label>
-              名称
-              <input aria-label="名称" value={value} onChange={(e) => setValue(e.target.value)} />
-            </label>
+            <input
+              aria-label="名称"
+              placeholder="任务名称"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onCompositionStart={() => {
+                compositionActive.current = true;
+              }}
+              onCompositionEnd={() => {
+                compositionActive.current = false;
+              }}
+            />
             {error && <Notice scope="input" message={error} />}
             <div className="modal-actions">
-              <button type="button" onClick={onClose}>
+              <button type="button" className="secondary" onClick={onClose}>
                 取消
               </button>
               <button type="submit" className="primary" disabled={busy}>
@@ -182,6 +194,9 @@ function ActionModal({ action, onClose: onClosed }: { action: ActionDialog; onCl
               </button>
             </div>
           </form>
+          <Dialog.Close className="task-rename-close" aria-label="关闭">
+            <X aria-hidden="true" />
+          </Dialog.Close>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
