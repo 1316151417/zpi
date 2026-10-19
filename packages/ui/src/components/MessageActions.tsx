@@ -2,7 +2,7 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Check, Copy } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 export function MessageAction({
   label,
   children,
@@ -27,6 +27,7 @@ export function ActionHint({
   hideWhenDetached,
   appearance = "message",
   open,
+  openOnFocus = appearance !== "control",
   className,
 }: {
   label: string;
@@ -38,12 +39,38 @@ export function ActionHint({
   hideWhenDetached?: boolean;
   appearance?: "message" | "control";
   open?: boolean;
+  /** Restored focus should not reveal a hint unless the pointer is already over its trigger. */
+  openOnFocus?: boolean;
   className?: string;
 }) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const pointerInside = useRef(false);
+  useEffect(() => {
+    if (open === false) setUncontrolledOpen(false);
+  }, [open]);
   return (
     <Tooltip.Provider delayDuration={0}>
-      <Tooltip.Root open={open}>
-        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+      <Tooltip.Root
+        open={open ?? uncontrolledOpen}
+        onOpenChange={(next) => {
+          if (next && !openOnFocus && !pointerInside.current) return;
+          setUncontrolledOpen(next);
+        }}
+      >
+        <Tooltip.Trigger
+          asChild
+          onPointerEnter={() => {
+            pointerInside.current = true;
+          }}
+          onPointerMove={() => {
+            pointerInside.current = true;
+          }}
+          onPointerLeave={() => {
+            pointerInside.current = false;
+          }}
+        >
+          {children}
+        </Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Content
             side={side ?? (appearance === "control" ? "top" : "bottom")}
