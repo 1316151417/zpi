@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { StateStore } from "../src/main/state-store.ts";
 import { TaskGroupsStore } from "../src/main/task-groups.ts";
-import { taskGroupDropCommand } from "../src/renderer/task-group-drag.ts";
+import {
+  taskGroupDragMotion,
+  taskGroupDropCommand,
+  taskGroupMoveCommand,
+} from "../src/renderer/task-group-drag.ts";
 import { parseCollapsedTaskGroups, pruneCollapsedTaskGroups } from "../src/renderer/task-group-expansion.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
 import {
@@ -38,6 +42,66 @@ function fixture(): TaskGroupState {
   return applyTaskGroupCommand(state, { type: "moveTask", id: "a", groupId: "g" });
 }
 const roots = (state: TaskGroupState) => state.roots.map((node) => `${node.type}:${node.id}`);
+it("commits the final preview after crossing groups and reversing around the same task", () => {
+  const origin = applyTaskGroupCommand(fixture(), { type: "moveTask", id: "b", groupId: "h" });
+  const active = { type: "task", id: "a" } as const;
+  let preview = origin;
+  for (const position of ["before", "after", "before"] as const) {
+    const command = taskGroupDropCommand(preview, active, { type: "task", id: "b" }, position);
+    if (!command) throw new Error("missing preview move");
+    preview = applyTaskGroupCommand(preview, command);
+  }
+  expect(preview.members.h).toEqual(["a", "b"]);
+  const command = taskGroupMoveCommand(origin, preview, active);
+  expect(command).toMatchObject({ groupId: "h", sourceGroupId: "g", before: { type: "task", id: "b" } });
+  expect(command && applyTaskGroupCommand(origin, command)).toEqual(preview);
+  const back = applyTaskGroupCommand(preview, { type: "moveTask", id: "a", groupId: "g", start: true });
+  expect(taskGroupMoveCommand(origin, back, active)).toBeUndefined();
+});
+it("anchors final task and group moves to visible neighbors without submitting hidden or archived tasks", () => {
+  const origin = reconcileTaskGroups(fixture(), [...records, task("hidden")]);
+  const preview = applyTaskGroupCommand(origin, {
+    type: "moveTask",
+    id: "c",
+    groupId: null,
+    after: { type: "task", id: "hidden" },
+  });
+  const visible = new Set(["a", "b", "c"]);
+  const command = taskGroupMoveCommand(origin, preview, { type: "task", id: "c" }, visible);
+  // c was already the last visible task: moving around an invisible neighbor is a no-op.
+  expect(command).toBeUndefined();
+  const beforeHidden = applyTaskGroupCommand(origin, {
+    type: "moveTask",
+    id: "a",
+    groupId: null,
+    before: { type: "task", id: "hidden" },
+  });
+  expect(taskGroupMoveCommand(origin, beforeHidden, { type: "task", id: "a" }, visible)).toMatchObject({
+    groupId: null,
+    sourceGroupId: "g",
+    after: { type: "task", id: "c" },
+  });
+  const groupPreview = applyTaskGroupCommand(origin, {
+    type: "moveGroup",
+    id: "h",
+    target: { type: "task", id: "b" },
+    position: "after",
+  });
+  const groupCommand = taskGroupMoveCommand(origin, groupPreview, { type: "group", id: "h" }, visible);
+  expect(groupCommand).toMatchObject({ target: { type: "task", id: "c" }, position: "before" });
+  expect(groupCommand && roots(applyTaskGroupCommand(origin, groupCommand))).toEqual(roots(groupPreview));
+  const taskPreview = applyTaskGroupCommand(origin, {
+    type: "moveTask",
+    id: "a",
+    groupId: "h",
+    start: true,
+  });
+  expect(taskGroupMoveCommand(origin, taskPreview, { type: "task", id: "a" }, visible)).toMatchObject({
+    groupId: "h",
+    sourceGroupId: "g",
+    start: true,
+  });
+});
 it("imports legacy tasks once in creation order, excluding child sessions, without reacting to activity timestamps", () => {
   let state = reconcileTaskGroups(emptyTaskGroups(), [
     ...records,
@@ -194,51 +258,23 @@ it("a failed disk write leaves the in-memory state unchanged", async () => {
   expect(store.get(records).groups).toEqual([]);
 });
 
-it("recomputes on drag-move direction reversal even when the target ID does not change", async () => {
-  const { taskGroupDragEvent } = await import("../src/renderer/task-group-drag.ts");
-  const state = fixture();
-  const active = { type: "task", id: "c" } as const;
+it("reverses the insertion side within the same target without losing the previous direction at rest", () => {
   const target = { type: "task", id: "b" } as const;
-  const first = taskGroupDragEvent(state, active, { deltaY: 0, position: "after" }, -10, target);
-  expect(first.command).toMatchObject({ before: target, groupId: null });
-  const reverse = taskGroupDragEvent(state, active, first.motion, -4, target);
-  expect(reverse.command).toMatchObject({ after: target, groupId: null });
-  expect(reverse.command && roots(applyTaskGroupCommand(state, reverse.command))).toEqual([
-    "group:h",
-    "group:g",
-    "task:b",
-    "task:c",
-  ]);
-  const grouped = applyTaskGroupCommand(state, { type: "moveTask", id: "b", groupId: "g" });
-  const down = taskGroupDragEvent(
-    grouped,
-    { type: "task", id: "a" },
-    { deltaY: 0, position: "after" },
-    6,
-    target,
-  );
-  expect(down.command && applyTaskGroupCommand(grouped, down.command).members.g).toEqual(["b", "a"]);
-  const up = taskGroupDragEvent(grouped, { type: "task", id: "a" }, down.motion, 3, target);
-  expect(up.command && applyTaskGroupCommand(grouped, up.command).members.g).toEqual(["a", "b"]);
-  const header = { type: "header", id: "g" } as const;
-  const headerDown = taskGroupDragEvent(state, active, first.motion, -2, header);
-  expect(headerDown.command).toMatchObject({ groupId: "g", start: true });
-  const headerUp = taskGroupDragEvent(state, active, headerDown.motion, -3, header);
-  expect(headerUp.command).toMatchObject({ groupId: null, before: { type: "group", id: "g" } });
+  const up = taskGroupDragMotion({ deltaY: 0, position: "after" }, -10, target);
+  expect(up.position).toBe("before");
+  const down = taskGroupDragMotion(up, -4);
+  expect(down.position).toBe("after");
+  expect(down.target).toBe(target);
+  expect(taskGroupDragMotion(down, -4).position).toBe("after");
+  expect(taskGroupDragMotion(down, -5).position).toBe("before");
 });
 
-it("keeps the last valid group preview and drop when reordered content collides with itself", async () => {
-  const { taskGroupDragEvent } = await import("../src/renderer/task-group-drag.ts");
+it("keeps the last valid group preview and drop when reordered content collides with itself", () => {
   const origin = fixture();
   const active = { type: "group", id: "g" } as const;
-  const first = taskGroupDragEvent(origin, active, { deltaY: 0, position: "after" }, 80, {
-    type: "task",
-    id: "c",
-  });
-  expect(first.command).toBeDefined();
-  if (!first.command) throw new Error("missing initial group move");
-  const lastCommand = first.command;
-  const preview = applyTaskGroupCommand(origin, lastCommand);
+  const first = taskGroupDropCommand(origin, active, { type: "task", id: "c" }, "after");
+  if (!first) throw new Error("missing initial group move");
+  const preview = applyTaskGroupCommand(origin, first);
   const expected = ["group:h", "task:b", "task:c", "group:g"];
   expect(roots(preview)).toEqual(expected);
   for (const target of [
@@ -249,11 +285,10 @@ it("keeps the last valid group preview and drop when reordered content collides 
     { type: "group", id: "g" },
     { type: "task", id: "a" },
   ] as const) {
-    const self = taskGroupDragEvent(origin, active, first.motion, 75, target);
-    expect(self.command).toBeUndefined();
-    expect(roots(preview)).toEqual(expected);
+    expect(taskGroupDropCommand(preview, active, target, "before")).toBeUndefined();
   }
-  expect(roots(applyTaskGroupCommand(origin, lastCommand))).toEqual(expected);
+  const command = taskGroupMoveCommand(origin, preview, active);
+  expect(command && roots(applyTaskGroupCommand(origin, command))).toEqual(expected);
 });
 
 it("limits drag activation to the primary left pointer, without stealing color, menu, or input controls", async () => {

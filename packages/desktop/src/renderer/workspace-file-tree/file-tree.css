@@ -393,6 +393,16 @@
 .file-tree-more {
   min-width: 192px;
 }
+.file-tree-more .menu-item {
+  justify-content: flex-start;
+  text-align: left;
+}
+.file-tree-more .menu-item > :is(svg, img) {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
 .file-tree-context [data-disabled] {
   opacity: 0.5;
   pointer-events: none;

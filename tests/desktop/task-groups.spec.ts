@@ -653,3 +653,122 @@ test("grouped task menu reuses header actions, icons and pin behavior", async ()
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
+
+test("task drag retains the final preview through delayed saves, group crossings and direction reversal", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-drag-save-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  for (const [index, id] of ["a", "b", "c", "d"].entries())
+    seedHistory(dir, project, 0, { id, createdAt: Date.now() - index * 1000 });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    await grouped(page);
+    await createGroup(page, "甲");
+    await createGroup(page, "乙");
+    const { g, h } = await page.evaluate(async () => {
+      const result = await window.zpi.getTaskGroups();
+      if (!result.ok) throw new Error(result.error.message);
+      const g = result.value.groups.find((group) => group.title === "甲")?.id;
+      const h = result.value.groups.find((group) => group.title === "乙")?.id;
+      if (!g || !h) throw new Error("Missing groups");
+      for (const [id, groupId] of [
+        ["a", g],
+        ["b", g],
+        ["d", h],
+      ]) {
+        const moved = await window.zpi.updateTaskGroups({ type: "moveTask", id, groupId });
+        if (!moved.ok) throw new Error(moved.error.message);
+      }
+      await window.zpi.updateTaskGroups({
+        type: "moveGroup",
+        id: g,
+        target: { type: "group", id: h },
+        position: "before",
+      });
+      return { g, h };
+    });
+    await page.reload();
+    await grouped(page);
+    await app.evaluate(({ ipcMain }) => {
+      const original = (
+        ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> }
+      )._invokeHandlers.get("zpi:call");
+      if (!original) throw new Error("Missing IPC handler");
+      const pending: (() => void)[] = [];
+      (globalThis as unknown as { taskGroupSave: { pending: (() => void)[] } }).taskGroupSave = { pending };
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", async (event, method, args) => {
+        if (method === "updateTaskGroups") await new Promise<void>((resolve) => pending.push(resolve));
+        return original(event, method, args);
+      });
+    });
+    const section = (id: string) => page.locator(`[data-grouped-group-item-id="${id}"]`);
+    const order = (id: string) =>
+      section(id)
+        .locator(".task-group-content [data-testid=session-row]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")));
+    const taskRow = (id: string) =>
+      page.locator(`.task-groups [data-testid=session-row][data-session-id="${id}"]`);
+    const moveTo = async (id: string) => {
+      const box = await taskRow(id).boundingBox();
+      if (!box) throw new Error("Missing task bounds");
+      await page.mouse.move(box.x + 40, box.y + box.height / 2, { steps: 12 });
+    };
+    const pending = () =>
+      app?.evaluate(
+        () =>
+          (globalThis as unknown as { taskGroupSave: { pending: unknown[] } }).taskGroupSave.pending.length,
+      );
+    const release = () =>
+      app?.evaluate(() =>
+        (
+          globalThis as unknown as { taskGroupSave: { pending: (() => void)[] } }
+        ).taskGroupSave.pending.shift()?.(),
+      );
+    const saved = () =>
+      page.evaluate(async () => {
+        const result = await window.zpi.getTaskGroups();
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value.members;
+      });
+    await expect.poll(() => order(g)).toEqual(["a", "b"]);
+    await moveTo("b");
+    await page.mouse.down();
+    await moveTo("a");
+    await expect.poll(() => order(g)).toEqual(["b", "a"]);
+    await page.mouse.up();
+    await expect.poll(pending).toBe(1);
+    expect((await saved())[g]).toEqual(["a", "b"]);
+    await expect.poll(() => order(g)).toEqual(["b", "a"]);
+    await release();
+    await expect.poll(async () => (await saved())[g]).toEqual(["b", "a"]);
+    await moveTo("a");
+    await page.mouse.down();
+    await moveTo("d");
+    await expect.poll(() => order(h)).toEqual(["d", "a"]);
+    await moveTo("d");
+    await expect.poll(() => order(h)).toEqual(["a", "d"]);
+    await page.mouse.up();
+    await expect.poll(pending).toBe(1);
+    await expect.poll(() => order(h)).toEqual(["a", "d"]);
+    expect((await saved())[h]).toEqual(["d"]);
+    await release();
+    await expect.poll(async () => (await saved())[h]).toEqual(["a", "d"]);
+    await page.reload();
+    await grouped(page);
+    await expect.poll(() => order(g)).toEqual(["b"]);
+    await expect.poll(() => order(h)).toEqual(["a", "d"]);
+    await moveTo("d");
+    await page.mouse.down();
+    await moveTo("b");
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await expect.poll(() => order(h)).toEqual(["a", "d"]);
+    expect(await pending()).toBe(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});

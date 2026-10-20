@@ -35,6 +35,29 @@ test("file launcher, preview/navigation layout, search, Git filtering, refresh a
     const page = await app.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    const fileManagerIcon =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6jVgAAAAASUVORK5CYII=";
+    await app.evaluate(({ ipcMain }, iconDataUrl) => {
+      const original = (
+        ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> }
+      )._invokeHandlers.get("zpi:call");
+      if (!original) throw new Error("Missing IPC handler");
+      ipcMain.removeHandler("zpi:call");
+      ipcMain.handle("zpi:call", (event, method, args) =>
+        method === "getInstalledEditors"
+          ? {
+              ok: true,
+              value: [
+                {
+                  id: process.platform === "darwin" ? "finder" : "explorer",
+                  name: "File manager",
+                  iconDataUrl,
+                },
+              ],
+            }
+          : original(event, method, args),
+      );
+    }, fileManagerIcon);
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000));
     await page.getByLabel("添加项目", { exact: true }).click();
     await page.getByLabel("展开右侧栏", { exact: true }).click();
@@ -49,6 +72,35 @@ test("file launcher, preview/navigation layout, search, Git filtering, refresh a
     await expect(manager).toBeVisible();
     await expect(pane.getByRole("tab", { name: "新标签页", exact: true })).toHaveCount(0);
     await expect(row(".env")).toBeVisible();
+    await manager.getByRole("button", { name: "更多", exact: true }).click();
+    const moreMenu = page.locator(".file-tree-more");
+    const menuItems = moreMenu.getByRole("menuitem");
+    await expect(moreMenu).toHaveAttribute("data-align", "end");
+    await expect(menuItems.first().locator("img")).toHaveAttribute("src", fileManagerIcon);
+    await moreMenu.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    const alignment = await menuItems.evaluateAll((items) =>
+      items.map((item) => {
+        const icon = item.querySelector("img,svg");
+        const text = Array.from(item.childNodes).find(
+          (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+        );
+        if (!icon || !text) throw new Error("Missing menu icon or text");
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        return {
+          gap: range.getBoundingClientRect().left - icon.getBoundingClientRect().right,
+          left: range.getBoundingClientRect().left,
+          justify: getComputedStyle(item).justifyContent,
+        };
+      }),
+    );
+    expect(alignment.map((item) => item.justify)).toEqual(["flex-start", "flex-start"]);
+    expect(alignment.map((item) => item.gap)).toEqual([8, 8]);
+    expect(alignment[0].left).toBe(alignment[1].left);
+    await moreMenu.screenshot({ path: test.info().outputPath("file-menu-aligned.png") });
+    await page.keyboard.press("Escape");
     await expect(manager.locator(".file-manager-empty")).toHaveText("从目录中选择一个文件");
     await row("README.md").click();
     await expect(pane.getByRole("tab", { name: "README.md", exact: true })).toBeVisible();

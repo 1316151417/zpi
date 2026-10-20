@@ -1,6 +1,5 @@
 // UI adapted from ZCode workspace-grouped-tasks (Apache-2.0), aac4755666.
 import {
-  closestCenter,
   DndContext,
   type DragMoveEvent,
   type DragOverEvent,
@@ -43,7 +42,11 @@ import {
   canStartTaskGroupDrag,
   type GroupDropTarget,
   type TaskGroupDragMotion,
-  taskGroupDragEvent,
+  taskGroupCollisionDetection,
+  taskGroupDragMotion,
+  taskGroupDropCommand,
+  taskGroupMoveCommand,
+  taskGroupOrderSignature,
   taskGroupRowDragProps,
 } from "./task-group-drag.ts";
 import {
@@ -221,8 +224,18 @@ function GroupItem({
     data: { type: "group", id: group.id },
   });
   const headerDrop = useDroppable({
+    disabled: collapsed,
     id: `header:${group.id}`,
-    data: { type: collapsed ? "collapsed" : "header", id: group.id },
+    data: { type: "header", id: group.id },
+  });
+  const groupDrop = useDroppable({
+    id: `group:${group.id}`,
+    data: { type: "group", id: group.id },
+  });
+  const collapsedDrop = useDroppable({
+    disabled: !collapsed,
+    id: `collapsed:${group.id}`,
+    data: { type: "collapsed", id: group.id },
   });
   const run = (command: TaskGroupCommand) => void changeTaskGroups(command).catch(report);
   const createTask = () => {
@@ -251,7 +264,11 @@ function GroupItem({
   };
   return (
     <section
-      ref={section}
+      ref={(element) => {
+        section.current = element;
+        groupDrop.setNodeRef(element);
+        collapsedDrop.setNodeRef(element);
+      }}
       className="task-group"
       data-grouped-group-item-id={group.id}
       data-group-color={group.color}
@@ -517,11 +534,22 @@ export function TaskGroups({
   const previousRects = useRef<Map<string, number>>(new Map());
   const [dragging, setDragging] = useState<TaskGroupNode>();
   const [preview, setPreview] = useState<TaskGroupState>();
-  const lastCommand = useRef<TaskGroupCommand | undefined>(undefined);
+  const latestPreview = useRef<TaskGroupState | undefined>(undefined);
+  const pendingPreview = useRef<TaskGroupState | undefined>(undefined);
+  const visibleTaskIds = useRef<ReadonlySet<string>>(new Set());
+  const [overlayWidth, setOverlayWidth] = useState<number>();
   const origin = useRef(state);
   const motion = useRef<TaskGroupDragMotion>({ deltaY: 0, position: "after" });
   const sensors = useSensors(useSensor(GroupPointerSensor, { activationConstraint: { distance: 6 } }));
   const display = preview ?? state;
+  useEffect(() => {
+    if (!dragging) return;
+    const previous = document.body.style.cursor;
+    document.body.style.cursor = "grabbing";
+    return () => {
+      document.body.style.cursor = previous;
+    };
+  }, [Boolean(dragging)]);
   const allSessions = useStore((store) => store.sessions);
   const draft = selected ? allSessions.get(selected) : undefined;
   const rootDraft =
@@ -560,29 +588,39 @@ export function TaskGroups({
         : `group:${element.dataset.groupedGroupHeaderId}`;
       const before = previousRects.current.get(key);
       const delta = before === undefined ? 0 : before - element.getBoundingClientRect().top;
-      if (delta && element.dataset.dragging !== "true")
+      if (delta && element.dataset.dragging !== "true") {
+        for (const animation of element.getAnimations()) animation.cancel();
         element.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], {
           duration: 150,
           easing: "cubic-bezier(0.2,0,0,1)",
         });
+      }
     }
     previousRects.current.clear();
   }, [preview]);
-  const onDragEvent = (event: DragOverEvent | DragMoveEvent) => {
+  const applyPreview = (active: TaskGroupNode, target: GroupDropTarget | undefined) => {
+    if (!target) return;
+    const current = latestPreview.current ?? origin.current;
+    const command = taskGroupDropCommand(current, active, target, motion.current.position);
+    if (!command) return;
+    const next = applyTaskGroupCommand(current, command);
+    if (taskGroupOrderSignature(next) === taskGroupOrderSignature(current)) return;
+    rememberRects();
+    latestPreview.current = next;
+    setPreview(next);
+  };
+  const onDragOver = (event: DragOverEvent) => {
     const active = event.active.data.current as TaskGroupNode | undefined;
     const target = event.over?.data.current as GroupDropTarget | undefined;
     if (!active) return;
-    const result = taskGroupDragEvent(origin.current, active, motion.current, event.delta.y, target);
-    motion.current = result.motion;
-    if (!target) {
-      motion.current.target = undefined;
-      return;
-    }
-    if (result.command && JSON.stringify(result.command) !== JSON.stringify(lastCommand.current)) {
-      rememberRects();
-      lastCommand.current = result.command;
-      setPreview(applyTaskGroupCommand(origin.current, result.command));
-    }
+    motion.current.target = target;
+    applyPreview(active, target);
+  };
+  const onDragMove = (event: DragMoveEvent) => {
+    const active = event.active.data.current as TaskGroupNode | undefined;
+    const previous = motion.current.position;
+    motion.current = taskGroupDragMotion(motion.current, event.delta.y);
+    if (active && previous !== motion.current.position) applyPreview(active, motion.current.target);
   };
   const overlayRecord = dragging?.type === "task" ? rows.get(dragging.id) : undefined;
   const overlayGroup =
@@ -590,37 +628,49 @@ export function TaskGroups({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={taskGroupCollisionDetection}
       autoScroll={{ threshold: { x: 0.1, y: 0.1 } }}
       onDragStart={({ active }) => {
         origin.current = state;
+        latestPreview.current = state;
+        pendingPreview.current = undefined;
+        visibleTaskIds.current = new Set(
+          [...rows.values()].filter((record) => !record.draft).map((record) => record.id),
+        );
+        setPreview(state);
+        setOverlayWidth(active.rect.current.initial?.width);
         motion.current = { deltaY: 0, position: "after" };
-        lastCommand.current = undefined;
         setDragging(active.data.current as TaskGroupNode);
       }}
-      onDragOver={onDragEvent}
-      onDragMove={onDragEvent}
+      onDragOver={onDragOver}
+      onDragMove={onDragMove}
       onDragCancel={() => {
         setPreview(undefined);
         setDragging(undefined);
-        lastCommand.current = undefined;
+        latestPreview.current = undefined;
+        pendingPreview.current = undefined;
       }}
-      onDragEnd={({ over }) => {
-        const command = over ? lastCommand.current : undefined;
-        setPreview(undefined);
+      onDragEnd={({ active }) => {
+        const next = latestPreview.current ?? origin.current;
+        const source = active.data.current as TaskGroupNode;
+        const command = taskGroupMoveCommand(origin.current, next, source, visibleTaskIds.current);
         setDragging(undefined);
-        lastCommand.current = undefined;
-        if (command)
-          void changeTaskGroups(
-            command.type === "moveTask"
-              ? {
-                  ...command,
-                  sourceGroupId: taskGroupFor(origin.current, command.id),
-                }
-              : command,
-          ).catch((error) => {
+        latestPreview.current = undefined;
+        if (!command) {
+          setPreview(undefined);
+          return;
+        }
+        pendingPreview.current = next;
+        setPreview(next);
+        void changeTaskGroups(command)
+          .catch(async (error) => {
             report(error);
-            void refresh().catch(report);
+            await refresh().catch(report);
+          })
+          .finally(() => {
+            if (pendingPreview.current !== next) return;
+            pendingPreview.current = undefined;
+            setPreview(undefined);
           });
       }}
     >
@@ -682,15 +732,19 @@ export function TaskGroups({
       </div>
       {createPortal(
         <DragOverlay dropAnimation={{ duration: 150, easing: "cubic-bezier(0.2,0,0,1)" }}>
-          {overlayRecord ? (
-            <TaskGroupRow record={overlayRecord} state={state} overlay />
-          ) : overlayGroup ? (
-            <div className="task-group-header task-group-drag-overlay">
-              <TaskGroupColorMark color={overlayGroup.color} />
-              <span className="task-group-overlay-title">{overlayGroup.title}</span>
-              <span className="task-group-count">
-                {(state.members[overlayGroup.id] ?? []).filter((id) => rows.has(id)).length}
-              </span>
+          {overlayRecord || overlayGroup ? (
+            <div style={{ width: overlayWidth }}>
+              {overlayRecord ? (
+                <TaskGroupRow record={overlayRecord} state={state} overlay />
+              ) : overlayGroup ? (
+                <div className="task-group-header task-group-drag-overlay">
+                  <TaskGroupColorMark color={overlayGroup.color} />
+                  <span className="task-group-overlay-title">{overlayGroup.title}</span>
+                  <span className="task-group-count">
+                    {(state.members[overlayGroup.id] ?? []).filter((id) => rows.has(id)).length}
+                  </span>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </DragOverlay>,
