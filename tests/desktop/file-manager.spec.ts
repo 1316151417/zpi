@@ -228,6 +228,10 @@ test("unassigned task workspaces survive navigation and restart and remain separ
     });
     expect(first.cwd).toBe(join(dir, "workspace", `draft-${first.id}`));
     if (!first.cwd) throw new Error("Missing draft cwd");
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator('[data-side-pane-open-tab-item="files"]').click();
+    await expect(page.locator(".file-tree-toolbar h3")).toHaveText(`draft-${first.id}`);
+    expect(server.requests).toHaveLength(0);
     await writeFile(join(first.cwd, "keep.txt"), "keep draft data");
     await page.getByLabel("消息", { exact: true }).fill("第一项任务");
     await page.getByLabel("消息", { exact: true }).press("Enter");
@@ -265,6 +269,53 @@ test("unassigned task workspaces survive navigation and restart and remain separ
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator('[data-side-pane-open-tab-item="files"]').click();
     await expect(page.locator(".file-tree-toolbar h3")).toHaveText(`draft-${second.id}`);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("unsent project drafts inherit the project and use a draft workspace immediately after detaching", async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-unsent-workspace-")));
+  const project = join(dir, "ZPI");
+  await mkdir(project);
+  await writeFile(join(project, "project-only.txt"), "project file");
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByLabel("添加项目", { exact: true }).first().click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toContainText("ZPI");
+    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator('[data-side-pane-open-tab-item="files"]').click();
+    await expect(page.locator(".file-tree-toolbar h3")).toHaveText("ZPI");
+    await expect(page.getByRole("treeitem").filter({ hasText: "project-only.txt" })).toBeVisible();
+
+    await page.locator(".draft-project-chip").hover();
+    await page.getByLabel("取消选择当前项目", { exact: true }).click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("选择项目");
+    const draft = await page.evaluate(async () => {
+      const result = await window.zpi.listRecentSessions();
+      if (!result.ok) throw new Error(result.error.message);
+      const draft = result.value.find((task) => task.draft && task.projectId === null);
+      if (!draft) throw new Error("Missing unassigned draft");
+      return draft;
+    });
+    expect(draft.cwd).toBe(join(dir, "workspace", `draft-${draft.id}`));
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator('[data-side-pane-open-tab-item="files"]').click();
+    const manager = page.locator(".file-manager:visible");
+    await expect(manager.locator(".file-tree-toolbar h3")).toHaveText(`draft-${draft.id}`);
+    await expect(manager.getByRole("treeitem")).toHaveCount(0);
+    expect(server.requests).toHaveLength(0);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
