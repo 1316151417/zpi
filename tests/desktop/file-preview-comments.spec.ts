@@ -173,7 +173,7 @@ test("text preview menu reflects wrap state, copies exact paths and dismisses on
     await page.getByLabel("发送", { exact: true }).click();
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     await page.locator(".answer").getByRole("button", { name: "长文件", exact: true }).click();
-    const preview = page.getByRole("region", { name: "文件预览", exact: true });
+    const preview = page.locator(".file-manager:visible");
     const trigger = preview.getByRole("button", { name: "文件预览菜单", exact: true });
     await trigger.click();
     const wrap = page.getByRole("menuitemcheckbox", { name: "自动换行", exact: true });
@@ -190,7 +190,7 @@ test("text preview menu reflects wrap state, copies exact paths and dismisses on
     await wrap.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(trigger).toBeFocused();
-    await expect(preview.getByRole("button", { name: "使用默认程序打开", exact: true })).toBeEnabled();
+    await expect(preview.getByRole("button", { name: "在编辑器中打开", exact: true })).toBeDisabled();
     await page.screenshot({ path: "test-results/file-preview-wrap-menu.png" });
   } finally {
     await runCleanup([

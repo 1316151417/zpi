@@ -2,6 +2,8 @@
 
 The file launcher, file-manager split layout, directory row styling, lazy loading, compact folders, Git decorations, virtualized rows, sticky folders, watcher lifecycle and refresh request guards in `packages/desktop/src/renderer/{PaneLauncher,FileManagerPane}.tsx`, `workspace-file-tree/`, related pane state and styles adapt ZCode commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`: `packages/ui/src/WorkspaceFileTree.tsx`, `workspace-file-tree/`, `plugin-ui/components/PluginUiLauncherItems.tsx`, `app-shell/{AnimatedSidePanePanel,animatedSidePanePanelModel}` and `lib/workspaceSidePane.ts`. Draft workspace allocation follows `packages/services/src/project/index.ts`. Adapted to ZPI's local session IDs, existing previews and mention index, `.zpi/workspace` storage, and Electron preload IPC; remote projects, additional roots and plugins are excluded. Compacted expanded directories additionally hold a watch on their represented leaf directory. The existing Material icons and Lucide artwork are reused. The desktop uses the same `react-resizable-panels` 4.10.0 layout primitives (MIT). Apache-2.0 and the existing Lucide licenses below apply.
 
+Ordinary chat file previews and single-file diffs use that same file-manager container, following ZCode's `app-shell/AnimatedSidePanePanel.tsx`, `WorkspaceFileTree.tsx`, `PreviewPane.tsx` and `lib/workspaceSidePane.ts`. The shared toolbar, workspace navigation preferences, in-tab source replacement, source reopening and editor preference snapshot follow those implementations. The file-tree menu uses ZCode's Lucide `FolderOpen` artwork rather than an operating-system Finder image; existing conversation-menu Finder artwork remains the attributed ZCode asset.
+
 ## react-resizable-panels 4.10.0
 
 The MIT License (MIT)

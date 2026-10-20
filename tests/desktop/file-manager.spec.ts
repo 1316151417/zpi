@@ -10,6 +10,111 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
 const exec = promisify(execFile);
+test("chat file previews and single-file diffs share ZCode's file container and in-tab workspace navigation", async () => {
+  test.setTimeout(60000);
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-unified-files-")));
+  const project = join(dir, "project");
+  await mkdir(project);
+  await writeFile(join(project, "notes.md"), "# Workspace notes\n");
+  const server = await fakeServer((body, response) => {
+    const messages = body.messages as unknown as { role: string }[];
+    if (!messages.some((message) => message.role === "tool")) {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "write-file",
+              type: "function",
+              function: {
+                name: "write",
+                arguments: JSON.stringify({ path: "hello.txt", content: "Unified file preview\n" }),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: "[hello.txt](hello.txt) 和 [notes.md](notes.md)" }));
+      done(response);
+    }
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1050));
+    await page.getByLabel("添加项目", { exact: true }).click();
+    await page.getByLabel("消息", { exact: true }).fill("创建文件");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    const pane = page.locator(".right-pane");
+    const manager = pane.locator(".file-manager:visible");
+    const answer = page.locator(".answer");
+    const fileLink = answer.getByRole("button", { name: "hello.txt", exact: true });
+    await fileLink.click();
+    await expect(manager.locator(".file-manager-toolbar .preview-header")).toHaveCount(1);
+    await expect(manager.locator(".file-manager-directory")).toBeVisible();
+    await expect(manager.getByRole("treeitem").filter({ hasText: "hello.txt" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await manager.getByLabel("收起文件导航", { exact: true }).click();
+    await page.locator(".changed-files-summary").click();
+    await page.getByLabel("审查 hello.txt", { exact: true }).click();
+    const diffTab = pane
+      .getByRole("tab", { name: "hello.txt", exact: true })
+      .filter({ has: page.locator(".pane-tab-diff-badge") });
+    await expect(diffTab).toHaveAttribute("aria-selected", "true");
+    await expect(manager.locator(".file-manager-directory")).toBeHidden();
+    await expect(manager.locator(".file-manager-toolbar .preview-source")).toBeVisible();
+    await expect(manager.locator(".changes-pane .preview-header")).toHaveCount(0);
+    await manager.getByLabel("显示文件导航", { exact: true }).click();
+    await expect(manager.getByRole("treeitem").filter({ hasText: "notes.md" })).toBeVisible();
+    await manager.getByLabel("搜索文件", { exact: true }).fill("notes");
+    await expect(manager.getByRole("treeitem")).toHaveCount(1);
+    await manager.getByLabel("清空文件搜索", { exact: true }).click();
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await pane.screenshot({ path: "test-results/unified-file-diff-light.png", animations: "disabled" });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await pane.screenshot({ path: "test-results/unified-file-diff-dark.png", animations: "disabled" });
+    await manager.getByRole("button", { name: "查看源码", exact: true }).click();
+    await expect(pane.getByRole("tab")).toHaveCount(2);
+    await expect(
+      pane
+        .getByRole("tab", { name: "hello.txt", exact: true })
+        .filter({ hasNot: page.locator(".pane-tab-diff-badge") }),
+    ).toHaveAttribute("aria-selected", "true");
+    await diffTab.locator(".pane-tab-trigger").click();
+    await manager.getByRole("treeitem").filter({ hasText: "notes.md" }).click();
+    await expect(manager.locator(".file-markdown-preview")).toContainText("Workspace notes");
+    await expect(pane.getByRole("tab", { name: "notes.md", exact: true })).toBeVisible();
+    await expect(pane.locator(".pane-tab-diff-badge")).toHaveCount(0);
+    await page.getByLabel("审查 hello.txt", { exact: true }).click();
+    await expect(diffTab).toBeVisible();
+    await expect(pane.getByRole("tab")).toHaveCount(3);
+    await expect(pane.getByRole("tab", { name: "notes.md", exact: true })).toBeVisible();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(920, 760));
+    await expect(manager).toHaveAttribute("data-navigation-only", "true");
+    await manager.getByRole("treeitem").filter({ hasText: "notes.md" }).click();
+    await expect(manager.locator(".file-manager-directory")).toBeHidden();
+    await expect(manager.locator(".file-markdown-preview")).toContainText("Workspace notes");
+    expect(errors).toEqual([]);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("file launcher, preview/navigation layout, search, Git filtering, refresh and task isolation match ZCode", async () => {
   test.setTimeout(90000);
   const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-file-manager-")));
@@ -35,29 +140,6 @@ test("file launcher, preview/navigation layout, search, Git filtering, refresh a
     const page = await app.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    const fileManagerIcon =
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6jVgAAAAASUVORK5CYII=";
-    await app.evaluate(({ ipcMain }, iconDataUrl) => {
-      const original = (
-        ipcMain as unknown as { _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>> }
-      )._invokeHandlers.get("zpi:call");
-      if (!original) throw new Error("Missing IPC handler");
-      ipcMain.removeHandler("zpi:call");
-      ipcMain.handle("zpi:call", (event, method, args) =>
-        method === "getInstalledEditors"
-          ? {
-              ok: true,
-              value: [
-                {
-                  id: process.platform === "darwin" ? "finder" : "explorer",
-                  name: "File manager",
-                  iconDataUrl,
-                },
-              ],
-            }
-          : original(event, method, args),
-      );
-    }, fileManagerIcon);
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000));
     await page.getByLabel("添加项目", { exact: true }).click();
     await page.getByLabel("展开右侧栏", { exact: true }).click();
@@ -76,7 +158,8 @@ test("file launcher, preview/navigation layout, search, Git filtering, refresh a
     const moreMenu = page.locator(".file-tree-more");
     const menuItems = moreMenu.getByRole("menuitem");
     await expect(moreMenu).toHaveAttribute("data-align", "end");
-    await expect(menuItems.first().locator("img")).toHaveAttribute("src", fileManagerIcon);
+    await expect(menuItems.first().locator(".lucide-folder-open")).toBeVisible();
+    await expect(menuItems.first().locator("img")).toHaveCount(0);
     await moreMenu.evaluate(async (element) => {
       await Promise.all(element.getAnimations().map((animation) => animation.finished));
     });

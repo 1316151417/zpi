@@ -54,9 +54,6 @@ export function WorkspaceFileTree({
   const [selected, setSelected] = useState<string | null>(null);
   const [changedOnly, setChangedOnly] = useState(false);
   const [editors, setEditors] = useState<EditorInfo[]>([]);
-  const fileManager = editors.find(
-    (editor) => editor.id === (window.zpi.platform === "darwin" ? "finder" : "explorer"),
-  );
   const [index, setIndex] = useState<SearchEntry[]>([]);
   const [indexLoaded, setIndexLoaded] = useState(false);
   const [indexLoading, setIndexLoading] = useState(false);
@@ -328,7 +325,7 @@ export function WorkspaceFileTree({
                   paneTask(window.zpi.fileAction(sessionId, workspacePath, "reveal").then(unwrap))
                 }
               >
-                {fileManager ? <img src={fileManager.iconDataUrl} alt="" /> : <FolderOpen size={16} />}
+                <FolderOpen size={16} />
                 {fileManagerLabel}
               </Menu.Item>
               <Menu.Item

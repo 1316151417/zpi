@@ -47,6 +47,7 @@
   color: var(--color-text);
 }
 .file-manager-toggle > button:hover,
+.file-manager-toggle > button[aria-expanded="true"],
 .file-tree-icon-button:hover,
 .file-tree-icon-button[data-state="open"] {
   background: var(--color-fill-hover);

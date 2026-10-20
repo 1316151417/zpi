@@ -1,9 +1,12 @@
 import { FolderOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
+import type { FindRequest, FindState } from "zpi-ui";
+import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
-import type { PaneTab } from "./pane-store.ts";
+import type { FilePaneTab } from "./pane-store.ts";
 import { navigateFileManager, paneTask } from "./pane-store.ts";
+import { useWorkspace } from "./use-workspace.ts";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.tsx";
 import "./workspace-file-tree/file-tree.css";
 
@@ -28,7 +31,22 @@ function subscribeNavigation(listener: () => void) {
   navigationListeners.add(listener);
   return () => navigationListeners.delete(listener);
 }
-export function FileManagerPane({ tab }: { tab: Extract<PaneTab, { type: "file-manager" }> }) {
+export function FileManagerPane({
+  tab,
+  visible,
+  findRequest,
+  onFindStateChange,
+}: {
+  tab: FilePaneTab;
+  visible: boolean;
+  findRequest?: FindRequest;
+  onFindStateChange?: (state: FindState) => void;
+}) {
+  const workspace = useWorkspace(tab.cwd ? undefined : tab.sessionId);
+  const cwd = tab.cwd ?? workspace?.cwd ?? "";
+  const preview = tab.type === "changes" ? undefined : tab.preview;
+  const path = tab.type === "changes" ? tab.path : preview?.path;
+  const canNavigate = Boolean(cwd && (tab.type === "file-manager" || path));
   const container = useRef<HTMLDivElement>(null);
   const [header, setHeader] = useState<HTMLDivElement | null>(null);
   const [narrow, setNarrow] = useState(false);
@@ -39,8 +57,8 @@ export function FileManagerPane({ tab }: { tab: Extract<PaneTab, { type: "file-m
     id: "zpi.file-manager-layout",
     panelIds: ["preview", "directory"],
   });
-  const preference = useSyncExternalStore(subscribeNavigation, () => navigationPreference(tab.cwd));
-  const navigationOpen = narrow ? (compactOpen ?? preference) : preference;
+  const preference = useSyncExternalStore(subscribeNavigation, () => navigationPreference(cwd));
+  const navigationOpen = canNavigate && (narrow ? (compactOpen ?? preference) : preference);
   const navigationOnly = narrow && navigationOpen;
   useLayoutEffect(() => {
     if (navigationOnly) previewPanel.current?.collapse();
@@ -67,22 +85,24 @@ export function FileManagerPane({ tab }: { tab: Extract<PaneTab, { type: "file-m
     >
       <div className="file-manager-toolbar">
         <div ref={setHeader} className="file-manager-preview-header">
-          {!tab.preview && <span className="file-manager-title">文件</span>}
+          {tab.type === "file-manager" && !preview && <span className="file-manager-title">文件</span>}
         </div>
-        <div className="file-manager-toggle">
-          <button
-            type="button"
-            title={label}
-            aria-label={label}
-            aria-expanded={navigationOpen}
-            onClick={() => {
-              saveNavigationPreference(tab.cwd, !navigationOpen);
-              setCompactOpen(null);
-            }}
-          >
-            {navigationOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-          </button>
-        </div>
+        {canNavigate && (
+          <div className="file-manager-toggle">
+            <button
+              type="button"
+              title={label}
+              aria-label={label}
+              aria-expanded={navigationOpen}
+              onClick={() => {
+                saveNavigationPreference(cwd, !navigationOpen);
+                setCompactOpen(null);
+              }}
+            >
+              {navigationOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+            </button>
+          </div>
+        )}
       </div>
       <Group
         className="file-manager-split"
@@ -98,12 +118,24 @@ export function FileManagerPane({ tab }: { tab: Extract<PaneTab, { type: "file-m
           minSize="160px"
           className="file-manager-preview"
         >
-          {tab.preview ? (
+          {tab.type === "changes" ? (
+            <ChangesPane
+              sessionId={tab.sessionId}
+              runId={tab.runId}
+              path={tab.path}
+              toolCallId={tab.toolCallId}
+              visible={visible}
+              findRequest={findRequest}
+              onFindStateChange={onFindStateChange}
+              headerContainer={header}
+              workspaceCwd={cwd}
+            />
+          ) : preview ? (
             <FilePane
-              preview={tab.preview}
+              preview={preview}
               sessionId={tab.sessionId}
               headerContainer={header}
-              workspaceCwd={tab.cwd}
+              workspaceCwd={cwd}
             />
           ) : (
             <div className="file-manager-empty">
@@ -127,16 +159,20 @@ export function FileManagerPane({ tab }: { tab: Extract<PaneTab, { type: "file-m
           maxSize={navigationOnly ? "100%" : "60%"}
           className="file-manager-directory"
         >
-          <WorkspaceFileTree
-            sessionId={tab.sessionId}
-            workspacePath={tab.cwd}
-            workspaceName={tab.workspaceName}
-            activePreviewPath={tab.preview?.path}
-            onOpenPreview={(path) => {
-              paneTask(navigateFileManager(tab.id, path));
-              if (narrow) setCompactOpen(false);
-            }}
-          />
+          {canNavigate && (
+            <WorkspaceFileTree
+              sessionId={tab.sessionId}
+              workspacePath={cwd}
+              workspaceName={
+                tab.type === "file-manager" ? tab.workspaceName : cwd.split(/[\\/]/).at(-1) || "Workspace"
+              }
+              activePreviewPath={path}
+              onOpenPreview={(path) => {
+                paneTask(navigateFileManager(tab.id, path));
+                if (narrow) setCompactOpen(false);
+              }}
+            />
+          )}
         </Panel>
       </Group>
     </div>

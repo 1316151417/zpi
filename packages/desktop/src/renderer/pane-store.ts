@@ -56,6 +56,7 @@ export type PaneTab = (
       path?: string;
       toolCallId?: string;
       title: string;
+      cwd?: string;
     }
   | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string; profile?: TerminalProfile }
   | { id: string; type: "new-tab"; title: string; sessionId?: string }
@@ -68,9 +69,10 @@ export type PaneTab = (
       workspaceName: string;
       preview?: FilePreview;
     }
-  | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview }
+  | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview; cwd?: string }
   | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState; fileKey?: string }
 ) & { ownerSessionId?: string };
+export type FilePaneTab = Extract<PaneTab, { type: "file-manager" | "file" | "changes" }>;
 interface PanePreference {
   open: boolean;
   active?: string;
@@ -406,7 +408,9 @@ const fileManagerRequests = new Map<string, number>();
 let fileManagerVersion = 0;
 export async function navigateFileManager(tabId: string, path: string) {
   const tab = usePane.getState().tabs.find((tab) => tab.id === tabId);
-  if (tab?.type !== "file-manager") return;
+  if (!tab || !["file-manager", "file", "changes"].includes(tab.type) || !tab.sessionId) return;
+  if (tab.type === "file" && pendingFileReads)
+    fileOpenVersions.set(`file:${tab.sessionId}:${tab.preview.path}`, ++fileOpenVersion);
   const version = ++fileManagerVersion;
   fileManagerRequests.set(tabId, version);
   try {
@@ -415,11 +419,22 @@ export async function navigateFileManager(tabId: string, path: string) {
     const preview = unwrap(result);
     // Navigation updates this instance without activating a tab or changing task ownership.
     usePane.setState((state) => ({
-      tabs: state.tabs.map((item) =>
-        item.id === tabId && item.type === "file-manager"
-          ? { ...item, preview, title: preview.path.split(/[\\/]/).at(-1) || "文件" }
-          : item,
-      ),
+      tabs: state.tabs.map((item) => {
+        if (item.id !== tabId) return item;
+        const title = preview.path.split(/[\\/]/).at(-1) || "文件";
+        if (item.type === "file-manager") return { ...item, preview, title };
+        if (item.type === "file" || item.type === "changes")
+          return {
+            id: item.id,
+            type: "file",
+            sessionId: item.sessionId,
+            ownerSessionId: item.ownerSessionId,
+            cwd: item.cwd,
+            preview,
+            title,
+          };
+        return item;
+      }),
     }));
   } finally {
     if (fileManagerRequests.get(tabId) === version) fileManagerRequests.delete(tabId);
@@ -440,7 +455,9 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
         (tab.toolCallId || undefined) === toolCallId,
     );
   const id =
-    existing?.id ?? `changes:${JSON.stringify([sessionId, runId, toolCallId ?? null, path ?? null])}`;
+    existing?.id ??
+    availableTabId(`changes:${JSON.stringify([sessionId, runId, toolCallId ?? null, path ?? null])}`);
+  if (existing) fileManagerRequests.delete(existing.id);
   showTab({
     id,
     type: "changes",
@@ -448,6 +465,7 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
     runId,
     path,
     toolCallId,
+    cwd: useStore.getState().sessions.get(sessionId)?.cwd,
     title: path ? (path.split(/[\\/]/).at(-1) ?? "变更") : "变更",
   });
 }
@@ -502,6 +520,11 @@ export async function openWebLink(
 const fileOpenVersions = new Map<string, number>();
 let fileOpenVersion = 0;
 let pendingFileReads = 0;
+function availableTabId(preferred: string) {
+  return usePane.getState().tabs.some((tab) => tab.id === preferred)
+    ? `${preferred}:${crypto.randomUUID()}`
+    : preferred;
+}
 export async function openFile(
   sessionId: string,
   path: string,
@@ -586,13 +609,20 @@ export async function openFile(
       });
       return;
     }
+    const existing = usePane
+      .getState()
+      .tabs.find(
+        (tab) => tab.type === "file" && tab.sessionId === sessionId && tab.preview.path === preview.path,
+      );
+    if (existing) fileManagerRequests.delete(existing.id);
     showTab({
-      id,
+      id: existing?.id ?? availableTabId(id),
       type: "file",
       title: preview.path.split("/").at(-1) ?? preview.path,
       sessionId,
       ownerSessionId,
       preview,
+      cwd,
     });
   } finally {
     // 仅在读取未结束时保留版本，避免已关闭文件永久占用状态。
@@ -625,7 +655,8 @@ export async function closeTab(id: string) {
   if (tab.type === "side-chat-loading" && pendingSideChats.get(tab.sessionId)?.tabId === id)
     pendingSideChats.delete(tab.sessionId);
   if (pendingFileReads) {
-    if (tab.type === "file") fileOpenVersions.set(id, ++fileOpenVersion);
+    if (tab.type === "file")
+      fileOpenVersions.set(`file:${tab.sessionId}:${tab.preview.path}`, ++fileOpenVersion);
     if (tab.type === "browser" && tab.fileKey) fileOpenVersions.set(tab.fileKey, ++fileOpenVersion);
   }
   if (tab.type === "terminal") {

@@ -760,6 +760,81 @@ it("replaces only the active launcher in place and gives each file manager its o
   expect(usePane.getState().active).toBe(active);
 });
 
+it.each(["file", "changes"] as const)(
+  "navigates a %s tab in place and preserves it when reopening its original source",
+  async (kind) => {
+    if (kind === "file") await openFile("A", file.path);
+    else openChanges("A", "run-a", file.path);
+    const original = visiblePaneTabs("A")[0];
+    const nextFile = { ...file, path: "/shared/next.md", text: "next" };
+    bridge.readFilePreview.mockResolvedValueOnce(ok(nextFile));
+    select("B");
+    openNewPaneTab();
+    const active = usePane.getState().active;
+    await navigateFileManager(original.id, nextFile.path);
+    expect(visiblePaneTabs("A")[0]).toMatchObject({
+      id: original.id,
+      type: "file",
+      title: "next.md",
+      preview: nextFile,
+      ownerSessionId: "A",
+      cwd: "/shared",
+    });
+    expect(usePane.getState().active).toBe(active);
+    if (kind === "file") await openFile("A", file.path);
+    else openChanges("A", "run-a", file.path);
+    expect(visiblePaneTabs("A")).toHaveLength(2);
+    expect(visiblePaneTabs("A")[0]).toMatchObject({ id: original.id, preview: nextFile });
+    expect(visiblePaneTabs("A")[1].id).not.toBe(original.id);
+    if (kind === "file") await openFile("A", file.path);
+    else openChanges("A", "run-a", file.path);
+    expect(visiblePaneTabs("A")).toHaveLength(2);
+    bridge.readFilePreview.mockResolvedValueOnce(ok(nextFile));
+    await openFile("A", nextFile.path);
+    expect(visiblePaneTabs("A")).toHaveLength(2);
+    expect(visiblePaneTabs("A")[0]).toMatchObject({ id: original.id, preview: nextFile });
+  },
+);
+
+it("does not let an earlier file refresh overwrite directory navigation or revive a closed navigated tab", async () => {
+  await openFile("A", file.path);
+  const id = usePane.getState().active ?? "";
+  const delayed = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(delayed.promise);
+  const refresh = openFile("A", file.path);
+  const nextFile = { ...file, path: "/shared/next.md" };
+  bridge.readFilePreview.mockResolvedValueOnce(ok(nextFile));
+  await navigateFileManager(id, nextFile.path);
+  delayed.resolve(ok(file));
+  await refresh;
+  expect(visiblePaneTabs("A")).toMatchObject([{ id, preview: nextFile }]);
+  const closedRead = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(closedRead.promise);
+  const pending = openFile("A", nextFile.path);
+  await closeTab(id);
+  closedRead.resolve(ok(nextFile));
+  await pending;
+  expect(visiblePaneTabs("A")).toEqual([]);
+});
+
+it.each(["file", "changes"] as const)(
+  "reopening the current %s source cancels an older directory read",
+  async (kind) => {
+    if (kind === "file") await openFile("A", file.path);
+    else openChanges("A", "run-a", file.path);
+    const id = usePane.getState().active ?? "";
+    const delayed = Promise.withResolvers<Result<FilePreview>>();
+    bridge.readFilePreview.mockReturnValueOnce(delayed.promise);
+    const navigating = navigateFileManager(id, "/shared/next.md");
+    if (kind === "file") await openFile("A", file.path);
+    else openChanges("A", "run-a", file.path);
+    delayed.resolve(ok({ ...file, path: "/shared/next.md" }));
+    await navigating;
+    expect(visiblePaneTabs("A")).toHaveLength(1);
+    expect(visiblePaneTabs("A")[0]).toMatchObject({ id, type: kind, title: "readme.md" });
+  },
+);
+
 it("ignores old file-manager reads and failures and does not reopen a closed tab", async () => {
   await openFileManager("A");
   const id = usePane.getState().active ?? "";

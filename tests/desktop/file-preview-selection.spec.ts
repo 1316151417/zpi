@@ -37,7 +37,10 @@ test("pinned shortcut hints preserve native text selection in file source and Ma
     await page.locator(".answer").getByRole("button", { name: "示例文件", exact: true }).click();
     const preview = page.getByRole("region", { name: "文件预览", exact: true });
     for (const [index, mode] of ["源码", "源码", "预览"].entries()) {
-      await preview.getByRole("button", { name: "文件预览菜单", exact: true }).click();
+      await page
+        .locator(".file-manager:visible")
+        .getByRole("button", { name: "文件预览菜单", exact: true })
+        .click();
       await page.getByRole("menuitemradio", { name: mode, exact: true }).click();
       if (index === 1) {
         await preview.locator('[data-column-number="1"]').first().click();

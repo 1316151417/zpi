@@ -27,9 +27,10 @@ const subscribe = (listener: () => void) => {
 };
 const snapshot = () =>
   currentPreference === undefined ? readEditorPreference(storage()) : currentPreference;
-export function usePreferredEditor() {
+export function usePreferredEditor({ snapshotPreference = false } = {}) {
   const [editors, setEditors] = useState<EditorInfo[]>([]);
   const preference = useSyncExternalStore(subscribe, snapshot);
+  const [initialPreference] = useState(() => readEditorPreference(storage()));
   useEffect(() => {
     let disposed = false;
     void window.zpi
@@ -45,7 +46,7 @@ export function usePreferredEditor() {
   }, []);
   return {
     editors,
-    editor: selectedEditor(editors, preference),
+    editor: selectedEditor(editors, snapshotPreference ? initialPreference : preference),
     select: (id: string) => {
       currentPreference = id;
       saveEditorPreference(id, storage());

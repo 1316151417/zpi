@@ -6112,8 +6112,8 @@ button.model-stat-pill:hover,
   height: 40px;
   min-width: 0;
   padding: 0 6px 0 12px;
-  gap: 32px;
-  background: color-mix(in srgb, var(--color-fill) 30%, transparent);
+  gap: 8px;
+  background: color-mix(in oklab, var(--color-fill) 30%, transparent);
 }
 .preview-breadcrumb {
   display: flex;

@@ -132,7 +132,7 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
     await rm(file);
     await fileLink.click({ button: "right" });
     await menu.getByRole("menuitem", { name: "Finder", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("文件不存在");
+    await expect(page.getByRole("alert")).toContainText("找不到文件“订单 %20 #1.json”");
     expect(await calls()).toHaveLength(6);
   } finally {
     await runCleanup([

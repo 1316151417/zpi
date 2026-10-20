@@ -16,7 +16,6 @@ import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FileManagerPane } from "./FileManagerPane.tsx";
-import { FilePane } from "./FilePane.tsx";
 import { PaneLauncher } from "./PaneLauncher.tsx";
 import {
   activatePaneTab,
@@ -228,8 +227,15 @@ export function RightPane({
                   sideChatAvailable={sideChatAvailable}
                   hasReview={tabs.some((tab) => tab.type === "changes" && tab.runId === null && !tab.path)}
                 />
-              ) : tab.type === "file-manager" ? (
-                <FileManagerPane tab={tab} />
+              ) : tab.type === "file-manager" ||
+                tab.type === "file" ||
+                (tab.type === "changes" && tab.path) ? (
+                <FileManagerPane
+                  tab={tab}
+                  visible={state.open && tab.id === active}
+                  findRequest={tab.id === active ? findRequest : undefined}
+                  onFindStateChange={onFindStateChange}
+                />
               ) : tab.type === "background-task" ? (
                 <BackgroundTaskPane
                   sessionId={tab.sessionId}
@@ -271,8 +277,6 @@ export function RightPane({
                   profile={tab.profile}
                   visible={state.open && tab.id === active}
                 />
-              ) : tab.type === "file" ? (
-                <FilePane preview={tab.preview} sessionId={tab.sessionId} />
               ) : (
                 <BrowserPane state={tab.state} visible={state.open && tab.id === active} />
               )}

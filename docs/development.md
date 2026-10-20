@@ -171,6 +171,8 @@ SDK 本地 Bash 在输出文件背压时暂停 stdout/stderr，排空后恢复�
 
 ## 测试
 
+文件入口、聊天文件预览和单文件 Diff 统一由 `FileManagerPane` 持有预览／目录布局，内容仍复用 `FilePane` 和 `ChangesPane`。目录显隐偏好按工作目录共享，窄布局选中文件后的自动收起仅属于当前面板；目录范围是整个工作区，“仅显示变更文件”依据工作区 Git 状态，不依据某一轮快照。导航由 pane store 更新当前标签页，保持标签 ID、任务归属和工作目录；从 Diff 导航到文件后变为普通文件预览。重开来源按当前内容查找可复用标签，不能按旧 ID 覆盖已导航的页面。审查入口继续展示改动集合。预览右上外部打开沿用 ZCode 的应用偏好快照，通过 preload 的 `openInEditor` 调用；不存在可用应用时禁用。文件树菜单使用 Lucide `FolderOpen`，聊天文件菜单的 Finder 图片继续复用 ZCode 素材。相关验证为 `pane-isolation.test.ts`、`changes-pane-dom.test.ts`、`workspace-editor-dom.test.ts` 和后台 Electron 的 `tests/desktop/file-manager.spec.ts`，后者包含明暗主题截图及窄布局。
+
 ### 模型性能统计
 
 「界面设置 → 显示模型性能与用量」默认开启，缺失配置采用默认值，已保存的关闭选择继续保留。统计放在主对话和辅助对话输入框白区下方的现有底部留白内，采用 10px 字号、10px 图标和 12px 行高，出现或隐藏时不改变输入框位置、高度和底部间距。两组可点击读数为：`1 轮 3 步 · 85 tok/s`、`12.2K tok · 缓存命中 80%`；窄面板下单行截断，点击查看完整详情。会话统计详情显示轮数、步数、模型用时、工具调用用时、首 token 平均（TTFT）和输出速度（TPS）；Token 用量详情显示总量、缓存命中、未缓存输入、缓存读取、非零缓存写入、输出。数值格式参考 [DeepSeek Harness 5719020](https://github.com/deepseek-ai/deepseek-harness/blob/571902028a75c64c1d767f4ae5fd099485f0ddf0/packages/client/ui-chat/src/client/chat/StatsPills.tsx)。

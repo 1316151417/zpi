@@ -82,10 +82,12 @@ test("task switching isolates files, terminals and browser guests and restores a
     await expect(page.getByRole("tablist", { name: "侧栏标签" }).getByRole("tab")).toHaveText("新标签页");
     await page.locator(".answer").getByRole("button", { name: "shared.txt", exact: true }).click();
     await expect(page.getByRole("tablist", { name: "侧栏标签" }).getByRole("tab")).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "自动换行", exact: true })).toHaveAttribute(
-      "aria-pressed",
+    await page.getByRole("button", { name: "文件预览菜单", exact: true }).click();
+    await expect(page.getByRole("menuitemcheckbox", { name: "自动换行", exact: true })).toHaveAttribute(
+      "aria-checked",
       "false",
     );
+    await page.keyboard.press("Escape");
     await page.locator(".session-name").filter({ hasText: "task A" }).click();
     await expect(page.locator(".right-pane")).toBeHidden();
     await expect.poll(native).toEqual([]);
@@ -104,11 +106,13 @@ test("task switching isolates files, terminals and browser guests and restores a
       ),
     ).toBe("A browser draft");
     await page.getByRole("tab", { name: "shared.txt", exact: true }).click();
-    await expect(page.getByRole("button", { name: "自动换行", exact: true })).toHaveAttribute(
-      "aria-pressed",
+    await page.getByRole("button", { name: "文件预览菜单", exact: true }).click();
+    await expect(page.getByRole("menuitemcheckbox", { name: "自动换行", exact: true })).toHaveAttribute(
+      "aria-checked",
       "true",
     );
-    await page.getByRole("tab", { name: "zsh", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("tab", { name: "project", exact: true }).click();
     await terminal.pressSequentially("printf 'RESTORED_%s\\n' \"$TASK_A_VALUE\"", { delay: 1 });
     await terminal.press("Enter");
     await expect(page.locator(".xterm-rows")).toContainText("RESTORED_retained");
@@ -121,7 +125,7 @@ test("task switching isolates files, terminals and browser guests and restores a
     await expect(page.locator(".right-pane")).toBeHidden();
     await page.locator(".session-name").filter({ hasText: "task A" }).click();
     await expect(page.getByRole("tablist", { name: "侧栏标签" }).getByRole("tab")).toHaveCount(4);
-    await expect(page.getByRole("tab", { name: "zsh", exact: true })).toHaveAttribute(
+    await expect(page.getByRole("tab", { name: "project", exact: true })).toHaveAttribute(
       "aria-selected",
       "true",
     );

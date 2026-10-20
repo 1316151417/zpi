@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DiffView,
   type FindRequest,
@@ -23,6 +24,8 @@ export function ChangesPane({
   visible,
   findRequest,
   onFindStateChange,
+  headerContainer,
+  workspaceCwd,
 }: {
   findRequest?: FindRequest;
   onFindStateChange?: (state: FindState) => void;
@@ -31,6 +34,8 @@ export function ChangesPane({
   path?: string;
   toolCallId?: string;
   visible: boolean;
+  headerContainer?: HTMLElement | null;
+  workspaceCwd?: string;
 }) {
   const incomingOperation = useStore((state) =>
     state.views
@@ -133,6 +138,17 @@ export function ChangesPane({
     },
     [sessionId, entries],
   );
+  const renderHeader = (selectedPath: string, viewSource?: () => void) => {
+    const header = (
+      <PreviewHeader
+        sessionId={sessionId}
+        path={selectedPath}
+        onViewSource={viewSource}
+        workspaceCwd={workspaceCwd}
+      />
+    );
+    return headerContainer ? createPortal(header, headerContainer) : header;
+  };
   return (
     <div ref={root} className="changes-pane">
       {!pending && error && (
@@ -142,6 +158,7 @@ export function ChangesPane({
       )}
       {previewOperation && operation?.type === "tool" ? (
         <div className="pending-file-preview">
+          {previewPath && renderHeader(previewPath)}
           {pending && (
             <p className="pane-empty">
               {operation.status === "preparing" ? "正在生成文件内容…" : "正在写入文件…"}
@@ -149,15 +166,16 @@ export function ChangesPane({
           )}
           <ToolFilePreview block={operation} />
         </div>
-      ) : loading && !entries.length ? (
-        <p className="pane-empty">加载变更…</p>
+      ) : !entries.length ? (
+        <>
+          {previewPath && renderHeader(previewPath, () => paneTask(openFile(sessionId, previewPath)))}
+          <p className="pane-empty">{loading ? "加载变更…" : "暂无文件变更"}</p>
+        </>
       ) : (
         <DiffView
           key={scope}
           entries={entries}
-          renderHeader={(selectedPath, viewSource) => (
-            <PreviewHeader sessionId={sessionId} path={selectedPath} onViewSource={viewSource} />
-          )}
+          renderHeader={renderHeader}
           initialPath={previewPath}
           loadPatch={load}
           openFile={open}

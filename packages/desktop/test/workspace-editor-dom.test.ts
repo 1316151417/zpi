@@ -101,7 +101,7 @@ test("keeps the split trigger independent and uses the shared left-icon, right-c
   expect(document.activeElement).toBe(trigger());
 });
 
-test("project editor selection persists while Markdown preview always uses the system opener", async () => {
+test("project editor selection persists while an existing preview keeps its opening preference", async () => {
   await render();
   await key(trigger(), "ArrowDown");
   await click(items()[2]);
@@ -111,39 +111,45 @@ test("project editor selection persists while Markdown preview always uses the s
   expect(query(".workspace-editor-open").getAttribute("aria-label")).toBe("在 IntelliJ IDEA 中打开");
   await click(query(".workspace-editor-open"));
   expect(openInEditor).toHaveBeenLastCalledWith("workspace-session", ".", "idea");
-  await click(query('button[aria-label="使用默认程序打开"]'));
-  expect(fileAction).toHaveBeenCalledExactlyOnceWith("preview-session", "README.md", "open");
-  expect(openInEditor).toHaveBeenCalledTimes(2);
+  await click(query('button[aria-label="在 Finder 中打开"]:not(.workspace-editor-open)'));
+  expect(openInEditor).toHaveBeenLastCalledWith("preview-session", "README.md", "finder");
+  expect(fileAction).not.toHaveBeenCalled();
+  expect(openInEditor).toHaveBeenCalledTimes(3);
   await key(trigger(), "ArrowDown");
   expect(query('[role="menuitemradio"][aria-checked="true"]').textContent).toBe("IntelliJ IDEA");
   await click(items()[0]);
   expect(openInEditor).toHaveBeenLastCalledWith("workspace-session", ".", "finder");
-  expect(openInEditor).toHaveBeenCalledTimes(3);
+  expect(openInEditor).toHaveBeenCalledTimes(4);
 });
 
-test("a stored VS Code preference does not override the Markdown default application", async () => {
+test("a new preview opens its exact file with the stored VS Code preference", async () => {
   window.localStorage.setItem("zpi-last-editor-id", "vscode");
   await render();
-  await click(query('button[aria-label="使用默认程序打开"]'));
-  expect(fileAction).toHaveBeenCalledExactlyOnceWith("preview-session", "README.md", "open");
-  expect(openInEditor).not.toHaveBeenCalled();
+  await click(query('button[aria-label="在 VS Code 中打开"]:not(.workspace-editor-open)'));
+  expect(openInEditor).toHaveBeenCalledExactlyOnceWith("preview-session", "README.md", "vscode");
+  expect(fileAction).not.toHaveBeenCalled();
   expect(window.localStorage.getItem("zpi-last-editor-id")).toBe("vscode");
 });
 
-test("preview opening works without an installed code editor and logs system opener failures", async () => {
+test("preview opening is disabled without an installed application", async () => {
   getInstalledEditors.mockResolvedValue({ ok: true, value: [] });
-  fileAction.mockResolvedValue({
-    ok: false,
-    error: { code: "storage", message: "No default application" },
-  });
   await render();
-  const button = query<HTMLButtonElement>('button[aria-label="使用默认程序打开"]');
-  expect(button.disabled).toBe(false);
+  const button = query<HTMLButtonElement>('button[aria-label="在编辑器中打开"]');
+  expect(button.disabled).toBe(true);
   await click(button);
+  expect(openInEditor).not.toHaveBeenCalled();
+  expect(fileAction).not.toHaveBeenCalled();
+});
+
+test("preview editor failures reach the existing error log", async () => {
+  window.localStorage.setItem("zpi-last-editor-id", "vscode");
+  openInEditor.mockResolvedValue({ ok: false, error: { code: "storage", message: "Editor unavailable" } });
+  await render();
+  await click(query('button[aria-label="在 VS Code 中打开"]:not(.workspace-editor-open)'));
   expect(logError).toHaveBeenCalledWith(
     expect.objectContaining({
-      source: "open-default-file",
-      message: expect.stringContaining("No default application"),
+      source: "open-in-editor",
+      message: expect.stringContaining("Editor unavailable"),
     }),
   );
 });
