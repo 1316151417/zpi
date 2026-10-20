@@ -46,7 +46,11 @@ export function responsesInput(model: Model, context: TranscriptContext): Respon
     } else if (message.role === "assistant") {
       for (const block of message.content) {
         if (block.type === "text" && block.text.trim()) {
-          input.push({ role: "assistant", content: block.text });
+          input.push({
+            role: "assistant",
+            content: block.text,
+            ...(block.phase ? { phase: block.phase } : {}),
+          });
         } else if (block.type === "thinking" && block.thinkingSignature) {
           const item: unknown = JSON.parse(block.thinkingSignature);
           if (isJsonObject(item) && item.type === "reasoning")
@@ -365,8 +369,10 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
           const text = part.type === "output_text" ? part.text : part.refusal;
           if (!blocks.has(key)) append(key, "text", text);
           const blockIndex = blocks.get(key);
-          if (blockIndex !== undefined && output.content[blockIndex].type === "text")
+          if (blockIndex !== undefined && output.content[blockIndex].type === "text") {
             output.content[blockIndex].textSignature = item.id;
+            if (item.phase) output.content[blockIndex].phase = item.phase;
+          }
           close(key);
         });
       }

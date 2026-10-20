@@ -318,6 +318,56 @@ test("background child completes after parent settles and sends exactly one auto
   );
 });
 
+test("a background result arriving during the final answer gets its own persisted supplement run", async () => {
+  const answering = deferred();
+  let childResponse: ServerResponse | undefined;
+  let parentResponse: ServerResponse | undefined;
+  const f = await fixture((body, response) => {
+    if (!tools(body).includes("Agent")) {
+      childResponse = response;
+      return;
+    }
+    if (!messages(body).some((message) => message.role === "tool")) {
+      call(response, { description: "Late SQL findings", prompt: "Research", run_in_background: true });
+    } else if (JSON.stringify(messages(body)).includes("<task-notification>")) {
+      send(response, chunk({ content: "Supplement only" }));
+      done(response);
+    } else {
+      parentResponse = response;
+      send(response, chunk({ content: "Complete main answer" }));
+      answering.resolve();
+    }
+  });
+  f.settings.setCapabilityEnabled("subagents", true);
+  await f.host.startRun({ sessionId: f.session.id, text: "Research" });
+  await answering.promise;
+  await expect.poll(() => !!childResponse).toBe(true);
+  assert(childResponse);
+  send(childResponse, chunk({ content: "Late findings" }));
+  done(childResponse);
+  await expect.poll(() => f.host.subagents.list(f.session.id)[0]?.status).toBe("completed");
+  assert(parentResponse);
+  done(parentResponse);
+  await expect.poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.status).toBe("completed");
+  await expect.poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.length).toBe(2);
+  await f.host.activeRuns.get(f.session.id)?.done;
+  const runs = f.host.getSessionSnapshot(f.session.id).view.runs;
+  expect(runs[0].subagentNotification).toBeUndefined();
+  expect(runs[0].orderedBlocks.flatMap((block) => (block.type === "text" ? [block.text] : []))).toEqual([
+    "Complete main answer",
+  ]);
+  expect(runs[0].finalAnswerBlockIds).toHaveLength(1);
+  expect(runs[1].subagentNotification).toMatchObject({ description: "Late SQL findings" });
+  expect(runs[1].orderedBlocks.flatMap((block) => (block.type === "text" ? [block.text] : []))).toEqual([
+    "Supplement only",
+  ]);
+  await f.host.close();
+  const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
+  cleanup.push(() => restored.close());
+  await restored.init();
+  expect(restored.getSessionSnapshot(f.session.id).view.runs).toEqual(runs);
+});
+
 test("SendMessage resumes a completed child with its own history and automatically returns follow-up results", async () => {
   const f = await fixture((body, response) => {
     const rows = messages(body);

@@ -922,11 +922,10 @@ export class SessionHost {
     const active = this.activeRuns.get(parentId);
     if (active) {
       if (active.aborted) throw new Error("busy: 父会话已停止");
-      if (!this.sessions.get(parentId)?.steer(text)) {
-        const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
-        inbox.push(input);
-        this.pendingSubagentMessages.set(parentId, inbox);
-      }
+      // Only merge notifications at a tool boundary; a completed answer owns its own run.
+      const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
+      inbox.push(input);
+      this.pendingSubagentMessages.set(parentId, inbox);
       return;
     }
     await this.startRun(input, undefined, !!this.subagents.taskForChild(parentId));
@@ -2650,6 +2649,18 @@ export class SessionHost {
             model,
           );
         const unsubscribe = session.subscribe((e) => {
+          if (
+            e.type === "turn_end" &&
+            e.message.role === "assistant" &&
+            e.message.stopReason === "toolUse" &&
+            !run.aborted &&
+            e.message.content.some((block) => block.type === "toolCall")
+          ) {
+            const inbox = this.pendingSubagentMessages.get(id) ?? [];
+            const deferred = inbox.filter((message) => !session.steer(message.text));
+            if (deferred.length) this.pendingSubagentMessages.set(id, deferred);
+            else this.pendingSubagentMessages.delete(id);
+          }
           if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
             manager.appendCustomEntry("zpi.agent_call", {
@@ -2690,7 +2701,9 @@ export class SessionHost {
         this.pendingSubagentMessages.delete(id);
         // Manual compaction cannot consume steering. Keep rejected startup replies
         // for settlement to deliver in a separate prompt turn.
-        const deferred = inbox.filter((message) => !session.steer(message.text));
+        const deferred = inbox.filter(
+          (message) => message.subagentNotification || !session.steer(message.text),
+        );
         if (deferred.length) this.pendingSubagentMessages.set(id, deferred);
         void execution
           .then(

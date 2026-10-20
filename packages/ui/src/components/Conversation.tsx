@@ -467,7 +467,12 @@ export const RunGroup = memo(function RunGroup({
   return (
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
       <div className="assistant-turn">
-        {run.subagentNotification ? null : (
+        {run.subagentNotification ? (
+          <div className="background-result-heading" data-testid="background-result-heading">
+            <span>后台补充</span>
+            <span>{run.subagentNotification.description}</span>
+          </div>
+        ) : (
           <div className="user-message-row">
             {editing && onEdit && sessionId ? (
               <UserMessageEditor

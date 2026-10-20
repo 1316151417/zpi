@@ -58,6 +58,57 @@ function sse(events: unknown[]) {
   });
 }
 
+it.each([false, true])("round-trips each assistant phase with streamed deltas=%s", async (streamed) => {
+  const items = [
+    {
+      ...textItem,
+      id: "msg_progress",
+      phase: "commentary",
+      content: [{ type: "output_text", text: "Checking" }],
+    },
+    {
+      ...textItem,
+      id: "msg_answer",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "Result" }],
+    },
+  ];
+  const model = responsesModel();
+  const result = await streamSimple(model, normalizeContext({ messages: [] }), {
+    apiKey: "fake",
+    fetch: (async () =>
+      sse([
+        ...items.flatMap((item) => [
+          ...(streamed
+            ? [
+                {
+                  type: "response.output_text.delta",
+                  item_id: item.id,
+                  content_index: 0,
+                  delta: item.content[0].text,
+                },
+              ]
+            : []),
+          { type: "response.output_item.done", item },
+        ]),
+        terminal(items),
+      ])) as typeof fetch,
+  }).result();
+  expect(result.content).toEqual([
+    { type: "text", text: "Checking", textSignature: "msg_progress", phase: "commentary" },
+    { type: "text", text: "Result", textSignature: "msg_answer", phase: "final_answer" },
+  ]);
+  const context = normalizeContext({ messages: [JSON.parse(JSON.stringify(result))] });
+  expect(responsesInput(model, context)).toEqual([
+    { role: "assistant", content: "Checking", phase: "commentary" },
+    { role: "assistant", content: "Result", phase: "final_answer" },
+  ]);
+  expect(responsesInput({ ...model, id: "other" }, context)).toEqual([
+    { role: "assistant", content: "Checking" },
+    { role: "assistant", content: "Result" },
+  ]);
+});
+
 it("finishes a completed response without waiting for transport EOF", async () => {
   let transport: ReadableStreamDefaultController<Uint8Array> | undefined;
   let cancelled = false;

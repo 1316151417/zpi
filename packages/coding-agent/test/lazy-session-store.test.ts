@@ -310,7 +310,7 @@ it("preserves signed multimodal content and reused tool IDs across retained turn
     assistant.responseId = `response-${turn}`;
     assistant.thinkingLevel = "high";
     assistant.content = [
-      { type: "text", text: "text", textSignature: "signed-text" },
+      { type: "text", text: "text", textSignature: "signed-text", phase: "commentary" },
       { type: "thinking", thinking: "", thinkingSignature: "signed-thought", redacted: true },
       {
         type: "toolCall",
