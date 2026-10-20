@@ -50,7 +50,7 @@ export function ToolFileChip({
         : undefined;
   const contents = (
     <>
-      <FileIcon path={file.path} />
+      <FileIcon path={file.name} />
       <span>{file.name}</span>
     </>
   );

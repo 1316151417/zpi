@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { ToolBlock } from "../src/components/ToolBlock.tsx";
+import { ToolBlock, ToolFileChip } from "../src/components/ToolBlock.tsx";
 import { toolEditPreviewPatch, toolInputPreview } from "../src/components/tool-input-preview.ts";
 import { type ToolView, toolCommand, toolFile } from "../src/components/tool-presentation.ts";
 import { emptySession, reduceSession } from "../src/reducer.ts";
@@ -26,6 +26,28 @@ const render = (block: ToolView, expanded = true) =>
   renderToStaticMarkup(createElement(ToolBlock, { block, expanded, toggle: () => {} }));
 
 describe("ZCode streaming tool input preview", () => {
+  it.each(["read", "write", "edit"])(
+    "uses the displayed leaf for %s icons as paths stream, matching ZCode",
+    (name) => {
+      for (const [path, icon] of [
+        ["/", "document"],
+        ["/project/", "document"],
+        ["/project/src", "document"],
+        ["/project/src/", "document"],
+        ["/project/src/Example", "document"],
+        ["/project/src/Example.java", "java"],
+        ["/project/src/a.ts/", "typescript"],
+        ["C:\\project\\src\\", "document"],
+        ["C:\\project\\src\\Example.java", "java"],
+      ]) {
+        const block = tool(`{"path":${JSON.stringify(path).slice(0, -1)}`, { name });
+        const chip = renderToStaticMarkup(createElement(ToolFileChip, { block }));
+        expect(chip).toContain(`/material-icons/${icon}.svg`);
+        expect(toolFile(block)?.path).toBe(path);
+      }
+    },
+  );
+
   it("shares completed parsing across presentation readers and invalidates when arguments change", () => {
     const block = tool('{"path":"a.ts","command":"rg old"}', { name: "bash" });
     const parse = vi.spyOn(JSON, "parse");
