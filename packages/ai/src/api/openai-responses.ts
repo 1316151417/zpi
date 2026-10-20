@@ -21,6 +21,8 @@ import {
   getCurrentTools,
   isJsonObject,
 } from "../utils/transcript.ts";
+import { responsesCache } from "./responses-cache.ts";
+import { responsesEvents } from "./responses-events.ts";
 import { transformMessages } from "./transform-messages.ts";
 
 export function responsesInput(model: Model, context: TranscriptContext): ResponseInput {
@@ -182,13 +184,10 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         : undefined;
     let payload: unknown = {
       model: model.id,
-      input: responsesInput(model, context),
+      ...responsesCache(model, options, responsesInput(model, context)),
       instructions: getCurrentSystemPrompt(context.messages),
       store: false,
       stream: true,
-      ...(options.sessionId && options.cacheRetention !== "none"
-        ? { prompt_cache_key: options.sessionId.slice(0, 64) }
-        : {}),
       include: ["reasoning.encrypted_content"],
       ...(tools.length
         ? {
@@ -264,6 +263,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       { status: response.status, headers: Object.fromEntries(response.headers) },
       model,
     );
+    if (options.signal?.aborted) throw new Error("Request aborted");
     events.push({ type: "start", partial: output });
     const blocks = new Map<string, number>();
     const args = new Map<string, string>();
@@ -310,6 +310,18 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       const current = block?.type === "thinking" ? block.thinking : "";
       if (text.startsWith(current)) append(key, "thinking", text.slice(current.length));
       else if (block?.type === "thinking") block.thinking = text;
+      close(key);
+    }
+    function completeText(key: string, text: string) {
+      const index = blocks.get(key);
+      const block = index === undefined ? undefined : output.content[index];
+      const current = block?.type === "text" ? block.text : "";
+      if (current !== text) ended.delete(key);
+      if (text.startsWith(current)) append(key, "text", text.slice(current.length));
+      else if (block?.type === "text") {
+        block.text = text;
+        events.generated();
+      }
       close(key);
     }
     function itemAdded(item: ResponseOutputItem) {
@@ -367,7 +379,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         item.content.forEach((part, index) => {
           const key = contentKey(item.id, index);
           const text = part.type === "output_text" ? part.text : part.refusal;
-          if (!blocks.has(key)) append(key, "text", text);
+          completeText(key, text);
           const blockIndex = blocks.get(key);
           if (blockIndex !== undefined && output.content[blockIndex].type === "text") {
             output.content[blockIndex].textSignature = item.id;
@@ -378,7 +390,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       }
     }
     let terminal = false;
-    for await (const event of chunks) {
+    for await (const event of responsesEvents(chunks, response)) {
       events.received();
       if (options.signal?.aborted) throw new Error("Request aborted");
       switch (event.type) {
@@ -392,6 +404,12 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         case "response.output_text.delta":
         case "response.refusal.delta":
           append(contentKey(event.item_id, event.content_index), "text", event.delta);
+          break;
+        case "response.output_text.done":
+          completeText(contentKey(event.item_id, event.content_index), event.text);
+          break;
+        case "response.refusal.done":
+          completeText(contentKey(event.item_id, event.content_index), event.refusal);
           break;
         case "response.reasoning_summary_text.delta":
           append(contentKey(event.item_id, event.summary_index), "thinking", event.delta);
@@ -442,16 +460,18 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
           const usage = event.response.usage;
           if (usage) {
             const cached = usage.input_tokens_details?.cached_tokens ?? 0;
+            const written = usage.input_tokens_details?.cache_write_tokens ?? 0;
             if (
-              [usage.input_tokens, usage.output_tokens, usage.total_tokens, cached].every(
+              [usage.input_tokens, usage.output_tokens, usage.total_tokens, cached, written].every(
                 (n) => Number.isSafeInteger(n) && n >= 0,
               ) &&
-              cached <= usage.input_tokens
+              cached + written <= usage.input_tokens
             ) {
               output.usageAvailable = true;
               output.cacheUsageAvailable = usage.input_tokens_details?.cached_tokens !== undefined;
-              output.usage.input = usage.input_tokens - cached;
+              output.usage.input = usage.input_tokens - cached - written;
               output.usage.cacheRead = cached;
+              output.usage.cacheWrite = written;
               output.usage.output = usage.output_tokens;
               output.usage.totalTokens = usage.total_tokens;
               output.usage.reasoning = usage.output_tokens_details?.reasoning_tokens;

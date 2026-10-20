@@ -44,7 +44,9 @@ export function measureContextBreakdown(payload: JsonObject): ContextBreakdownIt
       counts.messages += textContent(message.content).length;
       if (message.tool_calls) counts.messages += JSON.stringify(message.tool_calls).length;
       if (message.type === "function_call") counts.messages += String(message.arguments ?? "").length;
-      if (message.type === "function_call_output") counts.messages += String(message.output ?? "").length;
+      if (message.type === "function_call_output")
+        counts.messages +=
+          typeof message.output === "string" ? message.output.length : textContent(message.output).length;
       if (typeof message.reasoning_content === "string") counts.messages += message.reasoning_content.length;
     }
   }

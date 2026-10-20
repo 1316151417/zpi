@@ -48,6 +48,8 @@ macOS 数据目录：
 - 辅助对话是用户手动创建的独立会话，只复制创建时的稳定上下文和配置。子智能体是桌面编排的受委派任务。两者都共享父任务的工作目录；Git 工作树只提供独立检出目录，不隔离操作系统权限。
 - 后台命令和子智能体的通知只在工具调用结束、主模型还要继续调查时合入当前轮；纯文本答案期间到达的通知等本轮结束后单独启动，显示为带任务标题的「后台补充」。通知元信息随运行记录保存，重启后保持分组，原任务的完整答案不被后续短补充折叠。
 - OpenAI Responses 的每段文本保留原始 `phase`（`commentary` / `final_answer`），同模型历史重放时原样回传；旧记录缺失标签时不猜测，切换模型时按既有规则移除供应商元信息。
+- Responses 的文本结束、消息结束和响应结束事件均以完整正文校正片段；支持网关在 `stream: true` 下返回 `application/json` 或 `+json` 完整响应，复用相同的工具、用量、拒绝和失败处理，不重复请求。HTTP 200 不代表生成成功，仍须检查响应终态。
+- Responses 缓存按官方[缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)分代处理：GPT-5.6 及更新模型的 `none` 使用无断点的 explicit 模式；`skipCacheWrite` 只在最后临时输入之前标记稳定前缀；`short` / `long` 均受当前仅支持 `30m` 的 TTL 限制。已确认支持扩展缓存的旧模型将 `long` 映射为 `24h`，支持短缓存的映射为 `in_memory`；GPT-5.5 不发送不支持的 `in_memory`。旧接口的 `none` 只能省略路由 key，不能关闭服务端自动缓存，`skipCacheWrite` 也不能控制旧接口边界。ChatGPT 认证保持现有旧 retention 参数限制，未知网关模型别名保持默认参数；定制控制可通过 `samplingParams` / `onPayload` 指定。缓存写入 token 从普通输入中分离，按模型配置的缓存写入价格计费。
 
 ### 联网工具边界
 

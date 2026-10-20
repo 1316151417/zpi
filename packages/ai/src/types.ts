@@ -289,10 +289,11 @@ export interface ModelPerformanceSample {
 export interface StreamOptions {
   /** Request-local media omission statistics; omitted when the request fits. Never sent to the provider. */
   onMediaProjection?: (stats: import("./utils/media-policy.ts").MediaBudgetStats) => void;
-  /** Move the tail cache breakpoint before the final request-local prompt. */
+  /** Move the tail cache breakpoint before the final request-local prompt on protocols with explicit boundaries. */
   skipCacheWrite?: boolean;
   /** Transient measurements from actual provider attempts; an empty sample starts a fresh attempt. */
   onPerformance?: (sample: ModelPerformanceSample) => void;
+  /** Best available provider retention. Legacy OpenAI automatic caching cannot be disabled with "none". */
   cacheRetention?: CacheRetention;
   metadata?: Record<string, unknown>;
   env?: ProviderEnv;
