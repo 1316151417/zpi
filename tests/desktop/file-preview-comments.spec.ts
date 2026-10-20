@@ -120,6 +120,9 @@ for (const target of ["main", "side"] as const) {
       await page.keyboard.press("Escape");
       await expect(commentPill).toBeFocused();
       await expect(commentDetails).toHaveCount(0);
+      // Escape closes the card while the pointer remains over the trigger.
+      // Re-enter it to exercise the next hover, rather than hovering the same coordinates.
+      await page.mouse.move(0, 0);
       await commentPill.hover();
       await commentDetails.getByRole("button", { name: "打开 example.ts L2-L3", exact: true }).click();
       await expect(preview).toBeVisible();

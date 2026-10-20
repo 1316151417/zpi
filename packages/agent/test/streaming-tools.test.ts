@@ -430,6 +430,157 @@ for (const duringDrain of [false, true]) {
   });
 }
 
+for (const mode of ["agent", "tool"] as const) {
+  it(`honors ${mode} sequential execution for streaming-safe tools`, async () => {
+    const started = deferred(),
+      release = deferred();
+    const order: string[] = [];
+    const f = fixture(
+      [
+        {
+          ...tool,
+          executionMode: mode === "tool" ? "sequential" : undefined,
+          async execute(id) {
+            order.push(`execute:${id}`);
+            if (id === "first") {
+              started.resolve();
+              await release.promise;
+            }
+            return result(id);
+          },
+        },
+      ],
+      mode === "agent" ? { toolExecution: "sequential" } : {},
+    );
+    const run = f.agent.prompt("read twice");
+    f.close(call("first"));
+    f.close(call("second"));
+    f.finish();
+    await started.promise;
+    expect(order).toEqual(["execute:first"]);
+    expect(f.events.filter((event) => event.type === "tool_execution_start")).toHaveLength(1);
+    release.resolve();
+    await run;
+    expect(order).toEqual(["execute:first", "execute:second"]);
+  });
+}
+
+for (const mode of ["agent", "tool"] as const) {
+  it(`cancels deferred ${mode} sequential calls without starting the rest of the batch`, async () => {
+    const started = deferred(),
+      release = deferred();
+    const executed: string[] = [];
+    const f = fixture(
+      [
+        {
+          ...tool,
+          executionMode: mode === "tool" ? "sequential" : undefined,
+          async execute(id) {
+            executed.push(id);
+            started.resolve();
+            await release.promise;
+            return result(id);
+          },
+        },
+      ],
+      mode === "agent" ? { toolExecution: "sequential" } : {},
+    );
+    const run = f.agent.prompt("read twice");
+    f.close(call("first"));
+    f.close(call("second"));
+    f.finish();
+    await started.promise;
+    f.agent.abort();
+    release.resolve();
+    await run;
+    expect(executed).toEqual(["first"]);
+    expect(f.agent.state.messages.filter((message) => message.role === "toolResult")).toMatchObject([
+      { toolCallId: "first", isError: false },
+      { toolCallId: "second", isError: true },
+    ]);
+  });
+}
+
+it("defers safe streaming calls when a sequential tool is available but never called", async () => {
+  const executed: string[] = [];
+  const f = fixture([
+    {
+      ...tool,
+      async execute(id) {
+        executed.push(id);
+        return result(id);
+      },
+    },
+    { ...tool, name: "serial", executionMode: "sequential" },
+  ]);
+  const run = f.agent.prompt("read once");
+  f.close(call("read"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(executed).toEqual([]);
+  f.finish();
+  await run;
+  expect(executed).toEqual(["read"]);
+});
+
+it("preserves declaration order when a sequential tool arrives after deferred write and safe read calls", async () => {
+  const order: string[] = [];
+  const recording = (name: string): AgentTool => ({
+    ...tool,
+    name,
+    metadata: name === "read" ? safe : undefined,
+    executionMode: name === "serial" ? "sequential" : undefined,
+    async execute(id) {
+      order.push(name);
+      return result(id);
+    },
+  });
+  const f = fixture([recording("write"), recording("read"), recording("serial")]);
+  const run = f.agent.prompt("write, read, then serial");
+  f.close(call("write", "write"));
+  f.close(call("read"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(order).toEqual([]);
+  f.close(call("serial", "serial"));
+  f.finish();
+  await run;
+  expect(order).toEqual(["write", "read", "serial"]);
+});
+
+it("does not stream later safe tools past a sequential tool in the same batch", async () => {
+  const started = deferred(),
+    release = deferred();
+  const order: string[] = [];
+  const f = fixture([
+    {
+      ...tool,
+      executionMode: "sequential",
+      async execute(id) {
+        order.push(id);
+        started.resolve();
+        await release.promise;
+        return result(id);
+      },
+    },
+    {
+      ...tool,
+      name: "inspect",
+      async execute(id) {
+        order.push(id);
+        return result(id);
+      },
+    },
+  ]);
+  const run = f.agent.prompt("read then inspect");
+  f.close(call("first"));
+  f.close(call("second", "inspect"));
+  f.finish();
+  await started.promise;
+  expect(order).toEqual(["first"]);
+  release.resolve();
+  await run;
+  expect(order).toEqual(["first", "second"]);
+});
+
 for (const sequential of [false, true]) {
   it(`matches Pi's ${sequential ? "tool-level sequential override" : "ordered preparation and parallel batch"}`, async () => {
     const first = deferred(),

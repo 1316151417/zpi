@@ -5,7 +5,7 @@ import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
-it("failure after persisting a run start records an error end and releases the running state", async () => {
+it("cache failure before accepting a run preserves the draft and releases the running state", async () => {
   const f = await fixture((_, response) => {
     send(response, chunk({ content: "ok" }));
     done(response);
@@ -18,14 +18,15 @@ it("failure after persisting a run start records an error end and releases the r
   markUsed.mockRestore();
   expect(f.host.activeRuns.has(id)).toBe(false);
   const snapshot = f.host.getSessionSnapshot(id);
-  expect(snapshot.session).toMatchObject({ status: "error", draft: false });
-  expect(snapshot.view.runs[0]).toMatchObject({ status: "error", error: "attachment failure" });
+  expect(snapshot.session.draft).toBe(true);
+  expect(snapshot.view.runs).toEqual([]);
   expect(f.server.requests).toHaveLength(0);
   await f.host.close();
   const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
-  expect(reopened.getSessionSnapshot(id).view.runs[0].status).toBe("error");
+  expect(reopened.getSessionSnapshot(id).session.draft).toBe(true);
+  expect(reopened.getSessionSnapshot(id).view.runs).toEqual([]);
   await reopened.startRun({ sessionId: id, text: "retry" });
   await reopened.activeRuns.get(id)?.done;
   expect(reopened.getSessionSnapshot(id).view.runs.at(-1)?.status).toBe("completed");

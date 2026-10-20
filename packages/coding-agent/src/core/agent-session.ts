@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "zpi-agent";
 import { Agent } from "zpi-agent";
-import type { ImageContent, Model, ModelRetryStatus, SimpleStreamOptions, TranscriptContext } from "zpi-ai";
+import type {
+  ImageContent,
+  Message,
+  Model,
+  ModelRetryStatus,
+  SimpleStreamOptions,
+  TranscriptContext,
+} from "zpi-ai";
 import {
   assertSupportedOptions,
   createAssistantMessageEventStream,
@@ -21,11 +28,7 @@ import {
   shouldCompact,
 } from "./compaction.ts";
 import { withHttpIdleTimeout } from "./http-idle-timeout.ts";
-import {
-  applyMicrocompactBoundary,
-  buildDefaultMicrocompactThreshold,
-  maybeMicrocompact,
-} from "./microcompact.ts";
+import { buildDefaultMicrocompactThreshold, maybeMicrocompact } from "./microcompact.ts";
 import {
   type ModelPerformance,
   type ModelPerformanceTotals,
@@ -94,7 +97,7 @@ export class AgentSession {
   private overflowRecoveryAttempted = false;
   private retryAttempt = 0;
   private lastAssistantCompletedAtMs?: number;
-  private microcompactClearedIds = new Set<string>();
+  private microcompactProjection = new WeakMap<Message, Message>();
   private recoveredCalls = new WeakSet<object>();
   private performance: SessionPerformance;
   get modelPerformance(): ModelPerformance {
@@ -155,7 +158,6 @@ export class AgentSession {
         (message) =>
           message.role === "assistant" && message.stopReason !== "error" && message.stopReason !== "aborted",
       )?.timestamp;
-    this.microcompactClearedIds = new Set(this.manager.getMicrocompactClearedIds());
     this.agent = new Agent({
       initialState: {
         model,
@@ -167,9 +169,9 @@ export class AgentSession {
       transformContext: async (messages) => {
         const config = this.settingsManager.getMicrocompactSettings();
         const settings = this.settingsManager.getCompactionSettings(this.model);
-        const clearedIds = [...this.microcompactClearedIds];
+        const projected = messages.map((message) => this.microcompactProjection.get(message) ?? message);
         const result = maybeMicrocompact({
-          messages: applyMicrocompactBoundary(messages, clearedIds),
+          messages: projected,
           config: {
             ...config,
             thresholdTokens:
@@ -179,7 +181,9 @@ export class AgentSession {
           lastAssistantCompletedAtMs: this.lastAssistantCompletedAtMs,
         });
         if (result.boundary) {
-          for (const id of result.boundary.clearedToolCallIds) this.microcompactClearedIds.add(id);
+          for (const [index, message] of messages.entries())
+            if (result.messages[index] !== message)
+              this.microcompactProjection.set(message, result.messages[index]);
           this.manager.appendMicrocompact(result.boundary);
           this.notifyLastEntry();
         }

@@ -434,6 +434,19 @@ it("replays indexed microcompact boundaries without reading completed journals o
     postMicrocompactTokenCount: 10,
     tokensSaved: 990,
   });
+  source.appendMessage({
+    ...emptyAssistant(fakeModel("")),
+    content: [{ type: "toolCall", id: "old", name: "read", arguments: {} }],
+    stopReason: "toolUse",
+  });
+  source.appendMessage({
+    role: "toolResult",
+    toolCallId: "old",
+    toolName: "read",
+    content: [{ type: "text", text: "new result with the same ID" }],
+    isError: false,
+    timestamp: 1,
+  });
   const entries = source.getEntries();
   const index = indexed(entries);
   const restored = SessionManager.fromStore(index.store);
@@ -441,6 +454,9 @@ it("replays indexed microcompact boundaries without reading completed journals o
   expect(restored.buildSessionContext()).toEqual(source.buildSessionContext());
   expect(restored.buildSessionContext().messages[1].content).toEqual([
     { type: "text", text: "[Old tool result content cleared]" },
+  ]);
+  expect(restored.buildSessionContext().messages.at(-1)?.content).toEqual([
+    { type: "text", text: "new result with the same ID" },
   ]);
   const result = entries[1];
   expect(result.type === "message" && result.message.content).toEqual([

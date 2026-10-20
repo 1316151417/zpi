@@ -48,6 +48,8 @@ interface IndexData {
   diagnostic?: string;
 }
 type Row = Record<string, string | number | null>;
+// Derived checkpoints from the fixed-level reducer need one rebuild, without changing transcript format.
+const projectionVersion = "reasoning-v2";
 const initialState = (): TranscriptState => ({
   model: null,
   thinkingLevel: "off",
@@ -56,6 +58,8 @@ const initialState = (): TranscriptState => ({
   lastMessageSeq: 0,
   lastCompactionSeq: 0,
 });
+const isThinkingLevel = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= 128 && value === value.trim();
 
 /** JSONL is authoritative. SQLite stores normalized offsets and small derived projections only. */
 export class HistoryIndex implements TranscriptStore {
@@ -177,6 +181,8 @@ export class HistoryIndex implements TranscriptStore {
           cacheInput: Number(cached.cache_input),
           lastActivityAt: cached.activity === null ? undefined : Number(cached.activity),
         };
+        if (cached.generation !== `${this.data.header.generation}:${projectionVersion}`)
+          throw new Error("storage: Outdated transcript projections");
         this.seq = Number(cached.seq);
         this.currentRun = String(cached.current_run);
         this.state = this.getStateAt(this.snapshot());
@@ -361,14 +367,7 @@ export class HistoryIndex implements TranscriptStore {
           )
             this.state.model = { provider: value.modelConfig.provider, modelId: value.modelConfig.modelId };
           const level = value.thinkingLevel;
-          if (
-            level === "off" ||
-            level === "minimal" ||
-            level === "low" ||
-            level === "medium" ||
-            level === "high" ||
-            level === "xhigh"
-          ) {
+          if (isThinkingLevel(level)) {
             this.state.thinkingLevel = level;
             this.state.hasThinkingEntry = true;
             if (level !== "off") this.state.lastThinkingLevel = level;
@@ -416,11 +415,9 @@ export class HistoryIndex implements TranscriptStore {
           (isJsonObject(model) && typeof model.provider === "string" && typeof model.modelId === "string")
         )
           this.state.model = model as TranscriptState["model"];
-        const levels = ["off", "minimal", "low", "medium", "high", "xhigh"];
-        if (typeof config.thinkingLevel === "string" && levels.includes(config.thinkingLevel))
-          this.state.thinkingLevel = config.thinkingLevel as TranscriptState["thinkingLevel"];
-        if (typeof config.lastThinkingLevel === "string" && levels.includes(config.lastThinkingLevel))
-          this.state.lastThinkingLevel = config.lastThinkingLevel as TranscriptState["lastThinkingLevel"];
+        if (isThinkingLevel(config.thinkingLevel)) this.state.thinkingLevel = config.thinkingLevel;
+        if (isThinkingLevel(config.lastThinkingLevel))
+          this.state.lastThinkingLevel = config.lastThinkingLevel;
         if (typeof config.hasThinkingEntry === "boolean")
           this.state.hasThinkingEntry = config.hasThinkingEntry;
         this.run(
@@ -534,7 +531,7 @@ export class HistoryIndex implements TranscriptStore {
     this.data.modified = stat.mtimeMs;
     this.run(
       "INSERT OR REPLACE INTO transcript_state VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-      this.data.header.generation,
+      `${this.data.header.generation}:${projectionVersion}`,
       JSON.stringify(this.data.header),
       this.data.size,
       stat.mtimeMs,

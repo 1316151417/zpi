@@ -108,6 +108,8 @@ function SelectionGroupChip({
 }: SelectionReferenceChipProps & { comments?: boolean }) {
   const [open, setOpen] = useState(false);
   const interactive = useRef(false);
+  const trigger = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef(false);
   const content = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const cancelClose = () => clearTimeout(closeTimer.current);
@@ -149,6 +151,7 @@ function SelectionGroupChip({
       <Card.Trigger asChild>
         {/* biome-ignore lint/a11y/useSemanticElements: Focusable pill with a separate remove button, matching ZCode. */}
         <div
+          ref={trigger}
           className="selection-reference-chip"
           role="button"
           tabIndex={0}
@@ -205,8 +208,16 @@ function SelectionGroupChip({
                 onOpenAutoFocus: (event: Event) => {
                   if (!interactive.current) event.preventDefault();
                 },
+                onEscapeKeyDown: () => {
+                  returnFocus.current = interactive.current;
+                },
                 onCloseAutoFocus: (event: Event) => {
-                  if (!interactive.current) event.preventDefault();
+                  if (returnFocus.current) {
+                    // Focusing a hover-open trigger counts as outside interaction to Radix.
+                    event.preventDefault();
+                    trigger.current?.focus();
+                  } else if (!interactive.current) event.preventDefault();
+                  returnFocus.current = false;
                 },
               }
             : {})}

@@ -971,7 +971,7 @@
 }
 .sidebar .project-title:hover .project-row-action,
 .sidebar .project-title:has(:focus-visible) .project-row-action,
-.sidebar .project-row-action[data-state="open"] {
+.sidebar .project-row-action[aria-expanded="true"] {
   opacity: 1;
   pointer-events: auto;
 }

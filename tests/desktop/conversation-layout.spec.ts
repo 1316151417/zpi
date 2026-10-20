@@ -28,6 +28,7 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
     await expect(run).toHaveAttribute("data-status", "completed");
     for (const [width, height] of [
       [1200, 800],
+      [1140, 720],
       [900, 640],
       [1600, 900],
     ]) {
@@ -50,13 +51,15 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
         .toBe(20);
       const geometry = await page.evaluate(() => {
         const body = document.querySelector(".task-body");
+        const conversation = document.querySelector(".conversation");
         const column = document.querySelector(".conversation-inner");
         const dock = document.querySelector(".composer-container");
         const answer = document.querySelector(".assistant-message-row > .answer");
         const input = document.querySelector(".composer-container > .composer-stack > .composer");
-        if (!body || !column || !dock || !answer || !input) throw new Error("Missing conversation layout");
+        if (!body || !conversation || !column || !dock || !answer || !input)
+          throw new Error("Missing conversation layout");
         return {
-          paneWidth: body.getBoundingClientRect().width,
+          availableWidth: conversation.clientWidth,
           columnWidth: column.getBoundingClientRect().width,
           dockWidth: dock.getBoundingClientRect().width,
           columnLeft: column.getBoundingClientRect().left,
@@ -66,15 +69,15 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
         };
       });
       const expectedWidth =
-        geometry.paneWidth >= 1280
-          ? Math.min(geometry.paneWidth - 384, 1152)
-          : geometry.paneWidth >= 864
-            ? Math.min(geometry.paneWidth - 96, 896)
-            : geometry.paneWidth;
+        geometry.availableWidth >= 1280
+          ? Math.min(geometry.availableWidth - 384, 1152)
+          : geometry.availableWidth >= 864
+            ? Math.min(geometry.availableWidth - 96, 896)
+            : geometry.availableWidth;
       expect(geometry.columnWidth).toBe(expectedWidth);
       expect(geometry.dockWidth).toBe(expectedWidth);
       expect(geometry.columnLeft).toBe(geometry.dockLeft);
-      expect(geometry.textInset).toBe(geometry.paneWidth >= 448 ? 24 : 16);
+      expect(geometry.textInset).toBe(geometry.availableWidth >= 448 ? 24 : 16);
       expect(geometry.inputInset).toBe(16);
       await page.mouse.move(0, 0);
       await expect(actions).toHaveCSS("opacity", "0");

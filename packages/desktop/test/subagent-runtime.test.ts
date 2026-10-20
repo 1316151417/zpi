@@ -179,6 +179,43 @@ test("finishing an earlier notification does not suppress the resumed turn's res
   await f.plugin.close();
 });
 
+test("queued follow-ups stay running and stoppable without exposing an earlier turn's result", async () => {
+  const f = fixture();
+  const delivery = deferred();
+  vi.mocked(f.port.notify).mockImplementationOnce(() => delivery.promise);
+  vi.mocked(f.port.steer).mockReturnValue(false);
+  const task = await f.launch();
+  try {
+    f.turns.get(task.childSessionId)?.resolve();
+    await vi.waitFor(() => expect(f.port.notify).toHaveBeenCalledTimes(1));
+    for (const message of ["First follow-up", "Second follow-up"])
+      expect(
+        (await f.invoke("SendMessage", { to: task.agentId, summary: message, message })).content,
+      ).toEqual([{ type: "text", text: expect.stringContaining('"delivery":"queued"') }]);
+    delivery.resolve();
+    await vi.waitFor(() => expect(f.port.run).toHaveBeenCalledTimes(2));
+    const received = vi.fn();
+    const waiting = f.invoke("TaskOutput", { task_id: task.agentId }).then((output) => {
+      received();
+      return output;
+    });
+    f.turns.get(task.childSessionId)?.resolve();
+    await vi.waitFor(() => expect(f.port.run).toHaveBeenCalledTimes(3));
+    expect(f.plugin.list("parent")[0]).toMatchObject({ status: "running", result: undefined });
+    expect(received).not.toHaveBeenCalled();
+    expect((await f.invoke("TaskOutput", { task_id: task.agentId, block: false })).details).toMatchObject({
+      retrieval_status: "not_ready",
+      task: { status: "running", output: "" },
+    });
+    await f.invoke("TaskStop", { task_id: task.agentId });
+    expect(f.port.stop).toHaveBeenCalledWith(task.childSessionId);
+    expect((await waiting).details).toMatchObject({ task: { status: "aborted" } });
+  } finally {
+    delivery.resolve();
+    await f.plugin.close();
+  }
+});
+
 test("failed and restored interrupted tasks expose status and error without transcript replay", async () => {
   const f = fixture();
   vi.mocked(f.port.run).mockRejectedValueOnce(new Error("provider unavailable"));

@@ -1061,17 +1061,42 @@ export function Conversation({
     observer.observe(trigger);
     return () => observer.disconnect();
   }, [view.sessionId, historyCursor, hasEarlier, loadingEarlier, loadHistory]);
-  useEffect(() => {
-    if (!ref.current) return;
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const column = root.firstElementChild as HTMLElement | null;
+    const owner = root.parentElement?.parentElement;
+    const composer = owner?.querySelector(":scope > .composer-container");
+    const shared = new Map<string, string>();
+    const shareColumn = () => {
+      if (!column || !owner || !composer) return;
+      const width = column.getBoundingClientRect().width;
+      if (!width) return;
+      // A native scrollbar changes the available column width and its breakpoints.
+      // Share layout bounds with the sibling composer, excluding visual translations.
+      for (const [property, value] of [
+        ["--conversation-column-width", `${width}px`],
+        ["--conversation-column-left", getComputedStyle(column).marginLeft],
+      ]) {
+        if (owner.style.getPropertyValue(property) !== value) owner.style.setProperty(property, value);
+        shared.set(property, value);
+      }
+    };
+    shareColumn();
     const observer = new ResizeObserver(() => {
+      shareColumn();
       const el = ref.current;
       if (!el) return;
       if (following.current) scrollToBottom();
       setShowLatest(el.scrollHeight - el.scrollTop - el.clientHeight >= 60);
     });
-    const child = ref.current.firstElementChild;
-    if (child) observer.observe(child);
-    return () => observer.disconnect();
+    observer.observe(root);
+    if (column) observer.observe(column);
+    return () => {
+      observer.disconnect();
+      for (const [property, value] of shared)
+        if (owner?.style.getPropertyValue(property) === value) owner.style.removeProperty(property);
+    };
   }, [view.sessionId]);
   return (
     <SubagentContext.Provider value={subagentContext}>
@@ -1508,8 +1533,15 @@ export function ChatComposer({
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       if (
-        document.querySelector(
-          'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
+        Array.from(
+          document.querySelectorAll<HTMLElement>(
+            'dialog[open], [role="dialog"], [role="menu"], [role="listbox"], .settings-screen',
+          ),
+        ).some(
+          (element) =>
+            !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
+            element.getClientRects().length > 0 &&
+            !["hidden", "collapse"].includes(getComputedStyle(element).visibility),
         )
       )
         return;

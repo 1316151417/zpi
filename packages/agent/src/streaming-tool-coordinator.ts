@@ -9,7 +9,15 @@ export function shouldExecuteDuringStream(
   config: AgentLoopConfig,
   call: ToolCall,
 ): boolean {
-  if (!call.name.trim() || config.streamingToolExecution === "off") return false;
+  // A later declaration can make the entire batch sequential. Defer speculation
+  // whenever such a tool is available, before any earlier call can run out of order.
+  if (
+    !call.name.trim() ||
+    config.streamingToolExecution === "off" ||
+    config.toolExecution === "sequential" ||
+    context.tools?.some((tool) => tool.executionMode === "sequential")
+  )
+    return false;
   const tool = context.tools?.find((t) => t.name === call.name);
   const metadata = tool?.metadata;
   return !!(

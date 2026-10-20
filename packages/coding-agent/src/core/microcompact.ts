@@ -1,4 +1,5 @@
 import { estimateMessageTokens, type Message } from "zpi-ai";
+import { getMessageProvenance, setMessageProvenance } from "./transcript-store.ts";
 
 export const MICROCOMPACT_CLEARED_TOOL_RESULT_MESSAGE = "[Old tool result content cleared]";
 export const DEFAULT_MICROCOMPACT_KEEP_RECENT_TOOL_RESULTS = 5;
@@ -40,17 +41,38 @@ export function buildDefaultMicrocompactThreshold(autoCompactThreshold: number):
 function nonnegative(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
+function repeatedResultIds(messages: Message[]): Set<string> {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "toolResult") continue;
+    if (seen.has(message.toolCallId)) repeated.add(message.toolCallId);
+    seen.add(message.toolCallId);
+  }
+  return repeated;
+}
 export function applyMicrocompactBoundary(
   messages: Message[],
   clearedToolCallIds: readonly string[],
 ): Message[] {
   if (!clearedToolCallIds.length) return messages;
   const cleared = new Set(clearedToolCallIds);
-  return messages.map((message) =>
-    message.role === "toolResult" && cleared.has(message.toolCallId)
-      ? { ...message, content: [{ type: "text", text: MICROCOMPACT_CLEARED_TOOL_RESULT_MESSAGE }] }
-      : message,
-  );
+  // Legacy boundaries identify calls by ID only. Keep ambiguous results rather than
+  // clear a newer turn, an error, or media that happened to reuse an earlier ID.
+  const repeated = repeatedResultIds(messages);
+  return messages.map((message) => {
+    if (message.role !== "toolResult" || !cleared.has(message.toolCallId) || repeated.has(message.toolCallId))
+      return message;
+    if (message.content.some((block: { type: string }) => ["image", "video", "file"].includes(block.type)))
+      return message;
+    const projected: Message = {
+      ...message,
+      content: [{ type: "text", text: MICROCOMPACT_CLEARED_TOOL_RESULT_MESSAGE }],
+    };
+    const source = getMessageProvenance(message);
+    if (source) setMessageProvenance(projected, source);
+    return projected;
+  });
 }
 export function maybeMicrocompact(input: {
   messages: Message[];
@@ -74,6 +96,7 @@ export function maybeMicrocompact(input: {
         : undefined;
   if (!trigger) return { messages };
   const tools = new Set(config.compactableToolNames ?? DEFAULT_MICROCOMPACT_COMPACTABLE_TOOLS);
+  const repeated = repeatedResultIds(messages);
   const groups: string[][] = [];
   let current: string[] | undefined;
   for (const message of messages) {
@@ -83,6 +106,7 @@ export function maybeMicrocompact(input: {
       continue;
     }
     if (message.role !== "toolResult" || !message.toolCallId || !message.toolName) continue;
+    if (repeated.has(message.toolCallId)) continue;
     // ZPI's built-ins use lower-case Pi names; the upstream whitelist uses title-case names.
     if (
       !tools.has(message.toolName) &&
@@ -132,6 +156,9 @@ export function maybeMicrocompact(input: {
 
 export function microcompactClearedIds(entry: { type: string; data?: unknown }): string[] {
   if (entry.type !== "microcompact" || !entry.data || typeof entry.data !== "object") return [];
-  const ids = (entry.data as { clearedToolCallIds?: unknown }).clearedToolCallIds;
-  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+  const data = entry.data as { clearedToolCallIds?: unknown; keptToolCallIds?: unknown };
+  const kept = new Set(Array.isArray(data.keptToolCallIds) ? data.keptToolCallIds : []);
+  return Array.isArray(data.clearedToolCallIds)
+    ? data.clearedToolCallIds.filter((id): id is string => typeof id === "string" && !kept.has(id))
+    : [];
 }

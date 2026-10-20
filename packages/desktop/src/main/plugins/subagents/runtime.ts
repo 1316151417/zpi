@@ -82,6 +82,7 @@ export class SubagentPlugin {
   readonly tasks = new Map<string, SubagentTask>();
   private childAgents = new Map<string, string>();
   private jobs = new Map<string, Promise<void>>();
+  private pendingRuns = new Map<string, number>();
   private stopping = new Map<string, Promise<void>>();
   private outputWaiters = new Map<string, Set<() => void>>();
   private notified = new WeakSet<SubagentTask>();
@@ -174,6 +175,14 @@ export class SubagentPlugin {
   update(agentId: string, fields: Partial<SubagentTask>) {
     const previous = this.tasks.get(agentId);
     if (!previous) return;
+    // An earlier turn must not expose a terminal result while a follow-up still owns this agent.
+    if (
+      fields.status &&
+      fields.status !== "running" &&
+      fields.status !== "aborted" &&
+      (this.pendingRuns.get(agentId) ?? 0) > 1
+    )
+      fields = { ...fields, status: "running", result: undefined, error: undefined, endedAt: undefined };
     if (Object.entries(fields).every(([key, value]) => previous[key as keyof SubagentTask] === value)) return;
     const next = { ...previous, ...fields };
     this.tasks.set(agentId, next);
@@ -265,6 +274,7 @@ export class SubagentPlugin {
         waitingForInput: false,
       });
     }
+    this.pendingRuns.set(task.agentId, (this.pendingRuns.get(task.agentId) ?? 0) + 1);
     let done!: Promise<void>;
     done = (async () => {
       if (previous) await previous.catch(() => {});
@@ -294,6 +304,9 @@ export class SubagentPlugin {
         this.notified.add(latest);
       }
     })().finally(() => {
+      const pending = (this.pendingRuns.get(task.agentId) ?? 1) - 1;
+      if (pending) this.pendingRuns.set(task.agentId, pending);
+      else this.pendingRuns.delete(task.agentId);
       if (this.jobs.get(task.agentId) === done) this.jobs.delete(task.agentId);
     });
     this.jobs.set(task.agentId, done);

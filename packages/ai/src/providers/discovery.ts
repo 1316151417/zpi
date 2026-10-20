@@ -123,7 +123,9 @@ export async function fetchProviderModels(
   if (input.preset && !preset) throw new Error("configuration: 未知预置提供商");
   const baseUrl = preset?.baseUrl ?? input.baseUrl;
   if (!baseUrl) throw new Error("configuration: 缺少 API 地址");
-  const url = new URL(`${baseUrl.replace(/\/$/, "")}/models`);
+  // Presets expose their catalog on the OpenAI endpoint even when inference uses Anthropic.
+  const anthropic = !preset && input.api === "anthropic-messages";
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}${anthropic ? "/v1/models" : "/models"}`);
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash)
     throw new Error("configuration: 无效 API 地址");
   const catalog = presetModels(input.preset ?? "", input.api);
@@ -134,10 +136,15 @@ export async function fetchProviderModels(
     const response = await fetcher(url, {
       headers: {
         Accept: "application/json",
+        ...(anthropic ? { "anthropic-version": "2023-06-01" } : {}),
         ...(input.apiKey
-          ? preset?.family === "mimo"
-            ? { "api-key": input.apiKey }
-            : { Authorization: `Bearer ${input.apiKey}` }
+          ? anthropic
+            ? input.apiKey.includes("sk-ant-oat")
+              ? { Authorization: `Bearer ${input.apiKey}` }
+              : { "x-api-key": input.apiKey }
+            : preset?.family === "mimo"
+              ? { "api-key": input.apiKey }
+              : { Authorization: `Bearer ${input.apiKey}` }
           : {}),
       },
       signal: controller.signal,

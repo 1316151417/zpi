@@ -7,6 +7,34 @@ import { SessionHost } from "../src/main/session-host.ts";
 import { fixture as contextFixture, png, run } from "./helpers/context-fixture.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
+it.each(["max", "balanced"])(
+  "fork preserves the configured %s reasoning and can continue",
+  async (reasoning) => {
+    const f = await contextFixture();
+    const provider = f.settings.snapshot("p");
+    f.settings.saveProvider({
+      ...provider,
+      models: [
+        {
+          id: "custom-thinking",
+          input: ["text"],
+          reasoning: true,
+          reasoningConfig: { levels: [reasoning], map: '{"reasoning_effort": "high"}' },
+        },
+      ],
+    });
+    const selection = { provider: "p", modelId: "custom-thinking", reasoning };
+    await f.host.setSessionSelection(f.session.id, selection);
+    await run(f, "parent input");
+    const turn = f.host.getSessionSnapshot(f.session.id).view.runs[0];
+    const fork = await f.host.forkSession(f.session.id, turn.runId);
+    expect(f.settings.state.getTask(fork.id)?.currentSelection).toEqual(selection);
+    await f.host.startRun({ sessionId: fork.id, text: "continue fork" });
+    await f.host.activeRuns.get(fork.id)?.done;
+    expect(f.host.getSessionSnapshot(fork.id).view.runs.at(-1)?.status).toBe("completed");
+  },
+);
+
 it("fork copies only the chosen completed boundary, retains context after restart and leaves parent history unchanged", async () => {
   const f = await fixture((_, res) => {
     send(res, chunk({ content: "answer" }));

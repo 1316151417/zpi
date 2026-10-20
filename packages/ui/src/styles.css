@@ -905,9 +905,10 @@ small {
   white-space: pre-wrap;
 }
 .composer-container {
-  width: 100%;
+  width: var(--conversation-column-width, 100%);
   flex-shrink: 0;
   margin: 0 auto;
+  margin-inline-start: var(--conversation-column-left, auto);
   padding: 0 16px 16px;
 }
 .composer-stack {
@@ -923,15 +924,13 @@ small {
   }
 }
 @container conversation (min-width: 864px) {
-  .conversation-inner,
-  .composer-container {
+  .conversation-inner {
     width: calc(100% - 96px);
     max-width: 896px;
   }
 }
 @container conversation (min-width: 1280px) {
-  .conversation-inner,
-  .composer-container {
+  .conversation-inner {
     width: calc(100% - 384px);
     max-width: 1152px;
   }

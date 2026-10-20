@@ -537,10 +537,7 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
   }
   const compaction = entries[compactionIndex];
   if (compaction?.type !== "compaction") {
-    context.messages = applyMicrocompactBoundary(
-      entries.flatMap(sessionEntryToContextMessages),
-      entries.flatMap(microcompactClearedIds),
-    );
+    context.messages = replayMicrocompact(entries.flatMap(sessionEntryToContextMessages), entries);
     return context;
   }
   const keepIndex = entries.findIndex((e) => e.id === compaction.firstKeptEntryId);
@@ -566,6 +563,18 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
       .filter((m) => m.role !== "system"),
     ...entries.slice(compactionIndex + 1).flatMap(sessionEntryToContextMessages),
   ];
-  context.messages = applyMicrocompactBoundary(context.messages, entries.flatMap(microcompactClearedIds));
+  context.messages = replayMicrocompact(context.messages, entries);
   return context;
+}
+
+function replayMicrocompact(messages: Message[], entries: SessionEntry[]): Message[] {
+  for (const [index, entry] of entries.entries()) {
+    if (entry.type !== "microcompact") continue;
+    // A persisted boundary can only clear results that existed when it was written.
+    const preceding = messages.filter((message) => (getMessageProvenance(message)?.seq ?? Infinity) <= index);
+    const projected = applyMicrocompactBoundary(preceding, microcompactClearedIds(entry));
+    const replacements = new Map(preceding.map((message, i) => [message, projected[i]]));
+    messages = messages.map((message) => replacements.get(message) ?? message);
+  }
+  return messages;
 }

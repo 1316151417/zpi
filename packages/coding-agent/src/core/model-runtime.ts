@@ -147,12 +147,15 @@ export class ModelRuntime {
     if (customStream)
       return guardModelStream(
         model,
-        (guarded) =>
-          customStream(
+        async (guarded) => {
+          const apiKey = p.getApiKey && options?.apiKey === undefined ? await p.getApiKey() : guarded.apiKey;
+          guarded.signal?.throwIfAborted();
+          return customStream(
             model,
             projectContextForModelMediaPolicy(transcript, model, { onProjection: opts.onMediaProjection }),
-            guarded,
-          ),
+            { ...guarded, apiKey },
+          );
+        },
         opts,
       );
     // Native protocols own their request boundary, including direct API callers.

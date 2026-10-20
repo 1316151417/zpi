@@ -135,11 +135,19 @@ export class AttachmentStore {
       .catch(() => {});
     return result;
   }
-  async cleanUnsent(onError: (error: unknown, sessionId: string) => void = () => {}): Promise<void> {
+  async cleanUnsent(
+    onError: (error: unknown, sessionId: string) => void = () => {},
+    recoverUsed?: (sessionId: string, candidates: string[]) => string[],
+  ): Promise<void> {
     await mkdir(this.root, { recursive: true });
     for (const dir of await readdir(this.root, { withFileTypes: true })) {
       if (!dir.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(dir.name)) continue;
       try {
+        const candidates = (await this.list(dir.name))
+          .filter((item) => !item.used && !item.queued)
+          .map((item) => item.id);
+        if (candidates.length && recoverUsed)
+          await this.markUsed(dir.name, recoverUsed(dir.name, candidates));
         for (const item of await this.list(dir.name))
           if (!item.used && !item.queued) await this.remove(dir.name, item.id);
         const keep = new Set(

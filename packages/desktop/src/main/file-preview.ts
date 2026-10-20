@@ -1,3 +1,4 @@
+import { constants } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { extname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,14 +18,29 @@ const imageTypes: Record<string, string> = {
   ico: "image/x-icon",
 };
 
+async function openPreviewFile(path: string) {
+  if (!(await stat(path)).isFile()) throw new Error("invalid_input: 仅支持预览普通文件");
+  // A writer can replace the checked path with a FIFO or symlink before open completes.
+  const file = await open(
+    path,
+    constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) throw new Error("invalid_input: 仅支持预览普通文件");
+    return { file, info };
+  } catch (error) {
+    await file.close();
+    throw error;
+  }
+}
+
 export async function readFilePreview(cwd: string, target: string, input?: unknown): Promise<FilePreview> {
   const location = validateFileLocation(input);
   const path = await resolvePreviewPath(cwd, target, input);
   if ((await stat(path)).isDirectory()) return { path, location, kind: "directory" };
-  const file = await open(path, "r");
+  const { file, info } = await openPreviewFile(path);
   try {
-    const stat = await file.stat();
-    if (!stat.isFile()) throw new Error("invalid_input: 无法预览文件夹");
     const extension = extname(path).slice(1).toLowerCase();
     const mediaType = MEDIA_PREVIEW_FORMATS.find((format) => format.extension === `.${extension}`)?.mediaType;
     const mime = imageTypes[extension] ?? mediaType;
@@ -38,10 +54,10 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
             ? extension
             : "text";
     const limit = kind === "text" ? 2 * 1024 * 1024 : (kind === "pptx" ? 64 : 32) * 1024 * 1024;
-    if (kind !== "text" && kind !== "pdf" && stat.size > limit)
+    if (kind !== "text" && kind !== "pdf" && info.size > limit)
       throw new Error(`invalid_input: 文件超过 ${limit / 1024 / 1024} MB 预览限制`);
-    const partialPdf = kind === "pdf" && stat.size > 2 * 1024 * 1024;
-    const bytes = Buffer.alloc(Math.min(stat.size, partialPdf ? 256 * 1024 : limit));
+    const partialPdf = kind === "pdf" && info.size > 2 * 1024 * 1024;
+    const bytes = Buffer.alloc(Math.min(info.size, partialPdf ? 256 * 1024 : limit));
     let bytesRead = 0;
     while (bytesRead < bytes.length) {
       const chunk = await file.read(bytes, bytesRead, bytes.length - bytesRead, bytesRead);
@@ -56,7 +72,7 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
         kind,
         mime,
         bytes: new Uint8Array(data),
-        ...(partialPdf ? { totalBytes: stat.size } : {}),
+        ...(partialPdf ? { totalBytes: info.size } : {}),
       };
     if (data.includes(0)) return { path, location, kind: "unsupported" };
     return {
@@ -64,7 +80,7 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
       location,
       kind: "text",
       text: new TextDecoder().decode(data),
-      truncated: stat.size > bytesRead,
+      truncated: info.size > bytesRead,
     };
   } finally {
     await file.close();
@@ -108,10 +124,9 @@ export async function readPreviewRange(
   }
   const path = await resolvePreviewPath(cwd, target);
   if (extname(path).toLowerCase() !== ".pdf") throw new Error("invalid_input: 仅支持 PDF 分段预览");
-  const file = await open(path, "r");
+  const { file, info } = await openPreviewFile(path);
   try {
-    const info = await file.stat();
-    if (!info.isFile() || offset + length > info.size) throw new Error("invalid_input: 文件读取范围越界");
+    if (offset + length > info.size) throw new Error("invalid_input: 文件读取范围越界");
     const bytes = Buffer.alloc(length);
     let read = 0;
     while (read < length) {

@@ -1,38 +1,110 @@
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { done } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
-it("reconciles durable accepted input after a database failure without executing it on restart", async () => {
+it.each([false, true])(
+  "recovers accepted input without replay when cache retention is stale=%s",
+  async (stale) => {
+    const f = await fixture((_, response) => done(response));
+    const task = f.host.createSession(f.a.id);
+    const attachment = await f.host.importAttachment(task.id, "accepted.txt", Buffer.from("retain payload"));
+    const unsent = await f.host.importAttachment(task.id, "unsent.txt", Buffer.from("discard draft cache"));
+    if (!("path" in attachment)) throw new Error("Expected cached file attachment");
+    // Emulate the pre-fix on-disk index: accepted facts exist but used is still false.
+    const retention = stale ? vi.spyOn(f.host.attachments, "markUsed").mockResolvedValue() : undefined;
+    const complete = f.settings.state.completeIntent.bind(f.settings.state);
+    const failure = vi.spyOn(f.settings.state, "completeIntent").mockImplementation((id, finalize) => {
+      if (
+        f.settings.state
+          .listIntents()
+          .some((intent) => intent.operationId === id && intent.kind === "accept-input")
+      )
+        throw new Error("accept commit failed");
+      complete(id, finalize);
+    });
+    await expect(
+      f.host.startRun({ sessionId: task.id, text: "retain this input", attachments: [attachment.id] }),
+    ).rejects.toThrow("accept commit failed");
+    expect(f.server.requests).toHaveLength(0);
+    expect(f.settings.state.listIntents()).toHaveLength(1);
+    failure.mockRestore();
+    retention?.mockRestore();
+    await f.host.close();
+    const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"));
+    await reopened.init();
+    cleanup.push(() => reopened.close());
+    expect(f.settings.state.listIntents()).toEqual([]);
+    expect(f.settings.state.getTask(task.id)).toMatchObject({ draft: false, status: "interrupted" });
+    expect(reopened.getSessionSnapshot(task.id).view.runs).toHaveLength(1);
+    expect(reopened.getSessionSnapshot(task.id).view.runs[0].userMessage).toBe("retain this input");
+    expect(reopened.getSessionSnapshot(task.id).view.runs[0].attachments?.[0].id).toBe(attachment.id);
+    expect((await reopened.readAttachment(task.id, attachment.id)).metadata.id).toBe(attachment.id);
+    expect(await readFile(attachment.path, "utf8")).toBe("retain payload");
+    await expect(reopened.readAttachment(task.id, unsent.id)).rejects.toThrow("附件不存在");
+    expect(f.server.requests).toHaveLength(0);
+  },
+);
+
+it("recovers older accepted attachment cache after a later run has completed", async () => {
   const f = await fixture((_, response) => done(response));
   const task = f.host.createSession(f.a.id);
-  const complete = f.settings.state.completeIntent.bind(f.settings.state);
-  const failure = vi.spyOn(f.settings.state, "completeIntent").mockImplementation((id, finalize) => {
-    if (
-      f.settings.state
-        .listIntents()
-        .some((intent) => intent.operationId === id && intent.kind === "accept-input")
-    )
-      throw new Error("accept commit failed");
-    complete(id, finalize);
-  });
-  await expect(f.host.startRun({ sessionId: task.id, text: "retain this input" })).rejects.toThrow(
-    "accept commit failed",
-  );
-  expect(f.server.requests).toHaveLength(0);
-  expect(f.settings.state.listIntents()).toHaveLength(1);
-  failure.mockRestore();
+  const attachment = await f.host.importAttachment(task.id, "older.txt", Buffer.from("older payload"));
+  const unsent = await f.host.importAttachment(task.id, "unsent.txt", Buffer.from("unused payload"));
+  const retention = vi.spyOn(f.host.attachments, "markUsed").mockResolvedValue();
+  await f.host.startRun({ sessionId: task.id, text: "first", attachments: [attachment.id] });
+  await f.host.activeRuns.get(task.id)?.done;
+  retention.mockRestore();
+  await f.host.startRun({ sessionId: task.id, text: "second" });
+  await f.host.activeRuns.get(task.id)?.done;
   await f.host.close();
   const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"));
   await reopened.init();
   cleanup.push(() => reopened.close());
+  expect((await reopened.readAttachment(task.id, attachment.id)).metadata.id).toBe(attachment.id);
+  await expect(reopened.readAttachment(task.id, unsent.id)).rejects.toThrow("附件不存在");
+  expect(reopened.getSessionSnapshot(task.id).view.runs).toHaveLength(2);
+  expect(f.server.requests).toHaveLength(2);
+});
+
+it("retains legacy attachment cache when its owned transcript needs explicit repair", async () => {
+  const f = await fixture((_, response) => done(response));
+  const task = f.host.createSession(f.a.id);
+  const attachment = await f.host.importAttachment(task.id, "accepted.txt", Buffer.from("repair payload"));
+  const retention = vi.spyOn(f.host.attachments, "markUsed").mockResolvedValue();
+  await f.host.startRun({ sessionId: task.id, text: "first", attachments: [attachment.id] });
+  await f.host.activeRuns.get(task.id)?.done;
+  retention.mockRestore();
+  const transcript = f.host.sessionPath(task.id);
+  await f.host.close();
+  await appendFile(transcript, '{"incomplete":');
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"));
+  await reopened.init();
+  cleanup.push(() => reopened.close());
+  expect(reopened.listRecentSessions().find((item) => item.id === task.id)?.diagnostic).toBeTruthy();
+  expect((await reopened.readAttachment(task.id, attachment.id)).metadata.id).toBe(attachment.id);
+  expect(f.server.requests).toHaveLength(1);
+});
+
+it("does not accept or execute an input when retaining its attachment cache fails", async () => {
+  const f = await fixture((_, response) => done(response));
+  const task = f.host.createSession(f.a.id);
+  const attachment = await f.host.importAttachment(task.id, "input.txt", Buffer.from("retry payload"));
+  const failure = vi.spyOn(f.host.attachments, "markUsed").mockRejectedValue(new Error("cache write failed"));
+  await expect(
+    f.host.startRun({ sessionId: task.id, text: "retry me", attachments: [attachment.id] }),
+  ).rejects.toThrow("cache write failed");
+  failure.mockRestore();
   expect(f.settings.state.listIntents()).toEqual([]);
-  expect(f.settings.state.getTask(task.id)).toMatchObject({ draft: false, status: "interrupted" });
-  expect(reopened.getSessionSnapshot(task.id).view.runs).toHaveLength(1);
-  expect(reopened.getSessionSnapshot(task.id).view.runs[0].userMessage).toBe("retain this input");
+  expect(f.settings.state.getTask(task.id)?.draft).toBe(true);
+  expect(f.host.getSessionSnapshot(task.id).view.runs).toEqual([]);
+  expect((await f.host.readAttachment(task.id, attachment.id)).metadata.id).toBe(attachment.id);
   expect(f.server.requests).toHaveLength(0);
+  await f.host.startRun({ sessionId: task.id, text: "retry me", attachments: [attachment.id] });
+  await f.host.activeRuns.get(task.id)?.done;
+  expect(f.server.requests).toHaveLength(1);
 });
 
 it("retains incomplete acceptance and blocks resubmission rather than running it again", async () => {

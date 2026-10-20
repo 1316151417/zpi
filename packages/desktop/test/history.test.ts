@@ -75,6 +75,82 @@ it("persists semantic v2 facts and normalized SQL offsets, rejecting product met
   expect(reopened.readBytes).toBeLessThan(256);
   expect(reopened.page().entries).toEqual(index.page().entries);
 });
+it.each(["max", "balanced"])(
+  "retains %s reasoning in run facts and migrated context anchors",
+  async (level) => {
+    const { db, path, index, append } = fixture();
+    const run = append({
+      type: "custom",
+      customType: "zpi.run",
+      data: { phase: "start", runId: "r", thinkingLevel: level },
+    });
+    const runSnapshot = index.snapshot();
+    append({
+      type: "custom",
+      customType: "zpi.context_boundary",
+      data: {
+        historyConfiguration: {
+          model: null,
+          thinkingLevel: `${level}-custom`,
+          lastThinkingLevel: level,
+          hasThinkingEntry: true,
+        },
+      },
+    });
+    for (const rebuild of [false, true]) {
+      if (rebuild) db.exec("DELETE FROM transcript_state");
+      const reopened = new HistoryIndex(path, db);
+      await reopened.load();
+      expect(reopened.readEntryById(run.id, reopened.snapshot())?.entry).toEqual(run);
+      expect(reopened.getStateAt(runSnapshot)).toMatchObject({
+        thinkingLevel: level,
+        lastThinkingLevel: level,
+        hasThinkingEntry: true,
+      });
+      expect(reopened.getStateAt(reopened.snapshot())).toMatchObject({
+        thinkingLevel: `${level}-custom`,
+        lastThinkingLevel: level,
+        hasThinkingEntry: true,
+      });
+    }
+  },
+);
+it.each(["max", "balanced"])(
+  "rebuilds old cached %s checkpoints once without changing source",
+  async (level) => {
+    const { db, path, index, append } = fixture();
+    append({
+      type: "custom",
+      customType: "zpi.run",
+      data: { phase: "start", runId: "r", thinkingLevel: level },
+    });
+    const source = readFileSync(path);
+    db.prepare("UPDATE transcript_state SET generation=?").run(index.snapshot().generation);
+    db.prepare("UPDATE transcript_checkpoints SET state=?").run(
+      JSON.stringify({
+        model: null,
+        thinkingLevel: "off",
+        lastThinkingLevel: "medium",
+        hasThinkingEntry: false,
+        lastMessageSeq: 0,
+        lastCompactionSeq: 0,
+      }),
+    );
+    const repaired = new HistoryIndex(path, db);
+    await repaired.load();
+    expect(repaired.getStateAt(repaired.snapshot())).toMatchObject({
+      thinkingLevel: level,
+      lastThinkingLevel: level,
+      hasThinkingEntry: true,
+    });
+    expect(readFileSync(path)).toEqual(source);
+    expect(repaired.readBytes).toBeGreaterThanOrEqual(source.length);
+    const cached = new HistoryIndex(path, db);
+    await cached.load();
+    expect(cached.readBytes).toBeLessThan(source.length);
+    expect(cached.getStateAt(cached.snapshot())).toEqual(repaired.getStateAt(repaired.snapshot()));
+  },
+);
 it("rebuilds only derived tables and catches up an unindexed durable tail", async () => {
   const { db, path, index, append } = fixture();
   append({ type: "message", message: { role: "user", content: "first", timestamp: 1 } });

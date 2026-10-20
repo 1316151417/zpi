@@ -17,7 +17,9 @@ import { emptyAssistant } from "./transcript.ts";
 /** ZCode's iterator watchdog adapted to ZPI's model-event boundary, including custom providers. */
 export function guardModelStream(
   model: Model,
-  create: (options: SimpleStreamOptions) => AssistantMessageEventStream,
+  create: (
+    options: SimpleStreamOptions,
+  ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>,
   options: SimpleStreamOptions = {},
 ): AssistantMessageEventStream {
   const { streamIdleTimeoutMs, streamIdleTimeoutRetryNumber, ...requestOptions } = options;
@@ -33,7 +35,12 @@ export function guardModelStream(
     let iterator: AsyncIterator<AssistantMessageEvent> | undefined;
     try {
       attempt.signal.throwIfAborted();
-      iterator = create({ ...requestOptions, signal: attempt.signal })[Symbol.asyncIterator]();
+      // The first next() includes asynchronous setup, so the same watchdog covers
+      // credential lookup. Delegation also forwards return() to the actual provider.
+      async function* events(): AsyncGenerator<AssistantMessageEvent> {
+        yield* await create({ ...requestOptions, signal: attempt.signal });
+      }
+      iterator = events();
       while (true) {
         const next = await readNextWithStreamIdleTimeout(iterator, {
           abortController: attempt.controller,

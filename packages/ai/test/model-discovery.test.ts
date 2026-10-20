@@ -7,6 +7,48 @@ import {
   thinkingChoices,
 } from "../src/index.ts";
 
+it.each([
+  { api: "anthropic-messages" as const, key: "fake-api-key", path: "/v1/models", header: "x-api-key" },
+  { api: "anthropic-messages" as const, key: "sk-ant-oat-fake", path: "/v1/models", header: "authorization" },
+  { api: "openai-completions" as const, key: "fake-api-key", path: "/models", header: "authorization" },
+])(
+  "discovers custom $api models using their catalog protocol and $header",
+  async ({ api, key, path, header }) => {
+    const result = await fetchProviderModels({ api, baseUrl: "https://custom.example", apiKey: key }, (async (
+      url,
+      options,
+    ) => {
+      expect(String(url)).toBe(`https://custom.example${path}`);
+      const headers = new Headers(options?.headers);
+      expect(headers.get(header)).toBe(header === "authorization" ? `Bearer ${key}` : key);
+      expect(headers.get("anthropic-version")).toBe(api === "anthropic-messages" ? "2023-06-01" : null);
+      expect(headers.get(header === "authorization" ? "x-api-key" : "authorization")).toBeNull();
+      return Response.json({ data: [{ id: "custom-model" }] });
+    }) as typeof fetch);
+    expect(result).toMatchObject({ source: "remote", models: [{ id: "custom-model" }] });
+  },
+);
+
+it("keeps preset discovery on its OpenAI catalog when inference uses Anthropic", async () => {
+  await fetchProviderModels({ preset: "deepseek", api: "anthropic-messages", apiKey: "fake" }, (async (
+    url,
+    options,
+  ) => {
+    expect(String(url)).toBe("https://api.deepseek.com/models");
+    expect(new Headers(options?.headers).get("authorization")).toBe("Bearer fake");
+    return Response.json({ data: [{ id: "deepseek-flash" }] });
+  }) as typeof fetch);
+});
+
+it("rejects failed custom Anthropic discovery without exposing credentials", async () => {
+  await expect(
+    fetchProviderModels(
+      { api: "anthropic-messages", baseUrl: "https://custom.example", apiKey: "fake-secret" },
+      (async () => new Response("fake-secret", { status: 401 })) as typeof fetch,
+    ),
+  ).rejects.toThrow("无法获取模型列表");
+});
+
 it("reads the account catalog without cache, uses slugs, and keeps new models distinct from unverified presets", async () => {
   const result = await fetchProviderModels({ preset: "openai-chatgpt", apiKey: "fake-token" }, (async (
     url,

@@ -406,13 +406,6 @@ export class SessionHost {
   async init(): Promise<void> {
     // Validate all task payloads before recovery writes or runtime restoration.
     const tasks = this.settings.state.listTasks();
-    try {
-      await this.attachments.cleanUnsent((error, sessionId) =>
-        this.errors.write("attachments.cleanup", error, { sessionId }),
-      );
-    } catch (error) {
-      this.errors.write("attachments.cleanup", error);
-    }
     this.settings.state.pruneAudit();
     this.settings.state.recoverRuntime();
     // The database owns task identity and location. Unreferenced files are never adopted.
@@ -440,6 +433,37 @@ export class SessionHost {
         task.id,
         this.settings.state.getQueue(task.id) ?? { items: [], autoDrain: true },
       );
+    }
+    try {
+      await this.attachments.cleanUnsent(
+        (error, sessionId) => this.errors.write("attachments.cleanup", error, { sessionId }),
+        (sessionId, candidates) => {
+          const index = this.indexes.get(sessionId);
+          // Older releases could accept a run before retaining its cache, then accept more input.
+          // Only unmarked cache requires recovery; read run headers, never message bodies.
+          // An unreadable owned transcript needs explicit repair, not payload deletion.
+          if (!index) return this.records.has(sessionId) ? candidates : [];
+          const pending = new Set(candidates);
+          const retained: string[] = [];
+          for (const run of index.listRuns()) {
+            if (!index.findAcceptedRun(run.runId)) continue;
+            const start = index.read(run.start)[0];
+            if (
+              start?.type !== "custom" ||
+              !isJsonObject(start.data) ||
+              !Array.isArray(start.data.attachments)
+            )
+              continue;
+            for (const item of start.data.attachments)
+              if (isJsonObject(item) && typeof item.id === "string" && pending.delete(item.id))
+                retained.push(item.id);
+            if (!pending.size) break;
+          }
+          return retained;
+        },
+      );
+    } catch (error) {
+      this.errors.write("attachments.cleanup", error);
     }
     // Resolve only explicit intents. Never replay a tool or automatically resend an input.
     for (const intent of this.settings.state.listIntents()) {
@@ -2401,6 +2425,10 @@ export class SessionHost {
         this.subagents.prepare(id);
       const accept = async (model: import("zpi-ai").Model) => {
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
+        // Cache retention must be durable before accepted facts can survive a crash.
+        // An interrupted acceptance may retain unused cache, but must never lose its payload.
+        await this.attachments.markUsed(id, input.attachments ?? []);
+        if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         this.titleFromInput(
           id,
           text.trim() || (loaded.images.length ? "图片消息" : (loaded.metadata[0]?.name ?? references[0])),
@@ -2477,7 +2505,6 @@ export class SessionHost {
           startedAt,
           modelLabel,
         });
-        await this.attachments.markUsed(id, input.attachments ?? []);
       };
       const initialize = async () => {
         if (needsWorktree) {
