@@ -553,3 +553,88 @@ test("task controls follow native hover even when React misses mouseleave, and r
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
+
+test("project hover backgrounds center folder icons, titles and actions alongside their task rows", async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-project-hover-alignment-")));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "ok" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByLabel("添加项目", { exact: true }).click();
+    await page.getByLabel("消息", { exact: true }).fill("项目任务");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    for (const size of [14, 20]) {
+      await page.evaluate((fontSize) => window.zpi.updatePreferences({ fontSize }), size);
+      await page.reload();
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme });
+        const header = page.locator(".project-title");
+        await header.hover();
+        await expect(header.locator(".project-row-action").first()).toHaveCSS("opacity", "1");
+        await page
+          .locator(".projects")
+          .screenshot({ path: test.info().outputPath(`project-hover-${colorScheme}-${size}.png`) });
+        const offsets = await header.evaluate((row) => {
+          const bounds = row.getBoundingClientRect();
+          const center = bounds.top + bounds.height / 2;
+          return Object.fromEntries(
+            [
+              ".project-toggle-title",
+              ".project-toggle-title > svg",
+              ".project-toggle-title > span:first-of-type",
+              ".project-row-action",
+              ".project-row-action svg",
+            ].map((selector) => [
+              selector,
+              Array.from(row.querySelectorAll(selector), (element) => {
+                const box = element.getBoundingClientRect();
+                return Math.round((box.top + box.height / 2 - center) * 100) / 100;
+              }),
+            ]),
+          );
+        });
+        expect(offsets).toEqual({
+          ".project-toggle-title": [0],
+          ".project-toggle-title > svg": [0],
+          ".project-toggle-title > span:first-of-type": [0],
+          ".project-row-action": [0, 0],
+          ".project-row-action svg": [0, 0],
+        });
+        const taskRow = page.locator(".projects .session-row");
+        await taskRow.hover();
+        await expect(taskRow.locator(".task-archive")).toBeVisible();
+        const taskOffsets = await taskRow.evaluate((row) => {
+          const bounds = row.getBoundingClientRect();
+          const center = bounds.top + bounds.height / 2;
+          return Array.from(
+            row.querySelectorAll(
+              ".task-leading-slot, .session-name, [data-task-title-copy=original], .task-archive svg",
+            ),
+            (element) => {
+              const box = element.getBoundingClientRect();
+              return Math.round((box.top + box.height / 2 - center) * 100) / 100;
+            },
+          );
+        });
+        expect(taskOffsets).toEqual([0, 0, 0, 0]);
+        await page
+          .locator(".projects")
+          .screenshot({ path: test.info().outputPath(`project-task-hover-${colorScheme}-${size}.png`) });
+      }
+    }
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});

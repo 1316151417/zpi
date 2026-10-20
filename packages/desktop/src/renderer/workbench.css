@@ -6381,6 +6381,8 @@ button.model-stat-pill:hover,
 }
 .sidebar .project-toggle-title {
   display: flex;
+  align-items: center;
+  justify-content: flex-start;
   flex: 1;
   min-width: 0;
   height: 32px;
