@@ -8,7 +8,7 @@ import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
-it("preserves historical model and non-off thinking in inherited anchors across reopen", async () => {
+it("inherits the current selection while preserving historical model and thinking anchors across reopen", async () => {
   const f = await fixture((_, response) => {
     send(response, chunk({ content: "answer" }));
     done(response);
@@ -39,9 +39,9 @@ it("preserves historical model and non-off thinking in inherited anchors across 
   cleanup.push(() => reopened.close());
   await reopened.init();
   expect(reopened.getSessionSnapshot(child.id).controls.selection).toEqual({
-    provider: "other",
-    modelId: "other-model",
-    reasoning: "medium",
+    provider: "custom",
+    modelId: "fake",
+    reasoning: "none",
   });
   const index = new HistoryIndex(reopened.sessionPath(child.id), f.settings.state.db);
   await index.load();

@@ -93,7 +93,7 @@ it("opens independent hidden chats with inherited context and an empty timeline,
   const sibling = await f.host.createSideChat(parent.id);
   expect(child.id).not.toBe(sibling.id);
   expect(child.parentSessionId).toBe(parent.id);
-  expect(f.host.getSessionSnapshot(child.id).view.controls?.selection?.reasoning).toBe("none");
+  expect(f.host.getSessionSnapshot(child.id).view.controls?.selection?.reasoning).toBe("high");
   expect(f.host.getSessionSnapshot(parent.id).view.controls?.selection?.reasoning).toBe("high");
   expect(f.host.listRecentSessions().map((s) => s.id)).toEqual([parent.id]);
   expect(f.host.getSessionSnapshot(child.id).view.runs).toHaveLength(0);
@@ -116,6 +116,62 @@ it("opens independent hidden chats with inherited context and an empty timeline,
   expect(restored.listRecentSessions().map((s) => s.id)).toEqual([parent.id]);
   expect(restored.getSessionSnapshot(child.id).view.runs.map((r) => r.userMessage)).toEqual(["explain"]);
 });
+
+it.each(["idle", "running", "deleted historical provider"])(
+  "inherits the parent's current model rather than its historical model (%s)",
+  async (state) => {
+    const started = deferred();
+    const release = deferred();
+    const f = await fixture(async (_, response, index) => {
+      send(response, chunk({ content: "answer" }));
+      if (state === "running" && index === 0) {
+        started.resolve();
+        await release.promise;
+      }
+      done(response);
+    });
+    const parent = f.host.createSession(f.a.id);
+    await f.host.startRun({ sessionId: parent.id, text: "parent question" });
+    if (state === "running") await started.promise;
+    else await f.host.activeRuns.get(parent.id)?.done;
+    f.settings.saveProvider({
+      id: "next-provider",
+      name: "Next provider",
+      baseUrl: f.server.url,
+      apiKey: "next-key",
+      models: [{ id: "next-model", input: ["text"], reasoning: true, contextWindow: 32768, maxTokens: 4096 }],
+    });
+    const selection = { provider: "next-provider", modelId: "next-model", reasoning: "high" } as const;
+    await f.host.setSessionSelection(parent.id, selection);
+    // Another task's last-used model must not affect this child.
+    f.settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
+    if (state === "deleted historical provider") f.settings.deleteProvider("custom");
+    try {
+      const child = await f.host.createSideChat(parent.id);
+      expect(f.host.getSessionSnapshot(child.id).controls).toMatchObject({
+        selection,
+        selectionValid: true,
+        lastThinkingLevel: "high",
+      });
+      await f.host.startRun({ sessionId: child.id, text: "child question" });
+      await f.host.activeRuns.get(child.id)?.done;
+      expect(f.server.requests.at(-1)?.model).toBe("next-model");
+      if (state === "running") expect(f.host.sessions.get(parent.id)?.model.id).toBe("fake");
+      release.resolve();
+      await f.host.activeRuns.get(parent.id)?.done;
+      await f.host.close();
+      const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined);
+      cleanup.push(() => restored.close());
+      await restored.init();
+      expect(restored.getSessionSnapshot(child.id).controls).toMatchObject({
+        selection,
+        selectionValid: true,
+      });
+    } finally {
+      release.resolve();
+    }
+  },
+);
 
 it("copies the committed active user input without partial assistant output and stops only the closed side chat", async () => {
   const parentStarted = deferred();

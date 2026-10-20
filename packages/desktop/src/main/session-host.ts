@@ -1101,6 +1101,10 @@ export class SessionHost {
     }
     const stable = { ...snapshot, endSeq: cutoff };
     const inherited = source.getStateAt(stable);
+    // History supplies context; the parent's composer supplies the next run's model.
+    const parentTask = this.settings.state.getTask(id);
+    const selection = parentTask?.currentSelection;
+    const lastThinkingLevel = parentTask?.lastThinkingLevel ?? inherited.lastThinkingLevel;
     const inheritedPerformance = new HistoryPerformance();
     const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
     const operationId = randomUUID();
@@ -1156,7 +1160,6 @@ export class SessionHost {
         timestamp: Date.now(),
         content: sideChatGuard,
       });
-      const model = inherited.model ? this.settings.getModel(inherited.model) : undefined;
       this.settings.state.putIntent({
         operationId,
         taskId: child.id,
@@ -1181,10 +1184,8 @@ export class SessionHost {
           titleState: "manual",
           draft: false,
           frozenConfiguration: this.configuration(id),
-          currentSelection: inherited.model
-            ? { ...inherited.model, reasoning: toPreset(inherited.thinkingLevel, model) }
-            : this.settings.state.getTask(id)?.currentSelection,
-          lastThinkingLevel: inherited.lastThinkingLevel,
+          currentSelection: selection,
+          lastThinkingLevel,
         });
       });
       return structuredClone(this.record(child.id));
