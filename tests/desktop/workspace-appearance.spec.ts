@@ -146,7 +146,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
       await expect(page.locator(".shell")).toHaveCSS("background-color", expected);
     }
     await expectBackdrop();
-    await expect(page.locator(".sidebar")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(page.locator(".sidebar")).toHaveCSS("background-color", "rgb(240, 240, 240)");
     for (const panel of [main, frame]) {
       await expect(panel).toHaveCSS("background-color", "rgb(248, 248, 248)");
       await expect(panel).toHaveCSS("border-radius", `${panelRadius}px`);
@@ -167,15 +167,15 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
       await handle.hover();
       await expect.poll(() => handle.evaluate((el) => getComputedStyle(el, "::after").opacity)).toBe("1");
     }
-    for (const name of ["变更", "终端", "浏览器"]) {
+    for (const name of ["文件", "浏览器", "终端", "审查"]) {
       await expect(launcher.getByRole("button", { name, exact: true })).toHaveCSS(
         "background-color",
-        "rgba(13, 13, 13, 0.03)",
+        "rgba(0, 0, 0, 0)",
       );
     }
-    await expect(launcher.locator("h2")).toHaveCSS("font-size", "20px");
+    await expect(launcher.locator("h2")).toHaveCSS("font-size", "18px");
     await expect(launcher.locator(".pane-launcher-actions")).toHaveCSS("display", "grid");
-    await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS("height", "88px");
+    await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS("height", "68px");
     await page.mouse.move(0, 0);
     await expect.poll(() => rightHandle.evaluate((el) => getComputedStyle(el, "::after").opacity)).toBe("0");
     await page.screenshot({ path: "test-results/workspace-rounded-panels.png" });
@@ -210,7 +210,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await expect(frame).toHaveCSS("background-color", "rgb(22, 22, 22)");
     await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS(
       "background-color",
-      "rgba(255, 255, 255, 0.05)",
+      "rgba(0, 0, 0, 0)",
     );
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 640));
     await expect
@@ -220,8 +220,8 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
         return [box.y, box.height - viewport.height, box.x + box.width - viewport.width];
       })
       .toEqual([4, -8, -4]);
-    await expect(launcher.locator(".pane-launcher-actions")).toHaveCSS("display", "flex");
-    await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS("height", "48px");
+    await expect(launcher.locator(".pane-launcher-actions")).toHaveCSS("display", "grid");
+    await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS("height", "68px");
     await page.screenshot({ path: "test-results/workspace-rounded-panels-narrow-dark.png" });
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);

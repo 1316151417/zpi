@@ -42,21 +42,12 @@ describe("grouped task toolbar", () => {
 });
 
 it.each(["grouped", "project", "chronological"] as const)(
-  "keeps group/project order and the selected primary tab for %s",
+  "renders one view menu instead of tabs in %s",
   (organizeBy) => {
-    const html = renderToStaticMarkup(
-      createElement(TaskViewMenu, {
-        value: { organizeBy, sortBy: "updated" },
-        onChange() {},
-        viewOnly: true,
-      }),
-    );
-    expect(html).toContain('aria-label="组织任务"');
-    expect(html.indexOf("分组")).toBeLessThan(html.indexOf("项目"));
-    expect(html.match(/aria-pressed="(true|false)"/g)).toEqual([
-      `aria-pressed="${organizeBy === "grouped"}"`,
-      `aria-pressed="${organizeBy !== "grouped"}"`,
-    ]);
-    expect(html.match(/width="12" height="12"/g)).toHaveLength(2);
+    const html = renderToStaticMarkup(createElement(TaskViewMenu, { value: { organizeBy }, onChange() {} }));
+    expect(html).toContain('aria-label="筛选视图"');
+    expect(html).toContain('data-testid="sidebar-view-menu"');
+    expect(html).not.toContain("fieldset");
+    expect(html).not.toContain("aria-pressed");
   },
 );

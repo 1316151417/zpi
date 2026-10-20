@@ -1,0 +1,460 @@
+/* ZCode FileManagerPane and workspace-file-tree classes, mapped to ZPI tokens. */
+.file-manager {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.file-manager-toolbar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 40px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-fill) 30%, transparent);
+}
+.file-manager-preview-header {
+  min-width: 0;
+  flex: 1;
+}
+.file-manager-title {
+  padding-inline: 12px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-body);
+}
+.file-manager-toggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  border-left: 1px solid var(--color-border);
+  padding-inline: 6px;
+}
+.file-manager-toggle > button,
+.file-tree-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0;
+  color: var(--color-text-subtle);
+}
+.file-manager-toggle > button {
+  color: var(--color-text);
+}
+.file-manager-toggle > button:hover,
+.file-tree-icon-button:hover,
+.file-tree-icon-button[data-state="open"] {
+  background: var(--color-fill-hover);
+  color: var(--color-text);
+}
+.file-tree-icon-button[aria-pressed="true"] {
+  background: var(--color-fill-hover);
+  color: var(--color-text);
+}
+.file-manager-split {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.file-manager-preview {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.file-manager-preview > .file-pane {
+  height: 100%;
+}
+.file-manager-preview-header .preview-header {
+  background: transparent;
+}
+.file-manager-preview-header .preview-header-divider {
+  border-bottom: 0;
+}
+.file-manager-empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  font-size: var(--text-body);
+  color: var(--color-text-subtle);
+  text-align: center;
+}
+.file-manager-directory {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.file-manager-resizer {
+  position: relative;
+  width: 4px;
+  flex-shrink: 0;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+  z-index: 2;
+}
+.file-manager-resizer::before {
+  position: absolute;
+  inset: 0 auto 0 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: var(--color-border);
+  content: "";
+  pointer-events: none;
+}
+.file-manager-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  top: var(--workspace-panel-radius, 12px);
+  bottom: var(--workspace-panel-radius, 12px);
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-text-subtlest) 50%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms;
+}
+.file-manager-resizer:hover::after,
+.file-manager-resizer[data-separator="hover"]::after,
+.file-manager-resizer[data-separator="active"]::after,
+.file-manager-resizer:focus-visible::after {
+  opacity: 1;
+}
+.workspace-file-tree {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  color: var(--color-text);
+  padding-top: 8px;
+}
+.file-tree-search {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-inline: 8px;
+  margin-bottom: 8px;
+}
+.file-tree-search > svg {
+  position: absolute;
+  left: 8px;
+  pointer-events: none;
+  color: var(--color-text-subtlest);
+}
+.file-tree-search > input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 2px 28px;
+  background: transparent;
+  font-size: var(--text-body);
+  line-height: 1.5;
+  outline: none;
+}
+.file-tree-search > input::placeholder {
+  color: var(--color-text-subtlest);
+}
+.file-tree-search > input:focus-visible {
+  border-color: var(--color-focus);
+  background: var(--color-input);
+}
+.file-tree-search > button {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--color-text-subtlest);
+}
+.file-tree-search > button:hover {
+  background: var(--color-fill-hover);
+  color: var(--color-text);
+}
+.file-tree-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 8px 8px;
+}
+.file-tree-title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+.file-tree-toolbar h3 {
+  min-width: 0;
+  margin: 0;
+  padding: 4px 2px 4px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-text-subtlest);
+}
+.file-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-inline: 8px;
+  overflow-anchor: none;
+}
+.file-tree-scroll.bottom-mask {
+  mask-image: linear-gradient(to bottom, black 0, black calc(100% - 32px), transparent);
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+.file-tree-list {
+  position: relative;
+  width: 100%;
+  --file-tree-mask-offset: 0px;
+}
+.file-tree-row-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  padding-inline: 4px;
+}
+.file-tree-row-slot.static {
+  position: static;
+  padding-inline: 0;
+}
+.file-tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px 8px 4px calc(var(--workspace-file-tree-depth) * 0.75rem + 0.5rem);
+  cursor: pointer;
+  font-size: var(--text-body);
+  text-align: left;
+  outline: none;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+.file-tree-row:hover {
+  background: var(--color-fill-hover);
+}
+.file-tree-row.selected {
+  border-color: var(--color-focus);
+}
+.file-tree-row:focus-visible {
+  border-color: var(--color-border-strong);
+}
+.file-tree-row.deleted {
+  cursor: default;
+}
+.file-tree-guides {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: 10px;
+  pointer-events: none;
+}
+.file-tree-chevron {
+  display: flex;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-subtlest);
+}
+.file-tree-chevron svg {
+  transition-property: transform, translate, scale, rotate;
+  transition-duration: 150ms;
+}
+.file-tree-chevron .expanded {
+  rotate: 90deg;
+}
+.file-tree-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.file-tree-name > svg,
+.file-tree-name > img {
+  flex-shrink: 0;
+}
+.file-tree-name > span:last-child {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tree-slash {
+  margin-inline: 4px;
+  color: var(--color-text-subtlest);
+}
+.file-tree-status {
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+  margin-left: auto;
+  font-family: var(--font-code);
+  font-weight: 700;
+  font-size: var(--text-body);
+  line-height: 1;
+  color: color-mix(in oklab, var(--file-tree-git-color) 70%, transparent);
+}
+.file-tree-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--file-tree-git-color) 60%, transparent);
+}
+.file-tree-loading {
+  animation: file-tree-spin 1s linear infinite;
+  color: var(--color-text-subtlest);
+}
+.file-tree-row > .file-tree-loading {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+@keyframes file-tree-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-tree-loading {
+    animation: none;
+  }
+}
+.file-tree-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 0;
+  overflow: visible;
+  padding-inline: 4px;
+  pointer-events: none;
+}
+.file-tree-sticky > div {
+  overflow: hidden;
+  border-radius: 8px;
+  pointer-events: auto;
+}
+.file-tree-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 8px;
+  font-size: var(--text-body);
+  color: var(--color-text-subtle);
+  text-align: center;
+}
+.file-tree-notice p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-small);
+}
+.file-tree-context {
+  min-width: 208px;
+}
+.file-tree-more {
+  min-width: 192px;
+}
+.file-tree-context [data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.file-tree-context [role="menuitem"] > svg:last-child {
+  margin-left: auto;
+}
+.git-modified {
+  --file-tree-git-color: var(--color-git-modified);
+  color: var(--file-tree-git-color);
+}
+.git-added {
+  --file-tree-git-color: var(--color-git-added);
+  color: var(--file-tree-git-color);
+}
+.git-deleted {
+  --file-tree-git-color: var(--color-git-deleted);
+  color: var(--file-tree-git-color);
+}
+.git-renamed {
+  --file-tree-git-color: var(--color-git-renamed);
+  color: var(--file-tree-git-color);
+}
+.git-untracked {
+  --file-tree-git-color: var(--color-git-untracked);
+  color: var(--file-tree-git-color);
+}
+.git-ignored {
+  color: var(--color-text-subtlest);
+}
+:root {
+  --color-git-modified: #e07b00;
+  --color-git-added: #1e8a3e;
+  --color-git-deleted: #e03131;
+  --color-git-renamed: #0b7fff;
+  --color-git-untracked: #1e8a3e;
+}
+[data-theme="dark"] {
+  --color-git-modified: #ff8a30;
+  --color-git-added: #46bf72;
+  --color-git-deleted: #ff5c5c;
+  --color-git-renamed: #4099ff;
+  --color-git-untracked: #46bf72;
+}
+
+.file-tree-icon-button {
+  font-size: var(--text-body);
+  line-height: 1.625;
+}
+@media (min-width: 768px) {
+  .file-tree-search > input {
+    line-height: 1.625;
+  }
+}
+
+.file-tree-status[class*="git-"] {
+  color: color-mix(in oklab, var(--file-tree-git-color) 70%, transparent);
+}
+
+.file-tree-error {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: 8px;
+  color: var(--color-warning);
+}

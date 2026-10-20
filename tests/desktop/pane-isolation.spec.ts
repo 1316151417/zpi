@@ -39,15 +39,22 @@ test("task switching isolates files, terminals and browser guests and restores a
     await editor.press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await page.locator(".answer").getByRole("button", { name: "shared.txt", exact: true }).click();
-    await page.getByRole("button", { name: "自动换行", exact: true }).click();
+    await page.getByRole("button", { name: "文件预览菜单", exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: "自动换行", exact: true }).click();
     await page.getByRole("button", { name: "新增侧栏标签", exact: true }).click();
-    await page.getByRole("menuitem", { name: "终端", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "终端", exact: true })
+      .click();
     const terminal = page.locator(".right-pane .xterm-helper-textarea");
     await terminal.pressSequentially("export TASK_A_VALUE=retained; printf 'TERMINAL_A_OK\\n'", { delay: 1 });
     await terminal.press("Enter");
     await expect(page.locator(".xterm-rows")).toContainText("TERMINAL_A_OK");
     await page.getByRole("button", { name: "新增侧栏标签", exact: true }).click();
-    await page.getByRole("menuitem", { name: "变更", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "审查", exact: true })
+      .click();
     await page.locator(".answer").getByRole("button", { name: "Task browser", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Task browser", exact: true })).toBeVisible();
     const native = async () =>
@@ -72,7 +79,7 @@ test("task switching isolates files, terminals and browser guests and restores a
     await expect.poll(native).toEqual([]);
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await expect(page.locator(".pane-empty-launcher")).toBeVisible();
-    await expect(page.getByRole("tablist", { name: "侧栏标签" }).getByRole("tab")).toHaveCount(0);
+    await expect(page.getByRole("tablist", { name: "侧栏标签" }).getByRole("tab")).toHaveText("新标签页");
     await page.locator(".answer").getByRole("button", { name: "shared.txt", exact: true }).click();
     await expect(page.getByRole("tablist", { name: "侧栏标签" }).getByRole("tab")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "自动换行", exact: true })).toHaveAttribute(

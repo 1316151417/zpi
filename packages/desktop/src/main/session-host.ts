@@ -184,7 +184,7 @@ export class SessionHost {
     dir: string,
     settings: SettingsStore,
     homeDir = homedir(),
-    defaultWorkspace = join(homedir(), "Documents", "ZPI"),
+    defaultWorkspace = join(homeDir, ".zpi", "workspace"),
     requestFetch?: typeof fetch,
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
@@ -592,10 +592,31 @@ export class SessionHost {
     let p = this.projects.find((p) => p.path === canonical);
     if (p) p = { ...p, hidden: false, updatedAt: Date.now() };
     else p = { id: randomUUID(), name: basename(canonical), path: canonical, updatedAt: Date.now() };
-    const next = this.projects.filter((o) => o.id !== p?.id).concat(p);
+    // 重新打开不改变已有项目的位置；新项目插入顶部，与 ZCode 的 prepend 规则一致。
+    const next = this.projects.some((entry) => entry.id === p.id)
+      ? this.projects.map((entry) => (entry.id === p.id ? p : entry))
+      : [p, ...this.projects];
     this.settings.state.setProjects(next);
     this.projects = next;
     return structuredClone(p);
+  }
+  reorderProjects(input: unknown): void {
+    const visible = this.listProjects();
+    if (
+      !Array.isArray(input) ||
+      input.length !== visible.length ||
+      new Set(input).size !== input.length ||
+      input.some((id) => typeof id !== "string" || !visible.some((project) => project.id === id))
+    )
+      throw new Error("invalid_input: 项目列表已变化，请刷新后重试");
+    let index = 0;
+    const next = this.projects.map((project) => {
+      if (project.hidden) return project;
+      const id = input[index++];
+      return visible.find((entry) => entry.id === id) ?? project;
+    });
+    this.settings.state.setProjects(next);
+    this.projects = next;
   }
   removeProject(id: string): void {
     const p = this.project(id);
@@ -757,8 +778,8 @@ export class SessionHost {
         b.lastTurnIndex - a.lastTurnIndex || b.writeCount - a.writeCount || a.path.localeCompare(b.path),
     );
   }
-  async listTaskFiles(id: string | null) {
-    return searchFiles(this.workspaceInfo(id).cwd, "", undefined, 15000);
+  async listTaskFiles(id: string | null, rootPath = this.workspaceInfo(id).cwd) {
+    return searchFiles(rootPath, "", undefined, 15000);
   }
   listArchivedSessions() {
     return structuredClone(
@@ -780,10 +801,12 @@ export class SessionHost {
     options: { cwd?: string; parentSessionId?: string; groupId?: string | null } = {},
   ): SessionRecord {
     if (this.closing) throw new Error("busy: 应用正在关闭");
-    const cwd = options.cwd ?? (projectId === null ? this.defaultWorkspace : this.project(projectId).path);
+    const id = randomUUID();
+    const cwd =
+      options.cwd ??
+      (projectId === null ? join(this.defaultWorkspace, `draft-${id}`) : this.project(projectId).path);
     if (projectId === null) mkdirSync(cwd, { recursive: true });
     if (!statSync(cwd).isDirectory()) throw new Error("configuration: 工作目录不可用");
-    const id = randomUUID();
     mkdirSync(join(this.dir, "agent", "sessions", projectId ?? "_unassigned"), { recursive: true });
     const file = join(this.dir, "agent", "sessions", projectId ?? "_unassigned", `${id}.jsonl`);
     const operationId = randomUUID();
@@ -1302,10 +1325,6 @@ export class SessionHost {
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
     if (record.diagnostic || this.blocked.has(id)) throw new Error("storage: 无法读取的任务只能删除");
-    if (record.projectId !== null) {
-      const project = this.project(record.projectId);
-      if (project.hidden) this.saveProject({ ...project, hidden: false });
-    }
     this.saveTask(id, { pinnedAt: null, archivedAt: null });
     Object.assign(record, { archivedAt: null, pinnedAt: null });
     return structuredClone(record);

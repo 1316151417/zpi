@@ -1,13 +1,21 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ElectronApplication } from "@playwright/test";
+import type { ElectronApplication, Page } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expectZCodeSystemFont } from "../helpers/rendered-fonts.ts";
 import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
+
+async function settleMenuClose(page: Page) {
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  // Radix restores the opener after the dismissed content unmounts; wait for it before the next input.
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
 
 test("sidebar headings match ZCode hover states and dimensions; project menu only removes its entry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-sidebar-actions-"));
@@ -66,7 +74,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       const actions = header.locator(".sidebar-heading-actions");
       const action = actions.locator(".muted-icon");
       const toggle = header.locator(".section-toggle");
-      const handle = actions.locator(".section-drag-handle");
+      const handle = toggle;
       await expect(chevron).toHaveCSS("opacity", "0");
       await expect(actions).toHaveCSS("opacity", "0");
       await expect(toggle).toHaveCSS("color", colors.subtlest);
@@ -75,7 +83,6 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       await expect(toggle).toHaveCSS("font-weight", "500");
       await expect(toggle).toHaveCSS("height", "28px");
       await expect(toggle).toHaveCSS("column-gap", "4px");
-      await expect(handle).toHaveCSS("width", "24px");
       await expect(handle.locator("svg")).toHaveCSS("width", "14px");
       for (const icon of await header.locator("svg").all()) {
         await expect(icon).toHaveCSS("stroke-width", "1.5px");
@@ -87,8 +94,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       await expect(toggle).toHaveCSS("color", colors.foreground);
       await expect(chevron).toHaveCSS("color", colors.foreground);
       await handle.hover({ position: { x: 4, y: 4 } });
-      await expect(toggle).toHaveCSS("color", colors.subtlest);
-      await expect(handle).toHaveCSS("color", colors.foreground);
+      await expect(toggle).toHaveCSS("color", colors.foreground);
       await action.hover();
       await expect(action).toHaveCSS("color", colors.foreground);
       await expect(handle).toHaveCSS("color", colors.subtlest);
@@ -120,18 +126,18 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     await projectHeader.hover();
     await projectHeader.getByLabel("添加项目", { exact: true }).click();
     const projectRow = page.locator(".project-title");
-    const folderToggle = projectRow.locator(".project-toggle");
+    const folderToggle = projectRow.locator(".project-toggle-title");
     const folderIcon = folderToggle.locator("svg");
     await expect(folderIcon).toHaveClass(/lucide-folder-open/);
-    await expect(folderIcon).toHaveCSS("width", "14px");
-    await expect(folderIcon).toHaveCSS("height", "14px");
+    await expect(folderIcon).toHaveCSS("width", "16px");
+    await expect(folderIcon).toHaveCSS("height", "16px");
     await expect(folderIcon).toHaveCSS("stroke-width", "1.5px");
     const slot = await folderToggle.boundingBox();
     const icon = await folderIcon.boundingBox();
-    expect(icon?.x).toBe((slot?.x ?? 0) + 1);
+    expect(icon?.x).toBe((slot?.x ?? 0) + 10);
     await folderToggle.click();
     await expect(folderIcon).toHaveClass(/lucide-folder(?!-open)/);
-    await expect(folderIcon).toHaveCSS("width", "14px");
+    await expect(folderIcon).toHaveCSS("width", "16px");
     await expect(folderIcon).toHaveCSS("stroke-width", "1.5px");
     await folderToggle.click();
     const more = projectRow.getByLabel("项目操作 project", { exact: true });
@@ -150,8 +156,8 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     await expect(more.locator("svg.lucide-ellipsis")).toHaveCount(1);
     await more.click();
     const directoryMenu = page.getByRole("menu", { name: "项目操作 project", exact: true });
-    await expect(directoryMenu.getByRole("menuitem")).toHaveText(["移除", "Finder", "复制路径"]);
-    await expect(directoryMenu.getByRole("separator")).toHaveCSS("border-top-style", "dashed");
+    await expect(directoryMenu.getByRole("menuitem")).toHaveText(["从侧栏移除", "Finder", "复制路径"]);
+    await expect(directoryMenu.getByRole("separator")).toHaveCSS("height", "1px");
     const finder = directoryMenu.getByRole("menuitem", { name: "Finder", exact: true });
     await expect(finder.locator("img")).toHaveAttribute("src", /\/file-actions\/finder\.png$/);
     await expect(finder.locator("img")).toHaveCSS("width", "16px");
@@ -168,14 +174,22 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
         return "";
       };
     });
+    await expect(directoryMenu).toHaveCount(0);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
     await projectRow.hover();
     await more.click();
+    await expect(directoryMenu).toBeVisible();
+    await directoryMenu.hover();
     await finder.click();
     await expect
       .poll(() =>
         app?.evaluate(() => (globalThis as typeof globalThis & { openedDirectory?: string }).openedDirectory),
       )
       .toBe(await realpath(project));
+    await settleMenuClose(page);
     await expect(page.getByTestId("run")).toHaveCount(0);
     await projectRow.hover();
     await page.locator(".sidebar").screenshot({ path: "test-results/sidebar-project-actions.png" });
@@ -211,12 +225,12 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       "aria-expanded",
       "true",
     );
-    await expect(page.locator(".recent-sessions")).not.toHaveAttribute("hidden");
+    await expect(page.locator('[data-sidebar-section="tasks"] .task-list-empty')).toBeVisible();
 
     await projectRow.hover();
     await more.click();
     const menu = page.getByRole("menu", { name: "项目操作 project", exact: true });
-    await expect(menu.getByRole("menuitem")).toHaveText(["移除", "Finder", "复制路径"]);
+    await expect(menu.getByRole("menuitem")).toHaveText(["从侧栏移除", "Finder", "复制路径"]);
     await menu.hover();
     await expect(more).toHaveCSS("opacity", "1");
     await menu.press("Escape");
@@ -229,11 +243,18 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     await more.press("Enter");
     await expect(menu).toBeVisible();
     await menu.screenshot({ path: "test-results/sidebar-project-menu.png" });
-    await menu.getByRole("menuitem", { name: "移除", exact: true }).click();
+    await menu.getByRole("menuitem", { name: "从侧栏移除", exact: true }).click();
     await expect(projectRow).toHaveCount(0);
+    await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
+    await page.getByLabel("筛选视图", { exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "最近更新", exact: true }).click();
+    await settleMenuClose(page);
     await expect(
-      page.locator(".recent-sessions").getByRole("button", { name: "项目任务", exact: true }),
+      page.locator(".timeline-tasks").getByRole("button", { name: "项目任务", exact: true }),
     ).toBeVisible();
+    await page.getByLabel("筛选视图", { exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "按项目", exact: true }).click();
+    await settleMenuClose(page);
     expect(await readFile(join(project, "keep.txt"), "utf8")).toBe("project source");
     await page.reload();
     await expect(projectRow).toHaveCount(0);
@@ -251,7 +272,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
     const foreground = await page.locator("body").evaluate((el) => getComputedStyle(el).color);
     for (const header of [projectHeader, taskHeader]) {
       const toggle = header.locator(".section-toggle");
-      const handle = header.locator(".section-drag-handle");
+      const handle = toggle;
       await expect(toggle).toHaveCSS("font-size", "18px");
       await expect(toggle).toHaveCSS("height", "28px");
       await toggle.hover();
@@ -259,7 +280,7 @@ test("sidebar headings match ZCode hover states and dimensions; project menu onl
       await expect(toggle.locator("svg")).toHaveCSS("width", "14px");
       await handle.hover({ position: { x: 4, y: 4 } });
       await expect(handle).toHaveCSS("color", foreground);
-      await expect(handle).toHaveCSS("background-color", "rgba(255, 255, 255, 0.05)");
+      await expect(handle).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     }
     await projectHeader.screenshot({ path: "test-results/sidebar-project-heading-dark.png" });
   } finally {
@@ -287,7 +308,7 @@ test("project directory actions preserve literal paths and report Finder failure
     const page = await app.firstWindow();
     await page.getByLabel("添加项目", { exact: true }).click();
     const row = page.locator(".project-title");
-    const more = row.getByTitle("更多", { exact: true });
+    const more = row.getByRole("button", { name: /^项目操作 / });
     const menu = page.getByRole("menu");
     await row.hover();
     await more.click();
@@ -346,7 +367,7 @@ test("tasks appear in one section and return to their original group after unpin
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expectGroup("项目任务", ".projects");
     await expectGroup("独立任务", ".recent-sessions");
-    await expectZCodeSystemFont(page, [".session-name-text"]);
+    await expectZCodeSystemFont(page, ['[data-task-title-copy="original"]']);
 
     // ZCode: text-ui-base headings/names, medium headings, normal names,
     // 28px purpose headers and 24px task text slots inside 32px rows.
@@ -429,13 +450,13 @@ test("sidebar section handles reorder with keyboard and pointer and preserve ord
     await page.getByLabel("收起任务列表", { exact: true }).click();
     await expect(page.locator(".projects")).toBeHidden();
     await expect(page.locator(".recent-sessions")).toBeHidden();
-    const handle = page.getByLabel("移动项目分区", { exact: true });
+    const handle = page.locator('[data-purpose-section-drag-trigger="projects"]');
     await handle.focus();
     await handle.press("Space");
     await expect(handle).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("[role=status]")).toContainText(
-      "projects was moved over droppable area projects",
-    );
+    await expect(
+      page.locator('[role=status][aria-live="assertive"]').filter({ hasText: "was moved" }),
+    ).toContainText("projects was moved over droppable area projects");
     // dnd-kit announces activation before its deferred key listener and layout
     // measurements are ready. Let the activation render finish before moving.
     await page.evaluate(
@@ -443,7 +464,13 @@ test("sidebar section handles reorder with keyboard and pointer and preserve ord
         new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
     );
     await handle.press("ArrowDown");
-    await expect(page.locator("[role=status]")).toContainText("droppable area tasks");
+    await expect(
+      page.locator('[role=status][aria-live="assertive"]').filter({ hasText: "was moved" }),
+    ).toContainText("droppable area tasks");
+    await expect(page.getByTestId("purpose-section-drop-indicator")).toHaveAttribute(
+      "data-drop-position",
+      "after",
+    );
     await handle.press("Space");
     await expect.poll(order).toEqual(["tasks", "projects"]);
     await app.close();
@@ -452,11 +479,20 @@ test("sidebar section handles reorder with keyboard and pointer and preserve ord
     await expect.poll(order).toEqual(["tasks", "projects"]);
     await expect(page.getByLabel("展开项目列表", { exact: true })).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByLabel("展开任务列表", { exact: true })).toHaveAttribute("aria-expanded", "false");
-    const source = await page.getByLabel("移动项目分区", { exact: true }).boundingBox();
-    const target = await page.getByLabel("移动任务分区", { exact: true }).boundingBox();
+    const source = await page.locator('[data-purpose-section-drag-trigger="projects"]').boundingBox();
+    const target = await page.locator('[data-purpose-section-drag-trigger="tasks"]').boundingBox();
     if (!source || !target) throw new Error("Missing section handles");
     await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
     await page.mouse.down();
+    await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2 - 10, { steps: 3 });
+    await expect(page.locator('[data-purpose-section-drag-trigger="projects"]')).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
     await page.mouse.up();
     await expect.poll(order).toEqual(["projects", "tasks"]);

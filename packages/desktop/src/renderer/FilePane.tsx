@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   type ConversationSelection,
   ConversationSelectionMenu,
@@ -111,7 +112,17 @@ function MediaPreview({ preview }: { preview: Extract<FilePreview, { bytes: Uint
   );
 }
 
-export function FilePane({ preview, sessionId }: { preview: FilePreview; sessionId: string }) {
+export function FilePane({
+  preview,
+  sessionId,
+  headerContainer,
+  workspaceCwd,
+}: {
+  preview: FilePreview;
+  sessionId: string;
+  headerContainer?: HTMLElement | null;
+  workspaceCwd?: string;
+}) {
   const { theme } = useAppearance();
   const openLink = useCallback(
     (url: string, options?: WebOpenOptions) => paneTask(openWebLink(url, options, sessionId)),
@@ -196,7 +207,11 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
   useEffect(() => {
     if (preview.location?.line) setRenderMarkdown(false);
   }, [preview]);
-  const workspace = useWorkspace(sessionId);
+  const sessionWorkspace = useWorkspace(sessionId);
+  const workspace = useMemo(
+    () => (workspaceCwd ? { ...sessionWorkspace, cwd: workspaceCwd } : sessionWorkspace),
+    [sessionWorkspace, workspaceCwd],
+  );
   const markdownWorkspace = useMemo(
     () => ({ ...workspace, documentPath: preview.path }),
     [workspace, preview.path],
@@ -262,22 +277,24 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
     },
     [preview],
   );
+  const header = (
+    <PreviewHeader
+      sessionId={sessionId}
+      workspaceCwd={workspaceCwd}
+      path={preview.path}
+      divider={["pdf", "pptx", "docx", "doc", "xlsx", "media"].includes(preview.kind)}
+      wrap={wrap}
+      onWrap={
+        preview.kind === "text" && (!(markdown || svg) || !renderMarkdown) ? () => setWrap(!wrap) : undefined
+      }
+      viewKind={svg ? "SVG" : "Markdown"}
+      viewMode={renderMarkdown ? "preview" : "code"}
+      onViewMode={markdown || svg ? (mode) => setRenderMarkdown(mode === "preview") : undefined}
+    />
+  );
   return (
     <section className="file-pane" aria-label="文件预览">
-      <PreviewHeader
-        sessionId={sessionId}
-        path={preview.path}
-        divider={["pdf", "pptx", "docx", "doc", "xlsx", "media"].includes(preview.kind)}
-        wrap={wrap}
-        onWrap={
-          preview.kind === "text" && (!(markdown || svg) || !renderMarkdown)
-            ? () => setWrap(!wrap)
-            : undefined
-        }
-        viewKind={svg ? "SVG" : "Markdown"}
-        viewMode={renderMarkdown ? "preview" : "code"}
-        onViewMode={markdown || svg ? (mode) => setRenderMarkdown(mode === "preview") : undefined}
-      />
+      {headerContainer ? createPortal(header, headerContainer) : header}
       <ConversationSelectionMenu
         rootRef={selectionRoot}
         scopeKey={`${sessionId}:${preview.path}`}

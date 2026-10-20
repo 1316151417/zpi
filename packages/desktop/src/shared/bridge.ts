@@ -391,6 +391,24 @@ export interface DesktopBridge {
     length: number,
   ): Promise<Result<Uint8Array>>;
   readFilePreview(sessionId: string, path: string, location?: FileLocation): Promise<Result<FilePreview>>;
+  readWorkspaceDirectory(
+    sessionId: string,
+    path: string,
+    rootPath?: string,
+  ): Promise<Result<import("./workspace-files.ts").WorkspaceDirectoryEntry[]>>;
+  workspaceGitStatus(
+    sessionId: string,
+    rootPath?: string,
+  ): Promise<Result<import("./workspace-files.ts").WorkspaceGitSnapshot>>;
+  ignoredWorkspacePaths(sessionId: string, paths: string[], rootPath?: string): Promise<Result<string[]>>;
+  watchWorkspaceDirectory(
+    sessionId: string,
+    path: string,
+    rootPath?: string,
+  ): Promise<Result<{ id: string }>>;
+  unwatchWorkspaceDirectory(id: string): Promise<Result<void>>;
+  onWorkspaceDirectoryChange(id: string, listener: (event: { dirPath: string }) => void): () => void;
+
   pickAttachments(sessionId: string): Promise<Result<Attachment[]>>;
   importAttachment(sessionId: string, file: File): Promise<Result<Attachment>>;
   readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: Attachment; data: string }>>;
@@ -405,11 +423,13 @@ export interface DesktopBridge {
   listProjects(): Promise<Result<ProjectRecord[]>>;
   addProject(sessionId: string | null): Promise<Result<ProjectRecord | null>>;
   removeProject(id: string): Promise<Result<void>>;
+  reorderProjects(ids: string[]): Promise<Result<void>>;
   listSessions(projectId: string): Promise<Result<SessionRecord[]>>;
   getTaskSearchChanges(sessionId: string): Promise<Result<TaskSearchChange[]>>;
   searchTasks(query: string, workspaceKey: string | null): Promise<Result<TaskSearchResult[]>>;
   listTaskFiles(
     sessionId: string | null,
+    rootPath?: string,
   ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
   listRecentSessions(): Promise<Result<SessionRecord[]>>;
   listSessionMentions(sessionId: string): Promise<Result<SessionMentionSuggestion[]>>;
@@ -526,6 +546,11 @@ export const methods = [
   "searchFiles",
   "getWorkspaceInfo",
   "readFilePreview",
+  "readWorkspaceDirectory",
+  "workspaceGitStatus",
+  "ignoredWorkspacePaths",
+  "watchWorkspaceDirectory",
+  "unwatchWorkspaceDirectory",
   "readPreviewRange",
   "checkPreviewFiles",
   "downloadImage",
@@ -544,6 +569,7 @@ export const methods = [
   "listProjects",
   "addProject",
   "removeProject",
+  "reorderProjects",
   "listSessions",
   "getTaskSearchChanges",
   "searchTasks",

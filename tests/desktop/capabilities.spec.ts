@@ -377,6 +377,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
       "提示词-文件内容复用",
       "提示词-主动推进",
       "工具-向用户提问",
+      "联网搜索",
       "子智能体",
     ]);
     for (const row of await settings.locator(".settings-row").all()) {
@@ -400,7 +401,7 @@ test("plugin settings add AskUserQuestion to a new chat, with paging, custom ans
         };
       }),
     );
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
     for (const row of rows) {
       expect(row.toggleLeft).toBeGreaterThan(row.copyRight ?? 0);
       expect(row.height).toBeLessThan(100);
@@ -485,15 +486,15 @@ test("side chat launchers are hidden for drafts and appear after the first messa
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     const launcher = page.locator(".pane-empty-launcher");
     await expect(launcher).toBeVisible();
-    await expect(launcher.getByRole("button")).toHaveText(["变更", "终端", "浏览器"]);
+    await expect(launcher.locator(".pane-launcher-label")).toHaveText(["文件", "浏览器", "终端", "审查"]);
     await expect(launcher.getByRole("button", { name: "辅助对话", exact: true })).toHaveCount(0);
 
     await launcher.getByRole("button", { name: "浏览器", exact: true }).click();
     await page.getByLabel("新增侧栏标签").click();
-    const menu = page.getByRole("menu");
-    await expect(menu.getByRole("menuitem")).toHaveText(["变更", "终端", "浏览器"]);
-    await expect(menu.getByRole("menuitem", { name: "辅助对话", exact: true })).toHaveCount(0);
-    await page.keyboard.press("Escape");
+    const menu = page.locator(".pane-empty-launcher:visible");
+    await expect(menu.locator(".pane-launcher-label")).toHaveText(["文件", "浏览器", "终端", "审查"]);
+    await expect(menu.getByRole("button", { name: "辅助对话", exact: true })).toHaveCount(0);
+    await page.getByLabel("关闭标签 新标签页", { exact: true }).click();
     await page.getByLabel("关闭标签 浏览器", { exact: true }).click();
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await main.getByLabel("消息", { exact: true }).fill("主问题");
@@ -503,8 +504,8 @@ test("side chat launchers are hidden for drafts and appear after the first messa
     await launcher.getByRole("button", { name: "辅助对话", exact: true }).click();
     await expect(page.getByRole("tab", { name: "辅助对话 1", exact: true })).toBeVisible();
     await page.getByLabel("新增侧栏标签").click();
-    await expect(menu.getByRole("menuitem", { name: "辅助对话", exact: true })).toBeEnabled();
-    await page.keyboard.press("Escape");
+    await expect(menu.getByRole("button", { name: "辅助对话", exact: true })).toBeEnabled();
+    await page.getByLabel("关闭标签 新标签页", { exact: true }).click();
 
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(main).toHaveClass(/draft-main/);
@@ -578,7 +579,10 @@ test("side chats route selected text to the active tab and preserve independent 
     expect(JSON.stringify(server.requests[1].messages)).toContain("userselect");
     await side.getByLabel("消息", { exact: true }).fill("第一份辅助草稿");
     await page.getByLabel("新增侧栏标签").click();
-    await page.getByRole("menuitem", { name: "辅助对话", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "辅助对话", exact: true })
+      .click();
     await expect(page.getByRole("tab", { name: "辅助对话 2", exact: true })).toBeVisible();
     await page
       .getByRole("region", { name: "辅助对话", exact: true })
@@ -591,7 +595,10 @@ test("side chats route selected text to the active tab and preserve independent 
     await expect(side.getByLabel("消息", { exact: true })).toHaveText("第一份辅助草稿");
     await page.screenshot({ path: "test-results/side-chat.png" });
     await page.getByLabel("新增侧栏标签").click();
-    await page.getByRole("menuitem", { name: "辅助对话", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "辅助对话", exact: true })
+      .click();
     await side.getByLabel("消息", { exact: true }).fill("再解释一下");
     await side.getByLabel("发送", { exact: true }).click();
     await expect(page.getByRole("tab", { name: "辅助对话 3", exact: true })).toBeVisible();
@@ -605,7 +612,10 @@ test("side chats route selected text to the active tab and preserve independent 
     await expect(main.getByRole("option", { name: /compact/ })).toBeVisible();
     await main.getByLabel("消息", { exact: true }).fill("");
     await page.getByLabel("新增侧栏标签").click();
-    await page.getByRole("menuitem", { name: "辅助对话", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "辅助对话", exact: true })
+      .click();
     await expect(page.getByRole("tab", { name: "辅助对话 3", exact: true })).toBeVisible();
     await expect(side.getByTestId("run")).toHaveCount(0);
     await expect(main.getByLabel("消息", { exact: true })).toHaveText("");

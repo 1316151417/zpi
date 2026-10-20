@@ -14,7 +14,7 @@ const task = (id: string, createdAt: number, updatedAt: number, running = false)
   updatedAt,
   running,
 });
-it("sorts by selected time, secondary time, descending ID, with a stable running layer", () => {
+it("keeps project running order but strictly sorts recent updates by activity time", () => {
   const tasks = [
     task("a", 1, 20),
     task("b", 2, 10),
@@ -22,24 +22,22 @@ it("sorts by selected time, secondary time, descending ID, with a stable running
     task("run-a", 4, 100, true),
     task("run-b", 5, 0, true),
   ];
-  expect([...tasks].sort((a, b) => compareTasks(a, b, "updated")).map((t) => t.id)).toEqual([
+  expect([...tasks].sort((a, b) => compareTasks(a, b)).map((t) => t.id)).toEqual([
     "run-b",
     "run-a",
     "a",
     "c",
     "b",
   ]);
-  expect([...tasks].sort((a, b) => compareTasks(a, b, "created")).map((t) => t.id)).toEqual([
-    "run-b",
+  expect([...tasks].sort((a, b) => compareTasks(a, b, true)).map((t) => t.id)).toEqual([
     "run-a",
+    "a",
     "c",
     "b",
-    "a",
+    "run-b",
   ]);
-  expect(compareTasks(task("a", 1, 1, true), task("b", 1, 999, true), "updated")).toBeGreaterThan(0);
-  expect(compareTasks({ ...task("a", 1, 1), status: "running" }, task("b", 2, 2), "updated")).toBeGreaterThan(
-    0,
-  );
+  expect(compareTasks(task("a", 1, 1, true), task("b", 1, 999, true))).toBeGreaterThan(0);
+  expect(compareTasks({ ...task("a", 1, 1), status: "running" }, task("b", 2, 2))).toBeGreaterThan(0);
 });
 it("formats the activity time using source floor boundaries", () => {
   const now = 1_000_000_000;
@@ -55,16 +53,14 @@ it("formats the activity time using source floor boundaries", () => {
     expect(formatTaskRelativeTime(now - age, now)).toBe(label);
 });
 it("validates preferences including null and malformed JSON", () => {
-  expect(readTaskPreferences(null)).toEqual({ organizeBy: "project", sortBy: "updated" });
+  expect(readTaskPreferences(null)).toEqual({ organizeBy: "project" });
   expect(readTaskPreferences('{"organizeBy":"chronological","sortBy":"bad"}')).toEqual({
     organizeBy: "chronological",
-    sortBy: "updated",
   });
   for (const raw of ["null", "{}", "invalid", "[]"])
-    expect(readTaskPreferences(raw)).toEqual({ organizeBy: "project", sortBy: "updated" });
+    expect(readTaskPreferences(raw)).toEqual({ organizeBy: "project" });
   expect(readTaskPreferences('{"organizeBy":"grouped","sortBy":"created","groupSortBy":"manual"}')).toEqual({
     organizeBy: "grouped",
-    sortBy: "created",
   });
 });
 it("paginates at 5/20 boundaries and hides stale hasMore once the current limit is not filled", () => {
@@ -80,12 +76,12 @@ it("paginates at 5/20 boundaries and hides stale hasMore once the current limit 
   expect(taskPage([1, 2], 20, { hasMore: true, total: 41, loading: true }).hasMore).toBe(true);
   expect(retainProjectLimits({ a: 10, b: 15 }, new Set(["a"]))).toEqual({ a: 10 });
 });
-it("groups by local calendar and selected time, preserving the running-first encounter order", () => {
+it("groups by update time and local calendar, preserving the supplied order", () => {
   const date = (month: number, day: number, hour = 12) => new Date(2026, month - 1, day, hour).getTime();
   const now = date(10, 8);
   const dates = [date(8, 1), now, date(10, 7), date(10, 6), date(10, 5), date(10, 4), date(9, 30)];
-  const items = dates.map((at, i) => task(String(i), at, now));
-  expect(groupTimelineTasks(items, "created", now, "zh-CN").map((g) => g.label)).toEqual([
+  const items = dates.map((at, i) => task(String(i), now, at));
+  expect(groupTimelineTasks(items, now, "zh-CN").map((g) => g.label)).toEqual([
     "更早",
     "今天",
     "昨天",
@@ -93,13 +89,12 @@ it("groups by local calendar and selected time, preserving the running-first enc
     "3 天前",
     "上周",
   ]);
-  expect(groupTimelineTasks(items, "updated", now, "zh-CN").map((g) => g.label)).toEqual(["今天"]);
+
   const sunday = [task("sun", date(10, 4), date(10, 4))];
-  expect(groupTimelineTasks(sunday, "updated", now, "zh-CN")[0].label).toBe("上周");
-  expect(groupTimelineTasks(sunday, "updated", now, "en-US")[0].label).toBe("This week");
+  expect(groupTimelineTasks(sunday, now, "zh-CN")[0].label).toBe("上周");
+  expect(groupTimelineTasks(sunday, now, "en-US")[0].label).toBe("This week");
   expect(
-    groupTimelineTasks([task("y", date(10, 7, 23), date(10, 7, 23))], "updated", date(10, 8, 0), "zh-CN")[0]
-      .label,
+    groupTimelineTasks([task("y", date(10, 7, 23), date(10, 7, 23))], date(10, 8, 0), "zh-CN")[0].label,
   ).toBe("昨天");
 });
 
@@ -118,7 +113,7 @@ it("covers all calendar buckets in source order, including month and year transi
     at(8, 1),
   ];
   const items = dates.map((date, i) => task(String(i), date, date));
-  expect(groupTimelineTasks(items, "updated", now).map((group) => group.label)).toEqual([
+  expect(groupTimelineTasks(items, now).map((group) => group.label)).toEqual([
     "今天",
     "昨天",
     "2 天前",
@@ -130,5 +125,18 @@ it("covers all calendar buckets in source order, including month and year transi
     "更早",
   ]);
   const jan = new Date(2027, 0, 12, 0, 1).getTime();
-  expect(groupTimelineTasks([task("dec", at(12, 31), at(12, 31))], "updated", jan)[0].label).toBe("上月");
+  expect(groupTimelineTasks([task("dec", at(12, 31), at(12, 31))], jan)[0].label).toBe("上月");
+});
+
+it("uses calendar-day boundaries across spring and autumn daylight saving changes", () => {
+  const previous = process.env.TZ;
+  process.env.TZ = "America/New_York";
+  try {
+    const at = (month: number, day: number) => new Date(2026, month - 1, day, 0, 30).getTime();
+    expect(groupTimelineTasks([task("spring", at(3, 8), at(3, 8))], at(3, 9))[0].label).toBe("昨天");
+    expect(groupTimelineTasks([task("autumn", at(10, 26), at(10, 26))], at(11, 2))[0].label).toBe("上周");
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
 });

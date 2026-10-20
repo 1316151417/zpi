@@ -58,6 +58,16 @@ export type PaneTab = (
       title: string;
     }
   | { id: string; type: "terminal"; title: string; sessionId: string; cwd: string; profile?: TerminalProfile }
+  | { id: string; type: "new-tab"; title: string; sessionId?: string }
+  | {
+      id: string;
+      type: "file-manager";
+      title: string;
+      sessionId: string;
+      cwd: string;
+      workspaceName: string;
+      preview?: FilePreview;
+    }
   | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview }
   | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState; fileKey?: string }
 ) & { ownerSessionId?: string };
@@ -131,6 +141,10 @@ function restorePane() {
   });
 }
 export function setPaneOpen(open: boolean) {
+  if (open && visiblePaneTabs(useStore.getState().selected).length === 0) {
+    openNewPaneTab();
+    return;
+  }
   const state = usePane.getState();
   const preferences = new Map(state.preferences);
   preferences.set(useStore.getState().selected, { open, active: state.active });
@@ -210,12 +224,24 @@ function showTab(tab: PaneTab) {
   const current = usePane.getState();
   const preferences = new Map(current.preferences);
   preferences.set(ownerSessionId, { open: true, active: tab.id });
-  usePane.setState({
-    preferences,
-    tabs: current.tabs.some((item) => item.id === tab.id)
+  const launcher = current.tabs.find(
+    (item) =>
+      item.id === current.preferences.get(ownerSessionId)?.active &&
+      item.type === "new-tab" &&
+      tabOwner(item) === ownerSessionId,
+  );
+  const existing = current.tabs.some((item) => item.id === tab.id);
+  const replaceLauncher = launcher && tab.type !== "new-tab";
+  const tabs = replaceLauncher
+    ? existing
+      ? current.tabs
+          .filter((item) => item.id !== launcher.id)
+          .map((item) => (item.id === tab.id ? tab : item))
+      : current.tabs.map((item) => (item.id === launcher.id ? tab : item))
+    : existing
       ? current.tabs.map((item) => (item.id === tab.id ? tab : item))
-      : [...current.tabs, tab],
-  });
+      : [...current.tabs, tab];
+  usePane.setState({ preferences, tabs });
   // 异步打开时冻结来源任务；迟到结果只更新来源任务，不能展开或激活当前任务的侧栏。
   if (ownerSessionId === useStore.getState().selected) restorePane();
 }
@@ -350,6 +376,53 @@ export async function openSubagent(task: SubagentTask) {
   } catch (error) {
     if (!retained) retainedSessionViews.delete(task.childSessionId);
     throw error;
+  }
+}
+export function openNewPaneTab() {
+  showTab({
+    id: `new-tab:${crypto.randomUUID()}`,
+    type: "new-tab",
+    title: "新标签页",
+    sessionId: useStore.getState().selected,
+  });
+}
+export async function openFileManager(sessionId: string) {
+  const ownerSessionId = paneOwner(sessionId);
+  const workspace = unwrap(await window.zpi.getWorkspaceInfo(sessionId));
+  if (ownerDeleted(ownerSessionId)) return;
+  showTab({
+    id: `file-manager:${crypto.randomUUID()}`,
+    type: "file-manager",
+    title: "文件",
+    sessionId,
+    ownerSessionId,
+    cwd: workspace.cwd,
+    workspaceName: workspace.projectId
+      ? workspace.projectName
+      : workspace.cwd.split(/[\\/]/).at(-1) || "Workspace",
+  });
+}
+const fileManagerRequests = new Map<string, number>();
+let fileManagerVersion = 0;
+export async function navigateFileManager(tabId: string, path: string) {
+  const tab = usePane.getState().tabs.find((tab) => tab.id === tabId);
+  if (tab?.type !== "file-manager") return;
+  const version = ++fileManagerVersion;
+  fileManagerRequests.set(tabId, version);
+  try {
+    const result = await window.zpi.readFilePreview(tab.sessionId, path);
+    if (fileManagerRequests.get(tabId) !== version || ownerDeleted(tabOwner(tab))) return;
+    const preview = unwrap(result);
+    // Navigation updates this instance without activating a tab or changing task ownership.
+    usePane.setState((state) => ({
+      tabs: state.tabs.map((item) =>
+        item.id === tabId && item.type === "file-manager"
+          ? { ...item, preview, title: preview.path.split(/[\\/]/).at(-1) || "文件" }
+          : item,
+      ),
+    }));
+  } finally {
+    if (fileManagerRequests.get(tabId) === version) fileManagerRequests.delete(tabId);
   }
 }
 export function openChanges(sessionId: string, runId: string | null, path?: string, toolCallId?: string) {
@@ -548,6 +621,7 @@ export async function closeTab(id: string) {
   const state = usePane.getState(),
     tab = state.tabs.find((t) => t.id === id);
   if (!tab) return;
+  fileManagerRequests.delete(id);
   if (tab.type === "side-chat-loading" && pendingSideChats.get(tab.sessionId)?.tabId === id)
     pendingSideChats.delete(tab.sessionId);
   if (pendingFileReads) {

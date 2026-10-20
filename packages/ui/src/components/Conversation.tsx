@@ -1377,24 +1377,28 @@ export function ChatComposer({
       active = false;
     };
   }, [sessionId, fileQuery?.query, fileQuery?.explicit, context]);
-  const chooseFile = (file: (typeof fileMatches)[number]) => {
-    const range = fileQuery;
-    if (!range) return;
+  const insertFileMention = (
+    file: { name: string; absolutePath: string; type: "file" | "directory" },
+    start: number,
+    end: number,
+  ) => {
     const markdown = buildMentionMarkdown(
       file.name,
       file.absolutePath + (file.type === "directory" ? "/" : ""),
     );
-    const start = range.start,
-      end = range.end;
     updateValue(sessionId, (old) => ({
       ...old,
       text: `${old.text.slice(0, start) + markdown} ${old.text.slice(end)}`,
       fileReferences: [],
     }));
-    setFileQuery(undefined);
-    setInputQuery(undefined);
     textarea.current?.focus();
     textarea.current?.setSelectionRange(start + markdown.length + 1, start + markdown.length + 1);
+  };
+  const chooseFile = (file: (typeof fileMatches)[number]) => {
+    if (!fileQuery) return;
+    insertFileMention(file, fileQuery.start, fileQuery.end);
+    setFileQuery(undefined);
+    setInputQuery(undefined);
   };
   const addAttachments = async (operation: () => Promise<import("zpi-coding-agent").Attachment[]>) => {
     const id = sessionId;
@@ -1734,12 +1738,38 @@ export function ChatComposer({
           if (!dragDepth.current) setDraggingFiles(false);
         }}
         onDragOver={(event) => {
-          if (context && event.dataTransfer.types.includes("Files")) event.preventDefault();
+          if (
+            context &&
+            (event.dataTransfer.types.includes("Files") ||
+              event.dataTransfer.types.includes("application/x-zpi-workspace-file"))
+          )
+            event.preventDefault();
         }}
         onDrop={(event) => {
           dragDepth.current = 0;
           setDraggingFiles(false);
           if (!context || editing) return;
+          const workspaceFile = event.dataTransfer.getData("application/x-zpi-workspace-file");
+          if (workspaceFile) {
+            event.preventDefault();
+            try {
+              const file = JSON.parse(workspaceFile);
+              if (
+                typeof file.path !== "string" ||
+                !file.path ||
+                file.path.includes("\0") ||
+                typeof file.name !== "string" ||
+                !["file", "directory"].includes(file.type)
+              )
+                return;
+              const start = textarea.current?.selectionStart ?? draft.length;
+              const end = textarea.current?.selectionEnd ?? start;
+              insertFileMention({ name: file.name, absolutePath: file.path, type: file.type }, start, end);
+            } catch {
+              /* Ignore malformed drag data from another application. */
+            }
+            return;
+          }
           const files = Array.from(event.dataTransfer.files);
           if (!files.length) return;
           event.preventDefault();

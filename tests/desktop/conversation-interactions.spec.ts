@@ -87,7 +87,10 @@ test("side chats reuse the smallest free number and retain other conversations",
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
     const add = async () => {
       await page.getByLabel("新增侧栏标签", { exact: true }).click();
-      await page.getByRole("menuitem", { name: "辅助对话", exact: true }).click();
+      await page
+        .locator(".pane-empty-launcher:visible")
+        .getByRole("button", { name: "辅助对话", exact: true })
+        .click();
     };
     await expect(page.getByRole("tab", { name: "辅助对话 1", exact: true })).toBeVisible();
     await add();
@@ -242,9 +245,8 @@ test("an absolute HTML link previews the streamed write before the file exists a
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(page.locator(".pending-file-preview")).toHaveCount(0);
     expect(await readFile(path, "utf8")).toBe(source);
-    await page.locator(".changes-pane").getByRole("button", { name: "打开文件", exact: true }).click();
-    await expect(page.getByLabel("浏览器地址", { exact: true })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "写入中的预览", exact: true })).toBeVisible();
+    await page.locator(".changes-pane").getByRole("button", { name: "查看源码", exact: true }).click();
+    await expect(page.locator(".file-text-preview")).toContainText(source);
     await expect(page.locator(".notice-window")).toHaveCount(0);
   } finally {
     finish.resolve();

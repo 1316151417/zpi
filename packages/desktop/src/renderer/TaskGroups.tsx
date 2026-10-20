@@ -35,7 +35,7 @@ import {
   taskGroupColors,
   taskGroupFor,
 } from "../shared/task-groups.ts";
-import { changeTaskGroups, newSession, report, useStore } from "./store.ts";
+import { changeTaskGroups, newSession, refresh, report, useStore } from "./store.ts";
 import { TaskGroupRow } from "./TaskGroupRow.tsx";
 import { TaskGroupVirtualList } from "./TaskGroupVirtualList.tsx";
 import { groupColorLabels, TaskGroupColorMark } from "./task-group-colors.tsx";
@@ -610,7 +610,18 @@ export function TaskGroups({
         setPreview(undefined);
         setDragging(undefined);
         lastCommand.current = undefined;
-        if (command) void changeTaskGroups(command).catch(report);
+        if (command)
+          void changeTaskGroups(
+            command.type === "moveTask"
+              ? {
+                  ...command,
+                  sourceGroupId: taskGroupFor(origin.current, command.id),
+                }
+              : command,
+          ).catch((error) => {
+            report(error);
+            void refresh().catch(report);
+          });
       }}
     >
       <div ref={list} className="task-groups" data-drag-active={Boolean(dragging)}>

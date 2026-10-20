@@ -57,7 +57,7 @@ it("running tasks reject archive/restore/delete while metadata rename and pin pr
   expect(reopened.listRecentSessions()[0]).toMatchObject({ title: "手动任务名", status: "aborted" });
 });
 
-it("archive discards pending messages, rejects later delivery and restores the original project after restart", async () => {
+it("archive discards pending messages and restores task ownership without reviving a hidden project after restart", async () => {
   const f = await fixture((body, response) => {
     send(response, chunk({ content: "reply" }));
     const user = (body.messages as unknown as { role: string; content: string }[])
@@ -90,7 +90,8 @@ it("archive discards pending messages, rejects later delivery and restores the o
   cleanup.push(() => reopened.close());
   reopened.restoreSession(id);
   expect(reopened.listSessions(f.a.id)[0].id).toBe(id);
-  expect(reopened.listProjects().some((p) => p.id === f.a.id)).toBe(true);
+  expect(reopened.listProjects().some((p) => p.id === f.a.id)).toBe(false);
+  expect(reopened.getSessionSnapshot(id).session.projectId).toBe(f.a.id);
   expect(reopened.getSessionSnapshot(id).view.queue?.items).toEqual([]);
   expect(f.server.requests).toHaveLength(1);
 });

@@ -1,8 +1,9 @@
-import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   Activity,
   Bot,
+  File as FileDocument,
   FileDiff as Files,
+  FolderOpen,
   Globe,
   MessageSquare,
   Plus,
@@ -14,15 +15,14 @@ import { FileIcon, type FindRequest, type FindState } from "zpi-ui";
 import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
+import { FileManagerPane } from "./FileManagerPane.tsx";
 import { FilePane } from "./FilePane.tsx";
+import { PaneLauncher } from "./PaneLauncher.tsx";
 import {
   activatePaneTab,
   canOpenSideChat,
   closeTab,
-  openBrowser,
-  openChanges,
-  openSideChat,
-  openTerminal,
+  openNewPaneTab,
   paneTask,
   reorderPaneTab,
   usePane,
@@ -168,7 +168,11 @@ export function RightPane({
                   >
                     <span className="pane-tab-content">
                       <span className="pane-tab-icon">
-                        {tab.type === "subagent" ? (
+                        {tab.type === "new-tab" ? (
+                          <FileDocument size={14} />
+                        ) : tab.type === "file-manager" ? (
+                          <FolderOpen size={14} />
+                        ) : tab.type === "subagent" ? (
                           <Bot size={14} />
                         ) : tab.type === "task-directory" ? (
                           <Activity size={14} />
@@ -202,92 +206,13 @@ export function RightPane({
                 </div>
               ))}
             </div>
-            {tabs.length > 0 && (
-              <Dropdown.Root>
-                <Dropdown.Trigger asChild>
-                  <button className="pane-add-tab" aria-label="新增侧栏标签">
-                    <Plus size={16} />
-                  </button>
-                </Dropdown.Trigger>
-                <Dropdown.Portal>
-                  <Dropdown.Content className="pane-launcher" align="start" sideOffset={8}>
-                    {sideChatAvailable && (
-                      <Dropdown.Item
-                        onSelect={() => {
-                          if (sessionId) paneTask(openSideChat(sessionId));
-                        }}
-                      >
-                        <MessageSquare size={16} />
-                        辅助对话
-                      </Dropdown.Item>
-                    )}
-                    <Dropdown.Item
-                      disabled={!sessionId}
-                      onSelect={() => {
-                        if (sessionId) openChanges(sessionId, null);
-                      }}
-                    >
-                      <Files size={16} />
-                      变更
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      disabled={!sessionId}
-                      onSelect={() => {
-                        if (sessionId) paneTask(openTerminal(sessionId));
-                      }}
-                    >
-                      <TerminalSquare size={16} />
-                      终端
-                    </Dropdown.Item>
-                    <Dropdown.Item onSelect={() => paneTask(openBrowser("", sessionId))}>
-                      <Globe size={16} />
-                      浏览器
-                    </Dropdown.Item>
-                  </Dropdown.Content>
-                </Dropdown.Portal>
-              </Dropdown.Root>
-            )}
+            <button className="pane-add-tab" aria-label="新增侧栏标签" onClick={openNewPaneTab}>
+              <Plus size={16} />
+            </button>
             <div className="pane-drag-space" aria-hidden="true" />
           </div>
           {tabs.length === 0 && (
-            <div className="pane-empty-launcher">
-              <h2>打开标签页</h2>
-              <p>选择要在侧栏中打开的标签。</p>
-              <div className="pane-launcher-actions">
-                {sideChatAvailable && (
-                  <button
-                    onClick={() => {
-                      if (sessionId) paneTask(openSideChat(sessionId));
-                    }}
-                  >
-                    <MessageSquare size={16} />
-                    辅助对话
-                  </button>
-                )}
-                <button
-                  disabled={!sessionId}
-                  onClick={() => {
-                    if (sessionId) openChanges(sessionId, null);
-                  }}
-                >
-                  <Files size={16} />
-                  变更
-                </button>
-                <button
-                  disabled={!sessionId}
-                  onClick={() => {
-                    if (sessionId) paneTask(openTerminal(sessionId));
-                  }}
-                >
-                  <TerminalSquare size={16} />
-                  终端
-                </button>
-                <button onClick={() => paneTask(openBrowser("", sessionId))}>
-                  <Globe size={16} />
-                  浏览器
-                </button>
-              </div>
-            </div>
+            <PaneLauncher sessionId={sessionId} sideChatAvailable={sideChatAvailable} hasReview={false} />
           )}
           {state.tabs.map((tab) => (
             <div
@@ -297,7 +222,15 @@ export function RightPane({
               aria-label={tab.title}
               hidden={tab.id !== active}
             >
-              {tab.type === "background-task" ? (
+              {tab.type === "new-tab" ? (
+                <PaneLauncher
+                  sessionId={sessionId}
+                  sideChatAvailable={sideChatAvailable}
+                  hasReview={tabs.some((tab) => tab.type === "changes" && tab.runId === null && !tab.path)}
+                />
+              ) : tab.type === "file-manager" ? (
+                <FileManagerPane tab={tab} />
+              ) : tab.type === "background-task" ? (
                 <BackgroundTaskPane
                   sessionId={tab.sessionId}
                   taskId={tab.taskId}

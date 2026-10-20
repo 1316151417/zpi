@@ -4,9 +4,12 @@ import {
   closeTab,
   deleteSessionWithPanes,
   listenPanes,
+  navigateFileManager,
   openBrowser,
   openChanges,
   openFile,
+  openFileManager,
+  openNewPaneTab,
   openTerminal,
   openWebLink,
   reorderPaneTab,
@@ -112,7 +115,10 @@ it("restores task tabs, active tab and explicit collapse preferences while retai
   expect(usePane.getState()).toMatchObject({ open: false, active: aTabs[0].id });
   expect(visiblePaneTabs("A")).toEqual(aTabs);
   select("B");
-  expect(usePane.getState()).toMatchObject({ open: true, active: undefined });
+  const launcher = visiblePaneTabs("B")[0];
+  expect(launcher).toMatchObject({ type: "new-tab" });
+  expect(usePane.getState()).toMatchObject({ open: true, active: launcher.id });
+  await closeTab(launcher.id);
   await openFile("B", file.path);
   expect(visiblePaneTabs("B")[0].id).not.toBe(aTabs[0].id);
   await openFile("B", file.path);
@@ -736,3 +742,54 @@ it.each([undefined, "file:A:/shared/old.html"])(
     expect(bridge.createBrowser).not.toHaveBeenCalled();
   },
 );
+
+it("replaces only the active launcher in place and gives each file manager its own navigation", async () => {
+  openNewPaneTab();
+  await openFileManager("A");
+  const first = visiblePaneTabs("A")[0];
+  expect(first.type).toBe("file-manager");
+  expect(visiblePaneTabs("A")).toHaveLength(1);
+  openNewPaneTab();
+  await openFileManager("A");
+  const second = visiblePaneTabs("A")[1];
+  expect(second.id).not.toBe(first.id);
+  const active = usePane.getState().active;
+  await navigateFileManager(first.id, file.path);
+  expect(visiblePaneTabs("A")[0]).toMatchObject({ preview: file, title: "readme.md" });
+  expect(visiblePaneTabs("A")[1]).not.toHaveProperty("preview");
+  expect(usePane.getState().active).toBe(active);
+});
+
+it("ignores old file-manager reads and failures and does not reopen a closed tab", async () => {
+  await openFileManager("A");
+  const id = usePane.getState().active ?? "";
+  const older = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(older.promise);
+  const opening = navigateFileManager(id, "/shared/old.ts");
+  await navigateFileManager(id, file.path);
+  older.resolve({ ok: false, error: { code: "not_found", message: "stale" } });
+  await expect(opening).resolves.toBeUndefined();
+  expect(visiblePaneTabs("A")[0]).toMatchObject({ preview: file });
+  const pending = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(pending.promise);
+  const refresh = navigateFileManager(id, file.path);
+  await closeTab(id);
+  pending.resolve(ok(file));
+  await refresh;
+  expect(visiblePaneTabs("A")).toHaveLength(0);
+});
+
+it("a file-manager response for a background task cannot activate another task's pane", async () => {
+  await openFileManager("A");
+  const id = usePane.getState().active ?? "";
+  const pending = Promise.withResolvers<Result<FilePreview>>();
+  bridge.readFilePreview.mockReturnValueOnce(pending.promise);
+  const opening = navigateFileManager(id, file.path);
+  select("B");
+  openNewPaneTab();
+  const active = usePane.getState().active;
+  pending.resolve(ok(file));
+  await opening;
+  expect(usePane.getState().active).toBe(active);
+  expect(visiblePaneTabs("A")[0]).toMatchObject({ preview: file });
+});

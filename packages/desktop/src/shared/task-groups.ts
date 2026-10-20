@@ -25,6 +25,7 @@ export type TaskGroupCommand =
       type: "moveTask";
       id: string;
       groupId: string | null;
+      sourceGroupId?: string | null;
       before?: TaskGroupNode | null;
       after?: TaskGroupNode;
       start?: boolean;
@@ -126,6 +127,16 @@ export function applyTaskGroupCommand(state: TaskGroupState, command: TaskGroupC
       if (command.groupId && !next.groups.some((entry) => entry.id === command.groupId))
         throw new Error("not_found: 分组不存在");
       const currentGroup = taskGroupFor(next, command.id);
+      if (command.sourceGroupId !== undefined && currentGroup !== command.sourceGroupId)
+        throw new Error("invalid_input: 任务分组已变化，请重试");
+      const anchor = command.after ?? command.before;
+      if (anchor) {
+        const valid = command.groupId
+          ? anchor.type === "task" && next.members[command.groupId].includes(anchor.id)
+          : next.roots.some((node) => sameGroupNode(node, anchor));
+        if (!valid || (anchor.type === "task" && anchor.id === command.id))
+          throw new Error("invalid_input: 拖动目标已变化，请重试");
+      }
       const menuMove = command.before === undefined && command.after === undefined && !command.start;
       if (menuMove && currentGroup === command.groupId) return state;
       removeTask(command.id);
@@ -166,7 +177,7 @@ export function applyTaskGroupCommand(state: TaskGroupState, command: TaskGroupC
           : command.target;
       if (target.type === "group" && target.id === command.id) return state;
       const targetIndex = next.roots.findIndex((node) => sameGroupNode(node, target));
-      if (targetIndex < 0) return state;
+      if (targetIndex < 0) throw new Error("invalid_input: 拖动目标已变化，请重试");
       next.roots = next.roots.filter((node) => node.type !== "group" || node.id !== command.id);
       const index = next.roots.findIndex((node) => sameGroupNode(node, target));
       next.roots.splice(index + (command.position === "after" ? 1 : 0), 0, { type: "group", id: command.id });

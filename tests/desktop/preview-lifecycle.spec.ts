@@ -122,8 +122,8 @@ test("delayed file checks stay with their task, stable projections share checks 
     await app.evaluate(() =>
       (globalThis as typeof globalThis & { previewRace: { release?: () => void } }).previewRace.release?.(),
     );
-    await page.getByLabel("筛选和排序", { exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "创建时间" }).click();
+    await page.getByLabel("筛选视图", { exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "最近更新" }).click();
     await expect(page.locator(".assistant-preview-title")).toHaveText("b.pdf");
     await page.locator(`[data-session-id="${a}"] .session-name`).click();
     await expect(page.locator(".assistant-preview-title")).toHaveText("a.pdf");

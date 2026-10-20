@@ -72,15 +72,18 @@ for (const timeline of [false, true]) {
       app = await launchDesktop({ dir, url: "" });
       const page = await app.firstWindow();
       if (timeline) {
-        await page.getByLabel("筛选和排序", { exact: true }).click();
-        await page.getByRole("menuitemradio", { name: "时间线", exact: true }).click();
+        await page.getByLabel("筛选视图", { exact: true }).click();
+        await page.getByRole("menuitemradio", { name: "最近更新", exact: true }).click();
         await expect(page.getByRole("menu")).toHaveCount(0);
-        await expect(page.getByLabel("筛选和排序", { exact: true })).toBeFocused();
+        await expect(page.getByLabel("筛选视图", { exact: true })).toBeFocused();
       }
       const list = page.locator(timeline ? ".timeline-tasks" : ".recent-sessions");
-      await expect(list.getByTestId("session-row")).toHaveCount(20);
-      await list.getByRole("button", { name: "显示更多", exact: true }).click();
-      await expect(list.getByTestId("session-row")).toHaveCount(25);
+      const pageSize = timeline ? 20 : 5;
+      await expect(list.getByTestId("session-row")).toHaveCount(pageSize);
+      for (let limit = pageSize; limit < 25; limit += pageSize) {
+        await list.getByRole("button", { name: "显示更多", exact: true }).click();
+        await expect(list.getByTestId("session-row")).toHaveCount(Math.min(limit + pageSize, 25));
+      }
       const settingsButton = page.getByRole("button", { name: "设置", exact: true });
       await settingsButton.focus();
       const scroll = await page.locator(".sidebar-sections").evaluate((element) => {

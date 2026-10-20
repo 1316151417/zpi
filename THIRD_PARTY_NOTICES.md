@@ -1,3 +1,31 @@
+# ZCode file manager and draft workspaces
+
+The file launcher, file-manager split layout, directory row styling, lazy loading, compact folders, Git decorations, virtualized rows, sticky folders, watcher lifecycle and refresh request guards in `packages/desktop/src/renderer/{PaneLauncher,FileManagerPane}.tsx`, `workspace-file-tree/`, related pane state and styles adapt ZCode commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`: `packages/ui/src/WorkspaceFileTree.tsx`, `workspace-file-tree/`, `plugin-ui/components/PluginUiLauncherItems.tsx`, `app-shell/{AnimatedSidePanePanel,animatedSidePanePanelModel}` and `lib/workspaceSidePane.ts`. Draft workspace allocation follows `packages/services/src/project/index.ts`. Adapted to ZPI's local session IDs, existing previews and mention index, `.zpi/workspace` storage, and Electron preload IPC; remote projects, additional roots and plugins are excluded. Compacted expanded directories additionally hold a watch on their represented leaf directory. The existing Material icons and Lucide artwork are reused. The desktop uses the same `react-resizable-panels` 4.10.0 layout primitives (MIT). Apache-2.0 and the existing Lucide licenses below apply.
+
+## react-resizable-panels 4.10.0
+
+The MIT License (MIT)
+
+Copyright (c) 2018 Brian Vaughn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 # ZCode image request pipeline
 
 The image budgets, compression candidate sequence and WebP passthrough in `packages/coding-agent/src/core/tools/pi/utils`, request media projection and compact error predicates in `packages/ai/src/utils`, cache breakpoints and text-only microcompact follow ZCode commit `aac4755666d09fdcd70272fcf063c077a639015f`, `apps/zcode-cli/packages/{contracts/src/tools/read.ts,adapters/src/image,core/src/runtime/helpers/media-budget.ts,core/src/compact/microcompact.ts}`. Adapted to ZPI's transcript and provider interfaces under the Apache-2.0 license reproduced below. Historical media selection deliberately uses `break` instead of the upstream `continue`. Image processing uses Sharp with the existing guarded BMP decoder; compression candidate order and budgets are retained, but encoded bytes may differ from the upstream encoders. Read's WebP passthrough intentionally performs budget checks without decoding.
@@ -884,8 +912,6 @@ Generic attachment selection, native path references, text-file classification, 
 
 Automatic assistant preview parsing, change gates, candidate limits, stat validation, cards, open menus and PPTX completion consumption adapt ZCode `AssistantPreviewCards.tsx`, `OpenSplitButton.tsx`, `lib/{assistantPreviewCards,assistantFileReferences,assistantPreviewCardValidation,assistantPathQuotes,markdownFileLink,path}.ts`, `shared/conversation-preview-artifacts.ts`, `shared/media-preview.ts`, `v4/useAssistantPreviewCardsForRow.ts` and `v4/assistantPreviewPptxAutoOpen.ts` at commit 872ad960de7ec172591f7e1952f7849229f94521. Sidebar view/sort controls, time formatting, running-first ordering, project/task pagination, timeline grouping and title overflow adapt `WorkspaceSidebar.tsx`, `WorkspaceTimelineTasksSection.tsx`, `TaskListItem.tsx`, `components/TaskTitleOverflowText.tsx` and their ordering, pagination, preferences and presentation helpers at the same commit. Local application discovery follows `desktop/src/main/editors.ts` and `lib/openWithEditors.ts`. Adapted to ZPI's existing session host, four-tool changes, local Electron IPC and pane store. Lucide and byte-identical Material SVGs reuse the assets attributed above; no new icon set is introduced. Existing ZCode Apache-2.0, Lucide ISC and Material MIT attributions apply.
 
-`packages/desktop/src/renderer/task-view-icons.ts` preserves the exact MessageCircleCheck SVG paths from the reference Lucide 1.17 package; the current Lucide package uses a different check mark. The existing Lucide ISC attribution applies.
-
 Context compaction timeline dividers in packages/ui/src/components/CompactionDivider.tsx follow ZCode `v4/ConversationRowView.tsx` (`MarkerDividerRow`, compact status labels) and `styles.css` at commit 872ad960de7ec172591f7e1952f7849229f94521: 14px Lucide Archive, centered label, 1px border at 50% opacity, 12px outer gap, 6px icon gap, 8px/16px padding and the existing four-second gradient text animation. Adapted to ZPI's Pi compaction lifecycle and local session history. Existing ZCode Apache-2.0 and Lucide ISC attributions above apply; the compaction prompt is unchanged.
 
 Question transcript presentation in `AskQuestionToolBlock.tsx` and `user-question-presentation.ts` adapts ZCode `ToolCallBlocks/renderers/ask-question.tsx` and `lib/askUserQuestion.ts`. `UserQuestionCard.tsx` and its styles follow `ElicitationDialog.tsx` and the Badge, Button and Textarea primitives, including option descriptions, paging, focus restoration, keyboard/IME handling, responsive collapse and scroll bounds. Adapted to ZPI’s optional question tool, Pi text results and local IPC. CircleHelp, Check, Chevron and Info reuse the Lucide assets attributed above. Existing ZCode Apache-2.0 and Lucide ISC attributions apply.
@@ -1082,3 +1108,7 @@ The two-stage image-load fallback in `packages/ui/src/file-icons.ts` and
 inline SVG stroke color and source-keyed image reset. Existing Apache-2.0 and Material
 Icon Theme MIT notices above apply. No additional icon artwork or ZCode brand assets
 are imported.
+
+# ZCode task list header and project sorting update
+
+`TaskListHeader.tsx`, `TaskViewMenu.tsx`, `SortableProjects.tsx`, `sidebar-task-model.ts`, and the corresponding workbench styles adapt ZCode commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`, `packages/ui/src/project-sidebar/{ProjectSidebarListHeader,SortableProjects,ProjectNode,PurposeSections,view,timelineDates}.tsx/ts` and `WorkspaceSidebar/WorkspacePurposeSection.tsx` and `components/ui/dropdown-menu.tsx`. Folder, Hash, Clock, ListFilter, Search and expand/collapse icons reuse Lucide. The Apache-2.0 and Lucide licenses reproduced above apply. Project and task-group writes retain ZPI's desktop state owner and SQLite storage.

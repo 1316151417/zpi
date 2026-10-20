@@ -34,11 +34,12 @@ class RowPointerSensor extends PointerSensor {
     },
   ];
 }
-type Bindings = Pick<
+export type SortableBindings = Pick<
   ReturnType<typeof useSortable>,
   "attributes" | "setNodeRef" | "setActivatorNodeRef" | "isDragging"
 > & {
   style: CSSProperties;
+  dropPosition: "before" | "after" | null;
   listeners: ReturnType<typeof useSortable>["listeners"];
 };
 function Row<T extends { id: string }>({
@@ -50,18 +51,30 @@ function Row<T extends { id: string }>({
   item: T;
   disabled: boolean;
   handleOnly: boolean;
-  renderItem(item: T, bindings: Bindings): ReactNode;
+  renderItem(item: T, bindings: SortableBindings): ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging, transform, transition } =
-    useSortable({
-      id: item.id,
-      disabled,
-    });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    isDragging,
+    transform,
+    transition,
+    isOver,
+    activeIndex,
+    index,
+  } = useSortable({
+    id: item.id,
+    disabled,
+  });
   return renderItem(item, {
     attributes,
     setNodeRef,
     setActivatorNodeRef,
     isDragging,
+    dropPosition:
+      isOver && !isDragging && activeIndex >= 0 ? (activeIndex > index ? "before" : "after") : null,
     style: {
       transform: CSS.Transform.toString(
         handleOnly && transform ? { ...transform, scaleX: 1, scaleY: 1 } : transform,
@@ -102,6 +115,8 @@ export function SortableList<T extends { id: string }>({
   disabled = false,
   handleOnly = false,
   constrainVertical = false,
+  activationDistance = handleOnly ? 8 : 6,
+  modifiers,
   onReorder,
   renderItem,
 }: {
@@ -109,12 +124,14 @@ export function SortableList<T extends { id: string }>({
   disabled?: boolean;
   handleOnly?: boolean;
   constrainVertical?: boolean;
+  activationDistance?: number;
+  modifiers?: Modifier[];
   onReorder(items: T[]): void;
-  renderItem(item: T, bindings: Bindings): ReactNode;
+  renderItem(item: T, bindings: SortableBindings): ReactNode;
 }) {
   const sensors = useSensors(
     useSensor(handleOnly ? PointerSensor : RowPointerSensor, {
-      activationConstraint: { distance: handleOnly ? 8 : 6 },
+      activationConstraint: { distance: activationDistance },
     }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
@@ -122,7 +139,7 @@ export function SortableList<T extends { id: string }>({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      modifiers={constrainVertical ? [restrictVerticalDragWithinContainer] : undefined}
+      modifiers={modifiers ?? (constrainVertical ? [restrictVerticalDragWithinContainer] : undefined)}
       onDragEnd={({ active, over }) => {
         if (!over || active.id === over.id) return;
         const from = items.findIndex((item) => item.id === active.id);

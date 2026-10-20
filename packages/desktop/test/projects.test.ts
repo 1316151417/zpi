@@ -109,25 +109,27 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   });
   expect(existsSync(f.workspace)).toBe(false);
   const s = f.host.createSession(null);
-  expect(s).toMatchObject({ projectId: null, cwd: f.workspace });
+  expect(s).toMatchObject({ projectId: null, cwd: join(f.workspace, `draft-${s.id}`) });
   expect(f.host.listProjects()).toEqual([]);
-  await mkdir(join(f.workspace, ".zpi", "skills", "inspect"), { recursive: true });
+  await mkdir(join(String(s.cwd), ".zpi", "skills", "inspect"), { recursive: true });
   await writeFile(
-    join(f.workspace, ".zpi", "skills", "inspect", "SKILL.md"),
+    join(String(s.cwd), ".zpi", "skills", "inspect", "SKILL.md"),
     "---\nname: inspect\ndescription: Workspace\n---\nWORKSPACE SKILL",
   );
   expect((await f.host.listSessionSkills(s.id)).skills.map((s) => s.name)).toContain("inspect");
   await f.host.setSessionSelection(s.id, { provider: "p", modelId: "new", reasoning: "none" });
   await f.host.startRun({ sessionId: s.id, text: "/init" });
   await f.host.activeRuns.get(s.id)?.done;
-  expect(await readFile(join(f.workspace, "AGENTS.md"), "utf8")).toBe("workspace instructions");
+  expect(await readFile(join(String(s.cwd), "AGENTS.md"), "utf8")).toBe("workspace instructions");
   expect(f.server.requests.every((r) => r.reasoning_effort === "none")).toBe(true);
   await f.host.startRun({ sessionId: s.id, text: "$inspect inspect" });
   await f.host.activeRuns.get(s.id)?.done;
   const skillRequest = f.server.requests.find((request) =>
     JSON.stringify(request).includes("$inspect inspect"),
   );
-  expect(JSON.stringify(skillRequest)).toContain(join(f.workspace, ".zpi", "skills", "inspect", "SKILL.md"));
+  expect(JSON.stringify(skillRequest)).toContain(
+    join(String(s.cwd), ".zpi", "skills", "inspect", "SKILL.md"),
+  );
   expect(JSON.stringify(skillRequest)).not.toContain("WORKSPACE SKILL");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("WORKSPACE SKILL");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("workspace instructions");
@@ -137,7 +139,7 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   const restarted = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace, undefined);
   await restarted.init();
   cleanup.push(() => restarted.close());
-  expect(restarted.getSessionSnapshot(s.id).session.cwd).toBe(f.workspace);
+  expect(restarted.getSessionSnapshot(s.id).session.cwd).toBe(s.cwd);
   expect(restarted.listRecentSessions().map((s) => s.id)).toEqual([s.id]);
   const p = await f.host.addProject(f.workspace);
   const explicit = f.host.createSession(p.id);
@@ -170,4 +172,44 @@ it("five pins are enforced globally, idempotently and persist through unpin/arch
       .map((r) => r.id),
   ).toEqual(tasks.slice(2).map((r) => r.id));
   expect(() => restarted.setSessionPinned(tasks[0].id, true)).toThrow("最多置顶 5 个");
+});
+
+it("keeps manually ordered slots through reopen, hidden projects, stale commands and restart", async () => {
+  const f = await fixture();
+  const projects = [];
+  for (const name of ["a", "b", "c"]) {
+    const path = join(f.dir, name);
+    await mkdir(path);
+    projects.push(await f.host.addProject(path));
+  }
+  const [a, b, c] = projects;
+  expect(f.host.listProjects().map((project) => project.id)).toEqual([c.id, b.id, a.id]);
+  f.host.reorderProjects([a.id, c.id, b.id]);
+  await f.host.addProject(c.path);
+  expect(f.host.listProjects().map((project) => project.id)).toEqual([a.id, c.id, b.id]);
+  f.host.removeProject(c.id);
+  expect(() => f.host.reorderProjects([a.id, c.id, b.id])).toThrow("项目列表已变化");
+  expect(() => f.host.reorderProjects([a.id, a.id])).toThrow("项目列表已变化");
+  f.host.reorderProjects([b.id, a.id]);
+  await f.host.addProject(c.path);
+  expect(f.host.listProjects().map((project) => project.id)).toEqual([b.id, c.id, a.id]);
+  await f.host.close();
+  const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.workspace);
+  cleanup.push(() => reopened.close());
+  await reopened.init();
+  expect(reopened.listProjects().map((project) => project.id)).toEqual([b.id, c.id, a.id]);
+});
+
+it("keeps hidden project ownership and cwd when an archived task is restored", async () => {
+  const f = await fixture();
+  const project = await f.host.addProject(f.dir);
+  const task = f.host.createSession(project.id);
+  await f.host.archiveSession(task.id);
+  f.host.removeProject(project.id);
+  const restored = f.host.restoreSession(task.id);
+  expect(restored).toMatchObject({ projectId: project.id, cwd: f.dir, archivedAt: null });
+  expect(f.host.listProjects()).toEqual([]);
+  expect(f.host.listRecentSessions().find((record) => record.id === task.id)?.projectId).toBe(project.id);
+  expect((await f.host.addProject(f.dir)).id).toBe(project.id);
+  expect(f.host.listProjects()).toHaveLength(1);
 });

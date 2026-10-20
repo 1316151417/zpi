@@ -1,9 +1,6 @@
-// Ported from ZCode taskListOrdering, taskListItemPresentation, taskTimelineGroups,
-// sidebarTaskPreferences and workspaceTaskPagination (Apache-2.0), 872ad960.
-export type TaskSortBy = "created" | "updated";
+// Adapted from ZCode project-sidebar/{view,timelineDates} (Apache-2.0), 3c5b2276.
 export interface TaskPreferences {
   organizeBy: "grouped" | "project" | "chronological";
-  sortBy: TaskSortBy;
 }
 export const taskPreferencesKey = "zpi.sidebarTaskPreferences";
 export function readTaskPreferences(raw: string | null): TaskPreferences {
@@ -16,7 +13,6 @@ export function readTaskPreferences(raw: string | null): TaskPreferences {
   return {
     organizeBy:
       value?.organizeBy === "grouped" || value?.organizeBy === "chronological" ? value.organizeBy : "project",
-    sortBy: value?.sortBy === "created" ? "created" : "updated",
   };
 }
 interface TaskTime {
@@ -26,12 +22,12 @@ interface TaskTime {
   running?: boolean;
   status?: string;
 }
-export function compareTasks(left: TaskTime, right: TaskTime, by: TaskSortBy): number {
-  if (Boolean(left.running) !== Boolean(right.running)) return left.running ? -1 : 1;
-  if (left.running) return right.createdAt - left.createdAt || right.id.localeCompare(left.id);
-  return by === "created"
-    ? right.createdAt - left.createdAt || right.updatedAt - left.updatedAt || right.id.localeCompare(left.id)
-    : right.updatedAt - left.updatedAt || right.createdAt - left.createdAt || right.id.localeCompare(left.id);
+export function compareTasks(left: TaskTime, right: TaskTime, timeline = false): number {
+  if (!timeline && Boolean(left.running) !== Boolean(right.running)) return left.running ? -1 : 1;
+  if (!timeline && left.running) return right.createdAt - left.createdAt || right.id.localeCompare(left.id);
+  return (
+    right.updatedAt - left.updatedAt || right.createdAt - left.createdAt || right.id.localeCompare(left.id)
+  );
 }
 export function formatTaskRelativeTime(timestamp: number, now = Date.now(), locale = "zh-CN"): string {
   const minutes = Math.floor((now - timestamp) / 60000);
@@ -54,30 +50,28 @@ export function retainProjectLimits(limits: Record<string, number>, visible: Rea
   const entries = Object.entries(limits).filter(([key]) => visible.has(key));
   return entries.length === Object.keys(limits).length ? limits : Object.fromEntries(entries);
 }
-const dayMs = 86400000;
-function startOfDay(at: number) {
-  const d = new Date(at);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+// ZCode timelineDates: use local calendar days, including 23/25-hour DST days.
+function calendarDay(at: number): number {
+  const date = new Date(at);
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
 }
 function timelineKey(at: number, now: number, locale: string) {
-  const day = startOfDay(at),
-    today = startOfDay(now);
-  const diff = Math.floor((today - day) / dayMs);
+  const day = calendarDay(at),
+    today = calendarDay(now),
+    date = new Date(now);
+  const diff = today - day;
+  const weekStart = today - ((date.getDay() + (locale === "en-US" ? 0 : 6)) % 7);
   if (diff <= 0) return "today";
   if (diff === 1) return "yesterday";
   if (diff <= 3) return `days:${diff}`;
-  const week = new Date(today);
-  week.setDate(week.getDate() - ((week.getDay() - (locale === "en-US" ? 0 : 1) + 7) % 7));
-  if (day >= week.getTime()) return "thisWeek";
-  if (day >= week.getTime() - 7 * dayMs) return "lastWeek";
-  const d = new Date(now);
-  if (day >= new Date(d.getFullYear(), d.getMonth(), 1).getTime()) return "thisMonth";
-  if (day >= new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime()) return "lastMonth";
+  if (day >= weekStart) return "thisWeek";
+  if (day >= weekStart - 7) return "lastWeek";
+  if (day >= calendarDay(new Date(date.getFullYear(), date.getMonth(), 1).getTime())) return "thisMonth";
+  if (day >= calendarDay(new Date(date.getFullYear(), date.getMonth() - 1, 1).getTime())) return "lastMonth";
   return "older";
 }
 export function groupTimelineTasks<T extends Pick<TaskTime, "createdAt" | "updatedAt">>(
   items: T[],
-  by: TaskSortBy,
   now = Date.now(),
   locale = "zh-CN",
 ) {
@@ -103,7 +97,7 @@ export function groupTimelineTasks<T extends Pick<TaskTime, "createdAt" | "updat
         };
   const groups = new Map<string, { key: string; label: string; items: T[] }>();
   for (const item of items) {
-    const key = timelineKey(by === "created" ? item.createdAt : item.updatedAt, now, locale);
+    const key = timelineKey(item.updatedAt, now, locale);
     let group = groups.get(key);
     if (!group) {
       group = {

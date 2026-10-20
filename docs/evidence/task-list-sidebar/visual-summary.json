@@ -1,0 +1,115 @@
+{
+  "sourceCommit": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+  "comparison": "left: ZCode; right: ZPI",
+  "pixelDifferenceDefinition": "Count of pixels with an RGB channel difference greater than 16/255; native screenshot scale is 2.",
+  "samples": [
+    {
+      "theme": "light",
+      "width": 200,
+      "size": 14,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 31,
+      "totalPixels": 216000
+    },
+    {
+      "theme": "light",
+      "width": 200,
+      "size": 20,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 30,
+      "totalPixels": 216000
+    },
+    {
+      "theme": "light",
+      "width": 280,
+      "size": 14,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 31,
+      "totalPixels": 296000
+    },
+    {
+      "theme": "light",
+      "width": 280,
+      "size": 20,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 30,
+      "totalPixels": 296000
+    },
+    {
+      "theme": "light",
+      "width": 360,
+      "size": 14,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 31,
+      "totalPixels": 376000
+    },
+    {
+      "theme": "light",
+      "width": 360,
+      "size": 20,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 30,
+      "totalPixels": 376000
+    },
+    {
+      "theme": "dark",
+      "width": 200,
+      "size": 14,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 29,
+      "totalPixels": 216000
+    },
+    {
+      "theme": "dark",
+      "width": 200,
+      "size": 20,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 28,
+      "totalPixels": 216000
+    },
+    {
+      "theme": "dark",
+      "width": 280,
+      "size": 14,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 29,
+      "totalPixels": 296000
+    },
+    {
+      "theme": "dark",
+      "width": 280,
+      "size": 20,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 28,
+      "totalPixels": 296000
+    },
+    {
+      "theme": "dark",
+      "width": 360,
+      "size": 14,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 29,
+      "totalPixels": 376000
+    },
+    {
+      "theme": "dark",
+      "width": 360,
+      "size": 20,
+      "geometryMatches": true,
+      "iconPathsMatch": true,
+      "changedPixels": 28,
+      "totalPixels": 376000
+    }
+  ]
+}

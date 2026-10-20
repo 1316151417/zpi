@@ -45,13 +45,6 @@ if(mode==='tasks-page')tasks.push(...Array.from({length:16},(_,i)=>({...tasks[i%
 const theme=new URLSearchParams(location.search).get('theme')??'light';
 document.documentElement.className=theme==='dark'?'dark theme-zai-dark':'theme-zai-light';document.documentElement.dataset.theme=theme;
 `;
-const originalMenuSource = await read(join(refUI, "WorkspaceSidebar.tsx"));
-const menuStart = originalMenuSource.indexOf(
-  "<DropdownMenu>",
-  originalMenuSource.indexOf("{showTaskViewFilter ? ("),
-);
-const menuEnd = originalMenuSource.indexOf("</DropdownMenu>", menuStart) + "</DropdownMenu>".length;
-const originalMenu = originalMenuSource.slice(menuStart, menuEnd);
 const refEntry =
   common +
   `
@@ -59,10 +52,11 @@ import {AssistantPreviewCards} from ${JSON.stringify(join(refUI, "AssistantPrevi
 import {MemoTaskItem} from ${JSON.stringify(join(refUI, "TaskListItem.tsx"))};
 import {groupTaskTimelineItems,getTaskTimelineGroupMessage} from ${JSON.stringify(join(refUI, "lib/taskTimelineGroups.ts"))};
 import {Button} from ${JSON.stringify(join(refUI, "components/ui/button.tsx"))};
+import {ProjectSidebarListHeader} from ${JSON.stringify(join(refUI, "project-sidebar/ProjectSidebarListHeader.tsx"))};
 import {ControlHintTooltip} from '@/ControlHintTooltip.js';
 import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuLabel,DropdownMenuRadioGroup,DropdownMenuRadioItem,DropdownMenuSeparator} from '@/components/ui/dropdown-menu.js';
 import {Folder,Clock3,ListFilter,MessageCircleCheck,MessageCirclePlus} from 'lucide-react';
-function Filter(){const [workspaceTaskViewValue,handleWorkspaceTaskViewChange]=useState('project');const [taskSortBy,setTaskSortBy]=useState('updated');const showWorkspaceViewOptions=true,showTaskSortOptions=true;return ${originalMenu};}
+function Filter(){const [view,onViewChange]=useState('projects');return <ProjectSidebarListHeader view={view} onViewChange={onViewChange} onOpenCommandCenter={noop}/>;}
 function Rows({timeline=false,items=tasks}){return <ul className="space-y-0.5">{items.map((task,i)=><MemoTaskItem key={task.id} workspacePath="/workspace/zpi" task={task} variant={timeline?'timeline':'default'} isPinned={false} isActive={task.id==='0'} intl={intl} onSelectTask={noop} onArchiveTaskInline={noop} onCancelArchiveConfirm={noop} isArchiveConfirming={false} onTogglePinTask={noop} onStartRenameTask={noop} onArchiveTask={noop} onMarkTaskAsUnread={noop}/>)}</ul>}
 function App(){return <div className="fixture">
 {mode==='cards'||mode==='open-menu'?<div className="card-frame"><p>已完成以下文件，可以直接打开预览。</p><div style={{marginTop:12}}><AssistantPreviewCards cards={cards} workspacePath="/workspace" onOpenBrowserUrl={noop} onOpenCodeViewer={noop}/></div></div>:
@@ -74,15 +68,15 @@ const zpiEntry =
   `
 import {AssistantPreviewCardRow} from ${JSON.stringify(resolve("packages/ui/src/components/AssistantPreviewCards.tsx"))};
 import {SidebarTaskRow} from ${JSON.stringify(resolve("packages/desktop/src/renderer/SidebarTaskRow.tsx"))};
-import {TaskViewMenu} from ${JSON.stringify(resolve("packages/desktop/src/renderer/TaskViewMenu.tsx"))};
+import {TaskListHeader} from ${JSON.stringify(resolve("packages/desktop/src/renderer/TaskListHeader.tsx"))};
 import {SidebarTaskList} from ${JSON.stringify(resolve("packages/desktop/src/renderer/SidebarTaskList.tsx"))};
 import {Folder} from 'lucide-react';
-function Filter(){const [value,onChange]=useState({organizeBy:'project',sortBy:'updated'});return <TaskViewMenu value={value} onChange={onChange}/>}
+function Filter(){const [value,onChange]=useState({organizeBy:'project'});return <TaskListHeader value={value} onChange={onChange} onSearch={noop}/>}
 function Rows({timeline=false}){return <div className="task-list-rows">{tasks.map((record,i)=><SidebarTaskRow key={record.id} record={record} active={i===0} workspace="zpi" variant={timeline?'timeline':'default'} pinLimitReached={false} onSelect={noop} onPin={noop} onArchive={noop}/>)}</div>}
 function App(){return <div className="fixture">
 {mode==='cards'||mode==='open-menu'?<div className="card-frame"><p>已完成以下文件，可以直接打开预览。</p><div className="assistant-preview-cards">{cards.map((card,index)=><AssistantPreviewCardRow key={card.id} card={card} index={index} sessionId="fixture" services={services}/>)}</div></div>:
 mode==='sort-menu'?<div className="menu-frame sidebar"><Filter/></div>:
-<div className="sidebar-frame sidebar">{mode==='timeline'||mode==='tasks-page'?<SidebarTaskList tasks={tasks} sortBy='updated' timeline={mode==='timeline'} renderRow={(record,variant)=><SidebarTaskRow key={record.id} record={record} active={record.id==='0'} workspace='zpi' variant={variant} pinLimitReached={false} onSelect={noop} onPin={noop} onArchive={noop}/>}/>:<>{mode==='projects'?<div className="project-title"><Folder size={14}/><span>zpi</span></div>:null}<div style={{marginTop:mode==='projects'?4:0}}><Rows/></div></>}{mode==='projects'&&<div className='task-show-more'><button>显示更多</button></div>}</div>}
+<div className="sidebar-frame sidebar">{mode==='timeline'||mode==='tasks-page'?<SidebarTaskList tasks={tasks} timeline={mode==='timeline'} renderRow={(record,variant)=><SidebarTaskRow key={record.id} record={record} active={record.id==='0'} workspace='zpi' variant={variant} pinLimitReached={false} onSelect={noop} onPin={noop} onArchive={noop}/>}/>:<>{mode==='projects'?<div className="project-title"><Folder size={14}/><span>zpi</span></div>:null}<div style={{marginTop:mode==='projects'?4:0}}><Rows/></div></>}{mode==='projects'&&<div className='task-show-more'><button>显示更多</button></div>}</div>}
 </div>};createRoot(document.getElementById('root')).render(<LucideProvider strokeWidth={1.5}><App/></LucideProvider>);`;
 await writeFile(join(output, "ref-entry.tsx"), refEntry);
 await writeFile(join(output, "zpi-entry.tsx"), zpiEntry);
@@ -340,8 +334,8 @@ app.whenReady().then(()=>{
           await page.getByRole("menuitem").filter({ hasText: "Finder" }).waitFor();
         }
         if (mode === "sort-menu") {
-          await page.getByLabel("筛选和排序", { exact: true }).click();
-          await page.getByRole("menuitemradio", { name: "创建时间" }).waitFor();
+          await page.getByLabel("筛选视图", { exact: true }).click();
+          await page.getByRole("menuitemradio", { name: "最近更新" }).waitFor();
         }
         await page.evaluate(async () => {
           await document.fonts.ready;

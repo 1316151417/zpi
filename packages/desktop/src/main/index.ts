@@ -65,6 +65,12 @@ import { SettingsStore } from "./storage.ts";
 import { openStorageGeneration } from "./storage-generation.ts";
 import { TaskNotifications } from "./task-notifications.ts";
 import { WebSourceIcons } from "./web-source-icons.ts";
+import {
+  ignoredWorkspacePaths,
+  readWorkspaceDirectory,
+  WorkspaceDirectoryWatchers,
+  workspaceGitStatus,
+} from "./workspace-directory.ts";
 
 const webSourceIcons = new WebSourceIcons();
 const dir = fileURLToPath(new URL(".", import.meta.url));
@@ -204,7 +210,7 @@ async function launch(): Promise<void> {
     storage.directory,
     settings,
     testMode ? app.getPath("userData") : homedir(),
-    testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
+    testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), ".zpi", "workspace"),
     requestFetch,
     errors,
     testMode ? join(app.getPath("userData"), "worktree") : undefined,
@@ -456,6 +462,14 @@ async function launch(): Promise<void> {
   });
   window.webContents.on("render-process-gone", () => panes.reset());
   window.on("closed", () => panes.close());
+  const directoryWatchers = new WorkspaceDirectoryWatchers((id, dirPath) => {
+    if (!window.isDestroyed()) window.webContents.send("zpi:workspace-directory", { id, dirPath });
+  });
+  window.on("closed", () => directoryWatchers.close());
+  window.webContents.on("render-process-gone", () => directoryWatchers.close());
+  window.webContents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame && !details.isSameDocument) directoryWatchers.close();
+  });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
   window.webContents.on("will-redirect", (e) => e.preventDefault());
@@ -513,6 +527,15 @@ async function launch(): Promise<void> {
           throw new Error("invalid_input: 参数对象无效");
         return value;
       };
+      const fileTreeRoot = (rootIndex: number) => {
+        const workspace = host.workspaceInfo(sessionContext());
+        if (args[rootIndex] === undefined) return workspace.cwd;
+        const path = string(rootIndex);
+        if (!isAbsolute(path) || path.includes("\0") || path.length > 8192)
+          throw new Error("invalid_input: 工作目录无效");
+        // File-manager tabs freeze their local target when opened, including across worktree activation.
+        return path;
+      };
       const count: Record<(typeof methods)[number], number> = {
         openQuickChat: 0,
         setSessionUnread: 1,
@@ -558,6 +581,11 @@ async function launch(): Promise<void> {
         searchFiles: 2,
         getWorkspaceInfo: 1,
         readFilePreview: 3,
+        readWorkspaceDirectory: 3,
+        workspaceGitStatus: 2,
+        ignoredWorkspacePaths: 3,
+        watchWorkspaceDirectory: 3,
+        unwatchWorkspaceDirectory: 1,
         readPreviewRange: 4,
         checkPreviewFiles: 2,
         downloadImage: 1,
@@ -584,11 +612,12 @@ async function launch(): Promise<void> {
         listProjects: 0,
         addProject: 1,
         removeProject: 1,
+        reorderProjects: 1,
         listSessions: 1,
         listRecentSessions: 0,
         searchTasks: 2,
         getTaskSearchChanges: 1,
-        listTaskFiles: 1,
+        listTaskFiles: 2,
         listSessionMentions: 1,
         setSessionPinned: 2,
         getProviderCredentials: 1,
@@ -835,6 +864,21 @@ async function launch(): Promise<void> {
         case "readPreviewRange":
           value = await readPreviewRange(host.workspaceInfo(string(0)).cwd, string(1), args[2], args[3]);
           break;
+        case "readWorkspaceDirectory":
+          value = await readWorkspaceDirectory(fileTreeRoot(2), string(1));
+          break;
+        case "workspaceGitStatus":
+          value = await workspaceGitStatus(fileTreeRoot(1));
+          break;
+        case "ignoredWorkspacePaths":
+          value = await ignoredWorkspacePaths(fileTreeRoot(2), args[1]);
+          break;
+        case "watchWorkspaceDirectory":
+          value = directoryWatchers.watch(fileTreeRoot(2), string(1));
+          break;
+        case "unwatchWorkspaceDirectory":
+          directoryWatchers.unwatch(string(0));
+          break;
         case "readFilePreview":
           value = await readFilePreview(host.workspaceInfo(string(0)).cwd, string(1), args[2]);
           break;
@@ -987,6 +1031,9 @@ async function launch(): Promise<void> {
             : await openProjectFromDialog(id, host, (options) => dialog.showOpenDialog(window, options));
           break;
         }
+        case "reorderProjects":
+          value = host.reorderProjects(args[0]);
+          break;
         case "removeProject":
           value = host.removeProject(string(0));
           break;
@@ -1009,7 +1056,7 @@ async function launch(): Promise<void> {
           value = host.searchTasks(string(0), args[1] === null ? null : string(1));
           break;
         case "listTaskFiles":
-          value = await host.listTaskFiles(sessionContext());
+          value = await host.listTaskFiles(sessionContext(), fileTreeRoot(1));
           break;
         case "listRecentSessions":
           value = host.listRecentSessions();

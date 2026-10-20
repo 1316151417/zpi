@@ -54,8 +54,16 @@ export async function fixture(
     host = new SessionHost(dir, settings, resources, workspace, undefined);
   cleanup.push(() => host.close());
   await host.init();
-  const session = host.createSession(null);
-  return { dir, workspace, resources, host, session, settings, server };
+  const session = host.createSession(null, { cwd: workspace });
+  return {
+    dir,
+    workspace,
+    resources,
+    host,
+    session,
+    settings,
+    server,
+  };
 }
 export async function png() {
   return sharp({ create: { width: 3, height: 2, channels: 3, background: "red" } })

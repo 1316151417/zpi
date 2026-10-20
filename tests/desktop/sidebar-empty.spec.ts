@@ -40,7 +40,7 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
           .evaluate((el) => getComputedStyle(el).getPropertyValue("--sidebar-content-width")),
       );
       await expect(projectEmpty).toHaveText("暂无任务");
-      await expect(taskEmpty).toHaveText("还没有任务");
+      await expect(taskEmpty).toHaveText("暂无任务");
       for (const empty of [projectEmpty, taskEmpty]) {
         await expect(empty).toHaveCSS("font-size", `${size}px`);
         await expect(empty).toHaveCSS("font-weight", "400");
@@ -49,7 +49,7 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
         await expect(empty).toHaveCSS("padding-bottom", "8px");
       }
       await expect(projectEmpty).toHaveCSS("padding-left", "34px");
-      await expect(taskEmpty).toHaveCSS("padding-left", "12px");
+      await expect(taskEmpty).toHaveCSS("padding-left", "34px");
       await expectZCodeSystemFont(page, [
         ".projects .task-list-empty",
         '[data-sidebar-section="tasks"] .task-list-empty',
@@ -93,14 +93,14 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
         return result;
       });
       expect(metrics.projectColor).toBe(metrics.subtlest);
-      expect(metrics.taskColor).toBe(metrics.subtle);
+      expect(metrics.taskColor).toBe(metrics.subtlest);
       expect(metrics.projectTextX).toBe(42);
-      expect(metrics.taskTextX).toBe(20);
+      expect(metrics.taskTextX).toBe(42);
       expect(metrics.headingTextX).toBe(18);
-      expect(metrics.folderX).toBe(19);
+      expect(metrics.folderX).toBe(18);
       expect(metrics.contentWidth).toBe(metrics.sidebarWidth);
-      expect(metrics.projectGap).toBe(8);
-      expect(metrics.sectionGap).toBe(16);
+      expect(metrics.projectGap).toBe(4);
+      expect(metrics.sectionGap).toBe(12);
       expect(metrics.taskGap).toBe(0);
       await page.locator(".sidebar").screenshot({ path: `test-results/sidebar-empty-${theme}.png` });
     }
@@ -139,9 +139,9 @@ test("empty project and independent task lists match ZCode spacing, fonts and th
     const independent = page.locator(".recent-sessions .session-row");
     await independent.hover();
     await independent.getByLabel("归档任务 独立任务", { exact: true }).click();
-    await expect(taskEmpty).toHaveText("还没有任务");
-    await page.getByLabel("筛选和排序", { exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "时间线" }).click();
+    await expect(taskEmpty).toHaveText("暂无任务");
+    await page.getByLabel("筛选视图", { exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "最近更新" }).click();
     await expect(page.locator(".task-list-empty")).toHaveText("暂无任务");
   } finally {
     await runCleanup([

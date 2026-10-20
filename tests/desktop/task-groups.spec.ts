@@ -34,7 +34,8 @@ async function expectToolbarFits(page: Page) {
 }
 
 async function grouped(page: Page) {
-  await page.getByRole("button", { name: "分组", exact: true }).click();
+  await page.getByRole("button", { name: "筛选视图", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "按分组", exact: true }).click();
   await expect(page.getByRole("button", { name: "新建分组", exact: true })).toBeVisible();
 }
 async function createGroup(page: Page, name: string) {
@@ -49,7 +50,7 @@ async function createGroup(page: Page, name: string) {
   await expect(page.getByRole("button", { name: `分组 ${name}`, exact: true })).toBeVisible();
 }
 
-test("grouped tasks keep manual order and hide the sort menu while project sorting stays independent", async () => {
+test("grouped tasks keep manual order while the shared view menu preserves independent project and recent-update views", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-group-sort-"));
   const project = join(dir, "workspace");
   await mkdir(project);
@@ -85,7 +86,7 @@ test("grouped tasks keep manual order and hide the sort menu while project sorti
       rows.evaluateAll((elements) => elements.map((row) => row.getAttribute("data-session-id")));
     await expect.poll(() => ids(rootRows)).toEqual(["root-new", "root-old"]);
     await expect.poll(() => ids(groupRows)).toEqual(["group-new", "group-old"]);
-    await expect(page.getByRole("button", { name: "筛选和排序", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "筛选视图", exact: true })).toBeVisible();
     await rootRows.first().hover();
     await expect(rootRows.first().getByRole("button", { name: /^移动到顶部 / })).toBeVisible();
     const workspaceTooltip = page.getByRole("tooltip", { name: "workspace", exact: true });
@@ -107,17 +108,16 @@ test("grouped tasks keep manual order and hide the sort menu while project sorti
         return result.value.roots.filter((node) => node.type === "task").map((node) => node.id);
       }),
     ).toEqual(["root-old", "root-new"]);
-    await page.getByRole("button", { name: "项目", exact: true }).click();
-    await page.getByRole("button", { name: "筛选和排序", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "更新时间", exact: true })).toBeChecked();
-    await page.getByRole("menuitemradio", { name: "创建时间", exact: true }).click();
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    await page.getByRole("button", { name: "筛选视图", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "按项目", exact: true }).click();
+    await page.getByRole("button", { name: "筛选视图", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "按项目", exact: true })).toBeChecked();
+    await expect(page.getByRole("menuitemradio")).toHaveCount(3);
+    await page.getByRole("menuitemradio", { name: "最近更新", exact: true }).click();
     await page.reload();
-    await page.getByRole("button", { name: "筛选和排序", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "创建时间", exact: true })).toBeChecked();
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "分组", exact: true }).click();
-    await expect(page.getByRole("button", { name: "筛选和排序", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "筛选视图", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "最近更新", exact: true })).toBeChecked();
+    await page.getByRole("menuitemradio", { name: "按分组", exact: true }).click();
     await expect.poll(() => ids(rootRows)).toEqual(["root-old", "root-new"]);
     await expect.poll(() => ids(groupRows)).toEqual(["group-new", "group-old"]);
     await page.evaluate(async () => {
@@ -255,7 +255,7 @@ test("grouped task archive uses the menu icon and retains history while draft X 
     await row.hover();
     await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toHaveCount(0);
     await archive.focus();
-    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toBeVisible();
+    await expect(page.getByRole("tooltip", { name: "归档任务", exact: true })).toHaveCount(0);
     await expectNoCornerTooltipDuring(page, () => page.getByLabel("消息", { exact: true }).focus());
     await row.hover();
     await archive.click();
@@ -599,9 +599,8 @@ test("grouped view shares pinned shortcuts and creates group drafts through Cmd/
     await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press(`${primary}+]`);
     await expect(page.getByTestId("right-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");
-    await expect(
-      page.locator('.sidebar-global button[aria-label="搜索"] .sidebar-action-shortcut'),
-    ).toHaveText(process.platform === "darwin" ? "⌘K" : "Ctrl+K");
+    await page.getByTestId("sidebar-search-open").hover();
+    await expect(page.getByRole("tooltip")).toContainText(process.platform === "darwin" ? "⌘K" : "Ctrl+K");
     await page.keyboard.press(`${primary}+k`);
     await expect(page.getByRole("dialog")).toBeVisible();
   } finally {

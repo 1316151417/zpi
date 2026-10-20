@@ -17,6 +17,11 @@ if (process.argv.includes("--zpi-test-isolation")) {
 }
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
+type DirectoryListener = Parameters<DesktopBridge["onWorkspaceDirectoryChange"]>[1];
+const directoryListeners = new Map<string, Set<DirectoryListener>>();
+const directoryChanged = (_: Electron.IpcRendererEvent, event: { id: string; dirPath: string }) => {
+  for (const listener of directoryListeners.get(event.id) ?? []) listener({ dirPath: event.dirPath });
+};
 let beforeQuit: (() => Promise<void>) | undefined;
 ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {
   try {
@@ -101,6 +106,26 @@ const bridge: DesktopBridge = {
   checkPreviewFiles: (id, paths) => call("checkPreviewFiles", id, paths),
   readPreviewRange: (id, path, offset, length) => call("readPreviewRange", id, path, offset, length),
   readFilePreview: (id, path, location) => call("readFilePreview", id, path, location),
+  readWorkspaceDirectory: (id, path, root) => call("readWorkspaceDirectory", id, path, root),
+  workspaceGitStatus: (id, root) => call("workspaceGitStatus", id, root),
+  ignoredWorkspacePaths: (id, paths, root) => call("ignoredWorkspacePaths", id, paths, root),
+  watchWorkspaceDirectory: (id, path, root) => call("watchWorkspaceDirectory", id, path, root),
+  unwatchWorkspaceDirectory: (id) => call("unwatchWorkspaceDirectory", id),
+  onWorkspaceDirectoryChange(id, listener) {
+    if (!directoryListeners.size) ipcRenderer.on("zpi:workspace-directory", directoryChanged);
+    let listeners = directoryListeners.get(id);
+    if (!listeners) {
+      listeners = new Set();
+      directoryListeners.set(id, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      if (directoryListeners.get(id) !== listeners) return;
+      listeners.delete(listener);
+      if (!listeners.size) directoryListeners.delete(id);
+      if (!directoryListeners.size) ipcRenderer.removeListener("zpi:workspace-directory", directoryChanged);
+    };
+  },
   pickAttachments: (id) => call("pickAttachments", id),
   importAttachment: async (id, file) => {
     const path = webUtils.getPathForFile(file);
@@ -128,10 +153,11 @@ const bridge: DesktopBridge = {
   listProjects: () => call("listProjects"),
   addProject: (sessionId) => call("addProject", sessionId),
   removeProject: (id) => call("removeProject", id),
+  reorderProjects: (ids) => call("reorderProjects", ids),
   listSessions: (id) => call("listSessions", id),
   getTaskSearchChanges: (id) => call("getTaskSearchChanges", id),
   searchTasks: (query, workspaceKey) => call("searchTasks", query, workspaceKey),
-  listTaskFiles: (id) => call("listTaskFiles", id),
+  listTaskFiles: (id, root) => call("listTaskFiles", id, root),
   listRecentSessions: () => call("listRecentSessions"),
   setSessionPinned: (id, pinned) => call("setSessionPinned", id, pinned),
   createSession: (id, groupId) => call("createSession", id, groupId),

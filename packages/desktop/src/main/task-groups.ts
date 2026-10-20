@@ -71,7 +71,7 @@ export class TaskGroupsStore {
       rename: ["type", "id", "title"],
       color: ["type", "id", "color"],
       delete: ["type", "id"],
-      moveTask: ["type", "id", "groupId", "before", "after", "start"],
+      moveTask: ["type", "id", "groupId", "sourceGroupId", "before", "after", "start"],
       moveGroup: ["type", "id", "target", "position"],
       taskTop: ["type", "id"],
     };
@@ -89,6 +89,9 @@ export class TaskGroupsStore {
         (!node(input.target) || !["before", "after"].includes(input.position as string))) ||
       (input.type === "moveTask" &&
         ((input.groupId !== null && typeof input.groupId !== "string") ||
+          (input.sourceGroupId !== undefined &&
+            input.sourceGroupId !== null &&
+            typeof input.sourceGroupId !== "string") ||
           (input.before !== undefined && input.before !== null && !node(input.before)) ||
           (input.after !== undefined && !node(input.after)) ||
           (input.start !== undefined && typeof input.start !== "boolean")))
@@ -96,9 +99,22 @@ export class TaskGroupsStore {
       throw new Error("invalid_input: 无效分组操作参数");
     if (
       (input.type === "moveTask" || input.type === "taskTop") &&
-      !records.some((record) => record.id === input.id && !record.parentSessionId)
+      !records.some(
+        (record) => record.id === input.id && !record.parentSessionId && record.archivedAt == null,
+      )
     )
       throw new Error("not_found: 任务不存在");
+    // 拖动开始后任务可能归档或删除；必须在权威记录上复验锚点，不能把旧落点降为末尾。
+    for (const anchor of [input.before, input.after, input.target]) {
+      if (
+        node(anchor) &&
+        anchor.type === "task" &&
+        !records.some(
+          (record) => record.id === anchor.id && !record.parentSessionId && record.archivedAt == null,
+        )
+      )
+        throw new Error("invalid_input: 拖动目标已变化，请重试");
+    }
     const command: TaskGroupCommand =
       input.type === "create"
         ? { type: "create", id: randomUUID(), createdAt: Date.now() }

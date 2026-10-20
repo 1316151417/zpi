@@ -1,10 +1,12 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
+import { StateStore } from "../../packages/desktop/src/main/state-store.ts";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { testStorageDirectory } from "../helpers/storage.ts";
 import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
@@ -266,7 +268,10 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
   const now = new Date("2026-10-08T12:00:00+08:00").getTime();
   const projects = ["alpha", "beta"].map((id) => ({ id, name: id, path: join(dir, id), updatedAt: now }));
   await Promise.all(projects.map((p) => mkdir(p.path)));
-  await writeFile(join(dir, "projects.json"), JSON.stringify(projects));
+  const storageDirectory = testStorageDirectory(dir);
+  const projectState = new StateStore(join(storageDirectory, "state.sqlite"));
+  projectState.setProjects(projects);
+  projectState.close();
   for (const [scope, count] of [
     ["alpha", 11],
     ["beta", 6],
@@ -275,22 +280,20 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
     for (let i = 0; i < count; i++) {
       const seeded = seedHistory(dir, projects.find((p) => p.id === scope)?.path ?? dir, 1, {
         projectId: scope,
+        createdAt: now - (count - i) * 86400000,
+        updatedAt: now - i * 86400000,
       });
-      const lines = (await readFile(seeded.file, "utf8"))
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line));
-      for (const line of lines) {
-        line.timestamp = new Date(now - i * 86400000).toISOString();
-        if (line.type === "session") line.timestamp = new Date(now - (count - i) * 86400000).toISOString();
-        if (line.type === "session_info")
-          line.name = `${scope ?? "任务"} ${String(i).padStart(2, "0")} 完整标题用于窄侧栏渐隐显示`;
-        if (line.customType === "zpi.run") {
-          line.data.startedAt = now - i * 86400000;
-          if (line.data.phase === "end") line.data.endedAt = now - i * 86400000;
-        }
+      const taskState = new StateStore(join(storageDirectory, "state.sqlite"));
+      try {
+        const task = taskState.getTask(seeded.id);
+        if (!task) throw new Error("Missing seeded task");
+        taskState.upsertTask({
+          ...task,
+          title: `${scope ?? "任务"} ${String(i).padStart(2, "0")} 完整标题用于窄侧栏渐隐显示`,
+        });
+      } finally {
+        taskState.close();
       }
-      await writeFile(seeded.file, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
     }
   }
   let app: ElectronApplication | undefined;
@@ -315,31 +318,21 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
     await page.getByLabel("展开项目 alpha", { exact: true }).click();
     await expect(alpha.getByTestId("session-row")).toHaveCount(5);
     const tasks = page.locator(".recent-sessions");
-    await expect(tasks.getByTestId("session-row")).toHaveCount(20);
+    await expect(tasks.getByTestId("session-row")).toHaveCount(5);
     await expect(tasks.locator(".timeline-group-label")).toHaveCount(0);
-    await tasks.getByText("显示更多", { exact: true }).click();
-    await expect(tasks.getByTestId("session-row")).toHaveCount(40);
-    await tasks.getByText("显示更多", { exact: true }).click();
-    await expect(tasks.getByTestId("session-row")).toHaveCount(41);
+    for (const count of [10, 15, 20, 25, 30, 35, 40, 41]) {
+      await tasks.getByText("显示更多", { exact: true }).click();
+      await expect(tasks.getByTestId("session-row")).toHaveCount(count);
+    }
     await expect(tasks.getByText("显示更多", { exact: true })).toHaveCount(0);
-    const filter = page.getByLabel("筛选和排序", { exact: true });
+    const filter = page.getByLabel("筛选视图", { exact: true });
     await filter.click();
-    await expect(page.getByRole("menuitemradio", { name: "按项目" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("menuitemradio", { name: "更新时间" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    await page.getByRole("menuitemradio", { name: "创建时间" }).click();
-    await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(alpha.locator(".session-name").first()).toContainText("alpha 10");
-    await expect(alpha.locator(".task-row-time").first()).toHaveText("10天");
-    await expect(tasks.getByTestId("session-row")).toHaveCount(20);
-    await filter.click();
-    await page.getByRole("menuitemradio", { name: "时间线" }).click();
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByRole("menuitemradio", { name: "按项目" })).toBeChecked();
+    await expect(page.getByRole("menuitemradio")).toHaveCount(3);
+    await page.getByRole("menuitemradio", { name: "最近更新" }).click();
     const timeline = page.locator(".timeline-tasks");
     await expect(timeline.getByTestId("session-row")).toHaveCount(20);
-    await expect(timeline.locator(".timeline-group-label").first()).toHaveText("昨天");
+    await expect(timeline.locator(".timeline-group-label").first()).toHaveText("今天");
     await timeline.getByText("显示更多", { exact: true }).click();
     await expect(timeline.getByTestId("session-row")).toHaveCount(40);
     await timeline.getByText("显示更多", { exact: true }).click();
@@ -348,11 +341,11 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
     await page.reload();
     await expect(timeline.getByTestId("session-row")).toHaveCount(20);
     await filter.click();
-    await expect(page.getByRole("menuitemradio", { name: "时间线" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("menuitemradio", { name: "创建时间" })).toHaveAttribute(
+    await expect(page.getByRole("menuitemradio", { name: "最近更新" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
+    await expect(page.getByRole("menuitemradio")).toHaveCount(3);
     await page.screenshot({ path: "test-results/sidebar-sort-menu.png" });
     await page.keyboard.press("Escape");
     await expect(filter).toBeFocused();
@@ -368,12 +361,12 @@ test("independent project/task/timeline pages, menu keyboard navigation, prefere
     await app.close();
     app = await launchDesktop({ dir, url: "", packaged: Boolean(process.env.ZPI_TEST_PACKAGED_APP) });
     page = await app.firstWindow();
-    await page.getByLabel("筛选和排序", { exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "时间线" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("menuitemradio", { name: "创建时间" })).toHaveAttribute(
+    await page.getByLabel("筛选视图", { exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "最近更新" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
+    await expect(page.getByRole("menuitemradio")).toHaveCount(3);
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }

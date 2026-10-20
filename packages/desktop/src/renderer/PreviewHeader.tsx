@@ -18,6 +18,7 @@ export function PreviewHeader({
   onViewMode,
   viewKind,
   divider = false,
+  workspaceCwd,
 }: {
   sessionId: string;
   path: string;
@@ -28,9 +29,10 @@ export function PreviewHeader({
   onViewMode?: (mode: "preview" | "code") => void;
   viewKind?: "Markdown" | "SVG";
   divider?: boolean;
+  workspaceCwd?: string;
 }) {
   const workspace = useWorkspace(sessionId);
-  const { root, parents: parts, file: name } = previewBreadcrumb(path, workspace?.cwd);
+  const { root, parents: parts, file: name } = previewBreadcrumb(path, workspaceCwd ?? workspace?.cwd);
   const breadcrumb = useRef<HTMLElement>(null);
   const [mask, setMask] = useState("none");
   useLayoutEffect(() => {

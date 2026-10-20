@@ -433,7 +433,10 @@ test("composer focus restores per-task caret on switch/restart and terminal tabs
     await page.keyboard.press("Enter");
     await expect(page.locator(".xterm-rows")).toContainText("FOCUS_OK");
     await page.getByRole("button", { name: "新增侧栏标签", exact: true }).click();
-    await page.getByRole("menuitem", { name: "变更", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "审查", exact: true })
+      .click();
     await page.getByRole("tab", { name: "zsh", exact: true }).click();
     await expect(terminal).toBeFocused();
   } finally {

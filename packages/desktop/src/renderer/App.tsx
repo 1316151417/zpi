@@ -6,12 +6,11 @@ import {
   Folder,
   FolderOpen,
   Globe,
-  Maximize2,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
   MessageCirclePlus,
-  Minimize2,
   Moon,
   Plus,
-  Search,
   Settings,
   Sun,
   X,
@@ -69,6 +68,7 @@ import { SettingsPage } from "./SettingsPage.tsx";
 import { SidebarSections } from "./SidebarSections.tsx";
 import { SidebarTaskEmpty, SidebarTaskList } from "./SidebarTaskList.tsx";
 import { SidebarTaskRow } from "./SidebarTaskRow.tsx";
+import { SortableProjects } from "./SortableProjects.tsx";
 import {
   compareTasks,
   readTaskPreferences,
@@ -97,9 +97,9 @@ import {
 } from "./store.ts";
 import { TaskActivity } from "./TaskActivity.tsx";
 import { TaskGroups, TaskGroupToolbar, useTaskGroupExpansion } from "./TaskGroups.tsx";
+import { TaskListHeader } from "./TaskListHeader.tsx";
 import { TaskMenu } from "./TaskMenu.tsx";
 import { type SearchCommand, TaskSearchDialog } from "./TaskSearchDialog.tsx";
-import { TaskViewMenu } from "./TaskViewMenu.tsx";
 import { expandTaskGroup } from "./task-group-expansion.ts";
 import { playTaskNotificationSound } from "./task-notification-sound.ts";
 import { PanelLeftClose, PanelLeftOpen, SquareTerminal } from "./task-search-icons.ts";
@@ -513,12 +513,11 @@ export function App() {
   ]);
   const unpinned = records
     .filter((r) => r.pinnedAt == null && r.archivedAt == null)
-    .sort((a, b) => compareTasks(a, b, taskPreferences.sortBy));
+    .sort((a, b) => compareTasks(a, b, taskPreferences.organizeBy === "chronological"));
   const projectIds = new Set(state.projects.map((p) => p.id));
-  const allProjectGroupsExpanded =
-    !prefs?.projectsCollapsed && state.projects.every((p) => !prefs?.collapsedProjectIds.includes(p.id));
-  const toggleProjectGroupsLabel = allProjectGroupsExpanded ? "收起全部" : "展开全部";
-  const tasks = unpinned.filter((r) => r.projectId === null || !projectIds.has(r.projectId));
+  const hasExpandedProjects = state.projects.some((p) => !prefs?.collapsedProjectIds.includes(p.id));
+  const toggleProjectGroupsLabel = hasExpandedProjects ? "收起全部项目" : "展开全部项目";
+  const tasks = unpinned.filter((r) => r.projectId === null);
   const pinnedCount = pinned.length;
   const renameTask = (record: SessionRecord) =>
     setAction({
@@ -687,252 +686,260 @@ export function App() {
                   <span className="sidebar-action-label">新建任务</span>
                   <span className="sidebar-action-shortcut">{shortcutHint("new-task")}</span>
                 </button>
-                <button aria-label="搜索" onClick={openSearch}>
-                  <Search size={16} />
-                  <span className="sidebar-action-label">搜索</span>
-                  <span className="sidebar-action-shortcut">{shortcutHint("search")}</span>
-                </button>
               </div>
-              <div className="sidebar-sections">
-                <div className="sidebar-task-toolbar">
-                  <div className="sidebar-task-toolbar-main">
-                    <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} viewOnly />
-                    {taskPreferences.organizeBy === "grouped" && (
-                      <TaskGroupToolbar
-                        state={state.taskGroups}
-                        collapsed={collapsedGroups}
-                        onToggleAll={() =>
-                          setCollapsedGroups(
-                            state.taskGroups.groups.every((group) => !collapsedGroups.includes(group.id))
-                              ? state.taskGroups.groups.map((group) => group.id)
-                              : [],
-                          )
-                        }
-                        onCreate={() =>
-                          task(async () => {
-                            const next = await changeTaskGroups({ type: "create" });
-                            setNewGroupId(next.groups.at(-1)?.id);
-                          })
-                        }
-                      />
-                    )}
-                    {taskPreferences.organizeBy === "project" && state.projects.length > 0 && (
-                      <ActionHint label={toggleProjectGroupsLabel} appearance="control">
-                        <button
-                          className="task-group-toggle"
-                          aria-label={toggleProjectGroupsLabel}
-                          onClick={() =>
-                            updatePrefs({
-                              projectsCollapsed: allProjectGroupsExpanded,
-                              collapsedProjectIds: allProjectGroupsExpanded
-                                ? [...new Set([...(prefs?.collapsedProjectIds ?? []), ...projectIds])]
-                                : (prefs?.collapsedProjectIds ?? []).filter((id) => !projectIds.has(id)),
-                            })
-                          }
-                        >
-                          {allProjectGroupsExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                        </button>
-                      </ActionHint>
-                    )}
-                  </div>
-                  {taskPreferences.organizeBy !== "grouped" && (
-                    <TaskViewMenu value={taskPreferences} onChange={setTaskPreferences} />
+              <div className="sidebar-task-list-region" data-testid="sidebar-task-list-region">
+                <TaskListHeader
+                  value={taskPreferences}
+                  onChange={setTaskPreferences}
+                  onSearch={openSearch}
+                  searchShortcut={shortcutHint("search")}
+                >
+                  {taskPreferences.organizeBy === "grouped" && (
+                    <TaskGroupToolbar
+                      state={state.taskGroups}
+                      collapsed={collapsedGroups}
+                      onToggleAll={() =>
+                        setCollapsedGroups(
+                          state.taskGroups.groups.every((group) => !collapsedGroups.includes(group.id))
+                            ? state.taskGroups.groups.map((group) => group.id)
+                            : [],
+                        )
+                      }
+                      onCreate={() =>
+                        task(async () => {
+                          const next = await changeTaskGroups({ type: "create" });
+                          setNewGroupId(next.groups.at(-1)?.id);
+                        })
+                      }
+                    />
                   )}
-                </div>
-                {pinned.length > 0 && (
-                  <section className="pinned-tasks" aria-label="置顶任务">
-                    <h3 className="sidebar-heading">已置顶</h3>
-                    {pinned.map((record) => renderRow(record))}
-                  </section>
-                )}
-                {taskPreferences.organizeBy === "grouped" ? (
-                  <TaskGroups
-                    state={state.taskGroups}
-                    records={records}
-                    selected={selected}
-                    collapsed={collapsedGroups}
-                    setCollapsed={setCollapsedGroups}
-                    newGroupId={newGroupId}
-                    onSetup={() => setNewGroupId(undefined)}
-                  />
-                ) : taskPreferences.organizeBy === "chronological" ? (
-                  <SidebarTaskList
-                    key={`timeline:${taskPreferences.sortBy}:${scopeKey}`}
-                    tasks={unpinned}
-                    sortBy={taskPreferences.sortBy}
-                    timeline
-                    renderRow={renderRow}
-                  />
-                ) : (
-                  <SidebarSections
-                    projects={{
-                      title: "项目",
-                      open: !prefs?.projectsCollapsed,
-                      onToggle: () => updatePrefs({ projectsCollapsed: !prefs?.projectsCollapsed }),
-                      action: (
-                        <ActionHint label="添加项目" appearance="control">
-                          <button
-                            aria-label="添加项目"
-                            className="muted-icon"
-                            onClick={() => void addProject()}
-                          >
-                            <Plus size={14} aria-hidden="true" />
-                          </button>
-                        </ActionHint>
-                      ),
-                      children: (
-                        <div className="projects" hidden={prefs?.projectsCollapsed}>
-                          {state.projects.map((p) => (
-                            <section key={p.id} className="project">
-                              <div className="project-title">
-                                <button
-                                  className="project-toggle muted-icon"
-                                  aria-label={`${prefs?.collapsedProjectIds.includes(p.id) ? "展开" : "收起"}项目 ${p.name}`}
-                                  aria-expanded={!prefs?.collapsedProjectIds.includes(p.id)}
-                                  onClick={() =>
-                                    updatePrefs({
-                                      collapsedProjectIds: prefs?.collapsedProjectIds.includes(p.id)
-                                        ? prefs.collapsedProjectIds.filter((id) => id !== p.id)
-                                        : [...(prefs?.collapsedProjectIds ?? []), p.id],
-                                    })
-                                  }
-                                >
-                                  {prefs?.collapsedProjectIds.includes(p.id) ? (
-                                    <Folder size={14} />
-                                  ) : (
-                                    <FolderOpen size={14} />
-                                  )}
-                                </button>
-                                <button
-                                  className="project-name"
-                                  onClick={() =>
-                                    updatePrefs({
-                                      collapsedProjectIds: prefs?.collapsedProjectIds.includes(p.id)
-                                        ? prefs.collapsedProjectIds.filter((id) => id !== p.id)
-                                        : [...(prefs?.collapsedProjectIds ?? []), p.id],
-                                    })
-                                  }
-                                >
-                                  {p.name}
-                                </button>
-                                <Menu.Root>
-                                  <ActionHint label="更多" appearance="control">
-                                    <Menu.Trigger
-                                      className="project-row-action"
-                                      aria-label={`项目操作 ${p.name}`}
-                                    >
-                                      <Ellipsis size={14} />
-                                    </Menu.Trigger>
-                                  </ActionHint>
-                                  <Menu.Portal>
-                                    <Menu.Content
-                                      className="project-action-menu"
-                                      align="end"
-                                      sideOffset={4}
-                                      aria-label={`项目操作 ${p.name}`}
-                                    >
-                                      <Menu.Item
-                                        className="project-action-menu-item"
-                                        onSelect={() =>
-                                          task(async () => {
-                                            unwrap(await window.zpi.removeProject(p.id));
-                                            await refresh();
-                                          })
-                                        }
-                                      >
-                                        <X size={14} />
-                                        移除
-                                      </Menu.Item>
-                                      <Menu.Separator className="menu-separator" />
-                                      <DirectoryMenuItems
-                                        className="project-action-menu-item"
-                                        getPath={async () => p.path}
-                                      />
-                                    </Menu.Content>
-                                  </Menu.Portal>
-                                </Menu.Root>
-                                <ActionHint label="新建任务" appearance="control">
-                                  <button
-                                    aria-label={`新建任务 ${p.name}`}
-                                    className="project-row-action"
-                                    onClick={() => task(() => newSession(p.id))}
-                                  >
-                                    <MessageCirclePlus size={14} />
-                                  </button>
-                                </ActionHint>
-                              </div>
-                              {!prefs?.projectsCollapsed &&
-                                !prefs?.collapsedProjectIds.includes(p.id) &&
-                                (() => {
-                                  const limit = projectLimits[p.id] ?? 5;
-                                  const page = taskPage(
-                                    unpinned.filter((r) => r.projectId === p.id),
-                                    limit,
+                </TaskListHeader>
+                <div className="sidebar-sections">
+                  {taskPreferences.organizeBy !== "chronological" && pinned.length > 0 && (
+                    <section className="pinned-tasks" aria-label="置顶任务">
+                      <h3 className="sidebar-heading">已置顶</h3>
+                      {pinned.map((record) => renderRow(record))}
+                    </section>
+                  )}
+                  {taskPreferences.organizeBy === "grouped" ? (
+                    <TaskGroups
+                      state={state.taskGroups}
+                      records={records}
+                      selected={selected}
+                      collapsed={collapsedGroups}
+                      setCollapsed={setCollapsedGroups}
+                      newGroupId={newGroupId}
+                      onSetup={() => setNewGroupId(undefined)}
+                    />
+                  ) : taskPreferences.organizeBy === "chronological" ? (
+                    <SidebarTaskList
+                      key={`timeline:${scopeKey}`}
+                      tasks={records
+                        .filter((record) => record.archivedAt == null)
+                        .sort((a, b) => compareTasks(a, b, true))}
+                      timeline
+                      renderRow={renderRow}
+                    />
+                  ) : (
+                    <SidebarSections
+                      projects={{
+                        title: "项目",
+                        open: !prefs?.projectsCollapsed,
+                        onToggle: () => updatePrefs({ projectsCollapsed: !prefs?.projectsCollapsed }),
+                        action: (
+                          <>
+                            <ActionHint label={toggleProjectGroupsLabel} appearance="control">
+                              <button
+                                className="task-group-toggle"
+                                aria-label={toggleProjectGroupsLabel}
+                                disabled={!state.projects.length}
+                                onClick={() =>
+                                  updatePrefs({
+                                    projectsCollapsed: false,
+                                    collapsedProjectIds: hasExpandedProjects ? [...projectIds] : [],
+                                  })
+                                }
+                              >
+                                {hasExpandedProjects ? (
+                                  <ListChevronsDownUp size={14} />
+                                ) : (
+                                  <ListChevronsUpDown size={14} />
+                                )}
+                              </button>
+                            </ActionHint>
+                            <ActionHint label="添加项目" appearance="control">
+                              <button
+                                aria-label="添加项目"
+                                className="muted-icon"
+                                onClick={() => void addProject()}
+                              >
+                                <Plus size={14} aria-hidden="true" />
+                              </button>
+                            </ActionHint>
+                          </>
+                        ),
+                        children: (
+                          <div className="projects" hidden={prefs?.projectsCollapsed}>
+                            <SortableProjects
+                              projects={state.projects}
+                              onReorder={(projects) => {
+                                task(async () => {
+                                  unwrap(
+                                    await window.zpi.reorderProjects(projects.map((project) => project.id)),
                                   );
-                                  return (
-                                    <div
-                                      className="project-task-list"
-                                      data-project-id={p.id}
-                                      data-task-limit={limit}
+                                  await refresh();
+                                });
+                              }}
+                              renderProject={(p, { setActivatorNodeRef, attributes, listeners }) => (
+                                <>
+                                  <div className="project-title">
+                                    <button
+                                      ref={setActivatorNodeRef}
+                                      {...attributes}
+                                      {...listeners}
+                                      className="project-name project-toggle-title"
+                                      aria-label={`${prefs?.collapsedProjectIds.includes(p.id) ? "展开" : "收起"}项目 ${p.name}`}
+                                      aria-expanded={!prefs?.collapsedProjectIds.includes(p.id)}
+                                      onClick={() =>
+                                        updatePrefs({
+                                          collapsedProjectIds: prefs?.collapsedProjectIds.includes(p.id)
+                                            ? prefs.collapsedProjectIds.filter((id) => id !== p.id)
+                                            : [...(prefs?.collapsedProjectIds ?? []), p.id],
+                                        })
+                                      }
                                     >
-                                      {page.items.length ? (
-                                        <div className="task-list-rows">
-                                          {page.items.map((record) => renderRow(record))}
-                                        </div>
+                                      {prefs?.collapsedProjectIds.includes(p.id) ? (
+                                        <Folder size={16} />
                                       ) : (
-                                        <SidebarTaskEmpty project />
+                                        <FolderOpen size={16} />
                                       )}
-                                      {page.hasMore && (
-                                        <div className="task-show-more">
-                                          <button
-                                            onClick={() =>
-                                              setProjectLimits((current) => ({
-                                                ...current,
-                                                [p.id]: (current[p.id] ?? 5) + 5,
-                                              }))
+                                      <span>{p.name}</span>
+                                      {prefs?.collapsedProjectIds.includes(p.id) &&
+                                        records.some(
+                                          (record) =>
+                                            record.projectId === p.id &&
+                                            record.archivedAt == null &&
+                                            record.unreadAt !== undefined,
+                                        ) && (
+                                          <span
+                                            role="img"
+                                            className="project-unread-dot"
+                                            aria-label="项目有未读任务"
+                                          />
+                                        )}
+                                    </button>
+                                    <Menu.Root>
+                                      <ActionHint label="更多" appearance="control">
+                                        <Menu.Trigger
+                                          className="project-row-action"
+                                          aria-label={`项目操作 ${p.name}`}
+                                        >
+                                          <Ellipsis size={14} />
+                                        </Menu.Trigger>
+                                      </ActionHint>
+                                      <Menu.Portal>
+                                        <Menu.Content
+                                          className="project-action-menu"
+                                          align="end"
+                                          sideOffset={4}
+                                          aria-label={`项目操作 ${p.name}`}
+                                        >
+                                          <Menu.Item
+                                            className="project-action-menu-item"
+                                            onSelect={() =>
+                                              task(async () => {
+                                                unwrap(await window.zpi.removeProject(p.id));
+                                                await refresh();
+                                              })
                                             }
                                           >
-                                            显示更多
-                                          </button>
+                                            <X size={14} />
+                                            从侧栏移除
+                                          </Menu.Item>
+                                          <Menu.Separator className="menu-separator" />
+                                          <DirectoryMenuItems
+                                            className="project-action-menu-item"
+                                            getPath={async () => p.path}
+                                          />
+                                        </Menu.Content>
+                                      </Menu.Portal>
+                                    </Menu.Root>
+                                    <ActionHint label="新建任务" appearance="control">
+                                      <button
+                                        aria-label={`新建任务 ${p.name}`}
+                                        className="project-row-action"
+                                        onClick={() => task(() => newSession(p.id))}
+                                      >
+                                        <MessageCirclePlus size={14} />
+                                      </button>
+                                    </ActionHint>
+                                  </div>
+                                  {!prefs?.projectsCollapsed &&
+                                    !prefs?.collapsedProjectIds.includes(p.id) &&
+                                    (() => {
+                                      const limit = projectLimits[p.id] ?? 5;
+                                      const page = taskPage(
+                                        unpinned.filter((r) => r.projectId === p.id),
+                                        limit,
+                                      );
+                                      return (
+                                        <div
+                                          className="project-task-list"
+                                          data-project-id={p.id}
+                                          data-task-limit={limit}
+                                        >
+                                          {page.items.length ? (
+                                            <div className="task-list-rows">
+                                              {page.items.map((record) => renderRow(record))}
+                                            </div>
+                                          ) : (
+                                            <SidebarTaskEmpty />
+                                          )}
+                                          {page.hasMore && (
+                                            <div className="task-show-more">
+                                              <button
+                                                onClick={() =>
+                                                  setProjectLimits((current) => ({
+                                                    ...current,
+                                                    [p.id]: (current[p.id] ?? 5) + 5,
+                                                  }))
+                                                }
+                                              >
+                                                显示更多
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                            </section>
-                          ))}
-                          {!state.projects.length && (
-                            <div className="sidebar-empty">添加项目，按工作目录管理任务。</div>
-                          )}
-                        </div>
-                      ),
-                    }}
-                    tasks={{
-                      title: "任务",
-                      open: !prefs?.tasksCollapsed,
-                      onToggle: () => updatePrefs({ tasksCollapsed: !prefs?.tasksCollapsed }),
-                      action: (
-                        <ActionHint label="新建任务" appearance="control">
-                          <button
-                            aria-label="新建任务"
-                            className="muted-icon"
-                            onClick={() => task(() => newSession(null))}
-                          >
-                            <MessageCirclePlus size={14} aria-hidden="true" />
-                          </button>
-                        </ActionHint>
-                      ),
-                      children: !prefs?.tasksCollapsed && (
-                        <SidebarTaskList
-                          key={`tasks:${taskPreferences.sortBy}:${scopeKey}`}
-                          tasks={tasks}
-                          sortBy={taskPreferences.sortBy}
-                          renderRow={renderRow}
-                        />
-                      ),
-                    }}
-                  />
-                )}
+                                      );
+                                    })()}
+                                </>
+                              )}
+                            />
+                          </div>
+                        ),
+                      }}
+                      tasks={{
+                        title: "任务",
+                        open: !prefs?.tasksCollapsed,
+                        onToggle: () => updatePrefs({ tasksCollapsed: !prefs?.tasksCollapsed }),
+                        action: (
+                          <ActionHint label="新建任务" appearance="control">
+                            <button
+                              aria-label="新建任务"
+                              className="muted-icon"
+                              onClick={() => task(() => newSession(null))}
+                            >
+                              <MessageCirclePlus size={14} aria-hidden="true" />
+                            </button>
+                          </ActionHint>
+                        ),
+                        children: !prefs?.tasksCollapsed && (
+                          <SidebarTaskList key={`tasks:${scopeKey}`} tasks={tasks} renderRow={renderRow} />
+                        ),
+                      }}
+                    />
+                  )}
+                </div>
               </div>
               <div className="sidebar-footer">
                 {/* 仅重挂载提示，关闭隐藏触发器的 tooltip，同时保留侧栏分页和滚动位置。 */}

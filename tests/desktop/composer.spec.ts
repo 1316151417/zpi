@@ -12,7 +12,7 @@ import { seedHistory } from "../history-fixture.ts";
 
 test("add panel shares the composer width, lists files and preserves the insertion selection", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-composer-add-"));
-  const project = join(dir, "workspace");
+  const project = join(dir, "project");
   await mkdir(join(project, "src"), { recursive: true });
   await writeFile(join(project, "src", "main.ts"), "export const main = 1;");
   await writeFile(join(project, "README.md"), "Project");
@@ -21,6 +21,7 @@ test("add panel shares the composer width, lists files and preserves the inserti
   try {
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
+    await page.getByLabel("添加项目", { exact: true }).click();
     const editor = page.getByLabel("消息", { exact: true });
     const add = page.getByRole("button", { name: "添加上下文", exact: true });
     const panel = page.getByRole("listbox", { name: "添加上下文", exact: true });
@@ -250,7 +251,7 @@ test("submit failures stay with the draft instead of the window overlay", async 
 
 test("mixed file attachments work through picker, paste and drop, and file mentions share the text line", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-composer-files-"));
-  const project = join(dir, "workspace");
+  const project = join(dir, "project");
   await mkdir(project);
   await writeFile(join(project, "bubble.html"), "<p>Bubble</p>");
   const image = join(project, "feishu-auth-qr.png");
@@ -268,6 +269,7 @@ test("mixed file attachments work through picker, paste and drop, and file menti
   try {
     app = await launchDesktop({ dir, project, images: files, url: server.url });
     const page = await app.firstWindow();
+    await page.getByLabel("添加项目", { exact: true }).click();
     const editor = page.getByLabel("消息", { exact: true });
     await page.getByRole("button", { name: "添加上下文", exact: true }).click();
     await page.getByRole("option", { name: "附件", exact: true }).click();
@@ -531,8 +533,7 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
       "@someone@example.com",
     ]) {
       await editor.fill(text);
-      if (text === "/tmp/missing" || text === "@someone@example.com")
-        await expect(page.getByRole("listbox")).toHaveCount(0);
+      if (text === "@someone@example.com") await expect(page.getByRole("listbox")).toHaveCount(0);
       else await expect(page.getByRole("listbox")).toBeVisible();
       await expect(page.getByRole("option")).toHaveCount(0);
       const index = server.requests.length;
@@ -547,6 +548,8 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
       await expect(page.getByRole("alert")).toHaveCount(0);
     }
     const count = server.requests.length;
+    await editor.fill("/init");
+    await expect(page.getByRole("option", { name: /^\/init\b/ })).toBeVisible();
     // Hold caret restoration until after a newer user selection to expose stale frame callbacks.
     const resumeFrames = await page.evaluateHandle(() => {
       const original = window.requestAnimationFrame;
@@ -562,8 +565,6 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
         callbacks.clear();
       };
     });
-    await editor.fill("/init");
-    await expect(page.getByRole("option")).toHaveCount(1);
     await editor.press("Tab");
     await expect(editor.locator(".inline-mention.command")).toHaveText("Init");
     await expect(editor.locator(".inline-mention.command")).toHaveAttribute("data-markdown", "/init");
@@ -584,7 +585,12 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
     expect(server.requests).toHaveLength(count);
     await editor.press("Enter");
     await expect.poll(() => server.requests.length).toBe(count + 1);
-    expect(JSON.stringify(server.requests[count])).toContain("SKILL BODY ON DEMAND");
+    expect(server.requests[count].messages).toContainEqual(
+      expect.objectContaining({
+        role: "user",
+        content: `[$review](${await realpath(join(skillDir, "SKILL.md"))}) `,
+      }),
+    );
     await expect(editor).toHaveText("");
     await editor.fill("@main");
     await expect(page.getByRole("option")).toHaveCount(1);
@@ -848,9 +854,6 @@ test("accepted submit clears only submitted content, rejects duplicates and pres
 
 test("sidebar expansion, distinct composer entries and equal-width pane tabs", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-layout-"));
-  await mkdir(join(dir, "workspace"));
-  await writeFile(join(dir, "workspace", "main.txt"), "file content");
-  await writeFile(join(dir, "workspace", "other.txt"), "other file");
   await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
   await writeFile(
     join(dir, ".agents", "skills", "review", "SKILL.md"),
@@ -866,10 +869,17 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     let page = await app.firstWindow();
     await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
     const draftId = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+    const workspace = await page.evaluate(async (id) => {
+      const result = await window.zpi.getWorkspaceInfo(id as string);
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value.cwd;
+    }, draftId);
+    await writeFile(join(workspace, "main.txt"), "file content");
+    await writeFile(join(workspace, "other.txt"), "other file");
     await expect(page.locator(".recent-sessions .session-row")).toHaveCount(0);
     await page.getByLabel("新建任务", { exact: true }).first().click();
     expect(await page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBe(draftId);
-    const text = `待发送 [main.txt](${join(dir, "workspace", "main.txt")})`;
+    const text = `待发送 [main.txt](${join(workspace, "main.txt")})`;
     await page.getByLabel("消息", { exact: true }).fill(text);
     await expect
       .poll(async () => {
@@ -952,7 +962,10 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "浏览器", exact: true }).click();
     await page.getByLabel("新增侧栏标签").click();
-    await page.getByRole("menuitem", { name: "浏览器", exact: true }).click();
+    await page
+      .locator(".pane-empty-launcher:visible")
+      .getByRole("button", { name: "浏览器", exact: true })
+      .click();
     await expect(page.getByRole("tab")).toHaveCount(2);
     const widths = await page
       .locator(".pane-tab")
@@ -967,7 +980,7 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
     await page.screenshot({ path: "test-results/desktop-layout-light.png" });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({ path: "test-results/desktop-layout-dark.png" });
-    await editor.fill(`保留 [missing](${join(dir, "workspace", "missing.txt")})`);
+    await editor.fill(`保留 [missing](${join(workspace, "missing.txt")})`);
     await editor.press("Enter");
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(editor).toHaveText("保留 missing");

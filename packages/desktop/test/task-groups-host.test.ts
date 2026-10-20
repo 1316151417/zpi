@@ -92,3 +92,70 @@ it("creates a draft inside its chosen group in one operation, and rejects a stal
   expect(() => host.createSession(a.id, { groupId: "deleted-group" })).toThrow("not_found");
   expect(host.listRecentSessions().map((record) => record.id)).toEqual([draft.id]);
 });
+
+it("rejects stale drag sources and removed anchors without overwriting newer organization", async () => {
+  const { host, settings, a } = await fixture((_, response) => done(response));
+  const first = host.createSession(a.id),
+    second = host.createSession(a.id);
+  const group = host.updateTaskGroups({ type: "create" }).groups[0];
+  host.updateTaskGroups({ type: "moveTask", id: first.id, groupId: group.id });
+  const before = host.getTaskGroups();
+  expect(() =>
+    host.updateTaskGroups({ type: "moveTask", id: first.id, sourceGroupId: null, groupId: null }),
+  ).toThrow("任务分组已变化");
+  expect(() =>
+    host.updateTaskGroups({
+      type: "moveTask",
+      id: second.id,
+      sourceGroupId: null,
+      groupId: null,
+      before: { type: "task", id: "gone" },
+    }),
+  ).toThrow("拖动目标已变化");
+  expect(() =>
+    host.updateTaskGroups({
+      type: "moveTask",
+      id: second.id,
+      sourceGroupId: null,
+      groupId: null,
+      before: { type: "task", id: first.id },
+    }),
+  ).toThrow("拖动目标已变化");
+  expect(host.getTaskGroups()).toEqual(before);
+  expect(settings.state.getTaskGroups()).toEqual(before);
+  host.updateTaskGroups({
+    type: "moveTask",
+    id: second.id,
+    sourceGroupId: null,
+    groupId: group.id,
+    before: { type: "task", id: first.id },
+  });
+  expect(host.getTaskGroups().members[group.id]).toEqual([second.id, first.id]);
+});
+
+it("rejects a drag when its task or anchor was archived after the gesture started", async () => {
+  const { host, a } = await fixture((_, response) => done(response));
+  const first = host.createSession(a.id),
+    second = host.createSession(a.id);
+  await host.archiveSession(first.id);
+  const before = host.getTaskGroups();
+  expect(() =>
+    host.updateTaskGroups({
+      type: "moveTask",
+      id: first.id,
+      sourceGroupId: null,
+      groupId: null,
+      start: true,
+    }),
+  ).toThrow("任务不存在");
+  expect(() =>
+    host.updateTaskGroups({
+      type: "moveTask",
+      id: second.id,
+      sourceGroupId: null,
+      groupId: null,
+      before: { type: "task", id: first.id },
+    }),
+  ).toThrow("拖动目标已变化");
+  expect(host.getTaskGroups()).toEqual(before);
+});
