@@ -4,14 +4,95 @@ import { expect, it } from "vitest";
 
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { parseSessionTitle } from "../src/main/session-title.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
+
+it.each([
+  '{"session_title":"计算周期与合同周期"}',
+  '  ```json\n{"session_title":"计算周期与合同周期"}\n```  ',
+  '```JSON\r\n{"session_title":"计算周期与合同周期"}\r\n```',
+  '```\n{"session_title":"计算周期与合同周期"}\n```',
+])("parses a complete title JSON response: %s", (text) => {
+  expect(parseSessionTitle(text)).toBe("计算周期与合同周期");
+});
+
+it.each([
+  '```json\n{"session_title":false}\n```',
+  '```json\n{"session_title":""}\n```',
+  `\`\`\`json\n${JSON.stringify({ session_title: "字".repeat(81) })}\n\`\`\``,
+  '```json\n{"session_title":"bad\\ntitle"}\n```',
+  '```json\n{"session_title":"标题"}',
+  '说明\n```json\n{"session_title":"标题"}\n```',
+])("rejects invalid titles and incomplete or mixed JSON responses: %s", (text) => {
+  expect(() => parseSessionTitle(text)).toThrow();
+});
+
+it.each(["length", "tool_calls", "invalid_json", "provider_error"])(
+  "logs the concrete title failure for %s without logging response content",
+  async (failure) => {
+    const privateText = "private-response-content";
+    const { host, settings, server, dir } = await setup((_, res) => {
+      if (failure === "provider_error") {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "Title authentication failed" } }));
+        return;
+      }
+      send(
+        res,
+        chunk(
+          failure === "tool_calls"
+            ? {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_title",
+                    type: "function",
+                    function: { name: "read", arguments: "{}" },
+                  },
+                ],
+              }
+            : {
+                content:
+                  failure === "invalid_json" ? privateText : JSON.stringify({ session_title: privateText }),
+              },
+        ),
+      );
+      done(res, failure === "invalid_json" ? "stop" : failure);
+    });
+    const config = settings.snapshot("custom");
+    settings.saveProvider({
+      ...config,
+      models: config.models.map((model) => ({ ...model, maxTokens: 10000 })),
+    });
+    const record = host.createSession(null);
+    await host.startRun({ sessionId: record.id, text: "请解释计算周期和合同周期" });
+    await idle(host, record.id);
+    const logPath = join(dir, "agent", "logs", "error.log");
+    await expect.poll(async () => readFile(logPath, "utf8")).toContain('"source":"session.title"');
+    const entries = (await readFile(logPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const entry = entries.find((value) => value.source === "session.title");
+    expect(entry).toMatchObject({ sessionId: record.id, provider: "custom", model: "fake" });
+    expect(entry.message).toContain(
+      `"stopReason":"${failure === "length" ? "length" : failure === "tool_calls" ? "toolUse" : failure === "provider_error" ? "error" : "stop"}"`,
+    );
+    expect(entry.message).toContain(`"toolCallCount":${failure === "tool_calls" ? 1 : 0}`);
+    expect(entry.message).toContain('"outputTokens":');
+    if (failure === "provider_error") expect(entry.message).toContain("Title authentication failed");
+    expect(entry.message).not.toContain(privateText);
+    expect(server.titleRequests[0].max_tokens).toBe(5000);
+    expect(host.listRecentSessions()[0].title).toBe("请解释计算周期和合同周期");
+  },
+);
 
 it("title is independent, snapshot-bound, once-only and preserves the complete first message", async () => {
   const gate = deferred();
   const { host, settings, server, dir, cwd } = await setup(async (_, res) => {
     await gate.promise;
     if (!res.destroyed) {
-      send(res, chunk({ content: '{"session_title":"完整生成的长标题，保留全部内容"}' }));
+      send(res, chunk({ content: '```json\n{"session_title":"完整生成的长标题，保留全部内容"}\n```' }));
       done(res);
     }
   });
@@ -23,7 +104,7 @@ it("title is independent, snapshot-bound, once-only and preserves the complete f
   expect(server.titleRequests).toHaveLength(1);
   expect(server.titleRequests[0]).toMatchObject({
     model: "fake",
-    max_tokens: 256,
+    max_tokens: 4096,
     response_format: { type: "json_schema" },
   });
   expect(server.titleRequests[0].tools).toBeUndefined();

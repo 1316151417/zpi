@@ -2836,7 +2836,12 @@ export class SessionHost {
         this.saveTask(id, { title, titleState: "generated" });
         this.emit(id, "title", { type: "session_changed", title });
       } catch (error) {
-        if (!controller.signal.aborted) this.errors.write("session.title", error, { sessionId: id });
+        if (!controller.signal.aborted)
+          this.errors.write("session.title", error, {
+            sessionId: id,
+            provider: model.provider,
+            model: model.id,
+          });
         const latest = this.settings.state.getTask(id)?.titleState;
         if (this.records.has(id) && !this.deleting.has(id) && latest === "pending")
           this.saveTask(id, { titleState: "failed" });
