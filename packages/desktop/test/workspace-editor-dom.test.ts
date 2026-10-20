@@ -13,6 +13,7 @@ const editors: EditorInfo[] = [
 ];
 const getInstalledEditors = vi.fn<() => Promise<Result<EditorInfo[]>>>();
 const openInEditor = vi.fn<() => Promise<Result<void>>>();
+const fileAction = vi.fn<() => Promise<Result<void>>>();
 const logError = vi.fn();
 let root: Root;
 let container: HTMLDivElement;
@@ -43,7 +44,7 @@ async function render() {
         "div",
         null,
         createElement(WorkspaceEditorButton, { sessionId: "workspace-session" }),
-        createElement(PreviewEditorButton, { sessionId: "preview-session", path: "src/main.ts" }),
+        createElement(PreviewEditorButton, { sessionId: "preview-session", path: "README.md" }),
       ),
     );
   });
@@ -54,11 +55,12 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   getInstalledEditors.mockReset().mockResolvedValue({ ok: true, value: editors });
   openInEditor.mockReset().mockResolvedValue({ ok: true, value: undefined });
+  fileAction.mockReset().mockResolvedValue({ ok: true, value: undefined });
   logError.mockReset();
   window.localStorage.clear();
   Object.defineProperty(window, "zpi", {
     configurable: true,
-    value: { platform: "darwin", getInstalledEditors, openInEditor, logError },
+    value: { platform: "darwin", getInstalledEditors, openInEditor, fileAction, logError },
   });
   container = document.createElement("div");
   document.body.append(container);
@@ -99,7 +101,7 @@ test("keeps the split trigger independent and uses the shared left-icon, right-c
   expect(document.activeElement).toBe(trigger());
 });
 
-test("selection persists, opens the project once, updates preview preference, and can be reopened", async () => {
+test("project editor selection persists while Markdown preview always uses the system opener", async () => {
   await render();
   await key(trigger(), "ArrowDown");
   await click(items()[2]);
@@ -109,13 +111,41 @@ test("selection persists, opens the project once, updates preview preference, an
   expect(query(".workspace-editor-open").getAttribute("aria-label")).toBe("在 IntelliJ IDEA 中打开");
   await click(query(".workspace-editor-open"));
   expect(openInEditor).toHaveBeenLastCalledWith("workspace-session", ".", "idea");
-  await click(query('button[aria-label="在 IntelliJ IDEA 中打开"]:not(.workspace-editor-open)'));
-  expect(openInEditor).toHaveBeenLastCalledWith("preview-session", "src/main.ts", "idea");
+  await click(query('button[aria-label="使用默认程序打开"]'));
+  expect(fileAction).toHaveBeenCalledExactlyOnceWith("preview-session", "README.md", "open");
+  expect(openInEditor).toHaveBeenCalledTimes(2);
   await key(trigger(), "ArrowDown");
   expect(query('[role="menuitemradio"][aria-checked="true"]').textContent).toBe("IntelliJ IDEA");
   await click(items()[0]);
   expect(openInEditor).toHaveBeenLastCalledWith("workspace-session", ".", "finder");
-  expect(openInEditor).toHaveBeenCalledTimes(4);
+  expect(openInEditor).toHaveBeenCalledTimes(3);
+});
+
+test("a stored VS Code preference does not override the Markdown default application", async () => {
+  window.localStorage.setItem("zpi-last-editor-id", "vscode");
+  await render();
+  await click(query('button[aria-label="使用默认程序打开"]'));
+  expect(fileAction).toHaveBeenCalledExactlyOnceWith("preview-session", "README.md", "open");
+  expect(openInEditor).not.toHaveBeenCalled();
+  expect(window.localStorage.getItem("zpi-last-editor-id")).toBe("vscode");
+});
+
+test("preview opening works without an installed code editor and logs system opener failures", async () => {
+  getInstalledEditors.mockResolvedValue({ ok: true, value: [] });
+  fileAction.mockResolvedValue({
+    ok: false,
+    error: { code: "storage", message: "No default application" },
+  });
+  await render();
+  const button = query<HTMLButtonElement>('button[aria-label="使用默认程序打开"]');
+  expect(button.disabled).toBe(false);
+  await click(button);
+  expect(logError).toHaveBeenCalledWith(
+    expect.objectContaining({
+      source: "open-default-file",
+      message: expect.stringContaining("No default application"),
+    }),
+  );
 });
 
 test("keyboard navigation selects with Enter and outside dismissal never opens an application", async () => {

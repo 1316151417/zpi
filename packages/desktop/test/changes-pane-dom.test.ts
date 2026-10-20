@@ -354,11 +354,13 @@ it("renders historical deletion patches without needing the file to exist", asyn
   expect(bridge.readFilePreview).not.toHaveBeenCalled();
 });
 
-it("retains source preview, path-copy menu and preferred editor actions with their exact file scope", async () => {
+it("retains source preview, path-copy menu and default application actions with their exact file scope", async () => {
   await render();
   await click('[aria-label="查看修改 App.tsx"]');
-  await click('[aria-label="在 VS Code 中打开"]');
-  expect(bridge.openInEditor).toHaveBeenCalledExactlyOnceWith("A", appPath, "vscode");
+  await click('[aria-label="使用默认程序打开"]');
+  expect(bridge.fileAction).toHaveBeenCalledExactlyOnceWith("A", appPath, "open");
+  expect(bridge.openInEditor).not.toHaveBeenCalled();
+  bridge.fileAction.mockClear();
   const menuTrigger = preview().querySelector<HTMLButtonElement>('[aria-label="文件预览菜单"]');
   await act(async () =>
     menuTrigger?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),

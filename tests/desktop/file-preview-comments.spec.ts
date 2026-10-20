@@ -73,7 +73,7 @@ for (const target of ["main", "side"] as const) {
       await preview.getByLabel("代码备注", { exact: true }).fill("检查多行上下文");
       await preview.getByRole("button", { name: /添加到对话/ }).click();
       await expect(preview.locator("[data-file-comment-id]")).toContainText("检查多行上下文");
-      await expect(preview.locator("[data-file-comment-id]")).toContainText("第 2–3 行");
+      await expect(preview.locator("[data-file-comment-id]")).toContainText("评论第 2 行到第 3 行");
       await expect(preview.locator("[data-selected-line]")).toHaveCount(0);
       if (target === "side")
         await expect(main.locator(".composer-container .selection-reference-chip")).toHaveCount(0);
@@ -187,7 +187,7 @@ test("text preview menu reflects wrap state, copies exact paths and dismisses on
     await wrap.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(trigger).toBeFocused();
-    await expect(preview.getByRole("button", { name: "在编辑器中打开", exact: true })).toBeDisabled();
+    await expect(preview.getByRole("button", { name: "使用默认程序打开", exact: true })).toBeEnabled();
     await page.screenshot({ path: "test-results/file-preview-wrap-menu.png" });
   } finally {
     await runCleanup([

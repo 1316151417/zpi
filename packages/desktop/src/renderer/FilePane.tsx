@@ -228,6 +228,40 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
     }),
     [preview],
   );
+  // Pierre rebuilds code DOM when annotations or render callbacks change, losing native text selection.
+  const lineAnnotations = useMemo(
+    () => [
+      ...comments.map((comment) => ({
+        lineNumber: comment.end,
+        metadata: { kind: "comment" as const, comment },
+      })),
+      ...(commentRange ? [{ lineNumber: commentRange.end, metadata: { kind: "draft" as const } }] : []),
+    ],
+    [comments, commentRange],
+  );
+  const onPostRender = useCallback(
+    (node: HTMLElement) => {
+      if (!preview.location?.line || positioned.current === preview) return;
+      requestAnimationFrame(() => {
+        const line = node.shadowRoot?.querySelector<HTMLElement>(`[data-line="${preview.location?.line}"]`);
+        if (line?.isConnected) {
+          positioned.current = preview;
+          const container = selectionRoot.current;
+          if (container) {
+            const top = line.getBoundingClientRect().top - container.getBoundingClientRect().top;
+            container.scrollTop = Math.max(
+              0,
+              container.scrollTop +
+                top -
+                container.clientHeight / 2 +
+                line.getBoundingClientRect().height / 2,
+            );
+          }
+        }
+      });
+    },
+    [preview],
+  );
   return (
     <section className="file-pane" aria-label="文件预览">
       <PreviewHeader
@@ -300,15 +334,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
             ) : (
               <File<{ kind: "comment"; comment: FileComment } | { kind: "draft" }>
                 file={file}
-                lineAnnotations={[
-                  ...comments.map((comment) => ({
-                    lineNumber: comment.end,
-                    metadata: { kind: "comment" as const, comment },
-                  })),
-                  ...(commentRange
-                    ? [{ lineNumber: commentRange.end, metadata: { kind: "draft" as const } }]
-                    : []),
-                ]}
+                lineAnnotations={lineAnnotations}
                 renderAnnotation={({ metadata }) =>
                   metadata.kind === "draft" && commentRange ? (
                     <FileCommentEditor
@@ -352,29 +378,7 @@ export function FilePane({ preview, sessionId }: { preview: FilePreview; session
                   onLineSelectionEnd: beginComment,
                   onGutterUtilityClick: beginComment,
                   unsafeCSS: fileGutterCSS,
-                  onPostRender: (node) => {
-                    if (!preview.location?.line || positioned.current === preview) return;
-                    requestAnimationFrame(() => {
-                      const line = node.shadowRoot?.querySelector<HTMLElement>(
-                        `[data-line="${preview.location?.line}"]`,
-                      );
-                      if (line?.isConnected) {
-                        positioned.current = preview;
-                        const container = selectionRoot.current;
-                        if (container) {
-                          const top =
-                            line.getBoundingClientRect().top - container.getBoundingClientRect().top;
-                          container.scrollTop = Math.max(
-                            0,
-                            container.scrollTop +
-                              top -
-                              container.clientHeight / 2 +
-                              line.getBoundingClientRect().height / 2,
-                          );
-                        }
-                      }
-                    });
-                  },
+                  onPostRender,
                   disableFileHeader: true,
                   theme: { light: "github-light", dark: "github-dark" },
                   themeType: theme,
