@@ -3518,6 +3518,9 @@ button.inline-mention,
 .assistant-message-row:empty {
   display: none;
 }
+.assistant-turn > .notice-turn {
+  margin: 20px 0 0;
+}
 .assistant-message-row > .answer,
 .assistant-message-row > .changed-files,
 .assistant-message-row > .run-error {
