@@ -24,6 +24,7 @@ vi.mock("../src/renderer/store.ts", async () => {
   const state = { selected: "main", sessions: new Map(), views: new Map() };
   return {
     drafts: new ComposerDraftStore(),
+    focusComposer: vi.fn(),
     useStore: (selector: (state: unknown) => unknown) => selector(state),
   };
 });
@@ -33,7 +34,7 @@ vi.mock("../src/renderer/PreviewHeader.tsx", () => ({ PreviewHeader: () => null 
 
 import { File } from "@pierre/diffs/react";
 import { FilePane } from "../src/renderer/FilePane.tsx";
-import { drafts } from "../src/renderer/store.ts";
+import { drafts, focusComposer } from "../src/renderer/store.ts";
 
 type ViewerProps = {
   selectedLines: { start: number; end: number } | null;
@@ -66,6 +67,7 @@ function render(location?: { line: number; endLine?: number }) {
   return file.props;
 }
 beforeEach(() => {
+  vi.clearAllMocks();
   hooks.values = [];
   drafts.set("main", { text: "keep", fileReferences: [], attachments: [], pending: 0, selections: [] });
 });
@@ -77,6 +79,7 @@ test("controls Pierre selection through draft, cancel, submit and repeated comme
   expect(editing.selectedLines).toEqual({ start: 2, end: 3 });
   editing.renderAnnotation({ metadata: { kind: "draft" } }).props.onCancel();
   expect(render().selectedLines).toBeNull();
+  expect(focusComposer).not.toHaveBeenCalled();
   render().options.onLineSelectionEnd({ start: 1, end: 1 });
   render()
     .renderAnnotation({ metadata: { kind: "draft" } })
@@ -85,6 +88,7 @@ test("controls Pierre selection through draft, cancel, submit and repeated comme
   expect(submitted.selectedLines).toBeNull();
   expect(submitted.lineAnnotations).toHaveLength(1);
   expect(drafts.get("main")?.text).toBe("keep");
+  expect(focusComposer).toHaveBeenCalledExactlyOnceWith("main");
   submitted.options.onLineSelectionEnd({ start: 3, end: 3 });
   expect(render().selectedLines).toEqual({ start: 3, end: 3 });
 });
@@ -110,4 +114,5 @@ test("failed comment submission keeps the active selection and draft for correct
   expect(failed.selectedLines).toEqual({ start: 1, end: 2 });
   expect(failed.renderAnnotation({ metadata: { kind: "draft" } }).props.error).toContain("8,000");
   expect(drafts.get("main")?.selections).toEqual([]);
+  expect(focusComposer).not.toHaveBeenCalled();
 });

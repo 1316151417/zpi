@@ -7,6 +7,61 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+for (const submit of ["shortcut", "button"] as const) {
+  test(`Markdown source comments focus the editor from the gutter plus and restore the main composer on ${submit}`, async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-file-comment-focus-")));
+    const project = join(dir, "project");
+    await mkdir(project);
+    const path = join(project, "hello.md");
+    await writeFile(path, "# Hello\n\nSource comment target\n");
+    const server = await fakeServer((_, response) => {
+      send(response, chunk({ content: `[hello.md](<${path}>)` }));
+      done(response);
+    });
+    let app: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+    try {
+      app = await launchDesktop({ dir, url: server.url, project });
+      const page = await app.firstWindow();
+      const main = page.locator("main");
+      const composer = main.getByLabel("消息", { exact: true });
+      await page.getByLabel("添加项目", { exact: true }).first().click();
+      await composer.fill("显示文件");
+      await composer.press("Enter");
+      await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+      await composer.fill("保留主草稿");
+      await main.locator(".answer").getByRole("button", { name: "hello.md", exact: true }).click();
+      const manager = page.locator(".file-manager:visible");
+      await manager.getByRole("button", { name: "文件预览菜单", exact: true }).click();
+      await page.getByRole("menuitemradio", { name: "源码", exact: true }).click();
+      const preview = manager.getByRole("region", { name: "文件预览", exact: true });
+      await preview.locator('[data-column-number="3"]').first().hover();
+      await preview.locator("[data-utility-button]").click();
+      const comment = preview.getByLabel("代码备注", { exact: true });
+      await expect(comment).toBeFocused();
+      await page.keyboard.type("从源码补充备注");
+      await expect(comment).toHaveValue("从源码补充备注");
+      if (submit === "shortcut")
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Enter`);
+      else await preview.getByRole("button", { name: /添加到对话/ }).click();
+      await expect(preview.locator("[data-file-comment-draft]")).toHaveCount(0);
+      await expect(main.locator("[data-file-comment-count]")).toHaveAttribute("data-file-comment-count", "1");
+      await expect(preview.locator("[data-file-comment-id]")).toContainText("从源码补充备注");
+      await expect(composer).toBeFocused();
+      await expect(composer).toHaveText("保留主草稿");
+      await page.keyboard.type("继续补充");
+      await expect(composer).toContainText("继续补充");
+      await expect(composer).toContainText("保留主草稿");
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await runCleanup([
+        () => app?.close(),
+        () => server.close(),
+        () => rm(dir, { recursive: true, force: true }),
+      ]);
+    }
+  });
+}
+
 async function selectLines(page: Page, start: number, end = start) {
   const preview = page.getByRole("region", { name: "文件预览", exact: true });
   const first = preview.locator(`[data-column-number="${start}"]`).first();

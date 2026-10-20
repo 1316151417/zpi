@@ -17,7 +17,9 @@ export function FileCommentEditor({
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    input.current?.focus();
+    // 与 ZCode 一致，等代码预览的 annotation slot 完成本帧更新后再聚焦。
+    const frame = requestAnimationFrame(() => input.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [range.start, range.end]);
   return (
     <div className="file-comment-card" data-file-comment-draft="">
@@ -28,6 +30,8 @@ export function FileCommentEditor({
       </div>
       <textarea
         ref={input}
+        // biome-ignore lint/a11y/noAutofocus: The user explicitly opens this comment editor.
+        autoFocus
         rows={3}
         aria-label="代码备注"
         placeholder="可选：为这段代码补充评论..."

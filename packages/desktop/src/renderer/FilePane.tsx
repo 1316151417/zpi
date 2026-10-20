@@ -36,7 +36,7 @@ import { readMarkdownImage } from "./markdown-image.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, openSideChat, openWebLink, paneTask, useSideChatBlocked } from "./pane-store.ts";
 import { inferPreviewLanguage } from "./preview-language.ts";
-import { addConversationSelection, drafts, useStore } from "./store.ts";
+import { addConversationSelection, drafts, focusComposer, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { userErrorMessage } from "./user-error.ts";
@@ -198,6 +198,8 @@ export function FilePane({
       );
       setCommentRange(null);
       setCommentText("");
+      // 备注关闭后恢复所属对话输入焦点，复用会话与可见性检查，避免抢到其他任务。
+      focusComposer(sessionId);
     } catch (error) {
       setCommentError(userErrorMessage(error));
     }
