@@ -14,7 +14,7 @@ import { ToolCode, ToolDiff, toolCodeLanguage } from "./ToolDiff.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
 import { ToolOutput } from "./ToolOutput.tsx";
-import { toolInputPreview } from "./tool-input-preview.ts";
+import { toolEditPreviewPatch, toolInputPreview } from "./tool-input-preview.ts";
 import { executionCommand, type ToolView, toolCommand, toolFile, toolLabel } from "./tool-presentation.ts";
 import { useSelectionStableValue } from "./use-selection-stable-value.ts";
 import { WebToolBlock } from "./WebToolBlock.tsx";
@@ -93,7 +93,9 @@ export function ToolFilePreview({
   const content = block.name === "write" && typeof input?.content === "string" ? input.content : "";
   const path = toolFile(block)?.path ?? "";
   const language = toolCodeLanguage(path, content);
+  const editPreview = block.name === "edit" ? toolEditPreviewPatch(input) : undefined;
   const [patch, setPatch] = useState(block.fileChange?.patch);
+  const displayPatch = patch || editPreview;
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
@@ -113,11 +115,18 @@ export function ToolFilePreview({
   }, [block.toolCallId, block.fileChange, onLoadPatch]);
   return (
     <div ref={root} className="tool-file-details">
-      {patch ? (
+      {block.status === "error" && (
+        <div className="tool-detail-error">
+          <h4>Error</h4>
+          <pre>{block.output}</pre>
+        </div>
+      )}
+      {displayPatch ? (
         <ToolDiff
-          patch={patch}
+          patch={displayPatch}
           path={block.fileChange?.path ?? toolFile(block)?.path ?? ""}
           selectionKey={block.id}
+          streaming={!patch && block.status === "preparing"}
         />
       ) : block.fileChange?.patchAvailable && !error ? (
         <p className="tool-detail-note">正在加载...</p>
@@ -141,7 +150,7 @@ export function ToolFilePreview({
             />
           )}
         </div>
-      ) : input !== undefined ? (
+      ) : input !== undefined && !["write", "edit"].includes(block.name) ? (
         <div className="tool-parameters">
           <h4>Parameters</h4>
           <div className="tool-parameters-code">
@@ -157,12 +166,6 @@ export function ToolFilePreview({
         <p role={error ? "alert" : undefined} className="tool-detail-note">
           {error || block.fileChange?.reason}
         </p>
-      )}
-      {block.status === "error" && (
-        <div className="tool-detail-error">
-          <h4>Error</h4>
-          <pre>{block.output}</pre>
-        </div>
       )}
     </div>
   );

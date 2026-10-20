@@ -90,10 +90,12 @@ export function ToolDiff({
   patch,
   path,
   selectionKey,
+  streaming = false,
 }: {
   patch: string;
   path: string;
   selectionKey: string;
+  streaming?: boolean;
 }) {
   const lines = useMemo(() => patchPreviewLines(patch), [patch]);
   const code = useMemo(
@@ -101,7 +103,7 @@ export function ToolDiff({
     [lines],
   );
   const language = toolPatchLanguage(path);
-  const tokens = useToolTokens(code, language);
+  const tokens = useToolTokens(code, language, streaming);
   return (
     <div className="tool-inline-diff" data-inline-diff-preview>
       <div

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ToolBlock } from "../src/components/ToolBlock.tsx";
-import { toolInputPreview } from "../src/components/tool-input-preview.ts";
+import { toolEditPreviewPatch, toolInputPreview } from "../src/components/tool-input-preview.ts";
 import { type ToolView, toolCommand, toolFile } from "../src/components/tool-presentation.ts";
 import { emptySession, reduceSession } from "../src/reducer.ts";
 import type { DesktopEvent } from "../src/types.ts";
@@ -64,7 +64,7 @@ describe("ZCode streaming tool input preview", () => {
   );
 
   it("retains a real empty argument object once the tool starts", () => {
-    const block = tool("{}", { status: "running" });
+    const block = tool("{}", { name: "custom", status: "running" });
     expect(toolInputPreview(block)).toEqual({});
     expect(render(block)).toContain("Parameters");
     expect(render(block)).toContain("{}");
@@ -226,7 +226,7 @@ describe("Parameters visibility", () => {
     expect(html).not.toContain("Parameters");
   });
 
-  it("keeps failed edit parameters and error details without a file preview", () => {
+  it("keeps failed edit previews and error details without raw parameters", () => {
     const html = render(
       tool('{"path":"a.ts","edits":[{"oldText":"missing","newText":"new"}]}', {
         name: "edit",
@@ -234,10 +234,77 @@ describe("Parameters visibility", () => {
         output: "Could not find oldText",
       }),
     );
-    expect(html).toContain("Parameters");
+    expect(html).not.toContain("Parameters");
+    expect(html).toContain("data-inline-diff-preview");
     expect(html).toContain("missing");
     expect(html).toContain("tool-detail-error");
     expect(html).toContain("Could not find oldText");
+  });
+
+  it.each(["write", "edit"])("hides raw %s input while only the path is available", (name) => {
+    const html = render(tool('{"path":"a.ts"', { name }));
+    expect(html).toContain("a.ts");
+    expect(html).not.toContain("Parameters");
+    expect(html).not.toContain("data-inline-diff-preview");
+  });
+
+  it("previews every streamed replacement without interpreting braces inside code", () => {
+    const args = JSON.stringify({
+      path: "a.ts",
+      edits: [
+        { oldText: 'const a = { text: "old" };', newText: 'const a = { text: "new" };' },
+        { oldText: "second\nline\n", newText: "replacement\n" },
+      ],
+    });
+    for (const raw of [args.slice(0, -3), args]) {
+      const block = tool(raw, { name: "edit" });
+      const patch = toolEditPreviewPatch(toolInputPreview(block));
+      expect(patch).toContain('-const a = { text: "old" };');
+      expect(patch).toContain('+const a = { text: "new" };');
+      expect(patch).toContain("-second\n-line");
+      expect(patch).toContain("+replacement");
+      const html = render(block);
+      expect(html).toContain("data-inline-diff-preview");
+      expect(html).not.toContain("Parameters");
+    }
+  });
+
+  it("prefers the actual patch over an edit preview", () => {
+    const html = render(
+      tool('{"oldText":"old","newText":"proposed"}', {
+        name: "edit",
+        status: "completed",
+        fileChange: { path: "a.ts", patch: "@@ -1 +1 @@\n-old\n+actual" },
+      }),
+    );
+    expect(html).toContain("actual");
+    expect(html).not.toContain("proposed");
+  });
+
+  it("preserves each edit's text at every streaming boundary", () => {
+    const edits = [
+      { oldText: 'const a = "\\n";\n', newText: 'const a = "中文😀";\n' },
+      { oldText: '\\\\"{}[]', newText: "second\nline\tend" },
+    ];
+    const raw = JSON.stringify({ path: "a.ts", edits });
+    for (let end = raw.indexOf("[") + 1; end <= raw.length; end++) {
+      const input = toolInputPreview(tool(raw.slice(0, end), { name: "edit" }));
+      const preview = input?.edits as Record<string, string>[];
+      for (const [index, edit] of (preview ?? []).entries()) {
+        for (const key of ["oldText", "newText"] as const) {
+          if (edit[key] !== undefined) expect(edits[index][key].startsWith(edit[key])).toBe(true);
+        }
+      }
+    }
+  });
+
+  it.each([
+    [{ oldText: "before", newText: "after" }, "@@\n-before\n+after"],
+    [{ oldText: "before", newText: "" }, "@@\n-before"],
+    [{ oldText: "", newText: "after" }, "@@\n+after"],
+    [{ path: "a.ts" }, undefined],
+  ])("previews legacy replacements, insertions and deletions: %j", (input, expected) => {
+    expect(toolEditPreviewPatch(input)).toBe(expected);
   });
 
   it("does not open details automatically while input streams", () => {

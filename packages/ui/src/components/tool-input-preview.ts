@@ -64,10 +64,14 @@ export function completeToolInput(block: ToolView): Record<string, unknown> | un
 export function toolInputPreview(block: ToolView): Record<string, unknown> | undefined {
   const parsed = parsedInput(block);
   if (!parsed.previewReady) {
-    const input: Record<string, string> = {};
+    const input: Record<string, unknown> = {};
     for (const key of stringFields) {
       const value = readPartialString(block.argsText, key);
       if (value !== undefined) input[key] = value;
+    }
+    if (block.name === "edit") {
+      const edits = partialEdits(block.argsText);
+      if (edits) input.edits = edits;
     }
     parsed.preview = Object.keys(input).length ? input : undefined;
     parsed.previewReady = true;
@@ -75,6 +79,66 @@ export function toolInputPreview(block: ToolView): Record<string, unknown> | und
   return block.status === "preparing" && parsed.preview && Object.keys(parsed.preview).length === 0
     ? undefined
     : parsed.preview;
+}
+
+// 按对象边界恢复 edits[]，避免流式多处替换只展示第一组 oldText/newText。
+function partialEdits(raw: string): Record<string, string>[] | undefined {
+  const match = /"edits"\s*:\s*\[/.exec(raw);
+  if (!match) return undefined;
+  const edits: Record<string, string>[] = [];
+  let start = -1;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  const append = (end: number) => {
+    const source = raw.slice(start, end);
+    const edit: Record<string, string> = {};
+    for (const key of ["oldText", "newText"]) {
+      const value = readPartialString(source, key);
+      if (value !== undefined) edit[key] = value;
+    }
+    if (Object.keys(edit).length) edits.push(edit);
+  };
+  for (let i = match.index + match[0].length; i < raw.length; i++) {
+    const char = raw[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "{") {
+      if (depth++ === 0) start = i;
+    } else if (char === "}") {
+      if (--depth === 0 && start >= 0) {
+        append(i + 1);
+        start = -1;
+      }
+    } else if (char === "]" && depth === 0) break;
+  }
+  if (start >= 0) append(raw.length);
+  return edits;
+}
+
+export function toolEditPreviewPatch(input: Record<string, unknown> | undefined): string | undefined {
+  if (!input) return undefined;
+  const edits = Array.isArray(input.edits) ? input.edits : [input];
+  const sections: string[] = [];
+  for (const edit of edits) {
+    if (!edit || typeof edit !== "object") continue;
+    const lines: string[] = [];
+    for (const [key, prefix] of [
+      ["oldText", "-"],
+      ["newText", "+"],
+    ] as const) {
+      const text = (edit as Record<string, unknown>)[key];
+      if (typeof text !== "string" || !text) continue;
+      const source = text.replace(/\r\n/g, "\n").split("\n");
+      if (source.at(-1) === "") source.pop();
+      for (const line of source) lines.push(`${prefix}${line}`);
+    }
+    if (lines.length) sections.push(`@@\n${lines.join("\n")}`);
+  }
+  return sections.length ? sections.join("\n") : undefined;
 }
 
 function readPartialString(raw: string, key: string): string | undefined {
