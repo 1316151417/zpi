@@ -16,11 +16,37 @@ export function FileCommentEditor({
   error?: string;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  // A new range object requests focus again, including another click on the same line.
   useEffect(() => {
-    // 与 ZCode 一致，等代码预览的 annotation slot 完成本帧更新后再聚焦。
-    const frame = requestAnimationFrame(() => input.current?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [range.start, range.end]);
+    const textarea = input.current;
+    if (!textarea) return;
+    const shadow = textarea.closest("[slot]")?.parentElement?.shadowRoot;
+    let frame = 0;
+    // React mounts the editor before Pierre necessarily renders its annotation slot.
+    // Retry when slot assignment changes, then stop as soon as focus succeeds.
+    const focus = () => {
+      frame = 0;
+      if (!textarea.isConnected || !textarea.getClientRects().length) return;
+      textarea.focus();
+      if (document.activeElement === textarea) cleanup();
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(focus);
+    };
+    const cleanup = () => {
+      cancelAnimationFrame(frame);
+      shadow?.removeEventListener("slotchange", schedule);
+      document.removeEventListener("pointerdown", cleanup, true);
+      document.removeEventListener("keydown", cleanup, true);
+    };
+    shadow?.addEventListener("slotchange", schedule);
+    // A later user action supersedes this pending focus request.
+    document.addEventListener("pointerdown", cleanup, true);
+    document.addEventListener("keydown", cleanup, true);
+    schedule();
+    return cleanup;
+  }, [range]);
   return (
     <div className="file-comment-card" data-file-comment-draft="">
       <div className="file-comment-range">
@@ -30,8 +56,6 @@ export function FileCommentEditor({
       </div>
       <textarea
         ref={input}
-        // biome-ignore lint/a11y/noAutofocus: The user explicitly opens this comment editor.
-        autoFocus
         rows={3}
         aria-label="代码备注"
         placeholder="可选：为这段代码补充评论..."
