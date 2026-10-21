@@ -1,6 +1,6 @@
 import { FolderOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
+import { Group, Panel, Separator, useDefaultLayout, useGroupRef, usePanelRef } from "react-resizable-panels";
 import type { FindRequest, FindState } from "zpi-ui";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
@@ -50,7 +50,8 @@ export function FileManagerPane({
   const container = useRef<HTMLDivElement>(null);
   const [header, setHeader] = useState<HTMLDivElement | null>(null);
   const [narrow, setNarrow] = useState(false);
-  const [compactOpen, setCompactOpen] = useState<boolean | null>(null);
+  const [compactOpen, setCompactOpen] = useState<boolean | null>(tab.type === "file-manager" ? null : false);
+  const group = useGroupRef();
   const previewPanel = usePanelRef();
   const directoryPanel = usePanelRef();
   const { defaultLayout, onLayoutChange } = useDefaultLayout({
@@ -61,11 +62,19 @@ export function FileManagerPane({
   const navigationOpen = canNavigate && (narrow ? (compactOpen ?? preference) : preference);
   const navigationOnly = narrow && navigationOpen;
   useLayoutEffect(() => {
-    if (navigationOnly) previewPanel.current?.collapse();
-    else previewPanel.current?.expand();
+    // Reopening a specific file or diff must reveal its content, even in a reused narrow tab.
+    if (tab.type !== "file-manager") setCompactOpen(false);
+  }, [tab]);
+  useLayoutEffect(() => {
+    if (narrow) {
+      // Switch both sizes together so their combined minimum widths cannot block the single-column layout.
+      group.current?.setLayout({ preview: navigationOpen ? 0 : 100, directory: navigationOpen ? 100 : 0 });
+      return;
+    }
+    previewPanel.current?.expand();
     if (navigationOpen) directoryPanel.current?.expand();
     else directoryPanel.current?.collapse();
-  }, [navigationOnly, navigationOpen, previewPanel, directoryPanel]);
+  }, [narrow, navigationOpen, group, previewPanel, directoryPanel]);
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver(([entry]) => {
@@ -105,6 +114,7 @@ export function FileManagerPane({
         )}
       </div>
       <Group
+        groupRef={group}
         className="file-manager-split"
         defaultLayout={defaultLayout}
         onLayoutChange={onLayoutChange}
@@ -156,7 +166,7 @@ export function FileManagerPane({
           collapsedSize="0px"
           defaultSize="192px"
           minSize="160px"
-          maxSize={navigationOnly ? "100%" : "60%"}
+          maxSize={narrow ? "100%" : "60%"}
           className="file-manager-directory"
         >
           {canNavigate && (
