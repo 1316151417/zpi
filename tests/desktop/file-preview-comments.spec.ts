@@ -53,6 +53,9 @@ for (const delayed of [false, true]) {
       try {
         app = await launchDesktop({ dir, url: server.url, project });
         const page = await app.firstWindow();
+        // Emulate renderer focus while keeping the native window hidden and non-focusable.
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
         const main = page.locator("main");
         const composer = main.getByLabel("消息", { exact: true });
         await page.getByLabel("添加项目", { exact: true }).first().click();
@@ -70,7 +73,10 @@ for (const delayed of [false, true]) {
         await preview.locator("[data-utility-button]").click({ delay: 150 });
         const comment = preview.getByLabel("代码备注", { exact: true });
         await releaseSlot?.();
+        await page.keyboard.type("instant input");
+        await expect(comment).toHaveValue("instant input");
         await expect(comment).toBeFocused();
+        await expect(composer).toHaveText("保留主草稿");
         await composer.click();
         await preview.locator('[data-column-number="3"]').first().hover();
         await preview.locator("[data-utility-button]").click();

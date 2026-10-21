@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { FileCommentRange } from "./file-comments.ts";
 export function FileCommentEditor({
   range,
@@ -17,34 +17,27 @@ export function FileCommentEditor({
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   // A new range object requests focus again, including another click on the same line.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const textarea = input.current;
     if (!textarea) return;
     const shadow = textarea.closest("[slot]")?.parentElement?.shadowRoot;
-    let frame = 0;
-    // React mounts the editor before Pierre necessarily renders its annotation slot.
-    // Retry when slot assignment changes, then stop as soon as focus succeeds.
+    // Subscribe before Pierre's parent layout effect renders the annotation slot.
+    // Focus during slot assignment, before the next keyboard event can reach the old target.
     const focus = () => {
-      frame = 0;
       if (!textarea.isConnected || !textarea.getClientRects().length) return;
       textarea.focus();
       if (document.activeElement === textarea) cleanup();
     };
-    const schedule = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(focus);
-    };
     const cleanup = () => {
-      cancelAnimationFrame(frame);
-      shadow?.removeEventListener("slotchange", schedule);
+      shadow?.removeEventListener("slotchange", focus);
       document.removeEventListener("pointerdown", cleanup, true);
       document.removeEventListener("keydown", cleanup, true);
     };
-    shadow?.addEventListener("slotchange", schedule);
+    shadow?.addEventListener("slotchange", focus);
     // A later user action supersedes this pending focus request.
     document.addEventListener("pointerdown", cleanup, true);
     document.addEventListener("keydown", cleanup, true);
-    schedule();
+    focus();
     return cleanup;
   }, [range]);
   return (
