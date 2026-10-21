@@ -1843,10 +1843,17 @@ small {
   white-space: nowrap;
 }
 .input-context {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.input-context-row {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
+  max-width: 100%;
   gap: 8px;
-  display: flex;
 }
 .input-context:empty {
   display: none;
@@ -2607,6 +2614,7 @@ button.inline-mention,
   line-height: 1.75;
   letter-spacing: 0.025em;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .markdown-body > :first-child {
   margin-top: 0;
@@ -2760,6 +2768,7 @@ button.inline-mention,
 }
 .markdown-code-body pre {
   margin: 0;
+  overflow: auto;
   background: transparent;
   font-size: 12px;
   line-height: 1.6;

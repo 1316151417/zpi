@@ -4046,6 +4046,7 @@
   padding: 0 16px 16px;
 }
 .pending-file-preview .tool-content-preview,
+.pending-file-preview .tool-inline-diff,
 .pending-file-preview .tool-parameters-code {
   max-height: none;
   mask-image: none;

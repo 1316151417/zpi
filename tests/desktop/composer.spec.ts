@@ -134,6 +134,97 @@ test("add panel shares the composer width, lists files and preserves the inserti
   }
 });
 
+for (const pane of ["main", "side"] as const) {
+  test(`${pane} composer puts screenshots above conversation references like ZCode`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-composer-context-rows-"));
+    const project = join(dir, "project");
+    await mkdir(project);
+    const images = [join(dir, "first.png"), join(dir, "second.png")];
+    for (const image of images)
+      await sharp({ create: { width: 2, height: 2, channels: 3, background: "white" } })
+        .png()
+        .toFile(image);
+    const server = await fakeServer((_, response) => {
+      send(response, chunk({ content: "可以引用的回答" }));
+      done(response);
+    });
+    let app: ElectronApplication | undefined;
+    try {
+      app = await launchDesktop({ dir, project, images, url: server.url });
+      const page = await app.firstWindow();
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000));
+      await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+      const main = page.locator("main");
+      await main.getByLabel("消息", { exact: true }).fill("主问题");
+      await main.getByLabel("发送", { exact: true }).click();
+      await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      if (pane === "side") {
+        await page.getByLabel("展开右侧栏", { exact: true }).click();
+        await page
+          .locator(".pane-empty-launcher")
+          .getByRole("button", { name: "辅助对话", exact: true })
+          .click();
+      }
+      const target = pane === "main" ? main : page.getByRole("region", { name: "辅助对话", exact: true });
+      const editor = target.getByLabel("消息", { exact: true });
+      if (pane === "side") {
+        await editor.fill("辅助问题");
+        await target.getByLabel("发送", { exact: true }).click();
+        await expect(target.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      }
+      const composer = target.locator(".composer");
+      await editor.fill("保留草稿");
+      await composer.getByRole("button", { name: "添加上下文", exact: true }).click();
+      await target.getByRole("option", { name: "附件", exact: true }).click();
+      await expect(composer.locator(".image-chip")).toHaveCount(2);
+      const paragraph = target.locator(".answer p").first();
+      await paragraph.click();
+      await paragraph.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      });
+      await page
+        .getByRole("toolbar", { name: "选文操作", exact: true })
+        .getByRole("button", {
+          name: pane === "main" ? "添加到当前任务" : "添加到当前辅助对话",
+          exact: true,
+        })
+        .click();
+      const reference = composer.locator(".selection-reference-chip");
+      await expect(reference).toContainText("1 条对话引用");
+      await expect
+        .poll(async () => {
+          const image = await composer.locator(".image-chip").last().boundingBox();
+          const quote = await reference.boundingBox();
+          return image && quote ? quote.y - image.y - image.height : -1;
+        })
+        .toBe(8);
+      await composer.screenshot({ path: test.info().outputPath("screenshots-above-references.png") });
+      await expect(editor).toHaveText("保留草稿");
+      await composer.getByLabel("移除对话引用", { exact: true }).click();
+      await expect(reference).toHaveCount(0);
+      await expect(composer.locator(".image-chip")).toHaveCount(2);
+      await expect
+        .poll(() => composer.locator(".input-context").evaluate((element) => element.clientHeight))
+        .toBe(48);
+      for (const name of ["first.png", "second.png"])
+        await composer.getByLabel(`移除 ${name}`, { exact: true }).click();
+      await expect(composer.locator(".input-context")).toBeHidden();
+      await expect(editor).toHaveText("保留草稿");
+      expect(server.requests).toHaveLength(pane === "main" ? 1 : 2);
+    } finally {
+      await runCleanup([
+        () => app?.close(),
+        () => server.close(),
+        () => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+      ]);
+    }
+  });
+}
+
 test("add panel imports multiple attachments and retains the draft when the picker fails or is cancelled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-composer-attachments-"));
   const project = join(dir, "workspace");

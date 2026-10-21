@@ -1827,33 +1827,41 @@ export function ChatComposer({
           </div>
         )}
         <div className="input-context">
-          <SelectionReferenceChip
-            references={value.selections ?? []}
-            onCommentsEmpty={() => textarea.current?.focus()}
-            onFile={onFile}
-            onChange={(selections) => updateValue(sessionId, (old) => ({ ...old, selections }))}
-          />
-
-          {context &&
-            value.attachments.map((image) => (
-              <AttachmentPreview
-                key={image.id}
-                sessionId={sessionId}
-                image={image}
-                read={context.readAttachment}
-                remove={() => {
-                  void context
-                    .removeAttachment(sessionId, image.id)
-                    .then(() =>
-                      updateValue(sessionId, (old) => ({
-                        ...old,
-                        attachments: old.attachments.filter((e) => e.id !== image.id),
-                      })),
-                    )
-                    .catch((e) => updateValue(sessionId, (old) => ({ ...old, error: userErrorMessage(e) })));
-                }}
+          {context && value.attachments.length > 0 && (
+            <div className="input-context-row" data-composer-file-attachments-row="">
+              {value.attachments.map((image) => (
+                <AttachmentPreview
+                  key={image.id}
+                  sessionId={sessionId}
+                  image={image}
+                  read={context.readAttachment}
+                  remove={() => {
+                    void context
+                      .removeAttachment(sessionId, image.id)
+                      .then(() =>
+                        updateValue(sessionId, (old) => ({
+                          ...old,
+                          attachments: old.attachments.filter((e) => e.id !== image.id),
+                        })),
+                      )
+                      .catch((e) =>
+                        updateValue(sessionId, (old) => ({ ...old, error: userErrorMessage(e) })),
+                      );
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {Boolean(value.selections?.length) && (
+            <div className="input-context-row" data-composer-context-attachments-row="">
+              <SelectionReferenceChip
+                references={value.selections ?? []}
+                onCommentsEmpty={() => textarea.current?.focus()}
+                onFile={onFile}
+                onChange={(selections) => updateValue(sessionId, (old) => ({ ...old, selections }))}
               />
-            ))}
+            </div>
+          )}
         </div>
         {value.pending > 0 && <small role="status">正在处理附件…</small>}
         {value.error && (
