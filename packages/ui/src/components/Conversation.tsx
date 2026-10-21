@@ -452,7 +452,8 @@ export const RunGroup = memo(function RunGroup({
     offset = boundary;
   }
   items.push(...processItems(process.slice(offset), run.status === "running" && !compacting));
-  const open = defaultOpen || expanded;
+  // 对齐 ZCode 后台结果轮：直接展示过程和正文，不再套普通回复的工时折叠。
+  const open = !!run.subagentNotification || defaultOpen || expanded;
   if (run.kind === "compact")
     return (
       <div className="compaction-run" data-run-id={run.runId}>
@@ -469,8 +470,7 @@ export const RunGroup = memo(function RunGroup({
       <div className="assistant-turn">
         {run.subagentNotification ? (
           <div className="background-result-heading" data-testid="background-result-heading">
-            <span>后台补充</span>
-            <span>{run.subagentNotification.description}</span>
+            {run.subagentNotification.description}
           </div>
         ) : (
           <div className="user-message-row">
@@ -560,14 +560,16 @@ export const RunGroup = memo(function RunGroup({
             )}
           </div>
         )}
-        <WorkProgress
-          run={run}
-          expanded={open}
-          defaultOpen={defaultOpen}
-          toggle={() => {
-            if (!defaultOpen) onToggle(run.runId, !expanded);
-          }}
-        />
+        {!run.subagentNotification && (
+          <WorkProgress
+            run={run}
+            expanded={open}
+            defaultOpen={defaultOpen}
+            toggle={() => {
+              if (!defaultOpen) onToggle(run.runId, !expanded);
+            }}
+          />
+        )}
         {open && items.length > 0 && (
           <div className="process" data-testid="process">
             {items.map((item) =>

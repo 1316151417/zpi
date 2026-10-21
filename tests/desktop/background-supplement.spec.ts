@@ -73,16 +73,26 @@ test("keeps the main answer visible beside a separately titled late background s
     await expect(runs).toHaveCount(2);
     await expect(runs.nth(0).locator(".answer")).toContainText("主任务完整结论");
     await expect(runs.nth(0).getByTestId("background-result-heading")).toHaveCount(0);
-    await expect(runs.nth(1).getByTestId("background-result-heading")).toHaveText("后台补充核查查询 SQL");
+    await expect(runs.nth(1).getByTestId("background-result-heading")).toHaveText("核查查询 SQL");
+    await expect(runs.nth(1).getByTestId("progress")).toHaveCount(0);
+    await expect(runs.nth(0).getByTestId("progress")).toHaveCount(1);
     await expect(runs.nth(1).locator(".answer")).toContainText("补充：周期表缺少软删除过滤。");
     await expect(page.locator("main")).not.toContainText("<task-notification>");
-    await page.screenshot({
-      path: test.info().outputPath("background-supplement.png"),
-      animations: "disabled",
-    });
-    await page.reload();
-    await expect(page.locator("main .answer")).toHaveCount(2);
-    await expect(page.getByTestId("background-result-heading")).toContainText("核查查询 SQL");
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate(async (theme) => {
+        const result = await window.zpi.updatePreferences({ theme });
+        if (!result.ok) throw new Error(result.error.message);
+      }, theme);
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(page.locator("main .answer")).toHaveCount(2);
+      await expect(page.getByTestId("background-result-heading")).toHaveText("核查查询 SQL");
+      await expect(page.locator("main [data-testid=run]").nth(1).getByTestId("progress")).toHaveCount(0);
+      await page.screenshot({
+        path: test.info().outputPath(`background-supplement-${theme}.png`),
+        animations: "disabled",
+      });
+    }
   } finally {
     await runCleanup([() => app?.close(), server.close, () => rm(dir, { recursive: true, force: true })]);
   }

@@ -62,6 +62,8 @@ The sidebar search entry, top-positioned Command Center, scope tabs/prefixes, ke
 
 # ZCode subagent plugin
 
+The background result title, subtle divider and always-visible work layout in `packages/ui/src/components/Conversation.tsx` and `packages/ui/src/styles.css` follow `packages/ui/src/v4/ConversationTurnGroup.tsx` at ZCode commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`. Adapted to ZPI's existing run projection, tools and error display; background result turns omit the ordinary work-duration fold. Apache-2.0 applies.
+
 The task status UI directly adapts `v4/ConversationStatusPanel.tsx`, `v4/conversationLayout.ts`, `BackgroundTaskElapsedLabel.tsx`, `components/ui/{button,collapsible,dropdown-menu}.tsx` and `i18n/locales/zh-CN.ts` at ZCode commit `aac4755666d09fdcd70272fcf063c077a639015f`: content-sized capsule, hover icon swap, independently collapsible terminal/agent sections, elapsed labels, inline Stop, automatic 1280px container layout, and matching spacing, colors, shadows and Lucide assets. Completed-command history remains a ZPI extension; task execution uses the existing Electron IPC.
 
 TaskOutput's bounded wait/result contract, the coordinator response tool's independence from profile allowlists, task output/stop summaries, and the floating status panel placement also follow ZCode commit `aac4755666d09fdcd70272fcf063c077a639015f`: `apps/zcode-cli/packages/contracts/src/tools/task-output.ts`, `apps/zcode-cli/packages/core/src/{tool/handlers/task-output.ts,runtime/methods/subagent.ts}`, and `packages/ui/src/{ToolCallBlocks/renderers/{task-output,task-stop}.tsx,v4/ConversationStatusPanel.tsx}`. ZPI uses event-driven waits and its existing local subagent records.
