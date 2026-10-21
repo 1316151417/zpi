@@ -1,6 +1,6 @@
 import { FolderOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Group, Panel, Separator, useDefaultLayout, useGroupRef, usePanelRef } from "react-resizable-panels";
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { FindRequest, FindState } from "zpi-ui";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
@@ -49,36 +49,31 @@ export function FileManagerPane({
   const canNavigate = Boolean(cwd && (tab.type === "file-manager" || path));
   const container = useRef<HTMLDivElement>(null);
   const [header, setHeader] = useState<HTMLDivElement | null>(null);
-  const [narrow, setNarrow] = useState(false);
-  const [compactOpen, setCompactOpen] = useState<boolean | null>(tab.type === "file-manager" ? null : false);
-  const group = useGroupRef();
-  const previewPanel = usePanelRef();
+  const [minimumSize, setMinimumSize] = useState(160);
   const directoryPanel = usePanelRef();
   const { defaultLayout, onLayoutChange } = useDefaultLayout({
     id: "zpi.file-manager-layout",
     panelIds: ["preview", "directory"],
   });
   const preference = useSyncExternalStore(subscribeNavigation, () => navigationPreference(cwd));
-  const navigationOpen = canNavigate && (narrow ? (compactOpen ?? preference) : preference);
-  const navigationOnly = narrow && navigationOpen;
+  const navigationOpen = canNavigate && preference;
   useLayoutEffect(() => {
-    // Reopening a specific file or diff must reveal its content, even in a reused narrow tab.
-    if (tab.type !== "file-manager") setCompactOpen(false);
-  }, [tab]);
-  useLayoutEffect(() => {
-    if (narrow) {
-      // Switch both sizes together so their combined minimum widths cannot block the single-column layout.
-      group.current?.setLayout({ preview: navigationOpen ? 0 : 100, directory: navigationOpen ? 100 : 0 });
-      return;
-    }
-    previewPanel.current?.expand();
-    if (navigationOpen) directoryPanel.current?.expand();
-    else directoryPanel.current?.collapse();
-  }, [narrow, navigationOpen, group, previewPanel, directoryPanel]);
+    if (!visible) return;
+    const updateLayout = () => {
+      if (navigationOpen) directoryPanel.current?.expand();
+      else directoryPanel.current?.collapse();
+    };
+    updateLayout();
+    // Resizing re-registers the panel constraints; apply visibility after that commit as well.
+    const frame = requestAnimationFrame(updateLayout);
+    return () => cancelAnimationFrame(frame);
+  }, [navigationOpen, minimumSize, visible, directoryPanel]);
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry && entry.contentRect.width > 0) setNarrow(entry.contentRect.width < 384);
+      // Keep both desktop columns resizable even when their usual 160px minimums would not fit.
+      if (entry && entry.contentRect.width > 0)
+        setMinimumSize(Math.min(160, Math.floor(entry.contentRect.width / 3)));
     });
     observer.observe(container.current);
     return () => observer.disconnect();
@@ -89,7 +84,6 @@ export function FileManagerPane({
       ref={container}
       className="file-manager"
       data-file-manager-pane=""
-      data-navigation-only={navigationOnly}
       data-navigation-open={navigationOpen}
     >
       <div className="file-manager-toolbar">
@@ -105,7 +99,6 @@ export function FileManagerPane({
               aria-expanded={navigationOpen}
               onClick={() => {
                 saveNavigationPreference(cwd, !navigationOpen);
-                setCompactOpen(null);
               }}
             >
               {navigationOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
@@ -114,20 +107,12 @@ export function FileManagerPane({
         )}
       </div>
       <Group
-        groupRef={group}
         className="file-manager-split"
         defaultLayout={defaultLayout}
         onLayoutChange={onLayoutChange}
-        disabled={!navigationOpen || narrow}
+        disabled={!navigationOpen}
       >
-        <Panel
-          id="preview"
-          panelRef={previewPanel}
-          collapsible
-          collapsedSize="0px"
-          minSize="160px"
-          className="file-manager-preview"
-        >
+        <Panel id="preview" minSize={minimumSize} className="file-manager-preview">
           {tab.type === "changes" ? (
             <ChangesPane
               sessionId={tab.sessionId}
@@ -154,19 +139,15 @@ export function FileManagerPane({
             </div>
           )}
         </Panel>
-        <Separator
-          className="file-manager-resizer"
-          hidden={!navigationOpen || narrow}
-          aria-label="调整文件目录宽度"
-        />
+        <Separator className="file-manager-resizer" hidden={!navigationOpen} aria-label="调整文件目录宽度" />
         <Panel
           id="directory"
           panelRef={directoryPanel}
           collapsible
           collapsedSize="0px"
           defaultSize="192px"
-          minSize="160px"
-          maxSize={narrow ? "100%" : "60%"}
+          minSize={minimumSize}
+          maxSize="60%"
           className="file-manager-directory"
         >
           {canNavigate && (
@@ -179,7 +160,6 @@ export function FileManagerPane({
               activePreviewPath={path}
               onOpenPreview={(path) => {
                 paneTask(navigateFileManager(tab.id, path));
-                if (narrow) setCompactOpen(false);
               }}
             />
           )}
