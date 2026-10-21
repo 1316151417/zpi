@@ -26,6 +26,8 @@ export function FileCommentEditor({
     const focus = () => {
       if (!textarea.isConnected || !textarea.getClientRects().length) return;
       textarea.focus();
+      // Initialize the native text-input caret as well as DOM focus (notably for macOS IME).
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       if (document.activeElement === textarea) cleanup();
     };
     const cleanup = () => {
