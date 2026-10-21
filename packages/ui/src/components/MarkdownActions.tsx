@@ -1,11 +1,15 @@
 import { Check, Copy, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import type { FileLocation, LinkContext } from "../link-target.ts";
+import type { FileLocation, FileOpenHandler, LinkContext, WebOpenOptions } from "../link-target.ts";
+import type { FileActionHandler } from "../types.ts";
 
 export interface MarkdownServices {
   streaming: boolean;
   workspace?: LinkContext;
+  onLink?: (url: string, options?: WebOpenOptions) => void;
+  onFile?: FileOpenHandler;
+  onFileAction?: FileActionHandler;
   onCopy?: (text: string) => Promise<void>;
   onImage?: (path: string, location?: FileLocation) => Promise<string>;
   onDownloadImage?: (src: string) => Promise<void>;

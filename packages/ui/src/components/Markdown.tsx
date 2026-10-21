@@ -7,11 +7,10 @@ import rehypeSanitize from "rehype-sanitize";
 import type { ExtraProps, StreamdownProps } from "streamdown";
 import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
 import { fileCitationRemarkPlugin, projectFileCitations } from "../file-citation.ts";
-import { type FileOpenHandler, resolveMarkdownLinkTarget, type WebOpenOptions } from "../link-target.ts";
+import { resolveMarkdownLinkTarget, type WebOpenOptions } from "../link-target.ts";
 import { type MarkdownFence, markdownFence } from "../markdown-fence.ts";
 import { markdownLinkRemarkPlugin } from "../markdown-link-nodes.ts";
-import type { FileActionHandler } from "../types.ts";
-import { MarkdownContext, type MarkdownServices } from "./MarkdownActions.tsx";
+import { MarkdownContext, type MarkdownServices, useMarkdown } from "./MarkdownActions.tsx";
 import { MarkdownCode } from "./MarkdownCode.tsx";
 import { MarkdownImage } from "./MarkdownImage.tsx";
 import { MarkdownLink } from "./MarkdownLink.tsx";
@@ -118,6 +117,42 @@ function ImageParagraph({ children, node: _node, ...props }: ComponentProps<"p">
   );
 }
 
+function RenderLink({ href, children, node }: ComponentProps<"a"> & ExtraProps) {
+  const { workspace, onLink, onFile, onFileAction } = useMarkdown();
+  const original = node?.properties?.dataZpiTarget;
+  const destination = typeof original === "string" ? original : href;
+  const target = destination ? resolveMarkdownLinkTarget(destination, workspace) : null;
+  if (target?.kind === "file" && onFile) {
+    const { kind: _kind, path, ...location } = target;
+    return (
+      <Reference
+        kind="file"
+        className="message-file-link"
+        path={path}
+        label={rawText(children) || path.split("/").at(-1) || path}
+        onOpen={() => onFile(path, location, "markdown-link")}
+        onAction={onFileAction ? (path, action) => onFileAction(path, action, location) : undefined}
+      />
+    );
+  }
+  if (target?.kind !== "web" || !onLink) return <span>{children}</span>;
+  return (
+    <MarkdownLink url={target.url} onOpen={onLink}>
+      {children}
+    </MarkdownLink>
+  );
+}
+
+// Stable component types preserve native selection anchors when routing callbacks change.
+const components: NonNullable<StreamdownProps["components"]> = {
+  a: RenderLink,
+  strong: ({ node: _node, className: _className, ...props }) => <strong {...props} />,
+  code: RenderCode,
+  table: MarkdownTable,
+  p: ImageParagraph,
+  img: MarkdownImage,
+};
+
 // Keep consecutive image-only paragraphs together, without touching code examples.
 function groupImages(text: string): string {
   const lines = text.split("\n");
@@ -167,43 +202,7 @@ export const Markdown = memo(function Markdown({
 }: MarkdownServices & {
   text: string;
   onLink: (url: string, options?: WebOpenOptions) => void;
-  onFile?: FileOpenHandler;
-  onFileAction?: FileActionHandler;
 }) {
-  const components = useMemo<NonNullable<StreamdownProps["components"]>>(
-    () => ({
-      a: ({ href, children, node }) => {
-        const original = node?.properties?.dataZpiTarget;
-        const destination = typeof original === "string" ? original : href;
-        const target = destination ? resolveMarkdownLinkTarget(destination, workspace) : null;
-        if (target?.kind === "file" && onFile) {
-          const { kind: _kind, path, ...location } = target;
-          return (
-            <Reference
-              kind="file"
-              className="message-file-link"
-              path={path}
-              label={rawText(children) || path.split("/").at(-1) || path}
-              onOpen={() => onFile(path, location, "markdown-link")}
-              onAction={onFileAction ? (path, action) => onFileAction(path, action, location) : undefined}
-            />
-          );
-        }
-        if (target?.kind !== "web") return <span>{children}</span>;
-        return (
-          <MarkdownLink url={target.url} onOpen={onLink}>
-            {children}
-          </MarkdownLink>
-        );
-      },
-      strong: ({ node: _node, className: _className, ...props }) => <strong {...props} />,
-      code: RenderCode,
-      table: MarkdownTable,
-      p: ImageParagraph,
-      img: MarkdownImage,
-    }),
-    [onLink, onFile, onFileAction, workspace],
-  );
   const markdown = useMemo(
     () => normalizeMath(groupImages(projectFileCitations(text, streaming))),
     [text, streaming],
@@ -213,7 +212,9 @@ export const Markdown = memo(function Markdown({
     [workspace],
   );
   return (
-    <MarkdownContext.Provider value={{ streaming, workspace, onCopy, onImage, onDownloadImage }}>
+    <MarkdownContext.Provider
+      value={{ streaming, workspace, onLink, onFile, onFileAction, onCopy, onImage, onDownloadImage }}
+    >
       <MarkdownBoundary text={text}>
         <Streamdown
           className="markdown-body"
