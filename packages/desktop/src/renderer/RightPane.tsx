@@ -24,9 +24,11 @@ import {
   openNewPaneTab,
   paneTask,
   reorderPaneTab,
+  selectReviewSource,
   usePane,
   visiblePaneTabs,
 } from "./pane-store.ts";
+import { ReviewPane } from "./ReviewPane.tsx";
 import { SideChatPane } from "./SideChatPane.tsx";
 import { SubagentPane } from "./SubagentPane.tsx";
 import { useStore } from "./store.ts";
@@ -192,7 +194,9 @@ export function RightPane({
                         )}
                       </span>
                       <span className="pane-tab-title">{tab.title}</span>
-                      {tab.type === "changes" && <span className="pane-tab-diff-badge">Diff</span>}
+                      {tab.type === "changes" && !tab.reviewSource && (
+                        <span className="pane-tab-diff-badge">Diff</span>
+                      )}
                     </span>
                   </button>
                   <button
@@ -225,7 +229,7 @@ export function RightPane({
                 <PaneLauncher
                   sessionId={sessionId}
                   sideChatAvailable={sideChatAvailable}
-                  hasReview={tabs.some((tab) => tab.type === "changes" && tab.runId === null && !tab.path)}
+                  hasReview={tabs.some((tab) => tab.type === "changes" && Boolean(tab.reviewSource))}
                 />
               ) : tab.type === "file-manager" ||
                 tab.type === "file" ||
@@ -258,6 +262,15 @@ export function RightPane({
                   sessionId={tab.childSessionId}
                   visible={state.open && tab.id === active}
                   onSettings={onSettings}
+                />
+              ) : tab.type === "changes" && tab.reviewSource ? (
+                <ReviewPane
+                  sessionId={tab.sessionId}
+                  visible={state.open && tab.id === active}
+                  source={tab.reviewSource ?? "unstaged"}
+                  onSourceChange={(source) => selectReviewSource(tab.id, source)}
+                  findRequest={tab.id === active ? findRequest : undefined}
+                  onFindStateChange={onFindStateChange}
                 />
               ) : tab.type === "changes" ? (
                 <ChangesPane

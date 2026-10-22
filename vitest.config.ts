@@ -9,6 +9,7 @@ const domTests = [
   "packages/desktop/test/workspace-editor-dom.test.ts",
   "packages/desktop/test/subagent-settings-dom.test.ts",
   "packages/desktop/test/changes-pane-dom.test.ts",
+  "packages/desktop/test/review-pane-dom.test.ts",
   "packages/desktop/test/docx-preview-fit-dom.test.ts",
   "packages/desktop/test/composer-interactions-dom.test.ts",
 ];

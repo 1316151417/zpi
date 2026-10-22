@@ -215,6 +215,8 @@ export interface DiffItem {
   patchAvailable?: boolean;
   reason?: string;
   failed?: boolean;
+  added?: number;
+  removed?: number;
 }
 export interface ToolInfo {
   name: string;
@@ -415,6 +417,15 @@ export interface DesktopBridge {
   removeAttachment(sessionId: string, id: string): Promise<Result<void>>;
   getChanges(sessionId: string, runId: string | null, includePatch?: boolean): Promise<Result<DiffItem[]>>;
   readPatch(sessionId: string, runId: string | null, id: string): Promise<Result<string>>;
+  getReview(
+    sessionId: string,
+    source: import("./review.ts").ReviewSource,
+  ): Promise<Result<import("./review.ts").ReviewSnapshot>>;
+  readReviewPatch(
+    sessionId: string,
+    source: import("./review.ts").ReviewSource,
+    path: string,
+  ): Promise<Result<string>>;
   previewPrompt(): Promise<Result<PromptPreview>>;
   listTools(): Promise<Result<ToolInfo[]>>;
   getSkillSettings(): Promise<Result<SkillSettings>>;
@@ -561,6 +572,8 @@ export const methods = [
   "removeAttachment",
   "getChanges",
   "readPatch",
+  "getReview",
+  "readReviewPatch",
   "previewPrompt",
   "listTools",
   "getSkillSettings",

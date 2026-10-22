@@ -10,6 +10,7 @@ export interface WorkspaceGitChange {
   kind: Exclude<WorkspaceGitStatus, "ignored">;
   section: "staged" | "unstaged" | "untracked";
   isUntracked?: boolean;
+  isConflicted?: boolean;
 }
 export interface WorkspaceGitSnapshot {
   summary: { isGitAvailable: boolean; isRepository: boolean };

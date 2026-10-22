@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FindRequest, FindState } from "zpi-ui";
-import { openChanges } from "./pane-store.ts";
+import { openChanges, usePane } from "./pane-store.ts";
 
 const emptyRequest = (): FindRequest => ({ query: "", activeIndex: -1, navigationId: 0 });
 const emptyState = (): FindState => ({ total: 0, activeIndex: -1 });
@@ -109,7 +109,11 @@ export function useTaskFind(sessionId: string | undefined, enabled: boolean) {
       navigationId: current.navigationId + 1,
     }));
     setState(emptyState());
-    if (next === "changes" && sessionId) openChanges(sessionId, null);
+    if (next === "changes" && sessionId) {
+      const pane = usePane.getState();
+      const active = pane.tabs.find((tab) => tab.id === pane.active);
+      if (active?.type !== "changes" || !active.reviewSource) openChanges(sessionId, null);
+    }
     setFocusRequestId((id) => id + 1);
   }, [scope, sessionId]);
   return {

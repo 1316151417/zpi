@@ -57,6 +57,7 @@ import type {
   TaskSearchResult,
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
+import { reviewPatchStats } from "../shared/review.ts";
 import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
 import { AttachmentStore } from "./attachments.ts";
@@ -1851,6 +1852,21 @@ export class SessionHost {
   }
   getChanges(id: string, runId: string | null, includePatch = true): Promise<DiffItem[]> {
     return this.allChanges(id, runId, { includePatch, maxPatchBytes: 64 * 1024 });
+  }
+  async getLastTurnReview(id: string) {
+    this.record(id);
+    const latest = this.requiredIndex(id).listRuns()[Symbol.iterator]().next().value;
+    const changes = latest ? await this.allChanges(id, latest.runId) : [];
+    const entries = changes.map((entry) => {
+      return {
+        ...entry,
+        ...reviewPatchStats(entry.patch),
+        ...(entry.patch && Buffer.byteLength(entry.patch) > 64 * 1024
+          ? { patch: undefined, patchAvailable: true }
+          : {}),
+      };
+    });
+    return { entries, isRepository: false, runId: latest?.runId };
   }
   async readPatch(id: string, runId: string | null, key: string): Promise<string> {
     if (key.startsWith("operation:")) {

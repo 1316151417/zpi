@@ -63,8 +63,11 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     await editor.click();
     await expect(bar(page)).toBeVisible();
     await editor.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
+    await expect(bar(page)).toHaveCount(0);
+    await editor.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     await expect(input).toBeFocused();
-    await expect(input).toHaveValue("项目");
+    await expect(input).toHaveValue("");
+    await input.fill("项目");
     const geometry = await bar(page).evaluate((element) => {
       const bounds = element.getBoundingClientRect(),
         parent = element.parentElement?.getBoundingClientRect();
@@ -261,7 +264,7 @@ test("file scope searches lazy patches across files, highlights split diffs and 
     await expect(count(page)).toHaveText("2/4");
     await input.press("Enter");
     await expect(count(page)).toHaveText("3/4");
-    await expect(page.locator(".changes-pane .preview-breadcrumb > strong")).toHaveText("b.txt");
+    await expect(page.locator(".changes-pane .preview-path-file > strong")).toHaveText("b.txt");
     await expect(page.getByRole("button", { name: "并排", exact: true })).toHaveCount(0);
     await expect
       .poll(() => highlight(page, "changes").then((values) => values.map((value) => value.text)))
@@ -269,7 +272,7 @@ test("file scope searches lazy patches across files, highlights split diffs and 
     await page.screenshot({ path: "test-results/task-find-changes.png" });
     await input.fill("远端命中");
     await expect(count(page)).toHaveText("1/1");
-    await expect(page.locator(".changes-pane .preview-breadcrumb > strong")).toHaveText("large.txt");
+    await expect(page.locator(".changes-pane .preview-path-file > strong")).toHaveText("large.txt");
     await expect
       .poll(() => highlight(page, "changes").then((values) => values.map((value) => value.text)))
       .toEqual(["远端命中"]);

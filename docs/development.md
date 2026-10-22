@@ -319,6 +319,10 @@ npm run repair:sessions -- "/path/to/app-data"
 
 ### 文件与变更预览
 
+新标签页中的「审查」使用独立的 Git 审查面板，来源按「未暂存 / 已暂存 / 全部分支更改 / 上一轮更改」排列，默认未暂存。文件初始折叠，逐个展开统一 Diff；右键可复制路径、系统定位或在文件树显示。分支来源比较上游 merge-base 与 HEAD；上一轮使用会话最新轮次的已有快照，不回退到任务累计变更。任务查找在已打开的审查页搜索当前来源，其余情况下继续打开任务累计变更。详见 [审查合同](specs/git-review.md)。
+
+定向验证：`npm run test:unit -- packages/desktop/test/git-review.test.ts packages/desktop/test/review-pane-dom.test.ts`；桌面集成验证：`npm run test:desktop -- tests/desktop/git-review.spec.ts`，覆盖菜单、展开、刷新、快照、右键树定位、跨文件查找及 160 文件虚拟列表。
+
 回答的围栏、缩进和 HTML 代码块不产生文件预览卡片。内联代码中的 citation 与 Markdown 链接示例也不解析；反引号包裹的纯文件路径（如 `report.pdf` 或 `file:///workspace/report.pdf`）仍是有效交付引用。文件存在性及 MD/HTML 的本轮变更校验继续适用。
 
 文件预览使用共享路径面包屑与右上操作。三点菜单中的路径复制经现有主进程文件操作完成；纯代码显示自动换行，Markdown/SVG 先提供预览/源码选择，源码模式才显示换行。Diff 默认统一视图，Tab 标记 `Diff`，提供“查看源码”，不提供备注或换行选项。从聊天变更摘要点击文件，只加载进该路径的变更条目，搜索也限定该文件；同轮不同文件使用独立 Tab，重复打开相同来源复用。工具卡片预览保留本次操作补丁，与整轮累计变更分离。单文件不显示兄弟文件列表或旧“统一/并排”工具条；无路径的全部变更入口仍提供完整文件列表与跨文件搜索。

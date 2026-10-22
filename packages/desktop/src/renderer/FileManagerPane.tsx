@@ -57,6 +57,10 @@ export function FileManagerPane({
   });
   const preference = useSyncExternalStore(subscribeNavigation, () => navigationPreference(cwd));
   const navigationOpen = canNavigate && preference;
+  const revealPath = tab.type === "file-manager" ? tab.revealPath : undefined;
+  useLayoutEffect(() => {
+    if (revealPath) saveNavigationPreference(cwd, true);
+  }, [cwd, revealPath]);
   useLayoutEffect(() => {
     if (!visible) return;
     const updateLayout = () => {
@@ -157,7 +161,7 @@ export function FileManagerPane({
               workspaceName={
                 tab.type === "file-manager" ? tab.workspaceName : cwd.split(/[\\/]/).at(-1) || "Workspace"
               }
-              activePreviewPath={path}
+              activePreviewPath={path ?? (tab.type === "file-manager" ? tab.revealPath : undefined)}
               onOpenPreview={(path) => {
                 paneTask(navigateFileManager(tab.id, path));
               }}

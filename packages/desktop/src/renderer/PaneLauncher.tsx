@@ -1,8 +1,8 @@
 import { FileDiff, FolderOpen, Globe, MessageSquareText, SquareTerminal } from "lucide-react";
 import {
   openBrowser,
-  openChanges,
   openFileManager,
+  openReview,
   openSideChat,
   openTerminal,
   paneTask,
@@ -49,7 +49,7 @@ export function PaneLauncher({
             label: "审查",
             description: "查看代码变更与差异。",
             disabled: !sessionId,
-            open: () => sessionId && openChanges(sessionId, null),
+            open: () => sessionId && openReview(sessionId),
           },
         ]
       : []),

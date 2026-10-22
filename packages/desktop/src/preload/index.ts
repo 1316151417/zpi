@@ -137,6 +137,8 @@ const bridge: DesktopBridge = {
   removeAttachment: (id, image) => call("removeAttachment", id, image),
   getChanges: (id, run, includePatch = true) => call("getChanges", id, run, includePatch),
   readPatch: (id, run, patch) => call("readPatch", id, run, patch),
+  getReview: (id, source) => call("getReview", id, source),
+  readReviewPatch: (id, source, path) => call("readReviewPatch", id, source, path),
   previewPrompt: () => call("previewPrompt"),
   listTools: () => call("listTools"),
   getCustomCommands: (projectId) => call("getCustomCommands", projectId),

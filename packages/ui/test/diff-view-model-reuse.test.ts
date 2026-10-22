@@ -37,6 +37,9 @@ vi.mock("../src/components/ToolDiff.tsx", async (importOriginal) => ({
   useToolTokens: () => undefined,
 }));
 vi.mock("@pierre/diffs/react", () => ({ PatchDiff: () => null }));
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0 }),
+}));
 
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap(elements);

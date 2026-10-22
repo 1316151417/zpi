@@ -50,6 +50,7 @@ import {
   canOpenSideChat,
   listenPanes,
   openBrowser,
+  openReview,
   openSideChat,
   openSubagent,
   openTerminal,
@@ -622,7 +623,7 @@ export function App() {
       icon: FileDiff,
       disabled: !selected,
       run: () => {
-        if (selected) showChanges(selected, null);
+        if (selected) openReview(selected);
       },
     },
     {

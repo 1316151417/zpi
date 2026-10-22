@@ -60,6 +60,12 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   expect(second).toContain("-intermediate");
   expect(second).toContain("+final");
   expect(second).not.toContain("-original");
+  expect(await f.host.getLastTurnReview(f.session.id)).toMatchObject({
+    runId,
+    entries: [{ path: entries[0].path, added: 1, removed: 1 }],
+  });
+  await run(f, "read only followup");
+  expect((await f.host.getLastTurnReview(f.session.id)).entries).toEqual([]);
   await expect(f.host.readPatch(f.session.id, runId, "operation:missing")).rejects.toThrow("not_found");
   const otherSession = f.host.createSession(null);
   await expect(f.host.readPatch(otherSession.id, null, "operation:write-0")).rejects.toThrow("not_found");

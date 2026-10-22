@@ -28,6 +28,7 @@
     "@streamdown/code": "2.0.0",
     "@streamdown/math": "1.0.3",
     "@streamdown/mermaid": "1.0.3",
+    "@tanstack/react-virtual": "3.14.13",
     "katex": "0.16.27",
     "lucide-react": "1.51.0",
     "micromark-util-decode-string": "2.0.1",

@@ -48,7 +48,8 @@ export async function workspaceGitStatus(cwd: string): Promise<WorkspaceGitSnaps
   let root: string;
   try {
     root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") empty.summary.isGitAvailable = false;
     return empty;
   }
   const records = (
@@ -83,6 +84,7 @@ export async function workspaceGitStatus(cwd: string): Promise<WorkspaceGitSnaps
         kind,
         section: kind === "untracked" ? "untracked" : section,
         isUntracked: kind === "untracked",
+        ...(/[U]/.test(flags) || flags === "AA" || flags === "DD" ? { isConflicted: true } : {}),
       } as const;
       (section === "staged" ? result.stagedChanges : result.unstagedChanges).push(change);
     }

@@ -15,6 +15,7 @@ import type {
   SessionRecord,
   TerminalProfile,
 } from "../shared/bridge.ts";
+import type { ReviewSource } from "../shared/review.ts";
 import {
   accept,
   addConversationSelection,
@@ -55,6 +56,7 @@ export type PaneTab = (
       runId: string | null;
       path?: string;
       toolCallId?: string;
+      reviewSource?: ReviewSource;
       title: string;
       cwd?: string;
     }
@@ -68,6 +70,7 @@ export type PaneTab = (
       cwd: string;
       workspaceName: string;
       preview?: FilePreview;
+      revealPath?: string;
     }
   | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview; cwd?: string }
   | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState; fileKey?: string }
@@ -388,7 +391,7 @@ export function openNewPaneTab() {
     sessionId: useStore.getState().selected,
   });
 }
-export async function openFileManager(sessionId: string) {
+export async function openFileManager(sessionId: string, revealPath?: string) {
   const ownerSessionId = paneOwner(sessionId);
   const workspace = unwrap(await window.zpi.getWorkspaceInfo(sessionId));
   if (ownerDeleted(ownerSessionId)) return;
@@ -402,6 +405,7 @@ export async function openFileManager(sessionId: string) {
     workspaceName: workspace.projectId
       ? workspace.projectName
       : workspace.cwd.split(/[\\/]/).at(-1) || "Workspace",
+    revealPath,
   });
 }
 const fileManagerRequests = new Map<string, number>();
@@ -449,6 +453,7 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
     .tabs.find(
       (tab) =>
         tab.type === "changes" &&
+        !tab.reviewSource &&
         tab.sessionId === sessionId &&
         tab.runId === runId &&
         (tab.path || undefined) === path &&
@@ -468,6 +473,29 @@ export function openChanges(sessionId: string, runId: string | null, path?: stri
     cwd: useStore.getState().sessions.get(sessionId)?.cwd,
     title: path ? (path.split(/[\\/]/).at(-1) ?? "变更") : "变更",
   });
+}
+export function openReview(sessionId: string) {
+  const existing = usePane
+    .getState()
+    .tabs.find((tab) => tab.type === "changes" && tab.sessionId === sessionId && tab.reviewSource);
+  if (existing) {
+    showTab(existing);
+    return;
+  }
+  showTab({
+    id: `review:${sessionId}`,
+    type: "changes",
+    sessionId,
+    runId: null,
+    reviewSource: "unstaged",
+    title: "审查",
+    cwd: useStore.getState().sessions.get(sessionId)?.cwd,
+  });
+}
+export function selectReviewSource(id: string, reviewSource: ReviewSource) {
+  usePane.setState((state) => ({
+    tabs: state.tabs.map((tab) => (tab.id === id && tab.type === "changes" ? { ...tab, reviewSource } : tab)),
+  }));
 }
 export async function openTerminal(sessionId: string) {
   const ownerSessionId = paneOwner(sessionId);
