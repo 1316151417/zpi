@@ -55,32 +55,39 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
   };
   const geometry = () => {
     const element = root.current?.closest<HTMLElement>(".main");
-    const workspace = element?.closest(".workspace-surface")?.getBoundingClientRect();
-    if (!element || !workspace) return;
+    const content = element?.closest(".workspace-surface")?.querySelector(".right-pane-content");
+    const header = content?.querySelector(".pane-header");
+    if (!element || !content || !header) return;
+    const rect = content.getBoundingClientRect();
+    const top = header.getBoundingClientRect().bottom;
     return {
       element,
-      slot: {
-        left: workspace.left + 4,
-        top: workspace.top + 52,
-        width: workspace.width - 8,
-        height: Math.max(0, workspace.height - 56),
-      },
+      content,
+      slot: { left: rect.left, top, width: rect.width, height: Math.max(0, rect.bottom - top) },
       size: { width: element.offsetWidth, height: element.offsetHeight },
     };
   };
   useLayoutEffect(() => {
-    if (value.surface !== "side-pane") return;
     const place = () => {
       const info = geometry();
       if (!info) return;
-      const point = floatingPosition(anchor, info.slot, info.size);
+      // 完整视图只占右侧内容区；左栏开合、拖宽时以真实 slot 同步定位。
+      for (const key of ["left", "top", "width", "height"] as const)
+        info.element.style.setProperty(`--pane-slot-${key}`, `${info.slot[key]}px`);
+      if (value.surface !== "side-pane") return;
+      const size = { width: info.element.offsetWidth, height: info.element.offsetHeight };
+      const point = floatingPosition(anchor, info.slot, size);
       info.element.style.setProperty("--pane-float-left", `${point.left}px`);
       info.element.style.setProperty("--pane-float-top", `${point.top}px`);
     };
     place();
     window.addEventListener("resize", place);
     const observer = new ResizeObserver(place);
-    if (root.current?.parentElement) observer.observe(root.current.parentElement);
+    const info = geometry();
+    if (info) {
+      observer.observe(info.element);
+      observer.observe(info.content);
+    }
     return () => {
       window.removeEventListener("resize", place);
       observer.disconnect();
@@ -136,10 +143,15 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
       if (sessionId) focusComposer(sessionId);
     } else setMenuOpen((open) => !open);
   };
-  if (value.surface !== "side-pane") return null;
   const Icon = value.floating === "expanded" ? ChevronDown : ChevronUp;
   return (
-    <div ref={root} className="pane-full-view-controls" data-anchor={anchor}>
+    <div
+      ref={root}
+      className="pane-full-view-controls"
+      data-anchor={anchor}
+      data-menu-open={menuOpen}
+      hidden={value.surface !== "side-pane"}
+    >
       {answer && answer.sessionId === sessionId && (
         <div className="pane-floating-answer">
           <button

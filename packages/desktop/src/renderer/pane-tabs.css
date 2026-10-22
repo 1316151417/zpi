@@ -122,22 +122,31 @@
 .pane-tab-menu {
   width: 176px;
 }
-.shell.pane-full-view .workspace-surface > .sidebar,
-.shell.pane-full-view .workspace-surface > .sidebar-resizer,
-.shell.pane-full-view .desktop-top-controls,
-.shell.pane-full-view .sidebar-drag-space {
-  display: none;
-  transition: none;
-}
 .shell.pane-full-view .right-pane {
-  width: calc(100% - 8px);
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  box-shadow: none;
+  max-width: none;
+  flex: 1;
+  width: 0;
+}
+.shell.pane-full-view .right-pane-content {
+  max-width: none;
+}
+.shell.left-collapsed.pane-full-view .right-pane {
   margin-left: 4px;
 }
 .shell.pane-full-view .right-resizer {
   display: none;
 }
-.shell.mac-desktop.pane-full-view .pane-header {
+.shell.left-collapsed.pane-full-view .pane-header {
   padding-left: 80px;
+}
+.shell.mac-desktop.left-collapsed.pane-full-view .pane-header {
+  padding-left: 160px;
 }
 .shell.pane-full-view .main {
   position: fixed;
@@ -152,41 +161,69 @@
   display: none;
 }
 .shell.pane-full-conversation .main {
-  left: 5px;
-  right: 5px;
-  top: 53px;
-  bottom: 5px;
-  width: auto;
+  left: var(--pane-slot-left);
+  top: var(--pane-slot-top);
+  width: var(--pane-slot-width);
+  height: var(--pane-slot-height);
   border: 0;
   border-radius: 0 0 var(--workspace-panel-radius) var(--workspace-panel-radius);
 }
 .shell.pane-full-floating .main {
   left: var(--pane-float-left, auto);
   top: var(--pane-float-top, auto);
-  width: min(560px, calc(100vw - 40px));
-  max-height: calc(100vh - 88px);
-  border: 1px solid var(--color-border);
+  width: min(560px, max(0px, calc(var(--pane-slot-width) - 32px)));
+  max-height: max(0px, calc(var(--pane-slot-height) - 32px));
+  border: 0;
   border-radius: 16px;
+  background: transparent;
+  overflow: visible;
+}
+/* 抽屉铺在输入框后面，收起时外壳就是输入框，避免双层边框和额外留白。 */
+.shell.pane-full-floating .main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid var(--color-border);
+  border-radius: inherit;
+  background: var(--color-bg);
   box-shadow:
     0 10px 15px -3px #0000001a,
     0 4px 6px -4px #0000001a;
+  transition: opacity 150ms ease-out;
+}
+.shell.pane-full-floating .main .task-body {
+  position: relative;
   overflow: visible;
+  scrollbar-gutter: auto;
 }
 .shell.pane-full-floating .main .composer-container {
-  padding: 8px;
+  padding: 0;
   width: 100%;
   max-width: none;
   margin: 0;
 }
 .shell.pane-full-floating .main .task-activity,
+.shell.pane-full-floating .main > .notice-config,
 .shell.pane-full-floating .main .model-performance {
   display: none;
 }
 .shell.pane-float-expanded .main {
-  height: min(640px, calc(100vh - 88px));
+  height: min(640px, max(0px, calc(var(--pane-slot-height) - 32px)));
+}
+.shell.pane-float-expanded .main .task-body {
+  margin: 0 1px 1px;
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+  background: var(--color-bg);
 }
 .shell.pane-float-collapsed .main {
   height: auto;
+}
+.shell.pane-float-collapsed .main .composer {
+  box-shadow:
+    0 10px 15px -3px #0000001a,
+    0 4px 6px -4px #0000001a;
 }
 .shell.pane-float-collapsed .main .conversation-wrap {
   flex: none;
@@ -211,6 +248,8 @@
   flex-shrink: 0;
   padding: 0 8px;
   -webkit-app-region: no-drag;
+  z-index: 1;
+  transition: height 150ms ease-out;
 }
 .pane-floating-status {
   display: inline-flex;
@@ -288,13 +327,18 @@
   background: var(--color-bg);
 }
 
-.shell.pane-float-collapsed .main:not(:focus-within):not(:hover) .pane-full-view-controls {
+.shell.pane-float-collapsed .main:not(:focus-within):not(:hover):not(:has([data-menu-open="true"]))::before {
+  opacity: 0;
+}
+.shell.pane-float-collapsed
+  .main:not(:focus-within):not(:hover):not(:has([data-menu-open="true"]))
+  .pane-full-view-controls {
   height: 0;
   padding: 0;
   overflow: visible;
 }
 .shell.pane-float-collapsed
-  .main:not(:focus-within):not(:hover)
+  .main:not(:focus-within):not(:hover):not(:has([data-menu-open="true"]))
   .pane-full-view-controls
   > :not(.pane-floating-answer) {
   visibility: hidden;

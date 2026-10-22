@@ -1219,6 +1219,7 @@ export function ChatComposer({
   sessionId,
   toolbar,
   header,
+  layout = "stacked",
   historyScope,
   sentMessages = [],
   suggestions = [],
@@ -1258,6 +1259,7 @@ export function ChatComposer({
   sessionId: string;
   toolbar?: ReactNode;
   header?: ReactNode;
+  layout?: "stacked" | "inline";
   historyScope?: string;
   sentMessages?: readonly string[];
   suggestions?: InputSuggestion[];
@@ -1771,6 +1773,7 @@ export function ChatComposer({
       )}
       <fieldset
         className={`composer${draggingFiles ? " dragging-files" : ""}`}
+        data-layout={layout}
         ref={root}
         aria-label="输入消息"
         onDragEnter={(event) => {

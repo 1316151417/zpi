@@ -2240,6 +2240,34 @@ small {
   color: var(--color-text-subtlest);
   pointer-events: none;
 }
+/* ZCode's inline prompt layout keeps the editor mounted while the actions move beside it. */
+.composer[data-layout="inline"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 16px;
+}
+.composer[data-layout="inline"] > :is(.input-context, small, .notice) {
+  flex-basis: 100%;
+  order: -1;
+}
+.composer[data-layout="inline"] .composer-footer {
+  display: contents;
+}
+.composer[data-layout="inline"] .mention-editor {
+  order: 1;
+  flex: 1;
+  width: auto;
+  min-width: 50%;
+  min-height: 28px;
+  padding-block: 4px;
+}
+.composer[data-layout="inline"] :where(.composer-actions) {
+  order: 2;
+  flex-shrink: 0;
+}
 /* Animate the native caret, preserving selection, scrolling and IME positioning. */
 @supports (caret-animation: manual) {
   .mention-editor:focus[contenteditable="true"] {

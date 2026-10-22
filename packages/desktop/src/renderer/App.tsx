@@ -219,6 +219,7 @@ export function App() {
   const records = useStore(useShallow(selectTaskRecords));
 
   const fullView = usePane((state) => state.fullView);
+  const floatingComposer = fullView?.surface === "side-pane";
   const paneOpen = usePane((s) => s.open),
     paneRatio = usePane((s) => s.ratio);
   const sideChatBlocked = useSideChatBlocked(state.selected);
@@ -1158,7 +1159,7 @@ export function App() {
                       .filter((run) => !run.subagentNotification)
                       .map((run) => run.userMessage)}
                     header={
-                      record?.draft ? (
+                      record?.draft && !floatingComposer ? (
                         <div className="draft-composer-header">
                           <DraftProjectPicker projectId={record.projectId} />
                           <WorktreeSettings
@@ -1182,14 +1183,17 @@ export function App() {
                     onConfigureEnvironment={() => {
                       if (record?.draft) setEnvironmentOpen(true);
                     }}
-                    showSendButton={prefs?.showSendButton ?? false}
+                    layout={floatingComposer ? "inline" : "stacked"}
+                    showSendButton={floatingComposer || (prefs?.showSendButton ?? false)}
                     toolbar={
-                      <SessionToolbar
-                        view={view}
-                        open={modelOpen}
-                        onOpenChange={setModelOpen}
-                        onSettings={() => setSettingsOpen(true)}
-                      />
+                      !floatingComposer && (
+                        <SessionToolbar
+                          view={view}
+                          open={modelOpen}
+                          onOpenChange={setModelOpen}
+                          onSettings={() => setSettingsOpen(true)}
+                        />
+                      )
                     }
                     suggestions={state.activeSuggestions ?? []}
                     onSubmit={async (text, input, { draftRevision }) => {
