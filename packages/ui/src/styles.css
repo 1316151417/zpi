@@ -2481,7 +2481,8 @@ button.inline-mention,
   transform: none;
 }
 .changed-file-info {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   min-width: 0;
