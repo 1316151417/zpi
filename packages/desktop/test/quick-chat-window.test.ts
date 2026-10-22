@@ -44,6 +44,7 @@ function fixture(
     close: vi.fn(async () => {}),
     getSnapshot: vi.fn(() => snapshot),
     send: vi.fn(),
+    sendNow: vi.fn(async () => {}),
     importAttachment: vi.fn(async () => ({ id: "image-1" })),
     readAttachment: vi.fn(async () => ({ metadata: { id: "image-1" }, data: "image-bytes" })),
     removeAttachment: vi.fn(async () => {}),
@@ -2022,6 +2023,23 @@ test("image attachment IPC accepts bytes and owned identifiers, never paths or d
     ok: false,
     error: { code: "invalid_input" },
   });
+  await f.quick.dispose();
+});
+
+test("immediate send IPC awaits the host and rejects invalid delivery flags", async () => {
+  const f = fixture();
+  let finish!: () => void;
+  f.host.sendNow.mockReturnValueOnce(new Promise<void>((resolve) => (finish = resolve)));
+  const sending = f.quick.call("send", ["immediate", [], true]);
+  expect(f.host.sendNow).toHaveBeenCalledExactlyOnceWith("immediate", []);
+  expect(f.host.send).not.toHaveBeenCalled();
+  finish();
+  expect(await sending).toMatchObject({ ok: true });
+  expect(await f.quick.call("send", ["invalid", [], "true"])).toMatchObject({
+    ok: false,
+    error: { code: "invalid_input" },
+  });
+  expect(f.host.sendNow).toHaveBeenCalledOnce();
   await f.quick.dispose();
 });
 

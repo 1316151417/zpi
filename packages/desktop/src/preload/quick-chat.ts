@@ -4,6 +4,7 @@ import type { QuickChatBridge, QuickChatSnapshot } from "../shared/quick-chat.ts
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:quick-chat", method, args);
 const bridge: QuickChatBridge = {
+  platform: process.platform,
   takeDraftInput: (sessionId) => call("takeDraftInput", sessionId),
   onDraftInput(listener) {
     const handler = () => listener();
@@ -11,8 +12,12 @@ const bridge: QuickChatBridge = {
     return () => ipcRenderer.removeListener("zpi:quick-chat-draft", handler);
   },
   getSnapshot: () => call("getSnapshot"),
-  send: (text, attachments) =>
-    attachments === undefined ? call("send", text) : call("send", text, attachments),
+  send: (text, attachments, immediate) =>
+    immediate === undefined
+      ? attachments === undefined
+        ? call("send", text)
+        : call("send", text, attachments)
+      : call("send", text, attachments, immediate),
   async importAttachment(sessionId, file) {
     if (!file?.size || file.size > imageLimits.sourceBytes)
       return { ok: false, error: { code: "invalid_input", message: "图片单张上限为 10 MiB" } };

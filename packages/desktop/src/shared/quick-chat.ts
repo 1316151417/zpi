@@ -19,10 +19,11 @@ export interface QuickChatDraftInput {
 }
 /** Only this bridge is exposed to the temporary window. No task or privileged desktop API. */
 export interface QuickChatBridge {
+  platform: string;
   takeDraftInput(sessionId: string): Promise<Result<QuickChatDraftInput | undefined>>;
   onDraftInput(listener: () => void): () => void;
   getSnapshot(): Promise<Result<QuickChatSnapshot>>;
-  send(text: string, attachments?: string[]): Promise<Result<void>>;
+  send(text: string, attachments?: string[], immediate?: boolean): Promise<Result<void>>;
   importAttachment(sessionId: string, file: File): Promise<Result<ImageAttachment>>;
   readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: ImageAttachment; data: string }>>;
   removeAttachment(sessionId: string, id: string): Promise<Result<void>>;

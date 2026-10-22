@@ -43,6 +43,7 @@ export class QuickChatHost {
   private view: SessionView = emptySession(randomUUID(), "快速对话");
   private selection: CombinedSelection | null;
   private active?: ActiveRun;
+  private interrupting = false;
   private resetting?: Promise<void>;
   private closed = false;
   private revision = 0;
@@ -181,10 +182,45 @@ export class QuickChatHost {
   }
   private idle(): void {
     if (this.closed) throw new Error("busy: 快速对话已关闭");
-    if (this.active || this.resetting) throw new Error("busy: 请先停止当前回复");
+    if (this.active || this.resetting || this.interrupting) throw new Error("busy: 请先停止当前回复");
   }
   send(text: string, attachmentIds: string[] = []): void {
     this.idle();
+    const { loaded, selection, model } = this.prepareSend(text, attachmentIds);
+    // Reserve synchronously, before initialization or network work can yield to another IPC call.
+    const run: ActiveRun = { id: randomUUID(), aborted: false, done: Promise.resolve() };
+    this.active = run;
+    const now = this.now();
+    this.lastAcceptedSend = Number.isFinite(now) ? now : undefined;
+    this.attachments.markUsed(attachmentIds);
+    this.emit(run, {
+      type: "started",
+      text: text.trim(),
+      startedAt: Date.now(),
+      modelLabel: model?.name ?? selection.modelId,
+      ...(loaded.metadata.length ? { attachments: loaded.metadata } : {}),
+    });
+    run.done = this.execute(run, text.trim(), selection, loaded);
+  }
+  async sendNow(text: string, attachmentIds: string[] = []): Promise<void> {
+    if (this.closed || this.resetting || this.interrupting)
+      throw new Error("busy: 快速对话正在关闭、重置或发送");
+    // Invalid drafts must not interrupt a valid reply. Revalidate after stopping
+    // because settings and attachments can change while cancellation finishes.
+    this.prepareSend(text, attachmentIds);
+    const lifetime = this.lifetime;
+    this.interrupting = true;
+    try {
+      await this.stop();
+      if (lifetime.signal.aborted || this.closed || this.resetting)
+        throw new Error("busy: 快速对话已关闭或重置");
+      this.interrupting = false;
+      this.send(text, attachmentIds);
+    } finally {
+      this.interrupting = false;
+    }
+  }
+  private prepareSend(text: string, attachmentIds: string[]) {
     const loaded = this.attachments.load(attachmentIds);
     if (typeof text !== "string" || (!text.trim() && !loaded.images.length) || text.length > 32_000)
       throw new Error("invalid_input: 消息需为 1–32000 个字符或包含图片");
@@ -207,20 +243,7 @@ export class QuickChatHost {
       throw new Error(
         "configuration: 当前模型不支持图片，请选择图片模型或移除附件；历史中的图片也需要图片模型",
       );
-    // Reserve synchronously, before initialization or network work can yield to another IPC call.
-    const run: ActiveRun = { id: randomUUID(), aborted: false, done: Promise.resolve() };
-    this.active = run;
-    const now = this.now();
-    this.lastAcceptedSend = Number.isFinite(now) ? now : undefined;
-    this.attachments.markUsed(attachmentIds);
-    this.emit(run, {
-      type: "started",
-      text: text.trim(),
-      startedAt: Date.now(),
-      modelLabel: model?.name ?? selection.modelId,
-      ...(loaded.metadata.length ? { attachments: loaded.metadata } : {}),
-    });
-    run.done = this.execute(run, text.trim(), selection, loaded);
+    return { loaded, selection, model };
   }
   private async execute(
     run: ActiveRun,

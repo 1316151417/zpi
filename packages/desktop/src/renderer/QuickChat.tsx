@@ -14,6 +14,7 @@ import { flushSync } from "react-dom";
 import { imageLimits } from "zpi-coding-agent/input";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
+import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { QuickChatAttachment } from "./QuickChatAttachment.tsx";
 import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
 import { QuickChatError } from "./QuickChatError.tsx";
@@ -604,12 +605,12 @@ export function QuickChat({
     }
   }
 
-  const submit = () => {
+  const submit = (immediate = false) => {
     if (
       lock.current ||
       (!draft.trim() && !hasImages) ||
       !imagesReady ||
-      running ||
+      (running && !immediate) ||
       !selectionValid ||
       !snapshot
     )
@@ -629,9 +630,11 @@ export function QuickChat({
     void perform(
       "send",
       () =>
-        attachmentIds.length
-          ? window.zpiQuickChat.send(submitted, attachmentIds)
-          : window.zpiQuickChat.send(submitted),
+        immediate
+          ? window.zpiQuickChat.send(submitted, attachmentIds, true)
+          : attachmentIds.length
+            ? window.zpiQuickChat.send(submitted, attachmentIds)
+            : window.zpiQuickChat.send(submitted),
       () => {
         submission.accepted = true;
         setDraft((current) => (current === submitted ? "" : current));
@@ -763,18 +766,25 @@ export function QuickChat({
               }}
               onKeyDown={(event) => {
                 if (
-                  event.key !== "Enter" ||
-                  event.shiftKey ||
-                  event.ctrlKey ||
-                  event.metaKey ||
-                  event.altKey ||
+                  event.defaultPrevented ||
                   event.nativeEvent.isComposing ||
                   event.keyCode === 229 ||
                   composing.current
                 )
                   return;
+                const immediate =
+                  composerShortcutCommand(
+                    event.nativeEvent,
+                    window.zpiQuickChat.platform,
+                    snapshot?.settings.shortcuts,
+                  ) === "send-next";
+                if (
+                  !immediate &&
+                  (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+                )
+                  return;
                 event.preventDefault();
-                if (!event.repeat) submit();
+                if (!event.repeat) submit(immediate);
               }}
             />
             {visibleError && (

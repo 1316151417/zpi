@@ -25,6 +25,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "onPresentation",
     "onSnapshot",
     "openExternal",
+    "platform",
     "readAttachment",
     "readWebSourceIcon",
     "removeAttachment",
@@ -39,10 +40,17 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "stop",
     "takeDraftInput",
   ]);
+  expect(bridge.platform).toBe(process.platform);
   await bridge.send("question");
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", ["question"]);
   await bridge.send("", ["image-id"]);
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", ["", ["image-id"]]);
+  await bridge.send("immediate", ["image-id"], true);
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "send", [
+    "immediate",
+    ["image-id"],
+    true,
+  ]);
   const file = new File([new Uint8Array([1, 2, 3])], "clipboard.png", { type: "image/png" });
   await bridge.importAttachment("session", file);
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "importAttachment", [

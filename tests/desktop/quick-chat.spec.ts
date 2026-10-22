@@ -7,6 +7,51 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+test("quick chat sends drafts immediately with the same composer shortcut", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-immediate-"));
+  const server = await fakeServer((_request, response) => send(response, chunk({ content: "waiting" })));
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const main = await app.firstWindow();
+    const mainEditor = main.getByLabel("消息", { exact: true });
+    await mainEditor.fill("main draft");
+    await main.evaluate(() => window.zpi.openQuickChat());
+    await expect.poll(() => app?.windows().some((page) => page.url().includes("view=quick-chat"))).toBe(true);
+    const quick = app.windows().find((page) => page.url().includes("view=quick-chat"));
+    if (!quick) throw new Error("Missing quick-chat page");
+    const primary = await quick.evaluate(() =>
+      window.zpiQuickChat.platform === "darwin" ? "Meta" : "Control",
+    );
+    const editor = quick.getByRole("textbox", { name: "输入消息", exact: true });
+    await editor.fill("first draft");
+    await editor.press(`${primary}+Enter`);
+    await expect(quick.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await expect(editor).toHaveValue("");
+    await expect.poll(() => server.requests.length).toBe(1);
+    await editor.fill("immediate draft");
+    await editor.press("Enter");
+    await expect(editor).toHaveValue("immediate draft");
+    expect(server.requests).toHaveLength(1);
+    await editor.press(`${primary}+Enter`);
+    await expect(quick.getByTestId("run")).toHaveCount(2);
+    await expect(quick.getByTestId("run").first()).toHaveAttribute("data-status", "aborted");
+    await expect(quick.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await expect(editor).toHaveValue("");
+    await expect.poll(() => server.requests.length).toBe(2);
+    const messages = server.requests[1].messages as unknown as { role: string; content: string }[];
+    expect(messages.filter((message) => message.role === "user").at(-1)?.content).toBe("immediate draft");
+    await expect(mainEditor).toHaveText("main draft");
+    await expect(main.getByTestId("run")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("quick chat streams in its own isolated window, survives hide/reload, and leaves main tasks alone", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-desktop-"));
   const finish = deferred();

@@ -261,6 +261,50 @@ test("a second send is rejected while initializing; stop aborts the request and 
   expect(f.host.getSnapshot().session.sessionId).not.toBe(id);
 });
 
+test("immediate sends validate before interrupting and deliver the new draft once", async () => {
+  const f = await fixture((_body, index, signal) => {
+    if (index) return sse({ content: "new answer" });
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {
+        once: true,
+      });
+    });
+  });
+  f.host.send("hold");
+  await expect.poll(() => f.requests.length).toBe(1);
+  await expect(f.host.sendNow(" ")).rejects.toThrow("invalid_input");
+  await expect(f.host.sendNow("invalid image", ["unknown"])).rejects.toThrow();
+  expect(f.host.getSnapshot().session.runs[0].status).toBe("running");
+  const sending = f.host.sendNow("immediate");
+  await expect(f.host.sendNow("duplicate")).rejects.toThrow("busy");
+  expect(() => f.host.send("ordinary racing send")).toThrow("busy");
+  await sending;
+  await f.host.waitForIdle();
+  expect(f.host.getSnapshot().session.runs.map((run) => [run.userMessage, run.status])).toEqual([
+    ["hold", "aborted"],
+    ["immediate", "completed"],
+  ]);
+  expect(f.requests).toHaveLength(2);
+  expect(
+    messages(f.requests[1])
+      .filter((message) => message.role === "user")
+      .at(-1)?.content,
+  ).toBe("immediate");
+});
+
+test.each(["reset", "close"] as const)(
+  "%s invalidates an immediate send awaiting cancellation",
+  async (action) => {
+    const f = await fixture();
+    f.host.send("old");
+    const sending = expect(f.host.sendNow("must not reach a replacement session")).rejects.toThrow("busy");
+    await f.host[action]();
+    await sending;
+    expect(f.host.getSnapshot().session.runs).toEqual([]);
+    expect(f.requests).toHaveLength(0);
+  },
+);
+
 test("reset during initialization is serialized and no late response resurrects the prior conversation", async () => {
   const f = await fixture();
   f.host.send("discard");

@@ -871,7 +871,7 @@ export class QuickChatWindow {
       const counts: Record<string, number | number[]> = {
         takeDraftInput: 1,
         getSnapshot: 0,
-        send: [1, 2],
+        send: [1, 2, 3],
         importAttachment: 3,
         readAttachment: 2,
         removeAttachment: 2,
@@ -969,13 +969,17 @@ export class QuickChatWindow {
           break;
         case "send": {
           const attachments = args[1];
+          const immediate = args[2];
+          if (immediate !== undefined && typeof immediate !== "boolean")
+            throw new Error("invalid_input: 发送参数无效");
           if (
             attachments !== undefined &&
             (!Array.isArray(attachments) ||
               attachments.some((id) => typeof id !== "string" || id.length > 256))
           )
             throw new Error("invalid_input: 图片列表参数无效");
-          host.send(text(32_000), attachments as string[] | undefined);
+          if (immediate) await host.sendNow(text(32_000), attachments as string[] | undefined);
+          else host.send(text(32_000), attachments as string[] | undefined);
           break;
         }
         case "importAttachment": {

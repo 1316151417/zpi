@@ -171,6 +171,7 @@ beforeEach(() => {
   composerProbeListeners = new Set();
   draftInputListeners = new Set();
   bridge = {
+    platform: "darwin",
     takeDraftInput: vi.fn(async () => ({ ok: true as const, value: undefined })),
     onDraftInput: vi.fn((listener) => {
       draftInputListeners.add(listener);
@@ -1573,7 +1574,6 @@ test.each<[string, KeyboardEventInit]>([
   ["IME compatibility key", { keyCode: 229 }],
   ["Shift+Enter", { shiftKey: true }],
   ["Ctrl+Enter", { ctrlKey: true }],
-  ["Meta+Enter", { metaKey: true }],
   ["Alt+Enter", { altKey: true }],
   ["held Enter", { repeat: true }],
 ])("does not send for %s", async (_label, options) => {
@@ -1596,6 +1596,68 @@ test("respects composition events even when the key lacks an IME flag", async ()
   await composition("compositionend");
   await key(input(), "Enter");
   expect(bridge.send).toHaveBeenCalledExactlyOnceWith("中文输入");
+});
+
+test.each([
+  ["darwin", false],
+  ["darwin", true],
+  ["linux", false],
+  ["linux", true],
+] as const)(
+  "immediate send works on %s with running=%s and preserves newer edits",
+  async (platform, running) => {
+    bridge.platform = platform;
+    snapshot = {
+      ...snapshot,
+      settings: { ...settings, shortcuts: defaultShortcuts(platform) },
+      session: { ...snapshot.session, runs: running ? [run("running")] : [] },
+    };
+    const request = deferred<Result<void>>();
+    vi.mocked(bridge.send).mockReturnValue(request.promise);
+    await mount();
+    await type("send immediately");
+    const modifiers = platform === "darwin" ? { metaKey: true } : { ctrlKey: true };
+    for (const flags of [{ repeat: true }, { isComposing: true }, { keyCode: 229 }])
+      await key(input(), "Enter", { ...modifiers, ...flags });
+    expect(bridge.send).not.toHaveBeenCalled();
+    await key(input(), "Enter", modifiers);
+    await key(input(), "Enter", modifiers);
+    expect(bridge.send).toHaveBeenCalledExactlyOnceWith("send immediately", [], true);
+    expect(input().value).toBe("send immediately");
+    await type("next draft");
+    await act(async () => request.resolve(ok()));
+    expect(input().value).toBe("next draft");
+  },
+);
+
+test("immediate send follows remapped and disabled shortcut settings", async () => {
+  const shortcuts = defaultShortcuts("darwin");
+  shortcuts.bindings["send-next"] = "Shift+Command+Enter";
+  snapshot = { ...snapshot, settings: { ...settings, shortcuts } };
+  await mount();
+  await type("remapped draft");
+  await key(input(), "Enter", { metaKey: true });
+  expect(bridge.send).not.toHaveBeenCalled();
+  await key(input(), "Enter", { metaKey: true, shiftKey: true });
+  expect(bridge.send).toHaveBeenCalledExactlyOnceWith("remapped draft", [], true);
+  await push({ settings: { ...settings, shortcuts: { ...shortcuts, enabled: false } } });
+  await type("disabled draft");
+  await key(input(), "Enter", { metaKey: true, shiftKey: true });
+  expect(bridge.send).toHaveBeenCalledOnce();
+  expect(input().value).toBe("disabled draft");
+});
+
+test("failed immediate sends retain text and images for retry", async () => {
+  snapshot = { ...snapshot, session: { ...snapshot.session, runs: [run("running")] } };
+  vi.mocked(bridge.send).mockResolvedValue({ ok: false, error: { code: "provider", message: "发送失败" } });
+  await mount();
+  await type("keep this draft");
+  await paste([clipboardImage()]);
+  await key(input(), "Enter", { metaKey: true });
+  expect(bridge.send).toHaveBeenCalledExactlyOnceWith("keep this draft", ["image-clipboard.png"], true);
+  expect(input().value).toBe("keep this draft");
+  expect(container.querySelectorAll(".quick-chat-attachments img")).toHaveLength(1);
+  expect(query('[role="alert"]').textContent).toContain("发送失败");
 });
 
 test("leaves Shift+Enter available for multiline input and submits the whole draft", async () => {
