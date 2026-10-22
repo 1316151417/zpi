@@ -156,7 +156,7 @@ export function toolFile(block: ToolView, cwd?: string) {
   return { path, name, directory };
 }
 
-export function toolLabel(block: ToolView): string {
+export function toolLabel(block: Pick<ToolView, "name" | "status">): string {
   const running = block.status === "preparing" || block.status === "running";
   const labels: Record<string, [string, string]> = {
     AskUserQuestion: ["正在询问", "已询问"],
@@ -164,6 +164,8 @@ export function toolLabel(block: ToolView): string {
     bash: ["正在执行", "终端"],
     write: ["正在写入", "写入"],
     edit: ["正在编辑", "编辑"],
+    web_search: ["正在搜索", "联网搜索"],
+    web_fetch: ["正在读取", "读取网页"],
   };
   return labels[block.name]?.[running ? 0 : 1] ?? block.name;
 }

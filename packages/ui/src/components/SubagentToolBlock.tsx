@@ -5,7 +5,7 @@ import type { SubagentTask } from "../types.ts";
 import type { ToolBlockProps } from "./ToolBlock.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
-import { toolInput } from "./tool-presentation.ts";
+import { toolInput, toolLabel } from "./tool-presentation.ts";
 
 export const SubagentContext = createContext<{ tasks: SubagentTask[]; open?: (task: SubagentTask) => void }>({
   tasks: [],
@@ -17,6 +17,16 @@ export const subagentStatusLabels: Record<SubagentTask["status"], string> = {
   error: "失败",
   interrupted: "已中断",
 };
+
+function activitySummary(activity: string): string {
+  // 活动快照保留原始工具名；在展示层统一文案，历史记录也能生效，命令中的分隔符保持原样。
+  const separator = activity.indexOf(" · ");
+  if (separator < 0) return activity;
+  const name = activity.slice(0, separator);
+  const label = toolLabel({ name, status: "running" });
+  return `${label === name ? "正在运行" : label}${activity.slice(separator)}`;
+}
+
 export function SubagentToolBlock({ block, onCopy }: ToolBlockProps) {
   const { tasks, open } = useContext(SubagentContext);
   const task = tasks.find((task) => task.parentToolCallId === block.toolCallId);
@@ -30,7 +40,7 @@ export function SubagentToolBlock({ block, onCopy }: ToolBlockProps) {
         : "general-purpose");
   const title = task?.description ?? (typeof input.description === "string" ? input.description : "子智能体");
   const running = block.status === "preparing" || block.status === "running";
-  const primary = running && task?.latestActivity ? task.latestActivity : title;
+  const primary = running && task?.latestActivity ? activitySummary(task.latestActivity) : title;
   return (
     <div className="tool-block subagent-tool-block" data-testid="tool-block" data-tool-name="Agent">
       <ToolLayout

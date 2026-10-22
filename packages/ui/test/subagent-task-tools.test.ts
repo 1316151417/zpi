@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { SubagentTaskToolBlock } from "../src/components/SubagentTaskToolBlock.tsx";
-import { SubagentToolBlock } from "../src/components/SubagentToolBlock.tsx";
+import { SubagentContext, SubagentToolBlock } from "../src/components/SubagentToolBlock.tsx";
 import type { ToolView } from "../src/components/tool-presentation.ts";
 import { emptySession, reduceSession } from "../src/reducer.ts";
 import type { SubagentTask } from "../src/types.ts";
@@ -47,6 +47,55 @@ test("Agent summaries localize the label without changing protocol or agent name
       expect(markup).toContain(agentType);
       expect(markup).toContain("Inspect source");
     }
+  }
+});
+
+test.each([
+  ["bash", "正在执行"],
+  ["read", "正在读取"],
+  ["write", "正在写入"],
+  ["edit", "正在编辑"],
+  ["web_search", "正在搜索"],
+  ["web_fetch", "正在读取"],
+  ["custom_tool", "正在运行"],
+])("Agent activity summaries display %s as %s and preserve command text", (name, label) => {
+  const detail = "bash script.sh · read file.ts";
+  const task: SubagentTask = {
+    agentId: "agent_1",
+    childSessionId: "child",
+    parentSessionId: "parent",
+    parentToolCallId: block.toolCallId,
+    agentType: "Explore",
+    description: "Inspect source",
+    color: "cyan",
+    background: false,
+    status: "running",
+    startedAt: 1,
+    modelLabel: "test",
+    totalTokens: 0,
+    totalToolUseCount: 1,
+    latestActivity: `${name} · ${detail}`,
+  };
+  for (const status of ["preparing", "running", "completed", "error"] as const) {
+    const markup = renderToStaticMarkup(
+      createElement(
+        SubagentContext.Provider,
+        { value: { tasks: [task] } },
+        createElement(SubagentToolBlock, {
+          block: { ...block, name: "Agent", status },
+          expanded: false,
+          toggle: () => {},
+        }),
+      ),
+    );
+    if (status === "preparing" || status === "running") {
+      expect(markup).toContain(`${label} · ${detail}`);
+      expect(markup).not.toContain(`${name} · ${detail}`);
+    } else {
+      expect(markup).toContain("Inspect source");
+      expect(markup).not.toContain(detail);
+    }
+    expect(task.latestActivity).toBe(`${name} · ${detail}`);
   }
 });
 
