@@ -13,7 +13,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("send-next consumes empty queues, ignores IME and repeats, and sends only the queue head without changing the draft", async () => {
+test("send-next sends the draft immediately, preserves the queue, and sends the queue head when empty", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-queue-shortcut-"));
   const server = await fakeServer((_, response) => send(response, chunk({ content: "waiting" })));
   let app: ElectronApplication | undefined;
@@ -22,20 +22,21 @@ test("send-next consumes empty queues, ignores IME and repeats, and sends only t
     const page = await app.firstWindow();
     const primary = await page.evaluate(() => (window.zpi.platform === "darwin" ? "Meta" : "Control"));
     const editor = page.getByLabel("消息", { exact: true });
-    await editor.fill("empty queue draft");
+    await editor.focus();
     await editor.press(`${primary}+Enter`);
-    await expect(editor).toHaveText("empty queue draft");
+    await expect(editor).toHaveText("");
     expect(server.requests).toHaveLength(0);
     await editor.fill("running");
-    await editor.press("Enter");
+    await editor.press(`${primary}+Enter`);
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await expect(editor).toHaveText("");
     for (const text of ["queued first", "queued second"]) {
       await editor.fill(text);
       await editor.press("Enter");
     }
     const rows = page.getByTestId("queue-item");
     await expect(rows).toHaveCount(2);
-    await editor.fill("keep this unsent draft");
+    await editor.fill("send this draft immediately");
     await editor.evaluate((element) => {
       const primary = window.zpi.platform === "darwin" ? { metaKey: true } : { ctrlKey: true };
       for (const flags of [{ repeat: true }, { isComposing: true }, { keyCode: 229 }])
@@ -51,12 +52,19 @@ test("send-next consumes empty queues, ignores IME and repeats, and sends only t
       for (let i = 0; i < 2; i++)
         element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter", ...primary }));
     });
-    await expect(rows).toHaveCount(1);
-    await expect(rows).toContainText("queued second");
+    await expect(rows).toHaveCount(2);
+    await expect(editor).toHaveText("");
     await expect(page.getByTestId("run").first()).toHaveAttribute("data-status", "aborted");
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
-    await expect(editor).toHaveText("keep this unsent draft");
     await expect.poll(() => server.requests.length).toBe(2);
+    const immediate = server.requests.at(-1)?.messages as unknown as { role: string; content: string }[];
+    expect(immediate.filter((message) => message.role === "user").at(-1)?.content).toBe(
+      "send this draft immediately",
+    );
+    await editor.press(`${primary}+Enter`);
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toContainText("queued second");
+    await expect.poll(() => server.requests.length).toBe(3);
     const last = server.requests.at(-1)?.messages as unknown as { role: string; content: string }[];
     expect(last.filter((message) => message.role === "user").at(-1)?.content).toBe("queued first");
   } finally {
@@ -192,12 +200,14 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     }
     const sideEditor = side.getByLabel("消息", { exact: true });
     await sideEditor.press(`${primary}+Enter`);
-    await expect(side.getByTestId("queue-item")).toHaveCount(0);
+    await expect(side.getByTestId("queue-item")).toHaveCount(1);
     await expect(side.getByTestId("run").first()).toHaveAttribute("data-status", "aborted");
     await expect(main.getByTestId("queue-item")).toHaveCount(1);
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
     await expect(mainEditor).toHaveText("main draft");
-    await expect(sideEditor).toHaveText("side draft");
+    await expect(sideEditor).toHaveText("");
+    await expect(side.getByTestId("run").last()).toContainText("side draft");
+    await sideEditor.fill("preserved side draft");
     await sideEditor.press(`${primary}+l`);
     await expect(side.getByLabel("模型选择", { exact: true })).toHaveAttribute("aria-expanded", "true");
     await expect(main.getByLabel("模型选择", { exact: true })).toHaveAttribute("aria-expanded", "false");
@@ -221,7 +231,7 @@ test("side-chat shortcuts affect only the focused composer and return focus ther
     await sideEditor.press(`${primary}+Shift+Enter`);
     await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "aborted");
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
-    await expect(sideEditor).toHaveText("side draft");
+    await expect(sideEditor).toHaveText("preserved side draft");
     await mainEditor.press(`${primary}+Shift+Enter`);
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "aborted");
     await expect(mainEditor).toHaveText("main draft");
@@ -305,9 +315,10 @@ test("a retained question in a hidden auxiliary pane does not block active works
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(editor).toBeFocused();
     await expect(main.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await editor.fill("");
     await editor.press(`${primary}+Enter`);
     await expect(main.getByTestId("queue-item")).toHaveCount(0);
-    await expect(editor).toHaveText("preserved main draft");
+    await expect(editor).toHaveText("");
     await expect.poll(() => server.requests.length).toBe(4);
     await page.keyboard.press(`${primary}+[`);
     await expect(page.getByTestId("left-sidebar-toggle")).toHaveAttribute("aria-expanded", "false");

@@ -441,7 +441,7 @@ export interface DesktopBridge {
   deleteSession(id: string): Promise<Result<void>>;
   startRun(input: RunInput): Promise<Result<{ runId: string }>>;
   submitInput(
-    input: RunInput & { queueDisposition?: "keep" | "clear" },
+    input: RunInput & { queueDisposition?: "keep" | "clear"; immediate?: boolean },
   ): Promise<Result<{ runId?: string; queueItemId?: string; confirmationRequired?: true }>>;
   editQueuedInput(
     sessionId: string,

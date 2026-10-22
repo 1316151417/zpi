@@ -92,6 +92,49 @@ it("queued inputs reorder, withdraw, preempt and drain once without entering his
   release.resolve();
 });
 
+it("immediate drafts validate before stopping, bypass queued inputs, and resume a held queue", async () => {
+  const f = await fixture(async (body, response) => {
+    const user = (body.messages as unknown as { role: string; content: string }[])
+      .filter((message) => message.role === "user")
+      .at(-1)?.content;
+    send(response, chunk({ content: "reply" }));
+    if (user !== "hold" && user !== "immediate") done(response);
+  });
+  const id = f.host.createSession(f.a.id).id;
+  await f.host.submitInput({ sessionId: id, text: "hold" });
+  await expect.poll(() => f.server.requests.length).toBe(1);
+  for (const text of ["queued first", "queued second"]) await f.host.submitInput({ sessionId: id, text });
+  const queued = f.host.inputQueue.get(id).items;
+  await expect(
+    f.host.submitInput({ sessionId: id, text: "invalid", fileReferences: ["missing"] }, undefined, true),
+  ).rejects.toThrow();
+  expect(f.host.getSessionSnapshot(id).view.runs[0].status).toBe("running");
+  expect(f.host.inputQueue.get(id).items).toEqual(queued);
+  await f.host.submitInput({ sessionId: id, text: "immediate" }, undefined, true);
+  await expect.poll(() => f.server.requests.length).toBe(2);
+  expect(f.host.getSessionSnapshot(id).view.runs.map((run) => [run.userMessage, run.status])).toEqual([
+    ["hold", "aborted"],
+    ["immediate", "running"],
+  ]);
+  expect(f.host.inputQueue.get(id).items).toEqual(queued);
+  const active = f.host.activeRuns.get(id);
+  if (!active) throw new Error("missing immediate run");
+  await f.host.abortRun({ sessionId: id, runId: active.runId });
+  await expect.poll(() => f.host.inputQueue.get(id).autoDrain).toBe(false);
+  await f.host.submitInput({ sessionId: id, text: "direct paused" }, undefined, true);
+  await expect
+    .poll(() => f.host.getSessionSnapshot(id).view.runs.map((run) => [run.userMessage, run.status]))
+    .toEqual([
+      ["hold", "aborted"],
+      ["immediate", "aborted"],
+      ["direct paused", "completed"],
+      ["queued first", "completed"],
+      ["queued second", "completed"],
+    ]);
+  expect(f.host.inputQueue.get(id).items).toHaveLength(0);
+  expect(f.server.requests).toHaveLength(5);
+});
+
 it("stopped queues and image ownership survive restart; errors pause without losing accepted input", async () => {
   const errorGate = deferred();
   const f = await fixture(async (body, response) => {

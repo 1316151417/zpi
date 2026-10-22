@@ -288,7 +288,9 @@ SQLite 状态、独立迁移、历史换代、编辑恢复与辅助对话回归�
 
 全局改键先注册候选键，再保存设置并注销旧键；注册或保存失败不会覆盖原设置。退出只有在草稿确认保存后才注销，取消退出仍保留原绑定。`ZPI_TEST_MODE=1` 从不向系统注册全局快捷键，注册冲突、回滚及窗口切换使用假 registry/window 单元测试。
 
-定向回归用例在 `tests/desktop/shortcuts.spec.ts`、`tests/desktop/shortcut-settings-parity.spec.ts`、`tests/desktop/composer-shortcuts.spec.ts` 与 `tests/desktop/composer-menus.spec.ts`，涵盖搜索与录入、持久化、总开关、冲突及错误反馈、浮层重复按键切换、任务菜单键盘导航、侧栏/置顶、原生浏览器与终端焦点，以及主/辅助 composer 的队列和模型操作。真实系统全局抢占与 macOS 前后台切换仍需在目标平台做手工烟测；不可将测试模式的模拟注册视为系统注册成功。
+当前 composer 的 `⌘Enter` / `Ctrl+Enter` 优先直接发送草稿，先校验输入，再中止当前回复；原有队列保留，在本次回复完成后继续。空草稿仍发送队首，普通 Enter 在运行中仍排队。通过现有 `submitInput` IPC 的 `immediate` 参数进入同一会话串行队列，主/辅助对话共用，不修改 SDK 或核心工具。
+
+定向回归用例在 `tests/desktop/shortcuts.spec.ts`、`tests/desktop/shortcut-settings-parity.spec.ts`、`tests/desktop/composer-shortcuts.spec.ts` 与 `tests/desktop/composer-menus.spec.ts`，涵盖搜索与录入、持久化、总开关、冲突及错误反馈、浮层重复按键切换、任务菜单键盘导航、侧栏/置顶、原生浏览器与终端焦点，以及主/辅助 composer 的发送、队列和模型操作。真实系统全局抢占与 macOS 前后台切换仍需在目标平台做手工烟测；不可将测试模式的模拟注册视为系统注册成功。
 
 ## 旧版历史会话修复（仅旧格式）
 

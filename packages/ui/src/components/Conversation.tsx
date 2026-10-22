@@ -1249,6 +1249,7 @@ export function ChatComposer({
       fileReferences: string[];
       attachments: string[];
       queueDisposition?: "keep" | "clear";
+      immediate?: boolean;
       workspaceMode?: "preserve" | "rewind";
     },
     context: { draftRevision: number },
@@ -1584,7 +1585,11 @@ export function ChatComposer({
       value.selections?.length ||
       value.pending,
   );
-  const submit = async (queueDisposition?: "keep" | "clear", workspaceMode?: "preserve" | "rewind") => {
+  const submit = async (
+    queueDisposition?: "keep" | "clear",
+    workspaceMode?: "preserve" | "rewind",
+    immediate = false,
+  ) => {
     if (
       editing ||
       submitLock.current ||
@@ -1610,6 +1615,7 @@ export function ChatComposer({
         {
           ...(workspaceMode ? { workspaceMode } : {}),
           ...(queueDisposition ? { queueDisposition } : {}),
+          ...(immediate ? { immediate } : {}),
           fileReferences: [
             ...new Set([
               ...submitted.fileReferences,
@@ -1732,6 +1738,7 @@ export function ChatComposer({
         if (event.repeat) return;
         if (command === "select-model") onSelectModel?.();
         else if (command === "configure-environment") onConfigureEnvironment?.();
+        else if (hasDraft) void submit(undefined, undefined, true);
         else {
           const first = queue?.items[0];
           if (first?.state === "queued")

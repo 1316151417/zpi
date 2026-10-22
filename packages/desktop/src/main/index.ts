@@ -1158,18 +1158,27 @@ async function launch(): Promise<void> {
           break;
         }
         case "submitInput": {
-          const input = object(0, ["sessionId", "text", "fileReferences", "attachments", "queueDisposition"]);
+          const input = object(0, [
+            "sessionId",
+            "text",
+            "fileReferences",
+            "attachments",
+            "queueDisposition",
+            "immediate",
+          ]);
           if (
             typeof input.sessionId !== "string" ||
             typeof input.text !== "string" ||
             (input.queueDisposition !== undefined &&
               input.queueDisposition !== "keep" &&
-              input.queueDisposition !== "clear")
+              input.queueDisposition !== "clear") ||
+            (input.immediate !== undefined && typeof input.immediate !== "boolean")
           )
             throw new Error("invalid_input: 消息参数无效");
           value = await host.submitInput(
             input as unknown as RunInput,
             input.queueDisposition as "keep" | "clear" | undefined,
+            input.immediate as boolean | undefined,
           );
           break;
         }

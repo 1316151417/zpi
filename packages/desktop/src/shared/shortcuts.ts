@@ -9,7 +9,7 @@ export const shortcutCommands = [
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
   { id: "focus-composer", label: "聚焦任务输入框", scope: "app" },
-  { id: "send-next", label: "立即发送队首消息", scope: "composer" },
+  { id: "send-next", label: "立即发送消息", scope: "composer" },
   { id: "configure-environment", label: "配置本地环境", scope: "draft-composer" },
   { id: "select-model", label: "选择模型", scope: "composer" },
   { id: "task-menu", label: "打开或关闭任务菜单", scope: "task" },

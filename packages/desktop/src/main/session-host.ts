@@ -2076,11 +2076,11 @@ export class SessionHost {
       throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
     return { references, inputReferences, loaded, parsed };
   }
-  submitInput(input: RunInput, disposition?: "keep" | "clear") {
+  submitInput(input: RunInput, disposition?: "keep" | "clear", immediate = false) {
     this.record(input.sessionId);
     if (this.configuration(input.sessionId).subagentProfile)
       throw new Error("invalid_input: 子智能体会话只读");
-    return this.inputQueue.submit(input, disposition);
+    return this.inputQueue.submit(input, disposition, immediate);
   }
   private runBoundary(id: string, runId: string) {
     const index = this.indexes.get(id);

@@ -59,11 +59,26 @@ export class SessionInputQueue {
       .catch(() => {});
     return result;
   }
-  async submit(input: RunInput, disposition?: "keep" | "clear") {
+  async submit(input: RunInput, disposition?: "keep" | "clear", immediate = false) {
     return this.serial(input.sessionId, async () => {
       if (this.closing) throw new Error("busy: 应用正在关闭");
       const id = input.sessionId,
         queue = this.get(id);
+      if (immediate) {
+        // Validate the draft before interrupting the current reply. Keep queued
+        // inputs intact and suppress the interrupted run's queue settlement.
+        await this.runtime.prepare(input);
+        this.preempting.add(id);
+        try {
+          await this.runtime.stop(id);
+          this.preempting.delete(id);
+          const result = await this.runtime.start(input);
+          if (queue.items.length) this.commit(id, { items: this.get(id).items, autoDrain: true });
+          return result;
+        } finally {
+          this.preempting.delete(id);
+        }
+      }
       if (!this.runtime.running(id) && (!queue.items.length || (!queue.autoDrain && disposition))) {
         // Validate before clearing a held queue, so a failed send cannot erase accepted inputs.
         if (queue.items.length) await this.runtime.prepare(input);
