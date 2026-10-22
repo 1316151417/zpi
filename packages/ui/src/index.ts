@@ -12,6 +12,7 @@ export { ActionHint } from "./components/MessageActions.tsx";
 export type { NoticeAction, NoticeProps, NoticeScope, NoticeTone } from "./components/Notice.tsx";
 export { Notice } from "./components/Notice.tsx";
 export { FileIcon } from "./components/Reference.tsx";
+export { ReviewDiffViewer } from "./components/ReviewDiffViewer.tsx";
 export { type SortableBindings, SortableList } from "./components/SortableList.tsx";
 export { subagentStatusLabels } from "./components/SubagentToolBlock.tsx";
 export { TaskFindBar } from "./components/TaskFindBar.tsx";
@@ -19,6 +20,7 @@ export { TaskTitleOverflowText } from "./components/TaskTitleOverflowText.tsx";
 export { ToolFilePreview } from "./components/ToolBlock.tsx";
 export { toolFile } from "./components/tool-presentation.ts";
 export { useSelectionStableValue } from "./components/use-selection-stable-value.ts";
+export { useTextFind } from "./components/use-text-find.ts";
 export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,
@@ -40,5 +42,7 @@ export { resolveLinkTarget, webOpenTarget } from "./link-target.ts";
 export type { PreviewServices } from "./preview/preview-lifecycle.ts";
 export { createPreviewLoader } from "./preview/preview-lifecycle.ts";
 export { emptySession, mergeHistory, progressSummary, reduceSession, sessionViewBytes } from "./reducer.ts";
+export type { ReviewDiffData } from "./review-diff.ts";
+export { reviewFindTargets } from "./review-find.ts";
 export type * from "./types.ts";
 export { resultText } from "./types.ts";

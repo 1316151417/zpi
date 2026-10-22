@@ -35,4 +35,19 @@ export default defineConfig({
     },
   },
   server: { host: "127.0.0.1", port: 5173, strictPort: true },
+  worker: {
+    format: "es",
+    plugins: () => [
+      {
+        name: "zpi-diff-worker-entry",
+        enforce: "pre",
+        async resolveId(source, importer) {
+          if (source !== "@pierre/diffs/worker/worker.js") return;
+          // 此依赖的 sideEffects 清单漏掉了 worker 入口；否则构建会输出 0 字节 worker，Diff 永远空白。
+          const resolved = await this.resolve(source, importer, { skipSelf: true });
+          return resolved ? { ...resolved, moduleSideEffects: true } : undefined;
+        },
+      },
+    ],
+  },
 });

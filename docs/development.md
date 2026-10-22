@@ -321,6 +321,8 @@ npm run repair:sessions -- "/path/to/app-data"
 
 新标签页中的「审查」使用独立的 Git 审查面板，来源按「未暂存 / 已暂存 / 全部分支更改 / 上一轮更改」排列，默认未暂存。文件初始折叠，逐个展开统一 Diff；右键可复制路径、系统定位或在文件树显示。分支来源比较上游 merge-base 与 HEAD；上一轮使用会话最新轮次的已有快照，不回退到任务累计变更。任务查找在已打开的审查页搜索当前来源，其余情况下继续打开任务累计变更。详见 [审查合同](specs/git-review.md)。
 
+普通修改通过完整 before/after 使用 MultiFileDiff，显示并真实展开首部、中间、尾部的 `unmodified lines`；局部 patch、大文件及特殊格式按参考的相同规则降级。审查固定采用 GitHub 深浅高亮、12px、WASM 和共享 diff worker 池。Vite worker 插件显式保留依赖的 worker 入口副作用，防止打包后被 tree shaking 变成空文件。`tests/desktop/git-review.spec.ts` 使用三个相隔修改点的 Java 文件验证 `14 / 13 / 13` 折叠区、真实正文展开及主题切换。
+
 定向验证：`npm run test:unit -- packages/desktop/test/git-review.test.ts packages/desktop/test/review-pane-dom.test.ts`；桌面集成验证：`npm run test:desktop -- tests/desktop/git-review.spec.ts`，覆盖菜单、展开、刷新、快照、右键树定位、跨文件查找及 160 文件虚拟列表。
 
 回答的围栏、缩进和 HTML 代码块不产生文件预览卡片。内联代码中的 citation 与 Markdown 链接示例也不解析；反引号包裹的纯文件路径（如 `report.pdf` 或 `file:///workspace/report.pdf`）仍是有效交付引用。文件存在性及 MD/HTML 的本轮变更校验继续适用。

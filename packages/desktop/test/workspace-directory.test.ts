@@ -106,6 +106,20 @@ test("directory watches emit changes and release collapsed and closed registrati
   watchers.close();
   expect(Reflect.get(watchers, "watchers").size).toBe(0);
 });
+test("recursive review watches observe edits beneath already expanded workspace subdirectories", async () => {
+  const cwd = await fixture();
+  await mkdir(join(cwd, "nested"));
+  const path = join(cwd, "nested", "inside.ts");
+  await writeFile(path, "old");
+  const changed = vi.fn();
+  const watchers = new WorkspaceDirectoryWatchers(changed);
+  cleanups.push(() => watchers.close());
+  const { id } = watchers.watch(cwd, cwd, true);
+  await writeFile(path, "next");
+  await vi.waitFor(() => expect(changed).toHaveBeenCalledWith(id, cwd));
+  watchers.unwatch(id);
+  expect(Reflect.get(watchers, "watchers").size).toBe(0);
+});
 
 test("unassigned drafts allocate unique workspace directories, persist them and retain explicit inherited cwd", async () => {
   const home = await fixture();

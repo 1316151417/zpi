@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { gitReview, gitReviewPatch } from "../src/main/git-review.ts";
+import { gitReview, gitReviewDiff, gitReviewPatch } from "../src/main/git-review.ts";
 import { runGit } from "../src/main/workspace-files.ts";
 import { reviewPatchStats } from "../src/shared/review.ts";
 
@@ -42,6 +42,16 @@ test("separates index from working copy and includes literal untracked names wit
   });
   expect(await gitReviewPatch(cwd, "staged", path)).toContain("-original\n+staged");
   expect(await gitReviewPatch(cwd, "unstaged", path)).toContain("-staged\n+working");
+  expect(await gitReviewDiff(cwd, "staged", path)).toMatchObject({
+    beforeContent: "original\n",
+    afterContent: "staged\n",
+    availability: "patch",
+  });
+  expect(await gitReviewDiff(cwd, "unstaged", path)).toMatchObject({
+    beforeContent: "staged\n",
+    afterContent: "working\n",
+    availability: "patch",
+  });
   expect(await gitReviewPatch(cwd, "unstaged", untracked)).toContain("+new\n+second");
 });
 
@@ -99,7 +109,7 @@ test("counts hunk lines beginning with diff header characters", () => {
     removed: 1,
   });
 });
-test("shows one fallback row for an unresolved merge rather than duplicate combined diffs", async () => {
+test("keeps one unresolved merge row and preserves its combined patch for the reference fallback", async () => {
   const cwd = await repo();
   await runGit(cwd, ["checkout", "-b", "feature"]);
   await writeFile(join(cwd, "file.txt"), "feature\n");
@@ -110,5 +120,6 @@ test("shows one fallback row for an unresolved merge rather than duplicate combi
   await expect(runGit(cwd, ["merge", "feature"])).rejects.toThrow();
   const { entries } = await gitReview(cwd, "unstaged");
   expect(entries).toHaveLength(1);
-  expect(entries[0]).toMatchObject({ patchAvailable: false, reason: expect.stringContaining("冲突") });
+  expect(entries[0]).toMatchObject({ patchAvailable: true });
+  expect((await gitReviewDiff(cwd, "unstaged", entries[0].path)).availability).toBe("patch");
 });

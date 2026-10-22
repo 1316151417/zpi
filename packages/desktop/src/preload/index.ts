@@ -109,7 +109,8 @@ const bridge: DesktopBridge = {
   readWorkspaceDirectory: (id, path, root) => call("readWorkspaceDirectory", id, path, root),
   workspaceGitStatus: (id, root) => call("workspaceGitStatus", id, root),
   ignoredWorkspacePaths: (id, paths, root) => call("ignoredWorkspacePaths", id, paths, root),
-  watchWorkspaceDirectory: (id, path, root) => call("watchWorkspaceDirectory", id, path, root),
+  watchWorkspaceDirectory: (id, path, root, recursive) =>
+    call("watchWorkspaceDirectory", id, path, root, recursive),
   unwatchWorkspaceDirectory: (id) => call("unwatchWorkspaceDirectory", id),
   onWorkspaceDirectoryChange(id, listener) {
     if (!directoryListeners.size) ipcRenderer.on("zpi:workspace-directory", directoryChanged);
@@ -138,7 +139,7 @@ const bridge: DesktopBridge = {
   getChanges: (id, run, includePatch = true) => call("getChanges", id, run, includePatch),
   readPatch: (id, run, patch) => call("readPatch", id, run, patch),
   getReview: (id, source) => call("getReview", id, source),
-  readReviewPatch: (id, source, path) => call("readReviewPatch", id, source, path),
+  readReviewDiff: (id, source, path, run) => call("readReviewDiff", id, source, path, run),
   previewPrompt: () => call("previewPrompt"),
   listTools: () => call("listTools"),
   getCustomCommands: (projectId) => call("getCustomCommands", projectId),

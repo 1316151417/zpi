@@ -1,5 +1,7 @@
 import type { DiffItem } from "./bridge.ts";
 
+export type { ReviewDiffData } from "zpi-ui";
+
 export const reviewSources = {
   unstaged: "未暂存",
   staged: "已暂存",
@@ -12,6 +14,7 @@ export interface ReviewSnapshot {
   isRepository: boolean;
   isGitAvailable?: boolean;
   runId?: string;
+  watchPaths?: string[];
 }
 export function reviewPatchStats(patch: string | undefined) {
   let added = 0;

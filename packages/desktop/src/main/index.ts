@@ -40,7 +40,7 @@ import { getInstalledEditors, openInEditor } from "./editors.ts";
 import { ErrorLog } from "./error-log.ts";
 import { performFileAction } from "./file-actions.ts";
 import { readFilePreview, readPreviewRange } from "./file-preview.ts";
-import { gitReview, gitReviewPatch } from "./git-review.ts";
+import { gitReview, gitReviewDiff } from "./git-review.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { macQuickChatCapture } from "./mac-quick-chat-capture.ts";
 import { macQuickChatFocus } from "./mac-quick-chat-focus.ts";
@@ -586,7 +586,7 @@ async function launch(): Promise<void> {
         readWorkspaceDirectory: 3,
         workspaceGitStatus: 2,
         ignoredWorkspacePaths: 3,
-        watchWorkspaceDirectory: 3,
+        watchWorkspaceDirectory: 4,
         unwatchWorkspaceDirectory: 1,
         readPreviewRange: 4,
         checkPreviewFiles: 2,
@@ -599,7 +599,7 @@ async function launch(): Promise<void> {
         getChanges: 3,
         readPatch: 3,
         getReview: 2,
-        readReviewPatch: 3,
+        readReviewDiff: 4,
         previewPrompt: 0,
         listTools: 0,
         getCustomCommands: 1,
@@ -878,7 +878,9 @@ async function launch(): Promise<void> {
           value = await ignoredWorkspacePaths(fileTreeRoot(2), args[1]);
           break;
         case "watchWorkspaceDirectory":
-          value = directoryWatchers.watch(fileTreeRoot(2), string(1));
+          if (args[3] !== undefined && typeof args[3] !== "boolean")
+            throw new Error("invalid_input: 递归参数必须是布尔值");
+          value = directoryWatchers.watch(fileTreeRoot(2), string(1), args[3] === true);
           break;
         case "unwatchWorkspaceDirectory":
           directoryWatchers.unwatch(string(0));
@@ -941,11 +943,13 @@ async function launch(): Promise<void> {
               : await gitReview(host.workspaceInfo(string(0)).cwd, source as ReviewSource);
           break;
         }
-        case "readReviewPatch": {
+        case "readReviewDiff": {
           const source = string(1);
-          if (!["unstaged", "staged", "branch"].includes(source))
-            throw new Error("invalid_input: 审查来源无效");
-          value = await gitReviewPatch(host.workspaceInfo(string(0)).cwd, source as ReviewSource, string(2));
+          if (!Object.hasOwn(reviewSources, source)) throw new Error("invalid_input: 审查来源无效");
+          value =
+            source === "last-turn"
+              ? await host.readTurnReviewDiff(string(0), string(3), string(2))
+              : await gitReviewDiff(host.workspaceInfo(string(0)).cwd, source as ReviewSource, string(2));
           break;
         }
         case "readPatch":

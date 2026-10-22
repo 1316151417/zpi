@@ -1,11 +1,12 @@
 import { lstat, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { createTwoFilesPatch } from "diff";
 import type { DiffItem } from "../shared/bridge.ts";
-import type { ReviewSnapshot, ReviewSource } from "../shared/review.ts";
+import type { ReviewDiffData, ReviewSnapshot, ReviewSource } from "../shared/review.ts";
 import { isPathInside } from "./path-bounds.ts";
 import { workspaceGitStatus } from "./workspace-directory.ts";
 import { runGit } from "./workspace-files.ts";
+
+const previewBytes = 1024 * 1024;
 
 async function comparison(cwd: string, source: ReviewSource): Promise<string[]> {
   if (source === "staged") return ["--cached"];
@@ -32,14 +33,22 @@ function parseStats(output: string, root: string): DiffItem[] {
       path = records[++i];
     }
     const binary = match[1] === "-";
+    const added = Number(match[1]) || 0;
+    const removed = Number(match[2]) || 0;
     entries.push({
       id: `file:${resolve(root, path)}`,
       path: resolve(root, path),
       oldPath,
-      status: oldPath ? "renamed" : "modified",
+      status: oldPath
+        ? "renamed"
+        : added > 0 && removed === 0
+          ? "created"
+          : removed > 0 && added === 0
+            ? "deleted"
+            : "modified",
       area: "",
-      added: Number(match[1]) || 0,
-      removed: Number(match[2]) || 0,
+      added,
+      removed,
       patchAvailable: !binary,
       ...(binary ? { reason: "无法预览二进制 Diff" } : {}),
     });
@@ -62,14 +71,26 @@ export async function gitReview(
       ...(!status.summary.isGitAvailable ? { isGitAvailable: false } : {}),
     };
   const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
+  const [gitDir, commonDir] = await Promise.all([
+    runGit(cwd, ["rev-parse", "--absolute-git-dir"]),
+    runGit(cwd, ["rev-parse", "--git-common-dir"]),
+  ]);
+  const watchPaths = [
+    ...new Set([
+      ...(process.platform !== "linux" ? [cwd] : []),
+      resolve(cwd, gitDir.trim()),
+      resolve(cwd, commonDir.trim()),
+    ]),
+  ];
   const refs = await comparison(cwd, source);
-  if (source === "branch" && !refs.length) return { entries: [], isRepository: true };
+  if (source === "branch" && !refs.length) return { entries: [], isRepository: true, watchPaths };
   const entries = parseStats(
     await runGit(cwd, [
       "--literal-pathspecs",
       "diff",
       "--no-ext-diff",
       "--no-textconv",
+      "--no-color",
       "--numstat",
       "-z",
       "--find-renames",
@@ -83,17 +104,13 @@ export async function gitReview(
   for (const entry of entries) {
     const change = changes.find((change) => change.path === entry.path);
     if (source !== "branch" && change) entry.status = change.kind === "added" ? "created" : change.kind;
-    if (source !== "branch" && change?.isConflicted) {
-      entry.reason = "文件存在合并冲突，请先解决冲突后查看差异";
-      entry.patchAvailable = false;
-    }
   }
   if (source === "unstaged") {
     for (const change of changes.filter(
       (change) => change.isUntracked && (!onlyPath || change.path === onlyPath),
     )) {
       const info = await lstat(change.path);
-      const bytes = info.isFile() && info.size <= 2 * 1024 * 1024 ? await readFile(change.path) : null;
+      const bytes = info.isFile() && info.size <= previewBytes ? await readFile(change.path) : null;
       const text = bytes && !bytes.includes(0) ? bytes.toString("utf8") : null;
       entries.push({
         id: `file:${change.path}`,
@@ -103,7 +120,16 @@ export async function gitReview(
         added: text ? text.split("\n").length - (text.endsWith("\n") ? 1 : 0) : 0,
         removed: 0,
         patchAvailable: text !== null,
-        ...(text === null ? { reason: "文件过大或为二进制文件，暂不支持差异预览" } : {}),
+        ...(text === null
+          ? {
+              reason:
+                info.size > previewBytes
+                  ? "Diff 已裁剪"
+                  : bytes?.includes(0)
+                    ? "无法预览二进制 Diff"
+                    : "暂时无法预览这个 Diff",
+            }
+          : {}),
       });
     }
   }
@@ -112,6 +138,7 @@ export async function gitReview(
       .filter((entry) => !onlyPath || entry.path === onlyPath)
       .sort((a, b) => a.path.localeCompare(b.path)),
     isRepository: true,
+    watchPaths,
   };
 }
 
@@ -125,10 +152,18 @@ export async function gitReviewPatch(cwd: string, source: ReviewSource, path: st
   const status = source === "unstaged" ? await workspaceGitStatus(cwd) : undefined;
   if (status?.unstagedChanges.some((change) => change.path === path && change.isUntracked)) {
     const info = await lstat(path);
-    if (!info.isFile() || info.size > 2 * 1024 * 1024) throw new Error("invalid_input: 文件过大");
+    if (!info.isFile() || info.size > previewBytes) throw new Error("invalid_input: 文件过大");
     const bytes = await readFile(path);
     if (bytes.includes(0)) return "";
-    return createTwoFilesPatch("/dev/null", file, "", bytes.toString("utf8"));
+    const text = bytes.toString("utf8").replaceAll("\r\n", "\n");
+    const lines = text ? text.split("\n") : [];
+    if (text.endsWith("\n")) lines.pop();
+    const patch = ["--- /dev/null", `+++ b/${file.replaceAll("\\", "/")}`];
+    if (lines.length) {
+      patch.push(`@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`));
+      if (!text.endsWith("\n")) patch.push("\\ No newline at end of file");
+    }
+    return `${patch.join("\n")}\n`;
   }
   const refs = await comparison(cwd, source);
   if (source === "branch" && !refs.length) throw new Error("not_found: 上游分支不可用");
@@ -137,10 +172,93 @@ export async function gitReviewPatch(cwd: string, source: ReviewSource, path: st
     "diff",
     "--no-ext-diff",
     "--no-textconv",
+    "--no-color",
     "--find-renames",
     ...refs,
     "--",
     file,
     ...(entry.oldPath ? [relative(root, entry.oldPath)] : []),
   ]);
+}
+
+async function gitBlob(cwd: string, ref: string, path: string): Promise<string | null> {
+  try {
+    const text = await runGit(cwd, ["show", `${ref}:${path}`]);
+    return Buffer.byteLength(text) <= previewBytes && !text.includes("\0") ? text : null;
+  } catch {
+    return null;
+  }
+}
+async function workingContent(path: string): Promise<string | null> {
+  try {
+    const info = await lstat(path);
+    if (!info.isFile() || info.size > previewBytes) return null;
+    const text = await readFile(path, "utf8");
+    return text.includes("\0") ? null : text;
+  } catch {
+    return null;
+  }
+}
+export async function gitReviewDiff(
+  cwd: string,
+  source: ReviewSource,
+  path: string,
+): Promise<ReviewDiffData> {
+  const entry = (await gitReview(cwd, source, path)).entries.find((entry) => entry.path === path);
+  const empty: ReviewDiffData = {
+    path,
+    availability: "unavailable",
+    patch: null,
+    beforeContent: null,
+    afterContent: null,
+    summary: entry?.reason ?? null,
+  };
+  if (!entry) return empty;
+  if (entry.reason)
+    return {
+      ...empty,
+      availability:
+        entry.reason === "Diff 已裁剪"
+          ? "truncated"
+          : entry.reason.includes("二进制")
+            ? "binary"
+            : "unavailable",
+    };
+  let patch: string;
+  try {
+    patch = await gitReviewPatch(cwd, source, path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")
+      return { ...empty, availability: "truncated" };
+    return { ...empty, summary: "无法读取此文件的 Git diff" };
+  }
+  if (!patch) return empty;
+  if (Buffer.byteLength(patch) > previewBytes) return { ...empty, availability: "truncated" };
+  const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
+  const file = relative(root, path).replaceAll("\\", "/");
+  let before: string | null;
+  let after: string | null;
+  if (source === "branch") {
+    const upstream = (await runGit(cwd, ["rev-parse", "--abbrev-ref", "@{upstream}"])).trim();
+    const base = (await runGit(cwd, ["merge-base", upstream, "HEAD"])).trim();
+    [before, after] = await Promise.all([gitBlob(root, base, file), gitBlob(root, "HEAD", file)]);
+  } else if (source === "staged") {
+    [before, after] = await Promise.all([gitBlob(root, "HEAD", file), gitBlob(root, "", file)]);
+  } else {
+    const status = await workspaceGitStatus(cwd);
+    const untracked = status.unstagedChanges.some((change) => change.path === path && change.isUntracked);
+    [before, after] = await Promise.all([
+      untracked ? Promise.resolve("") : gitBlob(root, "", file),
+      workingContent(path),
+    ]);
+  }
+  // ZCode 只有两侧全文都可用时才启用 MultiFileDiff；缺一侧保留正确 patch，不补造空文件。
+  const complete = before !== null && after !== null;
+  return {
+    ...empty,
+    availability: "patch",
+    patch,
+    beforeContent: complete ? before : null,
+    afterContent: complete ? after : null,
+  };
 }

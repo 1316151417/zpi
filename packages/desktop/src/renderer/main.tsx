@@ -6,10 +6,11 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Missing root");
 
 async function startRenderer(root: HTMLElement) {
-  const [{ App }, { startAppearance }, { logRendererError }] = await Promise.all([
+  const [{ App }, { startAppearance }, { logRendererError }, { DiffsWorkerPool }] = await Promise.all([
     import("./App.tsx"),
     import("./appearance.ts"),
     import("./error-log.ts"),
+    import("./DiffsWorkerPool.tsx"),
     import("./workbench.css"),
   ]);
   window.addEventListener("error", (event) => {
@@ -26,7 +27,9 @@ async function startRenderer(root: HTMLElement) {
   // ZCode Root supplies this default to navigation, settings and portal menus.
   createRoot(root).render(
     <LucideProvider strokeWidth={1.5}>
-      <App />
+      <DiffsWorkerPool>
+        <App />
+      </DiffsWorkerPool>
     </LucideProvider>,
   );
 }

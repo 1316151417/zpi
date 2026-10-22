@@ -407,6 +407,7 @@ export interface DesktopBridge {
     sessionId: string,
     path: string,
     rootPath?: string,
+    recursive?: boolean,
   ): Promise<Result<{ id: string }>>;
   unwatchWorkspaceDirectory(id: string): Promise<Result<void>>;
   onWorkspaceDirectoryChange(id: string, listener: (event: { dirPath: string }) => void): () => void;
@@ -421,11 +422,12 @@ export interface DesktopBridge {
     sessionId: string,
     source: import("./review.ts").ReviewSource,
   ): Promise<Result<import("./review.ts").ReviewSnapshot>>;
-  readReviewPatch(
+  readReviewDiff(
     sessionId: string,
     source: import("./review.ts").ReviewSource,
     path: string,
-  ): Promise<Result<string>>;
+    runId?: string,
+  ): Promise<Result<import("./review.ts").ReviewDiffData>>;
   previewPrompt(): Promise<Result<PromptPreview>>;
   listTools(): Promise<Result<ToolInfo[]>>;
   getSkillSettings(): Promise<Result<SkillSettings>>;
@@ -573,7 +575,7 @@ export const methods = [
   "getChanges",
   "readPatch",
   "getReview",
-  "readReviewPatch",
+  "readReviewDiff",
   "previewPrompt",
   "listTools",
   "getSkillSettings",

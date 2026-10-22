@@ -15,16 +15,22 @@ vi.mock("../src/renderer/pane-store.ts", () => ({
 vi.mock("../src/renderer/workspace-file-tree/FileTreeRow.tsx", () => ({
   fileManagerLabel: "在 Finder 中打开",
 }));
-vi.mock("zpi-ui", async (original) => ({
-  ...(await original<typeof import("zpi-ui")>()),
-  DiffView: ({ entries }: { entries: DiffItem[] }) =>
-    createElement("div", { "data-review-files": "" }, entries.map((entry) => entry.path).join(",")),
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: { count: number }) => ({
+    measure: () => {},
+    getTotalSize: () => options.count * 32,
+    getVirtualItems: () =>
+      Array.from({ length: options.count }, (_, index) => ({ index, key: index, start: index * 32 })),
+    measureElement: () => {},
+    scrollToIndex: () => {},
+  }),
 }));
 
 const getReview = vi.fn<DesktopBridge["getReview"]>();
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
+  vi.stubGlobal("CSS", { ...CSS, highlights: new Map() });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   getReview.mockReset();
   Object.defineProperty(window, "zpi", { configurable: true, value: { getReview, onEvent: () => () => {} } });
@@ -35,7 +41,43 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+test("Git watches retain the reference 60-second debounce, stable registrations and hidden-pane cleanup", async () => {
+  vi.useFakeTimers();
+  let changed!: () => void;
+  const watchWorkspaceDirectory = vi.fn(async () => ({ ok: true, value: { id: "watch" } }));
+  const unwatchWorkspaceDirectory = vi.fn(async () => ({ ok: true, value: undefined }));
+  Object.assign(window.zpi, {
+    watchWorkspaceDirectory,
+    unwatchWorkspaceDirectory,
+    onWorkspaceDirectoryChange: (_id: string, callback: () => void) => {
+      changed = callback;
+      return vi.fn();
+    },
+  });
+  getReview.mockImplementation(async () => ({
+    ok: true,
+    value: { entries: [], isRepository: true, watchPaths: ["/project/.git"] },
+  }));
+  await render("unstaged");
+  expect(watchWorkspaceDirectory).toHaveBeenCalledWith("session", "/project/.git", undefined, true);
+  await act(async () => {
+    changed();
+    await vi.advanceTimersByTimeAsync(1000);
+    changed();
+    await vi.advanceTimersByTimeAsync(59_999);
+  });
+  expect(getReview).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(getReview).toHaveBeenCalledTimes(2);
+  expect(watchWorkspaceDirectory).toHaveBeenCalledTimes(1);
+  await render("unstaged", false);
+  expect(unwatchWorkspaceDirectory).toHaveBeenCalledWith("watch");
 });
 async function render(source: ReviewSource, visible = true) {
   await act(async () =>

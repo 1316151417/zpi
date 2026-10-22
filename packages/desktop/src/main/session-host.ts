@@ -57,7 +57,7 @@ import type {
   TaskSearchResult,
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
-import { reviewPatchStats } from "../shared/review.ts";
+import { type ReviewDiffData, reviewPatchStats } from "../shared/review.ts";
 import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
 import { AttachmentStore } from "./attachments.ts";
@@ -1867,6 +1867,42 @@ export class SessionHost {
       };
     });
     return { entries, isRepository: false, runId: latest?.runId };
+  }
+  async readTurnReviewDiff(id: string, runId: string, path: string): Promise<ReviewDiffData> {
+    const changes = this.recordedChanges(id, runId).filter((change) => change.path === path);
+    const first = changes[0],
+      last = changes.at(-1);
+    if (!first || !last) throw new Error("not_found: 此轮文件快照不存在");
+    const entry = (await this.allChanges(id, runId, {}, path))[0];
+    const root = join(this.dir, "agent", "tool-output", id);
+    let beforeContent: string | null = null,
+      afterContent: string | null = null;
+    try {
+      const [before, after] = await Promise.all([
+        first.beforeHash === null
+          ? Promise.resolve("")
+          : first.beforeFile
+            ? readFileSnapshot(first.beforeFile, root).then((bytes) => bytes.toString("utf8"))
+            : Promise.resolve(null),
+        last.afterFile
+          ? readFileSnapshot(last.afterFile, root).then((bytes) => bytes.toString("utf8"))
+          : Promise.resolve(null),
+      ]);
+      if (before !== null && after !== null) {
+        beforeContent = before;
+        afterContent = after;
+      }
+    } catch {
+      /* 历史全文缺失时仍使用已有 patch，沿用 ZCode 的降级语义。 */
+    }
+    return {
+      path,
+      availability: entry?.patch ? "patch" : "unavailable",
+      patch: entry?.patch ?? null,
+      beforeContent,
+      afterContent,
+      summary: entry?.reason ?? null,
+    };
   }
   async readPatch(id: string, runId: string | null, key: string): Promise<string> {
     if (key.startsWith("operation:")) {

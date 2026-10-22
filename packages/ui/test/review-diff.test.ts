@@ -1,0 +1,59 @@
+import { createTwoFilesPatch } from "diff";
+import { expect, test } from "vitest";
+import { getGitPaneDiffPreviewPlan, type ReviewDiffData } from "../src/review-diff.ts";
+import { reviewFindTargets } from "../src/review-find.ts";
+
+function data(path: string, beforeContent: string, afterContent: string): ReviewDiffData {
+  return {
+    path,
+    availability: "patch",
+    patch: createTwoFilesPatch(path, path, beforeContent, afterContent),
+    beforeContent,
+    afterContent,
+    summary: null,
+  };
+}
+test("normal modifications use full-content rendering with collapsed context, including unchanged search targets", () => {
+  const before = `${Array.from({ length: 120 }, (_, i) => `Line${i + 1}`).join("\n")}\n`;
+  const diff = data(
+    "ResetTest.java",
+    before,
+    before
+      .replace("Line19\n", "Changed19\n")
+      .replace("Line41\n", "Changed41\n")
+      .replace("Line63\n", "Changed63\n"),
+  );
+  expect(getGitPaneDiffPreviewPlan(diff)).toEqual({ kind: "rich" });
+  const targets = reviewFindTargets("file", diff);
+  expect(targets[0]).toMatchObject({ key: "file:0", text: "Line1" });
+  expect(targets.at(-1)?.text).toBe("Line120");
+  expect(targets.find((target) => target.text === "Changed19")?.key).toBe("file:19");
+});
+test("full content and patch inputs follow ZCode's separate render paths", () => {
+  const diff = data("index.ts", "const old = 1;\n", "const next = 2;\n");
+  expect(getGitPaneDiffPreviewPlan(diff)).toEqual({ kind: "rich" });
+  expect(getGitPaneDiffPreviewPlan({ ...diff, beforeContent: null, afterContent: null })).toEqual({
+    kind: "patch",
+  });
+  expect(getGitPaneDiffPreviewPlan(data("index.ts", "", "export const value = 1;\n"))).toEqual({
+    kind: "rich",
+  });
+});
+test.each(["pnpm-lock.yaml", "package-lock.json", "build.gradle", "config.zsh"])(
+  "%s uses the reference lightweight fallback",
+  (path) => {
+    expect(getGitPaneDiffPreviewPlan(data(path, "old\n", "next\n"))).toMatchObject({
+      kind: "plain-text",
+      lines: ["-old", "+next"],
+    });
+  },
+);
+test("deep hunks and large fallback previews keep the reference 800-line bound and protocol-free text", () => {
+  const before = `${"old\n".repeat(1500)}end\n`;
+  const diff = data("index.ts", before, before.replace("end", "changed"));
+  expect(getGitPaneDiffPreviewPlan(diff).kind).toBe("plain-text");
+  const large = getGitPaneDiffPreviewPlan(data("big.txt", "", `${"new\n".repeat(1600)}`));
+  expect(large.kind).toBe("plain-text");
+  if (large.kind === "plain-text") expect(large.lines.length).toBeLessThanOrEqual(800);
+  expect(reviewFindTargets("file", diff).some((target) => target.text.startsWith("@@"))).toBe(false);
+});

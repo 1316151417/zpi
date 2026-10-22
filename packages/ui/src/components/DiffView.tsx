@@ -1,5 +1,4 @@
 import { PatchDiff } from "@pierre/diffs/react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { FileCode2 } from "lucide-react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppearance } from "../appearance.ts";
@@ -18,8 +17,6 @@ export interface DiffEntry {
   patchAvailable?: boolean;
   reason?: string;
   failed?: boolean;
-  added?: number;
-  removed?: number;
 }
 type SingleSideLine = FindTarget & { lineNumber: number; kind: "added" | "removed" };
 
@@ -205,7 +202,6 @@ export function DiffView({
   findRequest,
   onFindStateChange,
   renderHeader,
-  renderReviewRow,
   wrap = false,
 }: {
   findRequest?: FindRequest;
@@ -215,25 +211,19 @@ export function DiffView({
   loadPatch: (id: string) => Promise<string>;
   openFile: (id: string) => void;
   renderHeader?: (path: string, openFile: () => void) => ReactNode;
-  renderReviewRow?: (entry: DiffEntry, expanded: boolean, toggle: () => void) => ReactNode;
   wrap?: boolean;
 }) {
   const paths = [...new Set(entries.map((entry) => entry.path))];
-  const preview = Boolean(renderHeader || renderReviewRow);
-  const [selected, setSelected] = useState(initialPath ?? (renderReviewRow ? "" : paths[0]) ?? ""),
-    [patchResult, setPatchResult] = useState<{ entries: DiffEntry[]; patches: Record<string, string> }>({
-      entries,
-      patches: {},
-    }),
+  const preview = Boolean(renderHeader);
+  const [selected, setSelected] = useState(initialPath ?? paths[0] ?? ""),
+    [patches, setPatches] = useState<Record<string, string>>({}),
     [error, setError] = useState(""),
     [split, setSplit] = useState(false);
-  const patches = patchResult.entries === entries ? patchResult.patches : {};
   const { theme } = useAppearance();
   const root = useRef<HTMLDivElement>(null);
-  const scroll = useRef<HTMLDivElement>(null);
   const [focusKey, setFocusKey] = useState<string>();
   const searching = Boolean(findRequest?.query.trim());
-  const patchScope = searching || renderReviewRow ? undefined : selected;
+  const patchScope = searching ? undefined : selected;
   const presentations = useMemo(
     () =>
       entries
@@ -246,17 +236,6 @@ export function DiffView({
         }),
     [entries, patches, patchScope, preview],
   );
-  const virtualizer = useVirtualizer({
-    count: renderReviewRow ? presentations.length : 0,
-    getScrollElement: () => scroll.current,
-    getItemKey: (index) => presentations[index].entry.id,
-    estimateSize: () => 32,
-    overscan: 14,
-    enabled: Boolean(renderReviewRow),
-  });
-  useEffect(() => {
-    if (renderReviewRow) virtualizer.measure();
-  }, [selected, entries, renderReviewRow, virtualizer]);
   const findTargets = useMemo(
     () =>
       searching
@@ -266,19 +245,12 @@ export function DiffView({
         : [],
     [presentations, searching],
   );
-  const navigateFind = useCallback(
-    (match: FindMatch, range?: Range) => {
-      if (match.path) setSelected(match.path);
-      if (renderReviewRow && match.path) {
-        const index = presentations.findIndex(({ entry }) => entry.path === match.path);
-        if (index >= 0) virtualizer.scrollToIndex(index, { align: "center" });
-      }
-      setFocusKey(match.key);
-      const element = range?.startContainer.parentElement;
-      element?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-    },
-    [renderReviewRow, presentations, virtualizer],
-  );
+  const navigateFind = useCallback((match: FindMatch, range?: Range) => {
+    if (match.path) setSelected(match.path);
+    setFocusKey(match.key);
+    const element = range?.startContainer.parentElement;
+    element?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  }, []);
   useTextFind({
     rootRef: root,
     request: findRequest,
@@ -297,65 +269,39 @@ export function DiffView({
     if (initialPath) setSelected(initialPath);
   }, [initialPath]);
   useEffect(() => {
-    if (renderReviewRow) {
-      if (selected && !paths.includes(selected)) setSelected("");
-    } else if (!paths.includes(selected))
+    if (!paths.includes(selected))
       setSelected(initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ""));
-  }, [entries, selected, initialPath, renderReviewRow]);
+  }, [entries, selected, initialPath]);
   useEffect(() => {
     let active = true;
     setError("");
-    const pending = entries.filter(
-      (entry) =>
-        (patchScope === undefined || entry.path === patchScope) &&
-        (!renderReviewRow || searching || entry.path === selected) &&
-        entry.patchAvailable &&
-        entry.patch === undefined &&
-        patches[entry.id] === undefined,
-    );
-    const read = async () => {
-      const values: PromiseSettledResult<readonly [string, string]>[] = [];
-      let next = 0;
-      // 查找会补读折叠文件；限制并发，避免数百次 Git IPC 同时启动子进程。
-      await Promise.all(
-        Array.from({ length: Math.min(4, pending.length) }, async () => {
-          while (active && next < pending.length) {
-            const entry = pending[next++];
-            try {
-              values.push({ status: "fulfilled", value: [entry.id, await loadPatch(entry.id)] });
-            } catch (reason) {
-              values.push({ status: "rejected", reason });
-            }
-          }
-        }),
-      );
-      return values;
-    };
-    void read().then((values) => {
+    void Promise.allSettled(
+      entries
+        .filter(
+          (entry) =>
+            (patchScope === undefined || entry.path === patchScope) &&
+            entry.patchAvailable &&
+            entry.patch === undefined,
+        )
+        .map(async (entry) => [entry.id, await loadPatch(entry.id)] as const),
+    ).then((values) => {
       if (!active) return;
-      if (values.length)
-        setPatchResult((current) => ({
-          entries,
-          patches: {
-            ...(current.entries === entries ? current.patches : {}),
-            ...Object.fromEntries(
-              values.flatMap((value) => (value.status === "fulfilled" ? [value.value] : [])),
-            ),
-          },
-        }));
+      setPatches(
+        Object.fromEntries(values.flatMap((value) => (value.status === "fulfilled" ? [value.value] : []))),
+      );
       const failure = values.find((value) => value.status === "rejected");
       if (failure?.status === "rejected") setError(userErrorMessage(failure.reason));
     });
     return () => {
       active = false;
     };
-  }, [entries, patchScope, loadPatch, selected, searching, renderReviewRow]);
+  }, [entries, patchScope, loadPatch]);
   return (
     <div
       ref={root}
-      className={`diff-layout${paths.length <= 1 ? " diff-single-file" : ""}${preview ? " diff-preview" : ""}${renderReviewRow ? " diff-review" : ""}${wrap ? " diff-wrap" : ""}`}
+      className={`diff-layout${paths.length <= 1 ? " diff-single-file" : ""}${renderHeader ? " diff-preview" : ""}${wrap ? " diff-wrap" : ""}`}
     >
-      {!renderReviewRow && paths.length > 1 && (
+      {paths.length > 1 && (
         <nav className="diff-file-list" aria-label="改动文件">
           {paths.map((path) => (
             <button
@@ -383,10 +329,10 @@ export function DiffView({
             const entry = entries.find((entry) => entry.path === selected);
             if (entry) openFile(entry.id);
           })}
-        <div ref={scroll} className="diff-content">
+        <div className="diff-content">
           {!paths.length && <p className="pane-empty">暂无文件变更</p>}
           {error && <p role="alert">{error}</p>}
-          {selected && !preview && (
+          {selected && !renderHeader && (
             <div className="diff-mode">
               <span title={selected}>{selected.split("/").at(-1)}</span>
               <button aria-pressed={!split} onClick={() => setSplit(false)}>
@@ -397,97 +343,71 @@ export function DiffView({
               </button>
             </div>
           )}
-          <div
-            className={renderReviewRow ? "review-virtual-list" : undefined}
-            style={renderReviewRow ? { height: virtualizer.getTotalSize(), position: "relative" } : undefined}
-          >
-            {(renderReviewRow
-              ? virtualizer.getVirtualItems().map((row) => ({ ...presentations[row.index], row }))
-              : presentations
-                  .filter(({ entry }) => entry.path === selected)
-                  .map((item) => ({ ...item, row: undefined }))
-            ).map(({ entry, patch, singleSide, large, row }) => {
+          {presentations
+            .filter(({ entry }) => entry.path === selected)
+            .map(({ entry, patch, singleSide, large }) => {
               return (
-                <section
-                  className="diff-entry"
-                  key={entry.id}
-                  data-diff-id={entry.id}
-                  ref={row ? virtualizer.measureElement : undefined}
-                  data-index={row?.index}
-                  style={
-                    row
-                      ? { position: "absolute", top: row.start, left: 0, width: "100%", minWidth: 0 }
-                      : undefined
-                  }
-                >
-                  {renderReviewRow?.(entry, entry.path === selected, () =>
-                    setSelected((current) => (current === entry.path ? "" : entry.path)),
+                <section className="diff-entry" key={entry.id} data-diff-id={entry.id}>
+                  {!renderHeader && (
+                    <div className="diff-heading">
+                      <small>
+                        {entry.area}
+                        {entry.failed ? " · 部分修改失败" : ""}
+                      </small>
+                      <button type="button" onClick={() => openFile(entry.id)}>
+                        打开文件
+                      </button>
+                    </div>
                   )}
-                  {(!renderReviewRow || entry.path === selected) && (
-                    <>
-                      {!preview && (
-                        <div className="diff-heading">
-                          <small>
-                            {entry.area}
-                            {entry.failed ? " · 部分修改失败" : ""}
-                          </small>
-                          <button type="button" onClick={() => openFile(entry.id)}>
-                            打开文件
-                          </button>
-                        </div>
-                      )}
-                      {preview && entry.failed && <p className="run-notice">部分修改失败</p>}
-                      {!renderReviewRow && entry.oldPath && (
-                        <p>
-                          {entry.oldPath} → {entry.path}
-                        </p>
-                      )}
-                      {entry.reason && <p className="run-notice">{entry.reason}</p>}
-                      {singleSide ? (
-                        <SingleSidePatch lines={singleSide} focusKey={searching ? focusKey : undefined} />
-                      ) : patch ? (
-                        <PatchBoundary
-                          key={patch}
+                  {renderHeader && entry.failed && <p className="run-notice">部分修改失败</p>}
+                  {entry.oldPath && (
+                    <p>
+                      {entry.oldPath} → {entry.path}
+                    </p>
+                  )}
+                  {entry.reason && <p className="run-notice">{entry.reason}</p>}
+                  {singleSide ? (
+                    <SingleSidePatch lines={singleSide} focusKey={searching ? focusKey : undefined} />
+                  ) : patch ? (
+                    <PatchBoundary
+                      key={patch}
+                      patch={patch}
+                      id={entry.id}
+                      focusKey={searching ? focusKey : undefined}
+                      simple={Boolean(renderHeader)}
+                    >
+                      {large ? (
+                        <PlainPatch
                           patch={patch}
                           id={entry.id}
                           focusKey={searching ? focusKey : undefined}
-                          simple={preview}
-                        >
-                          {large ? (
-                            <PlainPatch
-                              patch={patch}
-                              id={entry.id}
-                              focusKey={searching ? focusKey : undefined}
-                              simple={preview}
-                            />
-                          ) : (
-                            <PatchDiff
-                              patch={patch}
-                              options={{
-                                diffStyle: !preview && split ? "split" : "unified",
-                                themeType: theme,
-                                disableFileHeader: true,
-                                overflow: wrap ? "wrap" : "scroll",
-                                diffIndicators: "bars",
-                                lineDiffType: "word-alt",
-                                hunkSeparators: preview ? "simple" : "line-info",
-                                enableLineSelection: false,
-                                expandUnchanged: searching,
-                                unsafeCSS: findHighlightCSS,
-                                onPostRender: rendered,
-                              }}
-                            />
-                          )}
-                        </PatchBoundary>
-                      ) : entry.patchAvailable ? (
-                        <p>加载变更…</p>
-                      ) : null}
-                    </>
-                  )}
+                          simple={Boolean(renderHeader)}
+                        />
+                      ) : (
+                        <PatchDiff
+                          patch={patch}
+                          options={{
+                            diffStyle: !renderHeader && split ? "split" : "unified",
+                            themeType: theme,
+                            disableFileHeader: true,
+                            overflow: wrap ? "wrap" : "scroll",
+                            diffIndicators: "bars",
+                            lineDiffType: "word-alt",
+                            hunkSeparators: renderHeader ? "simple" : "line-info",
+                            enableLineSelection: false,
+                            expandUnchanged: searching,
+                            unsafeCSS: findHighlightCSS,
+                            onPostRender: rendered,
+                          }}
+                        />
+                      )}
+                    </PatchBoundary>
+                  ) : entry.patchAvailable ? (
+                    <p>加载变更…</p>
+                  ) : null}
                 </section>
               );
             })}
-          </div>
         </div>
       </div>
     </div>

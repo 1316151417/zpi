@@ -124,10 +124,10 @@ export class WorkspaceDirectoryWatchers {
   constructor(changed: (id: string, dirPath: string) => void) {
     this.changed = changed;
   }
-  watch(cwd: string, path: string) {
+  watch(cwd: string, path: string, recursive = false) {
     const dirPath = directoryPath(cwd, path);
     const id = randomUUID();
-    const watcher = watch(dirPath, { persistent: false }, () => this.changed(id, dirPath));
+    const watcher = watch(dirPath, { persistent: false, recursive }, () => this.changed(id, dirPath));
     watcher.on("error", () => {
       this.changed(id, dirPath);
       this.unwatch(id);
