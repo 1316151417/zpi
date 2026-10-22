@@ -110,6 +110,10 @@ export function Reference({
   className?: string;
 }) {
   const [error, setError] = useState("");
+  const perform = (action: FileAction) => {
+    setError("");
+    void onAction?.(path, action, location).catch((error) => setError(userErrorMessage(error)));
+  };
   const style = referenceStyle(kind, kind === "command" ? label : path);
   const reference =
     kind === "file" && onOpen ? (
@@ -120,7 +124,9 @@ export function Reference({
         style={style}
         title={path}
         onClick={(event) => {
-          if (!selectionIntersects(event.currentTarget)) onOpen(path, location);
+          if (selectionIntersects(event.currentTarget)) return;
+          if (onAction && (event.metaKey || event.ctrlKey)) perform("open");
+          else onOpen(path, location);
         }}
       >
         <span className="reference-label">{label}</span>
@@ -131,10 +137,6 @@ export function Reference({
       </span>
     );
   if (kind !== "file" || !onOpen || !onAction) return reference;
-  const perform = (action: FileAction) => {
-    setError("");
-    void onAction(path, action, location).catch((error) => setError(userErrorMessage(error)));
-  };
   return (
     <>
       <ContextMenu.Root>
