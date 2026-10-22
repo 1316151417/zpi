@@ -173,7 +173,7 @@ SDK 本地 Bash 在输出文件背压时暂停 stdout/stderr，排空后恢复�
 
 ## 测试
 
-文件入口、聊天文件预览和单文件 Diff 统一由 `FileManagerPane` 持有预览／目录布局，内容仍复用 `FilePane` 和 `ChangesPane`。目录显隐偏好按工作目录共享；桌面端始终保留预览与目录的可拖拽分栏，选中文件不自动收起目录。两栏的最小宽度取 160px 和面板宽度三分之一中的较小值，目录最大占 60%，窄面板也能拖到各占一半；预览不可折叠，旧的目录占满布局会按这些约束恢复；目录范围是整个工作区，“仅显示变更文件”依据工作区 Git 状态，不依据某一轮快照。导航由 pane store 更新当前标签页，保持标签 ID、任务归属和工作目录；从 Diff 导航到文件后变为普通文件预览。重开来源按当前内容查找可复用标签，不能按旧 ID 覆盖已导航的页面。审查入口继续展示改动集合。预览右上外部打开沿用 ZCode 的应用偏好快照，通过 preload 的 `openInEditor` 调用；不存在可用应用时禁用。文件树菜单使用 Lucide `FolderOpen`，聊天文件菜单的 Finder 图片继续复用 ZCode 素材。相关验证为 `pane-isolation.test.ts`、`changes-pane-dom.test.ts`、`workspace-editor-dom.test.ts` 和后台 Electron 的 `tests/desktop/file-manager.spec.ts`，后者包含明暗主题截图及窄布局。
+文件入口、聊天文件预览和单文件 Diff 统一由 `FileManagerPane` 持有预览／目录布局，内容仍复用 `FilePane` 和 `ChangesPane`。目录显隐偏好按工作目录共享；桌面端始终保留预览与目录的可拖拽分栏，选中文件不自动收起目录。两栏的最小宽度取 160px 和面板宽度三分之一中的较小值，目录最大占 60%，窄面板也能拖到各占一半；预览不可折叠，旧的目录占满布局会按这些约束恢复；目录范围是整个工作区，“仅显示变更文件”依据工作区 Git 状态，不依据某一轮快照。导航由 pane store 更新当前标签页，保持标签 ID、任务归属和工作目录；从 Diff 导航到文件后变为普通文件预览。重开来源按当前内容查找可复用标签，不能按旧 ID 覆盖已导航的页面。审查入口继续展示改动集合。预览右上“使用默认程序打开”通过 preload 的 `fileAction(..., "open")` 使用系统文件关联，与聊天文件菜单保持一致；不读取项目编辑器偏好，也不依赖编辑器发现结果。项目工具栏的编辑器选择仅影响项目打开。文件树菜单使用 Lucide `FolderOpen`，聊天文件菜单的 Finder 图片继续复用 ZCode 素材。相关验证为 `pane-isolation.test.ts`、`changes-pane-dom.test.ts`、`workspace-editor-dom.test.ts` 和后台 Electron 的 `tests/desktop/file-manager.spec.ts`，后者包含明暗主题截图及窄布局。
 
 ### 模型性能统计
 

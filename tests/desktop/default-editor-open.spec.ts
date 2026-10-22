@@ -7,7 +7,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("default Java opening launches the associated IDE and preserves the Markdown line", async () => {
+test("default opening uses the associated IDE for Java links and Java/Markdown previews", async () => {
   test.skip(process.platform !== "darwin", "macOS editor launchers");
   const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-default-editor-")));
   const project = join(dir, "project");
@@ -21,8 +21,16 @@ test("default Java opening launches the associated IDE and preserves the Markdow
   const filename = "订单 %20 #1.java";
   const path = join(project, filename);
   await writeFile(path, Array.from({ length: 120 }, (_, i) => `// line ${i + 1}`).join("\n"));
+  const markdownFilename = "说明 %20 #1.md";
+  const markdownPath = join(project, markdownFilename);
+  await writeFile(markdownPath, "# Default opening\n");
   const server = await fakeServer((_, response) => {
-    send(response, chunk({ content: `[Java 源码](<./${encodeURIComponent(filename)}:80:3>)` }));
+    send(
+      response,
+      chunk({
+        content: `[Java 源码](<./${encodeURIComponent(filename)}:80:3>) [Markdown](<./${encodeURIComponent(markdownFilename)}>)`,
+      }),
+    );
     done(response);
   });
   let app: ElectronApplication | undefined;
@@ -42,6 +50,7 @@ test("default Java opening launches the associated IDE and preserves the Markdow
       };
     }, bundle);
     const page = await app.firstWindow();
+    await page.evaluate(() => localStorage.setItem("zpi-last-editor-id", "vscode"));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByLabel("消息", { exact: true }).fill("打开 Java 文件");
     await page.getByLabel("消息", { exact: true }).press("Enter");
@@ -52,6 +61,21 @@ test("default Java opening launches the associated IDE and preserves the Markdow
     await expect
       .poll(async () => (await readFile(log, "utf8").catch(() => "")).trim().split("\n"))
       .toEqual(["--line", "80", path]);
+    for (const [name, expectedPath] of [
+      ["Java 源码", path],
+      ["Markdown", markdownPath],
+    ]) {
+      await page.locator(".answer").getByRole("button", { name, exact: true }).click();
+      await expect(page.locator(".file-manager-toolbar:visible .preview-breadcrumb")).toHaveAttribute(
+        "title",
+        expectedPath,
+      );
+      await page
+        .locator(".file-manager-toolbar:visible")
+        .getByRole("button", { name: "使用默认程序打开", exact: true })
+        .click();
+      await expect.poll(async () => (await readFile(log, "utf8")).trim()).toBe(expectedPath);
+    }
     const perform = (line?: number) =>
       page.evaluate(
         async ({ path, line }) => {
