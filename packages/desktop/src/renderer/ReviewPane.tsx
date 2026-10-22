@@ -5,6 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, ChevronDown, ChevronUp, Copy, FileText, FolderOpen, ListTree, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  defaultCodePreview,
   FileIcon,
   type FindRequest,
   type FindState,
@@ -16,11 +17,10 @@ import {
 import type { DiffItem } from "../shared/bridge.ts";
 import { type ReviewSnapshot, type ReviewSource, reviewPatchStats, reviewSources } from "../shared/review.ts";
 import { openFileManager, paneTask } from "./pane-store.ts";
-import { report } from "./store.ts";
+import { report, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 import { userErrorMessage } from "./user-error.ts";
-import { fileManagerLabel } from "./workspace-file-tree/FileTreeRow.tsx";
 import { getWorkspaceFileRelativePath } from "./workspace-file-tree/model.ts";
 import "./review-pane.css";
 
@@ -40,6 +40,7 @@ export function ReviewPane({
   onFindStateChange?: (state: FindState) => void;
 }) {
   const workspace = useWorkspace(sessionId);
+  const codePreview = useStore((state) => state.settings?.interface.codePreview ?? defaultCodePreview);
   const scope = JSON.stringify([sessionId, workspace?.cwd, source]);
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{
@@ -127,6 +128,9 @@ export function ReviewPane({
   const scroll = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<{ scope: string; path: string | null }>();
   const expandedPath = expanded?.scope === scope ? expanded.path : null;
+  useEffect(() => {
+    setExpanded({ scope, path: null });
+  }, [scope]);
   const [loaded, setLoaded] = useState<{
     snapshot: ReviewSnapshot;
     values: Record<string, ReviewDiffData>;
@@ -240,7 +244,7 @@ export function ReviewPane({
               <span className="review-file-label">
                 <FileIcon path={path} size={16} />
                 <span className="review-file-name">{path.slice(slash + 1)}</span>
-                {slash >= 0 && <span className="review-file-directory">{path.slice(0, slash)}</span>}
+                {slash >= 0 && <span className="review-file-directory">{path.slice(0, slash + 1)}</span>}
               </span>
               <span className="review-file-stats">
                 <span>+{added}</span>
@@ -257,7 +261,7 @@ export function ReviewPane({
                 onSelect={() => action("reveal")}
               >
                 <FolderOpen size={16} />
-                {fileManagerLabel}
+                在文件管理器中打开
               </Context.Item>
               <Context.Item className="parity-menu-item" onSelect={() => action("copy-absolute")}>
                 <Copy size={16} />
@@ -307,13 +311,13 @@ export function ReviewPane({
           <Select.Trigger className="review-source" aria-label="审查来源">
             <Select.Value />
             <Select.Icon asChild>
-              <ChevronDown size={16} />
+              <ChevronDown size={14} />
             </Select.Icon>
           </Select.Trigger>
           <Select.Portal>
             <Select.Content className="review-source-menu" align="start">
               <Select.ScrollUpButton className="review-source-scroll">
-                <ChevronUp size={16} />
+                <ChevronUp size={14} />
               </Select.ScrollUpButton>
               <Select.Viewport className="review-source-options">
                 {Object.entries(reviewSources).map(([id, label]) => (
@@ -326,7 +330,7 @@ export function ReviewPane({
                 ))}
               </Select.Viewport>
               <Select.ScrollDownButton className="review-source-scroll">
-                <ChevronDown size={16} />
+                <ChevronDown size={14} />
               </Select.ScrollDownButton>
             </Select.Content>
           </Select.Portal>
@@ -361,7 +365,12 @@ export function ReviewPane({
                   {isExpanded && (
                     <div className="review-change-content">
                       {diff ? (
-                        <ReviewDiffViewer diff={diff} id={entry.id} searching={searching} />
+                        <ReviewDiffViewer
+                          diff={diff}
+                          id={entry.id}
+                          searching={searching}
+                          codePreview={codePreview}
+                        />
                       ) : (
                         <div className="review-diff-loading">加载中...</div>
                       )}

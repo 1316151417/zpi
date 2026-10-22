@@ -124,6 +124,7 @@ export interface CombinedSelection extends ModelSelection {
   reasoning: ReasoningPreset;
 }
 export interface InterfacePreferences {
+  codePreview?: import("zpi-ui/code-preview").CodePreviewSettings;
   theme: "system" | "light" | "dark";
   fontSize: number;
   showContextUsage: boolean;

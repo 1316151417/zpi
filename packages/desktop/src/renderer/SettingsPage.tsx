@@ -35,7 +35,7 @@ import {
   providerPresets,
   usesChatGPTAuth,
 } from "zpi-ai";
-import { ActionHint, SortableList } from "zpi-ui";
+import { ActionHint, codePreviewThemes, defaultCodePreview, SortableList } from "zpi-ui";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { CapabilitySettings } from "./CapabilitySettings.tsx";
@@ -98,7 +98,15 @@ const newModel = (api: ProviderApi) => ({
   input: ["text"] as ModelSettings["input"],
   useRecommendedConfig: false,
 });
-function FontSizeInput({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+function FontSizeInput({
+  value,
+  onChange,
+  label = "界面字号",
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  label?: string;
+}) {
   const [draft, setDraft] = useState(String(value));
   const commit = () => {
     const number = draft.trim() ? Number(draft) : Number.NaN;
@@ -111,7 +119,7 @@ function FontSizeInput({ value, onChange }: { value: number; onChange: (value: n
   return (
     <div className="settings-font-size">
       <input
-        aria-label="界面字号"
+        aria-label={label}
         type="number"
         inputMode="numeric"
         min={uiFontSizeLimits.min}
@@ -166,6 +174,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [credentialRequest, setCredentialRequest] = useState(0);
   const [keyReady, setKeyReady] = useState(!selected);
   const [tab, setTab] = useState<SettingsTab>("interface");
+  const codePreview = settings?.interface.codePreview ?? defaultCodePreview;
   const title = sections.find(([id]) => id === tab)?.[1];
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -481,6 +490,72 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         onChange={(fontSize) => updateAppearance({ fontSize })}
                       />
                     </div>
+                  </div>
+                  <h2>审查代码预览</h2>
+                  <div className="settings-group">
+                    {(
+                      [
+                        ["lightTheme", "浅色代码主题"],
+                        ["darkTheme", "深色代码主题"],
+                      ] as const
+                    ).map(([field, label]) => (
+                      <div className="settings-row" key={field}>
+                        <span className="settings-row-copy">
+                          <strong>{label}</strong>
+                        </span>
+                        <SettingsSelect
+                          label={label}
+                          value={codePreview[field]}
+                          options={codePreviewThemes}
+                          onChange={(value) =>
+                            updateAppearance({ codePreview: { ...codePreview, [field]: value } })
+                          }
+                        />
+                      </div>
+                    ))}
+                    <div className="settings-row">
+                      <span className="settings-row-copy">
+                        <strong>代码字号</strong>
+                      </span>
+                      <FontSizeInput
+                        label="代码字号"
+                        value={codePreview.fontSizePx}
+                        key={codePreview.fontSizePx}
+                        onChange={(fontSizePx) =>
+                          updateAppearance({ codePreview: { ...codePreview, fontSizePx } })
+                        }
+                      />
+                    </div>
+                    {(
+                      [
+                        ["showLineNumbers", "显示行号"],
+                        ["wrapLongLines", "长行自动换行"],
+                      ] as const
+                    ).map(([field, label]) => (
+                      <label className="settings-row" key={field}>
+                        <span className="settings-row-copy">
+                          <strong>{label}</strong>
+                          <small>
+                            {field === "showLineNumbers"
+                              ? "在纯文本差异预览中显示行号。"
+                              : "纯文本差异预览中的长行自动换行。"}
+                          </small>
+                        </span>
+                        <span className="settings-switch">
+                          <input
+                            type="checkbox"
+                            aria-label={label}
+                            checked={codePreview[field]}
+                            onChange={(event) =>
+                              updateAppearance({
+                                codePreview: { ...codePreview, [field]: event.target.checked },
+                              })
+                            }
+                          />
+                          <span aria-hidden="true" />
+                        </span>
+                      </label>
+                    ))}
                   </div>
                   <h2>聊天</h2>
                   <div className="settings-group">

@@ -5,6 +5,7 @@ import { defaultShortcuts, type ShortcutSettings, validateShortcuts } from "../s
 function legacyShortcuts(platform: string): ShortcutSettings {
   const settings = defaultShortcuts(platform);
   settings.bindings["configure-environment"] = null;
+  settings.bindings["pane-full-view"] = null;
   settings.bindings["toggle-sidebar"] = "CmdOrCtrl+J";
   settings.bindings["toggle-pane"] = "CmdOrCtrl+K";
   settings.bindings["select-model"] = "CmdOrCtrl+L";
@@ -12,11 +13,17 @@ function legacyShortcuts(platform: string): ShortcutSettings {
   return settings;
 }
 
+function legacyExpectedDefaults(platform: string) {
+  const settings = defaultShortcuts(platform);
+  settings.bindings["pane-full-view"] = null;
+  return settings;
+}
+
 describe.each(["darwin", "win32", "linux"])("shortcut default migration on %s", (platform) => {
   it("upgrades the legacy map together without mutating the input", () => {
     const original = legacyShortcuts(platform);
     const snapshot = structuredClone(original);
-    expect(migrateShortcutDefaults(original, platform)).toEqual(defaultShortcuts(platform));
+    expect(migrateShortcutDefaults(original, platform)).toEqual(legacyExpectedDefaults(platform));
     expect(original).toEqual(snapshot);
   });
 
@@ -28,7 +35,7 @@ describe.each(["darwin", "win32", "linux"])("shortcut default migration on %s", 
         original.bindings[command] = binding;
         original.bindings["toggle-sidebar"] = "CmdOrCtrl+Shift+J";
         original.enabled = false;
-        const expected = defaultShortcuts(platform);
+        const expected = legacyExpectedDefaults(platform);
         expected.bindings[command] = binding;
         expected.bindings["toggle-sidebar"] = original.bindings["toggle-sidebar"];
         expected.enabled = false;
@@ -58,7 +65,7 @@ describe.each(["darwin", "win32", "linux"])("shortcut default migration on %s", 
     const settings = legacyShortcuts(platform);
     Reflect.deleteProperty(settings.bindings, "quick-chat");
     Reflect.deleteProperty(settings.bindings, "quick-chat-new");
-    expect(migrateShortcutDefaults(settings, platform)).toEqual(defaultShortcuts(platform));
+    expect(migrateShortcutDefaults(settings, platform)).toEqual(legacyExpectedDefaults(platform));
     expect(Object.hasOwn(settings.bindings, "quick-chat")).toBe(false);
     expect(Object.hasOwn(settings.bindings, "quick-chat-new")).toBe(false);
   });

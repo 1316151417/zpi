@@ -194,3 +194,30 @@ it("allows public API and ordinary header configuration while rejecting credenti
     expect(f.state.getSetting("public-config")).toEqual(publicConfig);
   }
 });
+
+it("persists code preview preferences, accepts older settings and rejects invalid themes or sizes", async () => {
+  const f = await fixture();
+  const store = f.open();
+  const codePreview = {
+    lightTheme: "vitesse-light" as const,
+    darkTheme: "min-dark" as const,
+    fontSizePx: 18,
+    showLineNumbers: false,
+    wrapLongLines: true,
+  };
+  store.updatePreferences({ codePreview });
+  expect(f.open().get().interface.codePreview).toEqual(codePreview);
+  for (const value of [
+    { ...codePreview, fontSizePx: 21 },
+    { ...codePreview, lightTheme: "unknown" },
+    { ...codePreview, wrapLongLines: "yes" },
+    { ...codePreview, extra: true },
+    null,
+  ])
+    expect(() => store.updatePreferences({ codePreview: value } as Partial<InterfacePreferences>)).toThrow();
+  const saved = f.state.getSetting<{ interface: InterfacePreferences }>("app");
+  if (!saved) throw new Error("Missing saved preferences");
+  delete saved.interface.codePreview;
+  f.state.setSetting("app", saved);
+  expect(() => f.open()).not.toThrow();
+});

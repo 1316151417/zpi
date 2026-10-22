@@ -8,9 +8,7 @@ import {
   shortcutForEvent,
   shortcutFromEvent,
   validateShortcuts,
-  withQuickChatCaptureShortcuts,
-  withQuickChatNewShortcut,
-  withQuickChatShortcut,
+  withAddedShortcuts,
   withTaskMenuShortcut,
 } from "../src/shared/shortcuts.ts";
 
@@ -69,9 +67,9 @@ describe("shortcut contract", () => {
       expect(shortcutForEvent(semicolon, platform, settings)).toBe("select-model");
       for (const extra of [{ shiftKey: true }, { altKey: true }, { repeat: true }, { isComposing: true }])
         expect(shortcutForEvent({ ...semicolon, ...extra }, platform, settings)).toBeUndefined();
-      expect(
-        shortcutForEvent({ key: "f", shiftKey: true, ...modifiers }, platform, settings),
-      ).toBeUndefined();
+      expect(shortcutForEvent({ key: "f", shiftKey: true, ...modifiers }, platform, settings)).toBe(
+        "pane-full-view",
+      );
       expect(formatShortcut(binding, platform)).toBe(platform === "darwin" ? "⌘;" : "Ctrl+;");
     },
   );
@@ -223,15 +221,15 @@ describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platfo
     for (const binding of [null, "Alt+B"]) {
       const settings = defaultShortcuts(platform);
       settings.bindings["quick-chat"] = binding;
-      expect(withQuickChatShortcut(settings, platform)).toBe(settings);
+      expect(withAddedShortcuts(settings, platform)).toBe(settings);
     }
     const settings = defaultShortcuts(platform);
     Reflect.deleteProperty(settings.bindings, "quick-chat");
     const snapshot = structuredClone(settings);
-    expect(withQuickChatShortcut(settings, platform)).toEqual(defaultShortcuts(platform));
+    expect(withAddedShortcuts(settings, platform)).toEqual(defaultShortcuts(platform));
     expect(settings).toEqual(snapshot);
     settings.bindings["new-task"] = platform === "darwin" ? "Option+Space" : "Option+N";
-    expect(withQuickChatShortcut(settings, platform).bindings["quick-chat"]).toBeNull();
+    expect(withAddedShortcuts(settings, platform).bindings["quick-chat"]).toBeNull();
   });
 });
 
@@ -245,7 +243,7 @@ describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s"
     bindings["quick-chat-selection"] = null;
     settings.enabled = false;
     const before = structuredClone(settings);
-    const next = withQuickChatCaptureShortcuts(settings, platform);
+    const next = withAddedShortcuts(settings, platform);
     expect(next.bindings["quick-chat-screenshot"]).toBeNull();
     expect(next.bindings["quick-chat-selection"]).toBeNull();
     expect(next.bindings["quick-chat-clipboard"]).toBe(platform === "darwin" ? "Alt+Shift+V" : null);
@@ -260,10 +258,7 @@ describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s"
     Reflect.deleteProperty(settings.bindings, "quick-chat");
     Reflect.deleteProperty(settings.bindings, "quick-chat-new");
     const snapshot = structuredClone(settings);
-    const next = withQuickChatNewShortcut(
-      withQuickChatShortcut(withTaskMenuShortcut(settings, platform), platform),
-      platform,
-    );
+    const next = withAddedShortcuts(withTaskMenuShortcut(settings, platform), platform);
     expect(next).toEqual({ ...defaultShortcuts(platform), enabled: false });
     expect(Object.keys(next.bindings)).toEqual([
       ...Object.keys(settings.bindings),
@@ -279,12 +274,12 @@ describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s"
     { command: "task-menu" as const, migrate: withTaskMenuShortcut, occupied: "CmdOrCtrl+U" },
     {
       command: "quick-chat" as const,
-      migrate: withQuickChatShortcut,
+      migrate: withAddedShortcuts,
       occupied: platform === "darwin" ? "Option+Space" : "Option+N",
     },
     {
       command: "quick-chat-new" as const,
-      migrate: withQuickChatNewShortcut,
+      migrate: withAddedShortcuts,
       occupied: platform === "darwin" ? "Shift+Option+Space" : "Shift+Option+N",
     },
   ])(

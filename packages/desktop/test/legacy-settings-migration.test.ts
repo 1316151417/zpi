@@ -53,6 +53,7 @@ it("defaults absent shortcuts and migrates old defaults only once while preservi
   expect(migrateLegacySettings(withoutShortcuts).shortcuts).toEqual(defaultShortcuts(process.platform));
   const bindings = raw.shortcuts.bindings as Record<string, string | null>;
   delete bindings["focus-composer"];
+  delete bindings["pane-full-view"];
   Object.assign(bindings, {
     "toggle-pane": "CmdOrCtrl+K",
     "select-model": "CmdOrCtrl+L",
@@ -60,7 +61,10 @@ it("defaults absent shortcuts and migrates old defaults only once while preservi
   });
   raw.shortcuts.enabled = false;
   const migrated = migrateLegacySettings(raw);
-  expect(migrated.shortcuts).toEqual({ ...defaultShortcuts(process.platform), enabled: false });
+  expect(migrated.shortcuts).toEqual({
+    enabled: false,
+    bindings: { ...defaultShortcuts(process.platform).bindings, "pane-full-view": null },
+  });
   Object.assign(migrated.shortcuts.bindings, raw.shortcuts.bindings);
   expect(migrateLegacySettings(migrated)).toEqual(migrated);
 });
@@ -70,6 +74,7 @@ it.each(["CmdOrCtrl+;", "CmdOrCtrl+I"])(
     const raw = fixture();
     const bindings = raw.shortcuts.bindings as Record<string, string | null>;
     delete bindings["focus-composer"];
+    delete bindings["pane-full-view"];
     Object.assign(bindings, {
       "toggle-pane": "CmdOrCtrl+K",
       "select-model": "CmdOrCtrl+L",

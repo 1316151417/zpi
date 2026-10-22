@@ -2,6 +2,7 @@
 import { MultiFileDiff, PatchDiff } from "@pierre/diffs/react";
 import { Component, type CSSProperties, memo, type ReactNode, useMemo } from "react";
 import { useAppearance } from "../appearance.ts";
+import { type CodePreviewSettings, defaultCodePreview } from "../code-preview.ts";
 import { getPatchPreviewLineContent, parseTruncatedMarkerOmittedLineCount } from "../patch-preview.ts";
 import { getGitPaneDiffPreviewPlan, type ReviewDiffData } from "../review-diff.ts";
 import { findHighlightCSS } from "./use-text-find.ts";
@@ -24,10 +25,12 @@ function ReviewDiffViewerComponent({
   diff,
   id,
   searching = false,
+  codePreview = defaultCodePreview,
 }: {
   diff: ReviewDiffData;
   id: string;
   searching?: boolean;
+  codePreview?: CodePreviewSettings;
 }) {
   const { theme } = useAppearance();
   const plan = useMemo(() => getGitPaneDiffPreviewPlan(diff), [diff]);
@@ -54,7 +57,7 @@ function ReviewDiffViewerComponent({
       hunkSeparators: plan.kind === "rich" ? ("line-info" as const) : ("simple" as const),
       lineDiffType: "word-alt" as const,
       overflow: "scroll" as const,
-      theme: { light: "github-light", dark: "github-dark" },
+      theme: { light: codePreview.lightTheme, dark: codePreview.darkTheme },
       themeType: theme,
       preferredHighlighter: "shiki-wasm" as const,
       expandUnchanged: searching,
@@ -62,14 +65,14 @@ function ReviewDiffViewerComponent({
       onPostRender: (node: HTMLElement) =>
         node.dispatchEvent(new Event("zpi-diff-render", { bubbles: true })),
     }),
-    [plan.kind, theme, searching],
+    [plan.kind, theme, searching, codePreview.lightTheme, codePreview.darkTheme],
   );
   const viewerStyle = {
     "--diffs-bg": "var(--color-bg)",
     "--diffs-light-bg": "var(--color-bg)",
     "--diffs-dark-bg": "var(--color-bg)",
     "--diffs-font-family": "var(--font-code)",
-    "--diffs-font-size": "12px",
+    "--diffs-font-size": `${codePreview.fontSizePx}px`,
   } as CSSProperties;
   if (diff.availability !== "patch")
     return (
@@ -84,7 +87,12 @@ function ReviewDiffViewerComponent({
   if (plan.kind === "plain-text")
     return (
       <div className="review-lightweight" data-lightweight-diff-preview>
-        <div className="review-lightweight-lines" data-lightweight-diff-scroll-content>
+        <div
+          className="review-lightweight-lines"
+          data-lightweight-diff-scroll-content
+          data-wrap={codePreview.wrapLongLines || undefined}
+          style={{ fontSize: codePreview.fontSizePx }}
+        >
           {plan.lines.map((line, index) => {
             const omitted = parseTruncatedMarkerOmittedLineCount(line);
             if (omitted !== null)
@@ -96,9 +104,11 @@ function ReviewDiffViewerComponent({
             const kind = line.startsWith("+") ? "added" : line.startsWith("-") ? "removed" : "context";
             return (
               <div className={`review-lightweight-line ${kind}`} key={index}>
-                <span className="review-lightweight-number" aria-hidden="true">
-                  {index + 1}
-                </span>
+                {codePreview.showLineNumbers && (
+                  <span className="review-lightweight-number" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                )}
                 <code data-find-key={`${id}:plain:${index}`}>{getPatchPreviewLineContent(line) || " "}</code>
               </div>
             );

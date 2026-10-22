@@ -6,14 +6,14 @@ import type { DesktopBridge, DiffItem } from "../src/shared/bridge.ts";
 import type { ReviewSource } from "../src/shared/review.ts";
 
 vi.mock("../src/renderer/use-workspace.ts", () => ({ useWorkspace: () => ({ cwd: "/project" }) }));
-vi.mock("../src/renderer/store.ts", () => ({ report: vi.fn() }));
+vi.mock("../src/renderer/store.ts", () => ({
+  report: vi.fn(),
+  useStore: (selector: (state: object) => unknown) => selector({}),
+}));
 vi.mock("../src/renderer/pane-store.ts", () => ({
   openFile: vi.fn(),
   openFileManager: vi.fn(),
   paneTask: vi.fn(),
-}));
-vi.mock("../src/renderer/workspace-file-tree/FileTreeRow.tsx", () => ({
-  fileManagerLabel: "在 Finder 中打开",
 }));
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: { count: number }) => ({
@@ -130,4 +130,31 @@ test("shows a Git failure and lets refresh retry without leaving the selected so
     ["session", "branch"],
   ]);
   expect(container.textContent).toContain("retry.txt");
+});
+
+test("source round trips reset expanded files and parent paths retain the reference trailing slash", async () => {
+  getReview.mockResolvedValue({
+    ok: true,
+    value: { entries: [entry("/project/src/file.ts")], isRepository: true },
+  });
+  Object.assign(window.zpi, {
+    readReviewDiff: vi.fn(async () => ({
+      ok: true,
+      value: {
+        path: "/project/src/file.ts",
+        availability: "unavailable",
+        patch: null,
+        beforeContent: null,
+        afterContent: null,
+        summary: null,
+      },
+    })),
+  });
+  await render("unstaged");
+  expect(container.querySelector(".review-file-directory")?.textContent).toBe("src/");
+  await act(async () => container.querySelector<HTMLButtonElement>(".review-file-row")?.click());
+  expect(container.querySelector(".review-file-row")?.getAttribute("aria-expanded")).toBe("true");
+  await render("staged");
+  await render("unstaged");
+  expect(container.querySelector(".review-file-row")?.getAttribute("aria-expanded")).toBe("false");
 });

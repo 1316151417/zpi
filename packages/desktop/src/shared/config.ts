@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "zpi-agent";
 import { anthropicMessagesCompatKeys, defaultThinkingLevel, thinkingChoices } from "zpi-ai";
+import { defaultCodePreview } from "zpi-ui/code-preview";
 import type { InterfacePreferences, ModelSettings, PluginCapabilities, ReasoningPreset } from "./bridge.ts";
 export const defaultCapabilities: PluginCapabilities = {
   webSearch: true,
@@ -62,6 +63,7 @@ export const reasoningLabels: Record<string, string> = {
   max: "最高",
 } as const;
 export const defaultPreferences: InterfacePreferences = {
+  codePreview: defaultCodePreview,
   theme: "system",
   fontSize: 14,
   showContextUsage: false,

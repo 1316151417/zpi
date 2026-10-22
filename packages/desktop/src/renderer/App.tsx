@@ -46,6 +46,7 @@ import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { DirectoryMenuItems } from "./DirectoryMenuItems.tsx";
 import { DraftProjectPicker } from "./DraftProjectPicker.tsx";
 import { ModelPerformance } from "./ModelPerformance.tsx";
+import { PaneFullViewControls } from "./PaneFullViewControls.tsx";
 import {
   canOpenSideChat,
   listenPanes,
@@ -59,6 +60,7 @@ import {
   setPaneOpen,
   openChanges as showChanges,
   openFile as showFile,
+  togglePaneFullView,
   usePane,
   useSideChatBlocked,
 } from "./pane-store.ts";
@@ -216,6 +218,7 @@ export function App() {
   const state = useStore(useShallow(selectAppState));
   const records = useStore(useShallow(selectTaskRecords));
 
+  const fullView = usePane((state) => state.fullView);
   const paneOpen = usePane((s) => s.open),
     paneRatio = usePane((s) => s.ratio);
   const sideChatBlocked = useSideChatBlocked(state.selected);
@@ -471,6 +474,7 @@ export function App() {
       if (!shortcuts.enabled || !shortcuts.bindings[command] || workspaceShortcutBlocked(command)) return;
       if (command === "toggle-sidebar") updatePrefs({ sidebarCollapsed: !collapsed });
       else if (command === "toggle-pane") setPaneOpen(!usePane.getState().open);
+      else if (command === "pane-full-view") togglePaneFullView();
       else if (command === "search") setSearchOpen(true);
       else if (command === "new-task") void newTask().catch(report);
       else if (command === "find") {
@@ -637,13 +641,13 @@ export function App() {
   ];
   return (
     <div
-      className={`shell ${window.zpi.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""}`}
+      className={`shell ${window.zpi.platform === "darwin" ? "mac-desktop" : ""} ${collapsed ? "left-collapsed" : ""} ${paneOpen ? "pane-open" : ""} ${settingsOpen ? "show-settings" : ""} ${fullView ? `pane-full-view ${fullView.surface === "conversation" ? "pane-full-conversation" : `pane-full-floating pane-float-${fullView.floating}`}` : ""}`}
       style={
         {
           "--left-sidebar-width": `${width}px`,
           "--sidebar-content-width": `${boundedWidth(dragWidth ?? prefs?.sidebarWidth ?? sidebarLimits.default)}px`,
           "--right-pane-width": `${paneWidth}px`,
-          "--right-pane-offset": `${paneOpen ? paneWidth : 0}px`,
+          "--right-pane-offset": `${paneOpen && !fullView ? paneWidth : 0}px`,
           "--workspace-panel-radius": `${window.zpi.workspacePanelRadius}px`,
         } as CSSProperties
       }
@@ -1024,6 +1028,7 @@ export function App() {
           onPointerDownCapture={() => selected && paneTask(markSessionRead(selected))}
           onFocusCapture={() => selected && paneTask(markSessionRead(selected))}
         >
+          {fullView && <PaneFullViewControls sessionId={selected} value={fullView} />}
           <header className="topbar">
             <div className="topbar-title" title={taskTitle}>
               <Folder size={16} />

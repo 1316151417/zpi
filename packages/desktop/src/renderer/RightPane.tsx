@@ -1,33 +1,30 @@
-import {
-  Activity,
-  Bot,
-  File as FileDocument,
-  FileDiff as Files,
-  FolderOpen,
-  Globe,
-  MessageSquare,
-  Plus,
-  SquareTerminal as TerminalSquare,
-  X,
-} from "lucide-react";
+import * as Context from "@radix-ui/react-context-menu";
+import { Maximize2, MessageCircle, Minimize2, Plus, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { FileIcon, type FindRequest, type FindState } from "zpi-ui";
+import { ActionHint, type FindRequest, type FindState } from "zpi-ui";
+import { formatShortcut } from "../shared/shortcuts.ts";
 import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FileManagerPane } from "./FileManagerPane.tsx";
 import { PaneLauncher } from "./PaneLauncher.tsx";
+import { PaneTabIcon } from "./PaneTabIcon.tsx";
+import { PaneTabOverview } from "./PaneTabOverview.tsx";
 import {
   activatePaneTab,
   canOpenSideChat,
+  closePaneTabs,
   closeTab,
   openNewPaneTab,
   paneTask,
   reorderPaneTab,
   selectReviewSource,
+  togglePaneFullView,
+  updatePaneFullView,
   usePane,
   visiblePaneTabs,
 } from "./pane-store.ts";
+import "./pane-tabs.css";
 import { ReviewPane } from "./ReviewPane.tsx";
 import { SideChatPane } from "./SideChatPane.tsx";
 import { SubagentPane } from "./SubagentPane.tsx";
@@ -52,6 +49,10 @@ export function RightPane({
     return canOpenSideChat(record);
   });
   const state = usePane();
+  const conversationTitle = useStore((state) => state.sessions.get(sessionId ?? "")?.title ?? "对话");
+  const fullViewShortcut = useStore((state) =>
+    state.settings?.shortcuts.enabled ? state.settings.shortcuts.bindings["pane-full-view"] : null,
+  );
   const panel = useRef<HTMLElement>(null);
   const previousOpen = useRef(state.open);
   useLayoutEffect(() => {
@@ -72,7 +73,8 @@ export function RightPane({
     };
   }, [state.open]);
   const tabs = visiblePaneTabs(sessionId, state.tabs);
-  const active = tabs.find((tab) => tab.id === state.active)?.id;
+  const active =
+    state.fullView?.surface === "conversation" ? undefined : tabs.find((tab) => tab.id === state.active)?.id;
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const active = tabsRef.current?.querySelector<HTMLElement>(".pane-tab.selected");
@@ -118,101 +120,143 @@ export function RightPane({
       <div className="right-pane-frame">
         <div className="right-pane-content">
           <div className="pane-header">
+            <PaneTabOverview sessionId={sessionId} />
             <div ref={tabsRef} role="tablist" aria-label="侧栏标签" className="pane-tabs">
-              {tabs.map((tab) => (
+              {state.fullView && (
                 <div
+                  className={`pane-tab pane-conversation-tab ${state.fullView.surface === "conversation" ? "selected" : ""}`}
                   role="tab"
-                  aria-label={tab.title}
-                  tabIndex={state.active === tab.id ? 0 : -1}
-                  aria-selected={state.active === tab.id}
+                  aria-selected={state.fullView.surface === "conversation"}
+                  aria-label={conversationTitle}
+                  tabIndex={0}
+                  onClick={() =>
+                    updatePaneFullView({
+                      surface: "conversation",
+                      floating: state.fullView?.floating ?? "collapsed",
+                    })
+                  }
                   onKeyDown={(event) => {
-                    if (event.key === "Delete") {
+                    if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      paneTask(closeTab(tab.id));
-                    }
-                    if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
-                      event.preventDefault();
-                      const index = tabs.findIndex((item) => item.id === tab.id);
-                      const next =
-                        tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
-                      if (next) activatePaneTab(next.id);
-                    }
-                  }}
-                  key={tab.id}
-                  className={`pane-tab ${state.active === tab.id ? "selected" : ""}`}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData("application/x-zpi-pane-tab", tab.id);
-                  }}
-                  onDragOver={(event) => {
-                    if (event.dataTransfer.types.includes("application/x-zpi-pane-tab"))
-                      event.preventDefault();
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const id = event.dataTransfer.getData("application/x-zpi-pane-tab");
-                    reorderPaneTab(id, tab.id);
-                  }}
-                  onAuxClick={(event) => {
-                    if (event.button === 1) {
-                      event.preventDefault();
-                      paneTask(closeTab(tab.id));
+                      updatePaneFullView({
+                        surface: "conversation",
+                        floating: state.fullView?.floating ?? "collapsed",
+                      });
                     }
                   }}
                 >
-                  <button
-                    className="pane-tab-trigger"
-                    title={tab.title}
-                    onClick={(event) => {
-                      if (event.button !== 1) activatePaneTab(tab.id);
-                    }}
-                  >
-                    <span className="pane-tab-content">
-                      <span className="pane-tab-icon">
-                        {tab.type === "new-tab" ? (
-                          <FileDocument size={14} />
-                        ) : tab.type === "file-manager" ? (
-                          <FolderOpen size={14} />
-                        ) : tab.type === "subagent" ? (
-                          <Bot size={14} />
-                        ) : tab.type === "task-directory" ? (
-                          <Activity size={14} />
-                        ) : tab.type === "side-chat" || tab.type === "side-chat-loading" ? (
-                          <MessageSquare size={14} />
-                        ) : tab.type === "changes" ? (
-                          tab.path ? (
-                            <FileIcon path={tab.path} size={14} />
-                          ) : (
-                            <Files size={14} />
-                          )
-                        ) : tab.type === "terminal" || tab.type === "background-task" ? (
-                          <TerminalSquare size={14} />
-                        ) : tab.type === "file" ? (
-                          <FileIcon path={tab.preview.path} size={14} />
-                        ) : (
-                          <Globe size={14} />
-                        )}
-                      </span>
-                      <span className="pane-tab-title">{tab.title}</span>
-                      {tab.type === "changes" && !tab.reviewSource && (
-                        <span className="pane-tab-diff-badge">Diff</span>
-                      )}
-                    </span>
-                  </button>
-                  <button
-                    className="tab-close"
-                    aria-label={`关闭标签 ${tab.title}`}
-                    onClick={() => paneTask(closeTab(tab.id))}
-                  >
-                    <X size={12} />
-                  </button>
+                  <MessageCircle size={16} />
+                  <span className="pane-conversation-title">{conversationTitle}</span>
                 </div>
+              )}
+              {tabs.map((tab) => (
+                <Context.Root key={tab.id}>
+                  <Context.Trigger asChild>
+                    <div
+                      role="tab"
+                      aria-label={tab.title}
+                      tabIndex={active === tab.id ? 0 : -1}
+                      aria-selected={active === tab.id}
+                      onKeyDown={(event) => {
+                        if (event.key === "Delete") {
+                          event.preventDefault();
+                          paneTask(closeTab(tab.id));
+                        }
+                        if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+                          event.preventDefault();
+                          const index = tabs.findIndex((item) => item.id === tab.id);
+                          const next =
+                            tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+                          if (next) activatePaneTab(next.id);
+                        }
+                      }}
+                      key={tab.id}
+                      className={`pane-tab ${active === tab.id ? "selected" : ""}`}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("application/x-zpi-pane-tab", tab.id);
+                      }}
+                      onDragOver={(event) => {
+                        if (event.dataTransfer.types.includes("application/x-zpi-pane-tab"))
+                          event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const id = event.dataTransfer.getData("application/x-zpi-pane-tab");
+                        reorderPaneTab(id, tab.id);
+                      }}
+                      onAuxClick={(event) => {
+                        if (event.button === 1) {
+                          event.preventDefault();
+                          paneTask(closeTab(tab.id));
+                        }
+                      }}
+                    >
+                      <button
+                        className="pane-tab-trigger"
+                        title={tab.title}
+                        onClick={(event) => {
+                          if (event.button !== 1) activatePaneTab(tab.id);
+                        }}
+                      >
+                        <span className="pane-tab-content">
+                          <span className="pane-tab-icon">
+                            <PaneTabIcon tab={tab} />
+                          </span>
+                          <span className="pane-tab-title">{tab.title}</span>
+                          {tab.type === "changes" && !tab.reviewSource && (
+                            <span className="pane-tab-diff-badge">Diff</span>
+                          )}
+                        </span>
+                      </button>
+                      <button
+                        className="tab-close"
+                        aria-label={`关闭标签 ${tab.title}`}
+                        onClick={() => paneTask(closeTab(tab.id))}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </Context.Trigger>
+                  <Context.Portal>
+                    <Context.Content className="parity-menu pane-tab-menu">
+                      <Context.Item className="parity-menu-item" onSelect={() => paneTask(closeTab(tab.id))}>
+                        关闭标签
+                      </Context.Item>
+                      <Context.Item
+                        className="parity-menu-item"
+                        disabled={tabs.length < 2}
+                        onSelect={() => paneTask(closePaneTabs(tab.id))}
+                      >
+                        关闭其他标签
+                      </Context.Item>
+                      <Context.Item className="parity-menu-item" onSelect={() => paneTask(closePaneTabs())}>
+                        关闭所有标签
+                      </Context.Item>
+                    </Context.Content>
+                  </Context.Portal>
+                </Context.Root>
               ))}
             </div>
             <button className="pane-add-tab" aria-label="新增侧栏标签" onClick={openNewPaneTab}>
               <Plus size={16} />
             </button>
             <div className="pane-drag-space" aria-hidden="true" />
+            <ActionHint
+              label={state.fullView ? "退出完整视图" : "进入完整视图"}
+              shortcut={fullViewShortcut ? formatShortcut(fullViewShortcut, window.zpi.platform) : ""}
+              appearance="control"
+              side="bottom"
+            >
+              <button
+                className="pane-header-action"
+                aria-label={state.fullView ? "退出完整视图" : "进入完整视图"}
+                aria-pressed={Boolean(state.fullView)}
+                onClick={togglePaneFullView}
+              >
+                {state.fullView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            </ActionHint>
           </div>
           {tabs.length === 0 && (
             <PaneLauncher sessionId={sessionId} sideChatAvailable={sideChatAvailable} hasReview={false} />

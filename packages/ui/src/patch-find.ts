@@ -1,10 +1,10 @@
-import { getSingularPatch } from "@pierre/diffs";
+import { type FileDiffMetadata, getSingularPatch } from "@pierre/diffs";
 import type { FindTarget } from "./find.ts";
 
 /** Use the diff renderer's line indices; headers and diff markers are not searchable text. */
-export function patchFindTargets(id: string, path: string, patch: string): FindTarget[] {
+export function patchFindTargets(id: string, path: string, patch: string | FileDiffMetadata): FindTarget[] {
   try {
-    const diff = getSingularPatch(patch);
+    const diff = typeof patch === "string" ? getSingularPatch(patch) : patch;
     const targets: FindTarget[] = [];
     for (const hunk of diff.hunks) {
       let unified = hunk.unifiedLineStart,
@@ -24,6 +24,7 @@ export function patchFindTargets(id: string, path: string, patch: string): FindT
     }
     return targets;
   } catch {
+    if (typeof patch !== "string") return [];
     return patch
       .split("\n")
       .flatMap((line, index) =>

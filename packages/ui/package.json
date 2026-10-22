@@ -11,7 +11,8 @@
     "./code-language": "./src/code-language.ts",
     "./links": "./src/link-target.ts",
     "./errors": "./src/user-error.ts",
-    "./media-preview": "./src/preview/media-preview.ts"
+    "./media-preview": "./src/preview/media-preview.ts",
+    "./code-preview": "./src/code-preview.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

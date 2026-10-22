@@ -29,6 +29,9 @@ it("reserves held workspace commands from terminals but leaves composer commands
   expect(workspaceShortcutForEvent({ key: "Enter", ctrlKey: true }, "linux", settings)).toBeUndefined();
   expect(workspaceShortcutForEvent({ key: "]", ctrlKey: true }, "linux", settings)).toBe("toggle-pane");
   expect(workspaceShortcutForEvent({ key: "k", ctrlKey: true }, "linux", settings)).toBe("search");
+  expect(workspaceShortcutForEvent({ key: "f", ctrlKey: true, shiftKey: true }, "linux", settings)).toBe(
+    "pane-full-view",
+  );
   expect(
     workspaceShortcutForEvent({ key: "l", code: "KeyL", ctrlKey: true }, "linux", settings),
   ).toBeUndefined();

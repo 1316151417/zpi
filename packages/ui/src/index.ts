@@ -1,5 +1,6 @@
 export { observeAppearance, useAppearance } from "./appearance.ts";
 export { toolCodeLanguage } from "./code-language.ts";
+export { type CodePreviewSettings, codePreviewThemes, defaultCodePreview } from "./code-preview.ts";
 export { ChatComposer, Conversation, RunGroup } from "./components/Conversation.tsx";
 export { ConversationSelectionMenu } from "./components/ConversationSelections.tsx";
 export type { DiffEntry } from "./components/DiffView.tsx";

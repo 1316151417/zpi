@@ -1,4 +1,4 @@
-import { lstat, readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import type { DiffItem } from "../shared/bridge.ts";
 import type { ReviewDiffData, ReviewSnapshot, ReviewSource } from "../shared/review.ts";
@@ -84,7 +84,7 @@ export async function gitReview(
   ];
   const refs = await comparison(cwd, source);
   if (source === "branch" && !refs.length) return { entries: [], isRepository: true, watchPaths };
-  const entries = parseStats(
+  let entries = parseStats(
     await runGit(cwd, [
       "--literal-pathspecs",
       "diff",
@@ -101,42 +101,54 @@ export async function gitReview(
     root,
   );
   const changes = source === "staged" ? status.stagedChanges : status.unstagedChanges;
+  const changesByPath = new Map(changes.map((change) => [change.path, change]));
+  if (source === "staged") entries = entries.filter((entry) => !changesByPath.get(entry.path)?.isConflicted);
   for (const entry of entries) {
-    const change = changes.find((change) => change.path === entry.path);
-    if (source !== "branch" && change) entry.status = change.kind === "added" ? "created" : change.kind;
+    const change = changesByPath.get(entry.path);
+    if (source !== "branch" && change) {
+      entry.status = change.kind === "added" ? "created" : change.kind;
+      entry.area = change.isConflicted ? "conflicted" : source;
+      if (change.isConflicted) {
+        entry.added = 0;
+        entry.removed = 0;
+      }
+    }
   }
   if (source === "unstaged") {
     for (const change of changes.filter(
       (change) => change.isUntracked && (!onlyPath || change.path === onlyPath),
     )) {
-      const info = await lstat(change.path);
-      const bytes = info.isFile() && info.size <= previewBytes ? await readFile(change.path) : null;
-      const text = bytes && !bytes.includes(0) ? bytes.toString("utf8") : null;
+      // ZCode excludes untracked entries with no reviewable text (empty, binary, too large or unreadable).
+      let text: string;
+      try {
+        const info = await stat(change.path);
+        if (!info.isFile() || info.size > previewBytes) continue;
+        const bytes = await readFile(change.path);
+        if (bytes.length > previewBytes || bytes.includes(0)) continue;
+        text = bytes.toString("utf8");
+        if (!text) continue;
+      } catch {
+        continue;
+      }
       entries.push({
         id: `file:${change.path}`,
         path: change.path,
         status: "created",
-        area: "",
-        added: text ? text.split("\n").length - (text.endsWith("\n") ? 1 : 0) : 0,
+        area: "untracked",
+        added: text.split("\n").length - (text.endsWith("\n") ? 1 : 0),
         removed: 0,
-        patchAvailable: text !== null,
-        ...(text === null
-          ? {
-              reason:
-                info.size > previewBytes
-                  ? "Diff 已裁剪"
-                  : bytes?.includes(0)
-                    ? "无法预览二进制 Diff"
-                    : "暂时无法预览这个 Diff",
-            }
-          : {}),
+        patchAvailable: true,
       });
     }
   }
   return {
     entries: entries
       .filter((entry) => !onlyPath || entry.path === onlyPath)
-      .sort((a, b) => a.path.localeCompare(b.path)),
+      .sort((a, b) => {
+        const rank = (entry: DiffItem) =>
+          entry.area === "conflicted" ? 2 : entry.area === "untracked" ? 1 : 0;
+        return rank(a) - rank(b) || a.path.localeCompare(b.path);
+      }),
     isRepository: true,
     watchPaths,
   };
@@ -151,7 +163,7 @@ export async function gitReviewPatch(cwd: string, source: ReviewSource, path: st
   const file = relative(root, path);
   const status = source === "unstaged" ? await workspaceGitStatus(cwd) : undefined;
   if (status?.unstagedChanges.some((change) => change.path === path && change.isUntracked)) {
-    const info = await lstat(path);
+    const info = await stat(path);
     if (!info.isFile() || info.size > previewBytes) throw new Error("invalid_input: 文件过大");
     const bytes = await readFile(path);
     if (bytes.includes(0)) return "";
@@ -191,7 +203,7 @@ async function gitBlob(cwd: string, ref: string, path: string): Promise<string |
 }
 async function workingContent(path: string): Promise<string | null> {
   try {
-    const info = await lstat(path);
+    const info = await stat(path);
     if (!info.isFile() || info.size > previewBytes) return null;
     const text = await readFile(path, "utf8");
     return text.includes("\0") ? null : text;

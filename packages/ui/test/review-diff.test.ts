@@ -57,3 +57,28 @@ test("deep hunks and large fallback previews keep the reference 800-line bound a
   if (large.kind === "plain-text") expect(large.lines.length).toBeLessThanOrEqual(800);
   expect(reviewFindTargets("file", diff).some((target) => target.text.startsWith("@@"))).toBe(false);
 });
+
+test("full-content find follows before/after order and counts unchanged text in both snapshots like ZCode", () => {
+  const diff = data("file.ts", "unchanged\nbefore\n", "unchanged\nafter\n");
+  expect(reviewFindTargets("file", diff).map(({ key, text }) => [key, text])).toEqual([
+    ["file:0", "unchanged"],
+    ["file:1", "before"],
+    ["file:0", "unchanged"],
+    ["file:2", "after"],
+  ]);
+});
+
+test("patch-only find maps identical context lines by coordinates rather than collapsing them onto one row", () => {
+  const repeated = `// ${"x".repeat(190)}\n`;
+  const diff = data(
+    "file.ts",
+    `const value = 0;\n${repeated.repeat(1000)}`,
+    `const value = 1;\n${repeated.repeat(1000)}`,
+  );
+  expect(getGitPaneDiffPreviewPlan(diff).kind).toBe("patch");
+  const targets = reviewFindTargets("file", diff);
+  expect(targets[1].key).toBe("file:2");
+  expect(targets[2].key).toBe("file:3");
+  expect(targets[1002].key).toBe("file:2");
+  expect(targets[10].key).toContain(":hidden:");
+});

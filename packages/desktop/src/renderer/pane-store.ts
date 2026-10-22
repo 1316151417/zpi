@@ -74,15 +74,22 @@ export type PaneTab = (
     }
   | { id: string; type: "file"; title: string; sessionId: string; preview: FilePreview; cwd?: string }
   | { id: string; type: "browser"; title: string; sessionId?: string; state: BrowserState; fileKey?: string }
-) & { ownerSessionId?: string };
+) & { ownerSessionId?: string; openedAt?: number };
 export type FilePaneTab = Extract<PaneTab, { type: "file-manager" | "file" | "changes" }>;
+export interface PaneFullView {
+  surface: "side-pane" | "conversation";
+  floating: "collapsed" | "expanded" | "minimized";
+}
 interface PanePreference {
   open: boolean;
   active?: string;
+  fullView?: PaneFullView | null;
 }
 interface PaneState {
   open: boolean;
   tabs: PaneTab[];
+  recentClosed: { tab: PaneTab; closedAt: number }[];
+  fullView: PaneFullView | null;
   active?: string;
   ratio: number;
   preferences: Map<string | undefined, PanePreference>;
@@ -98,6 +105,8 @@ try {
 export const usePane = create<PaneState>(() => ({
   open: false,
   tabs: [],
+  recentClosed: [],
+  fullView: null,
   ratio: savedRatio,
   preferences: new Map(),
   deletedSessionIds: new Set(),
@@ -142,6 +151,7 @@ function restorePane() {
   const saved = state.preferences.get(sessionId);
   usePane.setState({
     open: saved?.open ?? tabs.length > 0,
+    fullView: (saved?.open ?? tabs.length > 0) ? (saved?.fullView ?? null) : null,
     active: tabs.find((tab) => tab.id === saved?.active)?.id ?? tabs.at(-1)?.id,
   });
 }
@@ -152,16 +162,21 @@ export function setPaneOpen(open: boolean) {
   }
   const state = usePane.getState();
   const preferences = new Map(state.preferences);
-  preferences.set(useStore.getState().selected, { open, active: state.active });
-  usePane.setState({ open, preferences });
+  preferences.set(useStore.getState().selected, {
+    open,
+    active: state.active,
+    fullView: open ? state.fullView : null,
+  });
+  usePane.setState({ open, preferences, fullView: open ? state.fullView : null });
 }
 export function activatePaneTab(id: string) {
   const sessionId = useStore.getState().selected;
   if (!visiblePaneTabs(sessionId).some((tab) => tab.id === id)) return;
   const state = usePane.getState();
   const preferences = new Map(state.preferences);
-  preferences.set(sessionId, { open: state.open, active: id });
-  usePane.setState({ active: id, preferences });
+  const fullView = state.fullView ? { ...state.fullView, surface: "side-pane" as const } : null;
+  preferences.set(sessionId, { open: state.open, active: id, fullView });
+  usePane.setState({ active: id, preferences, fullView });
 }
 export function reorderPaneTab(id: string, targetId: string) {
   const state = usePane.getState();
@@ -225,10 +240,15 @@ function showTab(tab: PaneTab) {
   const ownerSessionId = tabOwner(tab);
   if (ownerDeleted(ownerSessionId)) return;
   // Archival removes child records from the session list; retain their original owner.
-  tab = { ...tab, ownerSessionId };
+  tab = { ...tab, ownerSessionId, openedAt: tab.openedAt ?? Date.now() };
   const current = usePane.getState();
   const preferences = new Map(current.preferences);
-  preferences.set(ownerSessionId, { open: true, active: tab.id });
+  const fullView = current.preferences.get(ownerSessionId)?.fullView;
+  preferences.set(ownerSessionId, {
+    open: true,
+    active: tab.id,
+    fullView: fullView ? { ...fullView, surface: "side-pane" } : null,
+  });
   const launcher = current.tabs.find(
     (item) =>
       item.id === current.preferences.get(ownerSessionId)?.active &&
@@ -673,7 +693,10 @@ export async function deleteSessionWithPanes(sessionId: string) {
   );
   const preferences = new Map(usePane.getState().preferences);
   preferences.delete(sessionId);
-  usePane.setState({ preferences });
+  usePane.setState({
+    preferences,
+    recentClosed: usePane.getState().recentClosed.filter(({ tab }) => tabOwner(tab) !== sessionId),
+  });
 }
 export async function closeTab(id: string) {
   const state = usePane.getState(),
@@ -708,10 +731,18 @@ export async function closeTab(id: string) {
     const index = previous.findIndex((item) => item.id === id);
     preferences.set(owner, {
       open: saved.open && visible.length > 0,
+      fullView: visible.length > 0 ? saved.fullView : null,
       active: saved.active === id ? visible[Math.min(index, visible.length - 1)]?.id : saved.active,
     });
   }
-  usePane.setState({ tabs, preferences });
+  const recentClosed =
+    ownerDeleted(owner) || ["new-tab", "side-chat", "side-chat-loading"].includes(tab.type)
+      ? current.recentClosed
+      : [
+          { tab, closedAt: Date.now() },
+          ...current.recentClosed.filter((item) => item.tab.id !== tab.id),
+        ].slice(0, 8);
+  usePane.setState({ tabs, preferences, recentClosed });
   restorePane();
 }
 export function paneTask(task: Promise<unknown>) {
@@ -729,4 +760,37 @@ export function openBackgroundTask(task: BackgroundTask) {
     sessionId: task.sessionId,
     taskId: task.taskId,
   });
+}
+
+export function updatePaneFullView(fullView: PaneFullView | null) {
+  const state = usePane.getState();
+  const preferences = new Map(state.preferences);
+  const owner = useStore.getState().selected;
+  preferences.set(owner, { open: state.open, active: state.active, fullView });
+  usePane.setState({ fullView, preferences });
+}
+export function togglePaneFullView() {
+  const state = usePane.getState();
+  if (!state.open) setPaneOpen(true);
+  updatePaneFullView(state.fullView ? null : { surface: "side-pane", floating: "collapsed" });
+}
+export async function closePaneTabs(except?: string) {
+  const tabs = visiblePaneTabs(useStore.getState().selected);
+  for (const tab of tabs) if (tab.id !== except) await closeTab(tab.id);
+}
+export async function reopenPaneTab(id: string) {
+  const item = usePane.getState().recentClosed.find((item) => item.tab.id === id);
+  const owner = useStore.getState().selected;
+  if (!item || tabOwner(item.tab) !== owner || ownerDeleted(owner)) return;
+  const tab = item.tab;
+  if (tab.type === "browser") await openBrowser(tab.state.url, tab.sessionId);
+  else if (tab.type === "terminal") await openTerminal(tab.sessionId);
+  else {
+    if (tab.type === "subagent") {
+      accept(unwrap(await window.zpi.getSessionSnapshot(tab.childSessionId)));
+      retainedSessionViews.add(tab.childSessionId);
+    }
+    showTab({ ...tab, openedAt: Date.now() });
+  }
+  usePane.setState((state) => ({ recentClosed: state.recentClosed.filter((closed) => closed !== item) }));
 }

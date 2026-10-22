@@ -68,6 +68,8 @@ test("preserves renames, deleted files and binary fallbacks", async () => {
   expect(await gitReviewPatch(cwd, "staged", renamed.path)).toContain("rename from file.txt");
   await rm(join(cwd, "renamed.txt"));
   await writeFile(join(cwd, "binary.dat"), Buffer.from([0, 1, 2]));
+  await runGit(cwd, ["add", "binary.dat"]);
+  await writeFile(join(cwd, "binary.dat"), Buffer.from([0, 3, 4]));
   const unstaged = (await gitReview(cwd, "unstaged")).entries;
   expect(unstaged.find((entry) => entry.status === "deleted")).toBeDefined();
   expect(unstaged.find((entry) => entry.path.endsWith("binary.dat"))).toMatchObject({
@@ -120,6 +122,32 @@ test("keeps one unresolved merge row and preserves its combined patch for the re
   await expect(runGit(cwd, ["merge", "feature"])).rejects.toThrow();
   const { entries } = await gitReview(cwd, "unstaged");
   expect(entries).toHaveLength(1);
-  expect(entries[0]).toMatchObject({ patchAvailable: true });
+  expect(entries[0]).toMatchObject({ patchAvailable: true, added: 0, removed: 0, area: "conflicted" });
+  expect((await gitReview(cwd, "staged")).entries).toEqual([]);
   expect((await gitReviewDiff(cwd, "unstaged", entries[0].path)).availability).toBe("patch");
+});
+
+test("orders tracked, untracked and conflicted sections and excludes unreviewable untracked files", async () => {
+  const cwd = await repo();
+  await writeFile(join(cwd, "z-tracked.txt"), "initial\n");
+  await runGit(cwd, ["add", "."]);
+  await runGit(cwd, ["commit", "-m", "Track last path"]);
+  await runGit(cwd, ["checkout", "-b", "feature"]);
+  await writeFile(join(cwd, "file.txt"), "feature\n");
+  await runGit(cwd, ["commit", "-am", "Feature"]);
+  await runGit(cwd, ["checkout", "main"]);
+  await writeFile(join(cwd, "file.txt"), "main\n");
+  await runGit(cwd, ["commit", "-am", "Main"]);
+  await expect(runGit(cwd, ["merge", "feature"])).rejects.toThrow();
+  await writeFile(join(cwd, "z-tracked.txt"), "modified\n");
+  await writeFile(join(cwd, "a-untracked.txt"), "new\n");
+  await writeFile(join(cwd, "empty.txt"), "");
+  await writeFile(join(cwd, "binary.dat"), Buffer.from([0, 1]));
+  await writeFile(join(cwd, "oversized.txt"), "x".repeat(1024 * 1024 + 1));
+  const { entries } = await gitReview(cwd, "unstaged");
+  expect(entries.map((entry) => entry.path)).toEqual([
+    join(cwd, "z-tracked.txt"),
+    join(cwd, "a-untracked.txt"),
+    join(cwd, "file.txt"),
+  ]);
 });

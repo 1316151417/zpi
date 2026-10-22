@@ -1,6 +1,8 @@
 // ZCode DiffsWorkerPoolProvider defaults (Apache-2.0).
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import type { ReactNode } from "react";
+import { useWorkerPool, WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { type ReactNode, useEffect, useMemo } from "react";
+import { defaultCodePreview } from "zpi-ui/code-preview";
+import { report, useStore } from "./store.ts";
 
 const poolOptions = {
   workerFactory: () =>
@@ -15,9 +17,26 @@ const highlighterOptions = {
   useTokenTransformer: false,
   preferredHighlighter: "shiki-wasm" as const,
 };
+function WorkerOptionsSync({ options }: { options: typeof highlighterOptions }) {
+  const pool = useWorkerPool();
+  useEffect(() => {
+    void pool?.setRenderOptions(options).catch(report);
+  }, [pool, options]);
+  return null;
+}
 export function DiffsWorkerPool({ children }: { children: ReactNode }) {
+  const settings = useStore((state) => state.settings?.interface.codePreview ?? defaultCodePreview);
+  const options = useMemo(
+    () => ({
+      ...highlighterOptions,
+      theme: { light: settings.lightTheme, dark: settings.darkTheme },
+    }),
+    [settings.lightTheme, settings.darkTheme],
+  );
+  if (typeof Worker === "undefined") return children;
   return (
-    <WorkerPoolContextProvider poolOptions={poolOptions} highlighterOptions={highlighterOptions}>
+    <WorkerPoolContextProvider poolOptions={poolOptions} highlighterOptions={options}>
+      <WorkerOptionsSync options={options} />
       {children}
     </WorkerPoolContextProvider>
   );

@@ -1122,6 +1122,7 @@ async function launch(): Promise<void> {
             object(0, [
               "theme",
               "fontSize",
+              "codePreview",
               "showContextUsage",
               "showModelPerformance",
               "showSendButton",

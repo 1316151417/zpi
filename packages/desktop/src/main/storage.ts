@@ -24,6 +24,7 @@ import {
   refreshChatGPTCredential,
 } from "zpi-ai/auth/openai-chatgpt";
 import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
+import { isCodePreviewSettings } from "zpi-ui/code-preview";
 import type {
   CapabilityName,
   CombinedSelection,
@@ -52,9 +53,7 @@ import {
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
-  withQuickChatCaptureShortcuts,
-  withQuickChatNewShortcut,
-  withQuickChatShortcut,
+  withAddedShortcuts,
   withTaskMenuShortcut,
 } from "../shared/shortcuts.ts";
 import { shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
@@ -152,11 +151,8 @@ export class SettingsStore {
       let migrated = false;
       if (raw !== undefined) {
         if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
-        raw.shortcuts = withQuickChatCaptureShortcuts(
-          withQuickChatNewShortcut(
-            withQuickChatShortcut(withTaskMenuShortcut(raw.shortcuts, process.platform), process.platform),
-            process.platform,
-          ),
+        raw.shortcuts = withAddedShortcuts(
+          withTaskMenuShortcut(raw.shortcuts, process.platform),
           process.platform,
         );
         if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)
@@ -690,6 +686,8 @@ export class SettingsStore {
     const prefs = data.interface;
     if (!isJsonObject(prefs)) throw new Error("storage: Invalid interface preferences");
     assertSupportedOptions(prefs, Object.keys(defaultPreferences), "interface preferences");
+    if (prefs.codePreview !== undefined && !isCodePreviewSettings(prefs.codePreview))
+      throw new Error("configuration: 无效代码预览设置");
     if (
       [
         prefs.showContextUsage,

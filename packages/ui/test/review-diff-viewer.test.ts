@@ -80,3 +80,34 @@ test("binary and oversized content show the reference fallback text", () => {
   ).toContain("Diff 已裁剪");
   expect(rendered.rich).not.toHaveBeenCalled();
 });
+
+test("code preview preferences reach rich shadow hosts and lightweight wrapping/gutter layout", () => {
+  const codePreview = {
+    lightTheme: "vitesse-light" as const,
+    darkTheme: "vitesse-dark" as const,
+    fontSizePx: 18,
+    showLineNumbers: false,
+    wrapLongLines: true,
+  };
+  renderToStaticMarkup(createElement(ReviewDiffViewer, { diff, id: "file", codePreview }));
+  expect(rendered.rich).toHaveBeenCalledWith(
+    expect.objectContaining({
+      options: expect.objectContaining({ theme: { light: "vitesse-light", dark: "vitesse-dark" } }),
+      style: expect.objectContaining({ "--diffs-font-size": "18px" }),
+    }),
+  );
+  const html = renderToStaticMarkup(
+    createElement(ReviewDiffViewer, {
+      diff: {
+        ...diff,
+        path: "build.gradle",
+        patch: diff.patch?.replaceAll("main.java", "build.gradle") ?? null,
+      },
+      id: "plain",
+      codePreview,
+    }),
+  );
+  expect(html).toContain('data-wrap="true"');
+  expect(html).toContain("font-size:18px");
+  expect(html).not.toContain("review-lightweight-number");
+});

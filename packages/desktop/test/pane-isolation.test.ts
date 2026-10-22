@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   activatePaneTab,
+  closePaneTabs,
   closeTab,
   deleteSessionWithPanes,
   listenPanes,
@@ -10,12 +11,17 @@ import {
   openFile,
   openFileManager,
   openNewPaneTab,
+  openReview,
   openTerminal,
   openWebLink,
+  reopenPaneTab,
   reorderPaneTab,
+  selectReviewSource,
   setPaneOpen,
   terminalExited,
   terminalOutput,
+  togglePaneFullView,
+  updatePaneFullView,
   usePane,
   visiblePaneTabs,
 } from "../src/renderer/pane-store.ts";
@@ -70,6 +76,8 @@ beforeEach(() => {
     open: false,
     active: undefined,
     tabs: [],
+    recentClosed: [],
+    fullView: null,
     preferences: new Map(),
     deletedSessionIds: new Set(),
   });
@@ -867,4 +875,50 @@ it("a file-manager response for a background task cannot activate another task's
   await opening;
   expect(usePane.getState().active).toBe(active);
   expect(visiblePaneTabs("A")[0]).toMatchObject({ preview: file });
+});
+
+it("restores review source from recent closures, keeps owner boundaries and closes only the current owner's tabs", async () => {
+  openReview("A");
+  const review = usePane.getState().tabs[0];
+  selectReviewSource(review.id, "staged");
+  await openFileManager("A");
+  await closeTab(review.id);
+  expect(usePane.getState().recentClosed[0].tab).toMatchObject({ reviewSource: "staged" });
+  select("B");
+  await reopenPaneTab(review.id);
+  expect(visiblePaneTabs("B")).toHaveLength(0);
+  openReview("B");
+  select("A");
+  await reopenPaneTab(review.id);
+  expect(usePane.getState().active).toBe(review.id);
+  expect(usePane.getState().tabs.find((tab) => tab.id === review.id)).toMatchObject({
+    reviewSource: "staged",
+  });
+  expect(usePane.getState().recentClosed).toHaveLength(0);
+  await closePaneTabs(review.id);
+  expect(visiblePaneTabs("A").map((tab) => tab.id)).toEqual([review.id]);
+  expect(visiblePaneTabs("B")).toHaveLength(1);
+  await closePaneTabs();
+  expect(usePane.getState().open).toBe(false);
+  expect(visiblePaneTabs("B")).toHaveLength(1);
+});
+it("full view belongs to its owner, restores its surface and floating mode, and clears when the pane closes", () => {
+  openReview("A");
+  const review = usePane.getState().active;
+  const ratio = usePane.getState().ratio;
+  togglePaneFullView();
+  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "collapsed" });
+  updatePaneFullView({ surface: "conversation", floating: "expanded" });
+  select("B");
+  expect(usePane.getState().fullView).toBeNull();
+  openReview("B");
+  select("A");
+  expect(usePane.getState().fullView).toEqual({ surface: "conversation", floating: "expanded" });
+  if (!review) throw Error("Missing review");
+  activatePaneTab(review);
+  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "expanded" });
+  setPaneOpen(false);
+  setPaneOpen(true);
+  expect(usePane.getState().fullView).toBeNull();
+  expect(usePane.getState().ratio).toBe(ratio);
 });

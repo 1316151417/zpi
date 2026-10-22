@@ -13,9 +13,7 @@ import {
   defaultShortcuts,
   normalizeShortcut,
   validateShortcuts,
-  withQuickChatCaptureShortcuts,
-  withQuickChatNewShortcut,
-  withQuickChatShortcut,
+  withAddedShortcuts,
   withTaskMenuShortcut,
 } from "../../packages/desktop/src/shared/shortcuts.ts";
 
@@ -106,11 +104,8 @@ export function migrateLegacySettings(value: unknown): SettingsData {
     raw.shortcutDefaultsVersion !== shortcutDefaultsVersion
   )
     throw new Error("storage: Unsupported shortcut defaults version");
-  data.shortcuts = withQuickChatCaptureShortcuts(
-    withQuickChatNewShortcut(
-      withQuickChatShortcut(withTaskMenuShortcut(data.shortcuts, process.platform), process.platform),
-      process.platform,
-    ),
+  data.shortcuts = withAddedShortcuts(
+    withTaskMenuShortcut(data.shortcuts, process.platform),
     process.platform,
   );
   const migrateShortcuts = raw.shortcutDefaultsVersion === undefined || raw.shortcutDefaultsVersion === 1;

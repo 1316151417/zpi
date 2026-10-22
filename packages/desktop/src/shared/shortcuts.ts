@@ -7,6 +7,7 @@ export const shortcutCommands = [
   { id: "quick-chat-selection", label: "复制选中文字并带入快速对话", scope: "global" },
   { id: "quick-chat-clipboard", label: "剪贴板带入快速对话", scope: "global" },
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
+  { id: "pane-full-view", label: "进入或退出完整视图", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
   { id: "focus-composer", label: "聚焦任务输入框", scope: "app" },
   { id: "send-next", label: "立即发送消息", scope: "composer" },
@@ -134,6 +135,7 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
       "quick-chat-clipboard": platform === "darwin" ? "Alt+Shift+V" : null,
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
+      "pane-full-view": `${primary}+Shift+F`,
       "focus-composer": `${primary}+I`,
       "send-next": `${primary}+Enter`,
       "configure-environment": `${primary}+J`,
@@ -350,8 +352,9 @@ function withMissingShortcut(
 ): ShortcutSettings {
   if (!settings?.bindings || Object.hasOwn(settings.bindings, command)) return settings;
   const binding = defaultBinding();
+  const normalizedBinding = binding === null ? null : normalizeShortcut(binding, platform);
   const occupied = Object.values(settings.bindings).some(
-    (value) => typeof value === "string" && normalizeShortcut(value, platform) === binding,
+    (value) => typeof value === "string" && normalizeShortcut(value, platform) === normalizedBinding,
   );
   return { ...settings, bindings: { ...settings.bindings, [command]: occupied ? null : binding } };
 }
@@ -362,31 +365,17 @@ export function withTaskMenuShortcut(settings: ShortcutSettings, platform: strin
   );
 }
 
-/** Existing custom and cleared bindings survive the additive quick-chat rollout. */
-export function withQuickChatShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
-  return withMissingShortcut(
-    settings,
-    platform,
-    "quick-chat",
-    () => defaultShortcuts(platform).bindings["quick-chat"],
-  );
-}
-
-export function withQuickChatNewShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
-  return withMissingShortcut(
-    settings,
-    platform,
-    "quick-chat-new",
-    () => defaultShortcuts(platform).bindings["quick-chat-new"],
-  );
-}
-
-export function withQuickChatCaptureShortcuts(
-  settings: ShortcutSettings,
-  platform: string,
-): ShortcutSettings {
+/** Keep rollout order and conflict precedence shared by storage and default migration. */
+export function withAddedShortcuts(settings: ShortcutSettings, platform: string): ShortcutSettings {
   const defaults = defaultShortcuts(platform).bindings;
-  for (const command of ["quick-chat-screenshot", "quick-chat-selection", "quick-chat-clipboard"] as const)
+  for (const command of [
+    "quick-chat",
+    "quick-chat-new",
+    "quick-chat-screenshot",
+    "quick-chat-selection",
+    "quick-chat-clipboard",
+    "pane-full-view",
+  ] as const)
     settings = withMissingShortcut(settings, platform, command, () => defaults[command]);
   return settings;
 }

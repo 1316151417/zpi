@@ -88,6 +88,11 @@ test("review matches source menu, compact collapsible rows, find, context action
     await pane.getByRole("button", { name: /new\.txt/ }).click();
     await expect(notes).toHaveAttribute("aria-expanded", "false");
     await expect(pane.locator(".review-change-content")).toContainText("new content searchable");
+    await source.click();
+    await page.getByRole("option", { name: "已暂存", exact: true }).click();
+    await source.click();
+    await page.getByRole("option", { name: "未暂存", exact: true }).click();
+    await expect(pane.locator('.review-file-row[aria-expanded="true"]')).toHaveCount(0);
     await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
     const find = page.getByRole("dialog", { name: "在任务中查找", exact: true });
     await find.getByRole("button", { name: "搜索文件变更", exact: true }).click();
@@ -98,13 +103,13 @@ test("review matches source menu, compact collapsible rows, find, context action
     const evidence = process.env.ZPI_REVIEW_EVIDENCE_DIR;
     if (evidence) {
       await mkdir(evidence, { recursive: true });
-      await pane.screenshot({ path: join(evidence, "file-expanded-light.png") });
+      await pane.screenshot({ animations: "disabled", path: join(evidence, "file-expanded-light.png") });
       const size = await notes.boundingBox();
       expect(size?.height).toBe(32);
     }
     await notes.click({ button: "right" });
     await expect(page.getByRole("menuitem")).toHaveText([
-      "在 Finder 中打开",
+      "在文件管理器中打开",
       "复制绝对路径",
       "复制相对路径",
       "在文件树中显示",
@@ -127,7 +132,7 @@ test("review matches source menu, compact collapsible rows, find, context action
     await expect(pane.locator(".review-empty")).toContainText("当前任务还没有上一轮文件改动");
     if (evidence) {
       await mkdir(evidence, { recursive: true });
-      await pane.screenshot({ path: join(evidence, "last-turn-empty-light.png") });
+      await pane.screenshot({ animations: "disabled", path: join(evidence, "last-turn-empty-light.png") });
       await source.click();
       await page.screenshot({ path: join(evidence, "source-menu-light.png") });
       await page.keyboard.press("Escape");
@@ -135,7 +140,7 @@ test("review matches source menu, compact collapsible rows, find, context action
         document.documentElement.dataset.theme = "dark";
         document.documentElement.style.colorScheme = "dark";
       });
-      await pane.screenshot({ path: join(evidence, "last-turn-empty-dark.png") });
+      await pane.screenshot({ animations: "disabled", path: join(evidence, "last-turn-empty-dark.png") });
     }
     await Promise.all(
       Array.from({ length: 160 }, (_, index) =>
@@ -215,7 +220,7 @@ test("modified Java review retains ZCode's real expandable leading, middle and t
     const evidence = process.env.ZPI_REVIEW_EVIDENCE_DIR;
     if (evidence) {
       await mkdir(evidence, { recursive: true });
-      await pane.screenshot({ path: join(evidence, "context-folded-light.png") });
+      await pane.screenshot({ animations: "disabled", path: join(evidence, "context-folded-light.png") });
     }
     await viewer.locator("[data-separator-first] [data-expand-button]").first().click();
     await expect(line("Line001;")).toBeVisible();
@@ -254,17 +259,81 @@ test("modified Java review retains ZCode's real expandable leading, middle and t
           title.y,
         ),
       ).toBe(true);
-      const visibleCode = await row.screenshot({ animations: "disabled" });
-      await content.evaluate((element) => {
-        element.style.visibility = "hidden";
-      });
-      const hiddenCode = await row.screenshot({ animations: "disabled" });
-      await content.evaluate((element) => {
-        element.style.visibility = "";
-      });
-      expect(visibleCode.equals(hiddenCode), `${theme} sticky title must fully obscure code`).toBe(true);
-      if (evidence) await pane.screenshot({ path: join(evidence, `context-expanded-${theme}.png`) });
+      for (const hovered of [false, true]) {
+        if (hovered) await row.hover();
+        else await page.mouse.move(0, 0);
+        const visibleCode = await row.screenshot({ animations: "disabled" });
+        await content.evaluate((element) => {
+          element.style.visibility = "hidden";
+        });
+        const hiddenCode = await row.screenshot({ animations: "disabled" });
+        await content.evaluate((element) => {
+          element.style.visibility = "";
+        });
+        expect(
+          visibleCode.equals(hiddenCode),
+          `${theme} sticky title (hover=${hovered}) must fully obscure code`,
+        ).toBe(true);
+      }
+      if (evidence)
+        await pane.screenshot({
+          animations: "disabled",
+          path: join(evidence, `context-expanded-${theme}.png`),
+        });
     }
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const settings = page.getByRole("region", { name: "设置", exact: true });
+    await settings.getByRole("spinbutton", { name: "代码字号", exact: true }).fill("18");
+    await settings.getByRole("spinbutton", { name: "代码字号", exact: true }).press("Enter");
+    await settings.getByRole("combobox", { name: "浅色代码主题", exact: true }).click();
+    await page.getByRole("option", { name: "Vitesse Light", exact: true }).click();
+    await settings.getByRole("combobox", { name: "深色代码主题", exact: true }).click();
+    await page.getByRole("option", { name: "Vitesse Dark", exact: true }).click();
+    await settings.getByRole("checkbox", { name: "显示行号", exact: true }).uncheck();
+    await settings.getByRole("checkbox", { name: "长行自动换行", exact: true }).check();
+    await page.getByRole("button", { name: "关闭设置", exact: true }).click();
+    await expect(viewer).toHaveCSS("--diffs-font-size", "18px");
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(viewer.locator("[data-code] [data-line]").first()).toHaveCSS("font-size", "18px");
+      await expect(viewer.locator("pre")).toHaveCSS(
+        "color",
+        theme === "light" ? "rgb(57, 58, 52)" : /rgba?\(219, 215, 202/,
+      );
+      if (evidence)
+        await pane.screenshot({
+          animations: "disabled",
+          path: join(evidence, `context-configured-${theme}.png`),
+        });
+    }
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
+    const find = page.getByRole("dialog", { name: "在任务中查找", exact: true });
+    await find.getByRole("button", { name: "搜索文件变更", exact: true }).click();
+    await find.getByRole("textbox").fill("Line030;");
+    await expect(find.getByRole("status")).toHaveText("1/2");
+    await find.getByRole("textbox").press("Enter");
+    await expect(find.getByRole("status")).toHaveText("2/2");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          [...(CSS.highlights.get("zpi-changes-find-active") ?? [])].map((range) => range.toString()),
+        ),
+      )
+      .toEqual(["Line030;"]);
+    await find.getByRole("textbox").press("Escape");
+    await page.reload();
+    const preferences = await page.evaluate(async () => {
+      const result = await window.zpi.getSettings();
+      return result.ok ? result.value.interface.codePreview : null;
+    });
+    expect(preferences).toEqual({
+      lightTheme: "vitesse-light",
+      darkTheme: "vitesse-dark",
+      fontSizePx: 18,
+      showLineNumbers: false,
+      wrapLongLines: true,
+    });
   } finally {
     await runCleanup([
       () => app?.close(),
