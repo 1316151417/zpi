@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ActionHint } from "zpi-ui";
+import { fuzzyScore } from "zpi-ui/fuzzy-search";
 import type { EditorInfo } from "../../shared/editors.ts";
-import { fuzzyScore } from "../../shared/file-search.ts";
 import { paneTask } from "../pane-store.ts";
 import { report } from "../store.ts";
 import { unwrap } from "../unwrap.ts";

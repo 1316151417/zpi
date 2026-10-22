@@ -1,11 +1,14 @@
 import { expect, it } from "vitest";
 import {
-  expandCustomCommandPrompt,
   expandCustomCommandPromptWithShell,
   parseCustomCommandInvocation,
   prepareCustomCommandPrompt,
   splitCustomCommandArguments,
 } from "../src/main/custom-command-expansion.ts";
+
+async function unexpectedShell(): Promise<string> {
+  throw new Error("Unexpected shell expansion");
+}
 
 it.each([
   ['"" second', ["", "second"]],
@@ -17,9 +20,13 @@ it.each([
   expect(splitCustomCommandArguments(input)).toEqual(args);
 });
 
-it("expands empty positional values without shifting the following argument", () => {
+it("expands empty positional values without shifting the following argument", async () => {
   expect(
-    expandCustomCommandPrompt({ name: "review", prompt: "first=<$1> second=<$2>" }, '"" second'),
+    await expandCustomCommandPromptWithShell(
+      { name: "review", prompt: "first=<$1> second=<$2>" },
+      '"" second',
+      unexpectedShell,
+    ),
   ).toContain("first=<> second=<second>");
 });
 
@@ -78,17 +85,23 @@ it("stops shell interpolation on runner rejection and ignores empty snippets", a
   expect(calls).toEqual(["first"]);
 });
 
-it("normalizes catalog names and accepts the host's source label", () => {
-  expect(expandCustomCommandPrompt({ name: "/tools/review", prompt: "Review." }, "", "project/zpi")).toBe(
-    "Run custom command /tools/review.\nCommand source: project/zpi.\n\nReview.",
-  );
+it("normalizes catalog names and accepts the host's source label", async () => {
+  expect(
+    await expandCustomCommandPromptWithShell(
+      { name: "/tools/review", prompt: "Review." },
+      "",
+      unexpectedShell,
+      "project/zpi",
+    ),
+  ).toBe("Run custom command /tools/review.\nCommand source: project/zpi.\n\nReview.");
 });
 
-it("expands all and positional arguments without a shell", () => {
+it("expands all and positional arguments without a shell", async () => {
   expect(
-    expandCustomCommandPrompt(
+    await expandCustomCommandPromptWithShell(
       { name: "review", prompt: "Review $ARGUMENTS; first=$1, second=$2, absent=$3." },
       ' "auth flow" high ',
+      unexpectedShell,
     ),
   ).toBe(
     'Run custom command /review.\nCommand source: user/zpi.\n\nReview "auth flow" high; first=auth flow, second=high, absent=.',
@@ -100,25 +113,35 @@ it("expands all and positional arguments without a shell", () => {
   ]);
 });
 
-it("appends arguments only if the original template has no placeholders", () => {
-  expect(expandCustomCommandPrompt({ name: "review", prompt: "Review.\n" }, "src/auth.ts")).toContain(
-    "Review.\n\nUser arguments:\nsrc/auth.ts",
-  );
-  expect(expandCustomCommandPrompt({ name: "review", prompt: "Review $9" }, "one")).not.toContain(
-    "User arguments:",
-  );
+it("appends arguments only if the original template has no placeholders", async () => {
+  expect(
+    await expandCustomCommandPromptWithShell(
+      { name: "review", prompt: "Review.\n" },
+      "src/auth.ts",
+      unexpectedShell,
+    ),
+  ).toContain("Review.\n\nUser arguments:\nsrc/auth.ts");
+  expect(
+    await expandCustomCommandPromptWithShell({ name: "review", prompt: "Review $9" }, "one", unexpectedShell),
+  ).not.toContain("User arguments:");
 });
 
-it("does not re-expand dollar placeholders introduced by arguments", () => {
+it("does not re-expand dollar placeholders introduced by arguments", async () => {
   expect(
-    expandCustomCommandPrompt({ name: "review", prompt: "$ARGUMENTS / $1 / $2" }, '"$1" $ARGUMENTS'),
+    await expandCustomCommandPromptWithShell(
+      { name: "review", prompt: "$ARGUMENTS / $1 / $2" },
+      '"$1" $ARGUMENTS',
+      unexpectedShell,
+    ),
   ).toContain('"$1" $ARGUMENTS / $1 / $ARGUMENTS');
 });
 
-it("rejects dynamic shell templates, while file references remain literal", () => {
-  for (const prompt of ["Status !`git status`", "```!\ngit diff\n```", "```!\r\ngit diff\r\n```"])
-    expect(() => expandCustomCommandPrompt({ name: "review", prompt }, "")).toThrow(/不支持自动 Shell/);
-  expect(expandCustomCommandPrompt({ name: "review", prompt: "Read @secrets.txt and $1" }, "file")).toContain(
-    "Read @secrets.txt and file",
-  );
+it("keeps file references literal", async () => {
+  expect(
+    await expandCustomCommandPromptWithShell(
+      { name: "review", prompt: "Read @secrets.txt and $1" },
+      "file",
+      unexpectedShell,
+    ),
+  ).toContain("Read @secrets.txt and file");
 });

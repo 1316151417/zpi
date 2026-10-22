@@ -1,22 +1,9 @@
+import { fuzzyScore } from "../fuzzy-search.ts";
 import type { InputSuggestion } from "../types.ts";
 
 // ZCode mentionSearch: prefix, substring, then English subsequence; Chinese stays contiguous.
 export function scoreMentionMatch(text: string, query: string): number {
-  const value = text.trim().toLowerCase();
-  if (!value) return Number.POSITIVE_INFINITY;
-  if (value.startsWith(query)) return value.length - query.length;
-  const substring = value.indexOf(query);
-  if (substring !== -1) return 100 + substring;
-  if (/\p{Script=Han}/u.test(query)) return Number.POSITIVE_INFINITY;
-  let result = 200;
-  let start = 0;
-  for (const char of query) {
-    const index = value.indexOf(char, start);
-    if (index === -1) return Number.POSITIVE_INFINITY;
-    result += index - start;
-    start = index + 1;
-  }
-  return result + value.length - query.length;
+  return fuzzyScore(text, query, !/\p{Script=Han}/u.test(query));
 }
 
 export function filterSkillSuggestions(suggestions: InputSuggestion[], query: string): InputSuggestion[] {

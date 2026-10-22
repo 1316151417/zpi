@@ -1,5 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { readFileBounded } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import type { ReviewDiffData, ReviewSnapshot, ReviewSource } from "../shared/review.ts";
 import { isPathInside } from "./path-bounds.ts";
@@ -123,8 +124,8 @@ export async function gitReview(
       try {
         const info = await stat(change.path);
         if (!info.isFile() || info.size > previewBytes) continue;
-        const bytes = await readFile(change.path);
-        if (bytes.length > previewBytes || bytes.includes(0)) continue;
+        const bytes = await readFileBounded(change.path, previewBytes);
+        if (bytes.includes(0)) continue;
         text = bytes.toString("utf8");
         if (!text) continue;
       } catch {
@@ -160,12 +161,19 @@ export async function gitReviewPatch(cwd: string, source: ReviewSource, path: st
   if (!entry) throw new Error("not_found: 此来源下的文件改动已不存在，请刷新");
   if (entry.reason) return "";
   const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
+  const refs = await comparison(cwd, source);
+  if (source === "branch" && !refs.length) throw new Error("not_found: 上游分支不可用");
+  return reviewPatch(root, refs, entry);
+}
+
+/** Reuse the entry already validated by this request; do not rescan the repository for each layer. */
+async function reviewPatch(root: string, refs: string[], entry: DiffItem): Promise<string> {
+  const path = entry.path;
   const file = relative(root, path);
-  const status = source === "unstaged" ? await workspaceGitStatus(cwd) : undefined;
-  if (status?.unstagedChanges.some((change) => change.path === path && change.isUntracked)) {
+  if (entry.area === "untracked") {
     const info = await stat(path);
     if (!info.isFile() || info.size > previewBytes) throw new Error("invalid_input: 文件过大");
-    const bytes = await readFile(path);
+    const bytes = await readFileBounded(path, previewBytes);
     if (bytes.includes(0)) return "";
     const text = bytes.toString("utf8").replaceAll("\r\n", "\n");
     const lines = text ? text.split("\n") : [];
@@ -177,8 +185,6 @@ export async function gitReviewPatch(cwd: string, source: ReviewSource, path: st
     }
     return `${patch.join("\n")}\n`;
   }
-  const refs = await comparison(cwd, source);
-  if (source === "branch" && !refs.length) throw new Error("not_found: 上游分支不可用");
   return runGit(root, [
     "--literal-pathspecs",
     "diff",
@@ -205,7 +211,7 @@ async function workingContent(path: string): Promise<string | null> {
   try {
     const info = await stat(path);
     if (!info.isFile() || info.size > previewBytes) return null;
-    const text = await readFile(path, "utf8");
+    const text = (await readFileBounded(path, previewBytes)).toString("utf8");
     return text.includes("\0") ? null : text;
   } catch {
     return null;
@@ -237,8 +243,13 @@ export async function gitReviewDiff(
             : "unavailable",
     };
   let patch: string;
+  let root: string;
+  let refs: string[];
   try {
-    patch = await gitReviewPatch(cwd, source, path);
+    root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
+    refs = await comparison(cwd, source);
+    if (source === "branch" && !refs.length) throw new Error("not_found: 上游分支不可用");
+    patch = await reviewPatch(root, refs, entry);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")
       return { ...empty, availability: "truncated" };
@@ -246,21 +257,18 @@ export async function gitReviewDiff(
   }
   if (!patch) return empty;
   if (Buffer.byteLength(patch) > previewBytes) return { ...empty, availability: "truncated" };
-  const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
   const file = relative(root, path).replaceAll("\\", "/");
+  const beforeFile = relative(root, entry.oldPath ?? path).replaceAll("\\", "/");
   let before: string | null;
   let after: string | null;
   if (source === "branch") {
-    const upstream = (await runGit(cwd, ["rev-parse", "--abbrev-ref", "@{upstream}"])).trim();
-    const base = (await runGit(cwd, ["merge-base", upstream, "HEAD"])).trim();
-    [before, after] = await Promise.all([gitBlob(root, base, file), gitBlob(root, "HEAD", file)]);
+    const base = (await runGit(cwd, ["merge-base", "@{upstream}", "HEAD"])).trim();
+    [before, after] = await Promise.all([gitBlob(root, base, beforeFile), gitBlob(root, "HEAD", file)]);
   } else if (source === "staged") {
-    [before, after] = await Promise.all([gitBlob(root, "HEAD", file), gitBlob(root, "", file)]);
+    [before, after] = await Promise.all([gitBlob(root, "HEAD", beforeFile), gitBlob(root, "", file)]);
   } else {
-    const status = await workspaceGitStatus(cwd);
-    const untracked = status.unstagedChanges.some((change) => change.path === path && change.isUntracked);
     [before, after] = await Promise.all([
-      untracked ? Promise.resolve("") : gitBlob(root, "", file),
+      entry.area === "untracked" ? Promise.resolve("") : gitBlob(root, "", beforeFile),
       workingContent(path),
     ]);
   }

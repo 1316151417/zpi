@@ -6,9 +6,7 @@ export const previewLoader = createPreviewLoader({
     return changes
       .filter(
         (change) =>
-          !change.reason?.startsWith("文件快照不可用") &&
-          change.status !== "deleted" &&
-          change.status !== "reverted",
+          !change.snapshotUnavailable && change.status !== "deleted" && change.status !== "reverted",
       )
       .map((change) => change.path);
   },

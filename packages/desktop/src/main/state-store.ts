@@ -356,10 +356,6 @@ export class StateStore {
       }
     });
   }
-  getProject(id: string): ProjectRecord | undefined {
-    const row = this.db.prepare("SELECT data FROM projects WHERE id=?").get(id);
-    return row ? JSON.parse(String(row.data)) : undefined;
-  }
   deleteProject(id: string): void {
     this.transaction("project.delete", id, () => {
       this.db.prepare("UPDATE tasks SET project_id=NULL,revision=revision+1 WHERE project_id=?").run(id);
@@ -631,26 +627,6 @@ export class StateStore {
         "accepted",
       );
       finalize();
-    });
-  }
-  /** Only after the transcript owner has proved that no durable acceptance exists. */
-  releaseQueuedInput(operationId: string): void {
-    const intent = this.listIntents().find((item) => item.operationId === operationId);
-    if (intent?.kind !== "accept-input" || intent.stage === "durable" || !intent.queueItemId)
-      throw new Error("storage: cannot release durable or unknown acceptance");
-    this.transaction("queue.release", intent.taskId, () => {
-      const queue = this.getQueue(intent.taskId);
-      if (!queue?.items.some((item) => item.id === intent.queueItemId))
-        throw new Error("storage: reserved input missing");
-      this.setQueue(intent.taskId, {
-        ...queue,
-        autoDrain: false,
-        pauseReason: "restart",
-        items: queue.items.map((item) =>
-          item.id === intent.queueItemId ? { ...item, state: "queued" } : item,
-        ),
-      });
-      this.db.prepare("DELETE FROM storage_operations WHERE operation_id=?").run(operationId);
     });
   }
   acceptedInputIds(taskId: string): Set<string> {

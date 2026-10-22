@@ -215,6 +215,7 @@ export interface DiffItem {
   patch?: string;
   patchAvailable?: boolean;
   reason?: string;
+  snapshotUnavailable?: boolean;
   failed?: boolean;
   added?: number;
   removed?: number;

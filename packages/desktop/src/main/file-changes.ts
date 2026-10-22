@@ -1,8 +1,9 @@
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { isJsonObject } from "zpi-ai";
 import type { FileChange, SessionEntry } from "zpi-coding-agent";
+import { readFileBounded } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import { isPathInside } from "./path-bounds.ts";
 
@@ -32,7 +33,7 @@ export async function readFileSnapshot(
   root: string,
   maxBytes = 4 * 1024 * 1024,
 ): Promise<Buffer> {
-  return readFile(await snapshotPath(path, root, maxBytes));
+  return readFileBounded(await snapshotPath(path, root, maxBytes), maxBytes);
 }
 /** Forked history owns its snapshots, so deleting its parent cannot break file previews. */
 export async function copyFileChangeSnapshots(
@@ -178,20 +179,24 @@ export async function fileChanges(
           area,
           failed: writes.some((c) => c.failed),
           reason: `文件快照不可用：${String(error)}`,
+          snapshotUnavailable: true,
         });
       }
     } else {
       for (const change of writes) {
         let patch = change.patch,
           reason = change.reason,
+          // Old fork records only persisted the diagnostic; translate it at the projection boundary.
+          snapshotUnavailable = reason?.startsWith("文件快照不可用") ?? false,
           patchAvailable = false;
         if (!patch && change.patchFile) {
           try {
             const actual = await snapshotPath(change.patchFile, root, 8 * 1024 * 1024);
             if (!includePatch || (await stat(actual)).size > maxPatchBytes) patchAvailable = true;
-            else patch = (await readFile(actual)).toString("utf8");
+            else patch = (await readFileBounded(actual, 8 * 1024 * 1024)).toString("utf8");
           } catch (error) {
             reason = `文件快照不可用：${String(error)}`;
+            snapshotUnavailable = true;
           }
         }
         if (patch && (!includePatch || Buffer.byteLength(patch) > maxPatchBytes)) {
@@ -206,6 +211,7 @@ export async function fileChanges(
           patch,
           ...(patchAvailable ? { patchAvailable: true } : {}),
           reason,
+          ...(snapshotUnavailable ? { snapshotUnavailable: true } : {}),
           failed: change.failed,
         });
       }

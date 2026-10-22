@@ -4,6 +4,7 @@ import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import ignore from "ignore";
+import { fuzzyScore } from "zpi-ui/fuzzy-search";
 import { splitFileLocation } from "zpi-ui/links";
 import { isPathInside } from "./path-bounds.ts";
 export const runGit = async (cwd: string, args: string[], signal?: AbortSignal) =>
@@ -46,7 +47,6 @@ export interface FileCandidate {
   type: "file" | "directory";
 }
 
-import { fuzzyScore } from "../shared/file-search.ts";
 export async function searchFiles(
   cwd: string,
   query: string,
@@ -124,7 +124,6 @@ export async function searchFiles(
   await walk(cwd, [], 0);
   const normalized = query.trim().toLowerCase();
   const candidates = [...paths]
-    .sort(([a, typeA], [b, typeB]) => (typeA === typeB ? a.localeCompare(b) : typeA === "directory" ? -1 : 1))
     .map(([path, type]) => ({
       path,
       type,
@@ -139,7 +138,11 @@ export async function searchFiles(
           : 1,
     }))
     .filter(({ score }) => Number.isFinite(score))
-    .sort((a, b) => a.score - b.score);
+    .sort(
+      (a, b) =>
+        a.score - b.score ||
+        (a.type === b.type ? a.path.localeCompare(b.path) : a.type === "directory" ? -1 : 1),
+    );
   const results: FileCandidate[] = [];
   const limit = resultLimit ?? (normalized ? 1000 : 10);
   for (const { path, type } of candidates) {

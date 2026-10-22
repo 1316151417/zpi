@@ -82,20 +82,6 @@ function formatPrompt(plan: CustomCommandExpansionPlan, body: string): string {
   return [`Run custom command /${plan.name}.`, `Command source: ${plan.source}.`, "", body.trim()].join("\n");
 }
 
-export function expandCustomCommandPrompt(
-  command: Pick<CustomCommand, "name" | "prompt">,
-  rawArguments: string,
-  source = "user/zpi",
-): string {
-  const plan = prepareCustomCommandPrompt(command, rawArguments, source);
-  const body = plan.parts.map((part) => {
-    if (part.kind === "shell")
-      throw new Error(`invalid_input: 自定义指令 /${plan.name} 不支持自动 Shell 展开，需要授权的执行器`);
-    return part.text;
-  });
-  return formatPrompt(plan, body.join(""));
-}
-
 export async function expandCustomCommandPromptWithShell(
   command: Pick<CustomCommand, "name" | "prompt">,
   rawArguments: string,

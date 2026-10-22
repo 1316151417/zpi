@@ -7,6 +7,18 @@ import { expect, test } from "vitest";
 import { searchFiles, validatedReference } from "../src/main/workspace-files.ts";
 import { fixture, run } from "./helpers/context-fixture.ts";
 
+test("file search preserves type and name ordering when relevance scores tie", async () => {
+  const f = await fixture();
+  for (const name of ["match-b", "match-a"]) await mkdir(join(f.workspace, name));
+  for (const name of ["match-d", "match-c"]) await writeFile(join(f.workspace, name), "");
+  const names = async (query: string) =>
+    (await searchFiles(f.workspace, query))
+      .filter(({ name }) => name.startsWith("match-"))
+      .map(({ name }) => name);
+  expect(await names("match")).toEqual(["match-a", "match-b", "match-c", "match-d"]);
+  expect(await names("")).toEqual(["match-c", "match-d", "match-a", "match-b"]);
+});
+
 test("bounded search obeys gitignore and cwd scope; relative escapes fail but explicit absolute references work", async () => {
   const f = await fixture();
   await mkdir(join(f.workspace, "sub"));

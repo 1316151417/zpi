@@ -18,6 +18,7 @@ describe("shortcut contract", () => {
     (platform) => {
       const settings = defaultShortcuts(platform);
       expect(validateShortcuts(settings, platform)).toBeUndefined();
+      expect(normalizeShortcuts(settings, platform)).toEqual(settings);
       expect(Object.keys(settings.bindings)).toHaveLength(shortcutCommands.length);
       expect(settings.bindings["toggle-window"]).toBe(
         platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",

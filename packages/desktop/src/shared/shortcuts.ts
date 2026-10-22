@@ -135,7 +135,7 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
       "quick-chat-clipboard": platform === "darwin" ? "Alt+Shift+V" : null,
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
-      "pane-full-view": `${primary}+Shift+F`,
+      "pane-full-view": platform === "darwin" ? "Shift+Command+F" : "Control+Shift+F",
       "focus-composer": `${primary}+I`,
       "send-next": `${primary}+Enter`,
       "configure-environment": `${primary}+J`,

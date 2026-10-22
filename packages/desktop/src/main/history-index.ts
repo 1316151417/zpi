@@ -741,9 +741,6 @@ export class HistoryIndex implements TranscriptStore {
       text: String(row.text),
     }));
   }
-  countRuns(): number {
-    return Number(this.one("SELECT COUNT(*) AS n FROM transcript_runs WHERE path=?")?.n ?? 0);
-  }
   findRun(runId: string): RunBoundary | undefined {
     const row = this.one("SELECT * FROM transcript_runs WHERE path=? AND run_id=?", runId);
     return row ? runBoundary(row) : undefined;

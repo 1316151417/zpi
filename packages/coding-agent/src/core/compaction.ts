@@ -13,9 +13,9 @@ import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, U
 import {
   calculateContextTokens,
   contentText,
+  estimateMessageTokens,
   isModelContextExceededError,
   isModelMediaTooLargeError,
-  mediaBlockToText,
   normalizeContext,
   projectCompactMediaForRetry,
   projectContextForModelMediaPolicy,
@@ -240,58 +240,17 @@ export function shouldCompact(
 // Cut point detection
 // ============================================================================
 
-function estimateTextAndImageContentChars(
-  content: string | Array<{ type: string; text?: string; mimeType?: string }>,
-): number {
-  if (typeof content === "string") {
-    return content.length;
-  }
-
-  let chars = 0;
-  for (const block of content) {
-    if (block.type === "text" && block.text) {
-      chars += block.text.length;
-    } else if (block.type === "image") {
-      // Local placeholders ignore image bytes; provider usage anchors still affect auto compaction.
-      chars += mediaBlockToText(block).length;
-    }
-  }
-  return chars;
-}
-
 /**
  * Estimate token count for a message using chars/4 heuristic.
  * This is conservative (overestimates tokens).
  */
 export function estimateTokens(message: AgentMessage): number {
-  let chars = 0;
-
   switch (message.role) {
-    case "user": {
-      chars = estimateTextAndImageContentChars(
-        (message as { content: string | Array<{ type: string; text?: string; mimeType?: string }> }).content,
-      );
-      return Math.ceil(chars / 4);
-    }
-    case "assistant": {
-      const assistant = message as AssistantMessage;
-      for (const block of assistant.content) {
-        if (block.type === "text") {
-          chars += block.text.length;
-        } else if (block.type === "thinking") {
-          chars += block.thinking.length;
-        } else if (block.type === "toolCall") {
-          chars += block.name.length + JSON.stringify(block.arguments).length;
-        }
-      }
-      return Math.ceil(chars / 4);
-    }
-    case "toolResult": {
-      chars = estimateTextAndImageContentChars(message.content);
-      return Math.ceil(chars / 4);
-    }
+    case "user":
+    case "assistant":
+    case "toolResult":
+      return estimateMessageTokens(message);
   }
-
   return 0;
 }
 

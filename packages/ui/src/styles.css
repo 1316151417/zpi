@@ -1590,10 +1590,6 @@ small {
   min-width: 0;
   font-size: var(--text-xs);
 }
-.skill-option-icon {
-  flex-shrink: 0;
-  color: var(--color-text);
-}
 .skill-panel p,
 .session-panel p {
   padding: 12px 16px;

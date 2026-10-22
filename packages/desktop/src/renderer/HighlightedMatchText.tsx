@@ -1,5 +1,6 @@
 // Adapted from ZCode quickpick/HighlightedMatchText (Apache-2.0).
 import type { ReactNode } from "react";
+import { buildFindMatches } from "zpi-ui";
 
 interface TextMatchRange {
   start: number;
@@ -45,26 +46,11 @@ export function findTextMatchRanges(text: string, query: string): TextMatchRange
     return [];
   }
 
-  const normalizedText = text.toLocaleLowerCase();
-  const ranges: TextMatchRange[] = [];
-
-  for (const part of parts) {
-    let searchIndex = 0;
-    while (searchIndex < normalizedText.length) {
-      const matchIndex = normalizedText.indexOf(part, searchIndex);
-      if (matchIndex === -1) {
-        break;
-      }
-
-      ranges.push({
-        start: matchIndex,
-        end: matchIndex + part.length,
-      });
-      searchIndex = matchIndex + part.length;
-    }
-  }
-
-  return mergeRanges(ranges);
+  return mergeRanges(
+    parts.flatMap((part) =>
+      buildFindMatches([{ key: "", text }], part).map(({ start, end }) => ({ start, end })),
+    ),
+  );
 }
 
 export function HighlightedMatchText({ text, query }: { text: string; query: string }) {

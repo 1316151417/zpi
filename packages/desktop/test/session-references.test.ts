@@ -5,7 +5,7 @@ import { emptyAssistant } from "zpi-ai";
 import { buildSessionMentionMarkdown, SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
-import { sessionReferenceTranscript } from "../src/main/session-references.ts";
+import { sessionReferenceTranscriptReverse } from "../src/main/session-references.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it("lists persisted cross-project conversations current workspace first, excluding drafts, side chats and archived sessions", async () => {
@@ -192,7 +192,7 @@ it("excludes internal user context, system instructions, reasoning and metadata,
     timestamp: 1,
   });
   manager.appendCustomEntry("zpi.configuration", { secret: "credential" });
-  const clean = sessionReferenceTranscript("Title", "sess_source", manager.getEntries());
+  const clean = sessionReferenceTranscriptReverse("Title", "sess_source", manager.getEntries().reverse());
   expect(clean).toContain("visible input");
   expect(clean).toContain("visible response");
   expect(clean).toContain("Tool read");
@@ -208,7 +208,7 @@ it("excludes internal user context, system instructions, reasoning and metadata,
     expect(clean).not.toContain(internal);
   for (let n = 0; n < 20; n++)
     manager.appendMessage({ ...assistant, content: [{ type: "text", text: `${n}: ${"x".repeat(20000)}` }] });
-  const bounded = sessionReferenceTranscript("Title", "sess_source", manager.getEntries());
+  const bounded = sessionReferenceTranscriptReverse("Title", "sess_source", manager.getEntries().reverse());
   expect(bounded.length).toBeLessThan(128500);
   expect(bounded).toContain("Earlier history omitted");
   expect(bounded).toContain("Message truncated");

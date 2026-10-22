@@ -32,6 +32,7 @@ export {
   validSelections,
 } from "./conversation-selections.ts";
 export type { FindRequest, FindState } from "./find.ts";
+export { buildFindMatches } from "./find.ts";
 export type {
   FileLocation,
   FileOpenHandler,

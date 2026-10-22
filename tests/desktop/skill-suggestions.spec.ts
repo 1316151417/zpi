@@ -69,7 +69,10 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
         expect(layout.descriptionWidth).toBeGreaterThan(0);
         expect(layout.color).toBe(layout.nameColor);
         expect(layout.iconHeight).toBe(14);
-        await page.screenshot({ path: `test-results/skill-suggestions-${width}-${theme}.png` });
+        await page.screenshot({
+          animations: "disabled",
+          path: `test-results/skill-suggestions-${width}-${theme}.png`,
+        });
       }
     }
     const dock = await page.locator(".composer").boundingBox();

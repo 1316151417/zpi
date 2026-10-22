@@ -29,9 +29,9 @@ test("answer previews remove Markdown syntax without damaging snake_case", () =>
 });
 test("the full-view shortcut uses the reference default and preserves cleared or conflicting bindings", () => {
   const settings = defaultShortcuts("darwin");
-  expect(settings.bindings["pane-full-view"]).toBe("Command+Shift+F");
+  expect(settings.bindings["pane-full-view"]).toBe("Shift+Command+F");
   Reflect.deleteProperty(settings.bindings, "pane-full-view");
-  expect(withAddedShortcuts(settings, "darwin").bindings["pane-full-view"]).toBe("Command+Shift+F");
+  expect(withAddedShortcuts(settings, "darwin").bindings["pane-full-view"]).toBe("Shift+Command+F");
   settings.bindings.search = "Command+Shift+F";
   expect(withAddedShortcuts(settings, "darwin").bindings["pane-full-view"]).toBeNull();
   settings.bindings["pane-full-view"] = null;

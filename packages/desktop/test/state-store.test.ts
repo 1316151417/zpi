@@ -337,27 +337,6 @@ describe("authoritative SQLite state", () => {
     expect(reopened.getRuntime("task", "run")[0].status).toBe("interrupted");
     expect(() => reopened.reserveQueuedInput(intent)).toThrow("already accepted");
   });
-  it("releases only unaccepted inputs and keeps the queue paused", () => {
-    const { value: s } = store();
-    s.upsertTask(task());
-    s.setQueue("task", queue());
-    const intent = {
-      operationId: "release",
-      taskId: "task",
-      kind: "accept-input" as const,
-      stage: "prepared" as const,
-      targetFile: "task.jsonl",
-      queueItemId: "input",
-      runId: "run",
-    };
-    s.reserveQueuedInput(intent);
-    s.releaseQueuedInput("release");
-    expect(s.getQueue("task")).toMatchObject({ autoDrain: false, items: [{ id: "input", state: "queued" }] });
-    expect(s.listIntents()).toEqual([]);
-    s.reserveQueuedInput(intent);
-    s.putIntent({ ...intent, stage: "durable" });
-    expect(() => s.releaseQueuedInput("release")).toThrow("cannot release");
-  });
   it("tombstones deleted tasks and does not resurrect them from other state", () => {
     const { value: s } = store();
     s.upsertTask(task());

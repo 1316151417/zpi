@@ -215,7 +215,7 @@ function limitPlainTextPreviewLines(lines: readonly string[]): string[] {
   ];
 }
 
-function getPatchContentFileName(lines: readonly string[]): string | null {
+export function getPatchContentFileName(lines: readonly string[]): string | null {
   for (const line of lines) {
     if (!line.startsWith("--- ") && !line.startsWith("+++ ")) {
       continue;
@@ -331,14 +331,6 @@ function normalizePlainTextPreviewLines(lines: readonly string[]): string[] {
   }
 
   return normalizedLines.length > 0 ? normalizedLines : [""];
-}
-
-export function getPlainTextPatchPreviewLines(patch: string): string[] {
-  return normalizePlainTextPreviewLines(getPlainTextPatchContentLines(patch));
-}
-
-export function getPlainTextPatchContentLines(patch: string): string[] {
-  return collectPlainTextPreviewLines(patch.split(/\r?\n/));
 }
 
 export function getPlainTextPatchFallbackLines(patch: string): string[] | null {

@@ -1,3 +1,4 @@
+import { fuzzyScore } from "../fuzzy-search.ts";
 import type { InputSuggestion } from "../types.ts";
 
 const unavailableNames = new Set(["side", "btw"]);
@@ -24,23 +25,6 @@ export function subagentNames(suggestions: readonly InputSuggestion[]): string[]
 export function slashSuggestionLabel(suggestion: InputSuggestion): string {
   const prefix = suggestion.group === "Skill" ? "$" : suggestion.group === "子智能体" ? "" : "/";
   return `${prefix}${suggestion.name}`;
-}
-
-function fuzzyScore(text: string, query: string): number {
-  const value = text.trim().toLowerCase();
-  if (!value) return Number.POSITIVE_INFINITY;
-  if (value.startsWith(query)) return value.length - query.length;
-  const at = value.indexOf(query);
-  if (at !== -1) return 100 + at;
-  let score = 200;
-  let start = 0;
-  for (const char of query) {
-    const next = value.indexOf(char, start);
-    if (next === -1) return Number.POSITIVE_INFINITY;
-    score += next - start;
-    start = next + 1;
-  }
-  return score + value.length - query.length;
 }
 
 function suggestionScore(suggestion: InputSuggestion, query: string): number {

@@ -9,6 +9,7 @@
     "./projection": "./src/reducer.ts",
     "./selections": "./src/conversation-selections.ts",
     "./code-language": "./src/code-language.ts",
+    "./fuzzy-search": "./src/fuzzy-search.ts",
     "./links": "./src/link-target.ts",
     "./errors": "./src/user-error.ts",
     "./media-preview": "./src/preview/media-preview.ts",

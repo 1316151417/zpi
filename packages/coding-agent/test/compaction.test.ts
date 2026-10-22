@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
+import type { AgentMessage } from "zpi-agent";
 import { calculateContextTokens, emptyAssistant, type Message } from "zpi-ai";
 import { createAgentSession, ModelRuntime, SessionManager, StaticResourceLoader } from "zpi-coding-agent";
 import { chunk, done, fakeConfig, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
@@ -9,11 +10,16 @@ import {
   calculateContextTokens as compactionContextTokens,
   DEFAULT_COMPACTION_SETTINGS,
   estimateContextTokens,
+  estimateTokens,
   prepareCompaction,
 } from "../src/core/compaction.ts";
 import { fixture } from "./helpers/resource-fixture.ts";
 
 const cleanups: (() => Promise<unknown>)[] = [];
+it("keeps system and extension messages outside the compaction cut-point estimate", () => {
+  expect(estimateTokens({ role: "system", content: "system instructions", timestamp: 0 })).toBe(0);
+  expect(estimateTokens({ role: "custom", content: "extension context" } as unknown as AgentMessage)).toBe(0);
+});
 afterEach(async () => {
   for (const cleanup of cleanups.reverse()) await cleanup();
   cleanups.length = 0;

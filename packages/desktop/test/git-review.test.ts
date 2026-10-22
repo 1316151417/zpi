@@ -66,6 +66,10 @@ test("preserves renames, deleted files and binary fallbacks", async () => {
     status: "renamed",
   });
   expect(await gitReviewPatch(cwd, "staged", renamed.path)).toContain("rename from file.txt");
+  expect(await gitReviewDiff(cwd, "staged", renamed.path)).toMatchObject({
+    beforeContent: "original\n",
+    afterContent: "original\n",
+  });
   await rm(join(cwd, "renamed.txt"));
   await writeFile(join(cwd, "binary.dat"), Buffer.from([0, 1, 2]));
   await runGit(cwd, ["add", "binary.dat"]);
@@ -104,6 +108,21 @@ test("returns non-repository state and rejects disappeared changes", async () =>
   await expect(gitReviewPatch(cwd, "unstaged", join(cwd, "file.txt"))).rejects.toThrow("not_found");
   await rm(join(cwd, ".git"), { recursive: true });
   expect(await gitReview(cwd, "unstaged")).toEqual({ entries: [], isRepository: false });
+});
+test("branch renames read the original blob path and ignore later working copy edits", async () => {
+  const cwd = await repo();
+  await runGit(cwd, ["checkout", "-b", "feature"]);
+  await runGit(cwd, ["branch", "--set-upstream-to=main"]);
+  const path = join(cwd, "renamed.txt");
+  await rename(join(cwd, "file.txt"), path);
+  await runGit(cwd, ["add", "-A"]);
+  await runGit(cwd, ["commit", "-m", "Rename"]);
+  await writeFile(path, "working copy\n");
+  expect(await gitReviewDiff(cwd, "branch", path)).toMatchObject({
+    availability: "patch",
+    beforeContent: "original\n",
+    afterContent: "original\n",
+  });
 });
 test("counts hunk lines beginning with diff header characters", () => {
   expect(reviewPatchStats("--- old\n+++ new\n@@ -1 +1 @@\n---old content\n+++new content\n")).toEqual({

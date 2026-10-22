@@ -2005,9 +2005,9 @@ export function ChatComposer({
                       onClick={() => insert(suggestion)}
                     >
                       {inputQuery?.trigger === "#" ? (
-                        <MessagesSquare size={14} className="skill-option-icon" aria-hidden="true" />
+                        <MessagesSquare size={14} aria-hidden="true" />
                       ) : inputQuery?.trigger === "$" ? (
-                        <WandSparkles size={14} className="skill-option-icon" aria-hidden="true" />
+                        <WandSparkles size={14} aria-hidden="true" />
                       ) : null}
                       <strong>
                         {inputQuery?.trigger === "/" ? slashSuggestionLabel(suggestion) : suggestion.name}

@@ -7,14 +7,6 @@ const maxTranscriptCharacters = 128000;
 // Export visible user input, assistant prose and bounded tool snippets, not system
 // prompts, reasoning, model-only reminders or raw storage metadata. The provider's prepared
 // user message can contain internal reference/attachment context: use zpi.run instead.
-export function sessionReferenceTranscript(
-  title: string,
-  sessionId: string,
-  entries: SessionEntry[],
-): string {
-  return sessionReferenceTranscriptReverse(title, sessionId, entries.slice().reverse());
-}
-
 export function sessionReferenceTranscriptReverse(
   title: string,
   sessionId: string,

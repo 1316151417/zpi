@@ -140,10 +140,13 @@ test("file snapshots reject sibling directories and symlink escapes while retain
       root,
       "task",
     );
-    if (allowed) expect(item.patch).toContain("+inside");
-    else {
+    if (allowed) {
+      expect(item.patch).toContain("+inside");
+      expect(item.snapshotUnavailable).toBeUndefined();
+    } else {
       expect(item.patch).toBeUndefined();
       expect(item.reason).toContain("快照不属于此任务");
+      expect(item.snapshotUnavailable).toBe(true);
     }
   }
 });
@@ -234,9 +237,12 @@ test("missing and out-of-bounds legacy patches retain diagnostics without droppi
   );
   expect(changes).toHaveLength(3);
   expect(changes[0]).toMatchObject({ path: "missing.txt", failed: true });
+  expect(changes[0].snapshotUnavailable).toBe(true);
   expect(changes[0].reason).toContain("文件快照不可用");
   expect(changes[1].reason).toContain("快照不属于此任务");
+  expect(changes[1].snapshotUnavailable).toBe(true);
   expect(changes[2]).toMatchObject({ path: "valid.txt", patch });
+  expect(changes[2].snapshotUnavailable).toBeUndefined();
 });
 
 test("metadata and inline-budget projections preserve grouping without computing deferred patches", async () => {
@@ -281,6 +287,32 @@ test("metadata and inline-budget projections preserve grouping without computing
     } else expect(items[1].patch).toBe("+legacy");
   }
 });
+
+test.each([
+  ["文件快照不可用：historical fork failure", true],
+  ["文件已变化，比对超时", undefined],
+  ["无法预览二进制 Diff", undefined],
+])(
+  "projects snapshot availability independently of other diagnostics: %s",
+  async (reason, snapshotUnavailable) => {
+    const [item] = await fileChanges(
+      [
+        {
+          path: "file.txt",
+          toolCallId: "legacy",
+          operation: "modified",
+          beforeHash: "before",
+          afterHash: "after",
+          reason,
+        },
+      ],
+      "/unused",
+      "task",
+      { includePatch: false },
+    );
+    expect(item.snapshotUnavailable).toBe(snapshotUnavailable);
+  },
+);
 
 test("real diff workers preserve large creation patches and remain responsive during expensive comparisons", async () => {
   const f = await fixture();

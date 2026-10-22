@@ -39,6 +39,21 @@ test("full content and patch inputs follow ZCode's separate render paths", () =>
     kind: "rich",
   });
 });
+test.each([true, false])(
+  "keeps structured files rich when diff headers have timestamps (created: %s)",
+  (created) => {
+    const diff = data("index.ts", created ? "" : "export {};\n", created ? "export {};\n" : "");
+    diff.patch = createTwoFilesPatch(
+      created ? "/dev/null" : "index.ts",
+      created ? "index.ts" : "/dev/null",
+      diff.beforeContent ?? "",
+      diff.afterContent ?? "",
+      created ? undefined : "2026-10-23 00:00:00",
+      created ? "2026-10-23 00:00:00" : undefined,
+    );
+    expect(getGitPaneDiffPreviewPlan(diff)).toEqual({ kind: "rich" });
+  },
+);
 test.each(["pnpm-lock.yaml", "package-lock.json", "build.gradle", "config.zsh"])(
   "%s uses the reference lightweight fallback",
   (path) => {

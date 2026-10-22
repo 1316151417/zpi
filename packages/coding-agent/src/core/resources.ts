@@ -166,19 +166,23 @@ export class FileResourceLoader implements ResourceLoader {
         ? []
         : [join(project, "AGENTS.md"), join(project, ".zpi", "AGENTS.md")]),
     ];
+    // At most four instruction files; keep their precedence and diagnostics in source order.
+    const [instructions] = await Promise.all([
+      Promise.allSettled(
+        files.map(async (file) => {
+          if (!(await stat(file)).isFile()) throw new Error("AGENTS.md must be a regular file");
+          return `<project_instructions path="${xml(file)}">\n${await readFile(file, "utf8")}\n</project_instructions>`;
+        }),
+      ),
+      this.catalog.reload(),
+    ]);
     const append: string[] = [];
     const diagnostics: ResourceDiagnostic[] = [];
-    for (const file of files) {
-      try {
-        if (!(await stat(file)).isFile()) throw new Error("AGENTS.md must be a regular file");
-        append.push(
-          `<project_instructions path="${xml(file)}">\n${await readFile(file, "utf8")}\n</project_instructions>`,
-        );
-      } catch (e) {
-        if (!missing(e)) diagnostics.push({ path: file, message: String(e) });
-      }
+    for (const [index, result] of instructions.entries()) {
+      if (result.status === "fulfilled") append.push(result.value);
+      else if (!missing(result.reason))
+        diagnostics.push({ path: files[index], message: String(result.reason) });
     }
-    await this.catalog.reload();
     const skills = this.catalog.listSkills();
     diagnostics.push(...skills.diagnostics);
     if (append.length)

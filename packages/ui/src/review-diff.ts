@@ -1,6 +1,6 @@
 // Adapted from ZCode GitPane/helpers.ts (Apache-2.0).
 import { getFiletypeFromFileName } from "@pierre/diffs";
-import { getPlainTextPatchFallbackLines } from "./patch-preview.ts";
+import { getPatchContentFileName, getPlainTextPatchFallbackLines } from "./patch-preview.ts";
 export interface ReviewDiffData {
   path: string;
   availability: "patch" | "binary" | "truncated" | "unavailable";
@@ -9,7 +9,6 @@ export interface ReviewDiffData {
   afterContent: string | null;
   summary: string | null;
 }
-type GitDiffResult = ReviewDiffData;
 export type GitPaneDiffPreviewPlan =
   | { kind: "rich" }
   | { kind: "patch" }
@@ -31,7 +30,7 @@ function countLogicalLines(content: string | null): number {
   return lineCount;
 }
 
-export function shouldRenderPatchOnlyGitDiffPreview(diff: GitDiffResult): boolean {
+export function shouldRenderPatchOnlyGitDiffPreview(diff: ReviewDiffData): boolean {
   if (diff.availability !== "patch" || !diff.patch) {
     return false;
   }
@@ -42,7 +41,7 @@ export function shouldRenderPatchOnlyGitDiffPreview(diff: GitDiffResult): boolea
     return true;
   }
 
-  const fullContentCharCount = (diff.beforeContent?.length ?? 0) + (diff.afterContent?.length ?? 0);
+  const fullContentCharCount = diff.beforeContent.length + diff.afterContent.length;
   if (fullContentCharCount > MAX_RICH_DIFF_FULL_CONTENT_CHAR_COUNT) {
     return true;
   }
@@ -55,7 +54,7 @@ export function shouldRenderPatchOnlyGitDiffPreview(diff: GitDiffResult): boolea
   return fullContentLineCount > MAX_RICH_DIFF_FULL_CONTENT_LINE_COUNT;
 }
 
-export function getGitPaneDiffPreviewPlan(diff: GitDiffResult | null): GitPaneDiffPreviewPlan {
+export function getGitPaneDiffPreviewPlan(diff: ReviewDiffData | null): GitPaneDiffPreviewPlan {
   if (diff?.availability !== "patch" || !diff.patch) {
     return { kind: "rich" };
   }
@@ -108,21 +107,4 @@ export function shouldRenderPlainTextDiffPreview(patch: string): string[] | null
   // 底层通用 fallback 为了避免文件变更展开空白，会覆盖 JSON 等结构化文件；
   // 这里重新按文件类型收口，避免结构化文件绕过 PatchDiff 的语义化渲染路径。
   return getFiletypeFromFileName(patchFileName) === "text" ? fallbackLines : null;
-}
-
-function getPatchContentFileName(lines: readonly string[]): string | null {
-  for (const line of lines) {
-    if (!line.startsWith("--- ") && !line.startsWith("+++ ")) {
-      continue;
-    }
-
-    const fileName = line.slice(4).trim();
-    if (!fileName || fileName === "/dev/null") {
-      continue;
-    }
-
-    return fileName;
-  }
-
-  return null;
 }
