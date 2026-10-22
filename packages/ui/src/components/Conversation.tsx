@@ -2239,13 +2239,21 @@ export function ChatComposer({
               </ActionHint>
             )}
             {busy && !hasDraft ? (
-              <ActionHint label="停止生成" appearance="control">
+              <ActionHint
+                label="停止生成"
+                appearance="control"
+                open={layout === "inline" ? false : undefined}
+              >
                 <button type="button" className="send stop" aria-label="停止" onClick={onStop}>
                   <Square size={16} fill="currentColor" />
                 </button>
               </ActionHint>
             ) : showSendButton || busy ? (
-              <ActionHint label={busy ? "加入队列" : "发送"} appearance="control">
+              <ActionHint
+                label={busy ? "加入队列" : "发送"}
+                appearance="control"
+                open={layout === "inline" ? false : undefined}
+              >
                 <button
                   className="send"
                   aria-label={busy ? "加入队列" : "发送"}

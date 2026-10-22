@@ -24,6 +24,10 @@ import { focusComposer, useStore } from "./store.ts";
 export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView; sessionId?: string }) {
   const root = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | undefined>(
+    undefined,
+  );
   const [anchor, setAnchor] = useState<FloatingAnchor>(() => {
     const saved = localStorage.getItem("zpi.fullViewAnchor");
     return floatingAnchors.find((anchor) => anchor === saved) ?? "bottom-right";
@@ -74,7 +78,7 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
       // 完整视图只占右侧内容区；左栏开合、拖宽时以真实 slot 同步定位。
       for (const key of ["left", "top", "width", "height"] as const)
         info.element.style.setProperty(`--pane-slot-${key}`, `${info.slot[key]}px`);
-      if (value.surface !== "side-pane") return;
+      if (value.surface !== "side-pane" || drag.current?.moved) return;
       const size = { width: info.element.offsetWidth, height: info.element.offsetHeight };
       const point = floatingPosition(anchor, info.slot, size);
       info.element.style.setProperty("--pane-float-left", `${point.left}px`);
@@ -92,10 +96,11 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
       window.removeEventListener("resize", place);
       observer.disconnect();
     };
-  }, [anchor, value.floating, value.surface]);
-  const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | undefined>(
-    undefined,
-  );
+  }, [anchor, dragging, value.floating, value.surface]);
+  const cancelDrag = () => {
+    drag.current = undefined;
+    setDragging(false);
+  };
   const start = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     const info = geometry();
@@ -110,7 +115,10 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
     if (!active) return;
     const dx = event.clientX - active.x,
       dy = event.clientY - active.y;
-    if (Math.hypot(dx, dy) >= 4) active.moved = true;
+    if (!active.moved && Math.hypot(dx, dy) >= 4) {
+      active.moved = true;
+      setDragging(true);
+    }
     if (!active.moved) return;
     const info = geometry();
     if (!info) return;
@@ -127,6 +135,7 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
     const active = drag.current,
       info = geometry();
     drag.current = undefined;
+    setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
     if (!active || !info) return;
@@ -150,6 +159,7 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
       className="pane-full-view-controls"
       data-anchor={anchor}
       data-menu-open={menuOpen}
+      data-dragging={dragging}
       hidden={value.surface !== "side-pane"}
     >
       {answer && answer.sessionId === sessionId && (
@@ -180,6 +190,7 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
           onPointerDown={start}
           onPointerMove={move}
           onPointerUp={end}
+          onLostPointerCapture={cancelDrag}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               floating("collapsed");
@@ -222,9 +233,7 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
                 onPointerDown={start}
                 onPointerMove={move}
                 onPointerUp={end}
-                onLostPointerCapture={() => {
-                  drag.current = undefined;
-                }}
+                onLostPointerCapture={cancelDrag}
               >
                 <GripVertical size={16} />
               </button>

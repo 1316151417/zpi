@@ -323,7 +323,7 @@ npm run repair:sessions -- "/path/to/app-data"
 
 普通修改通过完整 before/after 使用 MultiFileDiff，显示并真实展开首部、中间、尾部的 `unmodified lines`；局部 patch、大文件及特殊格式按参考的相同规则降级。审查默认采用 GitHub 深浅高亮、12px、WASM 和共享 diff worker 池，界面设置可调整代码主题和字号。Vite worker 插件显式保留依赖的 worker 入口副作用，防止打包后被 tree shaking 变成空文件。`tests/desktop/git-review.spec.ts` 使用三个相隔修改点的 Java 文件验证 `14 / 13 / 13` 折叠区、真实正文展开及主题切换。`review-shell.spec.ts` 验证标签恢复、完整视图、草稿和 Diff 状态保留及快捷键。
 
-右侧栏完整视图保留左栏当前状态，左栏仍可独立开合、调整宽度。对话和浮窗均以右侧面板的实际内容区定位。浮窗复用同一个 composer 和草稿，采用 ZCode 的单行布局：空白或单行时高 46px、8px 内边距、28px 加号与发送按钮，不展示项目栏和模型工具栏；多行和附件按内容增长。聚焦、悬停或打开操作菜单时显示上方 40px 操作栏，展开消息、最小化和拖动吸附仍保留。`review-shell.spec.ts` 同时验证左栏开合与拖宽、窄窗口、多行输入和深浅主题截图。
+右侧栏完整视图保留左栏当前状态，左栏仍可独立开合、调整宽度。对话和浮窗均以右侧面板的实际内容区定位。浮窗复用同一个 composer 和草稿，采用 ZCode 的单行布局：空白或单行时高 46px、8px 内边距、28px 加号与发送按钮，不展示项目栏和模型工具栏；多行和附件按内容增长。收起态仅在浮窗内有焦点、操作菜单打开或拖动时显示上方 40px 操作栏，展开态始终显示；悬停输入框或按钮不触发抽屉开合。悬浮发送、排队和停止按钮不显示文字提示，加号保留提示及菜单，避免提示浮层与上栏相互触发。展开消息、最小化和拖动吸附仍保留。`review-shell.spec.ts` 同时验证左栏开合与拖宽、窄窗口、多行输入、按钮提示与抽屉稳定性和深浅主题截图。
 
 可选的 `tests/desktop/review-reference.spec.ts` 在隔离 Electron 中编译并对比两套真实审查组件，使用相同 Java 快照和固定视口。以 `ZPI_ZCODE_REFERENCE=/absolute/path/to/ZCode node scripts/test-desktop.ts tests/desktop/review-reference.spec.ts` 运行；未设置参考路径时跳过。参考仓库需已安装依赖，不参与产品构建。截图和像素统计保存在测试输出目录，可用 `ZPI_REVIEW_EVIDENCE_DIR` 指定独立输出位置。逐像素检查覆盖折叠深浅主题、来源菜单和展开滚动后的代码区域；置顶标题采用不透明背景以避免代码透出，允许与参考的模糊透底区域不同。
 

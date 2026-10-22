@@ -327,18 +327,20 @@
   background: var(--color-bg);
 }
 
-.shell.pane-float-collapsed .main:not(:focus-within):not(:hover):not(:has([data-menu-open="true"]))::before {
+/* ZCode 只由焦点、菜单和拖动控制抽屉；tooltip 的 portal hover 不应反复开合上栏。 */
+.shell.pane-float-collapsed
+.main:not(:focus-within):not(:has([data-menu-open="true"], [data-dragging="true"]))::before {
   opacity: 0;
 }
 .shell.pane-float-collapsed
-  .main:not(:focus-within):not(:hover):not(:has([data-menu-open="true"]))
+  .main:not(:focus-within):not(:has([data-menu-open="true"], [data-dragging="true"]))
   .pane-full-view-controls {
   height: 0;
   padding: 0;
   overflow: visible;
 }
 .shell.pane-float-collapsed
-  .main:not(:focus-within):not(:hover):not(:has([data-menu-open="true"]))
+  .main:not(:focus-within):not(:has([data-menu-open="true"], [data-dragging="true"]))
   .pane-full-view-controls
   > :not(.pane-floating-answer) {
   visibility: hidden;
