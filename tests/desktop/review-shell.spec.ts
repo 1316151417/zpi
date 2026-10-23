@@ -266,9 +266,14 @@ test("full view keeps an unsent draft compact and attachments above its inline i
     const attachment = input.locator(".image-chip");
     await expect(attachment).toBeVisible();
     await expect(input).toHaveCSS("height", "102px");
-    const attachmentBox = await attachment.boundingBox();
-    const editorBox = await editor.boundingBox();
-    expect((attachmentBox?.y ?? 0) + (attachmentBox?.height ?? 0)).toBeLessThan(editorBox?.y ?? 0);
+    // Read both rectangles in one frame: the floating host reanchors as attachments change its height.
+    const attachmentGap = await input.evaluate((element) => {
+      const attachment = element.querySelector(".image-chip");
+      const editor = element.querySelector(".mention-editor");
+      if (!attachment || !editor) throw Error("Missing attachment or editor");
+      return editor.getBoundingClientRect().top - attachment.getBoundingClientRect().bottom;
+    });
+    expect(attachmentGap).toBeGreaterThan(0);
     await page.screenshot({ path: testInfo.outputPath("full-view-draft-attachment.png") });
     await page.getByRole("button", { name: "最小化编辑器", exact: true }).click();
     await page.getByRole("button", { name: "展开编辑器", exact: true }).click();

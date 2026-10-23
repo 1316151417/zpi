@@ -1,9 +1,90 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
+
+test("switching sidebar tasks restores full-view geometry without pane opening transitions", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-pane-switch-"));
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "Done." }));
+    done(response);
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    for (const title of ["Full view task", "Other task"]) {
+      await page.getByLabel("新建任务", { exact: true }).first().click();
+      await page.getByLabel("消息", { exact: true }).fill(title);
+      await page.getByLabel("消息", { exact: true }).press("Enter");
+      await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      if (title === "Full view task") {
+        await page.getByTestId("right-sidebar-toggle").click();
+        await page.getByLabel("进入完整视图", { exact: true }).click();
+        await page.getByLabel("消息", { exact: true }).fill("Keep this draft");
+      }
+    }
+    const fullTask = page.getByTestId("session-row").filter({ hasText: "Full view task" });
+    const otherTask = page.getByTestId("session-row").filter({ hasText: "Other task" });
+    const fullId = await fullTask.getAttribute("data-session-id");
+    const otherId = await otherTask.getAttribute("data-session-id");
+    if (!fullId || !otherId) throw Error("Missing task rows");
+    const taskIds: string[] = [fullId, otherId];
+    for (const otherLayout of ["closed", "split", "full"]) {
+      if (otherLayout === "split") await page.getByTestId("right-sidebar-toggle").click();
+      if (otherLayout === "full") await page.getByLabel("进入完整视图", { exact: true }).click();
+      for (const id of taskIds) {
+        const frames = await page.evaluate(async (targetId: string) => {
+          const row = document.querySelector<HTMLElement>(`[data-session-id="${targetId}"]`);
+          const panel = document.querySelector<HTMLElement>(".right-pane");
+          const content = document.querySelector<HTMLElement>(".right-pane-content");
+          const main = document.querySelector<HTMLElement>(".main");
+          const shell = document.querySelector(".shell");
+          if (!row || !panel || !content || !main || !shell) throw Error("Missing workspace");
+          row.click();
+          const frames = [];
+          for (let frame = 0; frame < 20; frame++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            if (!row.classList.contains("active")) continue;
+            const paneRect = panel.getBoundingClientRect();
+            const contentRect = content.getBoundingClientRect();
+            const mainRect = main.getBoundingClientRect();
+            frames.push({
+              full: shell.classList.contains("pane-full-view"),
+              hidden: getComputedStyle(panel).display === "none",
+              animations: panel.getAnimations().length,
+              contentGap: paneRect.width - contentRect.width,
+              floatingRight: contentRect.right - mainRect.right,
+            });
+          }
+          return frames;
+        }, id);
+        expect(frames.length).toBeGreaterThan(0);
+        for (const frame of frames) {
+          expect(frame.animations).toBe(0);
+          expect(frame.full).toBe(id === fullId || otherLayout === "full");
+          expect(frame.hidden).toBe(id === otherId && otherLayout === "closed");
+          if (frame.full) {
+            expect(frame.contentGap).toBeCloseTo(2, 1);
+            expect(frame.floatingRight).toBeCloseTo(16, 1);
+          }
+        }
+        if (id === fullId)
+          await expect(page.getByLabel("消息", { exact: true })).toHaveText("Keep this draft");
+      }
+    }
+  } finally {
+    await runCleanup([
+      () => app?.close(),
+      () => server.close(),
+      () => rm(dir, { recursive: true, force: true }),
+    ]);
+  }
+});
 
 test("right pane slides with stable content in both layouts and resizes without lag", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-pane-motion-"));

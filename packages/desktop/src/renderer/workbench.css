@@ -201,9 +201,7 @@
   min-height: 0;
   margin: 4px 4px 4px 0;
   border-radius: var(--workspace-panel-radius);
-  transition:
-    opacity 200ms ease-out,
-    display 200ms allow-discrete;
+  transition: none;
 }
 .right-pane[data-animating] {
   transition:
@@ -246,7 +244,7 @@
   width: 100%;
   container-type: inline-size;
 }
-.right-pane[data-animating]:not([data-resizing]) .right-pane-content {
+.shell:not(.pane-full-view) .right-pane[data-animating]:not([data-resizing]) .right-pane-content {
   width: calc(var(--right-pane-width) - 2px);
 }
 .right-resizer {

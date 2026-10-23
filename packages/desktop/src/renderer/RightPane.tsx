@@ -48,10 +48,13 @@ export function RightPane({
     state.settings?.shortcuts.enabled ? state.settings.shortcuts.bindings["pane-full-view"] : null,
   );
   const panel = useRef<HTMLElement>(null);
-  const previousOpen = useRef(state.open);
+  const fullView = Boolean(state.fullView);
+  const previous = useRef({ open: state.open, sessionId });
   useLayoutEffect(() => {
-    if (previousOpen.current === state.open) return;
-    previousOpen.current = state.open;
+    const before = previous.current;
+    previous.current = { open: state.open, sessionId };
+    // 任务切换直接恢复布局；完整视图不能沿用普通分栏的宽度动画。
+    if (before.sessionId !== sessionId || before.open === state.open || fullView) return;
     const element = panel.current;
     if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     // 仅显式开合沿用 ZCode 的 200ms ease-out；锁住内容宽度，避免逐帧重排。
@@ -65,7 +68,7 @@ export function RightPane({
       window.removeEventListener("resize", finish);
       finish();
     };
-  }, [state.open]);
+  }, [fullView, sessionId, state.open]);
   const tabs = visiblePaneTabs(sessionId, state.tabs);
   const active =
     state.fullView?.surface === "conversation" ? undefined : tabs.find((tab) => tab.id === state.active)?.id;
