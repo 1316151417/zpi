@@ -32,7 +32,7 @@ test("file tabs fade filename and neutral Diff badge together around the close b
   expect(declarations(workbench, ".pane-tab-content")[0]).toContain("mask-image: linear-gradient");
   expect(declarations(workbench, ".pane-tab-title")[0]).toContain("flex-shrink: 0");
   expect(workbench).not.toContain(".pane-tab-trigger span {");
-  const [badge] = declarations(workbench, ".pane-tab-trigger .pane-tab-diff-badge");
+  const [badge] = declarations(workbench, ".pane-tab-diff-badge");
   expect(badge).toContain("background: var(--color-fill)");
   expect(badge).toContain("font-size: var(--text-xs)");
 });

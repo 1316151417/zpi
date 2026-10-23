@@ -279,7 +279,9 @@
   gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
+  height: 100%;
   overflow-x: auto;
+  scrollbar-width: none;
   align-items: center;
 }
 .pane-tab {
@@ -290,8 +292,11 @@
   width: 156px;
   min-width: 60px;
   max-width: 156px;
-  border-radius: var(--radius-nested);
+  border: 1px solid transparent;
+  border-radius: 8px;
   height: 28px;
+  cursor: default;
+  touch-action: none;
   color: var(--color-text-subtle);
 }
 .pane-tab.selected {
@@ -6201,7 +6206,7 @@ button.model-stat-pill:hover,
   --diffs-dark-bg: var(--color-bg);
   --diffs-font-family: var(--font-code);
 }
-.pane-tab-trigger .pane-tab-diff-badge {
+.pane-tab-diff-badge {
   flex: none;
   margin-left: 2px;
   border: 1px solid var(--color-border);

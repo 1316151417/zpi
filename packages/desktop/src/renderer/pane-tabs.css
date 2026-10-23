@@ -122,6 +122,30 @@
 .pane-tab-menu {
   width: 176px;
 }
+.pane-tab[data-dragging],
+.pane-tab-drag-overlay {
+  cursor: grabbing;
+  box-shadow:
+    0 4px 6px -1px #0000001a,
+    0 2px 4px -2px #0000001a;
+}
+.pane-tab-drag-overlay {
+  display: inline-flex;
+  align-items: center;
+  width: 156px;
+  min-width: 60px;
+  max-width: 156px;
+  height: 28px;
+  gap: 6px;
+  padding: 0 4px 0 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--color-active);
+  color: var(--color-text);
+  font-size: var(--text-body);
+  font-weight: 500;
+  white-space: nowrap;
+}
 .shell.pane-full-view .right-pane {
   position: relative;
   top: auto;

@@ -59,6 +59,8 @@ test("right pane slides with stable content in both layouts and resizes without 
       await expect(panel).toBeHidden();
     }
     await page.getByLabel("展开右侧栏", { exact: true }).click();
+    // The resize handle moves during opening; measure it only after the transition finishes.
+    await expect(panel).not.toHaveAttribute("data-animating", "true");
     const handle = page.getByRole("separator", { name: "右侧栏宽度", exact: true });
     const box = await handle.boundingBox();
     if (!box) throw Error("Missing pane resize handle");

@@ -1,6 +1,5 @@
-import * as Context from "@radix-ui/react-context-menu";
-import { Maximize2, MessageCircle, Minimize2, Plus, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { Maximize2, MessageCircle, Minimize2, Plus } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { ActionHint, type FindRequest, type FindState } from "zpi-ui";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
@@ -8,16 +7,11 @@ import { BrowserPane } from "./BrowserPane.tsx";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FileManagerPane } from "./FileManagerPane.tsx";
 import { PaneLauncher } from "./PaneLauncher.tsx";
-import { PaneTabIcon } from "./PaneTabIcon.tsx";
 import { PaneTabOverview } from "./PaneTabOverview.tsx";
+import { PaneTabs } from "./PaneTabs.tsx";
 import {
-  activatePaneTab,
   canOpenSideChat,
-  closePaneTabs,
-  closeTab,
   openNewPaneTab,
-  paneTask,
-  reorderPaneTab,
   selectReviewSource,
   togglePaneFullView,
   updatePaneFullView,
@@ -75,11 +69,6 @@ export function RightPane({
   const tabs = visiblePaneTabs(sessionId, state.tabs);
   const active =
     state.fullView?.surface === "conversation" ? undefined : tabs.find((tab) => tab.id === state.active)?.id;
-  const tabsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const active = tabsRef.current?.querySelector<HTMLElement>(".pane-tab.selected");
-    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [state.active]);
   return (
     <aside ref={panel} className="right-pane" hidden={!state.open} inert={!state.open} aria-label="右侧栏">
       <hr
@@ -121,7 +110,7 @@ export function RightPane({
         <div className="right-pane-content">
           <div className="pane-header">
             <PaneTabOverview sessionId={sessionId} />
-            <div ref={tabsRef} role="tablist" aria-label="侧栏标签" className="pane-tabs">
+            <PaneTabs key={sessionId ?? ""} tabs={tabs} active={active}>
               {state.fullView && (
                 <div
                   className={`pane-tab pane-conversation-tab ${state.fullView.surface === "conversation" ? "selected" : ""}`}
@@ -149,95 +138,7 @@ export function RightPane({
                   <span className="pane-conversation-title">{conversationTitle}</span>
                 </div>
               )}
-              {tabs.map((tab) => (
-                <Context.Root key={tab.id}>
-                  <Context.Trigger asChild>
-                    <div
-                      role="tab"
-                      aria-label={tab.title}
-                      tabIndex={active === tab.id ? 0 : -1}
-                      aria-selected={active === tab.id}
-                      onKeyDown={(event) => {
-                        if (event.key === "Delete") {
-                          event.preventDefault();
-                          paneTask(closeTab(tab.id));
-                        }
-                        if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
-                          event.preventDefault();
-                          const index = tabs.findIndex((item) => item.id === tab.id);
-                          const next =
-                            tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
-                          if (next) activatePaneTab(next.id);
-                        }
-                      }}
-                      key={tab.id}
-                      className={`pane-tab ${active === tab.id ? "selected" : ""}`}
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData("application/x-zpi-pane-tab", tab.id);
-                      }}
-                      onDragOver={(event) => {
-                        if (event.dataTransfer.types.includes("application/x-zpi-pane-tab"))
-                          event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        const id = event.dataTransfer.getData("application/x-zpi-pane-tab");
-                        reorderPaneTab(id, tab.id);
-                      }}
-                      onAuxClick={(event) => {
-                        if (event.button === 1) {
-                          event.preventDefault();
-                          paneTask(closeTab(tab.id));
-                        }
-                      }}
-                    >
-                      <button
-                        className="pane-tab-trigger"
-                        title={tab.title}
-                        onClick={(event) => {
-                          if (event.button !== 1) activatePaneTab(tab.id);
-                        }}
-                      >
-                        <span className="pane-tab-content">
-                          <span className="pane-tab-icon">
-                            <PaneTabIcon tab={tab} />
-                          </span>
-                          <span className="pane-tab-title">{tab.title}</span>
-                          {tab.type === "changes" && !tab.reviewSource && (
-                            <span className="pane-tab-diff-badge">Diff</span>
-                          )}
-                        </span>
-                      </button>
-                      <button
-                        className="tab-close"
-                        aria-label={`关闭标签 ${tab.title}`}
-                        onClick={() => paneTask(closeTab(tab.id))}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  </Context.Trigger>
-                  <Context.Portal>
-                    <Context.Content className="parity-menu pane-tab-menu">
-                      <Context.Item className="parity-menu-item" onSelect={() => paneTask(closeTab(tab.id))}>
-                        关闭标签
-                      </Context.Item>
-                      <Context.Item
-                        className="parity-menu-item"
-                        disabled={tabs.length < 2}
-                        onSelect={() => paneTask(closePaneTabs(tab.id))}
-                      >
-                        关闭其他标签
-                      </Context.Item>
-                      <Context.Item className="parity-menu-item" onSelect={() => paneTask(closePaneTabs())}>
-                        关闭所有标签
-                      </Context.Item>
-                    </Context.Content>
-                  </Context.Portal>
-                </Context.Root>
-              ))}
-            </div>
+            </PaneTabs>
             <button className="pane-add-tab" aria-label="新增侧栏标签" onClick={openNewPaneTab}>
               <Plus size={16} />
             </button>
