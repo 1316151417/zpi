@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import type { AgentTool, AgentToolResult } from "zpi-agent";
 import type { JsonValue, Model } from "zpi-ai";
+import type { ToolContext, ToolDefinition } from "../types.ts";
 import { beforeFile, type FileChange, recordFileChange } from "./file-change.ts";
 import { type BashToolOptions, createBashToolDefinition } from "./pi/bash.ts";
-import type { ExtensionContext, ToolDefinition } from "./pi/compat.ts";
 import { createEditToolDefinition, type EditToolOptions } from "./pi/edit.ts";
 import { FileReadState } from "./pi/file-read-state.ts";
 import { createReadToolDefinition, type ReadToolOptions } from "./pi/read.ts";
@@ -17,7 +17,7 @@ export { FileReadState } from "./pi/file-read-state.ts";
 export { createReadToolDefinition } from "./pi/read.ts";
 export { createWriteToolDefinition } from "./pi/write.ts";
 export type { BashToolOptions, EditToolOptions, ReadToolOptions, WriteToolOptions };
-export type ToolContextFactory = () => ExtensionContext | undefined;
+export type ToolContextFactory = () => Partial<ToolContext> | undefined;
 
 export function createReadTool(
   cwd: string,
@@ -26,17 +26,14 @@ export function createReadTool(
 ): AgentTool {
   const getModel = typeof options === "function" ? options : undefined;
   const definition = createReadToolDefinition(cwd, typeof options === "function" ? undefined : options);
-  return wrapToolDefinition(
-    definition,
-    context ?? (getModel ? () => ({ cwd, model: getModel() }) as ExtensionContext : undefined),
-  );
+  return wrapToolDefinition(definition, context ?? (() => ({ cwd, model: getModel?.() })));
 }
 export function createBashTool(
   cwd: string,
   options?: BashToolOptions,
   context?: ToolContextFactory,
 ): AgentTool {
-  return wrapToolDefinition(createBashToolDefinition(cwd, options), context);
+  return wrapToolDefinition(createBashToolDefinition(cwd, options), context ?? (() => undefined));
 }
 
 // File-change observation is outside the Pi tool semantics, but runs inside its mutation queue.
@@ -52,7 +49,10 @@ function observeMutation(
     tool === "write"
       ? createWriteToolDefinition(cwd, options as WriteToolOptions)
       : createEditToolDefinition(cwd, options as EditToolOptions);
-  const wrapped = wrapToolDefinition(base as ToolDefinition<typeof base.parameters, unknown>, context);
+  const wrapped = wrapToolDefinition(
+    base as ToolDefinition<typeof base.parameters, unknown, Partial<ToolContext> | undefined>,
+    context ?? (() => undefined),
+  );
   return {
     ...wrapped,
     execute: async (id, params, signal, update) => {
@@ -115,8 +115,12 @@ function observeMutation(
       let result: AgentToolResult;
       try {
         result = await wrapToolDefinition(
-          definition as ToolDefinition<typeof definition.parameters, unknown>,
-          context,
+          definition as ToolDefinition<
+            typeof definition.parameters,
+            unknown,
+            Partial<ToolContext> | undefined
+          >,
+          context ?? (() => undefined),
         ).execute(id, params as never, signal, update);
       } catch (error) {
         if (!change && !diagnostic) throw error;
@@ -174,11 +178,7 @@ export function createCodingTools(
   fileReadState = new FileReadState(),
 ): AgentTool[] {
   return [
-    createReadTool(
-      cwd,
-      { fileReadState },
-      context ?? (getModel ? () => ({ cwd, model: getModel() }) as ExtensionContext : undefined),
-    ),
+    createReadTool(cwd, { fileReadState }, context ?? (() => ({ cwd, model: getModel?.() }))),
     createBashTool(cwd, undefined, context),
     observeMutation(cwd, "edit", { fileReadState }, outputDir, context),
     observeMutation(cwd, "write", { fileReadState }, outputDir, context),

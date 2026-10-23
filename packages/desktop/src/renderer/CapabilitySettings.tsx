@@ -12,32 +12,32 @@ const capabilities: {
 }[] = [
   {
     name: "communicationStyle",
-    label: "提示词-交互方式",
+    label: "指令 · 交互方式",
     description: "简要说明进展，在最终回复中完整交付结论；按问题和用户经验调整表达，保持代码风格一致。",
   },
   {
     name: "toolBatching",
-    label: "提示词-多工具调用",
+    label: "指令 · 多工具调用",
     description: "提示助手在一次请求中调用多个工具，独立调用可并行执行。",
   },
   {
     name: "fileLinks",
-    label: "提示词-文件链接格式",
+    label: "指令 · 文件链接格式",
     description: "使用桌面可点击的文件和网页链接格式，文件路径支持行号定位。",
   },
   {
     name: "fileContextReuse",
-    label: "提示词-文件内容复用",
+    label: "指令 · 文件内容复用",
     description: "提示助手复用已读或成功编辑的文件内容，避免仅为验证或开始新回合而重复读取。",
   },
   {
     name: "proactiveExecution",
-    label: "提示词-主动推进",
+    label: "指令 · 主动推进",
     description: "主动完成已授权的必要工作，减少不必要的确认；用户要求先确认时仍等待。",
   },
   {
     name: "askUserQuestion",
-    label: "工具-向用户提问",
+    label: "工具 · 向用户提问",
     description: "让助手通过单选、多选或自定义回答澄清问题，再继续执行。",
   },
   {
@@ -69,7 +69,7 @@ export function CapabilitySettings() {
   };
   return (
     <div className="capability-settings">
-      <p className="global-settings-note">插件能力在新对话首次发送时生效；已有对话保留原有配置。</p>
+      <p className="global-settings-note">扩展能力在新对话首次发送时生效；已有对话保留原有配置。</p>
       <h2 className="preview-heading">
         内置能力 <small>{capabilities.length}</small>
       </h2>

@@ -21,7 +21,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       const page = await app.firstWindow();
       await page.emulateMedia({ colorScheme });
       await page.getByRole("button", { name: "设置", exact: true }).click();
-      await page.getByRole("button", { name: "插件能力", exact: true }).click();
+      await page.getByRole("button", { name: "扩展能力", exact: true }).click();
       const enabled = page.getByRole("checkbox", { name: "联网搜索", exact: true });
       await enabled.check();
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();

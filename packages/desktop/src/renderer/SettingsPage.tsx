@@ -65,7 +65,7 @@ const sections = [
   ["skills", "技能", Puzzle],
   ["commands", "命令", Terminal],
   ["models", "模型", Braces],
-  ["capabilities", "插件能力", Package],
+  ["capabilities", "扩展能力", Package],
   ["webSearch", "联网搜索", Globe],
   ["subagents", "子智能体", Bot],
   ["quickChat", "快速对话", MessageSquare],

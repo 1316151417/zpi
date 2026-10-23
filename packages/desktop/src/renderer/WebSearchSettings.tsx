@@ -154,7 +154,7 @@ export function WebSearchSettings() {
     <div className="web-search-settings">
       <div className="resource-section-heading">
         <p>
-          「插件能力」中的联网搜索默认开启。配置 API Key
+          「扩展能力」中的联网搜索默认开启。配置 API Key
           并启用服务后，新对话首次发送时可使用网页搜索和网页读取；已有对话保留原有配置。
         </p>
       </div>
@@ -272,7 +272,7 @@ export function WebSearchSettings() {
               </p>
             )}
             {globalEnabled === false && (
-              <p className="web-search-note">「插件能力」中的联网搜索已关闭，新对话不会使用联网工具。</p>
+              <p className="web-search-note">「扩展能力」中的联网搜索已关闭，新对话不会使用联网工具。</p>
             )}
             {settings?.hasApiKey && settings.credentialsPersisted === false && (
               <p className="web-search-storage-note" role="status">

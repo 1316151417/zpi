@@ -138,7 +138,7 @@ export interface InterfacePreferences {
   projectsCollapsed: boolean;
   tasksCollapsed: boolean;
 }
-export interface PluginCapabilities {
+export interface SessionCapabilities {
   webSearch: boolean;
   communicationStyle: boolean;
   subagents: boolean;
@@ -148,7 +148,7 @@ export interface PluginCapabilities {
   fileContextReuse: boolean;
   proactiveExecution: boolean;
 }
-export type CapabilityName = keyof PluginCapabilities;
+export type CapabilityName = keyof SessionCapabilities;
 export interface WebSearchSettingsInput {
   provider: "deepseek";
   enabled?: boolean;
@@ -169,7 +169,7 @@ export interface PublicSettings {
     credentialsLocked: boolean;
   };
   shortcuts: ShortcutSettings;
-  capabilities: PluginCapabilities;
+  capabilities: SessionCapabilities;
   providers: ProviderRecord[];
   lastSelection: CombinedSelection | null;
   interface: InterfacePreferences;
@@ -203,7 +203,7 @@ export interface PromptPreview {
   cwd: string;
   projectName: string;
   basePrompt: string;
-  systemRules: string;
+  customInstructions: string;
   prompt: string;
 }
 export interface DiffItem {

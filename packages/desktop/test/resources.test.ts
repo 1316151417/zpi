@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { expect, test } from "vitest";
 import { buildMentionMarkdown } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
-import { pluginSystemRules } from "../src/main/desktop-prompt.ts";
+import { desktopInstructions } from "../src/main/desktop-prompt.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import { defaultCapabilities } from "../src/shared/config.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
-const desktopSystemRules = pluginSystemRules(defaultCapabilities);
+const defaultInstructions = desktopInstructions(defaultCapabilities);
 
 test("session resources remain bound to the project root after bash changes directory", async () => {
   const f = await fixture((_, response, index) => {
@@ -98,15 +98,15 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
       expect(prompt).toContain("outside inline code and code blocks");
       expect(prompt).toContain("Prefer Markdown links for ordinary file references");
       expect(prompt).not.toContain("To cite a local file in your answer, use ::zcode-file-citation");
-      expect(prompt).toContain(desktopSystemRules);
+      expect(prompt).toContain(defaultInstructions);
       if (template) expect(prompt).toContain("CUSTOM RULE");
     };
     const preview = await f.host.previewPrompt();
     assertLinks(preview.prompt);
-    expect(preview.systemRules).toBe(desktopSystemRules);
+    expect(preview.customInstructions).toBe(defaultInstructions);
     expect(preview.basePrompt).not.toContain("<system_rules>");
     expect(preview.basePrompt).not.toContain("return local file references as Markdown links");
-    expect(preview.prompt.replace(`\n\n${preview.systemRules}`, "")).toBe(preview.basePrompt);
+    expect(preview.prompt.replace(`\n\n${preview.customInstructions}`, "")).toBe(preview.basePrompt);
     await run(f, "list files and the preview URL");
     const requestPrompt = (index: number) => {
       const messages = f.server.requests[index].messages as unknown as { role: string; content: string }[];

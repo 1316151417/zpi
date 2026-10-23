@@ -1,8 +1,8 @@
 import type { ThinkingLevel } from "zpi-agent";
 import { anthropicMessagesCompatKeys, defaultThinkingLevel, thinkingChoices } from "zpi-ai";
 import { defaultCodePreview } from "zpi-ui/code-preview";
-import type { InterfacePreferences, ModelSettings, PluginCapabilities, ReasoningPreset } from "./bridge.ts";
-export const defaultCapabilities: PluginCapabilities = {
+import type { InterfacePreferences, ModelSettings, ReasoningPreset, SessionCapabilities } from "./bridge.ts";
+export const defaultCapabilities: SessionCapabilities = {
   webSearch: true,
   communicationStyle: true,
   subagents: true,

@@ -41,10 +41,16 @@ macOS 数据目录：
 
 ## 工具与会话边界
 
+SDK 的新增工具、内置工具覆盖与追加指令分别使用 `customTools`、`toolOverrides`、`customInstructions`。工具作者共用 `ToolDefinition` / `ToolContext`，注册包装逻辑也共用；`outputSchema` 作为可选结果元数据接受，不新增输出校验或改变模型协议。独立调用工具时上下文可以省略；通过 SDK 执行时提供工作目录、模型、会话管理器、思考级别、取消信号和会话查询方法。
+
+`customInstructions` 支持字符串数组或同步函数。会话创建以及每次刷新指令时，先完成资源加载，再取得追加指令；最终顺序保持为基础开头、工具说明、基础规则、资源指令、追加指令、技能目录、工作目录。正文不展开模板变量。`promptTemplate` 继续控制基础模板；`resourceLoader.getBaseInstructions()` 仅替换模板开头，`getInstructions()` 返回资源指令。旧 `getSystemPrompt` / `getAppendSystemPrompt` 只作为兼容入口；两套方法同时存在时使用新方法。`StaticResourceLoader` 推荐使用 `{ baseInstructions, instructions }` 命名参数，旧位置参数仍兼容。
+
+桌面追加规则通过同一 `customInstructions` 入口接入，界面称为「追加指令」和「扩展能力」。持久化的 `capabilities` 字段、首次发送冻结逻辑、工具名称以及实际提示词正文和顺序保持不变。这里没有插件注册表或插件生命周期；子智能体、后台命令等服务仍由桌面管理。
+
 - `packages/coding-agent` 的默认工具是 `read`、`write`、`edit`、`bash`。SDK 用 `customTools` 增加工具，用 `toolOverrides` 显式替换同名基础工具，不依赖 Electron。
-- 桌面端的 `SessionHost` 负责通过 `customTools` 注入 `AskUserQuestion`、子智能体工具与可选的 `web_search`/`web_fetch`，通过 `toolOverrides` 替换后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体插件后仍提供这两个后台任务工具。
-- 「插件能力」中的联网搜索、提问、子智能体和提示词选项默认开启，已有设置中的显式选择会保留。新对话首次发送时保存配置快照；之后修改全局开关不会重配已有对话。提示词开关不构成权限沙箱，也不会禁用底层并行执行能力。
-- 第一项「提示词-交互方式」控制进展说明、最终回复的完整交付、表达方式及代码风格规则，独立于「提示词-主动推进」。升级后全局设置默认开启此项；已有对话缺失此项时保持关闭，继续沿用原有提示词。
+- 桌面端的 `SessionHost` 负责通过 `customTools` 注入 `AskUserQuestion`、子智能体工具与可选的 `web_search`/`web_fetch`，通过 `toolOverrides` 替换后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体扩展后仍提供这两个后台任务工具。
+- 「扩展能力」中的联网搜索、提问、子智能体和提示词选项默认开启，已有设置中的显式选择会保留。新对话首次发送时保存配置快照；之后修改全局开关不会重配已有对话。提示词开关不构成权限沙箱，也不会禁用底层并行执行能力。
+- 第一项「指令 · 交互方式」控制进展说明、最终回复的完整交付、表达方式及代码风格规则，独立于「指令 · 主动推进」。升级后全局设置默认开启此项；已有对话缺失此项时保持关闭，继续沿用原有提示词。
 - 辅助对话是用户手动创建的独立会话，只复制创建时的稳定上下文和配置。子智能体是桌面编排的受委派任务。两者都共享父任务的工作目录；Git 工作树只提供独立检出目录，不隔离操作系统权限。
 - 后台命令和子智能体的通知只在工具调用结束、主模型还要继续调查时合入当前轮；纯文本答案期间到达的通知等本轮结束后单独启动，显示为带任务标题的「后台补充」。通知元信息随运行记录保存，重启后保持分组，原任务的完整答案不被后续短补充折叠。
 - OpenAI Responses 的每段文本保留原始 `phase`（`commentary` / `final_answer`），同模型历史重放时原样回传；旧记录缺失标签时不猜测，切换模型时按既有规则移除供应商元信息。

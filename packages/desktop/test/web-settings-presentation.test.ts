@@ -82,7 +82,7 @@ test("provider and global switches remain independent with one credential field"
   const markup = render();
   expect(toggle(markup)).toContain('aria-checked="true"');
   expect(toggle(markup)).not.toContain("disabled");
-  expect(markup).toContain("「插件能力」中的联网搜索已关闭");
+  expect(markup).toContain("「扩展能力」中的联网搜索已关闭");
   expect(markup.match(/type="password"/g)).toHaveLength(1);
   expect(markup).not.toContain('type="radio"');
   expect(markup).not.toContain("Base URL");
@@ -139,7 +139,7 @@ test("default-on web capability and model settings navigation preserve their ord
     page.indexOf('["commands", "命令", Terminal]'),
   );
   expect(page.indexOf('["models", "模型", Braces]')).toBeLessThan(
-    page.indexOf('["capabilities", "插件能力", Package]'),
+    page.indexOf('["capabilities", "扩展能力", Package]'),
   );
 });
 

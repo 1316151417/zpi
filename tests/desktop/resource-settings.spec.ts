@@ -5,6 +5,7 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { testStorageDirectory } from "../helpers/storage.ts";
 import { expect, test } from "../helpers/test.ts";
 
 async function configureModels(page: Page) {
@@ -29,8 +30,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
   const dir = await mkdtemp(join(tmpdir(), "zpi-resource-settings-")),
     project = join(dir, "project");
   await mkdir(project);
-  await mkdir(join(dir, "agent"));
-  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
+  const agentDir = join(testStorageDirectory(dir), "agent");
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
   await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
   await writeFile(
     join(dir, ".agents", "skills", "review", "SKILL.md"),
@@ -104,29 +106,33 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "系统提示词",
       "工具",
       "技能",
-      "插件能力",
-      "子智能体",
+      "命令",
       "模型",
+      "扩展能力",
+      "联网搜索",
+      "子智能体",
+      "快速对话",
       "已归档任务",
     ]);
     await expect(page.getByRole("button", { name: "界面设置", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
     await expect(page.locator(".capability-settings .settings-row strong")).toHaveText([
-      "提示词-交互方式",
-      "提示词-多工具调用",
-      "提示词-文件链接格式",
-      "提示词-文件内容复用",
-      "提示词-主动推进",
-      "工具-向用户提问",
+      "指令 · 交互方式",
+      "指令 · 多工具调用",
+      "指令 · 文件链接格式",
+      "指令 · 文件内容复用",
+      "指令 · 主动推进",
+      "工具 · 向用户提问",
+      "联网搜索",
       "子智能体",
     ]);
-    const pluginSwitches = page.locator(".capability-settings input[type=checkbox]");
-    await expect(pluginSwitches).toHaveCount(7);
+    const capabilitySwitches = page.locator(".capability-settings input[type=checkbox]");
+    await expect(capabilitySwitches).toHaveCount(8);
     await expect(page.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toHaveCount(0);
-    for (const toggle of await pluginSwitches.all()) await expect(toggle).toBeChecked();
+    for (const toggle of await capabilitySwitches.all()) await expect(toggle).toBeChecked();
     await page.screenshot({ path: "test-results/desktop-settings-capabilities.png" });
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(
@@ -140,17 +146,17 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.locator(".prompt-preview")).not.toContainText("<system_rules>");
     await expect(page.getByRole("heading", { name: "基础系统提示词 只读", exact: true })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "插件提示词 按启用能力生成 · 只读", exact: true }),
+      page.getByRole("heading", { name: "追加指令 按启用能力生成 · 只读", exact: true }),
     ).toBeVisible();
-    const rules = page.locator(".system-rules-preview");
+    const rules = page.locator(".custom-instructions-preview");
     await expect(rules).toContainText("all answers, conclusions, and deliverables");
     await expect(rules).toContainText("Return web URLs as Markdown links");
     await expect(rules).toContainText("return local file references as Markdown links");
-    const systemRules = await rules.textContent();
-    await expect(page.locator(".resource-settings")).toContainText("按启用的插件能力追加规则");
+    const customInstructions = await rules.textContent();
+    await expect(page.locator(".resource-settings")).toContainText("按启用的扩展能力追加规则");
     expect(
       await page.locator(".prompt-preview").evaluate((base) => {
-        const rules = document.querySelector(".system-rules-preview");
+        const rules = document.querySelector(".custom-instructions-preview");
         return !!rules && !!(base.compareDocumentPosition(rules) & Node.DOCUMENT_POSITION_FOLLOWING);
       }),
     ).toBe(true);
@@ -171,7 +177,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await page.screenshot({ path: "test-results/desktop-settings-tools-list.png" });
     await page.getByRole("button", { name: /read 已启用/ }).click();
     await expect(page.locator(".tool-resource-detail")).toContainText(
-      "Images up to 20 MiB are sent as attachments",
+      "Image sources up to 20 MiB are processed under separate inline budgets",
     );
     await page.screenshot({ path: "test-results/desktop-settings-tool-detail.png" });
     await page.emulateMedia({ colorScheme: "dark" });
@@ -229,7 +235,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     )?.content;
     expect(wire).toContain("Be concise in your responses");
     expect(wire).toContain("PROJECT POLICY");
-    expect(wire).toContain(systemRules);
+    expect(wire).toContain(customInstructions);
     expect(wire).not.toContain("available_skills");
     expect(JSON.stringify(server.requests[0].messages)).toContain("image_url");
     await expect(page.locator(".composer .image-chip")).toHaveCount(0);
@@ -270,7 +276,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await expect(page.locator(".right-pane")).toBeVisible();
-    await expect(page.locator(".right-pane").getByRole("tab", { name: "变更", exact: true })).toBeVisible();
+    await expect(
+      page.locator(".right-pane").getByRole("tab", { name: "existing.txt", exact: true }),
+    ).toBeVisible();
     await expect(page.locator("diffs-container")).toContainText("external old");
     await expect(page.locator("diffs-container")).toContainText("new result");
     await expect(page.getByRole("alert")).toHaveCount(0);

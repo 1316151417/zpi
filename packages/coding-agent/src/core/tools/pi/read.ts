@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import type { ImageContent, Model, TextContent } from "zpi-ai";
 import { imageLimits } from "../../image-limits.ts";
 import { readFileBounded } from "../../read-file-bounded.ts";
-import type { ExtensionContext, ToolDefinition } from "./compat.ts";
+import type { ToolContext, ToolDefinition } from "../../types.ts";
 import { FileReadState } from "./file-read-state.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import { readTextRange } from "./text-range-reader.ts";
@@ -81,10 +81,7 @@ function getNonVisionImageNote(model: Model | undefined): string | undefined {
   return "[Current model does not support images. The image will be omitted from this request.]";
 }
 
-export function createReadToolDefinition(
-  cwd: string,
-  options?: ReadToolOptions,
-): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
+export function createReadToolDefinition(cwd: string, options?: ReadToolOptions) {
   const autoResizeImages = options?.autoResizeImages ?? true;
   const fallbackResizeOptions = options?.resizeOptions;
   const ops = options?.operations ?? defaultReadOperations;
@@ -109,7 +106,7 @@ export function createReadToolDefinition(
       { path, offset, limit }: { path: string; offset?: number; limit?: number },
       signal?: AbortSignal,
       _onUpdate?,
-      ctx?: ExtensionContext,
+      ctx?: Partial<ToolContext>,
     ) {
       // SDK callers can execute tools directly without the agent's schema validation.
       for (const [name, value] of Object.entries({ offset, limit })) {
@@ -255,5 +252,5 @@ export function createReadToolDefinition(
         },
       );
     },
-  };
+  } satisfies ToolDefinition<typeof readSchema, ReadToolDetails | undefined>;
 }

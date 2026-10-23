@@ -1,7 +1,14 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
+import { Type } from "typebox";
+import {
+  createAgentSession,
+  createBashToolDefinition,
+  ModelRuntime,
+  SessionManager,
+  type ToolDefinition,
+} from "zpi-coding-agent";
 import { demoServer, fakeConfig } from "../tests/fake-server.ts";
 
 const cwd = await mkdtemp(join(tmpdir(), "zpi-example-"));
@@ -14,7 +21,23 @@ runtime.registerProvider("fake", {
   models: [fakeConfig(server.url)],
 });
 const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+const workspaceInfo: ToolDefinition = {
+  name: "workspace_info",
+  label: "Workspace info",
+  description: "Return the current working directory",
+  parameters: Type.Object({}),
+  async execute(_id, _params, _signal, _update, context) {
+    return { content: [{ type: "text", text: context.cwd }], details: undefined };
+  },
+};
+// Reuse the same additions when reopening; callbacks may supply refreshed instructions.
+const extensions = {
+  customTools: [workspaceInfo],
+  toolOverrides: [createBashToolDefinition(cwd)],
+  customInstructions: ["Keep the example changes small and explain the verification result."],
+};
 const { session } = await createAgentSession({
+  ...extensions,
   cwd,
   agentDir: join(cwd, "agent"),
   modelRuntime: runtime,
@@ -31,6 +54,7 @@ try {
   console.log("\nFile:", await readFile(join(cwd, "demo.txt"), "utf8"));
   session.dispose();
   const restored = await createAgentSession({
+    ...extensions,
     modelRuntime: runtime,
     sessionManager: SessionManager.open(manager.getSessionFile() as string),
     agentDir: join(cwd, "agent"),

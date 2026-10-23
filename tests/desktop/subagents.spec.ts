@@ -7,7 +7,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("subagent plugin manages profiles/models and opens complete read-only child status in an isolated side tab", async () => {
+test("subagent capability manages profiles/models and opens complete read-only child status in an isolated side tab", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-subagents-e2e-"));
   const project = join(dir, "project");
   await mkdir(project);
@@ -54,13 +54,13 @@ test("subagent plugin manages profiles/models and opens complete read-only child
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "子智能体", exact: true })).toBeChecked();
     await page.getByRole("checkbox", { name: "子智能体", exact: true }).uncheck();
     await expect(page.getByRole("region", { name: "子智能体管理" })).toHaveCount(0);
     await page.getByRole("button", { name: "子智能体", exact: true }).click();
     await expect(page.getByTestId("subagent-row-general-purpose")).toBeVisible();
-    await page.getByRole("button", { name: "插件能力", exact: true }).click();
+    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
     await page.getByRole("checkbox", { name: "子智能体", exact: true }).check();
     await expect(page.getByRole("region", { name: "子智能体管理" })).toHaveCount(0);
     await page.getByRole("button", { name: "子智能体", exact: true }).click();

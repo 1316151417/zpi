@@ -45,7 +45,7 @@ test("merges only the four fixed instruction files in user-to-project order", as
   }
   const loader = new FileResourceLoader(f);
   await loader.reload();
-  const prompt = loader.getAppendSystemPrompt().join("\n");
+  const prompt = loader.getInstructions().join("\n");
   expect(prompt.match(/RULE \d/g)).toEqual(["RULE 0", "RULE 1", "RULE 2", "RULE 3"]);
   expect(prompt).not.toContain("IGNORED RULE");
   expect(loader.getDiagnostics()).toEqual([]);
@@ -53,7 +53,7 @@ test("merges only the four fixed instruction files in user-to-project order", as
   await global.reload();
   expect(
     global
-      .getAppendSystemPrompt()
+      .getInstructions()
       .join("\n")
       .match(/RULE \d/g),
   ).toEqual(["RULE 0", "RULE 1"]);
@@ -102,7 +102,7 @@ test("missing fixed paths are optional and unreadable instructions are diagnosed
   const f = await fixture();
   const loader = new FileResourceLoader(f);
   await loader.reload();
-  expect(loader.getAppendSystemPrompt()).toEqual([]);
+  expect(loader.getInstructions()).toEqual([]);
   expect(loader.getDiagnostics()).toEqual([]);
   const path = join(f.projectDir, ".zpi", "AGENTS.md");
   await mkdir(path, { recursive: true });

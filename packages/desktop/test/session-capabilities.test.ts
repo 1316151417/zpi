@@ -25,7 +25,7 @@ test.each(
     [false, false, false, false],
   ].flatMap((switches) => [true, false].map((communicationStyle) => [communicationStyle, ...switches])),
 )(
-  "plugin prompt rules follow independent switches: communication=%s, batching=%s, links=%s, reuse=%s, proactive=%s",
+  "custom instructions rules follow independent switches: communication=%s, batching=%s, links=%s, reuse=%s, proactive=%s",
   async (communicationStyle, toolBatching, fileLinks, fileContextReuse, proactiveExecution) => {
     const f = await fixture();
     f.settings.setCapabilityEnabled("subagents", false);
@@ -43,32 +43,36 @@ test.each(
       "answer simple questions directly in prose",
       "add comments only for constraints the code cannot express",
     ]) {
-      expect(preview.systemRules.includes(rule)).toBe(communicationStyle);
+      expect(preview.customInstructions.includes(rule)).toBe(communicationStyle);
       expect(preview.basePrompt).not.toContain(rule);
     }
     if (communicationStyle && toolBatching) {
-      expect(preview.systemRules.indexOf("Before the first tool call")).toBeLessThan(
-        preview.systemRules.indexOf("Independent tool calls"),
+      expect(preview.customInstructions.indexOf("Before the first tool call")).toBeLessThan(
+        preview.customInstructions.indexOf("Independent tool calls"),
       );
     }
-    expect(preview.systemRules.includes("Independent tool calls")).toBe(toolBatching);
-    expect(preview.systemRules.includes("return local file references as Markdown links")).toBe(fileLinks);
+    expect(preview.customInstructions.includes("Independent tool calls")).toBe(toolBatching);
+    expect(preview.customInstructions.includes("return local file references as Markdown links")).toBe(
+      fileLinks,
+    );
     expect(preview.basePrompt).not.toContain("<system_rules>");
-    expect(preview.systemRules.includes("Reuse file content already in context")).toBe(fileContextReuse);
+    expect(preview.customInstructions.includes("Reuse file content already in context")).toBe(
+      fileContextReuse,
+    );
     expect(preview.basePrompt).toBe(basePrompt);
     expect(preview.basePrompt).not.toContain("Reuse file content already in context");
-    expect(preview.systemRules.includes("When you have enough information to act, act.")).toBe(
+    expect(preview.customInstructions.includes("When you have enough information to act, act.")).toBe(
       proactiveExecution,
     );
     expect(preview.basePrompt).not.toContain("When you have enough information to act, act.");
     if (proactiveExecution) {
-      expect(preview.systemRules).toContain(
+      expect(preview.customInstructions).toContain(
         "Always honor explicit user instructions to ask for confirmation",
       );
-      expect(preview.systemRules).toContain("wait for that confirmation");
-      expect(preview.systemRules).toContain("report findings without applying changes");
-      expect(preview.systemRules).not.toContain("cannot answer questions mid-task");
-      expect(preview.systemRules).not.toContain("not watching in real time");
+      expect(preview.customInstructions).toContain("wait for that confirmation");
+      expect(preview.customInstructions).toContain("report findings without applying changes");
+      expect(preview.customInstructions).not.toContain("cannot answer questions mid-task");
+      expect(preview.customInstructions).not.toContain("not watching in real time");
     }
     await run(f, "show files");
     const prompt = (f.server.requests[0].messages as { role: string; content: string }[]).find(
@@ -76,13 +80,13 @@ test.each(
     )?.content;
     expect(prompt).toBe(preview.prompt);
     if (!communicationStyle && !toolBatching && !fileLinks && !fileContextReuse && !proactiveExecution) {
-      expect(preview.systemRules).toBe("");
+      expect(preview.customInstructions).toBe("");
       expect(preview.prompt).toBe(preview.basePrompt);
     }
   },
 );
 
-test("snapshots prompt plugins on first send and keeps them when global settings change or the app restarts", async () => {
+test("snapshots custom instructions on first send and keeps them when global settings change or the app restarts", async () => {
   const f = await fixture();
   f.settings.setCapabilityEnabled("communicationStyle", false);
   f.settings.setCapabilityEnabled("fileLinks", false);
@@ -119,7 +123,7 @@ test("snapshots prompt plugins on first send and keeps them when global settings
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults plugin capabilities on and preserves saved choices in SQLite", async () => {
+test("defaults session capabilities on and preserves saved choices in SQLite", async () => {
   const f = await fixture();
   expect(f.settings.get().capabilities).toEqual({
     webSearch: true,
@@ -144,7 +148,7 @@ test("defaults plugin capabilities on and preserves saved choices in SQLite", as
     fileContextReuse: true,
     proactiveExecution: true,
   });
-  expect(() => restored.setCapabilityEnabled("unknown" as "fileLinks", true)).toThrow("无效插件能力");
+  expect(() => restored.setCapabilityEnabled("unknown" as "fileLinks", true)).toThrow("无效扩展能力");
   restored.setCapabilityEnabled("communicationStyle", false);
   restored.setCapabilityEnabled("subagents", false);
   restored.setCapabilityEnabled("fileLinks", false);
@@ -161,9 +165,9 @@ test("defaults plugin capabilities on and preserves saved choices in SQLite", as
     ...settings,
     capabilities: { ...f.settings.get().capabilities, communicationStyle: "on" },
   });
-  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");
+  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid session capabilities");
   f.settings.state.setSetting("app", { ...settings, capabilities: true });
-  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid plugin capabilities");
+  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid session capabilities");
 });
 
 test.each(["communicationStyle", "fileContextReuse", "proactiveExecution"] as const)(

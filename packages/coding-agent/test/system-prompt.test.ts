@@ -8,6 +8,7 @@ import {
   FileResourceLoader,
   piTemplate,
   renderTemplate,
+  StaticResourceLoader,
   validateTemplate,
 } from "../src/index.ts";
 import { temp } from "./helpers/workspace-fixture.ts";
@@ -50,6 +51,63 @@ test("Pi prompt facts, literal nonrecursive variables, custom rules replace defa
   expect(changed).not.toContain("Be concise in your responses");
   expect(changed).toContain("PROJECT RULE");
   expect(changed).toContain("Use write only for new files or complete rewrites.");
+});
+
+test("custom instructions preserve legacy prompt ordering and literal base instructions", () => {
+  const cwd = "/project";
+  const tools = createCodingTools(cwd);
+  const instructions = ["<project_context>PROJECT</project_context>"];
+  const additions = ["<system_rules>DESKTOP</system_rules>", "CHILD {{cwd}}"];
+  const baseInstructions = "Literal {{cwd}}";
+  const legacy = buildSystemPrompt({
+    cwd,
+    tools,
+    loader: {
+      getSystemPrompt: () => baseInstructions,
+      getAppendSystemPrompt: () => [...instructions, ...additions],
+    },
+  });
+  const current = buildSystemPrompt({
+    cwd,
+    tools,
+    loader: new StaticResourceLoader({ baseInstructions, instructions }),
+    customInstructions: additions,
+  });
+  expect(current).toBe(legacy);
+  expect(current.startsWith("Literal {{cwd}}\n\n<tools>")).toBe(true);
+  expect(current.indexOf("PROJECT")).toBeLessThan(current.indexOf("DESKTOP"));
+  expect(current.indexOf("CHILD {{cwd}}")).toBeLessThan(current.indexOf("<cwd>"));
+  expect(
+    buildSystemPrompt({ cwd, tools, loader: new StaticResourceLoader(baseInstructions, instructions) }),
+  ).toBe(
+    buildSystemPrompt({ cwd, tools, loader: new StaticResourceLoader({ baseInstructions, instructions }) }),
+  );
+});
+
+test("new resource methods take precedence even when clearing legacy instructions", () => {
+  const options = { cwd: "/project", tools: [] };
+  expect(
+    buildSystemPrompt({
+      ...options,
+      loader: {
+        getBaseInstructions: () => undefined,
+        getInstructions: () => [],
+        getSystemPrompt: () => "LEGACY BASE",
+        getAppendSystemPrompt: () => ["LEGACY APPEND"],
+      },
+    }),
+  ).toBe(buildSystemPrompt(options));
+});
+
+test("custom instructions are literal additions and reject invalid runtime values", () => {
+  const options = { cwd: "/project", tools: [] };
+  expect(
+    buildSystemPrompt({ ...options, customInstructions: ["<skills>literal</skills>", "{{unknown}}"] }),
+  ).toContain("<skills>literal</skills>\n\n{{unknown}}\n\n<cwd>");
+  for (const invalid of ["text", [1], null])
+    expect(() => buildSystemPrompt({ ...options, customInstructions: invalid as never })).toThrow(
+      "customInstructions must be an array of strings",
+    );
 });
 
 test("default Pi template and generated prompt remain byte-for-byte stable", () => {

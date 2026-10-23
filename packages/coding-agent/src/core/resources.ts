@@ -144,17 +144,25 @@ export class SkillCatalog {
 export class FileResourceLoader implements ResourceLoader {
   private options: SkillPolicyOptions;
   private catalog: SkillCatalog;
-  private append: string[] = [];
+  private instructions: string[] = [];
   private diagnostics: ResourceDiagnostic[] = [];
   constructor(options: SkillPolicyOptions) {
     this.options = options;
     this.catalog = new SkillCatalog(options);
   }
-  getSystemPrompt(): undefined {
+  getBaseInstructions(): undefined {
     return undefined;
   }
+  getInstructions(): string[] {
+    return [...this.instructions];
+  }
+  /** @deprecated Use getBaseInstructions. */
+  getSystemPrompt(): undefined {
+    return this.getBaseInstructions();
+  }
+  /** @deprecated Use getInstructions. */
   getAppendSystemPrompt(): string[] {
-    return [...this.append];
+    return this.getInstructions();
   }
   async reload(): Promise<void> {
     const home = this.options.homeDir ?? homedir();
@@ -192,7 +200,7 @@ export class FileResourceLoader implements ResourceLoader {
         `<project_context>\nProject-specific instructions and guidelines:\n\n${append.join("\n\n")}\n</project_context>`,
       );
     if (skills.skills.length) append.push(formatSkillsForPrompt(skills.skills));
-    this.append = append;
+    this.instructions = append;
     this.diagnostics = diagnostics;
   }
   listSkills(): SkillList {

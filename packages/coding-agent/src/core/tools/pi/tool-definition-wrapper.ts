@@ -1,11 +1,39 @@
 import type { TSchema } from "typebox";
 import type { AgentTool } from "zpi-agent";
-import type { JsonValue } from "zpi-ai";
-import type { ExtensionContext, ToolDefinition } from "./compat.ts";
-export function wrapToolDefinition<T extends TSchema, D>(
-  definition: ToolDefinition<T, D>,
-  context?: () => ExtensionContext | undefined,
+import { assertSupportedOptions, type JsonValue } from "zpi-ai";
+import type { ToolDefinition } from "../../types.ts";
+export function wrapToolDefinition<T extends TSchema, D, C>(
+  definition: ToolDefinition<T, D, C>,
+  context: (signal?: AbortSignal) => C,
+  serializeDetails = true,
 ): AgentTool<T> {
+  assertSupportedOptions(
+    definition,
+    [
+      "name",
+      "label",
+      "description",
+      "parameters",
+      "promptSnippet",
+      "promptGuidelines",
+      "prepareArguments",
+      "executionMode",
+      "metadata",
+      "permission",
+      "requiresUserInteraction",
+      "outputSchema",
+      "execute",
+    ],
+    "custom tool",
+  );
+  // Standalone Pi tools historically normalize details; SDK custom tools retain
+  // their values for the executor's JSON validation rather than silently coercing them.
+  const details = (value: D) =>
+    value === undefined
+      ? undefined
+      : serializeDetails
+        ? (JSON.parse(JSON.stringify(value)) as JsonValue)
+        : (value as JsonValue);
   return {
     name: definition.name,
     label: definition.label,
@@ -27,20 +55,14 @@ export function wrapToolDefinition<T extends TSchema, D>(
           ? (result) =>
               update({
                 ...result,
-                details:
-                  result.details === undefined
-                    ? undefined
-                    : (JSON.parse(JSON.stringify(result.details)) as JsonValue),
+                details: details(result.details),
               })
           : undefined,
-        context?.(),
+        context(signal),
       );
       return {
         ...result,
-        details:
-          result.details === undefined
-            ? undefined
-            : (JSON.parse(JSON.stringify(result.details)) as JsonValue),
+        details: details(result.details),
       };
     },
   };

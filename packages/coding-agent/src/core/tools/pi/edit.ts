@@ -4,7 +4,7 @@
 import { constants } from "node:fs";
 import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { type Static, Type } from "typebox";
-import type { ExtensionContext, ToolDefinition } from "./compat.ts";
+import type { ToolContext, ToolDefinition } from "../../types.ts";
 import {
   applyEditsToNormalizedContent,
   type Edit,
@@ -145,10 +145,7 @@ function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] 
   return { path: input.path, edits: input.edits };
 }
 
-export function createEditToolDefinition(
-  cwd: string,
-  options?: EditToolOptions,
-): ToolDefinition<typeof editSchema, EditToolDetails | undefined> {
+export function createEditToolDefinition(cwd: string, options?: EditToolOptions) {
   const ops = options?.operations ?? defaultEditOperations;
   return {
     name: "edit",
@@ -164,7 +161,7 @@ export function createEditToolDefinition(
       input: EditToolInput,
       signal?: AbortSignal,
       _onUpdate?,
-      ctx?: ExtensionContext,
+      ctx?: Partial<ToolContext>,
     ) {
       const { path, edits } = validateEditInput(input);
       const absolutePath = resolveToCwd(path, ctx?.cwd || cwd);
@@ -240,5 +237,5 @@ export function createEditToolDefinition(
         };
       });
     },
-  };
+  } satisfies ToolDefinition<typeof editSchema, EditToolDetails | undefined>;
 }

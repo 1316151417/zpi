@@ -1,6 +1,6 @@
 import type { AgentTool } from "zpi-agent";
 import { formatSkillsForPrompt } from "./resources.ts";
-import type { ResourceLoader } from "./types.ts";
+import { type ResourceLoader, resourceBaseInstructions, resourceInstructions } from "./types.ts";
 export interface PromptTemplate {
   id: string;
   name: string;
@@ -54,7 +54,15 @@ export function buildSystemPrompt(options: {
   template?: PromptTemplate;
   tools: Pick<AgentTool, "name" | "description" | "promptSnippet" | "promptGuidelines">[];
   loader?: ResourceLoader;
+  /** Literal instructions appended after resources, before the skill catalog and working directory. */
+  customInstructions?: readonly string[];
 }): string {
+  if (
+    options.customInstructions !== undefined &&
+    (!Array.isArray(options.customInstructions) ||
+      options.customInstructions.some((part) => typeof part !== "string"))
+  )
+    throw new Error("invalid_input: customInstructions must be an array of strings");
   const template = options.template ?? piTemplate;
   validateTemplate(template);
   const context = {
@@ -76,10 +84,11 @@ export function buildSystemPrompt(options: {
       .filter(Boolean),
   );
   const sections = [
-    options.loader?.getSystemPrompt() ?? renderTemplate(template.preamble, context),
+    resourceBaseInstructions(options.loader) ?? renderTemplate(template.preamble, context),
     `<tools>\n${options.tools.map((t) => `- ${t.name}: ${t.promptSnippet ?? t.description}`).join("\n") || "(none)"}\n</tools>`,
     `<rules>\n${[...new Set(rules)].map((r) => `- ${r}`).join("\n")}\n</rules>`,
-    ...(options.loader?.getAppendSystemPrompt() ?? []).filter((part) => !part.startsWith("<skills>")),
+    ...resourceInstructions(options.loader).filter((part) => !part.startsWith("<skills>")),
+    ...(options.customInstructions ?? []),
     ...(options.loader?.listSkills?.().skills.length &&
     options.tools.some((t) => ["read", "bash"].includes(t.name))
       ? [

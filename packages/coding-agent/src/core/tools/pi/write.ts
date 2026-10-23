@@ -4,7 +4,7 @@
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Type } from "typebox";
-import type { ExtensionContext, ToolDefinition } from "./compat.ts";
+import type { ToolContext, ToolDefinition } from "../../types.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import type { FileReadState } from "./file-read-state.ts";
 import { resolveToCwd } from "./path-utils.ts";
@@ -42,10 +42,7 @@ export interface WriteToolOptions {
   operations?: WriteOperations;
 }
 
-export function createWriteToolDefinition(
-  cwd: string,
-  options?: WriteToolOptions,
-): ToolDefinition<typeof writeSchema, undefined> {
+export function createWriteToolDefinition(cwd: string, options?: WriteToolOptions) {
   const ops = options?.operations ?? defaultWriteOperations;
   return {
     name: "write",
@@ -60,7 +57,7 @@ export function createWriteToolDefinition(
       { path, content }: { path: string; content: string },
       signal?: AbortSignal,
       _onUpdate?,
-      ctx?: ExtensionContext,
+      ctx?: Partial<ToolContext>,
     ) {
       const absolutePath = resolveToCwd(path, ctx?.cwd || cwd);
       const dir = dirname(absolutePath);
@@ -88,5 +85,5 @@ export function createWriteToolDefinition(
         };
       });
     },
-  };
+  } satisfies ToolDefinition<typeof writeSchema, undefined>;
 }

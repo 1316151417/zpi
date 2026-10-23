@@ -107,7 +107,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
         {page === "tools"
           ? "查看内置工具的能力与参数。工具定义只读，对所有任务生效。"
           : page === "prompt"
-            ? "沿用 Pi 基础提示词，按启用的插件能力追加规则。两部分均只读，下方分别展示。"
+            ? "沿用 Pi 基础提示词，按启用的扩展能力追加规则。两部分均只读，下方分别展示。"
             : "全局默认配置，在新任务首次发送时生效；已有任务保留原技能开关。"}
       </p>
       {error && (
@@ -128,13 +128,13 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
           </p>
           <pre className="prompt-preview">{preview?.basePrompt ?? "正在生成预览…"}</pre>
           <h2 className="preview-heading">
-            插件提示词 <small>按启用能力生成 · 只读</small>
+            追加指令 <small>按启用能力生成 · 只读</small>
           </h2>
           <p>
-            在插件能力中配置交互方式、多工具调用、文件链接格式、文件内容复用和主动推进；启用的规则会加入新对话。
+            在扩展能力中配置交互方式、多工具调用、文件链接格式、文件内容复用和主动推进；启用的规则会加入新对话。
           </p>
-          <pre className="system-rules-preview">
-            {preview ? preview.systemRules || "未启用额外提示词能力。" : "正在生成预览…"}
+          <pre className="custom-instructions-preview">
+            {preview ? preview.customInstructions || "未启用追加指令。" : "正在生成预览…"}
           </pre>
         </>
       )}
@@ -184,13 +184,13 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
                       <pre>{JSON.stringify(tool.parameters, null, 2)}</pre>
                       {tool.promptSnippet && (
                         <>
-                          <h4>System snippet</h4>
+                          <h4>工具简介</h4>
                           <pre>{tool.promptSnippet}</pre>
                         </>
                       )}
                       {!!tool.promptGuidelines?.length && (
                         <>
-                          <h4>Guidelines</h4>
+                          <h4>使用规则</h4>
                           <pre>{tool.promptGuidelines.join("\n")}</pre>
                         </>
                       )}

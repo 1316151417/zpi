@@ -1306,7 +1306,7 @@
   overflow: auto;
 }
 .settings-screen .resource-settings .prompt-preview,
-.settings-screen .resource-settings .system-rules-preview {
+.settings-screen .resource-settings .custom-instructions-preview {
   max-height: 260px;
 }
 .settings-screen .provider-list button {

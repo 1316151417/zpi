@@ -46,10 +46,10 @@ import type {
   DiffItem,
   EditUserInput,
   EditUserResult,
-  PluginCapabilities,
   ProjectRecord,
   PromptPreview,
   RunInput,
+  SessionCapabilities,
   SessionControls,
   SessionRecord,
   SessionSnapshot,
@@ -70,7 +70,7 @@ import {
 } from "./custom-command-expansion.ts";
 import { type CustomCommandShellRunner, runCustomCommandShell } from "./custom-command-shell.ts";
 import { CustomCommandsStore } from "./custom-commands.ts";
-import { pluginSystemRules, withDesktopSystemRules } from "./desktop-prompt.ts";
+import { desktopInstructions } from "./desktop-prompt.ts";
 import { DraftStore } from "./draft-store.ts";
 import { ErrorLog } from "./error-log.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot } from "./file-changes.ts";
@@ -95,7 +95,7 @@ import { WebTools } from "./web-tools.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
 
-interface SessionConfiguration extends PluginCapabilities {
+interface SessionConfiguration extends SessionCapabilities {
   template: PromptTemplate;
   disabledSkillPaths: string[];
   subagentProfile?: SubagentProfile;
@@ -1076,43 +1076,49 @@ export class SessionHost {
   private sessionResourceLoader(
     id: string | null,
     config: SessionConfiguration,
-    resources = this.resourceLoader(id),
+    loader = this.resourceLoader(id),
   ) {
-    const loader = withDesktopSystemRules(resources, config);
     return {
-      ...loader,
+      listSkills: () => loader.listSkills(),
+      loadSkill: (name: string) => loader.loadSkill(name),
+      getDiagnostics: () => loader.getDiagnostics(),
       reload: async () => {
         await loader.reload?.();
         if (id && !config.subagentProfile)
           this.parentInstructions.set(
             id,
-            loader.getAppendSystemPrompt().filter((part) => part.startsWith("<project_context")),
+            loader.getInstructions().filter((part) => part.startsWith("<project_context")),
           );
       },
-      getSystemPrompt: () => config.subagentProfile?.systemPrompt ?? loader.getSystemPrompt(),
-      getAppendSystemPrompt: () => [
-        ...loader
-          .getAppendSystemPrompt()
+      getBaseInstructions: () => config.subagentProfile?.systemPrompt ?? loader.getBaseInstructions(),
+      getInstructions: () =>
+        loader
+          .getInstructions()
           .filter((part) => !config.subagentProfile || !part.startsWith("<project_context")),
-        ...(config.subagentProfile
-          ? [
-              ...(config.subagentProfile.injectAgentsMd ? (config.subagentInstructions ?? []) : []),
-              "Notes:\n- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.\n- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing — do not recap code you merely read.\n- For clear communication with the user the assistant MUST avoid using emojis.\n- Do not use a colon before tool calls.\n- Do NOT Write report/summary/findings/analysis .md files. Return findings directly as your final assistant message — the parent agent reads your text output, not files you create.",
-            ]
-          : []),
-        ...(config.subagents
-          ? [
-              "Available agent types for the Agent tool:\n" +
-                (id
-                  ? this.subagents.listing(id)
-                  : this.listSubagents(null)
-                      .agents.filter((agent) => agent.enabled)
-                      .map((agent) => `- ${agent.name}: ${agent.description}`)
-                      .join("\n")),
-            ]
-          : []),
-      ],
     };
+  }
+  private sessionCustomInstructions(id: string | null, config: SessionConfiguration): string[] {
+    const instructions = desktopInstructions(config);
+    return [
+      ...(instructions ? [instructions] : []),
+      ...(config.subagentProfile
+        ? [
+            ...(config.subagentProfile.injectAgentsMd ? (config.subagentInstructions ?? []) : []),
+            "Notes:\n- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.\n- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing — do not recap code you merely read.\n- For clear communication with the user the assistant MUST avoid using emojis.\n- Do not use a colon before tool calls.\n- Do NOT Write report/summary/findings/analysis .md files. Return findings directly as your final assistant message — the parent agent reads your text output, not files you create.",
+          ]
+        : []),
+      ...(config.subagents
+        ? [
+            "Available agent types for the Agent tool:\n" +
+              (id
+                ? this.subagents.listing(id)
+                : this.listSubagents(null)
+                    .agents.filter((agent) => agent.enabled)
+                    .map((agent) => `- ${agent.name}: ${agent.description}`)
+                    .join("\n")),
+          ]
+        : []),
+    ];
   }
   async createSideChat(id: string): Promise<SessionRecord> {
     const parent = this.record(id);
@@ -1744,10 +1750,11 @@ export class SessionHost {
     return {
       ...info,
       basePrompt: buildSystemPrompt({ ...options, loader }),
-      systemRules: pluginSystemRules(capabilities),
+      customInstructions: desktopInstructions(capabilities),
       prompt: buildSystemPrompt({
         ...options,
         loader: this.sessionResourceLoader(null, this.defaultConfiguration(), loader),
+        customInstructions: this.sessionCustomInstructions(null, this.defaultConfiguration()),
       }),
     };
   }
@@ -2601,6 +2608,7 @@ export class SessionHost {
               cwd: this.cwd(record),
               agentDir: join(this.dir, "agent"),
               resourceLoader: this.sessionResourceLoader(id, configuration),
+              customInstructions: () => this.sessionCustomInstructions(id, configuration),
               promptTemplate: () => configuration.template,
               projectName: () => this.workspaceInfo(id).projectName,
               modelRuntime: runtime,

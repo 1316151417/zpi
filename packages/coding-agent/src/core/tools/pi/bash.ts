@@ -7,7 +7,7 @@ import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
 import { type Static, Type } from "typebox";
-import type { ExtensionContext, ToolDefinition } from "./compat.ts";
+import type { ToolContext, ToolDefinition } from "../../types.ts";
 import { cleanupOutputFiles, OutputAccumulator } from "./output-accumulator.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
 import { waitForChildProcess } from "./utils/child-process.ts";
@@ -252,7 +252,7 @@ function resolveSpawnContext(
   cwd: string,
   spawnHook: BashSpawnHook | undefined,
   exposeSessionEnvironment: boolean,
-  ctx: ExtensionContext | undefined,
+  ctx: Partial<ToolContext> | undefined,
 ): BashSpawnContext {
   const env = { ...getShellEnv() };
   for (const name of ["SESSION_ID", "SESSION_FILE", "PROVIDER", "MODEL", "REASONING_LEVEL"]) {
@@ -261,8 +261,8 @@ function resolveSpawnContext(
   }
   if (exposeSessionEnvironment && ctx) {
     const model = ctx.model;
-    env.ZPI_SESSION_ID = ctx.sessionManager.getSessionId();
-    const sessionFile = ctx.sessionManager.getSessionFile();
+    if (ctx.sessionManager) env.ZPI_SESSION_ID = ctx.sessionManager.getSessionId();
+    const sessionFile = ctx.sessionManager?.getSessionFile();
     if (sessionFile) env.ZPI_SESSION_FILE = sessionFile;
     if (model) {
       env.ZPI_PROVIDER = model.provider;
@@ -296,11 +296,7 @@ export interface ShellToolConfig {
   tempFilePrefix: string;
 }
 
-export function createShellToolDefinition(
-  cwd: string,
-  config: ShellToolConfig,
-  options?: BashToolOptions,
-): ToolDefinition<typeof bashSchema, BashToolDetails | undefined> {
+export function createShellToolDefinition(cwd: string, config: ShellToolConfig, options?: BashToolOptions) {
   const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
   const commandPrefix = options?.commandPrefix;
   const exposeSessionEnvironment = options?.exposeSessionEnvironment ?? true;
@@ -319,7 +315,7 @@ export function createShellToolDefinition(
       { command, timeout }: { command: string; timeout?: number },
       signal?: AbortSignal,
       onUpdate?,
-      ctx?: ExtensionContext,
+      ctx?: Partial<ToolContext>,
     ) {
       const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const spawnContext = resolveSpawnContext(
@@ -478,7 +474,7 @@ export function createShellToolDefinition(
         clearUpdateTimer();
       }
     },
-  };
+  } satisfies ToolDefinition<typeof bashSchema, BashToolDetails | undefined>;
 }
 
 const bashToolConfig: ShellToolConfig = {
@@ -490,9 +486,6 @@ const bashToolConfig: ShellToolConfig = {
   tempFilePrefix: "zpi-bash",
 };
 
-export function createBashToolDefinition(
-  cwd: string,
-  options?: BashToolOptions,
-): ToolDefinition<typeof bashSchema, BashToolDetails | undefined> {
+export function createBashToolDefinition(cwd: string, options?: BashToolOptions) {
   return createShellToolDefinition(cwd, bashToolConfig, options);
 }

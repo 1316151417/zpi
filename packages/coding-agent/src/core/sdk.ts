@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import type { TSchema } from "typebox";
 import type { AgentTool, ThinkingLevel } from "zpi-agent";
 import type { Model } from "zpi-ai";
 import { assertSupportedOptions, clampThinkingLevel } from "zpi-ai";
@@ -13,7 +14,8 @@ import { SettingsManager } from "./settings-manager.ts";
 import { unresolvedCanonicalToolCalls } from "./streaming-tool-journal.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
-import type { ResourceLoader, ToolDefinition } from "./types.ts";
+import { wrapToolDefinition } from "./tools/pi/tool-definition-wrapper.ts";
+import type { ResourceLoader, ToolContext, ToolDefinition } from "./types.ts";
 export interface CreateAgentSessionOptions {
   modelPerformanceTotals?: ModelPerformanceTotals;
   cwd?: string;
@@ -24,9 +26,11 @@ export interface CreateAgentSessionOptions {
   noTools?: "all" | "builtin";
   tools?: string[];
   excludeTools?: string[];
-  customTools?: ToolDefinition[];
+  customTools?: ToolDefinition<TSchema, unknown>[];
   /** Explicitly replace named built-ins while preserving the other coding tools. */
-  toolOverrides?: ToolDefinition[];
+  toolOverrides?: ToolDefinition<TSchema, unknown>[];
+  /** Literal additions, recomputed after resource reload when supplied as a function. */
+  customInstructions?: readonly string[] | (() => readonly string[]);
   resourceLoader?: ResourceLoader;
   sessionManager?: SessionManager;
   homeDir?: string;
@@ -53,6 +57,7 @@ export async function createAgentSession(
       "tools",
       "excludeTools",
       "customTools",
+      "customInstructions",
       "toolOverrides",
       "resourceLoader",
       "sessionManager",
@@ -114,38 +119,17 @@ export async function createAgentSession(
     }),
     fileReadState,
   );
-  const wrap = (definition: ToolDefinition): AgentTool => {
-    assertSupportedOptions(
-      definition,
-      [
-        "name",
-        "label",
-        "description",
-        "parameters",
-        "promptSnippet",
-        "promptGuidelines",
-        "prepareArguments",
-        "executionMode",
-        "metadata",
-        "permission",
-        "requiresUserInteraction",
-        "execute",
-      ],
-      "custom tool",
-    );
-    return {
-      ...definition,
-      execute: (id, params, signal, onUpdate) =>
-        definition.execute(id, params, signal, onUpdate, {
-          cwd,
-          model: session.model,
-          sessionManager: manager,
-          signal,
-          isIdle: () => session.isIdle,
-          getSystemPrompt: () => session.systemPrompt,
-        }),
-    };
-  };
+  const toolContext = (signal?: AbortSignal): ToolContext => ({
+    cwd,
+    model: session.model,
+    thinkingLevel: session.thinkingLevel,
+    sessionManager: manager,
+    signal,
+    isIdle: () => session.isIdle,
+    getSystemPrompt: () => session.systemPrompt,
+  });
+  const wrap = (definition: ToolDefinition<TSchema, unknown>): AgentTool =>
+    wrapToolDefinition(definition, toolContext, false);
   const custom = (options.customTools ?? []).map(wrap);
   const overrides = (options.toolOverrides ?? []).map(wrap);
   if (new Set(overrides.map((tool) => tool.name)).size !== overrides.length)
@@ -181,6 +165,10 @@ export async function createAgentSession(
       template: options.promptTemplate?.(),
       tools: session?.state.tools ?? active,
       loader,
+      customInstructions:
+        typeof options.customInstructions === "function"
+          ? options.customInstructions()
+          : options.customInstructions,
     });
   let requestedThinking = options.thinkingLevel;
   if (requestedThinking == null) {

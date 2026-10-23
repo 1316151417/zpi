@@ -31,11 +31,11 @@ import type {
   InterfacePreferences,
   ModelSelection,
   ModelSettings,
-  PluginCapabilities,
   ProviderInput,
   ProviderRecord,
   PublicSettings,
   QuickChatSettingsInput,
+  SessionCapabilities,
   SettingsInput,
   WebSearchSettingsInput,
 } from "../shared/bridge.ts";
@@ -82,7 +82,7 @@ interface Credentials {
 export interface SettingsData {
   shortcuts: ShortcutSettings;
   shortcutDefaultsVersion: typeof shortcutDefaultsVersion;
-  capabilities: PluginCapabilities;
+  capabilities: SessionCapabilities;
   // Missing only while an older configuration's encrypted credentials are locked.
   webSearchEnabled?: boolean;
   version: 4;
@@ -495,7 +495,7 @@ export class SettingsStore {
   }
   setCapabilityEnabled(name: CapabilityName, enabled: boolean): PublicSettings {
     if (!Object.hasOwn(defaultCapabilities, name) || typeof enabled !== "boolean")
-      throw new Error("invalid_input: 无效插件能力");
+      throw new Error("invalid_input: 无效扩展能力");
     return this.savePublic({ ...this.data, capabilities: { ...this.data.capabilities, [name]: enabled } });
   }
   getTemplate(): PromptTemplate {
@@ -653,8 +653,8 @@ export class SettingsStore {
         (name) => typeof data.capabilities[name] !== "boolean",
       )
     )
-      throw new Error("storage: Invalid plugin capabilities");
-    assertSupportedOptions(data.capabilities, Object.keys(defaultCapabilities), "plugin capabilities");
+      throw new Error("storage: Invalid session capabilities");
+    assertSupportedOptions(data.capabilities, Object.keys(defaultCapabilities), "session capabilities");
     if (
       !Array.isArray(data.templates) ||
       !Array.isArray(data.disabledSkillPaths) ||

@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, expect, test, vi } from "vitest";
-import type { ExtensionToolContext } from "zpi-coding-agent";
+import type { ToolContext } from "zpi-coding-agent";
 import type { DesktopEvent, SessionView, ViewBlock, WebToolDetails } from "zpi-ui";
 import { emptySession, reduceSession } from "zpi-ui/projection";
 import { recordedQuickChatWebSourceIcon } from "../src/main/quick-chat-source-icons.ts";
@@ -43,7 +43,7 @@ beforeAll(async () => {
     { query: "Example" },
     undefined,
     undefined,
-    {} as ExtensionToolContext,
+    {} as ToolContext,
   );
   expect(result.isError).toBe(false);
   expect(requestFetch).toHaveBeenCalledOnce();

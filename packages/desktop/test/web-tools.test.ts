@@ -2,7 +2,7 @@ import type { TObject } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentToolResult, AgentToolUpdateCallback } from "zpi-agent";
-import type { ExtensionToolContext } from "zpi-coding-agent";
+import type { ToolContext } from "zpi-coding-agent";
 import type { WebToolDetails } from "zpi-ui";
 import type { WebSearchResult } from "../src/main/web-client.ts";
 
@@ -42,7 +42,7 @@ function execute(
 ) {
   const tool = broker.tools().find((tool) => tool.name === kind);
   if (!tool) throw new Error("Missing web tool");
-  return tool.execute("web-call", args, signal, update, {} as ExtensionToolContext);
+  return tool.execute("web-call", args, signal, update, {} as ToolContext);
 }
 async function finish(promise: Promise<AgentToolResult>) {
   await vi.runAllTimersAsync();
@@ -627,7 +627,7 @@ describe("failure handling, retries, and redaction", () => {
     const broker = tools(() => current);
     const tool = broker.tools()[0];
     current = "second-key";
-    await finish(tool.execute("call", { query: "x" }, undefined, undefined, {} as ExtensionToolContext));
+    await finish(tool.execute("call", { query: "x" }, undefined, undefined, {} as ToolContext));
     expect(transport.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer second-key" });
   });
 });

@@ -83,7 +83,9 @@ for (const fontSize of [14, 17]) {
       expect(await readFile(file, "utf8")).toBe(raw);
       await page.getByRole("button", { name: "设置", exact: true }).click();
       await page.getByRole("button", { name: "系统提示词", exact: true }).click();
-      await expect(page.locator(".system-rules-preview")).toContainText("Return web URLs as Markdown links");
+      await expect(page.locator(".custom-instructions-preview")).toContainText(
+        "Return web URLs as Markdown links",
+      );
       const archivesTab = page.getByRole("button", { name: "已归档任务", exact: true });
       await archivesTab.click();
       await expect(archivesTab).toHaveCSS("font-size", `${fontSize}px`);

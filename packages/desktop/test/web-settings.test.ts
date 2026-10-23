@@ -250,7 +250,7 @@ test("migrates a missing global capability to true, preserves false and keeps st
   );
   for (const value of [null, "true", 1]) {
     f.state.setSetting("app", { ...before, capabilities: { ...capabilities, webSearch: value } });
-    expect(() => f.open()).toThrow("Invalid plugin capabilities");
+    expect(() => f.open()).toThrow("Invalid session capabilities");
   }
   f.state.setSetting("app", { ...before, capabilities: { ...capabilities, webSearch: false } });
   const store = f.open();

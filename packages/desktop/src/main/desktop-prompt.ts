@@ -1,5 +1,4 @@
-import type { FileResourceLoader, ResourceLoader } from "zpi-coding-agent";
-import type { PluginCapabilities } from "../shared/bridge.ts";
+import type { SessionCapabilities } from "../shared/bridge.ts";
 
 const communicationStyleRules = [
   "Before the first tool call, briefly state your next action; during work, report meaningful findings or changes in direction.",
@@ -26,12 +25,12 @@ const proactiveExecutionRules = [
   "When the user only asks for an assessment, explanation, or consultation, report findings without applying changes. Ask clarifying questions only when the missing information cannot be resolved from context, code, or sensible defaults and materially changes what you should do next.",
 ];
 
-type PromptCapabilities = Pick<
-  PluginCapabilities,
+type InstructionCapabilities = Pick<
+  SessionCapabilities,
   "communicationStyle" | "toolBatching" | "fileLinks" | "fileContextReuse" | "proactiveExecution"
 >;
 
-export function pluginSystemRules(capabilities: PromptCapabilities) {
+export function desktopInstructions(capabilities: InstructionCapabilities) {
   const rules = [
     ...(capabilities.communicationStyle ? communicationStyleRules : []),
     ...(capabilities.toolBatching ? ["Independent tool calls can run in parallel in one response."] : []),
@@ -44,19 +43,4 @@ export function pluginSystemRules(capabilities: PromptCapabilities) {
     ...(capabilities.proactiveExecution ? proactiveExecutionRules : []),
   ];
   return rules.length ? ["<system_rules>", ...rules, "</system_rules>"].join("\n") : "";
-}
-
-export function withDesktopSystemRules(
-  loader: FileResourceLoader,
-  capabilities: PromptCapabilities,
-): ResourceLoader {
-  const rules = pluginSystemRules(capabilities);
-  return {
-    getSystemPrompt: () => loader.getSystemPrompt(),
-    getAppendSystemPrompt: () => [...loader.getAppendSystemPrompt(), ...(rules ? [rules] : [])],
-    reload: () => loader.reload(),
-    listSkills: () => loader.listSkills(),
-    loadSkill: (name) => loader.loadSkill(name),
-    getDiagnostics: () => loader.getDiagnostics(),
-  };
 }

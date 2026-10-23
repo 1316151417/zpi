@@ -56,6 +56,7 @@ export type {
   ExtensionToolContext,
   ResourceDiagnostic,
   ResourceLoader,
+  ToolContext,
   ToolDefinition,
 } from "./core/types.ts";
 export { StaticResourceLoader } from "./core/types.ts";

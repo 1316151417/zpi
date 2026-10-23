@@ -61,7 +61,7 @@ it.each(["name: other", "name: React Best Practices", "name: 123", `name: ${"a".
     await loader.reload();
     expect(loader.getDiagnostics()).toEqual([]);
     expect(loader.listSkills().skills.map((skill) => skill.name)).toEqual(["react-best-practices"]);
-    expect(loader.getAppendSystemPrompt().join("\n")).toContain("<name>react-best-practices</name>");
+    expect(loader.getInstructions().join("\n")).toContain("<name>react-best-practices</name>");
     expect(await loader.loadSkill("react-best-practices")).toMatchObject({
       name: "react-best-practices",
       body: "SKILL BODY",
@@ -97,7 +97,7 @@ it("instructions are ordered, skills are metadata-only, project overrides user, 
   );
   const loader = new FileResourceLoader({ projectDir: f.cwd, homeDir });
   await loader.reload();
-  const prompt = loader.getAppendSystemPrompt().join("\n");
+  const prompt = loader.getInstructions().join("\n");
   expect(prompt.indexOf("SHARED USER RULE")).toBeLessThan(prompt.indexOf("ZPI USER RULE"));
   expect(prompt.indexOf("ZPI USER RULE")).toBeLessThan(prompt.indexOf("PROJECT RULE"));
   expect(prompt.indexOf("PROJECT RULE")).toBeLessThan(prompt.indexOf("ZPI PROJECT RULE"));
