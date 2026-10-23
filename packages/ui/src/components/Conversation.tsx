@@ -81,6 +81,7 @@ import {
   type ComposerDraft,
   ComposerDraftStore,
 } from "./InputContext.tsx";
+import { InputNotice } from "./InputNotice.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
 import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
@@ -1611,6 +1612,7 @@ export function ChatComposer({
     submitLock.current = true;
     drafts.current.submitting.add(submittedSession);
     setSubmitting(true);
+    updateValue(sessionId, (old) => ({ ...old, error: undefined }));
     try {
       const result = await onSubmit(
         buildSelectionPrompt(submitted.text, submitted.selections ?? []),
@@ -1876,13 +1878,6 @@ export function ChatComposer({
           )}
         </div>
         {value.pending > 0 && <small role="status">正在处理附件…</small>}
-        {value.error && (
-          <Notice
-            scope="input"
-            message={userErrorMessage(value.error)}
-            onDismiss={() => updateValue(sessionId, (old) => ({ ...old, error: undefined }))}
-          />
-        )}
         {fileQuery && (
           <div
             id={filePanelId}
@@ -2218,6 +2213,13 @@ export function ChatComposer({
           </ActionHint>
           <div className="composer-actions">
             {toolbar}
+            {value.error && (
+              <InputNotice
+                key={`${sessionId}:${drafts.current.errorVersion(sessionId)}`}
+                message={userErrorMessage(value.error)}
+                onDismiss={() => updateValue(sessionId, (old) => ({ ...old, error: undefined }))}
+              />
+            )}
             {onCancel && (
               <MessageAction label="取消" disabled={submitting} onClick={onCancel}>
                 <X size={16} />

@@ -1,4 +1,4 @@
-import { ArrowUp, CircleAlert, Plus, Square, X } from "lucide-react";
+import { ArrowUp, CircleAlert, Plus, Square } from "lucide-react";
 import {
   type ComponentType,
   type CSSProperties,
@@ -12,12 +12,12 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { imageLimits } from "zpi-coding-agent/input";
+import { InputNotice } from "zpi-ui/input-notice";
 import type { Result } from "../shared/bridge.ts";
 import type { QuickChatSnapshot } from "../shared/quick-chat.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { QuickChatAttachment } from "./QuickChatAttachment.tsx";
 import type { QuickChatConversationProps } from "./QuickChatConversation.tsx";
-import { QuickChatError } from "./QuickChatError.tsx";
 import { imageImportError, pastedImages, type QuickChatDraftImage } from "./quick-chat-attachments.ts";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
@@ -788,13 +788,15 @@ export function QuickChat({
               }}
             />
             {visibleError && (
-              <QuickChatError
+              <InputNotice
+                key={`${sessionId}:${errorVersion}:${visibleError}`}
+                className="quick-chat-error"
+                onDismiss={snapshot ? () => setError("") : undefined}
                 message={visibleError}
-                occurrence={errorVersion}
                 reservedHeight={reservedNoticeHeight}
                 onHeightChange={setNoticeHeight}
               >
-                {!snapshot ? (
+                {!snapshot && (
                   <button
                     type="button"
                     className="quick-chat-retry"
@@ -806,12 +808,8 @@ export function QuickChat({
                   >
                     重新加载
                   </button>
-                ) : (
-                  <button type="button" aria-label="关闭提示" onClick={() => setError("")}>
-                    <X size={14} aria-hidden="true" />
-                  </button>
                 )}
-              </QuickChatError>
+              </InputNotice>
             )}
             {configurationRequired && (
               <div

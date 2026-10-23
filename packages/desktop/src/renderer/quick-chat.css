@@ -186,47 +186,9 @@ html[data-quick-chat="true"] #root {
   color: var(--color-error);
 }
 
-.quick-chat-error-description {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.quick-chat-error-tooltip {
-  position: fixed;
-  z-index: 100;
-  width: max-content;
-  max-width: min(320px, calc(100vw - 24px));
-  max-height: 160px;
-  padding: 9px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-tooltip);
-  box-shadow: 0 2px 8px #00000014;
-  color: var(--color-tooltip-foreground);
-  font-size: var(--text-small);
-  line-height: 1.5;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  -webkit-app-region: no-drag;
-}
-
 .quick-chat-notice-text {
   flex: 1;
   min-width: 0;
-}
-
-.quick-chat-error button {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  min-width: 20px;
-  height: 20px;
-  padding: 0;
 }
 
 .quick-chat-retry {
@@ -354,7 +316,7 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-expanded.quick-chat-has-error textarea {
-  padding-right: 64px;
+  padding-right: 28px;
 }
 
 .quick-chat-has-images.quick-chat-compact .quick-chat-composer-input-row {

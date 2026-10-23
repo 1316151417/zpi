@@ -1,19 +1,21 @@
 import { CircleAlert } from "lucide-react";
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export function QuickChatError({
+export function InputNotice({
   message,
-  occurrence,
   reservedHeight,
   onHeightChange,
   children,
+  onDismiss,
+  className = "",
 }: {
   message: string;
-  occurrence: number;
-  reservedHeight: number;
-  onHeightChange: (height: number) => void;
-  children: ReactNode;
+  reservedHeight?: number;
+  onHeightChange?: (height: number) => void;
+  children?: ReactNode;
+  onDismiss?: () => void;
+  className?: string;
 }) {
   const descriptionId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -23,34 +25,38 @@ export function QuickChatError({
   const [focused, setFocused] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const open = automatic || hovered || focused;
+  const [expired, setExpired] = useState(false);
+  const dismiss = useEffectEvent(() => onDismiss?.());
 
   useEffect(() => {
-    setAutomatic(true);
     const timer = setTimeout(() => setAutomatic(false), 3000);
-    return () => clearTimeout(timer);
-  }, [message, occurrence]);
+    const expiry = setTimeout(() => setExpired(true), 8000);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(expiry);
+    };
+  }, []);
 
-  useEffect(
+  useEffect(() => {
+    if (expired && !hovered && !focused) dismiss();
+  }, [expired, hovered, focused]);
+
+  useLayoutEffect(
     () => () => {
       clearTimeout(leaveTimer.current);
-      onHeightChange(0);
+      onHeightChange?.(0);
     },
     [onHeightChange],
   );
 
   useLayoutEffect(() => {
-    if (!open) {
-      onHeightChange(0);
-      return;
-    }
     const position = () => {
       const anchor = trigger.current?.getBoundingClientRect();
       const content = tooltip.current;
       if (!anchor || !content) return;
       const height = content.offsetHeight;
       const width = content.offsetWidth;
-      // Anchor above the trigger, but keep the bubble inside the window even when
-      // the trigger sits at an edge (the expanded error row starts at the left).
+      // Keep the bubble above its trigger and inside the viewport.
       content.style.bottom = `${Math.min(
         window.innerHeight - anchor.top + 8,
         Math.max(12, window.innerHeight - height - 12),
@@ -59,15 +65,19 @@ export function QuickChatError({
         Math.max(12, window.innerWidth - anchor.right),
         Math.max(12, window.innerWidth - width - 12),
       )}px`;
-      onHeightChange(Math.min(172, Math.ceil(height) + 12));
+      // Reserve space for the entire notice lifetime. Hover must never resize
+      // the native window underneath the pointer.
+      onHeightChange?.(Math.min(172, Math.ceil(height) + 12));
     };
     position();
     const observer = new ResizeObserver(position);
     if (tooltip.current) observer.observe(tooltip.current);
     window.addEventListener("resize", position);
+    window.addEventListener("scroll", position, true);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", position);
+      window.removeEventListener("scroll", position, true);
     };
   }, [open, message, reservedHeight, onHeightChange]);
 
@@ -76,18 +86,19 @@ export function QuickChatError({
     setHovered(true);
   };
   const leave = () => {
+    clearTimeout(leaveTimer.current);
     leaveTimer.current = setTimeout(() => setHovered(false), 100);
   };
 
   return (
-    <div className="quick-chat-error" role="alert">
-      <span id={descriptionId} className="quick-chat-error-description">
+    <div className={`input-notice ${className}`} role="alert" data-notice-scope="input">
+      <span id={descriptionId} className="input-notice-description">
         {message}
       </span>
       <button
         ref={trigger}
         type="button"
-        className="quick-chat-error-trigger"
+        className="input-notice-trigger"
         aria-label="查看错误原因"
         aria-describedby={descriptionId}
         onPointerEnter={enter}
@@ -106,20 +117,25 @@ export function QuickChatError({
       >
         <CircleAlert size={15} aria-hidden="true" />
       </button>
-      {children}
-      {open &&
-        createPortal(
-          <div
-            ref={tooltip}
-            className="quick-chat-error-tooltip"
-            role="tooltip"
-            onPointerEnter={enter}
-            onPointerLeave={leave}
-          >
-            {message}
-          </div>,
-          document.body,
-        )}
+      {createPortal(
+        <div
+          ref={tooltip}
+          className="input-notice-tooltip"
+          role={open ? "tooltip" : undefined}
+          aria-hidden={!open}
+          style={{ visibility: open ? "visible" : "hidden" }}
+          onPointerEnter={enter}
+          onPointerLeave={leave}
+          onFocus={() => setFocused(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+          }}
+        >
+          {message}
+          {children}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

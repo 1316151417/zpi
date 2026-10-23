@@ -1160,7 +1160,8 @@ test("probes queued, importing, failed, ready, and removing images as occupied u
   expect(bridge.reportComposerState).toHaveBeenLastCalledWith(7, "quick-session", false);
 });
 
-test("keeps a pending send and its retryable error occupied after the user clears the draft", async () => {
+test("keeps a pending send and its retryable error occupied until the notice expires", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const request = deferred<Result<void>>();
   vi.mocked(bridge.send).mockReturnValueOnce(request.promise);
   await mount();
@@ -1173,7 +1174,7 @@ test("keeps a pending send and its retryable error occupied after the user clear
   expect(input().value).toBe("");
   await probe(2);
   expect(bridge.reportComposerState).toHaveBeenLastCalledWith(2, "quick-session", true);
-  await click(button("关闭提示"));
+  await act(async () => vi.advanceTimersByTime(8000));
   await probe(3);
   expect(bridge.reportComposerState).toHaveBeenLastCalledWith(3, "quick-session", false);
   await type("retry this");
@@ -1511,7 +1512,8 @@ test("automatically shows error details for three seconds, then reopens on hover
   expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
   await act(async () => vi.advanceTimersByTime(1));
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
-  expect(bridge.setNoticeHeight).toHaveBeenLastCalledWith("quick-session", 0);
+  expect(bridge.setNoticeHeight).toHaveBeenLastCalledWith("quick-session", 12);
+  const heightUpdates = vi.mocked(bridge.setNoticeHeight).mock.calls.length;
   await act(async () => notice.dispatchEvent(new Event("pointerover", { bubbles: true })));
   expect(query('[role="tooltip"]').textContent).toContain("连接失败");
   await act(async () => notice.dispatchEvent(new Event("pointerout", { bubbles: true })));
@@ -1522,8 +1524,9 @@ test("automatically shows error details for three seconds, then reopens on hover
   await key(notice, "Escape");
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   expect(bridge.hide).not.toHaveBeenCalled();
+  expect(bridge.setNoticeHeight).toHaveBeenCalledTimes(heightUpdates);
   expect(input().value).toBe("keep this draft");
-  await click(button("关闭提示"));
+  await act(async () => vi.advanceTimersByTime(8000));
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
@@ -1551,7 +1554,8 @@ test("keeps hovered errors open and gives repeated failures a fresh three second
   expect(bridge.setNoticeHeight).toHaveBeenLastCalledWith("replacement", 0);
 });
 
-test("keeps expanded error controls beside the send control without covering the input", async () => {
+test("keeps one expanded error control beside send until it expires", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const style = quickChatStyles();
   try {
     snapshot = { ...snapshot, expanded: true, session: { ...snapshot.session, runs: [run("completed")] } };
@@ -1560,8 +1564,8 @@ test("keeps expanded error controls beside the send control without covering the
     await type("draft");
     await key(input(), "Enter");
     expect(query('[data-testid="quick-chat"]').className).toContain("quick-chat-has-error");
-    expect(getComputedStyle(input()).paddingRight).toBe("64px");
-    await click(button("关闭提示"));
+    expect(getComputedStyle(input()).paddingRight).toBe("28px");
+    await act(async () => vi.advanceTimersByTime(8000));
     expect(query('[data-testid="quick-chat"]').className).not.toContain("quick-chat-has-error");
     expect(getComputedStyle(input()).paddingRight).toBe("0px");
   } finally {
@@ -1919,7 +1923,7 @@ test("retries a failed initial load without retaining an obsolete subscription",
   expect(input().disabled).toBe(false);
   expect(button("发送").disabled).toBe(true);
   expect(state()).toBe("compact");
-  const retry = [...container.querySelectorAll("button")].find(
+  const retry = [...document.querySelectorAll("button")].find(
     (element) => element.textContent === "重新加载",
   );
   expect(retry).toBeDefined();
@@ -1970,7 +1974,7 @@ test("keeps an early draft through a failed snapshot and successful reload", asy
   await act(async () => request.reject(new Error("暂时无法加载")));
   expect(input().disabled).toBe(false);
   expect(input().value).toBe("do not discard this draft");
-  expect(query('[role="tooltip"]').textContent).toBe("暂时无法加载");
+  expect(query('[role="tooltip"]').textContent).toBe("暂时无法加载重新加载");
   await click(query<HTMLButtonElement>(".quick-chat-retry"));
   expect(input().value).toBe("do not discard this draft");
   expect(button("发送").disabled).toBe(false);

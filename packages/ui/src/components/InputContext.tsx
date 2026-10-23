@@ -21,6 +21,10 @@ export class ComposerDraftStore extends Map<string, ComposerDraft> {
   readonly histories = new Map<string, EditorHistory>();
   private listeners = new Set<(id: string) => void>();
   private contentRevisions = new Map<string, number>();
+  private errorVersions = new Map<string, number>();
+  errorVersion(id: string): number {
+    return this.errorVersions.get(id) ?? 0;
+  }
   revision(id: string): number {
     return this.contentRevisions.get(id) ?? 0;
   }
@@ -47,6 +51,8 @@ export class ComposerDraftStore extends Map<string, ComposerDraft> {
         draft = { ...draft, selection: [start, end] };
     }
     const previous = this.get(id);
+    // Clearing and reporting an identical error can be batched into one React render.
+    if (draft.error && draft.error !== previous?.error) this.errorVersions.set(id, this.errorVersion(id) + 1);
     if (
       !previous ||
       previous.text !== draft.text ||
@@ -65,6 +71,7 @@ export class ComposerDraftStore extends Map<string, ComposerDraft> {
     const deleted = super.delete(id);
     this.histories.delete(id);
     this.contentRevisions.delete(id);
+    this.errorVersions.delete(id);
     for (const listener of this.listeners) listener(id);
     return deleted;
   }

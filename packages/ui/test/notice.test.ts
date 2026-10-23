@@ -1,6 +1,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { InputNotice } from "../src/components/InputNotice.tsx";
 import { Notice } from "../src/components/Notice.tsx";
 
 let root: Root;
@@ -111,4 +112,55 @@ test("offers an explicit action next to the message", async () => {
   await act(async () => container.querySelector<HTMLButtonElement>(".notice-action")?.click());
   expect(retry).toHaveBeenCalledOnce();
   expect(container.querySelector(".notice-message")?.textContent).toBe("加载失败");
+});
+
+const inputNotice = (key = 1) =>
+  act(async () => root.render(createElement(InputNotice, { key, message: "附件太多", onDismiss: dismiss })));
+
+test("input details close at three seconds and the single indicator expires at eight", async () => {
+  await inputNotice();
+  expect(container.querySelectorAll("button")).toHaveLength(1);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("附件太多");
+  await advance(3000);
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(dismiss).not.toHaveBeenCalled();
+  await advance(4999);
+  expect(dismiss).not.toHaveBeenCalled();
+  await advance(1);
+  expect(dismiss).toHaveBeenCalledOnce();
+});
+
+test.each(["hover", "focus"])("input expiry waits for the reader to leave (%s)", async (kind) => {
+  await inputNotice();
+  const trigger = container.querySelector<HTMLButtonElement>("button");
+  await act(async () => {
+    if (kind === "hover") trigger?.dispatchEvent(new Event("pointerover", { bubbles: true }));
+    else trigger?.focus();
+  });
+  await advance(9000);
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  expect(dismiss).not.toHaveBeenCalled();
+  await act(async () => {
+    if (kind === "hover") trigger?.dispatchEvent(new Event("pointerout", { bubbles: true }));
+    else trigger?.blur();
+  });
+  await advance(100);
+  expect(dismiss).toHaveBeenCalledOnce();
+});
+
+test("new occurrences restart input timers while ordinary renders do not", async () => {
+  await inputNotice();
+  await advance(2000);
+  await inputNotice();
+  await advance(1000);
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await inputNotice(2);
+  await advance(2999);
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await advance(1);
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await advance(4999);
+  expect(dismiss).not.toHaveBeenCalled();
+  await advance(1);
+  expect(dismiss).toHaveBeenCalledOnce();
 });

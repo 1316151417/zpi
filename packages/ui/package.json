@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./input-notice": "./src/components/InputNotice.tsx",
     "./styles.css": "./src/styles.css",
     "./projection": "./src/reducer.ts",
     "./selections": "./src/conversation-selections.ts",

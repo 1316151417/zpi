@@ -1206,6 +1206,57 @@ small {
 .latest:active:not(:disabled) {
   transform: translateX(-50%);
 }
+.input-notice {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--color-error);
+}
+
+.input-notice-description {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.input-notice-tooltip {
+  position: fixed;
+  z-index: 100;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: 160px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-tooltip);
+  box-shadow: 0 2px 8px #00000014;
+  color: var(--color-tooltip-foreground);
+  font-size: var(--text-small);
+  line-height: 1.5;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  -webkit-app-region: no-drag;
+}
+
+.input-notice-trigger {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+.input-notice-tooltip button {
+  display: block;
+  margin-top: 6px;
+  color: inherit;
+}
+
 .notice {
   display: flex;
   align-items: flex-start;

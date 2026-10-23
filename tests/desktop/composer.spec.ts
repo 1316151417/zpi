@@ -295,7 +295,7 @@ test("add panel imports multiple attachments and retains the draft when the pick
     await add.click();
     await panel.press(" ");
     await expect(page.getByRole("alert")).toContainText("找不到文件");
-    await expect(page.locator(".composer .notice-input")).toContainText("找不到文件");
+    await expect(page.locator(".composer .input-notice")).toContainText("找不到文件");
     await expect(editor).toHaveText("保留草稿X");
     await expect(editor).toBeFocused();
     await expect(page.locator(".composer .image-chip")).toHaveCount(1);
@@ -323,13 +323,16 @@ test("submit failures stay with the draft instead of the window overlay", async 
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill(`保留 [missing](${join(cwd, "missing.txt")})`);
     await editor.press("Enter");
-    const notice = page.locator(".composer .notice-input");
+    const notice = page.locator(".composer .input-notice");
     await expect(notice).toContainText("找不到文件");
     await expect(page.locator(".notice-window")).toHaveCount(0);
     await expect(editor).toContainText("保留");
     expect(server.requests).toHaveLength(0);
-    await page.getByRole("button", { name: "关闭错误", exact: true }).click();
-    await expect(notice).toHaveCount(0);
+    const composer = await page.locator(".composer").boundingBox();
+    await page.screenshot({ path: "test-results/desktop-composer-input-notice.png" });
+    await expect(page.getByRole("tooltip")).toHaveCount(0, { timeout: 5000 });
+    await expect(notice).toHaveCount(0, { timeout: 10000 });
+    expect(await page.locator(".composer").boundingBox()).toEqual(composer);
     await expect(editor).toContainText("保留");
   } finally {
     await runCleanup([

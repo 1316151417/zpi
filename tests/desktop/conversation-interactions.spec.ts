@@ -143,7 +143,7 @@ test("side chat submits through the composer without renderer-only fields", asyn
       .toBe(true);
     await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     await expect(side.locator(".answer").last()).toContainText("辅助回复");
-    await expect(side.locator(".notice-input")).toHaveCount(0);
+    await expect(side.locator(".input-notice")).toHaveCount(0);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

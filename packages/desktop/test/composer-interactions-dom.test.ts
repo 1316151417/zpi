@@ -50,6 +50,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   document.body.replaceChildren();
   for (const element of document.head.querySelectorAll("style[data-audit-test]")) element.remove();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -283,3 +284,66 @@ it.each([true, false])(
     expect(owner.style.getPropertyValue("--conversation-column-left")).toBe("");
   },
 );
+
+it("normal chat expires input warnings without changing the draft and clears them on send", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const drafts = new ComposerDraftStore();
+  const draft = { text: "保留草稿", attachments: [], fileReferences: [], pending: 0, error: "附件太多" };
+  drafts.set("notice", draft);
+  const sent = Promise.withResolvers<void>();
+  const onSubmit = vi.fn(() => sent.promise);
+  await act(async () =>
+    root.render(
+      createElement(ChatComposer, {
+        sessionId: "notice",
+        busy: false,
+        draftStorage: drafts,
+        onSubmit,
+        onStop() {},
+      }),
+    ),
+  );
+  expect(container.querySelectorAll(".composer-actions .input-notice button")).toHaveLength(1);
+  await act(async () => vi.advanceTimersByTime(3000));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await act(async () => vi.advanceTimersByTime(5000));
+  expect(container.querySelector(".input-notice")).toBeNull();
+  expect(drafts.get("notice")?.text).toBe("保留草稿");
+  await act(async () => drafts.set("notice", { ...draft }));
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await act(async () => container.querySelector<HTMLButtonElement>("button.send")?.click());
+  expect(onSubmit).toHaveBeenCalledOnce();
+  expect(container.querySelector(".input-notice")).toBeNull();
+  await act(async () => sent.resolve());
+});
+
+it("repeated normal-chat send failures reopen the details for a fresh interval", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const drafts = new ComposerDraftStore();
+  drafts.set("retry-notice", { text: "重试", attachments: [], fileReferences: [], pending: 0 });
+  const onSubmit = async () => {
+    const draft = drafts.get("retry-notice");
+    if (draft) drafts.set("retry-notice", { ...draft, error: "发送失败" });
+    throw new Error("发送失败");
+  };
+  await act(async () =>
+    root.render(
+      createElement(ChatComposer, {
+        sessionId: "retry-notice",
+        busy: false,
+        draftStorage: drafts,
+        onSubmit,
+        onStop() {},
+      }),
+    ),
+  );
+  const send = () => act(async () => container.querySelector<HTMLButtonElement>("button.send")?.click());
+  await send();
+  await act(async () => vi.advanceTimersByTime(3000));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  await send();
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(3000));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(drafts.get("retry-notice")?.error).toBe("发送失败");
+});

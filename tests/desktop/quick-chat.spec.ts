@@ -224,7 +224,7 @@ async function pasteImages(input: Locator, names: string[], text = "") {
   );
 }
 
-test("quick chat error details open for three seconds and remain inside the compact native window", async () => {
+test("quick chat warning hover keeps native bounds stable until its indicator expires", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-notice-"));
   const server = await fakeServer((_request, response) => {
     send(response, chunk({ content: "无需发送" }));
@@ -264,19 +264,30 @@ test("quick chat error details open for three seconds and remain inside the comp
     const opened = await bounds();
     expect(opened && opened.y + opened.height).toBe(before.y + before.height);
     await expect(tooltip).toHaveCount(0, { timeout: 5000 });
-    await expect.poll(bounds).toMatchObject({ height: 100 });
+    expect(await bounds()).toEqual(opened);
     const indicator = quick.getByRole("button", { name: "查看错误原因", exact: true });
-    // Native top-edge expansion changes page coordinates; deliver hover at the anchored control.
-    await indicator.dispatchEvent("pointerover", { pointerType: "mouse" });
-    await expect(tooltip).toBeVisible();
+    const anchor = await indicator.boundingBox();
+    if (!anchor) throw new Error("Missing warning indicator");
+    for (let index = 0; index < 3; index++) {
+      await quick.mouse.move(anchor.x + anchor.width / 2, anchor.y + anchor.height / 2);
+      await expect(tooltip).toBeVisible();
+      expect(await bounds()).toEqual(opened);
+      await quick.mouse.move(anchor.x - 8, anchor.y + anchor.height / 2);
+      await expect(tooltip).toHaveCount(0);
+      expect(await bounds()).toEqual(opened);
+    }
+    await indicator.hover();
+    await quick.screenshot({ path: "test-results/desktop-quick-chat-input-notice.png" });
     await indicator.focus();
     await indicator.press("Escape");
     await expect(tooltip).toHaveCount(0);
-    await expect.poll(bounds).toMatchObject({ height: 100 });
+    expect(await bounds()).toEqual(opened);
     await expect(input).toHaveValue("保留草稿");
     expect(server.requests).toHaveLength(0);
-    await quick.getByRole("button", { name: "关闭提示", exact: true }).click();
-    await expect(quick.locator(".quick-chat-error")).toHaveCount(0);
+    await input.focus();
+    await quick.mouse.move(0, 0);
+    await expect(quick.locator(".quick-chat-error")).toHaveCount(0, { timeout: 10000 });
+    await expect.poll(bounds).toMatchObject({ height: 100 });
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
