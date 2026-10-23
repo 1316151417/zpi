@@ -129,13 +129,16 @@ html[data-quick-chat="true"] #root {
 }
 
 .quick-chat-compact {
-  padding-top: var(--quick-chat-notice-height, 0px);
+  justify-content: flex-end;
   border-radius: 22px;
 }
 
 .quick-chat-compact .quick-chat-composer-container {
   display: flex;
-  flex: 1;
+  /* Native notice-space resizing arrives asynchronously. Keep the visible
+     composer at its measured height instead of stretching into that space. */
+  flex: 0 1 auto;
+  height: var(--quick-chat-composer-height, 44px);
   padding: 0;
 }
 

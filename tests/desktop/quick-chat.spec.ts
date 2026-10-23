@@ -224,7 +224,7 @@ async function pasteImages(input: Locator, names: string[], text = "") {
   );
 }
 
-test("quick chat warning hover keeps native bounds stable until its indicator expires", async () => {
+test("quick chat warnings keep the composer stable through hover and delayed native dismissal", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-quick-chat-notice-"));
   const server = await fakeServer((_request, response) => {
     send(response, chunk({ content: "无需发送" }));
@@ -284,10 +284,53 @@ test("quick chat warning hover keeps native bounds stable until its indicator ex
     expect(await bounds()).toEqual(opened);
     await expect(input).toHaveValue("保留草稿");
     expect(server.requests).toHaveLength(0);
+    const composer = quick.locator(".quick-chat-composer");
+    const composerBefore = await composer.boundingBox();
+    if (!composerBefore || !opened) throw new Error("Missing composer bounds");
+    // Keep the old native viewport for a full observable frame after React clears
+    // the notice. Final bounds alone cannot catch the transient stretched input.
+    await app.evaluate(({ BrowserWindow }) => {
+      const native = BrowserWindow.getAllWindows().find((window) =>
+        window.webContents.getURL().includes("view=quick-chat"),
+      );
+      if (!native) throw new Error("Missing quick-chat window");
+      const setBounds = native.setBounds.bind(native);
+      native.setBounds = (next, animate) => {
+        if (next.height !== undefined && next.height < native.getBounds().height) {
+          Object.assign(globalThis, {
+            releaseNoticeResize: () => {
+              native.setBounds = setBounds;
+              setBounds(next, animate);
+            },
+          });
+        } else setBounds(next, animate);
+      };
+    });
     await input.focus();
     await quick.mouse.move(0, 0);
     await expect(quick.locator(".quick-chat-error")).toHaveCount(0, { timeout: 10000 });
+    expect(await bounds()).toEqual(opened);
+    expect(await composer.boundingBox()).toEqual(composerBefore);
+    await app.evaluate(() => {
+      const testState = globalThis as typeof globalThis & { releaseNoticeResize?: () => void };
+      if (!testState.releaseNoticeResize) throw new Error("Missing deferred notice resize");
+      testState.releaseNoticeResize();
+      delete testState.releaseNoticeResize;
+    });
     await expect.poll(bounds).toMatchObject({ height: 100 });
+    await expect
+      .poll(async () => {
+        const windowBounds = await bounds();
+        const contentBounds = await composer.boundingBox();
+        return (
+          windowBounds &&
+          contentBounds && {
+            y: windowBounds.y + contentBounds.y,
+            height: contentBounds.height,
+          }
+        );
+      })
+      .toEqual({ y: opened.y + composerBefore.y, height: composerBefore.height });
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

@@ -90,6 +90,7 @@ export function QuickChat({
   const [error, updateError] = useState("");
   const [errorVersion, setErrorVersion] = useState(0);
   const [noticeHeight, setNoticeHeight] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(compactComposerMinHeight);
   const setError = useCallback((value: SetStateAction<string>) => {
     updateError(value);
     if (typeof value === "string" && value) setErrorVersion((version) => version + 1);
@@ -413,17 +414,18 @@ export function QuickChat({
     element.style.overflowY = contentHeight > (element.clientHeight || height) ? "auto" : "hidden";
     element.scrollTop = scrollTop;
     if (expanded || !sessionId) return;
-    const composerHeight =
+    const measuredHeight =
       Math.max(compactComposerMinHeight, Math.ceil(height + composerVerticalInset)) +
       (hasImages ? attachmentRowHeight : 0);
+    setComposerHeight(measuredHeight);
     const previous = reportedHeight.current;
-    if (previous?.sessionId === sessionId && previous.height === composerHeight) return;
-    const request = { sessionId, height: composerHeight };
+    if (previous?.sessionId === sessionId && previous.height === measuredHeight) return;
+    const request = { sessionId, height: measuredHeight };
     reportedHeight.current = request;
     const retryLater = () => {
       if (reportedHeight.current === request) reportedHeight.current = undefined;
     };
-    void window.zpiQuickChat.setComposerHeight(sessionId, composerHeight).then((result) => {
+    void window.zpiQuickChat.setComposerHeight(sessionId, measuredHeight).then((result) => {
       if (!result.ok) retryLater();
     }, retryLater);
   }, [expanded, sessionId, hasImages]);
@@ -649,7 +651,7 @@ export function QuickChat({
     <main
       className={`quick-chat${expanded ? " quick-chat-expanded" : " quick-chat-compact"}${hasImages ? " quick-chat-has-images" : ""}${visibleError ? " quick-chat-has-error" : ""}`}
       aria-label="快速对话"
-      style={{ "--quick-chat-notice-height": `${reservedNoticeHeight}px` } as CSSProperties}
+      style={{ "--quick-chat-composer-height": `${composerHeight}px` } as CSSProperties}
       data-testid="quick-chat"
       data-state={expanded ? "expanded" : "compact"}
     >
