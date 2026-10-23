@@ -285,7 +285,7 @@ it.each([true, false])(
   },
 );
 
-it("normal chat expires input warnings without changing the draft and clears them on send", async () => {
+it("normal chat keeps warning timers while typing and clears warnings on expiry or send", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const drafts = new ComposerDraftStore();
   const draft = { text: "保留草稿", attachments: [], fileReferences: [], pending: 0, error: "附件太多" };
@@ -304,11 +304,28 @@ it("normal chat expires input warnings without changing the draft and clears the
     ),
   );
   expect(container.querySelectorAll(".composer-actions .input-notice button")).toHaveLength(1);
-  await act(async () => vi.advanceTimersByTime(3000));
+  const editor = element(".mention-editor");
+  const type = (text: string) =>
+    act(async () => {
+      editor.textContent = text;
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+    });
+  await act(async () => vi.advanceTimersByTime(1000));
+  await type("保留草稿a");
+  expect(drafts.get("notice")?.text).toBe("保留草稿a");
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+  expect(container.querySelector(".input-notice-trigger")).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(2000));
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
-  await act(async () => vi.advanceTimersByTime(5000));
+  await act(async () => vi.advanceTimersByTime(1000));
+  await type("保留草稿ab");
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(container.querySelector(".input-notice-trigger")).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(3999));
+  expect(container.querySelector(".input-notice-trigger")).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(1));
   expect(container.querySelector(".input-notice")).toBeNull();
-  expect(drafts.get("notice")?.text).toBe("保留草稿");
+  expect(drafts.get("notice")?.text).toBe("保留草稿ab");
   await act(async () => drafts.set("notice", { ...draft }));
   expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
   await act(async () => container.querySelector<HTMLButtonElement>("button.send")?.click());

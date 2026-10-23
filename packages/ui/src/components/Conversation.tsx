@@ -2075,7 +2075,6 @@ export function ChatComposer({
             updateValue(sessionId, (old) => ({
               ...old,
               text,
-              error: undefined,
               warnings: old.warnings?.filter(
                 (warning) =>
                   parseMentions(text).some((mention) => warning.endsWith(mention.path)) ||
