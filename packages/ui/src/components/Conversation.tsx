@@ -2288,8 +2288,10 @@ export function ChatComposer({
           <h3>发送消息？</h3>
           <p>你即将发送一条消息。要清除之前已排队的 {queue?.items.length ?? 0} 条消息吗？</p>
           <div>
-            <button onClick={() => setQueueConfirmation(false)}>取消</button>
-            <button disabled={submitting} onClick={() => void submit("clear")}>
+            <button className="secondary" onClick={() => setQueueConfirmation(false)}>
+              取消
+            </button>
+            <button className="secondary" disabled={submitting} onClick={() => void submit("clear")}>
               清空队列
             </button>
             <button disabled={submitting} className="primary" onClick={() => void submit("keep")}>

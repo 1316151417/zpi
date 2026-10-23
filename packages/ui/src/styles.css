@@ -1417,6 +1417,7 @@ small {
 .secondary,
 .danger-button {
   padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
   justify-content: center;
   align-items: center;
@@ -1429,6 +1430,7 @@ small {
 }
 .secondary {
   background: var(--color-surface-muted);
+  border-color: var(--color-border);
 }
 .danger-button {
   color: var(--color-error);

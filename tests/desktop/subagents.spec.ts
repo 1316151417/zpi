@@ -55,7 +55,8 @@ test("subagent plugin manages profiles/models and opens complete read-only child
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "插件能力", exact: true }).click();
-    await expect(page.getByRole("checkbox", { name: "子智能体", exact: true })).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "子智能体", exact: true })).toBeChecked();
+    await page.getByRole("checkbox", { name: "子智能体", exact: true }).uncheck();
     await expect(page.getByRole("region", { name: "子智能体管理" })).toHaveCount(0);
     await page.getByRole("button", { name: "子智能体", exact: true }).click();
     await expect(page.getByTestId("subagent-row-general-purpose")).toBeVisible();

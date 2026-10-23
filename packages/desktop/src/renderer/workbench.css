@@ -1791,7 +1791,8 @@
   flex-wrap: wrap;
 }
 .provider-footer .primary,
-.model-list-actions .secondary {
+.model-list-actions .secondary,
+.chatgpt-connection button {
   height: 32px;
   padding: 0 12px;
   border-radius: var(--radius-nested);
@@ -3223,6 +3224,7 @@
 }
 .chatgpt-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .chatgpt-login-pending {

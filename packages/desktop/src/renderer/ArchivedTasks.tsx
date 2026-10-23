@@ -173,7 +173,7 @@ export function ArchivedTasks() {
               会话记录、图片附件和文件变更快照将一并删除，无法恢复。项目源文件会保留。
             </Dialog.Description>
             <div className="modal-actions">
-              <button disabled={busy} onClick={() => setDeleting(undefined)}>
+              <button className="secondary" disabled={busy} onClick={() => setDeleting(undefined)}>
                 取消
               </button>
               <button

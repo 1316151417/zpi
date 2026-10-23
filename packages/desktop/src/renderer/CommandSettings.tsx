@@ -595,7 +595,7 @@ export function CommandEditor({
         <button className="command-new" type="submit" disabled={!valid || busy}>
           {busy ? "保存中..." : "保存"}
         </button>
-        <button type="button" disabled={busy} onClick={onCancel}>
+        <button className="secondary" type="button" disabled={busy} onClick={onCancel}>
           取消
         </button>
       </div>

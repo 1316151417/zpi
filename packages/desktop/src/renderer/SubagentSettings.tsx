@@ -507,7 +507,7 @@ export function SubagentSettings() {
             <button className="primary" disabled={busy || !canSave}>
               保存
             </button>
-            <button type="button" disabled={busy} onClick={() => setEditing(undefined)}>
+            <button className="secondary" type="button" disabled={busy} onClick={() => setEditing(undefined)}>
               取消
             </button>
           </footer>
@@ -702,7 +702,7 @@ export function SubagentSettings() {
               确定要删除子智能体「{deleteTarget?.name}」吗？此操作无法撤销。
             </Dialog.Description>
             <footer>
-              <button disabled={busy} onClick={() => setDeleteTarget(undefined)}>
+              <button className="secondary" disabled={busy} onClick={() => setDeleteTarget(undefined)}>
                 取消
               </button>
               <button

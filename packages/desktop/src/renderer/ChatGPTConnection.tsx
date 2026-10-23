@@ -107,7 +107,7 @@ export function ChatGPTConnection({
           {provider?.chatgptAccount?.connected ? "重新登录 ChatGPT" : "Continue with ChatGPT"}
         </button>
         {provider?.chatgptAccount?.connected && (
-          <button disabled={busy} onClick={() => void disconnect()}>
+          <button className="secondary" disabled={busy} onClick={() => void disconnect()}>
             退出登录
           </button>
         )}
@@ -115,8 +115,12 @@ export function ChatGPTConnection({
       {login && (
         <div className="chatgpt-login-pending">
           <p role="status">正在等待浏览器完成授权…</p>
-          <button onClick={() => void window.zpi.openExternal(login.url)}>重新打开登录页面</button>
-          <button onClick={cancel}>取消登录</button>
+          <button className="secondary" onClick={() => void window.zpi.openExternal(login.url)}>
+            重新打开登录页面
+          </button>
+          <button className="secondary" onClick={cancel}>
+            取消登录
+          </button>
           <label>
             回调地址（浏览器未能自动返回时）
             <input
@@ -127,6 +131,7 @@ export function ChatGPTConnection({
             />
           </label>
           <button
+            className="secondary"
             disabled={!callback.trim()}
             onClick={() => {
               void window.zpi

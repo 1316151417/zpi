@@ -1,7 +1,9 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { readActiveGeneration } from "../../packages/desktop/src/main/storage-generation.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
@@ -109,7 +111,7 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     }).toString();
     await page.getByLabel("ChatGPT 回调地址", { exact: true }).fill(callback.href);
     await page.getByRole("button", { name: "提交回调地址", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("state");
+    await expect(page.getByRole("alert")).toContainText("输入内容无效，请检查后重试。");
     callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
     await page.getByLabel("ChatGPT 回调地址", { exact: true }).fill(callback.href);
     await page.getByRole("button", { name: "提交回调地址", exact: true }).click();
@@ -119,7 +121,16 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     await expect(page.locator('[data-model-id="gpt-6.1-sol"]')).toContainText("待验证");
     await expect(page.locator(".chatgpt-connection")).toContainText("test@example.com");
     await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);
-    expect(await readFile(join(dir, "settings.json"), "utf8")).not.toContain("ui-private-");
+    const generation = readActiveGeneration(dir);
+    if (!generation) throw new Error("Missing active storage generation");
+    const database = new DatabaseSync(join(generation.directory, "state.sqlite"), { readOnly: true });
+    try {
+      const settings = database.prepare("SELECT data FROM app_settings WHERE key = ?").get("app");
+      expect(settings?.data).toEqual(expect.any(String));
+      expect(settings?.data).not.toContain("ui-private-");
+    } finally {
+      database.close();
+    }
     const publicCredentials = await page.evaluate(async () => {
       const settings = await window.zpi.getSettings();
       if (!settings.ok) throw new Error(settings.error.message);
@@ -128,7 +139,8 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     expect(publicCredentials).toEqual({ ok: true, value: { apiKey: "" } });
     await page.screenshot({ path: "test-results/chatgpt-model-settings-light.png" });
     await page.emulateMedia({ colorScheme: "dark" });
-    await page.screenshot({ path: "test-results/chatgpt-model-settings-dark.png" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.screenshot({ path: "test-results/chatgpt-model-settings-dark.png", animations: "disabled" });
     await page.getByRole("button", { name: "编辑模型 account-model", exact: true }).click();
     await page.getByText("高级配置", { exact: true }).click();
     await expect(page.getByLabel("输出上限字段", { exact: true })).toHaveCount(0);
