@@ -59,6 +59,11 @@ test("changed files start collapsed, group repeated edits, scroll within the car
     const card = page.locator(".changed-files");
     const summary = card.locator("summary");
     const list = card.locator(".changed-files-list");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
+    await expect(page.getByTestId("run")).toContainText("已修改 20 个文件，其中一个文件修改了两次。");
+    await expect(card).toHaveCount(0);
+    release.resolve();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(summary).toContainText("20 个文件");
     await expect(summary.locator(".changed-files-totals")).toHaveText("+21-21");
     await expect(card).not.toHaveAttribute("open");
@@ -73,8 +78,6 @@ test("changed files start collapsed, group repeated edits, scroll within the car
     const infoBox = await first.locator(".changed-file-info").boundingBox();
     const countsBox = await first.locator(".changed-file-counts").boundingBox();
     expect((countsBox?.x ?? 0) - ((infoBox?.x ?? 0) + (infoBox?.width ?? 0))).toBeLessThanOrEqual(8);
-    release.resolve();
-    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(card).toHaveAttribute("open", "");
     await summary.focus();
     await summary.press("Space");

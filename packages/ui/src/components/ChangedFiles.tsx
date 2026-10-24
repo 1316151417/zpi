@@ -18,6 +18,7 @@ export function ChangedFiles({
   onFileAction?: FileActionHandler;
 }) {
   const [error, setError] = useState("");
+  if (run.status === "running") return null;
   const files = new Map<
     string,
     { additions: number; deletions: number; known: boolean; failed: boolean; edits: number }

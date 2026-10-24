@@ -32,6 +32,36 @@ describe("changed file summaries", () => {
     expect(renderToStaticMarkup(createElement(ChangedFiles, { run: runWithChanges([]) }))).toBe("");
   });
 
+  it.each([undefined, true, false])(
+    "hides completed file edits while the turn is running, with text streaming=%s",
+    (streaming) => {
+      const run = runWithChanges([{ path: "/project/demo.txt", additions: 2, deletions: 1 }]);
+      run.status = "running";
+      if (streaming !== undefined) {
+        run.orderedBlocks.push({
+          id: "answer",
+          messageId: "answer-message",
+          type: "text",
+          text: "已修改文件",
+          streaming,
+        });
+      }
+      expect(renderToStaticMarkup(createElement(ChangedFiles, { run }))).toBe("");
+    },
+  );
+
+  it.each(["completed", "aborted", "error", "interrupted"] as const)(
+    "shows recorded file changes after the turn is %s",
+    (status) => {
+      vi.stubGlobal("document", { baseURI: "https://zpi.test/" });
+      const run = runWithChanges([{ path: "/project/demo.txt", additions: 2, deletions: 1 }]);
+      run.status = status;
+      const markup = renderToStaticMarkup(createElement(ChangedFiles, { run }));
+      expect(markup).toContain("1 个文件已更改");
+      expect(markup).toContain("demo.txt");
+    },
+  );
+
   it("keeps unknown counts and partial failures visible instead of presenting incomplete totals", () => {
     vi.stubGlobal("document", { baseURI: "https://zpi.test/" });
     const markup = renderToStaticMarkup(
