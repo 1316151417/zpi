@@ -34,6 +34,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+# Codex memory pipeline reference
+
+The two-stage memory design and adapted evidence, consolidation and retrieval instructions in `packages/desktop/src/main/memory/` reference OpenAI Codex commit `2839ed763bd3f404398e1f0c95bf4e2d172213c0`, specifically `codex-rs/memories/write`, `codex-rs/state/src/runtime/memories.rs` and `codex-rs/ext/memories`. Copyright OpenAI. Apache-2.0 (the license is reproduced below). Modified for ZPI's existing file tools, desktop owners, SQLite state and configurable models: no skills generation, telemetry, vendor-specific selection, Codex rollout parser, or version dual-write. ZPI retains the requested v1 four-file contract with stricter v2 provenance rules and stages validated outputs before publication. See `docs/memory.md` for the reference/default distinction and implementation differences.
+
 # ZCode image request pipeline
 
 The image budgets, compression candidate sequence and WebP passthrough in `packages/coding-agent/src/core/tools/pi/utils`, request media projection and compact error predicates in `packages/ai/src/utils`, cache breakpoints and text-only microcompact follow ZCode commit `aac4755666d09fdcd70272fcf063c077a639015f`, `apps/zcode-cli/packages/{contracts/src/tools/read.ts,adapters/src/image,core/src/runtime/helpers/media-budget.ts,core/src/compact/microcompact.ts}`. Adapted to ZPI's transcript and provider interfaces under the Apache-2.0 license reproduced below. Historical media selection deliberately uses `break` instead of the upstream `continue`. Image processing uses Sharp with the existing guarded BMP decoder; compression candidate order and budgets are retained, but encoded bytes may differ from the upstream encoders. Read's WebP passthrough intentionally performs budget checks without decoding.

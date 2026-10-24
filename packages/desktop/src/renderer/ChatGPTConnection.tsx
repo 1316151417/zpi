@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProviderRecord, PublicSettings } from "../shared/bridge.ts";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 
@@ -97,14 +98,17 @@ export function ChatGPTConnection({
   };
   return (
     <section className="chatgpt-connection" aria-label="ChatGPT 授权">
-      <p>
-        {provider?.chatgptAccount?.connected
-          ? `已登录：${provider.chatgptAccount.label}`
-          : "登录 ChatGPT 并授权使用套餐。登录后自动获取账号可用模型。"}
-      </p>
+      {provider?.chatgptAccount?.connected ? (
+        <p>已登录：{provider.chatgptAccount.label}</p>
+      ) : (
+        <p className="settings-label">
+          使用 ChatGPT 套餐{" "}
+          <SettingsHelp label="ChatGPT 登录" text="通过浏览器登录并授权，完成后自动获取账号可用模型。" />
+        </p>
+      )}
       <div className="chatgpt-actions">
         <button className="primary" disabled={busy} onClick={() => void signIn()}>
-          {provider?.chatgptAccount?.connected ? "重新登录 ChatGPT" : "Continue with ChatGPT"}
+          {provider?.chatgptAccount?.connected ? "重新登录" : "Continue with ChatGPT"}
         </button>
         {provider?.chatgptAccount?.connected && (
           <button className="secondary" disabled={busy} onClick={() => void disconnect()}>

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PromptPreview, SkillSettings, ToolInfo } from "../shared/bridge.ts";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { refresh, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
@@ -103,13 +104,6 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
   };
   return (
     <div className="resource-settings">
-      <p className="global-settings-note">
-        {page === "tools"
-          ? "查看内置工具的能力与参数。工具定义只读，对所有任务生效。"
-          : page === "prompt"
-            ? "沿用 Pi 基础提示词，按启用的扩展能力追加规则。两部分均只读，下方分别展示。"
-            : "全局默认配置，在新任务首次发送时生效；已有任务保留原技能开关。"}
-      </p>
       {error && (
         <div className="run-error" role="alert">
           {error}
@@ -118,21 +112,27 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
       {notice && <p role="status">{notice}</p>}
       {page === "prompt" && (
         <>
-          <h2 className="preview-heading">
-            基础系统提示词 <small>只读</small>
+          <h2 className="preview-heading" aria-label="基础系统提示词 只读">
+            <span className="settings-label">
+              基础系统提示词{" "}
+              <SettingsHelp
+                label="基础系统提示词"
+                text={`默认预览工作目录：${preview?.cwd ?? "正在读取…"}。新任务使用其绑定的工作目录和项目指令；此处只读。`}
+              />
+            </span>{" "}
+            <small>只读</small>
           </h2>
-          <p>
-            默认工作目录：{preview?.cwd}
-            <br />
-            新任务会使用其实际工作目录和项目指令。
-          </p>
           <pre className="prompt-preview">{preview?.basePrompt ?? "正在生成预览…"}</pre>
-          <h2 className="preview-heading">
-            追加指令 <small>按启用能力生成 · 只读</small>
+          <h2 className="preview-heading" aria-label="追加指令 只读">
+            <span className="settings-label">
+              追加指令{" "}
+              <SettingsHelp
+                label="追加指令"
+                text="按启用的扩展能力追加规则，可在扩展能力页调整。新对话首次发送时生效，已有对话保留原配置；此处只读。"
+              />
+            </span>{" "}
+            <small>只读</small>
           </h2>
-          <p>
-            在扩展能力中配置交互方式、多工具调用、文件链接格式、文件内容复用和主动推进；启用的规则会加入新对话。
-          </p>
           <pre className="custom-instructions-preview">
             {preview ? preview.customInstructions || "未启用追加指令。" : "正在生成预览…"}
           </pre>
@@ -142,7 +142,14 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
         <>
           <div className="resource-group-heading">
             <h3>
-              内置工具 <span>{tools.length}</span>
+              <span className="settings-label">
+                内置工具{" "}
+                <SettingsHelp
+                  label="内置工具"
+                  text="查看工具能力、参数和启用状态。点击工具展开只读定义；列表按当前全局配置生成，已有对话保留其配置。"
+                />
+              </span>{" "}
+              <span>{tools.length}</span>
             </h3>
           </div>
           <div className="tool-resource-list">
@@ -206,7 +213,14 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
         <>
           <div className="resource-group-heading">
             <h3>
-              已安装 <span>{skills?.skills.length ?? 0}</span>
+              <span className="settings-label">
+                已安装{" "}
+                <SettingsHelp
+                  label="技能"
+                  text={`技能开关在新任务首次发送时生效，已有任务保留原配置。\n全局技能目录：${skills?.directories.join("、") || "正在读取…"}`}
+                />
+              </span>{" "}
+              <span>{skills?.skills.length ?? 0}</span>
             </h3>
             <button
               className="resource-icon-button"
@@ -218,7 +232,6 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
               <RefreshCcw size={16} />
             </button>
           </div>
-          <p className="skill-directories">全局技能目录：{skills?.directories.join("、")}</p>
           {skills?.diagnostics.map((d) => (
             <p className="run-error" key={d.path}>
               {d.path}: {userErrorMessage(d.message)}

@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuickChatSettings } from "../src/renderer/QuickChatSettings.tsx";
+import { SettingsSelect } from "../src/renderer/SettingsSelect.tsx";
 import type { PublicSettings } from "../src/shared/bridge.ts";
 import { defaultCapabilities, defaultPreferences } from "../src/shared/config.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
@@ -66,7 +67,9 @@ function button(label: string) {
 }
 
 function select(label: string): Element {
-  const target = elements(render()).find((element) => element.props.label === label);
+  const target = elements(render()).find(
+    (element) => element.type === SettingsSelect && element.props.label === label,
+  );
   expect(target).toBeDefined();
   return target as Element;
 }
@@ -123,10 +126,9 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("quick-chat settings", () => {
-  it("shows the temporary-session description and current shortcut with an editing link", () => {
-    expect(text(render())).toContain("临时对话，不保存到任务列表");
-    expect(text(render())).toContain("可用 read、bash 及已启用的联网工具");
-    expect(text(render())).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
+  it("shows current shortcuts with an editing link while explanations remain in help", () => {
+    expect(text(render())).not.toContain("临时对话，不保存到任务列表");
+    expect(text(render())).not.toContain("只读要求依赖提示词");
     expect(text(render())).not.toContain("工具仅允许只读");
     expect(text(render())).toContain("⌥Space");
     expect(text(render())).toContain("⌥⇧Space");
@@ -189,7 +191,7 @@ it("shows deterministic fallback independently of the main task model", () => {
   expect(select("快速对话默认模型").props.value).toBe("unavailable");
   expect(text(render())).toContain("原默认配置已不可用");
   expect(text(render())).toContain("当前自动使用：Chat · first");
-  expect(text(render())).toContain("从下一次发送起生效，不会中断当前回复");
+  expect(text(render())).not.toContain("从下一次发送起生效，不会中断当前回复");
 });
 
 it("uses one model catalog per render for options, saved selection and fallback", () => {

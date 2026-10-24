@@ -6,6 +6,7 @@ import { ActionHint } from "zpi-ui";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import "./web-search-settings.css";
@@ -13,6 +14,7 @@ import "./web-search-settings.css";
 export function WebSearchSettings() {
   const settings = useStore((state) => state.settings?.webSearch);
   const globalEnabled = useStore((state) => state.settings?.capabilities.webSearch);
+  const providerReady = Boolean(settings?.enabled && settings.hasApiKey && !settings.credentialsLocked);
   // Only genuine input changes populate the replacement. A revealed saved key is separate and transient.
   const [apiKey, setApiKey] = useState("");
   const [editing, setEditing] = useState(false);
@@ -150,14 +152,49 @@ export function WebSearchSettings() {
       setSaving(false);
     }
   };
+  const setGlobalEnabled = async (enabled: boolean) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSaving(true);
+    setError("");
+    clearReveal();
+    try {
+      const settings = unwrap(await window.zpi.setCapabilityEnabled("webSearch", enabled));
+      useStore.setState({ settings });
+      setNotice(enabled ? "已启用联网搜索。" : "已关闭联网搜索。");
+    } catch {
+      setError("无法保存联网搜索开关，请重试。");
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  };
   return (
     <div className="web-search-settings">
-      <div className="resource-section-heading">
-        <p>
-          「扩展能力」中的联网搜索默认开启。配置 API Key
-          并启用服务后，新对话首次发送时可使用网页搜索和网页读取；已有对话保留原有配置。
-        </p>
-      </div>
+      <header className="settings-page-heading">
+        <div className="settings-heading-title">
+          <h1>联网搜索</h1>
+          <SettingsHelp
+            label="联网搜索"
+            text="先配置并启用下方提供商，再开启搜索和网页读取。开关在新对话首次发送时生效，已有对话保留原配置。停用提供商会同时关闭此开关。"
+          />
+        </div>
+        <label className="settings-enable">
+          <span>启用联网搜索</span>
+          <span className="settings-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="启用联网搜索"
+              aria-checked={globalEnabled ?? false}
+              checked={globalEnabled ?? false}
+              disabled={saving || removing || (!globalEnabled && !providerReady)}
+              onChange={(event) => void setGlobalEnabled(event.target.checked)}
+            />
+            <span aria-hidden="true" />
+          </span>
+        </label>
+      </header>
       <div className="settings-layout model-provider-panel web-search-provider-panel">
         <nav className="provider-list" aria-label="联网搜索提供商">
           <div className="provider-nav-group">
@@ -270,9 +307,6 @@ export function WebSearchSettings() {
               <p id="web-search-key-note" className="web-search-note" role="status">
                 {keyNote}
               </p>
-            )}
-            {globalEnabled === false && (
-              <p className="web-search-note">「扩展能力」中的联网搜索已关闭，新对话不会使用联网工具。</p>
             )}
             {settings?.hasApiKey && settings.credentialsPersisted === false && (
               <p className="web-search-storage-note" role="status">

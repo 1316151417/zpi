@@ -379,13 +379,12 @@ test("capability settings add AskUserQuestion to a new chat, with paging, custom
       "指令 · 文件内容复用",
       "指令 · 主动推进",
       "工具 · 向用户提问",
-      "联网搜索",
-      "子智能体",
     ]);
     for (const row of await settings.locator(".settings-row").all()) {
       const toggle = row.getByRole("checkbox");
       const checked = await toggle.isChecked();
       await row.locator("strong").click();
+      await expect(row.locator("small")).toBeVisible();
       await row.locator("small").click();
       await expect(toggle).toBeChecked({ checked });
     }
@@ -403,7 +402,7 @@ test("capability settings add AskUserQuestion to a new chat, with paging, custom
         };
       }),
     );
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(6);
     for (const row of rows) {
       expect(row.toggleLeft).toBeGreaterThan(row.copyRight ?? 0);
       expect(row.height).toBeLessThan(100);

@@ -208,11 +208,6 @@
   color: var(--color-text-subtle);
   font-size: var(--text-body);
 }
-.command-settings .command-editor-description {
-  margin: -12px 0 0;
-  color: var(--color-text-subtle);
-  font-size: var(--text-body);
-}
 .command-form {
   display: flex;
   flex-direction: column;

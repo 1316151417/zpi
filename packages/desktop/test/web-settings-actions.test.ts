@@ -178,7 +178,7 @@ test("the sole provider entry preserves the credential draft and never reads or 
   expect(input().value).toBe("fake-unsaved-replacement");
   expect(mocks.save).not.toHaveBeenCalled();
   await click(button("取消编辑"));
-  await click(query<HTMLInputElement>('input[role="switch"]'));
+  await click(query<HTMLInputElement>('.provider-heading-actions input[role="switch"]'));
   expect(nav.querySelector(".provider-status.disabled")).not.toBeNull();
   expect(mocks.save).toHaveBeenLastCalledWith({ provider: "deepseek", enabled: false });
 });
@@ -259,7 +259,8 @@ for (const action of [
     if (action === "settings") await rerenderSettings();
     if (action === "locked")
       await rerenderSettings({ hasApiKey: false, apiKeyLength: 0, credentialsLocked: true });
-    if (action === "disable") await click(query<HTMLInputElement>('[role="switch"]'));
+    if (action === "disable")
+      await click(query<HTMLInputElement>('.provider-heading-actions input[role="switch"]'));
     if (action === "remove") await openRemoval();
     if (action === "unmount") {
       await act(async () => root.unmount());
@@ -302,7 +303,7 @@ test("disabled provider can reveal its key, and its switch never writes a displa
   await rerenderSettings({ enabled: false });
   await click(eye());
   expect(input().value).toBe(secret);
-  await click(query<HTMLInputElement>('[role="switch"]'));
+  await click(query<HTMLInputElement>('.provider-heading-actions input[role="switch"]'));
   expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ provider: "deepseek", enabled: true });
   expect(input().value).not.toBe(secret);
 });

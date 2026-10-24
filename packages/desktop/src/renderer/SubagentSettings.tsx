@@ -26,6 +26,7 @@ import {
   type SubagentProfile,
 } from "../shared/subagents.ts";
 import { ProviderLogo } from "./ProviderLogo.tsx";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
@@ -40,6 +41,10 @@ const agentColorLabels: Record<(typeof agentColors)[number], string> = {
   purple: "紫色",
   red: "红色",
   yellow: "黄色",
+};
+const builtInDescriptions: Record<string, string> = {
+  "general-purpose": "处理复杂任务与多步骤工作",
+  Explore: "只读搜索和分析代码",
 };
 
 function AgentModelSelect({
@@ -208,6 +213,7 @@ export function SubagentSettings() {
   const sessionId = useStore((state) => state.selected ?? null);
   const [catalog, setCatalog] = useState<SubagentCatalog>({ agents: [], diagnostics: [] });
   const providers = useStore((state) => state.settings?.providers ?? []);
+  const enabled = useStore((state) => state.settings?.capabilities?.subagents ?? true);
   const [deleteTarget, setDeleteTarget] = useState<SubagentProfile>();
   const [listScope, setListScope] = useState<SaveSubagentInput["scope"]>("user");
   const [search, setSearch] = useState("");
@@ -250,6 +256,17 @@ export function SubagentSettings() {
       setBusy(false);
     }
   };
+  const setEnabled = async (enabled: boolean) => {
+    setBusy(true);
+    setError("");
+    try {
+      useStore.setState({ settings: unwrap(await window.zpi.setCapabilityEnabled("subagents", enabled)) });
+    } catch (error) {
+      setError(userErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
   const edit = (agent?: SubagentProfile) => {
     setEditing(agent ?? "new");
     setConfig(
@@ -288,6 +305,30 @@ export function SubagentSettings() {
   );
   return (
     <section className="subagent-settings" aria-label="子智能体管理">
+      <header className="settings-page-heading">
+        <div className="settings-heading-title">
+          <h1>子智能体</h1>
+          <SettingsHelp
+            label="子智能体"
+            text="允许助手委派任务。开关在新对话首次发送时生效，已有对话保留原配置；关闭后仍可管理智能体。"
+          />
+        </div>
+        <label className="settings-enable">
+          <span>启用子智能体</span>
+          <span className="settings-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="启用子智能体"
+              aria-checked={enabled}
+              checked={enabled}
+              disabled={busy}
+              onChange={(event) => void setEnabled(event.target.checked)}
+            />
+            <span aria-hidden="true" />
+          </span>
+        </label>
+      </header>
       <header className={`subagent-settings-heading${editing ? " editing" : ""}`}>
         <div>
           {editing ? (
@@ -303,7 +344,7 @@ export function SubagentSettings() {
               onChange={setListScope}
             />
           )}
-          <h2>{editing ? (editing === "new" ? "新建子智能体" : "编辑子智能体") : "子智能体"}</h2>
+          <h2>{editing ? (editing === "new" ? "新建子智能体" : "编辑子智能体") : "全部"}</h2>
           {!editing && <small>{visibleAgents.length}</small>}
         </div>
         {!editing && (
@@ -324,13 +365,6 @@ export function SubagentSettings() {
           </label>
         )}
       </header>
-      {editing && (
-        <p className="subagent-form-description">
-          {editing === "new"
-            ? "填写子智能体名称、工具和系统提示词，保存后返回列表。"
-            : "修改子智能体配置，保存后返回列表。"}
-        </p>
-      )}
       {error && (
         <p className="run-error" role="alert">
           {error}
@@ -587,7 +621,10 @@ export function SubagentSettings() {
                                 {agent.name}
                               </button>
                             ) : (
-                              <strong>{agent.name}</strong>
+                              <span className="settings-label">
+                                <strong>{agent.name}</strong>
+                                <SettingsHelp label={`${agent.name}用途`} text={agent.description} />
+                              </span>
                             )}
                             {agent.scope !== "built-in" && (
                               <span className="subagent-tools-badge">
@@ -599,7 +636,11 @@ export function SubagentSettings() {
                                 ? "全部工具"
                                 : `${agent.tools.length} 个工具`}
                             </span>
-                            <p title={agent.description}>{agent.description}</p>
+                            <p title={agent.description}>
+                              {agent.scope === "built-in"
+                                ? (builtInDescriptions[agent.name] ?? agent.description)
+                                : agent.description}
+                            </p>
                           </div>
                           {agent.scope === "built-in" ? (
                             <AgentModelSelect
@@ -665,7 +706,6 @@ export function SubagentSettings() {
                     <div className="subagent-empty">
                       <div>
                         <strong>没有找到子智能体</strong>
-                        <p>填写子智能体名称、工具和系统提示词，保存后返回列表。</p>
                       </div>
                       <button
                         className="primary subagent-create"

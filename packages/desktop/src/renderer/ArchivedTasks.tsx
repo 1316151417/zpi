@@ -3,6 +3,7 @@ import { Folder, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { deleteSessionWithPanes } from "./pane-store.ts";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { refresh, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
@@ -59,7 +60,13 @@ export function ArchivedTasks() {
   return (
     <div className="archived-tasks">
       <div className="archived-heading">
-        <h1>已归档任务</h1>
+        <div className="settings-heading-title">
+          <h1>已归档任务</h1>
+          <SettingsHelp
+            label="已归档任务"
+            text="可恢复任务，或永久删除任务及其会话记录、图片附件和文件变更快照。删除前会再次确认。"
+          />
+        </div>
         <button
           className="archived-delete-all"
           disabled={busy || !records.length}
@@ -69,7 +76,6 @@ export function ArchivedTasks() {
           全部删除
         </button>
       </div>
-      <p className="settings-intro">恢复任务，或永久删除任务及其会话记录、图片附件和文件变更快照。</p>
       <label className="archived-search">
         <Search size={16} />
         <input

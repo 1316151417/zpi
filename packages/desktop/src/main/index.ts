@@ -644,6 +644,12 @@ async function launch(): Promise<void> {
         editUserMessage: 3,
         abortRun: 1,
         getSettings: 0,
+        getMemorySettings: 0,
+        saveMemorySettings: 1,
+        getMemoryStatus: 1,
+        checkMemoryNow: 1,
+        clearLongMemory: 0,
+        openMemoryFile: 3,
         updateShortcuts: 1,
         setShortcutCapture: 1,
         beginChatGPTLogin: 1,
@@ -1236,6 +1242,27 @@ async function launch(): Promise<void> {
         case "getSettings":
           value = settings.get();
           break;
+        case "getMemorySettings":
+          value = settings.getMemorySettings();
+          break;
+        case "saveMemorySettings":
+          value = await host.saveMemorySettings(args[0] as import("../shared/memory.ts").MemorySettings);
+          break;
+        case "getMemoryStatus":
+          value = await host.getMemoryStatus(sessionContext());
+          break;
+        case "checkMemoryNow":
+          value = await host.checkMemoryNow(sessionContext());
+          break;
+        case "clearLongMemory":
+          value = await host.clearLongMemory();
+          break;
+        case "openMemoryFile": {
+          const result = await host.openMemoryFile(sessionContext(), string(1), string(2));
+          if (result.exists && (args[2] === "edit" || args[1] === "long")) await openFile(result.path);
+          value = result;
+          break;
+        }
         case "beginChatGPTLogin": {
           const login = await chatgptAuth.begin(args[0] === null ? null : string(0));
           try {

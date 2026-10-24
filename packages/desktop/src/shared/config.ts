@@ -3,7 +3,7 @@ import { anthropicMessagesCompatKeys, defaultThinkingLevel, thinkingChoices } fr
 import { defaultCodePreview } from "zpi-ui/code-preview";
 import type { InterfacePreferences, ModelSettings, ReasoningPreset, SessionCapabilities } from "./bridge.ts";
 export const defaultCapabilities: SessionCapabilities = {
-  webSearch: true,
+  webSearch: false,
   communicationStyle: true,
   subagents: true,
   askUserQuestion: true,

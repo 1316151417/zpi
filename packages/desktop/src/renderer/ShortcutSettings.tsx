@@ -13,6 +13,7 @@ import {
   shortcutLabelParts,
   validateShortcuts,
 } from "../shared/shortcuts.ts";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { ShortcutRecordingRequest } from "./shortcut-recording.ts";
 import { matchesShortcutSearch, shortcutScopeLabels } from "./shortcut-settings-model.ts";
 import { report, useStore } from "./store.ts";
@@ -166,7 +167,13 @@ export function ShortcutSettings() {
   return (
     <div className="shortcut-settings" data-shortcut-recording={exclusive}>
       <div className="shortcut-settings-heading">
-        <h1>键盘快捷键</h1>
+        <div className="settings-heading-title">
+          <h1>键盘快捷键</h1>
+          <SettingsHelp
+            label="快捷键"
+            text="点击键位或编辑图标录入，Esc 取消。更改后点击保存；全局快捷键注册失败时保留原设置。"
+          />
+        </div>
         <label className="shortcut-enable">
           <span>启用快捷键</span>
           <span className="settings-switch">
@@ -350,9 +357,6 @@ export function ShortcutSettings() {
         </table>
       </div>
       <div className="shortcut-settings-footer">
-        <p className="shortcut-settings-hint">
-          点击键位或编辑图标录入，Esc 取消。全局快捷键注册失败时保留原设置。
-        </p>
         <button
           className="primary"
           disabled={busy || exclusive || Boolean(validation) || !changed}

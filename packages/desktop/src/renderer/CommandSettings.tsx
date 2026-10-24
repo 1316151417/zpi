@@ -20,6 +20,7 @@ import { createPortal } from "react-dom";
 import { ActionHint } from "zpi-ui";
 import type { CustomCommand, CustomCommandInput } from "../shared/custom-commands.ts";
 import { CommandImportDialog } from "./CommandImportDialog.tsx";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
@@ -193,10 +194,10 @@ export function CommandSettings({
               </nav>,
               breadcrumbContainer,
             )}
-          <h3>{editor === "new" ? "新建命令" : "编辑命令"}</h3>
-          <p className="command-editor-description">
-            {editor === "new" ? "填写命令名称和提示词，保存后返回列表。" : "修改命令内容，保存后返回列表。"}
-          </p>
+          <h3 className="settings-label">
+            {editor === "new" ? "新建命令" : "编辑命令"}{" "}
+            <SettingsHelp label="命令编辑" text="名称和提示词必填，描述及参数提示可选。保存后返回列表。" />
+          </h3>
           {error && (
             <p className="run-error" role="alert">
               {error}
@@ -359,7 +360,6 @@ export function CommandSettings({
               ) : (
                 <>
                   <h3>尚未安装命令</h3>
-                  <p>新建命令，或从外部 Agent 导入已有命令。</p>
                   <button type="button" className="command-new" onClick={() => setEditor("new")}>
                     <Plus size={16} />
                     新建

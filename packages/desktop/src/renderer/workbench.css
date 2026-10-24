@@ -1173,8 +1173,7 @@
   overflow: visible;
   max-height: none;
 }
-.settings-screen .settings-intro,
-.settings-screen .global-settings-note {
+.settings-screen .settings-intro {
   font-size: var(--text-body);
   color: var(--color-text-muted);
   line-height: 24px;
@@ -1202,7 +1201,8 @@
   gap: 4px;
   min-width: 0;
 }
-.settings-row-copy strong {
+.settings-row-copy strong,
+.settings-row > .settings-label > strong {
   font-size: var(--text-body);
   font-weight: 500;
 }
@@ -1371,7 +1371,7 @@
   font-size: var(--text-body);
   font-weight: 500;
 }
-.resource-group-heading h3 span {
+.resource-group-heading h3 > span:not(.settings-label) {
   font-size: var(--text-small);
   font-weight: 400;
   color: var(--color-text-subtle);
@@ -1433,11 +1433,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.settings-screen .skill-directories {
-  font-size: var(--text-small);
-  overflow-wrap: anywhere;
-  color: var(--color-text-subtlest);
 }
 .resource-empty {
   padding: 16px;
@@ -3115,6 +3110,9 @@
   flex: 1;
   margin: 0;
 }
+.archived-heading > .settings-heading-title {
+  flex: 1;
+}
 .archived-delete-all {
   display: flex;
   align-items: center;
@@ -3222,8 +3220,14 @@
 }
 .chatgpt-actions {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+.chatgpt-actions > button {
+  box-sizing: border-box;
+  font-size: var(--text-body);
+  line-height: 1.5;
 }
 .chatgpt-login-pending {
   margin-top: 14px;
@@ -4897,10 +4901,6 @@
   justify-content: center;
   border: 1px solid var(--color-border);
 }
-.subagent-form-description {
-  margin: -20px 0 -8px;
-  color: var(--color-text-subtle);
-}
 .subagent-search input::-webkit-search-cancel-button {
   appearance: none;
 }
@@ -5752,6 +5752,34 @@
   border-color: var(--color-border-strong);
   background: var(--color-fill);
 }
+.settings-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.settings-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--color-text-subtlest);
+}
+.settings-help:hover:not(:disabled),
+.settings-help:focus-visible {
+  color: var(--color-text);
+}
+.settings-help-tooltip {
+  max-width: min(320px, calc(100vw - 24px));
+}
+.settings-heading-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-page-heading,
 .shortcut-settings .shortcut-settings-heading {
   margin-bottom: 16px;
   display: flex;
@@ -5761,15 +5789,31 @@
   font-size: var(--text-small);
   color: var(--color-text-subtle);
 }
+.settings-page-heading h1,
 .shortcut-settings .shortcut-settings-heading h1 {
   color: var(--color-text);
   margin: 0;
 }
+.settings-page-heading .settings-enable,
 .shortcut-settings .shortcut-enable {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--color-text);
+}
+.settings-page-heading {
+  flex-wrap: wrap;
+}
+.settings-page-heading .settings-enable {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.web-search-settings .settings-page-heading,
+.subagent-settings > .settings-page-heading {
+  margin-bottom: 0;
+}
+.model-provider-section .model-settings-toolbar {
+  justify-content: flex-end;
 }
 .shortcut-settings .shortcut-table-scroll {
   overflow-x: auto;
@@ -5922,14 +5966,8 @@
 .shortcut-settings .shortcut-settings-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
-}
-.shortcut-settings .shortcut-settings-hint {
-  margin: 0;
-  color: var(--color-text-subtle);
-  font-size: var(--text-small);
-  line-height: 1.5;
 }
 .shortcut-settings .shortcut-settings-footer button {
   flex-shrink: 0;

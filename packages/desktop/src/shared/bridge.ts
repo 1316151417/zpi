@@ -21,6 +21,7 @@ import type {
   CustomCommandUpdate,
 } from "./custom-commands.ts";
 import type { EditorInfo } from "./editors.ts";
+import type { MemorySettings, MemoryStatus } from "./memory.ts";
 import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
 import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
 
@@ -366,6 +367,16 @@ export interface DesktopBridge {
     suggestedName: string,
   ): Promise<Result<{ canceled: boolean; path?: string }>>;
   getInstalledEditors(): Promise<Result<EditorInfo[]>>;
+  getMemorySettings(): Promise<Result<MemorySettings>>;
+  saveMemorySettings(input: MemorySettings): Promise<Result<MemorySettings>>;
+  getMemoryStatus(sessionId: string | null): Promise<Result<MemoryStatus>>;
+  checkMemoryNow(sessionId: string | null): Promise<Result<MemoryStatus>>;
+  clearLongMemory(): Promise<Result<MemoryStatus>>;
+  openMemoryFile(
+    sessionId: string | null,
+    scope: "user" | "project" | "long",
+    action: "view" | "edit",
+  ): Promise<Result<{ path: string; content: string; exists: boolean }>>;
   openInEditor(sessionId: string, path: string, editorId: string): Promise<Result<void>>;
   fileAction(
     sessionId: string,
@@ -513,6 +524,12 @@ export interface DesktopBridge {
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
 }
 export const methods = [
+  "getMemorySettings",
+  "saveMemorySettings",
+  "getMemoryStatus",
+  "checkMemoryNow",
+  "clearLongMemory",
+  "openMemoryFile",
   "openQuickChat",
   "setSessionUnread",
   "getTaskGroups",

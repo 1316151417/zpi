@@ -22,11 +22,27 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await page.getByRole("button", { name: "设置", exact: true }).click();
       await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-      const enabled = page.getByRole("checkbox", { name: "联网搜索", exact: true });
-      await enabled.check();
+      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();
+      const enabled = page.getByRole("switch", { name: "启用联网搜索", exact: true });
+      const header = page.locator(".web-search-settings .settings-page-heading");
+      await expect(header.getByRole("heading", { name: "联网搜索", exact: true })).toBeVisible();
+      await expect(header.getByRole("switch", { name: "启用联网搜索", exact: true })).toBeVisible();
+      const headerLayout = await header.evaluate((element) => {
+        const title = element.querySelector("h1")?.getBoundingClientRect();
+        const toggle = element.querySelector(".settings-enable")?.getBoundingClientRect();
+        if (!title || !toggle) throw new Error("Missing header controls");
+        return {
+          gap: toggle.left - title.right,
+          centers: Math.abs((toggle.top + toggle.bottom - title.top - title.bottom) / 2),
+        };
+      });
+      expect(headerLayout.gap).toBeGreaterThan(32);
+      expect(headerLayout.centers).toBeLessThan(2);
+      await expect(enabled).not.toBeChecked();
+      await expect(enabled).toBeDisabled();
       const key = page.getByLabel("API Key", { exact: true });
-      const originalViewport = page.viewportSize();
+      const originalViewport = page.viewportSize() ?? { width: 1280, height: 900 };
       for (const width of [1280, 800, 640, 480]) {
         await page.setViewportSize({ width, height: 900 });
         const panel = page.locator(".web-search-provider-panel");
@@ -55,7 +71,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         expect(layout.height).toBeLessThan(400);
         expect(layout.overflow).toBe(false);
       }
-      if (originalViewport) await page.setViewportSize(originalViewport);
+      await page.setViewportSize(originalViewport);
       await expect(key).toHaveAttribute("type", "password");
       await key.fill("fake-desktop-web-key");
       await page.getByRole("button", { name: "显示 API Key", exact: true }).click();
@@ -67,6 +83,13 @@ for (const colorScheme of ["light", "dark"] as const) {
       const settings = await page.evaluate(() => window.zpi.getSettings());
       expect(settings.ok && settings.value.webSearch.hasApiKey).toBe(true);
       expect(JSON.stringify(settings)).not.toContain("fake-desktop-web-key");
+      await expect(enabled).toBeDisabled();
+      const providerSwitch = page.getByRole("switch", { name: "启用供应商 DeepSeek 联网服务", exact: true });
+      await providerSwitch.click();
+      await expect(providerSwitch).toBeChecked();
+      await expect(enabled).toBeEnabled();
+      await enabled.click();
+      await expect(enabled).toBeChecked();
       await page.getByRole("button", { name: "模型", exact: true }).click();
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();
       await expect(key).toHaveValue("*".repeat("fake-desktop-web-key".length));
@@ -88,6 +111,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.getByRole("menuitem", { name: "移除 API Key", exact: true }).click();
       await page.getByRole("button", { name: "确认移除", exact: true }).click();
       await expect(page.getByText("已移除 API Key。", { exact: true })).toBeVisible();
+      await expect(enabled).not.toBeChecked();
+      await expect(enabled).toBeDisabled();
       await expect(page.getByRole("menuitem", { name: "移除 API Key", exact: true })).toHaveCount(0);
       await page.screenshot({ path: `test-results/web-settings-${colorScheme}.png`, animations: "disabled" });
     } finally {

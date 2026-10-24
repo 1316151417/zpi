@@ -40,6 +40,7 @@ import type {
   WebSearchSettingsInput,
 } from "../shared/bridge.ts";
 import {
+  availablePresets,
   defaultCapabilities,
   defaultPreferences,
   modelDefaults,
@@ -47,6 +48,7 @@ import {
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
+import { defaultMemorySettings, type MemorySettings, memorySettingLimits } from "../shared/memory.ts";
 import { quickChatSelectionIsValid } from "../shared/quick-chat-settings.ts";
 import {
   defaultShortcuts,
@@ -199,6 +201,13 @@ export class SettingsStore {
         this.data.webSearchEnabled = Boolean(this.webApiKey);
         migrated = true;
       }
+      if (
+        this.data.capabilities.webSearch &&
+        (!this.data.webSearchEnabled || (!this.unreadCredentials && !this.webApiKey))
+      ) {
+        this.data.capabilities.webSearch = false;
+        migrated = true;
+      }
       if (migrated) this.state.setSetting("app", this.data);
     } catch (error) {
       this.close();
@@ -274,6 +283,9 @@ export class SettingsStore {
     const data = {
       ...this.data,
       ...(input.enabled !== undefined ? { webSearchEnabled: input.enabled } : {}),
+      ...((input.enabled ?? this.data.webSearchEnabled) && webApiKey
+        ? {}
+        : { capabilities: { ...this.data.capabilities, webSearch: false } }),
     };
     if (input.apiKey === undefined) return this.savePublic(data);
     this.persist(data, this.credentials, webApiKey);
@@ -285,6 +297,72 @@ export class SettingsStore {
     if (selection && !quickChatSelectionIsValid(this.get().providers, selection))
       throw new Error("configuration: 请选择可用的模型和思考级别");
     return this.savePublic({ ...this.data, quickChat: structuredClone(input) });
+  }
+  getMemorySettings(): MemorySettings {
+    const value = this.state.getSetting<MemorySettings>("memory.settings") ?? defaultMemorySettings;
+    this.validateMemorySettings(value);
+    return structuredClone(value);
+  }
+  saveMemorySettings(input: MemorySettings): MemorySettings {
+    this.validateMemorySettings(input);
+    const previous = this.getMemorySettings();
+    for (const key of ["selection", "extractSelection", "consolidateSelection"] as const) {
+      const selection = input[key];
+      if (!selection) continue;
+      const provider = this.data.providers.find((item) => item.id === selection.provider);
+      const model = provider?.models.find((item) => item.id === selection.modelId);
+      // Missing models remain saved so the pipeline can report the exact unavailable selection.
+      // Provider edits may invalidate a saved selection; that must not prevent pausing or disabling memory.
+      const unchanged =
+        previous[key]?.provider === selection.provider &&
+        previous[key]?.modelId === selection.modelId &&
+        previous[key]?.reasoning === selection.reasoning;
+      if (
+        !unchanged &&
+        provider &&
+        model &&
+        !availablePresets(resolveModel(provider, model)).includes(selection.reasoning)
+      )
+        throw new Error("configuration: 记忆模型不支持所选思考级别");
+    }
+    this.state.setSetting("memory.settings", structuredClone(input));
+    return this.getMemorySettings();
+  }
+  private validateMemorySettings(value: unknown): asserts value is MemorySettings {
+    if (!isJsonObject(value)) throw new Error("invalid_input: 记忆设置必须为对象");
+    assertSupportedOptions(value, Object.keys(defaultMemorySettings), "invalid_input: memory settings");
+    for (const name of ["short", "long", "generate"])
+      if (typeof value[name] !== "boolean") throw new Error("invalid_input: 记忆开关无效");
+    if (value.modelMode !== "follow" && value.modelMode !== "manual")
+      throw new Error("invalid_input: 记忆模型策略无效");
+    for (const name of ["selection", "extractSelection", "consolidateSelection"]) {
+      const selection = value[name];
+      if (selection === null) continue;
+      if (!isJsonObject(selection)) throw new Error("invalid_input: 记忆模型配置无效");
+      assertSupportedOptions(
+        selection,
+        ["provider", "modelId", "reasoning"],
+        "invalid_input: memory model selection",
+      );
+      for (const key of ["provider", "modelId", "reasoning"])
+        if (
+          typeof selection[key] !== "string" ||
+          !selection[key].trim() ||
+          selection[key].length > 256 ||
+          /[\r\n\0]/.test(selection[key])
+        )
+          throw new Error("invalid_input: 记忆模型配置无效");
+    }
+    for (const [name, limits] of Object.entries(memorySettingLimits)) {
+      const number = value[name];
+      if (
+        typeof number !== "number" ||
+        !Number.isInteger(number) ||
+        number < limits.min ||
+        number > limits.max
+      )
+        throw new Error(`invalid_input: ${name} 必须为 ${limits.min}–${limits.max} 的整数`);
+    }
   }
   getModel(selection: ModelSelection): Model | undefined {
     const p = this.data.providers.find((p) => p.id === selection.provider),
@@ -496,6 +574,11 @@ export class SettingsStore {
   setCapabilityEnabled(name: CapabilityName, enabled: boolean): PublicSettings {
     if (!Object.hasOwn(defaultCapabilities, name) || typeof enabled !== "boolean")
       throw new Error("invalid_input: 无效扩展能力");
+    if (name === "webSearch" && enabled) {
+      if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
+      if (!this.data.webSearchEnabled || !this.webApiKey)
+        throw new Error("configuration: 请先配置并启用一个联网搜索提供商");
+    }
     return this.savePublic({ ...this.data, capabilities: { ...this.data.capabilities, [name]: enabled } });
   }
   getTemplate(): PromptTemplate {

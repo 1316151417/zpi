@@ -32,6 +32,12 @@ ipcRenderer.on("zpi:prepare-quit", async (_event, request: number) => {
   }
 });
 const bridge: DesktopBridge = {
+  getMemorySettings: () => call("getMemorySettings"),
+  saveMemorySettings: (input) => call("saveMemorySettings", input),
+  getMemoryStatus: (id) => call("getMemoryStatus", id),
+  checkMemoryNow: (id) => call("checkMemoryNow", id),
+  clearLongMemory: () => call("clearLongMemory"),
+  openMemoryFile: (id, scope, action) => call("openMemoryFile", id, scope, action),
   openQuickChat: () => call("openQuickChat"),
   setSessionUnread: (id) => call("setSessionUnread", id),
   getTaskGroups: () => call("getTaskGroups"),

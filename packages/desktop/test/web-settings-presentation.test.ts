@@ -37,7 +37,8 @@ afterEach(() => vi.unstubAllGlobals());
 const render = () => renderToStaticMarkup(createElement(WebSearchSettings));
 const source = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const keyInput = (markup: string) => markup.match(/<input[^>]*id="web-search-api-key"[^>]*>/)?.[0];
-const toggle = (markup: string) => markup.match(/<input[^>]*role="switch"[^>]*>/)?.[0];
+const toggle = (markup: string) =>
+  markup.match(/<input[^>]*aria-label="启用供应商 DeepSeek 联网服务"[^>]*>/)?.[0];
 
 test("unconfigured settings cannot enable and do not claim encryption failure", () => {
   const markup = render();
@@ -82,7 +83,7 @@ test("provider and global switches remain independent with one credential field"
   const markup = render();
   expect(toggle(markup)).toContain('aria-checked="true"');
   expect(toggle(markup)).not.toContain("disabled");
-  expect(markup).toContain("「扩展能力」中的联网搜索已关闭");
+  expect(markup.match(/<input[^>]*aria-label="启用联网搜索"[^>]*>/)?.[0]).not.toContain('checked=""');
   expect(markup.match(/type="password"/g)).toHaveLength(1);
   expect(markup).not.toContain('type="radio"');
   expect(markup).not.toContain("Base URL");
@@ -130,10 +131,11 @@ test("the compact model-style layout lists only DeepSeek beside the existing edi
   expect(css).toMatch(/\.provider-detail-heading\s*\{\s*flex-wrap: wrap;/);
   expect(css).toMatch(/@media \(max-width: 1023px\)[\s\S]*\.provider-status\s*\{\s*display: none;/);
 });
-test("default-on web capability and model settings navigation preserve their order", () => {
+test("feature switches live in their own pages and model navigation preserves its order", () => {
   const markup = renderToStaticMarkup(createElement(CapabilitySettings));
-  expect(markup.indexOf('aria-label="联网搜索"')).toBeLessThan(markup.indexOf('aria-label="子智能体"'));
-  expect(markup.match(/<input[^>]*aria-label="联网搜索"[^>]*>/)?.[0]).toContain("checked");
+  expect(markup).not.toContain('aria-label="联网搜索"');
+  expect(markup).not.toContain('aria-label="子智能体"');
+  expect(render()).toContain('aria-label="启用联网搜索"');
   const page = source("../src/renderer/SettingsPage.tsx");
   expect(page.indexOf('["models", "模型", Braces]')).toBeGreaterThan(
     page.indexOf('["commands", "命令", Terminal]'),

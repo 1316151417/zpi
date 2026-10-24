@@ -7,6 +7,7 @@ import {
   quickChatSelection,
 } from "../shared/quick-chat-settings.ts";
 import { defaultShortcuts, formatShortcut } from "../shared/shortcuts.ts";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
@@ -65,37 +66,37 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
   };
   return (
     <section className="quick-chat-settings" aria-label="快速对话设置">
-      <p className="settings-intro">临时对话，不保存到任务列表</p>
-      <p className="settings-hint">
-        可用 read、bash 及已启用的联网工具；只读要求依赖提示词，bash 仍可读写本机文件。
-      </p>
       <div className="settings-group">
         <div className="settings-row">
           <span className="settings-row-copy">
-            <strong>全局快捷键</strong>
+            <span className="settings-label">
+              <strong>全局快捷键</strong>
+              <SettingsHelp
+                label="快速对话快捷键"
+                text={
+                  window.zpi.platform === "darwin"
+                    ? `截图：${formatShortcut(shortcuts.bindings["quick-chat-screenshot"], window.zpi.platform)}\n选中文字：${formatShortcut(shortcuts.bindings["quick-chat-selection"], window.zpi.platform)}\n剪贴板：${formatShortcut(shortcuts.bindings["quick-chat-clipboard"], window.zpi.platform)}`
+                    : "快捷键可在快捷键设置中修改或停用。"
+                }
+              />
+            </span>
             <small>
               显示或隐藏：{formatShortcut(shortcuts.bindings["quick-chat"], window.zpi.platform)}
               {" · "}新建：{formatShortcut(shortcuts.bindings["quick-chat-new"], window.zpi.platform)}
               {!shortcuts.enabled && "（快捷键已停用）"}
             </small>
-            {window.zpi.platform === "darwin" && (
-              <small>
-                截图：{formatShortcut(shortcuts.bindings["quick-chat-screenshot"], window.zpi.platform)}
-                {" · "}选中文字：
-                {formatShortcut(shortcuts.bindings["quick-chat-selection"], window.zpi.platform)}
-                {" · "}剪贴板：
-                {formatShortcut(shortcuts.bindings["quick-chat-clipboard"], window.zpi.platform)}
-              </small>
-            )}
           </span>
           <button type="button" className="settings-action-button" disabled={saving} onClick={onEditShortcut}>
             修改快捷键
           </button>
         </div>
         <div className="settings-row">
-          <span className="settings-row-copy">
+          <span className="settings-label">
             <strong>默认模型</strong>
-            <small>仅用于快速对话，与任务的模型选择独立。</small>
+            <SettingsHelp
+              label="快速对话默认模型"
+              text="仅用于快速对话，与任务模型独立。更改自动保存，从下一次发送起生效，不中断当前回复。未指定或配置失效时，按提供商和模型顺序使用首个可用模型及其默认思考级别。"
+            />
           </span>
           <SettingsSelect
             label="快速对话默认模型"
@@ -154,10 +155,6 @@ export function QuickChatSettings({ onEditShortcut }: { onEditShortcut: () => vo
           </button>
         </div>
       </div>
-      <p className="settings-hint">
-        更改自动保存，从下一次发送起生效，不会中断当前回复。
-        未指定默认模型，或默认模型、思考级别不可用时，按提供商和模型顺序使用首个可用模型及其默认思考级别。
-      </p>
       {!effective ? (
         <p role="status" className="settings-hint">
           暂无可用模型，请先在「模型」设置中添加并启用模型。

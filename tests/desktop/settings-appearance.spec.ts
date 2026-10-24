@@ -162,14 +162,13 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
     const title = settings.locator("h1");
     const heading = settings.locator(".interface-settings h2").first();
     const label = settings.locator(".settings-row-copy strong").first();
-    const description = settings.locator(".settings-row-copy small").first();
+    await expect(settings.locator(".settings-row-copy small")).toHaveCount(0);
     await expectZCodeSystemFont(page, [
       ".settings-back",
       ".settings-tabs button",
       ".settings-content h1",
       ".interface-settings h2",
       ".settings-row-copy strong",
-      ".settings-row-copy small",
       ".settings-select-trigger .settings-select-value",
     ]);
     await expect(tab.locator("svg")).toHaveCSS("width", "16px");
@@ -202,9 +201,6 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
       await expect(heading).toHaveCSS("font-weight", "600");
       await expect(label).toHaveCSS("font-size", "14px");
       await expect(label).toHaveCSS("font-weight", "500");
-      await expect(description).toHaveCSS("font-size", "14px");
-      await expect(description).toHaveCSS("line-height", "24px");
-      expect(await description.evaluate((el) => getComputedStyle(el).color)).toContain("/ 0.6)");
       expect(await label.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(
         /^ui-sans-serif, system-ui, sans-serif,/,
       );
@@ -231,7 +227,6 @@ test("settings use ZCode typography and keep titlebar dragging separate from con
       await fontSize.fill(String(size));
       await fontSize.press("Enter");
       await expect(label).toHaveCSS("font-size", `${size}px`);
-      await expect(description).toHaveCSS("font-size", `${size}px`);
       await expect(page.locator("html")).toHaveCSS("font-size", "16px");
       await expect(settings.locator(".settings-select-trigger").first()).toHaveCSS("height", "32px");
       await expect(title).toHaveCSS("font-size", "30px");

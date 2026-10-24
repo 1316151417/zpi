@@ -89,14 +89,16 @@ afterEach(async () => {
 test("navigates from the real settings sidebar to quick chat and the existing shortcut editor", async () => {
   const tabs = [...container.querySelectorAll<HTMLButtonElement>(".settings-tabs button")];
   const labels = tabs.map((item) => item.getAttribute("aria-label"));
-  expect(labels.indexOf("快速对话")).toBe(labels.indexOf("子智能体") + 1);
+  expect(labels.indexOf("记忆")).toBe(labels.indexOf("子智能体") + 1);
+  expect(labels.indexOf("快速对话")).toBe(labels.indexOf("记忆") + 1);
   await click(query('button[aria-label="快速对话"]'));
   expect(query('button[aria-label="快速对话"]').getAttribute("aria-pressed")).toBe("true");
   expect(query('section[aria-label="快速对话设置"]').textContent).toContain("显示或隐藏：⌥Space");
   expect(query('section[aria-label="快速对话设置"]').textContent).toContain("新建：⌥⇧Space");
-  expect(container.textContent).toContain("临时对话，不保存到任务列表");
-  expect(container.textContent).toContain("可用 read、bash 及已启用的联网工具");
-  expect(container.textContent).toContain("只读要求依赖提示词，bash 仍可读写本机文件");
+  expect(container.textContent).not.toContain("临时对话，不保存到任务列表");
+  await act(async () => query<HTMLButtonElement>('button[aria-label="快速对话说明"]').focus());
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("临时对话，不保存到任务列表");
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("bash 仍可读写本机文件");
   expect(container.textContent).not.toContain("工具仅允许只读");
   expect(button("修改快捷键").classList.contains("settings-action-button")).toBe(true);
   await click(button("修改快捷键"));

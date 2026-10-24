@@ -210,6 +210,7 @@ test("web tools are gated by service, credentials and capability on every run an
   const f = await fixture();
   await run(f.host);
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true, apiKey: "fake-web-key" });
+  f.settings.setCapabilityEnabled("webSearch", true);
   await run(f.host);
   expect(toolNames(f.requests[1])).toEqual(["read", "bash", "web_search", "web_fetch"]);
   f.settings.setCapabilityEnabled("webSearch", false);
@@ -339,6 +340,7 @@ test("quick-chat web search and fetch execute through the existing provider and 
         : sse({ content: "Answer from source" }),
   );
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true, apiKey: "fake-web-key" });
+  f.settings.setCapabilityEnabled("webSearch", true);
   await run(f.host, "Find and read the example");
   expect(f.web).toEqual([
     "https://api.deepseek.com/v1/tools/search",
@@ -368,6 +370,7 @@ test.each(["capability", "service", "key"])(
       return toolCall("web_search", { query: "Example" });
     });
     f.settings.saveWebSearch({ provider: "deepseek", enabled: true, apiKey: "fake-web-key" });
+    f.settings.setCapabilityEnabled("webSearch", true);
     await run(f.host);
     expect(toolNames(f.requests[0])).toContain("web_search");
     expect(f.web).toEqual([]);
@@ -530,6 +533,7 @@ test("icons are authorized from quick search records and pending replies are dis
     index % 2 === 0 ? toolCall("web_search", { query: "Example" }) : sse({ content: "answer" }),
   );
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true, apiKey: "fake-web-key" });
+  f.settings.setCapabilityEnabled("webSearch", true);
   await run(f.host);
   let snapshot = f.host.getSnapshot();
   const load = vi.fn(async () => "data:image/png;base64,SAFE");

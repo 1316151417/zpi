@@ -111,6 +111,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "扩展能力",
       "联网搜索",
       "子智能体",
+      "记忆",
       "快速对话",
       "已归档任务",
     ]);
@@ -126,11 +127,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "指令 · 文件内容复用",
       "指令 · 主动推进",
       "工具 · 向用户提问",
-      "联网搜索",
-      "子智能体",
     ]);
     const capabilitySwitches = page.locator(".capability-settings input[type=checkbox]");
-    await expect(capabilitySwitches).toHaveCount(8);
+    await expect(capabilitySwitches).toHaveCount(6);
     await expect(page.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toHaveCount(0);
     for (const toggle of await capabilitySwitches.all()) await expect(toggle).toBeChecked();
     await page.screenshot({ path: "test-results/desktop-settings-capabilities.png" });
@@ -138,22 +137,22 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(
       page.locator(".resource-settings input, .resource-settings textarea, .resource-settings select"),
     ).toHaveCount(0);
-    await expect(page.locator(".resource-settings button")).toHaveCount(0);
+    await expect(page.locator(".resource-settings button")).toHaveCount(2);
     await expect(page.locator(".prompt-preview")).toContainText("Be concise in your responses");
     await expect(page.locator(".prompt-preview")).toContainText("Use bash for file operations");
     await expect(page.locator(".prompt-preview")).not.toContainText("PROJECT POLICY");
     await expect(page.locator(".prompt-preview")).toContainText("available_skills");
     await expect(page.locator(".prompt-preview")).not.toContainText("<system_rules>");
     await expect(page.getByRole("heading", { name: "基础系统提示词 只读", exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "追加指令 按启用能力生成 · 只读", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "追加指令 只读", exact: true })).toBeVisible();
     const rules = page.locator(".custom-instructions-preview");
     await expect(rules).toContainText("all answers, conclusions, and deliverables");
     await expect(rules).toContainText("Return web URLs as Markdown links");
     await expect(rules).toContainText("return local file references as Markdown links");
     const customInstructions = await rules.textContent();
-    await expect(page.locator(".resource-settings")).toContainText("按启用的扩展能力追加规则");
+    await expect(page.locator(".resource-settings")).not.toContainText("按启用的扩展能力追加规则");
+    await page.getByRole("button", { name: "追加指令说明", exact: true }).hover();
+    await expect(page.getByRole("tooltip")).toContainText("按启用的扩展能力追加规则");
     expect(
       await page.locator(".prompt-preview").evaluate((base) => {
         const rules = document.querySelector(".custom-instructions-preview");

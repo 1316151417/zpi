@@ -116,6 +116,20 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     await page.getByLabel("ChatGPT 回调地址", { exact: true }).fill(callback.href);
     await page.getByRole("button", { name: "提交回调地址", exact: true }).click();
     await expect(page.getByRole("button", { name: "退出登录", exact: true })).toBeVisible();
+    const loginButtons = await page.locator(".chatgpt-actions > button").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const css = getComputedStyle(button);
+        return {
+          height: button.getBoundingClientRect().height,
+          width: button.getBoundingClientRect().width,
+          fontSize: css.fontSize,
+          padding: css.padding,
+          lineHeight: css.lineHeight,
+        };
+      }),
+    );
+    expect(loginButtons).toHaveLength(2);
+    expect(loginButtons[0]).toEqual(loginButtons[1]);
     await expect(page.locator(".provider-model-row")).toHaveCount(4);
     await expect(page.locator('[data-model-id="gpt-6.1-sol"]')).toContainText("GPT-6.1 Sol");
     await expect(page.locator('[data-model-id="gpt-6.1-sol"]')).toContainText("待验证");
@@ -149,7 +163,7 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
     await expect(page.locator(".run-notice")).toContainText("账号可用性待验证");
     await page.getByRole("button", { name: "保存提供商", exact: true }).click();
     await expect(page.getByRole("alert")).toHaveCount(0);
-    await page.getByRole("button", { name: "重新登录 ChatGPT", exact: true }).click();
+    await page.getByRole("button", { name: "重新登录", exact: true }).click();
     await expect(page.getByRole("button", { name: "取消登录", exact: true })).toBeVisible();
     const returning = new URL(
       await app.evaluate(() => (globalThis as unknown as { oauthTest: { url: string } }).oauthTest.url),

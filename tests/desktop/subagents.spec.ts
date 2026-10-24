@@ -55,15 +55,29 @@ test("subagent capability manages profiles/models and opens complete read-only c
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await expect(page.getByRole("checkbox", { name: "子智能体", exact: true })).toBeChecked();
-    await page.getByRole("checkbox", { name: "子智能体", exact: true }).uncheck();
-    await expect(page.getByRole("region", { name: "子智能体管理" })).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: "子智能体", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "子智能体", exact: true }).click();
+    const enabled = page.getByRole("switch", { name: "启用子智能体", exact: true });
+    const header = page.locator(".subagent-settings > .settings-page-heading");
+    await expect(header.getByRole("heading", { name: "子智能体", exact: true })).toBeVisible();
+    await expect(header.getByRole("switch", { name: "启用子智能体", exact: true })).toBeVisible();
+    const headerLayout = await header.evaluate((element) => {
+      const title = element.querySelector("h1")?.getBoundingClientRect();
+      const toggle = element.querySelector(".settings-enable")?.getBoundingClientRect();
+      if (!title || !toggle) throw new Error("Missing header controls");
+      return {
+        gap: toggle.left - title.right,
+        centers: Math.abs((toggle.top + toggle.bottom - title.top - title.bottom) / 2),
+      };
+    });
+    expect(headerLayout.gap).toBeGreaterThan(32);
+    expect(headerLayout.centers).toBeLessThan(2);
+    await expect(enabled).toBeChecked();
+    await enabled.click();
+    await expect(enabled).not.toBeChecked();
     await expect(page.getByTestId("subagent-row-general-purpose")).toBeVisible();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await page.getByRole("checkbox", { name: "子智能体", exact: true }).check();
-    await expect(page.getByRole("region", { name: "子智能体管理" })).toHaveCount(0);
-    await page.getByRole("button", { name: "子智能体", exact: true }).click();
+    await enabled.click();
+    await expect(enabled).toBeChecked();
     await expect(page.getByTestId("subagent-row-general-purpose")).toBeVisible();
     await expect(page.getByTestId("subagent-row-Explore")).toBeVisible();
     const toolbarCreate = page.locator(".subagent-group-actions .primary");

@@ -40,16 +40,6 @@ const capabilities: {
     label: "工具 · 向用户提问",
     description: "让助手通过单选、多选或自定义回答澄清问题，再继续执行。",
   },
-  {
-    name: "webSearch",
-    label: "联网搜索",
-    description: "默认开启；需在「联网搜索」中配置 API Key 并启用 DeepSeek 服务，才能搜索和读取网页。",
-  },
-  {
-    name: "subagents",
-    label: "子智能体",
-    description: "将独立任务交给专门的智能体并行处理，支持自定义智能体和模型，在侧栏查看完整过程。",
-  },
 ];
 
 export function CapabilitySettings() {
@@ -69,10 +59,6 @@ export function CapabilitySettings() {
   };
   return (
     <div className="capability-settings">
-      <p className="global-settings-note">扩展能力在新对话首次发送时生效；已有对话保留原有配置。</p>
-      <h2 className="preview-heading">
-        内置能力 <small>{capabilities.length}</small>
-      </h2>
       <div className="settings-group">
         {capabilities.map(({ name, label, description }) => (
           <div className="settings-row" key={name}>

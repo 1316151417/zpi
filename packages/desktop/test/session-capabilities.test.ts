@@ -123,10 +123,10 @@ test("snapshots custom instructions on first send and keeps them when global set
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults session capabilities on and preserves saved choices in SQLite", async () => {
+test("defaults web search off and other capabilities on, preserving saved choices in SQLite", async () => {
   const f = await fixture();
   expect(f.settings.get().capabilities).toEqual({
-    webSearch: true,
+    webSearch: false,
     communicationStyle: true,
     subagents: true,
     askUserQuestion: true,
@@ -139,7 +139,7 @@ test("defaults session capabilities on and preserves saved choices in SQLite", a
   f.settings.setCapabilityEnabled("askUserQuestion", false);
   const restored = new SettingsStore(f.dir, codec);
   expect(restored.get().capabilities).toEqual({
-    webSearch: true,
+    webSearch: false,
     communicationStyle: true,
     subagents: true,
     askUserQuestion: false,

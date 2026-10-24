@@ -43,6 +43,40 @@ function savedData(state: StateStore) {
   return data;
 }
 
+test("global search requires an enabled provider and disabling or removing credentials turns it off", async () => {
+  const f = await fixture();
+  const store = f.open();
+  expect(() => store.setCapabilityEnabled("webSearch", true)).toThrow("请先配置并启用");
+  store.saveWebSearch({ provider: "deepseek", apiKey: "fake-search-key" });
+  expect(() => store.setCapabilityEnabled("webSearch", true)).toThrow("请先配置并启用");
+  store.saveWebSearch({ provider: "deepseek", enabled: true });
+  expect(store.get().capabilities.webSearch).toBe(false);
+  store.setCapabilityEnabled("webSearch", true);
+  expect(f.open().get().capabilities.webSearch).toBe(true);
+  store.saveWebSearch({ provider: "deepseek", enabled: false });
+  expect(f.open().get().capabilities.webSearch).toBe(false);
+  store.saveWebSearch({ provider: "deepseek", enabled: true });
+  expect(store.get().capabilities.webSearch).toBe(false);
+  store.setCapabilityEnabled("webSearch", true);
+  store.saveWebSearch({ provider: "deepseek", apiKey: "" });
+  expect(f.open().get().capabilities.webSearch).toBe(false);
+});
+
+test("legacy enabled preferences require a provider but valid configured choices survive restart", async () => {
+  const f = await fixture();
+  f.open().updatePreferences({ theme: "dark" });
+  const before = savedData(f.state);
+  f.state.setSetting("app", {
+    ...before,
+    capabilities: { ...(before.capabilities as object), webSearch: true },
+  });
+  const store = f.open();
+  expect(store.get().capabilities.webSearch).toBe(false);
+  store.saveWebSearch({ provider: "deepseek", apiKey: "fake-search-key", enabled: true });
+  store.setCapabilityEnabled("webSearch", true);
+  expect(f.open().get().capabilities.webSearch).toBe(true);
+});
+
 test("keeps a separate encrypted web key across restart and chat-provider edits", async () => {
   const f = await fixture();
   const store = f.open();
@@ -54,7 +88,7 @@ test("keeps a separate encrypted web key across restart and chat-provider edits"
     credentialsPersisted: false,
     credentialsLocked: false,
   });
-  expect(store.get().capabilities.webSearch).toBe(true);
+  expect(store.get().capabilities.webSearch).toBe(false);
   store.saveWebSearch({ provider: "deepseek", apiKey: "web-only-fake-key", enabled: true });
   store.saveProvider({
     id: "chat",
@@ -100,7 +134,7 @@ test("requires a key to enable and never enables a provider by saving or replaci
   expect(() => store.getWebSearchApiKey()).toThrow("已停用");
   store.saveWebSearch({ provider: "deepseek", apiKey: "replacement-fake-key" });
   expect(f.open().get().webSearch).toMatchObject({ enabled: false, hasApiKey: true });
-  expect(store.get().capabilities.webSearch).toBe(true);
+  expect(store.get().capabilities.webSearch).toBe(false);
   store.setCapabilityEnabled("webSearch", false);
   store.saveWebSearch({ provider: "deepseek", enabled: true });
   expect(f.open().get()).toMatchObject({
@@ -225,7 +259,7 @@ test("defers old provider migration while locked and preserves its choice throug
   f.lock();
   const locked = f.open();
   expect(locked.get().webSearch).toMatchObject({ enabled: false, hasApiKey: false, credentialsLocked: true });
-  expect(locked.get().capabilities.webSearch).toBe(true);
+  expect(locked.get().capabilities.webSearch).toBe(false);
   locked.updatePreferences({ theme: "dark" });
   expect(savedData(f.state)).not.toHaveProperty("webSearchEnabled");
   f.unlock();
@@ -237,16 +271,16 @@ test("defers old provider migration while locked and preserves its choice throug
   expect(savedData(f.state).webSearchEnabled).toBe(true);
 });
 
-test("migrates a missing global capability to true, preserves false and keeps strict booleans", async () => {
+test("migrates a missing global capability to false and keeps strict booleans", async () => {
   const f = await fixture();
   f.open().updatePreferences({ theme: "dark" });
   const before = savedData(f.state);
   const capabilities = { ...(before.capabilities as Record<string, unknown>) };
   delete capabilities.webSearch;
   f.state.setSetting("app", { ...before, capabilities });
-  expect(f.open().get().capabilities.webSearch).toBe(true);
+  expect(f.open().get().capabilities.webSearch).toBe(false);
   expect(f.state.getSetting<{ capabilities: { webSearch: boolean } }>("app")?.capabilities.webSearch).toBe(
-    true,
+    false,
   );
   for (const value of [null, "true", 1]) {
     f.state.setSetting("app", { ...before, capabilities: { ...capabilities, webSearch: value } });

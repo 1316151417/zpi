@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Bot,
   Braces,
+  Brain,
   ChevronRight,
   Globe,
   Info,
@@ -41,6 +42,7 @@ import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { CapabilitySettings } from "./CapabilitySettings.tsx";
 import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
 import { CommandSettings } from "./CommandSettings.tsx";
+import { MemorySettings } from "./MemorySettings.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
 import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
@@ -48,6 +50,7 @@ import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { QuickChatSettings } from "./QuickChatSettings.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
+import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { ShortcutSettings } from "./ShortcutSettings.tsx";
 import { SubagentSettings } from "./SubagentSettings.tsx";
@@ -68,10 +71,19 @@ const sections = [
   ["capabilities", "扩展能力", Package],
   ["webSearch", "联网搜索", Globe],
   ["subagents", "子智能体", Bot],
+  ["memory", "记忆", Brain],
   ["quickChat", "快速对话", MessageSquare],
   ["archived", "已归档任务", Archive],
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
+const pageHelp: Partial<Record<SettingsTab, string>> = {
+  interface: "主题和界面字号影响本机显示，代码预览可单独配置。",
+  models: "配置提供商和模型后，可在聊天中选择使用。模型和提供商可分别启停。",
+  capabilities: "开关在新对话首次发送时生效，已有对话保留原配置。",
+  commands: "在输入框键入 / 调用命令。可配置个人或项目命令，也可导入外部 Agent 的命令。",
+  quickChat:
+    "临时对话，不保存到任务列表。可用 read、bash 及已启用的联网工具；只读要求依赖提示词，bash 仍可读写本机文件。",
+};
 
 import {
   defaultPreferences,
@@ -401,9 +413,15 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         />
         <div className="settings-scroll">
           <div className={`settings-content ${tab === "models" ? "model-settings-content" : ""}`}>
-            {tab !== "archived" && tab !== "shortcuts" && !(tab === "commands" && commandEditing) && (
-              <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
-            )}
+            {!["archived", "shortcuts", "webSearch", "subagents"].includes(tab) &&
+              !(tab === "commands" && commandEditing) && (
+                <div className="settings-page-heading">
+                  <div className="settings-heading-title">
+                    <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
+                    {pageHelp[tab] && <SettingsHelp label={title ?? "设置"} text={pageHelp[tab] ?? ""} />}
+                  </div>
+                </div>
+              )}
             <div className="settings-page">
               {tab === "commands" ? (
                 <CommandSettings
@@ -423,10 +441,10 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         ["notificationSoundEnabled", "通知声音", "通知开启后，可单独关闭任务通知提示音。"],
                       ] as const
                     ).map(([field, label, description]) => (
-                      <label className="settings-row" key={field}>
-                        <span className="settings-row-copy">
+                      <div className="settings-row" key={field}>
+                        <span className="settings-label">
                           <strong>{label}</strong>
-                          <small>{description}</small>
+                          <SettingsHelp label={label} text={description} />
                         </span>
                         <span className="settings-switch task-notification-switch">
                           <input
@@ -443,13 +461,15 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           />
                           <span aria-hidden="true" />
                         </span>
-                      </label>
+                      </div>
                     ))}
                   </div>
                   {error && <div role="alert">{error}</div>}
                 </div>
               ) : tab === "webSearch" ? (
                 <WebSearchSettings />
+              ) : tab === "memory" ? (
+                <MemorySettings onNavigate={onClose} />
               ) : tab === "subagents" ? (
                 <SubagentSettings />
               ) : tab === "quickChat" ? (
@@ -460,13 +480,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 <ResourceSettings page={tab} />
               ) : tab === "interface" ? (
                 <div className="interface-settings">
-                  <h2>界面设置</h2>
-                  <p className="settings-intro">设置应用主题和界面文字大小。</p>
+                  <h2>界面</h2>
                   <div className="settings-group">
                     <div className="settings-row">
                       <span className="settings-row-copy">
                         <strong>界面主题</strong>
-                        <small>选择浅色、深色或跟随系统主题。</small>
                       </span>
                       <SettingsSelect
                         label="界面主题"
@@ -480,9 +498,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                       />
                     </div>
                     <div className="settings-row">
-                      <span className="settings-row-copy">
+                      <span className="settings-label">
                         <strong>界面字号</strong>
-                        <small>调整应用界面的文字大小，图标和布局尺寸不受影响。</small>
+                        <SettingsHelp label="界面字号" text="仅调整界面文字，图标和布局尺寸保持不变。" />
                       </span>
                       <FontSizeInput
                         key={settings?.interface.fontSize ?? defaultPreferences.fontSize}
@@ -532,14 +550,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         ["wrapLongLines", "长行自动换行"],
                       ] as const
                     ).map(([field, label]) => (
-                      <label className="settings-row" key={field}>
+                      <div className="settings-row" key={field}>
                         <span className="settings-row-copy">
                           <strong>{label}</strong>
-                          <small>
-                            {field === "showLineNumbers"
-                              ? "在纯文本差异预览中显示行号。"
-                              : "纯文本差异预览中的长行自动换行。"}
-                          </small>
                         </span>
                         <span className="settings-switch">
                           <input
@@ -554,10 +567,12 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           />
                           <span aria-hidden="true" />
                         </span>
-                      </label>
+                      </div>
                     ))}
                   </div>
-                  <h2>聊天</h2>
+                  <h2 className="settings-label">
+                    聊天 <SettingsHelp label="聊天" text="Enter 发送，Shift + Enter 换行。" />
+                  </h2>
                   <div className="settings-group">
                     {(
                       [
@@ -578,10 +593,10 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         ],
                       ] as const
                     ).map(([field, label, description]) => (
-                      <label className="settings-row" key={field}>
-                        <span className="settings-row-copy">
+                      <div className="settings-row" key={field}>
+                        <span className="settings-label">
                           <strong>{label}</strong>
-                          <small>{description}</small>
+                          <SettingsHelp label={label} text={description} />
                         </span>
                         <span className="settings-switch">
                           <input
@@ -598,16 +613,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           />
                           <span aria-hidden="true" />
                         </span>
-                      </label>
+                      </div>
                     ))}
                   </div>
-                  <p className="settings-hint">Enter 发送 · Shift + Enter 换行</p>
                   {error && <div role="alert">{error}</div>}
                 </div>
               ) : (
                 <div className="model-provider-section">
-                  <div className="resource-section-heading">
-                    <p>管理模型供应商，配置后可在聊天时选择使用。</p>
+                  <div className="resource-section-heading model-settings-toolbar">
                     <div className="model-section-actions">
                       <button
                         className="model-refresh"

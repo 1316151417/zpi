@@ -108,8 +108,8 @@ test("one capability drives catalog, preview, live tools and first-send frozen i
   const f = await fixture();
   expect(f.host.listTools().map((t) => t.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
-  f.settings.setCapabilityEnabled("webSearch", true);
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   expect(f.host.listTools().map((t) => t.name)).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
   expect((await f.host.previewPrompt()).prompt).toContain("web_search");
   await run(f.host, f.session.id);
@@ -138,8 +138,8 @@ test("legacy frozen sessions missing webSearch remain off and invalid values blo
   const configuration = { ...(task.frozenConfiguration as Record<string, unknown>) };
   delete configuration.webSearch;
   f.settings.state.upsertTask({ ...task, frozenConfiguration: configuration });
-  f.settings.setCapabilityEnabled("webSearch", true);
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   const restored = await f.open();
   await run(restored, f.session.id);
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
@@ -160,8 +160,8 @@ test("other chat providers use independent DeepSeek web credentials, stream deta
     if (results.length === 1) return call("web_fetch", { url: source.url });
     return sse({ content: "Answer with source" });
   });
-  f.settings.setCapabilityEnabled("webSearch", true);
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-only-key", enabled: true });
   const events: unknown[] = [];
   f.host.subscribe((event) => events.push(event.event));
@@ -236,8 +236,8 @@ test.each([
       });
     return sse({ content: "Parent done" });
   });
-  f.settings.setCapabilityEnabled("webSearch", true);
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   f.host.saveSubagent({
     scope: "user",
     sessionId: null,
@@ -256,9 +256,9 @@ test.each([
   expect(toolNames(childRequests[0]).filter((name) => name.startsWith("web_"))).toEqual(profile.expected);
 });
 
-test("new sessions freeze effective availability, not just the default-on global preference", async () => {
+test("new sessions freeze availability only after provider and global switches are enabled", async () => {
   const f = await fixture();
-  expect(f.settings.get().capabilities.webSearch).toBe(true);
+  expect(f.settings.get().capabilities.webSearch).toBe(false);
   expect(f.settings.get().webSearch.enabled).toBe(false);
   await run(f.host, f.session.id, "Freeze before setup");
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
@@ -266,6 +266,7 @@ test("new sessions freeze effective availability, not just the default-on global
   expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   expect(f.host.listTools().map((tool) => tool.name)).toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).toContain("web_search");
   await run(f.host, f.session.id, "Old session stays restricted");
@@ -295,6 +296,7 @@ test("frozen web tools enforce provider and key changes before each request, and
     return sse({ content: "Answer" });
   });
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   await run(f.host, f.session.id, "Freeze ready");
   for (const change of [{ enabled: false }, { enabled: true, apiKey: "fake-web-key" }, { apiKey: "" }]) {
     f.settings.saveWebSearch({ provider: "deepseek", ...change });
@@ -321,6 +323,7 @@ test("recorded icon authorization uses the source run even outside the restored 
     return sse({ content: "Answer" });
   });
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
+  f.settings.setCapabilityEnabled("webSearch", true);
   await run(f.host, f.session.id);
   const originalRun = f.host.getSessionSnapshot(f.session.id).view.runs[0].runId;
   for (let index = 0; index < 11; index++) await run(f.host, f.session.id, `Follow-up ${index}`);
