@@ -60,14 +60,13 @@ test("deleting a conversation withdraws its memory source before removing durabl
   expect(() => f.host.sessionPath(f.session.id)).toThrow();
 });
 
-test("application close releases active foreground memory readers before finishing memory cleanup", async () => {
+test("application close waits for memory cleanup after stopping foreground runs", async () => {
   const f = await fixture((_, response) => response.flushHeaders());
   await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
   const events: string[] = [];
   vi.spyOn(f.host.longMemory, "context").mockImplementation(async () => ({
     instructions: ["Retained memory context"],
     sources: [],
-    release: () => events.push("release"),
   }));
   vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
   let finishCleanup = () => {};
@@ -90,8 +89,7 @@ test("application close releases active foreground memory readers before finishi
   });
   try {
     await vi.waitFor(() => expect(events).toContain("memory-drain-start"));
-    expect(events).toContain("release");
-    expect(events.indexOf("release")).toBeLessThan(events.indexOf("memory-drain-start"));
+    expect(f.host.activeRuns.size).toBe(0);
     expect(closed).toBe(false);
   } finally {
     finishCleanup();
@@ -139,29 +137,24 @@ test.each(["delete-child", "close-app"])(
       }
     });
     await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
-    const releases: ReturnType<typeof vi.fn>[] = [];
-    vi.spyOn(f.host.longMemory, "context").mockImplementation(async () => {
-      const release = vi.fn();
-      releases.push(release);
-      return { instructions: ["PARENT_SELECTED_MEMORY"], sources: [], release };
+    vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
+      instructions: ["PARENT_SELECTED_MEMORY"],
+      sources: [],
     });
     vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
     await run(f, "Delegate a task while using memory.");
     const task = f.host.subagents.list(f.session.id).at(-1);
     if (!task) throw new Error("Expected delegated child");
     await vi.waitFor(() => expect(f.host.activeRuns.has(task.childSessionId)).toBe(true));
-    const selectedRelease = releases.at(-1);
-    expect(selectedRelease).toBeDefined();
-    expect(selectedRelease).not.toHaveBeenCalled();
     await vi.waitFor(() =>
       expect(f.host.sessions.get(task.childSessionId)?.systemPrompt).toContain("PARENT_SELECTED_MEMORY"),
     );
     if (action === "delete-child") {
       await f.host.subagents.stop(f.session.id, task.agentId);
-      expect(selectedRelease).not.toHaveBeenCalled();
+      expect(f.host.sessions.get(task.childSessionId)?.systemPrompt).toContain("PARENT_SELECTED_MEMORY");
       await f.host.deleteSession(task.childSessionId);
     } else await f.host.close();
-    expect(selectedRelease).toHaveBeenCalledTimes(1);
+    expect(f.host.activeRuns.has(task.childSessionId)).toBe(false);
   },
 );
 
@@ -209,7 +202,6 @@ test.each(["clear", "restart"])(
     vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
       instructions: ["STALE_LONG_MEMORY"],
       sources: [],
-      release: () => {},
     });
     vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
     await run(f, "Delegate this memory task.");

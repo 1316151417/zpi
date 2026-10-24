@@ -47,7 +47,7 @@ SDK 的新增工具、内置工具覆盖与追加指令分别使用 `customTools
 
 桌面追加规则通过同一 `customInstructions` 入口接入，界面称为「追加指令」和「扩展能力」。持久化的 `capabilities` 字段、首次发送冻结逻辑、工具名称以及实际提示词正文和顺序保持不变。这里没有插件注册表或插件生命周期；子智能体、后台命令等服务仍由桌面管理。
 
-短/长期记忆也沿用这些入口：`SessionHost` 在既有资源刷新边界准备记忆快照，通过 `customInstructions` 注入，使用会话事件记录实际摘要读取；四个 core 工具不增加分支。桌面 owner 负责后台模型批次、停用/清空/关闭和来源撤销；设置及处理水位复用 `SettingsStore/StateStore`，产物放在活动用户存储下。记忆选项首次发送冻结，全局长期停用立即取消生成；快速对话独立且不接入记忆。详见 [记忆实现及参考差异](memory.md)。
+短/长期记忆也沿用这些入口：`SessionHost` 在既有资源刷新边界准备记忆快照，通过 `customInstructions` 注入，使用会话事件记录实际摘要读取；四个 core 工具不增加分支。桌面 owner 负责后台模型批次、停用/清空/关闭和来源撤销；设置及处理水位复用 `SettingsStore/StateStore`，v2 产物放在活动用户存储的固定 `memories_v2/` 目录，后台用现有 SDK 和文件工具原地增量维护摘要，内部 Git 计算基线差异。记忆选项首次发送冻结，全局长期停用立即取消生成；快速对话独立且不接入记忆。详见 [记忆实现及参考差异](memory.md)。
 
 - `packages/coding-agent` 的默认工具是 `read`、`write`、`edit`、`bash`。SDK 用 `customTools` 增加工具，用 `toolOverrides` 显式替换同名基础工具，不依赖 Electron。
 - 桌面端的 `SessionHost` 负责通过 `customTools` 注入 `AskUserQuestion`、子智能体工具与可选的 `web_search`/`web_fetch`，通过 `toolOverrides` 替换后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体扩展后仍提供这两个后台任务工具。
@@ -386,7 +386,7 @@ Anthropic 缓存保持 stable 内容、dynamic sections 各自的 system 断点�
 
 本地图片 token 估算使用短占位，不反映实际图片体积；Read 的 0.125 比例也是本地预算换算，不是供应商的视觉 token 或像素上限保证。已有 provider usage 锚点仍会参与自动压缩，所以 token 压缩不能替代字节预算。裸 `413 Failed to buffer the request body: length limit exceeded` 不扩展为上下文或媒体错误，不自动恢复，UI 提示压缩对话或开启新会话。摘要仅在明确识别的媒体过大错误上去媒体重试，明确上下文溢出时有界截断重试；未知错误不做此降级。去媒体重试是通用摘要接口的防御措施，当前内置摘要序列化通常已是纯文本。
 
-聚焦回归：`npx vitest run packages/coding-agent/test/read-image-budget.test.ts packages/coding-agent/test/media-request-session.test.ts packages/ai/test/media-policy.test.ts packages/coding-agent/test/microcompact.test.ts`。42 张临时生成图片经真实 session/read 工具、43 次本地测试 provider 请求验证，并额外加入超预算旧图片历史；不依赖真实凭据，也不代表已经通过供应商线上网关验收。ZPI 目前没有独立记忆代理、内置 PDF 页面提取或 MCP 图片入口，本次不引入这些能力。
+聚焦回归：`npx vitest run packages/coding-agent/test/read-image-budget.test.ts packages/coding-agent/test/media-request-session.test.ts packages/ai/test/media-policy.test.ts packages/coding-agent/test/microcompact.test.ts`。42 张临时生成图片经真实 session/read 工具、43 次本地测试 provider 请求验证，并额外加入超预算旧图片历史；不依赖真实凭据，也不代表已经通过供应商线上网关验收。该图片功能不引入内置 PDF 页面提取或 MCP 图片入口；长期记忆 v2 的独立后台整合 Agent 见 [记忆说明](memory.md)。
 
 
 请求入口核对：
@@ -400,7 +400,7 @@ Anthropic 缓存保持 stable 内容、dynamic sections 各自的 system 断点�
 | 标题 | `session-title.ts` → `ModelRuntime.streamSimple` |
 | 对话 / 回合摘要 | `compaction.ts:completeSummarization`（包括注入 stream 和直接调用）→ 共同媒体策略 |
 | AI 协议公开接口 | `stream.ts` 负责路由；三个 `api` 请求入口执行共同媒体策略，自定义 provider 在 `ModelRuntime` 边界执行 |
-| 记忆代理 | 当前仓库不存在独立实现；未新增 provider 旁路 |
+| 记忆代理 | 长期记忆 v2 使用现有 SDK 后台会话；不新增 provider 旁路 |
 
 原生 provider 的媒体策略只在协议请求入口计算，共用 stream 包装层和普通 `ModelRuntime` 调用不再重复投影。摘要注入 stream 可能绕过协议，因此保留防御性投影并传递同一 observer；下游已投影请求无新增省略，不重复上报。显式最新用户索引仅在整数且 `-1 ≤ index < messages.length` 时采用，非法值回退到真实用户判定。image/video 必须有内联 `data` 或 `dataUrl`；缺失时返回 `MEDIA_PAYLOAD_MISSING`，未来 URI 图片须显式接入请求策略，不能按零字节静默绕过。
 

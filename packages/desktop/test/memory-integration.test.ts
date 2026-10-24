@@ -22,7 +22,6 @@ test.each([
     const context = vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
       instructions: ["LONG_SUMMARY_MARKER"],
       sources: [],
-      release: () => {},
     });
     const check = vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
     await run(f, "first");
@@ -103,17 +102,48 @@ test("runs both stages through a frozen model, publishes source snapshots and in
       return;
     }
     let output = "foreground answer";
-    if (text.includes("Extract reusable memory"))
+    if (text.includes("Your job is to extract information"))
       output = JSON.stringify({
-        rawMemory: "Project-specific tested procedure",
-        rolloutSummary: "Verified outcome with original evidence",
+        rollout_slug: "project-procedure",
+        rollout_summary: "DETAIL_ONLY_MARKER: Verified outcome with original evidence",
       });
-    if (text.includes("Consolidate historical evidence")) {
-      const source = text.match(/rollout_summaries\/[a-f0-9]+\.md/)?.[0];
-      output = JSON.stringify({
-        memory: `# Project memory\nDETAIL_ONLY_MARKER\n${source}`,
-        summary: "## Memory index\nSUMMARY_ONLY_MARKER",
-      });
+    if (text.includes("Consolidate the supplied rollout summaries")) {
+      const tools = body.tools as { function: { name: string } }[];
+      expect(tools.map((tool) => tool.function.name).sort()).toEqual(["edit", "read", "write"]);
+      const results = messages.filter((message) => message.role === "tool").length;
+      const toolCall = (name: string, args: object) => {
+        send(
+          response,
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: `worker-${results}`,
+                type: "function",
+                function: { name, arguments: JSON.stringify(args) },
+              },
+            ],
+          }),
+        );
+        send(response, {
+          choices: [],
+          usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+        });
+        done(response, "tool_calls");
+      };
+      if (results === 0) {
+        toolCall("read", { path: "phase2_workspace_diff.md" });
+        return;
+      }
+      if (results === 1) {
+        toolCall("write", {
+          path: "memory_summary.md",
+          content:
+            "v1\n## User Profile\n\n## User preferences\n\n## General Tips\n\n## What's in Memory\nSUMMARY_ONLY_MARKER",
+        });
+        return;
+      }
+      output = "Memory summary updated.";
     }
     send(response, chunk({ content: output }));
     send(response, { choices: [], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } });
@@ -135,9 +165,9 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   await vi.waitFor(() => expect(host.longMemory.status().status).toBe("success"));
   const status = host.longMemory.status();
   expect(status.sources.map((item) => item.sessionId)).toEqual([sourceId]);
-  expect(status.tokens).toBe(60);
+  expect(status.tokens).toBe(120);
   const extraction = f.server.requests.find((request) =>
-    JSON.stringify(request.messages).includes("Extract reusable memory"),
+    JSON.stringify(request.messages).includes("Your job is to extract information"),
   );
   expect(extraction?.model).toBe("vision");
   expect(JSON.stringify(extraction?.messages)).not.toContain("<system_rules>");
@@ -170,8 +200,8 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   await vi.waitFor(() => expect(host.longMemory.status().running).toBe(false));
   expect(host.longMemory.status().sources).toEqual([]);
   expect(host.sessionPath(sourceId)).toBeTruthy();
-  await mkdir(join(f.dir, "memories"), { recursive: true });
-  await writeFile(join(f.dir, "memories", "memory_notes.md"), "Remember this explicit scoped request.");
+  await mkdir(join(f.dir, "memories_v2"), { recursive: true });
+  await writeFile(join(f.dir, "memories_v2", "memory_notes.md"), "Remember this explicit scoped request.");
   await host.saveMemorySettings({
     ...defaultMemorySettings,
     long: true,

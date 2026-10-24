@@ -26,6 +26,9 @@ afterEach(async () => {
   );
 });
 
+const validSummary = (text = "") =>
+  `v1\n## User Profile\n\n## User preferences\n\n## General Tips\n\n## What's in Memory\n${text}`;
+
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "zpi-long-memory-"));
   directories.push(directory);
@@ -34,33 +37,47 @@ async function fixture() {
   let failPublication = false;
   let sources: LongMemorySource[] = [];
   const requests: MemoryRunRequest[] = [];
+  const inputs: string[] = [];
   const run = vi.fn(async (request: MemoryRunRequest): Promise<MemoryRunResult> => {
-    requests.push(request);
-    return {
-      text: JSON.stringify(
-        request.stage === "extract"
-          ? {
-              rawMemory: "Project-only constraint: preserve existing API.",
-              rolloutSummary: "User asked to preserve API; verified tests passed.",
-            }
-          : {
-              memory: "# Project experience\nScope: /workspace/a\nPreserve existing API.",
-              summary: "## Memory index\nProject a: preserve existing API.",
-            },
-      ),
-      usage: { tokens: 10, cost: 0.001 },
-    };
+    if (request.stage === "extract")
+      return {
+        text: JSON.stringify({
+          rollout_slug: "test-task",
+          rollout_summary: "User asked to preserve API; verified tests passed.",
+        }),
+        usage: { tokens: 10, cost: 0.001 },
+      };
+    request.signal.throwIfAborted();
+    await writeFile(
+      join(request.directory as string, "memory_summary.md"),
+      validSummary("## Memory index\nProject a: preserve existing API."),
+    );
+    return { text: "Updated.", usage: { tokens: 10, cost: 0.001 } };
   });
   const service = new LongMemoryService({
     directory,
     getState: () => state,
     setState: (next) => {
-      if (failPublication && next.activeGeneration !== state?.activeGeneration)
+      if (failPublication && next.activeFingerprint !== state?.activeFingerprint)
         throw new Error("storage: publication unavailable");
       state = next;
     },
     sources: async () => sources,
-    run,
+    run: async (request) => {
+      requests.push(request);
+      inputs.push(
+        request.directory
+          ? (
+              await Promise.all(
+                (request.readFiles ?? []).map((path) =>
+                  readFile(join(request.directory as string, path), "utf8"),
+                ),
+              )
+            ).join("\n")
+          : request.prompt,
+      );
+      return run(request);
+    },
     now: () => now,
   });
   services.push(service);
@@ -81,6 +98,7 @@ async function fixture() {
     directory,
     run,
     requests,
+    inputs,
     source,
     get state() {
       if (!state) throw new Error("Expected persisted memory state");
@@ -155,9 +173,9 @@ test("two phases publish source-linked files, inject only summary, and skip unch
   expect(status.tokens).toBe(20);
   expect(status.cost).toBe(0.002);
   expect((await readdir(status.path)).sort()).toEqual([
-    "MEMORY.md",
+    ".git",
+    "memory_notes.md",
     "memory_summary.md",
-    "raw_memories.md",
     "rollout_summaries",
   ]);
   const recap = await readFile(status.sources[0].summaryPath ?? "", "utf8");
@@ -177,12 +195,12 @@ test("two phases publish source-linked files, inject only summary, and skip unch
 test("empty extraction persists the boundary and does not repeatedly invoke either model", async () => {
   const f = await fixture();
   f.sources = [f.source()];
-  f.run.mockResolvedValue({ text: '{"rawMemory":"","rolloutSummary":""}' });
+  f.run.mockResolvedValue({ text: '{"rollout_slug":"","rollout_summary":""}' });
   await f.service.check(model, enabled);
   await f.service.check(model, enabled);
   expect(f.run).toHaveBeenCalledTimes(1);
   expect(f.state.jobs["session-a"].completed).toBe(true);
-  expect(f.state.activeGeneration).toBeUndefined();
+  expect(f.state.activeFingerprint).toBeUndefined();
 });
 
 test("failed extraction backs off, caps retries, and retries a changed source boundary", async () => {
@@ -218,8 +236,7 @@ test("concurrent checks deduplicate and freeze triggering model and reasoning fo
   const gate = new Promise<MemoryRunResult>((resolve) => {
     release = resolve;
   });
-  f.run.mockImplementationOnce(async (request) => {
-    f.requests.push(request);
+  f.run.mockImplementationOnce(async () => {
     return gate;
   });
   const trigger = { ...model };
@@ -228,7 +245,7 @@ test("concurrent checks deduplicate and freeze triggering model and reasoning fo
   trigger.modelId = "changed-later";
   trigger.reasoning = "low";
   await vi.waitFor(() => expect(f.run).toHaveBeenCalledTimes(1));
-  release({ text: '{"rawMemory":"remember","rolloutSummary":"evidence"}' });
+  release({ text: '{"rollout_slug":"test-task","rollout_summary":"evidence"}' });
   await first;
   expect(f.requests.map(({ model: selection }) => selection)).toEqual([model, model]);
 });
@@ -252,20 +269,26 @@ test("manual model and stage overrides are explicit; missing manual selection fa
   expect(f.requests.map(({ model: selection }) => selection)).toEqual([extraction, consolidation]);
 });
 
-test.each(["not JSON", '{"memory":"ok","summary":"ok","skills":"bad"}', '{"memory":"ok","summary":""}'])(
-  "invalid consolidation preserves previous publication: %s",
+test.each(["bad format", "", "oversized"])(
+  "invalid summary restores prior publication: %s",
   async (badOutput) => {
     const f = await fixture();
     f.sources = [f.source()];
     await f.service.check(model, enabled);
-    const previous = f.state.activeGeneration;
+    const previous = f.state.activeFingerprint;
     const previousSummary = (await f.service.context()).instructions;
     f.sources[0].boundary = "1:20";
-    f.run.mockImplementation(async (request) => ({
-      text: request.stage === "extract" ? '{"rawMemory":"new","rolloutSummary":"new evidence"}' : badOutput,
-    }));
+    f.run.mockImplementation(async (request) => {
+      if (request.stage === "extract")
+        return { text: '{"rollout_slug":"test-task","rollout_summary":"new evidence"}' };
+      await writeFile(
+        join(request.directory as string, "memory_summary.md"),
+        badOutput === "oversized" ? validSummary("x".repeat(10000)) : badOutput,
+      );
+      return { text: "Updated." };
+    });
     await f.service.check(model, enabled);
-    expect(f.state.activeGeneration).toBe(previous);
+    expect(f.state.activeFingerprint).toBe(previous);
     expect((await f.service.context()).instructions).toEqual(previousSummary);
     expect(f.service.status().status).toBe("failed");
   },
@@ -275,7 +298,7 @@ test("pause and disable abort a running task even if runner resolves late; pause
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
-  const previous = f.state.activeGeneration;
+  const previous = f.state.activeFingerprint;
   f.sources[0].boundary = "1:20";
   let release!: (value: MemoryRunResult) => void;
   f.run.mockImplementationOnce(
@@ -288,8 +311,8 @@ test("pause and disable abort a running task even if runner resolves late; pause
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
   f.service.configure({ ...enabled, generate: false });
   await task;
-  release({ text: '{"rawMemory":"late","rolloutSummary":"late"}' });
-  expect(f.state.activeGeneration).toBe(previous);
+  release({ text: '{"rollout_slug":"test-task","rollout_summary":"late"}' });
+  expect(f.state.activeFingerprint).toBe(previous);
   expect(f.service.status().status).toBe("paused");
   expect((await f.service.context()).sources).toHaveLength(1);
   f.service.configure({ ...enabled, long: false });
@@ -313,8 +336,8 @@ test("clear cancels pending tasks, clears artifacts and notes, and tombstones ex
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
   await f.service.clear();
   await task;
-  release({ text: '{"rawMemory":"late","rolloutSummary":"late"}' });
-  expect(f.state.activeGeneration).toBeUndefined();
+  release({ text: '{"rollout_slug":"test-task","rollout_summary":"late"}' });
+  expect(f.state.activeFingerprint).toBeUndefined();
   expect(f.state.tombstones["session-a"]).toBe("1:20");
   await expect(readdir(f.directory)).rejects.toMatchObject({ code: "ENOENT" });
   const calls = f.run.mock.calls.length;
@@ -329,17 +352,17 @@ test("deleted source is removed from reconstruction and stale summary stays hidd
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
-  const previous = f.state.activeGeneration;
+  const previous = f.state.activeFingerprint;
   await f.service.invalidateSource("session-a");
   expect((await f.service.context()).sources).toEqual([]);
   expect((await f.service.context()).instructions.join("\n")).not.toContain(
     "Project a: preserve existing API.",
   );
-  expect(f.state.activeGeneration).toBe(previous);
+  expect(f.state.activeFingerprint).toBe(previous);
   f.sources = [];
   await f.service.check(model, enabled);
-  const prompt = f.requests.at(-1)?.prompt;
-  expect(prompt).toContain('"removed":["rollout_summaries/');
+  const prompt = f.inputs.at(-1);
+  expect(prompt).toContain("deleted file mode");
   expect(f.state.activeSources).toEqual([]);
   expect(await readdir(join(f.service.status().path, "rollout_summaries"))).toEqual([]);
 });
@@ -352,10 +375,10 @@ test("persistent forget notes change the fingerprint and remain an input after a
   await writeFile(join(f.directory, "memory_notes.md"), note);
   await f.service.check(model, enabled);
   expect(f.requests.at(-1)?.stage).toBe("consolidate");
-  expect(f.requests.at(-1)?.prompt).toContain(note);
+  expect(f.inputs.at(-1)).toContain(note);
   f.sources[0].boundary = "1:20";
   await f.service.check(model, enabled);
-  expect(f.requests.at(-1)?.prompt).toContain(note);
+  expect(f.inputs.at(-1)).toContain(note);
   expect(await readFile(join(f.directory, "memory_notes.md"), "utf8")).toBe(note);
 });
 
@@ -389,23 +412,22 @@ test("evidence provenance instructions and secret redaction apply before upload 
   f.sources = [
     f.source("secret", { read: async () => "[human user] Please remember my api_key=sk-1234567890123456" }),
   ];
-  f.run.mockImplementation(async (request) => {
-    f.requests.push(request);
-    return {
-      text: JSON.stringify(
-        request.stage === "extract"
-          ? {
-              rawMemory: "api_key=sk-1234567890123456",
-              rolloutSummary: "User proposed a key sk-1234567890123456",
-            }
-          : { memory: "# Memory", summary: "## Memory index" },
-      ),
-    };
-  });
+  const normal = f.run.getMockImplementation();
+  if (!normal) throw new Error("Missing fake runner");
+  f.run.mockImplementation(async (request) =>
+    request.stage === "extract"
+      ? {
+          text: JSON.stringify({
+            rollout_slug: "test-task",
+            rollout_summary: "User proposed a key sk-1234567890123456",
+          }),
+        }
+      : normal(request),
+  );
   await f.service.check(model, enabled);
   expect(f.requests[0].prompt).not.toContain("sk-1234567890123456");
-  expect(f.requests[0].prompt).toContain("injected memories");
-  expect(f.requests[0].prompt).toContain("not new evidence");
+  expect(f.requests[0].instructions).toContain("injected memories");
+  expect(f.requests[0].instructions).toContain("not new evidence");
   expect(JSON.stringify(f.state)).not.toContain("sk-1234567890123456");
 });
 
@@ -419,24 +441,21 @@ test("close cancels background work and prevents new requests", async () => {
   await task;
   await f.service.check(model, enabled);
   expect(f.run).toHaveBeenCalledTimes(1);
-  expect(f.state.activeGeneration).toBeUndefined();
+  expect(f.state.activeFingerprint).toBeUndefined();
 });
 
-test("a context lease keeps the exact generation readable until that foreground turn releases it", async () => {
+test("fixed paths survive successive updates while injected summary text is frozen per turn", async () => {
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
-  const oldPath = f.service.status().path;
+  const path = f.service.status().path;
   const context = await f.service.context();
   f.sources[0].boundary = "1:20";
   await f.service.check(model, enabled);
-  expect(f.service.status().path).not.toBe(oldPath);
-  expect(await readFile(context.sources[0].summaryPath ?? "", "utf8")).toContain("1:10");
-  context.release();
-  context.release();
-  await vi.waitFor(async () => {
-    await expect(readdir(oldPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
+  expect(f.service.status().path).toBe(path);
+  expect(await readFile(context.sources[0].summaryPath as string, "utf8")).toContain("1:20");
+  expect(await readFile(join(path, "memory_summary.md"), "utf8")).toContain("Memory index");
+  expect(await readdir(path)).not.toContain("generations");
 });
 
 test("active history keeps its existing memory and deleting an unrelated task does not invalidate it", async () => {
@@ -456,14 +475,20 @@ test("a consolidation referencing a deleted source is rejected, keeping old arti
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
-  const original = f.state.activeGeneration;
+  const original = f.state.activeFingerprint;
   await f.service.invalidateSource("session-a");
   f.sources = [];
-  f.run.mockResolvedValue({ text: '{"memory":"See rollout_summaries/deleted.md","summary":"stale"}' });
+  f.run.mockImplementation(async (request) => {
+    await writeFile(
+      join(request.directory as string, "memory_summary.md"),
+      validSummary("See rollout_summaries/deleted.md"),
+    );
+    return { text: "Updated." };
+  });
   await f.service.check(model, enabled);
   expect(f.service.status().status).toBe("failed");
   expect(f.service.status().message).toContain("已删除的来源");
-  expect(f.state.activeGeneration).toBe(original);
+  expect(f.state.activeFingerprint).toBe(original);
   expect((await f.service.context()).sources).toEqual([]);
 });
 
@@ -472,29 +497,26 @@ test("empty regenerated extraction removes a previously retained source from con
   f.sources = [f.source()];
   await f.service.check(model, enabled);
   f.sources[0].boundary = "1:20";
-  f.run.mockResolvedValueOnce({ text: '{"rawMemory":"","rolloutSummary":""}' });
+  f.run.mockResolvedValueOnce({ text: '{"rollout_slug":"","rollout_summary":""}' });
   await f.service.check(model, enabled);
   expect(f.state.records["session-a"]).toBeUndefined();
   expect(f.state.activeSources).toEqual([]);
-  expect(f.requests.at(-1)?.prompt).toContain('"removed":["rollout_summaries/');
+  expect(f.inputs.at(-1)).toContain("deleted file mode");
 });
 
 test.each([
-  { rawMemory: "partial raw", rolloutSummary: "" },
-  { rawMemory: "", rolloutSummary: "partial summary" },
-])("half-empty extraction is failure and preserves previous valid record: %j", async (partial) => {
+  { rollout_summary: "partial", unexpected: "bad" },
+  { rollout_slug: "bad path/", rollout_summary: "evidence" },
+])("invalid extraction preserves previous valid record: %j", async (partial) => {
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
   const original = structuredClone(f.state.records["session-a"]);
-  const generation = f.state.activeGeneration;
   f.sources[0].boundary = "1:20";
   f.run.mockResolvedValueOnce({ text: JSON.stringify(partial) });
   await f.service.check(model, enabled);
   expect(f.service.status().status).toBe("failed");
-  expect(f.service.status().message).toContain("提取产物不完整");
   expect(f.state.records["session-a"]).toEqual(original);
-  expect(f.state.activeGeneration).toBe(generation);
   expect(f.state.jobs["session-a"].completed).toBe(false);
 });
 
@@ -508,7 +530,7 @@ test("clear supplies a durable evidence cutoff and empty post-clear history requ
   expect(read).toHaveBeenCalledWith("1:10");
   expect(f.run).not.toHaveBeenCalled();
   expect(f.state.jobs["session-a"].completed).toBe(true);
-  expect(f.state.activeGeneration).toBeUndefined();
+  expect(f.state.activeFingerprint).toBeUndefined();
 });
 
 test("an empty rewritten generation rebases the clear cutoff so later appended evidence is eligible", async () => {
@@ -543,34 +565,39 @@ test("cancelled calls can settle usage separately without publishing their late 
   const work = f.service.check(model, enabled);
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
   await f.service.stop();
-  release({ text: '{"rawMemory":"late","rolloutSummary":"late"}', usage: { tokens: 42, cost: null } });
+  release({
+    text: '{"rollout_slug":"test-task","rollout_summary":"late"}',
+    usage: { tokens: 42, cost: null },
+  });
   await work;
   await vi.waitFor(() => expect(f.service.status().tokens).toBe(42));
-  expect(f.state.activeGeneration).toBeUndefined();
+  expect(f.state.activeFingerprint).toBeUndefined();
   expect(f.run).toHaveBeenCalledTimes(1);
 });
 
-test("a failed publication keeps the previous durable pointer and cleans the unpublished generation", async () => {
+test("a failed state commit restores the previous summary in the fixed directory", async () => {
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
-  const generation = f.state.activeGeneration;
+  const generation = f.state.activeFingerprint;
   f.sources[0].boundary = "1:20";
   f.failPublication = true;
   await f.service.check(model, enabled);
   expect(f.service.status().status).toBe("failed");
-  expect(f.state.activeGeneration).toBe(generation);
-  expect(await readdir(join(f.directory, "generations"))).toEqual([generation]);
+  expect(f.state.activeFingerprint).toBe(generation);
+  expect(await readdir(f.directory)).not.toContain("generations");
   expect(await readFile(join(f.service.status().path, "memory_summary.md"), "utf8")).toContain(
     "Memory index",
   );
 });
 
-test("startup removes abandoned temporary output and drain waits for cancelled transport settlement", async () => {
+test("startup restores the summary journal and drain waits for cancelled transport settlement", async () => {
   const f = await fixture();
-  const pending = join(f.directory, "generations", ".pending-00000000-0000-0000-0000-000000000000");
-  await mkdir(pending, { recursive: true });
-  await writeFile(join(pending, "MEMORY.md"), "abandoned");
+  await writeFile(join(f.directory, "memory_summary.md"), "incomplete summary");
+  await writeFile(
+    join(f.directory, ".summary-backup.json"),
+    JSON.stringify({ exists: true, content: validSummary("previous valid summary") }),
+  );
   f.sources = [f.source()];
   let release!: (value: MemoryRunResult) => void;
   f.run.mockImplementationOnce(
@@ -581,7 +608,7 @@ test("startup removes abandoned temporary output and drain waits for cancelled t
   );
   const task = f.service.check(model, enabled);
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-  await expect(readdir(pending)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readFile(join(f.directory, "memory_summary.md"), "utf8")).toContain("previous valid summary");
   await f.service.close();
   await task;
   let drained = false;
@@ -590,10 +617,10 @@ test("startup removes abandoned temporary output and drain waits for cancelled t
   });
   await Promise.resolve();
   expect(drained).toBe(false);
-  release({ text: '{"rawMemory":"late","rolloutSummary":"late"}' });
+  release({ text: '{"rollout_slug":"test-task","rollout_summary":"late"}' });
   await drain;
   expect(drained).toBe(true);
-  expect(f.state.activeGeneration).toBeUndefined();
+  expect(f.state.activeFingerprint).toBeUndefined();
 });
 
 test("invalidating a no-output job leaves unrelated published memory visible", async () => {
@@ -648,7 +675,7 @@ test("archiving a previously published source removes it from the next consolida
   await f.service.check(model, enabled);
   expect(f.requests.filter(({ stage }) => stage === "extract")).toHaveLength(1);
   expect(f.state.activeSources).toEqual([]);
-  expect(f.requests.at(-1)?.prompt).toContain('"removed":["rollout_summaries/');
+  expect(f.inputs.at(-1)).toContain("deleted file mode");
 });
 
 test("normal transcript rewrite invalidation permits full extraction without creating a clear cutoff", async () => {
@@ -727,13 +754,11 @@ test("unchanged inputs restore missing generated source files without another mo
   f.sources = [f.source()];
   await f.service.check(model, enabled);
   const previous = f.service.status();
-  await rm(join(previous.path, "raw_memories.md"));
   await rm(previous.sources[0].summaryPath as string);
   await f.service.check(model, enabled);
   expect(f.run).toHaveBeenCalledTimes(2);
   const current = f.service.status();
-  expect(current.path).not.toBe(previous.path);
-  expect(await readFile(join(current.path, "raw_memories.md"), "utf8")).toContain("session-a");
+  expect(current.path).toBe(previous.path);
   expect(await readFile(current.sources[0].summaryPath as string, "utf8")).toContain("session-a");
 });
 
@@ -746,4 +771,151 @@ test("an existing library distinguishes newly waiting history from unchanged evi
   expect(f.service.status().status).toBe("waiting-idle");
   expect(f.service.status().sources).toHaveLength(1);
   expect(f.run).toHaveBeenCalledTimes(2);
+});
+
+test("v2 bounds complete per-session summaries to 9,000 UTF-8 bytes without generating raw memories", async () => {
+  const f = await fixture();
+  f.sources = [f.source()];
+  f.run.mockResolvedValueOnce({
+    text: JSON.stringify({ rollout_summary: "中文经验".repeat(3000), rollout_slug: "long-summary" }),
+  });
+  await f.service.check(model, enabled);
+  expect(f.service.status().status).toBe("success");
+  expect(Buffer.byteLength(f.state.records["session-a"].rolloutSummary, "utf8")).toBeLessThanOrEqual(9000);
+  expect(f.state.records["session-a"].rolloutSummary).toContain("truncated");
+  expect(f.state.records["session-a"].rawMemory).toBeUndefined();
+  expect(await readdir(f.directory)).not.toContain("MEMORY.md");
+  expect(await readdir(f.directory)).not.toContain("raw_memories.md");
+});
+
+test("the v2 processing version restores retry eligibility for old capped failures", async () => {
+  const f = await fixture();
+  f.sources = [f.source()];
+  await f.service.check(model, enabled);
+  const state = f.state;
+  state.jobs["session-a"] = {
+    boundary: "1:10",
+    version: "zpi-memory-1",
+    attempts: 3,
+    retryAt: f.now + DAY,
+    completed: false,
+    lastError: "length",
+  };
+  f.state = state;
+  await f.service.check(model, enabled);
+  expect(f.requests.filter(({ stage }) => stage === "extract")).toHaveLength(2);
+  expect(f.state.jobs["session-a"].version).toBe("zpi-memory-v2");
+  expect(f.state.jobs["session-a"].completed).toBe(true);
+});
+
+test("legacy generations migrate once to the fixed v2 library and explicit clear removes both formats", async () => {
+  const f = await fixture();
+  const legacy = join(f.directory, "legacy");
+  const directory = join(f.directory, "memories_v2");
+  await mkdir(join(legacy, "generations", "old"), { recursive: true });
+  await writeFile(
+    join(legacy, "generations", "old", "memory_summary.md"),
+    "## User preferences\nExplicit legacy preference.",
+  );
+  await writeFile(join(legacy, "memory_notes.md"), "Forget obsolete advice.");
+  let state: LongMemoryState = {
+    version: 1,
+    records: {},
+    jobs: {},
+    tombstones: { cleared: "1:3" },
+    activeGeneration: "old",
+    activeSources: [],
+    invalidated: false,
+    tokens: 30,
+    cost: null,
+  };
+  const run = vi.fn(async () => ({ text: "" }));
+  const service = new LongMemoryService({
+    directory,
+    legacyDirectory: legacy,
+    getState: () => state,
+    setState: (next) => {
+      state = next;
+    },
+    sources: async () => [],
+    run,
+  });
+  services.push(service);
+  await service.init();
+  expect(state.formatVersion).toBe(2);
+  expect(state.activeGeneration).toBeUndefined();
+  expect(state.tombstones.cleared).toBe("1:3");
+  expect(state.tokens).toBe(30);
+  expect((await service.context()).instructions.join("\n")).toContain("Explicit legacy preference");
+  expect(await readFile(join(directory, "memory_notes.md"), "utf8")).toBe("Forget obsolete advice.");
+  expect(await readdir(directory)).not.toContain("generations");
+  expect(run).not.toHaveBeenCalled();
+  await service.clear();
+  await expect(readdir(legacy)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(readdir(directory)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("a cancelled file worker settles before rollback and the next writer is allowed", async () => {
+  const f = await fixture();
+  f.sources = [f.source()];
+  await f.service.check(model, enabled);
+  const old = await readFile(join(f.directory, "memory_summary.md"), "utf8");
+  f.sources[0].boundary = "1:20";
+  const original = f.run.getMockImplementation();
+  if (!original) throw new Error("Missing fake runner");
+  let release!: () => void;
+  f.run.mockImplementation(async (request) => {
+    if (request.stage !== "consolidate") return original(request);
+    await writeFile(join(f.directory, "memory_summary.md"), "partial worker output");
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    request.signal.throwIfAborted();
+    return { text: "" };
+  });
+  const work = f.service.check(model, enabled);
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  let stopped = false;
+  const stop = f.service.stop().then(() => {
+    stopped = true;
+  });
+  await Promise.resolve();
+  expect(stopped).toBe(false);
+  release();
+  await stop;
+  await work;
+  expect(await readFile(join(f.directory, "memory_summary.md"), "utf8")).toBe(old);
+});
+
+test("application close waits for initialization before storage ownership ends", async () => {
+  const f = await fixture();
+  const events: string[] = [];
+  const initialization = f.service.init().then(() => events.push("initialized"));
+  const closing = f.service.close().then(() => events.push("closed"));
+  await Promise.all([initialization, closing]);
+  expect(events).toEqual(["initialized", "closed"]);
+  await expect(f.service.init()).rejects.toThrow("已关闭");
+});
+
+test("clear waits for initialization so a late initializer cannot recreate the library", async () => {
+  const f = await fixture();
+  const initialization = f.service.init();
+  await f.service.clear();
+  await initialization;
+  await expect(readdir(f.directory)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(f.state.formatVersion).toBe(2);
+});
+
+test("credential-bearing notes are diagnosed before the Git diff is sent to the model", async () => {
+  const f = await fixture();
+  f.sources = [f.source()];
+  await f.service.check(model, enabled);
+  const note = "api_key=sk-1234567890123456";
+  await writeFile(join(f.directory, "memory_notes.md"), note);
+  await f.service.check(model, enabled);
+  expect(f.run).toHaveBeenCalledTimes(2);
+  expect(f.service.status().status).toBe("failed");
+  expect(f.service.status().message).toContain("包含可识别凭据");
+  expect(f.service.status().message).not.toContain("sk-1234567890123456");
+  expect(await readFile(join(f.directory, "memory_notes.md"), "utf8")).toBe(note);
 });

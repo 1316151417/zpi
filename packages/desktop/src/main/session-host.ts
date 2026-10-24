@@ -87,6 +87,7 @@ import {
   type LongMemoryState,
   type MemoryRunRequest,
 } from "./memory/long-memory.ts";
+import { runMemoryRequest } from "./memory/runner.ts";
 import { readShortMemory } from "./memory/short-memory.ts";
 import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
@@ -159,8 +160,7 @@ export class SessionHost {
     }
   >();
   private memoryUsed = new Map<string, MemorySource[]>();
-  private memoryReleases = new Map<string, () => void>();
-  private memoryRetainers = new Map<string, () => () => void>();
+  private memorySelections = new Set<string>();
   private readonly webTools: WebTools;
   readonly questions = new UserQuestions((id, question) => {
     const record = this.records.get(id);
@@ -239,7 +239,8 @@ export class SessionHost {
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
     this.longMemory = new LongMemoryService({
-      directory: join(dir, "memories"),
+      directory: join(dir, "memories_v2"),
+      legacyDirectory: join(dir, "memories"),
       getState: () => settings.state.getSetting<LongMemoryState>("memory.state"),
       setState: (value) => settings.state.setSetting("memory.state", value),
       sources: async () => this.memorySources(),
@@ -1156,8 +1157,7 @@ export class SessionHost {
         memoryShortInstructions: structuredClone(this.memorySnapshots.get(parentId)?.shortInstructions ?? []),
       };
       this.configurations.set(child.id, configuration);
-      const retainMemory = this.memoryRetainers.get(parentId);
-      if (retainMemory) this.memoryReleases.set(child.id, retainMemory());
+      if (this.memorySelections.has(parentId)) this.memorySelections.add(child.id);
       this.saveTask(child.id, {
         frozenConfiguration: configuration,
         currentSelection: selection,
@@ -1176,20 +1176,18 @@ export class SessionHost {
     if (!config.subagentProfile) return;
     const parentId = this.record(id).parentSessionId;
     const snapshot = parentId ? this.memorySnapshots.get(parentId) : undefined;
-    const retain = parentId ? this.memoryRetainers.get(parentId) : undefined;
+    const parentSelected = parentId ? this.memorySelections.has(parentId) : false;
     let instructions: string[];
     let shortInstructions: string[];
-    if (snapshot && retain) {
+    if (snapshot && parentSelected) {
       // A resumed/restored child adopts the parent's already selected context at its next user boundary.
-      const release = retain();
-      this.memoryReleases.get(id)?.();
-      this.memoryReleases.set(id, release);
+      this.memorySelections.add(id);
       instructions = snapshot.instructions;
       shortInstructions = snapshot.shortInstructions;
-    } else if (this.memoryReleases.has(id)) {
+    } else if (this.memorySelections.has(id)) {
       return; // A live child can continue using its retained selection even after the parent settles.
     } else {
-      // Persisted strings alone cannot keep an old generated directory alive after application restart.
+      // After restart, only inherited short memory is reused until the parent selects current context.
       shortInstructions = snapshot?.shortInstructions ?? config.memoryShortInstructions ?? [];
       instructions = shortInstructions;
     }
@@ -1233,8 +1231,6 @@ export class SessionHost {
       reload: async () => {
         await loader.reload?.();
         if (id && !config.subagentProfile) {
-          this.memoryReleases.get(id)?.();
-          this.memoryReleases.delete(id);
           const short = config.memory?.short
             ? await readShortMemory({
                 homeDir: this.homeDir,
@@ -1244,20 +1240,8 @@ export class SessionHost {
           const long = config.memory?.long
             ? await this.longMemory.context()
             : { instructions: [], sources: [] };
-          if ("release" in long) {
-            let references = 0;
-            const retain = () => {
-              references++;
-              let held = true;
-              return () => {
-                if (!held) return;
-                held = false;
-                if (--references === 0) long.release();
-              };
-            };
-            this.memoryRetainers.set(id, retain);
-            this.memoryReleases.set(id, retain());
-          }
+          if (config.memory?.long) this.memorySelections.add(id);
+          else this.memorySelections.delete(id);
           this.memoryUsed.set(id, []);
           this.memorySnapshots.set(id, {
             instructions: [...short.instructions, ...long.instructions],
@@ -1944,44 +1928,7 @@ export class SessionHost {
     if (selected instanceof Error) throw selected;
     if (!selected) throw new Error("configuration: 记忆批次模型快照不可用");
     const { runtime, model } = selected;
-    // Refuse oversized inputs instead of silently omitting evidence or changing models.
-    if (
-      Array.from(request.prompt).length >
-      Math.max(1024, model.contextWindow - Math.min(model.maxTokens, 16000))
-    )
-      throw new Error("configuration: 记忆输入超过所选模型的保守上下文预算，请选择更大上下文模型");
-    const result = await runtime
-      .streamSimple(
-        model,
-        {
-          messages: [{ role: "user", content: request.prompt, timestamp: Date.now() }],
-        },
-        {
-          signal: request.signal,
-          reasoning: toThinking(request.model.reasoning, model),
-          maxTokens: Math.min(model.maxTokens, 16000),
-          maxRetries: 0,
-          timeoutMs: 300000,
-        },
-      )
-      .result();
-    const usage = {
-      tokens: result.usage.totalTokens,
-      cost: [model.cost.input, model.cost.output, model.cost.cacheRead, model.cost.cacheWrite].some(
-        (price) => price > 0,
-      )
-        ? result.usage.cost.total
-        : null,
-    };
-    if (result.stopReason !== "stop" || result.content.some((part) => part.type === "toolCall")) {
-      throw Object.assign(
-        new Error(
-          `provider: 记忆${request.stage === "extract" ? "提取" : "整合"}未完成：${result.errorMessage || result.stopReason}`,
-        ),
-        { usage },
-      );
-    }
-    return { text: contentText(result.content, ""), usage };
+    return runMemoryRequest(request, runtime, model);
   }
   private scheduleMemoryCheck(id: string | null): void {
     const settings = this.settings.getMemorySettings();
@@ -2029,6 +1976,7 @@ export class SessionHost {
   }
   async getMemoryStatus(id: string | null): Promise<MemoryStatus> {
     const record = id ? this.record(id) : undefined;
+    await this.longMemory.init();
     const short = await readShortMemory({
       homeDir: this.homeDir,
       workspace: record?.projectId ? this.cwd(record) : undefined,
@@ -2062,9 +2010,7 @@ export class SessionHost {
       this.saveTask(record.id, { frozenConfiguration: updated });
       this.configurations.set(record.id, updated);
     }
-    for (const release of this.memoryReleases.values()) release();
-    this.memoryReleases.clear();
-    this.memoryRetainers.clear();
+    this.memorySelections.clear();
     return this.getMemoryStatus(null);
   }
   async openMemoryFile(
@@ -2082,7 +2028,7 @@ export class SessionHost {
         ? join(this.homeDir, ".zpi", "MEMORY.md")
         : scope === "project" && record
           ? join(this.cwd(record), "MEMORY.md")
-          : join(this.longMemory.status().path, "MEMORY.md");
+          : join(this.longMemory.status().path, "memory_summary.md");
     if (action === "edit") {
       await mkdir(join(path, ".."), { recursive: true });
       try {
@@ -2421,9 +2367,7 @@ export class SessionHost {
       this.parentInstructions.delete(id);
       this.memorySnapshots.delete(id);
       this.memoryUsed.delete(id);
-      this.memoryReleases.get(id)?.();
-      this.memoryReleases.delete(id);
-      this.memoryRetainers.delete(id);
+      this.memorySelections.delete(id);
       if (this.visibleSessionId === id) this.visibleSessionId = undefined;
       this.configurations.delete(id);
       this.views.delete(id);
@@ -3424,9 +3368,7 @@ export class SessionHost {
   private settle(id: string, run: ActiveRun, error?: unknown): void {
     if (this.activeRuns.get(id) !== run) return;
     if (!this.configuration(id).subagentProfile) {
-      this.memoryReleases.get(id)?.();
-      this.memoryReleases.delete(id);
-      this.memoryRetainers.delete(id);
+      this.memorySelections.delete(id);
     }
     let status: Exclude<RunStatus, "running"> = "completed";
     let message = error instanceof Error ? error.message : error ? String(error) : undefined;
@@ -3603,9 +3545,7 @@ export class SessionHost {
       ),
     );
     for (const s of this.sessions.values()) await cleanup(() => s.dispose());
-    for (const release of this.memoryReleases.values()) release();
-    this.memoryReleases.clear();
-    this.memoryRetainers.clear();
+    this.memorySelections.clear();
     await cleanup(() => this.longMemory.drain());
     await queueClose;
     for (const index of this.indexes.values()) await cleanup(() => index.flush());

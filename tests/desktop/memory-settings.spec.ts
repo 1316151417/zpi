@@ -76,7 +76,7 @@ test("memory settings keep independent defaults, preview absent files safely and
     await expect(panel.locator(".memory-notice")).toHaveText("长期记忆尚未生成。");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    const longFile = join(initial.long.path, "MEMORY.md");
+    const longFile = join(initial.long.path, "memory_summary.md");
     await mkdir(initial.long.path, { recursive: true });
     await writeFile(longFile, "# Long memory\n");
     await app.evaluate(({ app, nativeImage, shell }) => {
