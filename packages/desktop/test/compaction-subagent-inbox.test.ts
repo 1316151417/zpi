@@ -5,7 +5,7 @@ import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import type { RunInput } from "../src/shared/bridge.ts";
 import { fixture, run } from "./helpers/context-fixture.ts";
 
-it("retains startup notifications rejected by manual compaction and delivers them once afterward", async () => {
+it("retains startup notifications during manual compaction until the next user interaction", async () => {
   const releaseSummary = deferred();
   const summaries: string[] = [];
   const f = await fixture(async (body, response) => {
@@ -56,6 +56,12 @@ it("retains startup notifications rejected by manual compaction and delivers the
     releaseSummary.resolve();
     while (f.host.activeRuns.has(f.session.id)) await f.host.activeRuns.get(f.session.id)?.done;
     expect(summaries.length).toBeGreaterThan(0);
+    for (const marker of markers)
+      expect(f.server.requests.some((request) => JSON.stringify(request.messages).includes(marker))).toBe(
+        false,
+      );
+    expect(host.pendingSubagentMessages.get(f.session.id)).toHaveLength(2);
+    await run(f, "Continue with findings");
     for (const marker of markers) {
       for (const summary of summaries) expect(summary).not.toContain(marker);
       expect(f.server.requests.some((request) => JSON.stringify(request.messages).includes(marker))).toBe(

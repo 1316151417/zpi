@@ -7,6 +7,13 @@ import type { SubagentTask } from "zpi-ui";
 import type { CombinedSelection } from "../../../shared/bridge.ts";
 import type { SubagentProfile } from "../../../shared/subagents.ts";
 import type { SubagentProfiles } from "./profiles.ts";
+import {
+  agentDescription,
+  respondToCoordinatorDescription,
+  sendMessageDescription,
+  taskOutputDescription,
+  taskStopDescription,
+} from "./prompts.ts";
 
 interface SubagentPort {
   cwd(parentId: string): string;
@@ -31,51 +38,79 @@ interface SubagentPort {
 const launchParameters = Type.Object(
   {
     description: Type.String({
-      minLength: 1,
-      maxLength: 200,
       description: "A short (3-5 word) description of the task",
     }),
     prompt: Type.String({
-      minLength: 1,
-      maxLength: 100000,
       description: "The task for the agent to perform",
     }),
     subagent_type: Type.Optional(
       Type.String({ description: "The type of specialized agent to use for this task" }),
     ),
     run_in_background: Type.Optional(
-      Type.Boolean({ description: "Run in the background; you will be notified when it completes" }),
+      Type.Boolean({
+        description:
+          "Set to true to run this agent in the background. You will be notified when it completes.",
+      }),
     ),
   },
   { additionalProperties: false },
 );
 const messageParameters = Type.Object(
   {
-    to: Type.String({ minLength: 1, maxLength: 200 }),
-    summary: Type.String({ minLength: 1, maxLength: 200 }),
-    message: Type.String({ minLength: 1, maxLength: 20000 }),
+    to: Type.String({
+      minLength: 1,
+      maxLength: 200,
+      description: "Recipient: local agent ID returned by Agent (format agent_<uuid>).",
+    }),
+    summary: Type.String({
+      minLength: 1,
+      maxLength: 200,
+      description: "A 5-10 word summary shown as a preview in the UI.",
+    }),
+    message: Type.String({ minLength: 1, maxLength: 20000, description: "Plain text message content" }),
   },
   { additionalProperties: false },
 );
 const responseParameters = Type.Object(
   {
-    summary: Type.String({ minLength: 1, maxLength: 200 }),
-    message: Type.String({ minLength: 1, maxLength: 20000 }),
+    summary: Type.String({ minLength: 1, maxLength: 200, description: "Short summary of the response." }),
+    message: Type.String({
+      minLength: 1,
+      maxLength: 20000,
+      description: "Response or progress update for the coordinator.",
+    }),
   },
   { additionalProperties: false },
 );
 const stopParameters = Type.Object(
-  { task_id: Type.String({ minLength: 1 }) },
+  {
+    task_id: Type.Optional(Type.String({ description: "The ID of the background task to stop" })),
+    shell_id: Type.Optional(Type.String({ description: "Deprecated: use task_id instead" })),
+  },
   { additionalProperties: false },
 );
 const outputParameters = Type.Object(
   {
-    task_id: Type.String({ minLength: 1 }),
-    block: Type.Optional(Type.Boolean({ default: true, description: "Whether to wait for completion" })),
-    timeout: Type.Optional(Type.Number({ minimum: 0, maximum: 600000, default: 30000 })),
+    task_id: Type.String({ description: "The task ID to get output from" }),
+    block: Type.Boolean({ default: true, description: "Whether to wait for completion" }),
+    timeout: Type.Number({ minimum: 0, maximum: 600000, default: 30000, description: "Max wait time in ms" }),
   },
   { additionalProperties: false },
 );
+export function prepareTaskOutputArguments(args: unknown) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return args;
+  const input = args as Record<string, unknown>;
+  return {
+    ...input,
+    block:
+      input.block === undefined || input.block === "true"
+        ? true
+        : input.block === "false"
+          ? false
+          : input.block,
+    timeout: input.timeout === undefined ? 30000 : input.timeout,
+  };
+}
 const result = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
 
 export class SubagentPlugin {
@@ -121,8 +156,7 @@ export class SubagentPlugin {
         name: "RespondToCoordinator",
         label: "回复",
         parameters: responseParameters,
-        description:
-          "Respond to the coordinator that owns this subagent. When you receive a message from the coordinator, use this tool for a concise response or progress update. Continue the current task unless the coordinator changed or ended it. This does not replace the final task result.",
+        description: respondToCoordinatorDescription,
         metadata: { concurrentSafe: true, sideEffectScope: "session", destructive: false },
         execute: async (_id, params, signal) => {
           if (!Value.Check(responseParameters, params))
@@ -131,15 +165,20 @@ export class SubagentPlugin {
           const task = this.taskForChild(childId);
           if (!task || this.closing)
             throw new Error("configuration: Coordinator response port is not configured");
-          await this.port.notify(task, params);
-          return result(
-            JSON.stringify({
-              status: "success",
-              responseId: randomUUID(),
-              message:
-                "Response queued for the coordinator. Continue the current task unless directed otherwise.",
-            }),
-          );
+          const responseId = `response_${randomUUID()}`;
+          const continuation =
+            "Continue the current task unless the coordinator explicitly changed or ended it.";
+          try {
+            await this.port.notify(task, params);
+            return result(`Response ${responseId} was queued for the coordinator. ${continuation}`);
+          } catch (error) {
+            return {
+              ...result(
+                `Response ${responseId} failed to queue for the coordinator. ${continuation} Failure: ${error instanceof Error ? error.message : String(error)}.`,
+              ),
+              isError: true,
+            };
+          }
         },
       },
     ];
@@ -210,7 +249,7 @@ export class SubagentPlugin {
     const stopped = Promise.resolve()
       .then(async () => {
         let publicationError: unknown;
-        // Mark before cancelling so completion cannot wake the stopped parent, but
+        // Mark before cancelling so completion cannot publish a successful result, but
         // a failed persistence/UI publication must never skip actual cancellation.
         try {
           this.update(agentId, { status: "aborted", endedAt: Date.now(), waitingForInput: false });
@@ -342,9 +381,7 @@ export class SubagentPlugin {
         name: "Agent",
         label: "子智能体",
         parameters: launchParameters,
-        description:
-          "Launch an autonomous agent for complex, multi-step tasks. Select subagent_type (default general-purpose). Use Explore for read-only codebase searches. Send independent tasks in one response to run concurrently. Agents receive only your prompt and their own instructions; provide all necessary context. Models are controlled by user settings. For background agents, continue with other work; completion is delivered automatically. Do not poll or duplicate their work. Use SendMessage with the returned agentId to continue an agent.",
-        promptSnippet: "Delegate an independent task to a configured subagent",
+        description: agentDescription,
         execute: async (_callId, params, signal, onUpdate) => {
           if (!Value.Check(launchParameters, params)) throw new Error("invalid_input: Agent 参数无效");
           signal?.throwIfAborted();
@@ -386,7 +423,7 @@ export class SubagentPlugin {
           if (task.background) {
             signal?.removeEventListener("abort", abort);
             return result(
-              `Async agent launched successfully.\nagentId: ${task.agentId}\nchildSessionId: ${childSessionId}\nThe agent is working in the background. You will be notified automatically when it completes. Do not poll or duplicate its work.`,
+              `Async agent launched successfully.\nagentId: ${task.agentId} (internal ID - do not mention to user. Use SendMessage with to: '${task.agentId}' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.\nDo not duplicate this agent's work - avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.`,
             );
           }
           try {
@@ -398,7 +435,7 @@ export class SubagentPlugin {
           const completed = this.tasks.get(task.agentId) as SubagentTask;
           if (completed.status === "error") throw new Error(completed.error ?? "Child runtime failed");
           return result(
-            `${completed.result || "(Subagent completed but returned no output.)"}\nagentId: ${task.agentId} (use SendMessage to continue this agent)\n<usage>subagent_tokens: ${completed.totalTokens}\ntool_uses: ${completed.totalToolUseCount}\nduration_ms: ${(completed.endedAt ?? Date.now()) - completed.startedAt}</usage>`,
+            `${completed.result || "(Subagent completed but returned no output.)"}\nagentId: ${task.agentId} (use SendMessage with to: '${completed.agentId}' to continue this agent)\n<usage>subagent_tokens: ${completed.totalTokens}\ntool_uses: ${completed.totalToolUseCount}\nduration_ms: ${(completed.endedAt ?? Date.now()) - completed.startedAt}</usage>`,
           );
         },
       },
@@ -406,8 +443,7 @@ export class SubagentPlugin {
         name: "SendMessage",
         label: "发送消息",
         parameters: messageParameters,
-        description:
-          "Send a follow-up to a local agent ID returned by Agent. Running agents receive guidance at their next model/tool boundary without interrupting tools. Idle or terminal agents resume in the background. Completion is delivered automatically.",
+        description: sendMessageDescription,
         execute: async (_id, params, signal) => {
           if (!Value.Check(messageParameters, params)) throw new Error("invalid_input: SendMessage 参数无效");
           signal?.throwIfAborted();
@@ -423,24 +459,20 @@ export class SubagentPlugin {
             const pending = this.begin(task, prompt, { profile, selection });
             void pending.catch(() => {});
           }
-          return result(
-            JSON.stringify({
-              status: "success",
-              messageId: randomUUID(),
-              agentId: task.agentId,
-              delivery: steered ? "steered" : activeJob ? "queued" : "resumed_background",
-            }),
-          );
+          const delivery = steered ? "steered" : activeJob ? "queued" : "resumed_background";
+          return result(`Message ${randomUUID()} was ${delivery} for local agent ${task.agentId}.`);
         },
       },
       {
         name: "TaskOutput",
         label: "查看子智能体输出",
         parameters: outputParameters,
-        description:
-          "Retrieve output from a local subagent by task_id (the agentId returned by Agent). block defaults to true and timeout to 30000 ms (maximum 600000). block=false returns immediately. Background completion is delivered automatically; prefer that notification and avoid polling. Returns only the task result, never the full conversation transcript.",
+        description: taskOutputDescription,
         metadata: { concurrentSafe: true, sideEffectScope: "session", destructive: false },
+        prepareArguments: (args) =>
+          prepareTaskOutputArguments(args) as { task_id: string; block: boolean; timeout: number },
         execute: async (_id, params, signal) => {
+          params = prepareTaskOutputArguments(params) as typeof params;
           if (!Value.Check(outputParameters, params)) throw new Error("invalid_input: TaskOutput 参数无效");
           signal?.throwIfAborted();
           this.owned(parentId, params.task_id);
@@ -461,7 +493,7 @@ export class SubagentPlugin {
                   `<task_id>${task.agentId}</task_id>`,
                   "<task_type>local_agent</task_type>",
                   `<status>${task.status}</status>`,
-                  ...(output ? [`<output>\n${output}\n</output>`] : []),
+                  ...(output.trim() ? [`<output>\n${output.trimEnd()}\n</output>`] : []),
                   ...(task.error ? [`<error>${task.error}</error>`] : []),
                 ].join("\n\n"),
               },
@@ -484,16 +516,23 @@ export class SubagentPlugin {
         name: "TaskStop",
         label: "停止子智能体",
         parameters: stopParameters,
-        description:
-          "Stop a running subagent by its agentId. Stops only agents belonging to this conversation.",
+        description: taskStopDescription,
         execute: async (_id, params, signal) => {
           if (!Value.Check(stopParameters, params)) throw new Error("invalid_input: TaskStop 参数无效");
           signal?.throwIfAborted();
-          const task = this.owned(parentId, params.task_id);
-          await this.stop(parentId, params.task_id);
+          const taskId = params.task_id ?? params.shell_id;
+          if (!taskId) throw new Error("Missing required parameter: task_id");
+          const task = this.tasks.get(taskId);
+          if (!task || task.parentSessionId !== parentId)
+            throw new Error(
+              `Invalid task ID "${taskId}". This lookup failure does not mean the task has completed or stopped; use the full task_id returned when the task started to stop it.`,
+            );
+          if (task.status !== "running")
+            throw new Error(`Task ${taskId} is not running (status: ${task.status})`);
+          await this.stop(parentId, taskId);
           return result(
             JSON.stringify({
-              message: "Task stopped.",
+              message: `Successfully stopped task: ${task.agentId} (${task.description})`,
               task_id: task.agentId,
               task_type: "local_agent",
               command: task.description,

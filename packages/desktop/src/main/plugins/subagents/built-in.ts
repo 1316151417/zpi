@@ -41,7 +41,7 @@ export function buildExploreAgentPrompt(): string {
     "",
     "Guidelines:",
     "- Use `find` via Bash for broad file pattern matching",
-    "- Use `rg` via Bash for searching file contents with regex",
+    "- Use `grep` via Bash for searching file contents with regex",
     "- Use read when you know the specific file path you need to read",
     "- Use bash ONLY for read-only operations (ls, git status, git log, git diff, find, grep, cat, head, tail)",
     "- NEVER use Bash for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, pip install, or any file creation/modification",

@@ -270,7 +270,7 @@ test("runs independent children concurrently and cancels them when the parent st
   expect(f.host.activeRuns.size).toBe(0);
 });
 
-test("background child completes after parent settles and sends exactly one automatic result notification", async () => {
+test("late background findings stay queued without waking the parent and survive restart until user input", async () => {
   const childStarted = deferred();
   let childResponse: ServerResponse | undefined;
   const f = await fixture((body, response) => {
@@ -282,43 +282,67 @@ test("background child completes after parent settles and sends exactly one auto
     if (!messages(body).some((message) => message.role === "tool"))
       call(response, { description: "Background search", prompt: "Search", run_in_background: true });
     else {
-      send(
-        response,
-        chunk({
-          content: messages(body).some((message) => message.content?.includes("<task-notification>"))
-            ? "Collected result"
-            : "Agent is running",
-        }),
-      );
+      send(response, chunk({ content: "Agent is running" }));
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
   await run(f, "Start background research");
   await childStarted.promise;
+  const requests = f.server.requests.length;
   expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].status).toBe("completed");
   expect(f.host.subagents.list(f.session.id)[0].status).toBe("running");
   send(childResponse as ServerResponse, chunk({ content: "Background findings" }));
   done(childResponse as ServerResponse);
   await expect
-    .poll(
-      () =>
-        f.host
-          .getSessionSnapshot(f.session.id)
-          .view.runs.filter((run) => run.userMessage.includes("<task-notification>")).length,
-    )
-    .toBe(1);
-  await f.host.activeRuns.get(f.session.id)?.done;
-  expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({
+    .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
+    .toHaveLength(1);
+  expect(f.host.activeRuns.has(f.session.id)).toBe(false);
+  expect(f.server.requests).toHaveLength(requests);
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
+  await f.host.close();
+  const settings = new SettingsStore(f.dir, codec);
+  const restored = new SessionHost(f.dir, settings, f.resources, f.workspace);
+  cleanup.push(() => restored.close());
+  await restored.init();
+  expect(restored.activeRuns.size).toBe(0);
+  expect(restored.subagents.list(f.session.id)[0]).toMatchObject({
     status: "completed",
     result: "Background findings",
   });
-  expect(f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.userMessage).toContain(
-    "Background findings",
-  );
+  const acceptedInbox = settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data;
+  await restored.startRun({ sessionId: f.session.id, text: "Use those findings" });
+  await restored.activeRuns.get(f.session.id)?.done;
+  expect(JSON.stringify(f.server.requests.at(-1))).toContain("Background findings");
+  expect(settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toEqual([]);
+  expect(
+    restored.sessions
+      .get(f.session.id)
+      ?.messages.filter(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("<task-notification>"),
+      ),
+  ).toHaveLength(1);
+  // Simulate termination after transcript commit but before the inbox acknowledgement.
+  settings.state.setRuntime(f.session.id, "subagent_inbox", "inbox", acceptedInbox, "queued");
+  await restored.close();
+  const recoveredSettings = new SettingsStore(f.dir, codec);
+  const recovered = new SessionHost(f.dir, recoveredSettings, f.resources, f.workspace);
+  cleanup.push(() => recovered.close());
+  await recovered.init();
+  expect(recoveredSettings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toEqual([]);
+  await recovered.startRun({ sessionId: f.session.id, text: "Continue once more" });
+  await recovered.activeRuns.get(f.session.id)?.done;
+  expect(
+    recovered.sessions
+      .get(f.session.id)
+      ?.messages.filter(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("<task-notification>"),
+      ),
+  ).toHaveLength(1);
 });
 
-test("a background result arriving during the final answer gets its own persisted supplement run", async () => {
+test("a background result arriving during the final answer waits for the next user input", async () => {
   const answering = deferred();
   let childResponse: ServerResponse | undefined;
   let parentResponse: ServerResponse | undefined;
@@ -349,7 +373,7 @@ test("a background result arriving during the final answer gets its own persiste
   assert(parentResponse);
   done(parentResponse);
   await expect.poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.status).toBe("completed");
-  await expect.poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.length).toBe(2);
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
   await f.host.activeRuns.get(f.session.id)?.done;
   const runs = f.host.getSessionSnapshot(f.session.id).view.runs;
   expect(runs[0].subagentNotification).toBeUndefined();
@@ -357,15 +381,10 @@ test("a background result arriving during the final answer gets its own persiste
     "Complete main answer",
   ]);
   expect(runs[0].finalAnswerBlockIds).toHaveLength(1);
-  expect(runs[1].subagentNotification).toMatchObject({ description: "Late SQL findings" });
-  expect(runs[1].orderedBlocks.flatMap((block) => (block.type === "text" ? [block.text] : []))).toEqual([
-    "Supplement only",
-  ]);
-  await f.host.close();
-  const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
-  cleanup.push(() => restored.close());
-  await restored.init();
-  expect(restored.getSessionSnapshot(f.session.id).view.runs).toEqual(runs);
+  expect(JSON.stringify(f.server.requests.at(-1))).not.toContain("Late findings");
+  await run(f, "Continue with late findings");
+  expect(JSON.stringify(f.server.requests.at(-1))).toContain("Late findings");
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(2);
 });
 
 test("SendMessage resumes a completed child with its own history and automatically returns follow-up results", async () => {
@@ -387,7 +406,7 @@ test("SendMessage resumes a completed child with its own history and automatical
       | { name?: string; content: string }
       | undefined;
     if (!lastTool) call(response, { description: "Initial search", prompt: "Initial request" });
-    else if (lastTool.content.includes("use SendMessage to continue this agent")) {
+    else if (lastTool.content.includes("use SendMessage with to:")) {
       const to = /agentId: (agent_[a-z0-9-]+)/.exec(lastTool.content)?.[1];
       call(
         response,
@@ -403,6 +422,7 @@ test("SendMessage resumes a completed child with its own history and automatical
   f.settings.setCapabilityEnabled("subagents", true);
   await run(f, "Research and follow up");
   await expect.poll(() => f.host.subagents.list(f.session.id)[0].result).toBe("Follow-up findings");
+  await run(f, "Collect follow-up findings");
   await expect.poll(() => JSON.stringify(f.server.requests).includes("<task-notification>")).toBe(true);
   await f.host.activeRuns.get(f.session.id)?.done;
   const task = f.host.subagents.list(f.session.id)[0];
@@ -597,6 +617,7 @@ test("delivers SendMessage during a live child at the next model boundary withou
   await expect.poll(() => f.host.subagents.list(f.session.id)[0].result).toBe("Revised findings");
   expect(f.host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(1);
   expect(childRequests).toBe(2);
+  await run(f, "Collect revised findings");
   await expect.poll(() => JSON.stringify(f.server.requests).includes("<task-notification>")).toBe(true);
   await f.host.activeRuns.get(f.session.id)?.done;
 });
@@ -694,7 +715,7 @@ test("startup guidance reaches the first child turn while input preparation is s
   }
 });
 
-test("a coordinator reply at the SDK settlement boundary starts a model-only follow-up instead of disappearing", async () => {
+test("a coordinator reply at the SDK settlement boundary remains queued for the next user turn", async () => {
   const f = await fixture((body, response) => {
     if (tools(body).includes("Agent") && !messages(body).some((row) => row.role === "tool"))
       call(response, { description: "Inspect", prompt: "Research" });
@@ -733,10 +754,10 @@ test("a coordinator reply at the SDK settlement boundary starts a model-only fol
   try {
     await run(f, "Follow up");
     await delivery;
-    await expect
-      .poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.subagentNotification?.description)
-      .toBe("Last moment reply");
-    await f.host.activeRuns.get(f.session.id)?.done;
+    expect(f.host.activeRuns.has(f.session.id)).toBe(false);
+    expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(2);
+    expect(JSON.stringify(f.server.requests.at(-1))).not.toContain("BOUNDARY REPLY");
+    await run(f, "Collect reply");
     expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(3);
     expect(JSON.stringify(f.server.requests.at(-1))).toContain("BOUNDARY REPLY");
   } finally {
@@ -967,3 +988,64 @@ test("terminal resume uses the refreshed definition/model while retaining child 
   expect(f.server.requests.filter((body) => !tools(body).includes("Agent"))).toHaveLength(2);
   expect(f.host.subagents.list(f.session.id)).toHaveLength(1);
 });
+
+test.each(["continue", "stop", "error"])(
+  "handles a child result during parent generation: %s",
+  async (action) => {
+    const thinking = deferred();
+    let childResponse: ServerResponse | undefined;
+    let parentResponse: ServerResponse | undefined;
+    const f = await fixture((body, response) => {
+      if (!tools(body).includes("Agent")) {
+        childResponse = response;
+        return;
+      }
+      if (!messages(body).some((message) => message.role === "tool")) {
+        call(response, { description: "Concurrent search", prompt: "Search", run_in_background: true });
+      } else if (JSON.stringify(messages(body)).includes("<task-notification>")) {
+        send(response, chunk({ content: "Combined findings" }));
+        done(response);
+      } else {
+        parentResponse = response;
+        send(response, chunk({ reasoning_content: "Working on independent work" }));
+        thinking.resolve();
+      }
+    });
+    await f.host.startRun({ sessionId: f.session.id, text: "Research in parallel" });
+    const active = f.host.activeRuns.get(f.session.id);
+    assert(active);
+    await thinking.promise;
+    await expect.poll(() => !!childResponse).toBe(true);
+    assert(childResponse);
+    assert(parentResponse);
+    send(childResponse, chunk({ content: "EARLY CHILD FINDINGS" }));
+    done(childResponse);
+    await expect
+      .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
+      .toHaveLength(1);
+    if (action === "continue") {
+      // Closing reasoning starts another request before the original HTTP response finishes.
+      send(parentResponse, chunk({ content: "Stale planned answer" }));
+      await active.done;
+      expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
+      expect(JSON.stringify(f.server.requests.at(-1))).toContain("EARLY CHILD FINDINGS");
+      expect(JSON.stringify(f.host.sessions.get(f.session.id)?.messages)).not.toContain(
+        "Stale planned answer",
+      );
+      expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toEqual([]);
+    } else {
+      if (action === "stop") await f.host.abortRun({ sessionId: f.session.id, runId: active.runId });
+      else {
+        send(parentResponse, { error: { message: "Permanent provider failure" } });
+        parentResponse.end();
+        await active.done;
+      }
+      expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
+      expect(f.host.activeRuns.has(f.session.id)).toBe(false);
+      expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toHaveLength(1);
+      expect(f.host.subagents.list(f.session.id)[0].result).toBe("EARLY CHILD FINDINGS");
+      await run(f, "Continue after interruption");
+      expect(JSON.stringify(f.server.requests.at(-1))).toContain("EARLY CHILD FINDINGS");
+    }
+  },
+);

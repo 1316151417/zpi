@@ -612,3 +612,49 @@ describe("Responses protocol and portable transcripts", () => {
     release("renewed-key");
   });
 });
+
+it("emits safe boundaries only after complete items include authoritative text, phase and reasoning signature", async () => {
+  const commentary = {
+    ...textItem,
+    phase: "partial_answer",
+    content: [{ type: "output_text", text: "Authoritative answer", annotations: [] }],
+  };
+  const stream = streamSimple(responsesModel(), normalizeContext({ messages: [] }), {
+    apiKey: "fake",
+    fetch: (async () =>
+      sse([
+        {
+          type: "response.reasoning_summary_text.delta",
+          item_id: reasonItem.id,
+          summary_index: 0,
+          delta: "计划",
+        },
+        {
+          type: "response.reasoning_summary_text.done",
+          item_id: reasonItem.id,
+          summary_index: 0,
+          text: "计划",
+        },
+        { type: "response.output_item.done", item: reasonItem },
+        { type: "response.output_text.delta", item_id: textItem.id, content_index: 0, delta: "Draft answer" },
+        { type: "response.output_text.done", item_id: textItem.id, content_index: 0, text: "Draft answer" },
+        { type: "response.output_item.done", item: commentary },
+        terminal([reasonItem, commentary]),
+      ])) as typeof fetch,
+  });
+  const closed = [];
+  for await (const event of stream) {
+    if (event.type === "thinking_end" || event.type === "text_end") closed.push(structuredClone(event));
+  }
+  expect(closed).toHaveLength(2);
+  expect(closed[0].partial.content[0]).toMatchObject({ thinkingSignature: JSON.stringify(reasonItem) });
+  expect(closed[1].partial.content[1]).toMatchObject({
+    text: "Authoritative answer",
+    phase: "partial_answer",
+    textSignature: textItem.id,
+  });
+  expect(closed[1].content).toBe("Authoritative answer");
+  expect(
+    responsesInput(responsesModel(), normalizeContext({ messages: [await stream.result()] })).at(-1),
+  ).toMatchObject({ phase: "partial_answer" });
+});

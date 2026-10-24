@@ -79,6 +79,7 @@ export class AgentSession {
   private agent: Agent;
   private manager: SessionManager;
   private steering: import("zpi-ai").UserMessage[] = [];
+  private pendingMessages: import("zpi-ai").UserMessage[] = [];
   private allTools: Map<string, AgentTool>;
   private listeners = new Set<(event: AgentSessionEvent) => void>();
   private running?: Promise<void>;
@@ -202,6 +203,7 @@ export class AgentSession {
       },
       toolExecution: "parallel",
       getSteeringMessages: () => this.steering.splice(0),
+      getPendingMessages: () => this.pendingMessages.splice(0),
     });
     const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
     this.agent.subscribe((event) => {
@@ -708,15 +710,20 @@ export class AgentSession {
         this.notify({ type: "model_retry", status: null });
         this.active = undefined;
         this.steering = [];
+        this.pendingMessages = [];
         this.notify({ type: "agent_settled" });
       });
     return this.running;
   }
-  /** Deliver guidance after the current tool batch/model step without interrupting it. */
-  steer(text: string): boolean {
+  /** Queue-only input can preempt completed reasoning/commentary, but never a final answer. */
+  steer(text: string, options: { queueOnly?: boolean } = {}): boolean {
     if (!text.trim() || text.length > 100000) throw new Error("Invalid steering input");
     if (this.active !== "prompt" || this.disposed || this.abortRequested) return false;
-    this.steering.push({ role: "user", content: text, timestamp: Date.now() });
+    (options.queueOnly ? this.pendingMessages : this.steering).push({
+      role: "user",
+      content: text,
+      timestamp: Date.now(),
+    });
     return true;
   }
   async abort(): Promise<void> {

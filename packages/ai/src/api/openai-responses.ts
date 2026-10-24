@@ -52,7 +52,7 @@ export function responsesInput(model: Model, context: TranscriptContext): Respon
             role: "assistant",
             content: block.text,
             ...(block.phase ? { phase: block.phase } : {}),
-          });
+          } as ResponseInput[number]);
         } else if (block.type === "thinking" && block.thinkingSignature) {
           const item: unknown = JSON.parse(block.thinkingSignature);
           if (isJsonObject(item) && item.type === "reasoning")
@@ -310,7 +310,6 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       const current = block?.type === "thinking" ? block.thinking : "";
       if (text.startsWith(current)) append(key, "thinking", text.slice(current.length));
       else if (block?.type === "thinking") block.thinking = text;
-      close(key);
     }
     function completeText(key: string, text: string) {
       const index = blocks.get(key);
@@ -322,7 +321,6 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         block.text = text;
         events.generated();
       }
-      close(key);
     }
     function itemAdded(item: ResponseOutputItem) {
       if (item.type === "reasoning") {

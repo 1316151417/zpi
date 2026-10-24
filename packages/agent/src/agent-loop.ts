@@ -1,8 +1,12 @@
-import type { ToolResultMessage } from "zpi-ai";
+import type { AssistantMessage, ToolResultMessage } from "zpi-ai";
 import { emptyAssistant, getCurrentTools, normalizeContext, toToolDeclaration } from "zpi-ai";
 import { createStreamingToolCoordinator } from "./streaming-tool-coordinator.ts";
 import { createToolExecutor } from "./tool-execution.ts";
 import type { AgentContext, AgentEventSink, AgentLoopConfig, AgentMessage, StreamFn } from "./types.ts";
+
+function isIntermediateText(part: AssistantMessage["content"][number] | undefined): boolean {
+  return part?.type === "text" && (part.phase === "commentary" || part.phase === "partial_answer");
+}
 
 function declareTools(context: AgentContext): AgentMessage[] {
   const old = getCurrentTools(context.messages);
@@ -66,7 +70,14 @@ async function run(
   try {
     for (const prompt of prompts) await add(prompt);
     while (true) {
+      for (const message of config.getPendingMessages?.() ?? []) await add(message);
       let assistant = emptyAssistant(config.model);
+      let pending: AgentMessage[] = [];
+      let preempted = false;
+      let finalAnswerCompleted = false;
+      const generation = new AbortController();
+      const generationSignal = signal ? AbortSignal.any([signal, generation.signal]) : generation.signal;
+      const completed = new Set<number>();
       let started = false;
       let coordinator = createStreamingToolCoordinator(context, config, emit, signal);
       let streamed = new Map<string, ToolResultMessage>();
@@ -88,10 +99,15 @@ async function run(
           streamingToolExecution: _______,
           prepareNextTurnWithContext: ________,
           getSteeringMessages: _________,
+          getPendingMessages: __________,
           ...options
         } = config;
         const apiKey = (await getApiKey?.(config.model.provider)) ?? config.apiKey;
-        const events = await streamFn(config.model, transcript, { ...options, apiKey, signal });
+        const events = await streamFn(config.model, transcript, {
+          ...options,
+          apiKey,
+          signal: generationSignal,
+        });
         for await (const event of events) {
           if (event.type === "start") {
             assistant = event.partial;
@@ -102,6 +118,7 @@ async function run(
           else {
             assistant = event.partial;
             await emit({ type: "message_update", message: assistant, assistantMessageEvent: event });
+            if (event.type === "reset") completed.clear();
             if (event.type === "reset" && !recovering) {
               const closed = assistant.content.filter((c) => c.type === "toolCall");
               streamed = await coordinator.interrupt(closed);
@@ -110,9 +127,33 @@ async function run(
             } else if (event.type === "toolcall_end" && !recovering) {
               coordinator.accept(event.toolCall, assistant);
             }
+            if (["thinking_end", "text_end", "toolcall_end"].includes(event.type) && "contentIndex" in event)
+              completed.add(event.contentIndex);
+            const block = "contentIndex" in event ? assistant.content[event.contentIndex] : undefined;
+            if (event.type === "toolcall_end") finalAnswerCompleted = false;
+            if (event.type === "text_end" && block?.type === "text" && !isIntermediateText(block))
+              finalAnswerCompleted = true;
+            const boundary =
+              event.type === "thinking_end" || (event.type === "text_end" && isIntermediateText(block));
+            if (boundary && !finalAnswerCompleted && !recovering && !signal?.aborted) {
+              pending = config.getPendingMessages?.() ?? [];
+              if (pending.length) {
+                // Close only completed items. Cancel generation independently of any live tools.
+                assistant = structuredClone({
+                  ...assistant,
+                  content: assistant.content.filter((_, index) => completed.has(index)),
+                });
+                assistant.stopReason = assistant.content.some((part) => part.type === "toolCall")
+                  ? "toolUse"
+                  : "stop";
+                preempted = true;
+                generation.abort();
+                break;
+              }
+            }
           }
         }
-        assistant = await events.result();
+        if (!preempted) assistant = await events.result();
       } catch (error) {
         if (listenerError) {
           await coordinator.abandon();
@@ -190,7 +231,16 @@ async function run(
       }
       await emit({ type: "turn_end", message: assistant, toolResults: results });
       if (signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason)) break;
-      const steering = config.getSteeringMessages?.() ?? [];
+      const acceptsPending =
+        calls.length > 0 ||
+        (!finalAnswerCompleted &&
+          assistant.content.length > 0 &&
+          assistant.content.every((part) => part.type === "thinking" || isIntermediateText(part)));
+      const steering = [
+        ...pending,
+        ...(acceptsPending ? (config.getPendingMessages?.() ?? []) : []),
+        ...(config.getSteeringMessages?.() ?? []),
+      ];
       for (const message of steering) await add(message);
       if (!calls.length && !steering.length) break;
       const next = await config.prepareNextTurnWithContext?.(

@@ -161,7 +161,7 @@ export interface TextContent {
   type: "text";
   text: string;
   textSignature?: string;
-  phase?: "commentary" | "final_answer";
+  phase?: "commentary" | "partial_answer" | "final_answer";
 }
 export interface ThinkingContent {
   type: "thinking";

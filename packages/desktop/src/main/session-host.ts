@@ -90,7 +90,8 @@ import {
 import { readShortMemory } from "./memory/short-memory.ts";
 import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
-import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
+import { agentConcurrencyNote, subagentCommonNotes } from "./plugins/subagents/prompts.ts";
+import { prepareTaskOutputArguments, SubagentPlugin } from "./plugins/subagents/runtime.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
@@ -104,6 +105,8 @@ import { publicWebUrl } from "./web-client.ts";
 import { WebTools } from "./web-tools.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
+
+type AgentInboxInput = RunInput & { backgroundNotification?: boolean };
 
 interface SessionConfiguration extends SessionCapabilities {
   memory?: { short: boolean; long: boolean };
@@ -342,14 +345,18 @@ export class SessionHost {
         if (this.closing || this.deleting.has(task.sessionId)) return;
         const child = this.subagents.taskForChild(task.sessionId);
         if (child && child.status !== "running") return;
-        await this.deliverSubagentMessage({
-          parentSessionId: task.sessionId,
-          agentId: task.taskId,
-          agentType: "bash",
-          description: task.description,
-          status: task.status === "completed" ? "completed" : "error",
-          result: `Background command ${task.status}. Exit code: ${task.exitCode ?? "unknown"}.\nOutput file: ${task.outputPath}\nUse TaskOutput with task_id ${task.taskId} if the output is needed.`,
-        });
+        await this.deliverSubagentMessage(
+          {
+            parentSessionId: task.sessionId,
+            agentId: task.taskId,
+            agentType: "bash",
+            description: task.description,
+            status: task.status === "completed" ? "completed" : "error",
+            result: `Background command ${task.status}. Exit code: ${task.exitCode ?? "unknown"}.\nOutput file: ${task.outputPath}\nUse TaskOutput with task_id ${task.taskId} if the output is needed.`,
+          },
+          undefined,
+          true,
+        );
       },
       error: (error) => this.errors.write("background.task", error),
     });
@@ -554,6 +561,26 @@ export class SessionHost {
             ...value,
             status: runtime.status === "interrupted" ? "lost" : value.status,
           });
+        }
+        if (runtime.kind === "subagent_inbox") {
+          const queued = runtime.data as RunInput[];
+          if (queued.length) {
+            const pending = new Set(queued.map((input) => input.text));
+            const index = this.requiredIndex(task.id);
+            const snapshot = index.snapshot();
+            for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot, ["message"])) {
+              if (
+                entry.type === "message" &&
+                entry.message.role === "user" &&
+                typeof entry.message.content === "string"
+              )
+                pending.delete(entry.message.content);
+              if (!pending.size) break;
+            }
+            const inbox = queued.filter((input) => pending.has(input.text));
+            if (inbox.length) this.pendingSubagentMessages.set(task.id, inbox);
+            if (inbox.length !== queued.length) this.saveSubagentInbox(task.id);
+          }
         }
         if (runtime.kind === "subagent") {
           const value = runtime.data as SubagentTask;
@@ -958,7 +985,43 @@ export class SessionHost {
   }
 
   private parentInstructions = new Map<string, string[]>();
-  private pendingSubagentMessages = new Map<string, RunInput[]>();
+  private pendingSubagentMessages = new Map<string, AgentInboxInput[]>();
+  private offeredSubagentMessages = new WeakMap<ActiveRun, Set<AgentInboxInput>>();
+
+  private saveSubagentInbox(id: string) {
+    this.settings.state.setRuntime(
+      id,
+      "subagent_inbox",
+      "inbox",
+      (this.pendingSubagentMessages.get(id) ?? []).filter((input) => input.subagentNotification),
+      "queued",
+    );
+  }
+
+  private offerSubagentMessages(id: string, run: ActiveRun, toolBoundary = false) {
+    if (run.aborted || !run.session) return;
+    const offered = this.offeredSubagentMessages.get(run) ?? new Set<AgentInboxInput>();
+    this.offeredSubagentMessages.set(run, offered);
+    for (const input of this.pendingSubagentMessages.get(id) ?? []) {
+      if (
+        !offered.has(input) &&
+        (!input.backgroundNotification || toolBoundary) &&
+        run.session.steer(input.text, {
+          queueOnly: !!input.subagentNotification && !input.backgroundNotification,
+        })
+      )
+        offered.add(input);
+    }
+  }
+
+  private acknowledgeSubagentMessage(id: string, text: unknown) {
+    const inbox = this.pendingSubagentMessages.get(id);
+    const index = inbox?.findIndex((input) => input.text === text) ?? -1;
+    if (!inbox || index < 0) return;
+    inbox.splice(index, 1);
+    if (!inbox.length) this.pendingSubagentMessages.delete(id);
+    this.saveSubagentInbox(id);
+  }
 
   private async deliverSubagentMessage(
     task: Pick<
@@ -966,6 +1029,7 @@ export class SessionHost {
       "parentSessionId" | "agentId" | "agentType" | "description" | "status" | "result" | "error"
     >,
     reply?: { summary: string; message: string },
+    backgroundNotification = false,
   ) {
     const parentId = task.parentSessionId;
     if (
@@ -979,9 +1043,10 @@ export class SessionHost {
     const escapeXml = (value: string) =>
       value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const tag = reply ? "subagent-message" : "task-notification";
-    const text = `<${tag}>\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(reply?.summary ?? task.description)}\n${escapeXml(reply?.message ?? task.result ?? task.error ?? "No output.")}\n</${tag}>`;
-    const input: RunInput = {
+    const text = `<${tag}>\nnotificationId: ${randomUUID()}\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(reply?.summary ?? task.description)}\n${escapeXml(reply?.message ?? task.result ?? task.error ?? "No output.")}\n</${tag}>`;
+    const input: AgentInboxInput = {
       sessionId: parentId,
+      ...(backgroundNotification ? { backgroundNotification: true } : {}),
       text,
       subagentNotification: {
         agentId: task.agentId,
@@ -990,15 +1055,16 @@ export class SessionHost {
       },
     };
     const active = this.activeRuns.get(parentId);
-    if (active) {
-      if (active.aborted) throw new Error("busy: 父会话已停止");
-      // Only merge notifications at a tool boundary; a completed answer owns its own run.
-      const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
-      inbox.push(input);
-      this.pendingSubagentMessages.set(parentId, inbox);
+    if (backgroundNotification && !active) {
+      await this.startRun(input, undefined, !!this.subagents.taskForChild(parentId));
       return;
     }
-    await this.startRun(input, undefined, !!this.subagents.taskForChild(parentId));
+    const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
+    inbox.push(input);
+    this.pendingSubagentMessages.set(parentId, inbox);
+    // Acceptance is durable and independent of starting a model turn.
+    this.saveSubagentInbox(parentId);
+    if (active) this.offerSubagentMessages(parentId, active);
   }
 
   taskTools(id: string, agents: boolean): ToolDefinition[] {
@@ -1010,31 +1076,31 @@ export class SessionHost {
         return {
           ...tool,
           label: tool.name === "TaskOutput" ? "查看任务输出" : "停止任务",
-          promptSnippet:
-            tool.name === "TaskOutput"
-              ? "Read or wait for task output"
-              : "Stop a background command or agent",
-          description:
-            tool.name === "TaskOutput"
-              ? "Read or wait for a background command or local agent by task_id. block defaults to true; timeout defaults to 30000 milliseconds, maximum 600000. block=false returns immediately. Completion is delivered automatically; avoid polling."
-              : "Stop a running background command or local agent by task_id. Stops the command process tree, or the agent and its background commands.",
           execute: async (callId, params, signal, update, context) => {
+            if (tool.name === "TaskOutput") params = prepareTaskOutputArguments(params);
             if (!Value.Check(tool.parameters, params))
               throw new Error(`invalid_input: ${tool.name} 参数无效`);
-            const input = params as { task_id: string; block?: boolean; timeout?: number };
-            if (!input.task_id.startsWith("exec_"))
-              return tool.execute(callId, params, signal, update, context);
-            if (tool.name === "TaskOutput") return this.backgroundTasks.output(id, input, signal);
+            const input = params as {
+              task_id?: string;
+              shell_id?: string;
+              block?: boolean;
+              timeout?: number;
+            };
+            const taskId = input.task_id ?? input.shell_id;
+            if (!taskId) throw new Error("Missing required parameter: task_id");
+            if (!taskId.startsWith("exec_")) return tool.execute(callId, params, signal, update, context);
+            if (tool.name === "TaskOutput")
+              return this.backgroundTasks.output(id, { ...input, task_id: taskId }, signal);
             signal?.throwIfAborted();
-            await this.backgroundTasks.stop(id, input.task_id, true);
-            const task = this.backgroundTasks.list(id).find((task) => task.taskId === input.task_id);
+            await this.backgroundTasks.stop(id, taskId, true);
+            const task = this.backgroundTasks.list(id).find((task) => task.taskId === taskId);
             return {
               content: [
                 {
                   type: "text",
                   text: JSON.stringify({
-                    message: "Task stopped.",
-                    task_id: input.task_id,
+                    message: `Successfully stopped task: ${taskId} (${task?.command ?? "local_bash"})`,
+                    task_id: taskId,
                     task_type: "local_bash",
                     command: task?.command,
                   }),
@@ -1228,18 +1294,21 @@ export class SessionHost {
       ...(config.subagentProfile
         ? [
             ...(config.subagentProfile.injectAgentsMd ? (config.subagentInstructions ?? []) : []),
-            "Notes:\n- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.\n- In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing — do not recap code you merely read.\n- For clear communication with the user the assistant MUST avoid using emojis.\n- Do not use a colon before tool calls.\n- Do NOT Write report/summary/findings/analysis .md files. Return findings directly as your final assistant message — the parent agent reads your text output, not files you create.",
+            subagentCommonNotes,
           ]
         : []),
       ...(config.subagents
         ? [
-            "Available agent types for the Agent tool:\n" +
+            "<system-reminder>\nAvailable agent types for the Agent tool:\n" +
               (id
                 ? this.subagents.listing(id)
                 : this.listSubagents(null)
                     .agents.filter((agent) => agent.enabled)
                     .map((agent) => `- ${agent.name}: ${agent.description}`)
-                    .join("\n")),
+                    .join("\n")) +
+              "\n\n" +
+              agentConcurrencyNote +
+              "\n</system-reminder>",
           ]
         : []),
     ];
@@ -3123,18 +3192,10 @@ export class SessionHost {
               }
             }
           }
-          if (
-            e.type === "turn_end" &&
-            e.message.role === "assistant" &&
-            e.message.stopReason === "toolUse" &&
-            !run.aborted &&
-            e.message.content.some((block) => block.type === "toolCall")
-          ) {
-            const inbox = this.pendingSubagentMessages.get(id) ?? [];
-            const deferred = inbox.filter((message) => !session.steer(message.text));
-            if (deferred.length) this.pendingSubagentMessages.set(id, deferred);
-            else this.pendingSubagentMessages.delete(id);
-          }
+          if (e.type === "turn_end" && e.message.role === "assistant" && e.message.stopReason === "toolUse")
+            this.offerSubagentMessages(id, run, true);
+          if (e.type === "message_end" && e.message.role === "user")
+            this.acknowledgeSubagentMessage(id, e.message.content);
           if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
             manager.appendCustomEntry("zpi.agent_call", {
@@ -3171,14 +3232,7 @@ export class SessionHost {
           if (projected) this.emit(id, run.runId, projected);
         });
         const execution = session.executeInput(prepared, inputContext);
-        const inbox = this.pendingSubagentMessages.get(id) ?? [];
-        this.pendingSubagentMessages.delete(id);
-        // Manual compaction cannot consume steering. Keep rejected startup replies
-        // for settlement to deliver in a separate prompt turn.
-        const deferred = inbox.filter(
-          (message) => message.subagentNotification || !session.steer(message.text),
-        );
-        if (deferred.length) this.pendingSubagentMessages.set(id, deferred);
+        this.offerSubagentMessages(id, run);
         void execution
           .then(
             () => this.settle(id, run),
@@ -3212,7 +3266,6 @@ export class SessionHost {
         this.sessions.delete(id);
       }
       if (this.activeRuns.get(id) === run) this.activeRuns.delete(id);
-      this.pendingSubagentMessages.delete(id);
       run.finish();
       throw error;
     }
@@ -3418,7 +3471,9 @@ export class SessionHost {
     } catch (error) {
       storageFailure(error, "agent.index");
     }
-    const inbox = this.pendingSubagentMessages.get(id) ?? [];
+    const inbox = (this.pendingSubagentMessages.get(id) ?? []).filter(
+      (input) => !input.subagentNotification || input.backgroundNotification,
+    );
     const continueInbox =
       inbox.length > 0 && !run.aborted && !this.closing && !this.deleting.has(id) && !this.blocked.has(id);
     const childTask = this.subagents.taskForChild(id);
@@ -3449,7 +3504,6 @@ export class SessionHost {
     }
     if (message?.includes("storage:")) this.blocked.set(id, message);
     this.activeRuns.delete(id);
-    this.pendingSubagentMessages.delete(id);
     const record = this.record(id);
     record.status = status;
     try {
@@ -3468,13 +3522,12 @@ export class SessionHost {
       });
       this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
       this.trimCaches(id);
-      // A reply may arrive after the SDK closes its steering inbox but before settle runs.
-      // Reserve the next turn before the user-input queue drains, keeping that reply model-only.
+      // Explicit coordinator guidance and background commands retain their follow-up behavior.
+      // Queue-only child results and replies never reserve a new turn here.
       if (continueInbox && !this.blocked.has(id)) {
-        const [first, ...remaining] = inbox;
-        if (remaining.length) this.pendingSubagentMessages.set(id, remaining);
+        const [first] = inbox;
+        this.acknowledgeSubagentMessage(id, first.text);
         void this.startRun(first, undefined, !!childTask).catch((error) => {
-          this.pendingSubagentMessages.delete(id);
           this.errors.write("subagent.delivery", error, { sessionId: id });
           if (childTask)
             this.subagents.update(childTask.agentId, {
@@ -3494,7 +3547,6 @@ export class SessionHost {
     if (!run || run.runId !== input.runId) throw new Error("not_found: 当前运行不存在");
     run.aborted = true;
     run.preparationAbort.abort();
-    this.pendingSubagentMessages.delete(input.sessionId);
     await Promise.all([
       this.subagents.stopAll(input.sessionId),
       run.session?.abort().catch(() => {}),

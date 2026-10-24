@@ -226,7 +226,7 @@ test("subagent capability manages profiles/models and opens complete read-only c
   }
 });
 
-test("background child streams into the side pane, updates status live and returns a readable notification", async () => {
+test("background child updates live and keeps late findings for the next user interaction", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-subagents-live-"));
   let childResponse: import("node:http").ServerResponse | undefined;
   const server = await fakeServer((body, response) => {
@@ -330,9 +330,16 @@ test("background child streams into the side pane, updates status live and retur
     done(childResponse as import("node:http").ServerResponse);
     await expect(page.locator(".subagent-pane")).toContainText("Completed child findings");
     await expect(page.locator(".task-activity-toggle")).toContainText("1 已结束");
+    await expect(page.locator("main .answer")).toHaveCount(1);
+    await editor.fill("Collect research findings");
+    await editor.press("Enter");
     await expect(page.locator("main .answer")).toHaveCount(2);
+    expect(JSON.stringify(server.requests.at(-1))).toContain("Completed child findings");
     await expect(page.locator("main .subagent-result-notice")).toHaveCount(0);
-    await expect(page.locator("main .user-message")).not.toContainText("<task-notification>");
+    await expect(page.locator("main .user-message")).toHaveText([
+      "Start background research",
+      "Collect research findings",
+    ]);
     await page.getByRole("button", { name: "关闭标签 Background research", exact: true }).click();
     await page.locator(".task-ended").click();
     await expect(page.locator(".task-directory")).toContainText("已完成");
@@ -493,7 +500,7 @@ test("message tools match ZCode summaries and keep coordinator inbox bodies out 
     const lastTool = rows.filter((row) => row.role === "tool").at(-1);
     if (!lastTool)
       invoke("Agent", "research", { description: "Stable research title", prompt: "Initial task" });
-    else if (lastTool.content.includes("use SendMessage to continue this agent"))
+    else if (lastTool.content.includes("use SendMessage with to:"))
       invoke("SendMessage", "guidance", {
         to: /agentId: (agent_[a-z0-9-]+)/.exec(lastTool.content)?.[1],
         summary: "Revise scope",

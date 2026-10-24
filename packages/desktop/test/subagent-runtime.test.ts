@@ -191,7 +191,7 @@ test("queued follow-ups stay running and stoppable without exposing an earlier t
     for (const message of ["First follow-up", "Second follow-up"])
       expect(
         (await f.invoke("SendMessage", { to: task.agentId, summary: message, message })).content,
-      ).toEqual([{ type: "text", text: expect.stringContaining('"delivery":"queued"') }]);
+      ).toEqual([{ type: "text", text: expect.stringContaining("was queued for local agent") }]);
     delivery.resolve();
     await vi.waitFor(() => expect(f.port.run).toHaveBeenCalledTimes(2));
     const received = vi.fn();
@@ -272,5 +272,54 @@ test("failed runtime cancellation remains retryable and concurrent retries share
   await Promise.all([first, second]);
   expect(actualStop).toHaveBeenCalledTimes(2);
   expect(f.plugin.list("parent")[0].status).toBe("aborted");
+  await f.plugin.close();
+});
+
+test("TaskStop accepts the ZCode shell_id alias and preserves missing, stale and lookup failure guidance", async () => {
+  const f = fixture();
+  const task = await f.launch();
+  await expect(f.invoke("TaskStop", {})).rejects.toThrow("Missing required parameter: task_id");
+  await expect(f.invoke("TaskStop", { task_id: "missing" })).rejects.toThrow(
+    'Invalid task ID "missing". This lookup failure does not mean the task has completed or stopped; use the full task_id returned when the task started to stop it.',
+  );
+  const stopped = await f.invoke("TaskStop", { shell_id: task.agentId });
+  expect(stopped.content).toEqual([
+    {
+      type: "text",
+      text: JSON.stringify({
+        message: `Successfully stopped task: ${task.agentId} (${task.description})`,
+        task_id: task.agentId,
+        task_type: "local_agent",
+        command: task.description,
+      }),
+    },
+  ]);
+  await expect(f.invoke("TaskStop", { task_id: task.agentId })).rejects.toThrow(
+    `Task ${task.agentId} is not running (status: aborted)`,
+  );
+});
+
+test("failed coordinator delivery retains the complete ZCode continuation instruction", async () => {
+  const f = fixture();
+  const task = await f.launch();
+  vi.mocked(f.port.notify).mockRejectedValueOnce(new Error("Parent unavailable"));
+  const reply = await f.plugin
+    .childTools(task.childSessionId)[0]
+    .execute("reply", { summary: "Progress", message: "Findings" }, undefined, undefined, {
+      cwd: "/workspace",
+      model: fakeModel(""),
+      sessionManager: SessionManager.inMemory(),
+      isIdle: () => false,
+      getSystemPrompt: () => "",
+    });
+  expect(reply.isError).toBe(true);
+  expect(reply.content).toEqual([
+    {
+      type: "text",
+      text: expect.stringMatching(
+        /^Response response_[\w-]+ failed to queue for the coordinator\. Continue the current task unless the coordinator explicitly changed or ended it\. Failure: Parent unavailable\.$/,
+      ),
+    },
+  ]);
   await f.plugin.close();
 });
