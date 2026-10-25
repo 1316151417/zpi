@@ -7,6 +7,12 @@ import type { Result, SessionRecord, SessionSnapshot } from "../src/shared/bridg
 // Native terminal rendering is outside these Node-only loading-shell checks.
 vi.mock("../src/renderer/TerminalPane.tsx", () => ({ TerminalPane: () => null }));
 
+// SSR checks the loading shell; the tab drag overlay requires a browser portal.
+vi.mock("react-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-dom")>();
+  return { ...actual, createPortal: () => null };
+});
+
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 afterEach(() => vi.unstubAllGlobals());
 async function setup() {
