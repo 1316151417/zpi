@@ -1026,7 +1026,7 @@ export function App() {
           />
         )}
         <main
-          className={`main ${record?.draft ? "draft-main" : ""}`}
+          className={`main ${record?.draft && !floatingComposer ? "draft-main" : ""}`}
           onPointerDownCapture={() => selected && paneTask(markSessionRead(selected))}
           onFocusCapture={() => selected && paneTask(markSessionRead(selected))}
         >

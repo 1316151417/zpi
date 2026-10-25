@@ -236,7 +236,7 @@ test("review tabs support overview, closure restoration and complete-view conver
   }
 });
 
-test("full view keeps an unsent draft compact and attachments above its inline input", async ({
+test("full view keeps an unsent draft docked through expansion and attachments above its inline input", async ({
   desktopIsolation,
 }, testInfo) => {
   void desktopIsolation;
@@ -261,6 +261,35 @@ test("full view keeps an unsent draft compact and attachments above its inline i
     await page.getByRole("button", { name: "进入完整视图", exact: true }).click();
     await expect(page.locator(".draft-composer-header")).toBeHidden();
     await expect(input).toHaveCSS("height", "46px");
+    const expectBottomDock = async () => {
+      await expect
+        .poll(() =>
+          input.evaluate((element) => {
+            const body = element.closest(".task-body");
+            if (!body) throw Error("Missing floating conversation body");
+            return Math.abs(body.getBoundingClientRect().bottom - element.getBoundingClientRect().bottom);
+          }),
+        )
+        .toBeLessThanOrEqual(1);
+    };
+    for (const size of [
+      [1200, 800],
+      [900, 640],
+    ]) {
+      await app.evaluate(
+        ({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(size[0], size[1]),
+        size,
+      );
+      await editor.focus();
+      await page.getByRole("button", { name: "展开消息", exact: true }).click();
+      await expectBottomDock();
+      await expect(page.locator(".main .draft-greeting")).toBeInViewport();
+      await expect(editor).toHaveText("unsent draft");
+      await page.screenshot({ path: testInfo.outputPath(`full-view-empty-expanded-${size[0]}.png`) });
+      await page.getByRole("button", { name: "收起消息", exact: true }).click();
+      await expect(input).toHaveCSS("height", "46px");
+      await expectBottomDock();
+    }
     await input.getByRole("button", { name: "添加上下文", exact: true }).click();
     await page.getByRole("option", { name: "附件", exact: true }).click();
     const attachment = input.locator(".image-chip");
@@ -274,6 +303,10 @@ test("full view keeps an unsent draft compact and attachments above its inline i
       return editor.getBoundingClientRect().top - attachment.getBoundingClientRect().bottom;
     });
     expect(attachmentGap).toBeGreaterThan(0);
+    await editor.focus();
+    await page.getByRole("button", { name: "展开消息", exact: true }).click();
+    await expectBottomDock();
+    await page.getByRole("button", { name: "收起消息", exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("full-view-draft-attachment.png") });
     await page.getByRole("button", { name: "最小化编辑器", exact: true }).click();
     await page.getByRole("button", { name: "展开编辑器", exact: true }).click();

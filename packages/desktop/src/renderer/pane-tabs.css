@@ -370,10 +370,6 @@
   visibility: hidden;
   pointer-events: none;
 }
-.shell.pane-full-floating .draft-main .task-body::before,
-.shell.pane-full-floating .draft-main .task-body::after {
-  display: none;
-}
 .pane-conversation-tab {
   flex: 0 0 auto;
   width: auto;
