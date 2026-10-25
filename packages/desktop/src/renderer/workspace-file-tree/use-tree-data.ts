@@ -92,12 +92,16 @@ export function useWorkspaceFileTreeData({
     setLoadedDirectoryPaths(next);
   }, []);
 
-  const invalidateDirectoryRequest = useCallback((directoryPath: string) => {
-    directoryRequestVersionRef.current.set(
-      directoryPath,
-      (directoryRequestVersionRef.current.get(directoryPath) ?? 0) + 1,
-    );
-  }, []);
+  const invalidateDirectoryRequest = useCallback(
+    (directoryPath: string) => {
+      directoryRequestVersionRef.current.set(
+        directoryPath,
+        (directoryRequestVersionRef.current.get(directoryPath) ?? 0) + 1,
+      );
+      setDirectoryLoading(directoryPath, false);
+    },
+    [setDirectoryLoading],
+  );
 
   const cancelRefreshBatch = useCallback(() => {
     refreshBatchVersionRef.current += 1;
@@ -181,6 +185,8 @@ export function useWorkspaceFileTreeData({
       // 手动刷新和 watcher 可能并发读取同一目录，目录级序号避免旧快照晚返回后覆盖新文件树。
       const directoryRequestVersion = (directoryRequestVersionRef.current.get(directoryPath) ?? 0) + 1;
       directoryRequestVersionRef.current.set(directoryPath, directoryRequestVersion);
+      // The newest reader owns cleanup, including a silent refresh superseding
+      // an expansion. Invalidation itself also releases a stuck loading marker.
       const isCurrentDirectoryRequest = () =>
         workspaceGenerationRef.current === expectedWorkspaceGeneration &&
         requestVersionRef.current === requestVersion &&

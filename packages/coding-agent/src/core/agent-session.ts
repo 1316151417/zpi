@@ -11,6 +11,7 @@ import type {
 } from "zpi-ai";
 import {
   assertSupportedOptions,
+  clampThinkingLevel,
   createAssistantMessageEventStream,
   emptyAssistant,
   isContextOverflowMessage,
@@ -376,7 +377,6 @@ export class AgentSession {
       if (retry && this.overflowRecoveryAttempted) return false;
       if (retry) {
         this.overflowRecoveryAttempted = true;
-        this.dropFailedAssistant();
       }
       if (!(await this.tryAutoCompact(signal))) return false;
       this.state.messages = this.manager.buildSessionContext().messages;
@@ -624,6 +624,7 @@ export class AgentSession {
       this.performance.settle();
       this.compactController = undefined;
       this.active = undefined;
+      this.running = undefined;
       this.notify({ type: "agent_settled" });
     });
     return this.running;
@@ -709,6 +710,7 @@ export class AgentSession {
         this.compactController = undefined;
         this.notify({ type: "model_retry", status: null });
         this.active = undefined;
+        this.running = undefined;
         this.steering = [];
         this.pendingMessages = [];
         this.notify({ type: "agent_settled" });
@@ -776,6 +778,8 @@ export class AgentSession {
       if (this.manager.appendModelChange(model.provider, model.id)) this.notifyLastEntry();
     }
     this.state.model = model;
+    const thinkingLevel = clampThinkingLevel(model, this.thinkingLevel);
+    if (thinkingLevel !== this.thinkingLevel) this.setThinkingLevel(thinkingLevel);
   }
   setThinkingLevel(thinkingLevel: ThinkingLevel): void {
     this.idleCheck();

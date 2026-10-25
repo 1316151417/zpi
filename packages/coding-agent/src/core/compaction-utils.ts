@@ -134,8 +134,9 @@ export function serializeConversation(messages: Message[]): string {
       if (thinkingParts.length > 0) {
         parts.push(`[Assistant thinking]: ${thinkingParts.join("\n")}`);
       }
-      if (msg.content.some((block) => block.type === "text")) {
-        parts.push(`[Assistant]: ${contentText(msg.content)}`);
+      const content = contentText(msg.content);
+      if (content.trim()) {
+        parts.push(`[Assistant]: ${content}`);
       }
       if (toolCalls.length > 0) {
         parts.push(`[Assistant tool calls]: ${toolCalls.join("; ")}`);

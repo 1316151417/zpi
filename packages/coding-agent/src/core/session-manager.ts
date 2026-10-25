@@ -154,6 +154,7 @@ export class SessionManager {
     for (const { entry } of this.store.readRange(plan.firstKeptSeq, snapshot.endSeq, snapshot, [
       "message",
       "compaction",
+      "microcompact",
       "model_change",
     ]))
       result.push(entry);
@@ -541,7 +542,7 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
     return context;
   }
   const keepIndex = entries.findIndex((e) => e.id === compaction.firstKeptEntryId);
-  if (keepIndex < 0) throw new Error("Invalid compaction boundary");
+  if (keepIndex < 0 || keepIndex >= compactionIndex) throw new Error("Invalid compaction boundary");
   const timestamp = Date.parse(compaction.timestamp);
   const system =
     compaction.systemMessage ??

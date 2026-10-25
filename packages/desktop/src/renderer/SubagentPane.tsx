@@ -45,7 +45,9 @@ export function SubagentPane({ tab }: { tab: Extract<PaneTab, { type: "subagent"
         historyCursor={cursor}
         onLoadEarlier={() => loadEarlier(tab.childSessionId)}
       />
-      {view.question && <UserQuestionCard sessionId={tab.childSessionId} request={view.question} />}
+      {view.question && (
+        <UserQuestionCard key={view.question.id} sessionId={tab.childSessionId} request={view.question} />
+      )}
     </section>
   );
 }

@@ -230,6 +230,7 @@ async function run(
         }
       }
       await emit({ type: "turn_end", message: assistant, toolResults: results });
+      if (listenerError) throw listenerError;
       if (signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason)) break;
       const acceptsPending =
         calls.length > 0 ||

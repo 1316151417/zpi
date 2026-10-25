@@ -4,7 +4,7 @@ import { readFileBounded } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import type { ReviewDiffData, ReviewSnapshot, ReviewSource } from "../shared/review.ts";
 import { isPathInside } from "./path-bounds.ts";
-import { workspaceGitStatus } from "./workspace-directory.ts";
+import { workspaceGitStatus, workspaceGitWatchPaths } from "./workspace-directory.ts";
 import { runGit } from "./workspace-files.ts";
 
 const previewBytes = 1024 * 1024;
@@ -24,7 +24,24 @@ async function comparison(cwd: string, source: ReviewSource): Promise<string[]> 
 function parseStats(output: string, root: string): DiffItem[] {
   const records = output.split("\0");
   const entries: DiffItem[] = [];
+  const statuses = new Map<string, DiffItem["status"]>();
   for (let i = 0; i < records.length; i++) {
+    if (records[i].startsWith(":")) {
+      const flag = records[i].split(" ").at(-1)?.[0];
+      let path = records[++i];
+      if (flag === "R" || flag === "C") path = records[++i];
+      statuses.set(
+        resolve(root, path),
+        flag === "A"
+          ? "created"
+          : flag === "D"
+            ? "deleted"
+            : flag === "R" || flag === "C"
+              ? "renamed"
+              : "modified",
+      );
+      continue;
+    }
     const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(records[i]);
     if (!match) continue;
     let path = match[3];
@@ -40,13 +57,7 @@ function parseStats(output: string, root: string): DiffItem[] {
       id: `file:${resolve(root, path)}`,
       path: resolve(root, path),
       oldPath,
-      status: oldPath
-        ? "renamed"
-        : added > 0 && removed === 0
-          ? "created"
-          : removed > 0 && added === 0
-            ? "deleted"
-            : "modified",
+      status: statuses.get(resolve(root, path)) ?? "modified",
       area: "",
       added,
       removed,
@@ -72,17 +83,7 @@ export async function gitReview(
       ...(!status.summary.isGitAvailable ? { isGitAvailable: false } : {}),
     };
   const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
-  const [gitDir, commonDir] = await Promise.all([
-    runGit(cwd, ["rev-parse", "--absolute-git-dir"]),
-    runGit(cwd, ["rev-parse", "--git-common-dir"]),
-  ]);
-  const watchPaths = [
-    ...new Set([
-      ...(process.platform !== "linux" ? [cwd] : []),
-      resolve(cwd, gitDir.trim()),
-      resolve(cwd, commonDir.trim()),
-    ]),
-  ];
+  const watchPaths = await workspaceGitWatchPaths(cwd);
   const refs = await comparison(cwd, source);
   if (source === "branch" && !refs.length) return { entries: [], isRepository: true, watchPaths };
   let entries = parseStats(
@@ -92,6 +93,7 @@ export async function gitReview(
       "--no-ext-diff",
       "--no-textconv",
       "--no-color",
+      "--raw",
       "--numstat",
       "-z",
       "--find-renames",
@@ -107,7 +109,6 @@ export async function gitReview(
   for (const entry of entries) {
     const change = changesByPath.get(entry.path);
     if (source !== "branch" && change) {
-      entry.status = change.kind === "added" ? "created" : change.kind;
       entry.area = change.isConflicted ? "conflicted" : source;
       if (change.isConflicted) {
         entry.added = 0;

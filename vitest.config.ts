@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 
 const domTests = [
+  "packages/desktop/test/search-settings-dom.test.ts",
+  "packages/desktop/test/workspace-tree-lifecycle-dom.test.ts",
+  "packages/desktop/test/renderer-lifecycle-dom.test.ts",
   "packages/ui/test/markdown-selection-dom.test.ts",
   "packages/ui/test/notice.test.ts",
   "packages/desktop/test/web-settings-actions.test.ts",

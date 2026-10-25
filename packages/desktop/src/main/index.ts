@@ -499,8 +499,8 @@ async function launch(): Promise<void> {
   host.subscribe((event) => {
     if (!window.isDestroyed()) window.webContents.send("zpi:event", event);
     if (!ending && event.event.type === "settled") {
-      const record = host.listRecentSessions().find((record) => record.id === event.sessionId);
-      if (record) notifications.handle(event, record.title);
+      const title = host.notificationTitle(event.sessionId);
+      if (title !== undefined) notifications.handle(event, title);
     }
   });
   ipcMain.handle("zpi:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
@@ -587,6 +587,7 @@ async function launch(): Promise<void> {
         workspaceGitStatus: 2,
         ignoredWorkspacePaths: 3,
         watchWorkspaceDirectory: 4,
+        watchReviewDirectory: 2,
         unwatchWorkspaceDirectory: 1,
         readPreviewRange: 4,
         checkPreviewFiles: 2,
@@ -887,6 +888,9 @@ async function launch(): Promise<void> {
           if (args[3] !== undefined && typeof args[3] !== "boolean")
             throw new Error("invalid_input: 递归参数必须是布尔值");
           value = directoryWatchers.watch(fileTreeRoot(2), string(1), args[3] === true);
+          break;
+        case "watchReviewDirectory":
+          value = await directoryWatchers.watchReview(host.workspaceInfo(string(0)).cwd, string(1));
           break;
         case "unwatchWorkspaceDirectory":
           directoryWatchers.unwatch(string(0));

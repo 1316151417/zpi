@@ -20,6 +20,7 @@ async function setup() {
     removeItem: (key: string) => storage.delete(key),
   });
   const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
   let emit!: (event: DesktopEventEnvelope) => void;
   let beforeQuit!: () => Promise<void>;
@@ -1142,5 +1143,27 @@ it("a later failed group command does not suppress an earlier successful respons
   gate.resolve();
   await first;
   expect(f.store.useStore.getState().taskGroups).toEqual(saved);
+  f.unsubscribe();
+});
+
+it("flushes pending and incoming events while hidden without animation frames", async () => {
+  const f = await setup();
+  f.emit({
+    sessionId: f.session.id,
+    runId: "title",
+    seq: 1,
+    event: { type: "session_changed", title: "before hiding" },
+  });
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.title).toBe("Task");
+  f.document.visibilityState = "hidden";
+  f.document.dispatchEvent(new Event("visibilitychange"));
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.title).toBe("before hiding");
+  f.emit({
+    sessionId: f.session.id,
+    runId: "title",
+    seq: 2,
+    event: { type: "session_changed", title: "hidden update" },
+  });
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.title).toBe("hidden update");
   f.unsubscribe();
 });

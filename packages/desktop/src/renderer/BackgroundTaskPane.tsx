@@ -31,7 +31,10 @@ export function BackgroundTaskPane({
         setError("");
         if (next.task.status === "running") timer = setTimeout(read, 1000);
       } catch (error) {
-        if (!disposed) setError(userErrorMessage(error));
+        if (!disposed) {
+          setError(userErrorMessage(error));
+          timer = setTimeout(read, 1000);
+        }
       }
     };
     void read();

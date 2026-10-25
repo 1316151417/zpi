@@ -13,6 +13,7 @@ import type {
 } from "../types.ts";
 import { openAICompletionsCompatKeys } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
+import { calculateCost } from "../utils/cost.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { projectContextForModelMediaPolicy } from "../utils/media-policy.ts";
 import { MeasuredAssistantStream } from "../utils/model-performance.ts";
@@ -366,13 +367,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
     if (!["stop", "length", "tool_calls", "function_call"].includes(finish))
       throw new Error(`Unsupported finish_reason: ${finish}`);
     output.stopReason = finish === "length" ? "length" : toolStates.size ? "toolUse" : "stop";
-    for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const)
-      output.usage.cost[key] = (output.usage[key] * model.cost[key]) / 1e6;
-    output.usage.cost.total =
-      output.usage.cost.input +
-      output.usage.cost.output +
-      output.usage.cost.cacheRead +
-      output.usage.cost.cacheWrite;
+    calculateCost(model, output.usage);
     events.push({ type: "done", reason: output.stopReason, message: output });
   }
 }

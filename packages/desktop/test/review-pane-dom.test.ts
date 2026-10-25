@@ -48,10 +48,10 @@ afterEach(async () => {
 test("Git watches retain the reference 60-second debounce, stable registrations and hidden-pane cleanup", async () => {
   vi.useFakeTimers();
   let changed!: () => void;
-  const watchWorkspaceDirectory = vi.fn(async () => ({ ok: true, value: { id: "watch" } }));
+  const watchReviewDirectory = vi.fn(async () => ({ ok: true, value: { id: "watch" } }));
   const unwatchWorkspaceDirectory = vi.fn(async () => ({ ok: true, value: undefined }));
   Object.assign(window.zpi, {
-    watchWorkspaceDirectory,
+    watchReviewDirectory,
     unwatchWorkspaceDirectory,
     onWorkspaceDirectoryChange: (_id: string, callback: () => void) => {
       changed = callback;
@@ -63,7 +63,7 @@ test("Git watches retain the reference 60-second debounce, stable registrations 
     value: { entries: [], isRepository: true, watchPaths: ["/project/.git"] },
   }));
   await render("unstaged");
-  expect(watchWorkspaceDirectory).toHaveBeenCalledWith("session", "/project/.git", undefined, true);
+  expect(watchReviewDirectory).toHaveBeenCalledWith("session", "/project/.git");
   await act(async () => {
     changed();
     await vi.advanceTimersByTimeAsync(1000);
@@ -75,7 +75,7 @@ test("Git watches retain the reference 60-second debounce, stable registrations 
     await vi.advanceTimersByTimeAsync(1);
   });
   expect(getReview).toHaveBeenCalledTimes(2);
-  expect(watchWorkspaceDirectory).toHaveBeenCalledTimes(1);
+  expect(watchReviewDirectory).toHaveBeenCalledTimes(1);
   await render("unstaged", false);
   expect(unwatchWorkspaceDirectory).toHaveBeenCalledWith("watch");
 });

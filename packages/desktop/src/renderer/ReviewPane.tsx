@@ -98,7 +98,7 @@ export function ReviewPane({
     const registrations: { id: string; dispose: () => void }[] = [];
     for (const path of JSON.parse(watchSignature) as string[]) {
       void window.zpi
-        .watchWorkspaceDirectory(sessionId, path, undefined, true)
+        .watchReviewDirectory(sessionId, path)
         .then(unwrap)
         .then(({ id }) => {
           if (!active) {

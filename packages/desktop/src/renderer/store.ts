@@ -296,22 +296,28 @@ export function subscribeEvents(): () => void {
   const flush = () => void flushDrafts().catch(report);
   const offBeforeQuit = window.zpi.onBeforeQuit(flushDrafts);
   window.addEventListener("beforeunload", flush);
+  const flushEvents = () => {
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    const batch = queue;
+    queue = [];
+    apply(batch);
+  };
   const visibility = () => {
-    if (document.visibilityState === "hidden") flush();
+    if (document.visibilityState === "hidden") {
+      flushEvents();
+      flush();
+    }
   };
   document.addEventListener("visibilitychange", visibility);
   const off = window.zpi.onEvent((e) => {
     if (e.event.type === "history_reset") previewLoader.clear(e.sessionId);
     queue.push(e);
-    if (!frame)
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const batch = queue;
-        queue = [];
-        apply(batch);
-      });
+    if (document.visibilityState === "hidden") flushEvents();
+    else if (!frame) frame = requestAnimationFrame(flushEvents);
   });
   return () => {
+    flushEvents();
     flush();
     offBeforeQuit();
     window.removeEventListener("beforeunload", flush);

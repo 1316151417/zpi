@@ -4,6 +4,7 @@ import type { AssistantMessage, JsonValue, Message, ToolCall, ToolResultMessage 
 import { isJsonObject } from "zpi-ai";
 import { validateMessage } from "./record-validation.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
+import { getMessageProvenance } from "./transcript-store.ts";
 
 const JOURNAL_TYPE = "zpi.streaming_tools";
 interface Journal {
@@ -229,22 +230,52 @@ export function projectStreamedToolJournal(entries: SessionEntry[]): SessionEntr
   ]);
 }
 
-/** Pair results within their declaring assistant turn, never by a global call-ID set. */
-export function unresolvedCanonicalToolCalls(messages: Message[]): ToolCall[] {
+/** Repair legacy canonical gaps within their declaring turn, without rerunning tools. */
+export function recoverCanonicalToolCalls(manager: SessionManager, messages: Message[]): void {
   const pending = new Map<string, ToolCall>();
+  const insertions = new Map<string, ToolResultMessage[]>();
+  const interrupted = (): ToolResultMessage[] => {
+    const results = [...pending.values()].map(
+      (call): ToolResultMessage => ({
+        role: "toolResult",
+        toolCallId: call.id,
+        toolName: call.name,
+        content: [
+          {
+            type: "text",
+            text: "Interrupted: prior execution outcome and side effects are unknown. This tool was not re-executed.",
+          },
+        ],
+        isError: true,
+        timestamp: Date.now(),
+      }),
+    );
+    pending.clear();
+    return results;
+  };
   for (const message of messages) {
-    if (message.role === "assistant") {
-      if (pending.size)
-        throw new Error("Invalid transcript: unresolved tool call before a later assistant turn");
-      for (const part of message.content) {
-        if (part.type !== "toolCall") continue;
-        // Older providers could persist duplicate IDs. Pair the first declaration;
-        // recovery never executes another call to guess what a duplicate meant.
-        if (!pending.has(part.id)) pending.set(part.id, part);
-      }
-    } else if (message.role === "toolResult") {
-      pending.delete(message.toolCallId);
+    if ((message.role === "assistant" || message.role === "user") && pending.size) {
+      const anchor = getMessageProvenance(message)?.entryId;
+      if (!anchor) throw new Error("Missing canonical message provenance");
+      insertions.set(anchor, interrupted());
     }
+    if (message.role === "assistant") {
+      for (const part of message.content) {
+        if (part.type === "toolCall" && !pending.has(part.id)) pending.set(part.id, part);
+      }
+    } else if (message.role === "toolResult") pending.delete(message.toolCallId);
   }
-  return [...pending.values()];
+  if (insertions.size) {
+    // Historical gaps need insertion before a later turn, especially when IDs
+    // were reused. Reuse the manager's atomic replacement and boundary remapping.
+    function* repaired(): Iterable<SessionEntry> {
+      for (const entry of manager.iterateEntries()) {
+        for (const message of insertions.get(entry.id) ?? [])
+          yield { type: "message", id: randomUUID(), parentId: null, timestamp: entry.timestamp, message };
+        yield entry;
+      }
+    }
+    manager.replaceEntries(repaired());
+  }
+  for (const message of interrupted()) manager.appendMessage(message);
 }

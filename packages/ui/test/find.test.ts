@@ -71,3 +71,25 @@ it("locates the chosen snippet among repeated hits in a single turn after histor
     }),
   ).toBe(-1);
 });
+
+it("falls back without logging source code when a parser rejects header-like hunk content", async () => {
+  const { vi } = await import("vitest");
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const patch =
+      "--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n--- private source\n+++ replacement\n keep\n";
+    expect(patchFindTargets("file", "file.txt", patch).map((target) => target.text)).toEqual([
+      "-- private source",
+      "++ replacement",
+      "keep",
+    ]);
+    patchFindTargets(
+      "file",
+      "file.txt",
+      `${patch}\ndiff --git a/other b/other\n--- a/other\n+++ b/other\n@@ -1 +1 @@\n-old\n+new\n`,
+    );
+    expect(logged).not.toHaveBeenCalled();
+  } finally {
+    logged.mockRestore();
+  }
+});

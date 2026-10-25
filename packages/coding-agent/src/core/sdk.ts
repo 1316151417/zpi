@@ -11,7 +11,7 @@ import { ModelRuntime } from "./model-runtime.ts";
 import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
-import { unresolvedCanonicalToolCalls } from "./streaming-tool-journal.ts";
+import { recoverCanonicalToolCalls } from "./streaming-tool-journal.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
 import { wrapToolDefinition } from "./tools/pi/tool-definition-wrapper.ts";
@@ -90,21 +90,7 @@ export async function createAgentSession(
     throw new Error("Model authentication or provider is not configured");
   if (!selection.model || selection.model.modelId !== model.id || selection.model.provider !== model.provider)
     manager.appendModelChange(model.provider, model.id);
-  for (const call of unresolvedCanonicalToolCalls(restored.messages)) {
-    manager.appendMessage({
-      role: "toolResult",
-      toolCallId: call.id,
-      toolName: call.name,
-      content: [
-        {
-          type: "text",
-          text: "Interrupted: prior execution outcome and side effects are unknown. This tool was not re-executed.",
-        },
-      ],
-      isError: true,
-      timestamp: Date.now(),
-    });
-  }
+  recoverCanonicalToolCalls(manager, restored.messages);
   let session: AgentSession;
   const fileReadState = new FileReadState();
   const builtin = createCodingTools(

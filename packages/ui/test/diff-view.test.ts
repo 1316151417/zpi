@@ -234,3 +234,18 @@ describe("diff preview", () => {
     expect(html).not.toContain("<nav");
   });
 });
+
+it("keeps header-like deleted content, line numbers and find keys aligned in plain previews", async () => {
+  const { patchFindTargets } = await import("../src/patch-find.ts");
+  const patch = `--- a/example.ts\n+++ b/example.ts\n@@ -1,2 +1,1301 @@\n--- x\n-old second\n+++ y\n${"+tail\n".repeat(1300)}`;
+  const targets = patchFindTargets(entry.id, entry.path, patch);
+  const html = render({ entries: [{ ...entry, patch }] });
+  expect(html).toContain(`data-find-key="${targets[0].key}">-- x</code>`);
+  expect(html).toContain(
+    `<span>2</span><span></span><code class="diff-line-code" data-find-key="${targets[1].key}">old second</code>`,
+  );
+  expect(html).toContain(
+    `<span></span><span>1</span><code class="diff-line-code" data-find-key="${targets[2].key}">++ y</code>`,
+  );
+  expect(html).toContain(`data-find-key="${targets[3].key}">tail</code>`);
+});

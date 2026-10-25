@@ -90,7 +90,6 @@ export function createToolExecutor(
   async function execute({ call, tool, args }: PreparedCall): Promise<ToolResultMessage> {
     if (signal?.aborted) return finish(call, toolFailure("Tool cancelled before execution"));
     let alive = true;
-    let updateError: unknown;
     let updates = Promise.resolve();
     let result: AgentToolResult;
     try {
@@ -106,8 +105,9 @@ export function createToolExecutor(
               partialResult,
             }),
           )
-          .catch((error) => {
-            updateError ??= error;
+          .catch(() => {
+            // The loop retains sink failures. Still finalize the executed tool so
+            // its result and side effects survive a failed progress notification.
           });
       });
       if (!executed) throw new Error("Tool returned no result");
@@ -136,7 +136,6 @@ export function createToolExecutor(
     } catch (error) {
       result = toolFailure(error);
     }
-    if (updateError) throw updateError;
     return finish(call, result);
   }
 

@@ -660,7 +660,7 @@ export async function generateSummaryWithUsage(
   onMediaProjection?: SimpleStreamOptions["onMediaProjection"],
 ): Promise<{ text: string; usage: Usage }> {
   const maxTokens = Math.min(
-    Math.floor(0.8 * reserveTokens),
+    Math.max(1, Math.floor(0.8 * reserveTokens)),
     model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
   );
 

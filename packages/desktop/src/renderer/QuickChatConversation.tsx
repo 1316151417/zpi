@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { type ComposerContext, Conversation, type SessionView } from "zpi-ui";
 import { readQuickChatAttachment } from "./quick-chat-attachments.ts";
 import { unwrap } from "./unwrap.ts";
@@ -24,11 +25,12 @@ const attachmentContext: ComposerContext = {
 };
 
 export default function QuickChatConversation({ view, cwd, onError }: QuickChatConversationProps) {
+  const workspace = useMemo(() => ({ cwd }), [cwd]);
   return (
     <Conversation
       view={view}
       persistReading={false}
-      workspace={{ cwd }}
+      workspace={workspace}
       context={attachmentContext}
       readWebSourceIcon={readWebSourceIcon}
       onCopy={(text) => window.zpiQuickChat.copyText(text).then(unwrap)}

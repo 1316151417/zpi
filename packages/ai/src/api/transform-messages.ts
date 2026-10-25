@@ -6,7 +6,7 @@ export function transformMessages(
   model: Model,
   normalizeId?: (id: string) => string,
 ): Message[] {
-  const ids = new Map<string, string>();
+  const ids = new Map<string, string[]>();
   const used = new Set<string>();
   const result: Message[] = [];
   const pending = new Map<string, ToolCall>();
@@ -21,10 +21,11 @@ export function transformMessages(
         timestamp: 0,
       });
     pending.clear();
+    ids.clear();
   };
   for (const message of messages) {
     if (message.role === "toolResult") {
-      const id = ids.get(message.toolCallId);
+      const id = ids.get(message.toolCallId)?.shift();
       if (!id || !pending.has(id)) continue;
       pending.delete(id);
       result.push({ ...message, toolCallId: id });
@@ -56,7 +57,9 @@ export function transformMessages(
       while (used.has(callId)) callId = `${base.slice(0, 56)}_${++suffix}`;
       used.add(callId);
       const id = same && model.api === "openai-responses" && itemId ? `${callId}|${itemId}` : callId;
-      ids.set(block.id, id);
+      const mapped = ids.get(block.id) ?? [];
+      mapped.push(id);
+      ids.set(block.id, mapped);
       const call: ToolCall = {
         type: "toolCall",
         id,

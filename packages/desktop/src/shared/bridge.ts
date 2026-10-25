@@ -422,6 +422,7 @@ export interface DesktopBridge {
     rootPath?: string,
     recursive?: boolean,
   ): Promise<Result<{ id: string }>>;
+  watchReviewDirectory(sessionId: string, path: string): Promise<Result<{ id: string }>>;
   unwatchWorkspaceDirectory(id: string): Promise<Result<void>>;
   onWorkspaceDirectoryChange(id: string, listener: (event: { dirPath: string }) => void): () => void;
 
@@ -582,6 +583,7 @@ export const methods = [
   "workspaceGitStatus",
   "ignoredWorkspacePaths",
   "watchWorkspaceDirectory",
+  "watchReviewDirectory",
   "unwatchWorkspaceDirectory",
   "readPreviewRange",
   "checkPreviewFiles",

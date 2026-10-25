@@ -193,6 +193,16 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const savedDraft = useRef({ name, enabled, url, models, preset, api, key });
+  const [pendingSelection, setPendingSelection] = useState<(() => void) | null>(null);
+  const requestSelection = (action: () => void) => {
+    if (saving) return;
+    if (
+      JSON.stringify({ name, enabled, url, models, preset, api, key }) !== JSON.stringify(savedDraft.current)
+    )
+      setPendingSelection(() => action);
+    else action();
+  };
   const renameInput = useRef<HTMLInputElement>(null);
   const renameStart = useRef("");
   const renameRequested = useRef(false);
@@ -203,20 +213,29 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
     [],
   );
   const select = (p?: ProviderRecord) => {
+    const draft = {
+      name: p?.name ?? "",
+      enabled: p?.enabled !== false,
+      url: p?.baseUrl ?? "",
+      models: (p?.models ?? []).map(draftModel),
+      preset: p?.preset,
+      api: p ? providerApi(p.preset, p.api ?? "openai-completions") : "anthropic-messages",
+      key: "",
+    };
+    savedDraft.current = draft;
     discoveryRevision.current++;
     setDiscovering(false);
     setSelected(p?.id);
-    setPreset(p?.preset);
-    setApi(p ? providerApi(p.preset, p.api ?? "openai-completions") : "anthropic-messages");
+    setPreset(draft.preset);
+    setApi(draft.api);
     setPicker(false);
     setEditing(undefined);
     recommended.current = recommendedModels(p);
-    setName(p?.name ?? "");
-    setEnabled(p?.enabled !== false);
-    setUrl(p?.baseUrl ?? "");
-    setModels((p?.models ?? []).map(draftModel));
-
-    setKey("");
+    setName(draft.name);
+    setEnabled(draft.enabled);
+    setUrl(draft.url);
+    setModels(draft.models);
+    setKey(draft.key);
     setKeyVisible(false);
     setKeyReady(!p);
     setCredentialRequest((value) => value + 1);
@@ -239,6 +258,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         .then(unwrap)
         .then((value) => {
           if (active) {
+            savedDraft.current = { ...savedDraft.current, key: value.apiKey };
             setKey(value.apiKey);
             setKeyReady(true);
           }
@@ -680,7 +700,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 className={`sortable-provider ${provider.id === selected && !picker ? "selected" : ""}${isDragging ? " dragging" : ""}`}
                                 disabled={saving || discovering}
                                 aria-label={provider.name}
-                                onClick={() => select(provider)}
+                                onClick={() => requestSelection(() => select(provider))}
                               >
                                 <ProviderLogo preset={provider.preset} size={16} />
                                 <span>{provider.name}</span>
@@ -709,7 +729,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                           <h3>预置与自定义供应商</h3>
                           <div className="provider-template-grid">
                             <ActionHint appearance="control" label="自定义提供商">
-                              <button onClick={() => select()}>
+                              <button onClick={() => requestSelection(() => select())}>
                                 <Package size={24} />
                                 <span className="provider-template-label">自定义提供商</span>
                                 <ChevronRight size={16} />
@@ -717,7 +737,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                             </ActionHint>
                             {providerPresets.map((item) => (
                               <ActionHint appearance="control" label={item.name} key={item.id}>
-                                <button onClick={() => selectPreset(item.id)}>
+                                <button onClick={() => requestSelection(() => selectPreset(item.id))}>
                                   <ProviderLogo preset={item.id} size={32} />
                                   <span className="provider-template-label">{item.name}</span>
                                   <ChevronRight size={16} />
@@ -1021,6 +1041,35 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                       )}
                     </div>
                   </div>
+                  <Dialog.Root
+                    open={pendingSelection !== null}
+                    onOpenChange={(open) => {
+                      if (!open) setPendingSelection(null);
+                    }}
+                  >
+                    <Dialog.Portal>
+                      <Dialog.Overlay className="model-config-backdrop" />
+                      <Dialog.Content className="provider-delete-dialog">
+                        <header>
+                          <Dialog.Title>放弃未保存的更改？</Dialog.Title>
+                          <Dialog.Description>切换提供商会丢弃当前尚未保存的编辑。</Dialog.Description>
+                        </header>
+                        <footer>
+                          <Dialog.Close className="secondary">继续编辑</Dialog.Close>
+                          <button
+                            className="primary"
+                            onClick={() => {
+                              const action = pendingSelection;
+                              setPendingSelection(null);
+                              action?.();
+                            }}
+                          >
+                            放弃更改并切换
+                          </button>
+                        </footer>
+                      </Dialog.Content>
+                    </Dialog.Portal>
+                  </Dialog.Root>
                   <Dialog.Root
                     open={confirmDelete}
                     onOpenChange={(open) => {

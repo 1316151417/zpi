@@ -1,5 +1,6 @@
 import { LucideProvider } from "lucide-react";
 import { createRoot } from "react-dom/client";
+import { AppBoundary } from "./AppBoundary.tsx";
 import "zpi-ui/styles.css";
 
 const root = document.getElementById("root");
@@ -26,11 +27,13 @@ async function startRenderer(root: HTMLElement) {
   window.addEventListener("beforeunload", stopAppearance, { once: true });
   // ZCode Root supplies this default to navigation, settings and portal menus.
   createRoot(root).render(
-    <LucideProvider strokeWidth={1.5}>
-      <DiffsWorkerPool>
-        <App />
-      </DiffsWorkerPool>
-    </LucideProvider>,
+    <AppBoundary>
+      <LucideProvider strokeWidth={1.5}>
+        <DiffsWorkerPool>
+          <App />
+        </DiffsWorkerPool>
+      </LucideProvider>
+    </AppBoundary>,
   );
 }
 

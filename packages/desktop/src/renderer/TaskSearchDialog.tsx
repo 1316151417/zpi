@@ -88,7 +88,7 @@ export function TaskSearchDialog({
   const taskRevision = useStore((state) =>
     [...state.sessions.values()]
       .filter((task) => !task.draft && !task.parentSessionId && task.archivedAt == null)
-      .map((task) => `${task.id}:${task.title}:${task.updatedAt}`)
+      .map((task) => `${task.id}:${task.title}:${task.status}`)
       .join("\n"),
   );
   useEffect(() => {
@@ -98,19 +98,24 @@ export function TaskSearchDialog({
     setTaskError("");
     if (!open || !searchingTasks) return;
     let cancelled = false;
-    void window.zpi
-      .searchTasks(query, !query && workspaceKey !== "ZPI" ? workspaceKey : null)
-      .then(unwrap)
-      .then((tasks) => {
-        if (!cancelled) setResult({ query, tasks });
-      })
-      .catch((error) => {
-        if (!cancelled) setTaskError(userErrorMessage(error));
-      });
+    const timer = setTimeout(
+      () =>
+        void window.zpi
+          .searchTasks(query, !query && workspaceKey !== "ZPI" ? workspaceKey : null)
+          .then(unwrap)
+          .then((tasks) => {
+            if (!cancelled) setResult({ query, tasks });
+          })
+          .catch((error) => {
+            if (!cancelled) setTaskError(userErrorMessage(error));
+          }),
+      query ? 200 : 0,
+    );
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [open, query, searchingTasks, scope, workspaceKey, taskRevision]);
+  }, [open, query, searchingTasks, workspaceKey, taskRevision]);
   useEffect(() => {
     if (!open || !searchingFiles || files || fileError) return;
     let cancelled = false;

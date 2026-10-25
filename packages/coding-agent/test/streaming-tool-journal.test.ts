@@ -306,10 +306,13 @@ it.each(["error", "length", "aborted"] as const)(
   },
 );
 
-it("pairs a reused tool ID only with results in the same assistant turn", async () => {
-  const { unresolvedCanonicalToolCalls } = await import("../src/core/streaming-tool-journal.ts");
-  const call: ToolCall = { type: "toolCall", id: "same", name: "read", arguments: { path: "a" } };
-  const assistant: AssistantMessage = { ...emptyAssistant(fakeModel("")), content: [call] };
+it("recovers only the unresolved declaration when a later turn reuses an ID", async () => {
+  const { recoverCanonicalToolCalls } = await import("../src/core/streaming-tool-journal.ts");
+  const manager = SessionManager.inMemory();
+  const assistant: AssistantMessage = {
+    ...emptyAssistant(fakeModel("")),
+    content: [{ type: "toolCall", id: "same", name: "read", arguments: {} }],
+  };
   const result: Message = {
     role: "toolResult",
     toolCallId: "same",
@@ -318,12 +321,11 @@ it("pairs a reused tool ID only with results in the same assistant turn", async 
     isError: false,
     timestamp: 0,
   };
-  expect(unresolvedCanonicalToolCalls([assistant, result, structuredClone(assistant)])).toEqual([call]);
-  expect(unresolvedCanonicalToolCalls([assistant, result, structuredClone(assistant), result])).toEqual([]);
-  const duplicate = { ...assistant, content: [call, { ...call, name: "write" }] };
-  expect(unresolvedCanonicalToolCalls([duplicate])).toEqual([call]);
-  expect(unresolvedCanonicalToolCalls([duplicate, result])).toEqual([]);
-  expect(() => unresolvedCanonicalToolCalls([assistant, structuredClone(assistant)])).toThrow(
-    "later assistant turn",
-  );
+  manager.appendMessage(assistant);
+  manager.appendMessage(result);
+  manager.appendMessage(assistant);
+  recoverCanonicalToolCalls(manager, manager.buildSessionContext().messages);
+  expect(
+    manager.buildSessionContext().messages.filter((message) => message.role === "toolResult"),
+  ).toMatchObject([{ isError: false }, { isError: true }]);
 });

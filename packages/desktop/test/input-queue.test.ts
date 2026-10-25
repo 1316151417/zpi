@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { expect, it, vi } from "vitest";
@@ -234,3 +235,85 @@ it("withdrawing queued quoted input restores editable text and reference cards",
   expect(fallback.draft.selections).toEqual([]);
   release.resolve();
 });
+
+it("preserves truncated text and pauses queued input instead of completing the run", async () => {
+  const release = deferred();
+  const f = await fixture(async (_, response) => {
+    send(response, chunk({ content: "partial answer" }));
+    await release.promise;
+    done(response, "length");
+  });
+  const id = f.host.createSession(f.a.id).id;
+  await f.host.submitInput({ sessionId: id, text: "first" });
+  await expect.poll(() => f.server.requests.length).toBe(1);
+  await f.host.submitInput({ sessionId: id, text: "queued follow-up" });
+  const run = f.host.activeRuns.get(id);
+  release.resolve();
+  await run?.done;
+  const view = f.host.getSessionSnapshot(id).view;
+  expect(view.runs.at(-1)).toMatchObject({ status: "error", error: expect.stringContaining("截断") });
+  expect(JSON.stringify(view.runs.at(-1))).toContain("partial answer");
+  await expect
+    .poll(() => f.host.inputQueue.get(id))
+    .toMatchObject({ autoDrain: false, items: [{ text: "queued follow-up" }] });
+  expect(f.server.requests).toHaveLength(1);
+});
+
+it.each([false, true])(
+  "does not requeue accepted input when saving the optional title job fails (queued: %s)",
+  async (queued) => {
+    const f = await fixture((_, response) => {
+      send(response, chunk({ content: "answer" }));
+      done(response);
+    });
+    const id = f.host.createSession(f.a.id).id;
+    const itemId = "restored-first-input";
+    if (queued)
+      f.host.inputQueue.restore(id, {
+        items: [
+          {
+            id: itemId,
+            state: "queued",
+            text: "restored request",
+            fileReferences: [],
+            attachments: [],
+            selection: { provider: "custom", modelId: "fake", reasoning: "none" },
+          },
+        ],
+        autoDrain: false,
+      });
+    let failed = false;
+    const upsertTask = f.settings.state.upsertTask.bind(f.settings.state);
+    const save = vi.spyOn(f.settings.state, "upsertTask").mockImplementation((input) => {
+      if (!failed && input.titleState === "pending") {
+        failed = true;
+        throw new Error("temporary title state write failure");
+      }
+      return upsertTask(input);
+    });
+    let rejection: unknown;
+    try {
+      const sendInput = queued
+        ? f.host.inputQueue.resume(id)
+        : f.host.submitInput({ sessionId: id, text: "restored request" });
+      await sendInput.catch((error) => {
+        rejection = error;
+      });
+      expect(failed).toBe(true);
+      expect(f.host.inputQueue.get(id).items).toEqual([]);
+      expect(f.settings.state.getQueue(id)?.items ?? []).toEqual([]);
+      expect(rejection).toBeUndefined();
+      await expect.poll(() => f.host.getSessionSnapshot(id).view.runs.at(-1)?.status).toBe("completed");
+      expect(f.host.getSessionSnapshot(id).view.runs.map((run) => run.userMessage)).toEqual([
+        "restored request",
+      ]);
+      expect(f.server.requests).toHaveLength(1);
+      expect(f.server.titleRequests).toHaveLength(0);
+      expect(await readFile(join(f.dir, "agent", "logs", "error.log"), "utf8")).toContain(
+        "temporary title state write failure",
+      );
+    } finally {
+      save.mockRestore();
+    }
+  },
+);

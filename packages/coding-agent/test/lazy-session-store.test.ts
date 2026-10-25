@@ -463,3 +463,86 @@ it("replays indexed microcompact boundaries without reading completed journals o
     { type: "text", text: "original result" },
   ]);
 });
+
+it("repairs historical tool gaps in indexed context while retaining the compaction boundary", async () => {
+  const { recoverCanonicalToolCalls } = await import("../src/core/streaming-tool-journal.ts");
+  const source = SessionManager.inMemory();
+  source.appendMessage({ role: "user", content: "summarized", timestamp: 0 });
+  const kept = source.appendMessage({
+    ...emptyAssistant(fakeModel("")),
+    content: [{ type: "toolCall", id: "orphan", name: "read", arguments: {} }],
+    stopReason: "toolUse",
+  });
+  source.appendMessage({
+    ...emptyAssistant(fakeModel("")),
+    content: [{ type: "text", text: "later answer" }],
+  });
+  source.appendCompaction("retained summary", kept);
+  const index = indexed(source.getEntries());
+  const manager = SessionManager.fromStore(index.store);
+  recoverCanonicalToolCalls(manager, manager.buildSessionContext().messages);
+  const messages = manager.buildSessionContext().messages;
+  expect(messages.map((message) => message.role)).toEqual([
+    "system",
+    "user",
+    "assistant",
+    "toolResult",
+    "assistant",
+  ]);
+  expect(messages[1]).toMatchObject({ content: expect.stringContaining("retained summary") });
+  expect(messages[3]).toMatchObject({ toolCallId: "orphan", isError: true });
+  const before = [...manager.iterateEntries()];
+  recoverCanonicalToolCalls(manager, messages);
+  expect([...manager.iterateEntries()]).toEqual(before);
+});
+
+it.each([false, true])(
+  "includes microcompact boundaries in indexed compaction estimates (previous compaction: %s)",
+  async (compacted) => {
+    const { DEFAULT_COMPACTION_SETTINGS, estimateContextTokens, prepareCompaction } = await import(
+      "../src/core/compaction.ts"
+    );
+    const source = SessionManager.inMemory("/tmp");
+    source.appendMessage({ role: "user", content: "old request", timestamp: 0 });
+    const kept = source.appendMessage({ role: "user", content: "retained request", timestamp: 1 });
+    if (compacted) source.appendCompaction("previous summary", kept);
+    source.appendMessage({
+      ...emptyAssistant(fakeModel("")),
+      content: [{ type: "toolCall", id: "old", name: "read", arguments: {} }],
+      stopReason: "toolUse",
+    });
+    const originalResult = source.appendMessage({
+      role: "toolResult",
+      toolCallId: "old",
+      toolName: "read",
+      content: [{ type: "text", text: "x".repeat(8000) }],
+      isError: false,
+      timestamp: 2,
+    });
+    source.appendMicrocompact({
+      trigger: "token_pressure",
+      strategy: "local_tool_result_clear",
+      clearedMessageCount: 1,
+      clearedToolCallIds: ["old"],
+      keptToolCallIds: [],
+      preMicrocompactTokenCount: 2000,
+      postMicrocompactTokenCount: 20,
+      tokensSaved: 1980,
+    });
+    source.appendMessage({ role: "user", content: "next request", timestamp: 3 });
+    source.appendMessage({
+      ...emptyAssistant(fakeModel("")),
+      content: [{ type: "text", text: "recent answer" }],
+    });
+    const restored = SessionManager.fromStore(indexed(source.getEntries()).store);
+    const projected = restored.buildSessionContext().messages;
+    const entries = restored.getContextEntries();
+    expect(buildSessionContext(entries).messages).toEqual(projected);
+    const preparation = prepareCompaction(entries, { ...DEFAULT_COMPACTION_SETTINGS, keepRecentTokens: 0 });
+    expect(preparation).toBeDefined();
+    expect(preparation?.tokensBefore).toBe(estimateContextTokens(projected).tokens);
+    expect(source.readEntryById(originalResult)).toMatchObject({
+      message: { content: [{ text: "x".repeat(8000) }] },
+    });
+  },
+);

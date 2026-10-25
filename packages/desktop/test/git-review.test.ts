@@ -170,3 +170,29 @@ test("orders tracked, untracked and conflicted sections and excludes unreviewabl
     join(cwd, "file.txt"),
   ]);
 });
+
+test("branch status comes from Git for pure additions, removals, empty files and binaries", async () => {
+  const cwd = await repo();
+  await writeFile(join(cwd, "remove-lines.txt"), "first\nlast\n");
+  await writeFile(join(cwd, "delete.txt"), "delete\n");
+  await runGit(cwd, ["add", "."]);
+  await runGit(cwd, ["commit", "-m", "Base files"]);
+  await runGit(cwd, ["checkout", "-b", "feature"]);
+  await runGit(cwd, ["branch", "--set-upstream-to=main"]);
+  await writeFile(join(cwd, "file.txt"), "original\nadded\n");
+  await writeFile(join(cwd, "remove-lines.txt"), "first\n");
+  await rm(join(cwd, "delete.txt"));
+  await writeFile(join(cwd, "empty.txt"), "");
+  await writeFile(join(cwd, "binary.dat"), Buffer.from([0, 1]));
+  await runGit(cwd, ["add", "-A"]);
+  await runGit(cwd, ["commit", "-m", "One-sided edits"]);
+  const entries = (await gitReview(cwd, "branch")).entries;
+  for (const [name, status, added, removed] of [
+    ["file.txt", "modified", 1, 0],
+    ["remove-lines.txt", "modified", 0, 1],
+    ["delete.txt", "deleted", 0, 1],
+    ["empty.txt", "created", 0, 0],
+    ["binary.dat", "created", 0, 0],
+  ] as const)
+    expect(entries.find((entry) => entry.path === join(cwd, name))).toMatchObject({ status, added, removed });
+});

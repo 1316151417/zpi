@@ -108,3 +108,26 @@ test("editing keeps the replacement input recoverable if interrupted after histo
   });
   expect(f.server.requests).toHaveLength(1);
 });
+
+test("finishing an edit does not release a newer operation's update lock", async () => {
+  const f = await fixture((_, response) => {
+    send(response, chunk({ content: "answer" }));
+    done(response);
+  });
+  const id = f.host.createSession(f.a.id).id;
+  const run = await f.host.startRun({ sessionId: id, text: "original" });
+  await f.host.activeRuns.get(id)?.done;
+  const updating = Reflect.get(f.host, "updating") as Set<string>;
+  const start = vi.spyOn(f.host, "startRun").mockImplementationOnce(async () => {
+    expect(updating.has(id)).toBe(false);
+    updating.add(id);
+    return { runId: "replacement" };
+  });
+  try {
+    await f.host.editUserMessage(id, run.runId, { text: "replacement" });
+    expect(updating.has(id)).toBe(true);
+  } finally {
+    updating.delete(id);
+    start.mockRestore();
+  }
+});

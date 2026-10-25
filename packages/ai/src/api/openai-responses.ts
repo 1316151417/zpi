@@ -6,6 +6,7 @@ import type {
 } from "openai/resources/responses/responses";
 import type { Model, SimpleStreamOptions, ThinkingContent, ToolCall, TranscriptContext } from "../types.ts";
 import { measureContextBreakdown } from "../utils/context-breakdown.ts";
+import { calculateCost } from "../utils/cost.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { projectContextForModelMediaPolicy } from "../utils/media-policy.ts";
 import { MeasuredAssistantStream } from "../utils/model-performance.ts";
@@ -493,11 +494,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       throw invalidToolInputs.values().next().value;
     for (const key of blocks.keys()) close(key);
     output.content = output.content.filter((block) => block.type !== "toolCall" || complete.has(block));
-    for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const)
-      output.usage.cost[key] = (output.usage[key] * model.cost[key]) / 1e6;
-    output.usage.cost.total = Object.values(output.usage.cost)
-      .slice(0, 4)
-      .reduce((a, b) => a + b, 0);
+    calculateCost(model, output.usage);
     events.push({
       type: "done",
       reason: output.stopReason as "stop" | "toolUse" | "length",

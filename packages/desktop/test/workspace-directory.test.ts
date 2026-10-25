@@ -12,6 +12,7 @@ import {
   WorkspaceDirectoryWatchers,
   workspaceGitStatus,
 } from "../src/main/workspace-directory.ts";
+import * as workspaceFiles from "../src/main/workspace-files.ts";
 
 const cleanups: (() => unknown)[] = [];
 afterEach(async () => {
@@ -147,4 +148,99 @@ test("unassigned drafts allocate unique workspace directories, persist them and 
   await rename(String(first.cwd), moved);
   expect(restarted.workspaceInfo(first.id).cwd).toBe(first.cwd);
   await expect(readWorkspaceDirectory(String(first.cwd), String(first.cwd))).rejects.toThrow();
+});
+
+test("duplicate directory subscriptions share a native handle and release independently", async () => {
+  const cwd = await fixture();
+  const changed = vi.fn();
+  const watchers = new WorkspaceDirectoryWatchers(changed);
+  cleanups.push(() => watchers.close());
+  const first = watchers.watch(cwd, cwd);
+  const second = watchers.watch(cwd, cwd);
+  expect(first.id).not.toBe(second.id);
+  expect(Reflect.get(watchers, "watchers").size).toBe(1);
+  await writeFile(join(cwd, "both.txt"), "event");
+  await vi.waitFor(() => {
+    expect(changed).toHaveBeenCalledWith(first.id, cwd);
+    expect(changed).toHaveBeenCalledWith(second.id, cwd);
+  });
+  watchers.unwatch(first.id);
+  changed.mockClear();
+  await writeFile(join(cwd, "remaining.txt"), "event");
+  await vi.waitFor(() => expect(changed).toHaveBeenCalledWith(second.id, cwd));
+  expect(changed).not.toHaveBeenCalledWith(first.id, cwd);
+  watchers.unwatch(second.id);
+  expect(Reflect.get(watchers, "watchers").size).toBe(0);
+});
+
+test("bounds active subscriptions and recovers capacity when subscriptions close", async () => {
+  const cwd = await fixture();
+  const watchers = new WorkspaceDirectoryWatchers(() => {});
+  cleanups.push(() => watchers.close());
+  const ids = Array.from({ length: 4096 }, () => watchers.watch(cwd, cwd).id);
+  expect(() => watchers.watch(cwd, cwd)).toThrow("上限");
+  watchers.unwatch(ids[0]);
+  expect(watchers.watch(cwd, cwd).id).toBeTruthy();
+  expect(Reflect.get(watchers, "watchers").size).toBe(1);
+});
+
+test.each(["subdirectory", "worktree"])(
+  "allows only Git-owned external review watches for a %s workspace",
+  async (kind) => {
+    const root = await fixture();
+    const repo = join(root, "repo");
+    await mkdir(repo);
+    await git(repo, "init", "-b", "main");
+    await git(repo, "config", "user.email", "test@example.invalid");
+    await git(repo, "config", "user.name", "Test");
+    await writeFile(join(repo, "seed.txt"), "seed");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "Seed");
+    const cwd = kind === "subdirectory" ? join(repo, "nested") : join(root, "linked");
+    if (kind === "subdirectory") await mkdir(cwd);
+    else await git(repo, "worktree", "add", "-b", "feature", cwd);
+    const { gitReview } = await import("../src/main/git-review.ts");
+    const paths = (await gitReview(cwd, "unstaged")).watchPaths ?? [];
+    const metadata = (await git(cwd, "rev-parse", "--absolute-git-dir")).trim();
+    expect(paths).toContain(metadata);
+    const changed = vi.fn();
+    const watchers = new WorkspaceDirectoryWatchers(changed);
+    cleanups.push(() => watchers.close());
+    for (const path of paths) await watchers.watchReview(cwd, path);
+    await writeFile(join(metadata, "review-watch-test"), "changed");
+    await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+    expect(() => watchers.watch(cwd, metadata)).toThrow("invalid_input");
+    await expect(readWorkspaceDirectory(cwd, metadata)).rejects.toThrow("invalid_input");
+    await expect(watchers.watchReview(cwd, root)).rejects.toThrow("invalid_input");
+  },
+);
+
+test("closing a watcher owner cancels in-flight Git watch registration", async () => {
+  const cwd = await fixture();
+  await git(cwd, "init", "-q");
+  const watchers = new WorkspaceDirectoryWatchers(() => {});
+  cleanups.push(() => watchers.close());
+  const pending = watchers.watchReview(cwd, join(cwd, ".git"));
+  watchers.close();
+  await expect(pending).rejects.toThrow("已关闭");
+  expect(Reflect.get(watchers, "watchers").size).toBe(0);
+});
+
+test("concurrent review watches share Git queries without caching later registrations", async () => {
+  const cwd = await fixture();
+  await git(cwd, "init", "-q");
+  const watchers = new WorkspaceDirectoryWatchers(() => {});
+  cleanups.push(() => watchers.close());
+  const queries = vi.spyOn(workspaceFiles, "runGit");
+  try {
+    await Promise.all([
+      watchers.watchReview(cwd, join(cwd, ".git")),
+      watchers.watchReview(cwd, join(cwd, ".git")),
+    ]);
+    expect(queries).toHaveBeenCalledTimes(2);
+    await watchers.watchReview(cwd, join(cwd, ".git"));
+    expect(queries).toHaveBeenCalledTimes(4);
+  } finally {
+    queries.mockRestore();
+  }
 });

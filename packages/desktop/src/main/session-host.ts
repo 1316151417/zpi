@@ -834,6 +834,10 @@ export class SessionHost {
       record.cwd ?? (record.projectId === null ? this.defaultWorkspace : this.project(record.projectId).path)
     );
   }
+  notificationTitle(id: string): string | undefined {
+    const record = this.records.get(id);
+    return record && record.archivedAt == null && !record.parentSessionId ? record.title : undefined;
+  }
   listRecentSessions(): SessionRecord[] {
     return structuredClone(
       [...this.records.values()]
@@ -902,7 +906,7 @@ export class SessionHost {
     );
   }
   async listTaskFiles(id: string | null, rootPath = this.workspaceInfo(id).cwd) {
-    return searchFiles(rootPath, "", undefined, 15000);
+    return this.findFiles(`task-files:${id ?? ""}`, rootPath, "", 15000);
   }
   listArchivedSessions() {
     return structuredClone(
@@ -2125,13 +2129,17 @@ export class SessionHost {
     return validatedReference(cwd, path);
   }
   async searchFiles(id: string, query: string) {
-    this.searches.get(id)?.abort();
+    return this.findFiles(`mentions:${id}`, this.workspaceInfo(id).cwd, query);
+  }
+  private async findFiles(key: string, cwd: string, query: string, limit?: number) {
+    if (this.closing) throw new Error("busy: 应用正在关闭");
+    this.searches.get(key)?.abort();
     const controller = new AbortController();
-    this.searches.set(id, controller);
+    this.searches.set(key, controller);
     try {
-      return await searchFiles(this.workspaceInfo(id).cwd, query, controller.signal);
+      return await searchFiles(cwd, query, controller.signal, limit);
     } finally {
-      if (this.searches.get(id) === controller) this.searches.delete(id);
+      if (this.searches.get(key) === controller) this.searches.delete(key);
     }
   }
   async importImage(id: string, name: string, bytes: Uint8Array) {
@@ -2710,6 +2718,7 @@ export class SessionHost {
     if (!selection || !this.settings.isSelectionValid(selection))
       throw new Error("configuration: 请先选择有效模型");
     this.updating.add(id);
+    let ownsUpdate = true;
     let recoveryQueued = false;
     let recoveryItemId: string | undefined;
     try {
@@ -2809,9 +2818,10 @@ export class SessionHost {
       const restored = this.getSessionSnapshot(id);
       this.emit(id, runId, { type: "history_reset", view: restored.view });
       this.updating.delete(id);
+      ownsUpdate = false;
       await this.startRun(next, recoveryItemId);
     } finally {
-      this.updating.delete(id);
+      if (ownsUpdate) this.updating.delete(id);
       if (recoveryQueued) {
         const queue = this.settings.state.getQueue(id);
         if (queue) {
@@ -3390,8 +3400,15 @@ export class SessionHost {
     config: ReturnType<SettingsStore["snapshot"]>,
     model: import("zpi-ai").Model,
   ): void {
-    if (this.settings.state.getTask(id)?.titleState !== "new") return;
-    this.saveTask(id, { titleState: "pending" });
+    try {
+      if (this.settings.state.getTask(id)?.titleState !== "new") return;
+      this.saveTask(id, { titleState: "pending" });
+    } catch (error) {
+      // Title generation is optional; its setup must not reject an input that
+      // was already durably accepted and cause the queue to deliver it twice.
+      this.errors.write("session.title", error, { sessionId: id, provider: model.provider, model: model.id });
+      return;
+    }
     const controller = new AbortController();
     const done = (async () => {
       try {
@@ -3456,6 +3473,9 @@ export class SessionHost {
     else if (last?.stopReason === "error") {
       status = "error";
       message = last.errorMessage;
+    } else if (last?.stopReason === "length") {
+      status = "error";
+      message = "模型输出达到长度上限，回复已截断。已保留部分输出，请继续提问。";
     } else if (last?.stopReason === "aborted" || run.aborted) status = "aborted";
     if (status === "error")
       this.errors.write("agent.run", error ?? message ?? "Task failed", { sessionId: id, runId: run.runId });
@@ -3577,6 +3597,7 @@ export class SessionHost {
   }
   private async closeResources(): Promise<void> {
     this.closing = true;
+    for (const controller of this.searches.values()) controller.abort();
     this.diffAbort.abort();
     await Promise.allSettled([...this.diffJobs]);
     const errors: unknown[] = [];

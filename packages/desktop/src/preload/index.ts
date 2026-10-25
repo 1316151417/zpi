@@ -117,6 +117,7 @@ const bridge: DesktopBridge = {
   ignoredWorkspacePaths: (id, paths, root) => call("ignoredWorkspacePaths", id, paths, root),
   watchWorkspaceDirectory: (id, path, root, recursive) =>
     call("watchWorkspaceDirectory", id, path, root, recursive),
+  watchReviewDirectory: (id, path) => call("watchReviewDirectory", id, path),
   unwatchWorkspaceDirectory: (id) => call("unwatchWorkspaceDirectory", id),
   onWorkspaceDirectoryChange(id, listener) {
     if (!directoryListeners.size) ipcRenderer.on("zpi:workspace-directory", directoryChanged);

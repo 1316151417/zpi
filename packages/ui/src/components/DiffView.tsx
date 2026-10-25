@@ -117,16 +117,14 @@ function PlainPatch({
     current = 0;
   const targets = patchFindTargets(id, "", patch);
   const lines = patch.split(/\r?\n/);
-  let targetIndex = 0;
-  const keys = lines.map((line) =>
-    /^[ +-]/.test(line) && !/^(---|\+\+\+) /.test(line) ? targets[targetIndex++]?.key : undefined,
-  );
-  const focusedLine = focusKey ? keys.indexOf(focusKey) : -1;
+  const targetsByLine = new Map(targets.map((target) => [target.patchLine, target]));
+  const focusedLine = focusKey ? (targets.find((target) => target.key === focusKey)?.patchLine ?? -1) : -1;
   const start = focusedLine >= 2000 ? Math.max(0, focusedLine - 1000) : 0;
   const end = Math.min(lines.length, start + 2000);
   return (
     <section className="diff-plain" aria-label="文本变更">
       {lines.map((line, i) => {
+        const target = targetsByLine.get(i);
         const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
         if (header) {
           old = Number(header[1]);
@@ -141,8 +139,7 @@ function PlainPatch({
           );
         }
         if (
-          line.startsWith("--- ") ||
-          line.startsWith("+++ ") ||
+          (!target && (line.startsWith("--- ") || line.startsWith("+++ "))) ||
           line.startsWith("Index:") ||
           /^=+$/.test(line) ||
           (simple &&
@@ -152,14 +149,14 @@ function PlainPatch({
         )
           return null;
         const kind = line[0],
-          left = [" ", "-"].includes(kind) ? old++ : "",
-          right = [" ", "+"].includes(kind) ? current++ : "";
+          left = target && [" ", "-"].includes(kind) ? old++ : "",
+          right = target && [" ", "+"].includes(kind) ? current++ : "";
         if (i < start || i >= end) return null;
         return (
           <div className={`diff-row ${kind === "+" ? "added" : kind === "-" ? "removed" : ""}`} key={i}>
             <span>{left}</span>
             <span>{right}</span>
-            <code className="diff-line-code" data-find-key={keys[i]}>
+            <code className="diff-line-code" data-find-key={target?.key}>
               {[" ", "-", "+"].includes(kind) ? line.slice(1) : line}
             </code>
           </div>
