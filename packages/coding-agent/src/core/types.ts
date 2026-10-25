@@ -64,6 +64,7 @@ export interface ToolContext {
   signal?: AbortSignal;
   isIdle(): boolean;
   getSystemPrompt(): string;
+  getToolNames?(): string[];
 }
 /** @deprecated Use ToolContext. */
 export type ExtensionToolContext = ToolContext;

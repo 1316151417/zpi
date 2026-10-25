@@ -522,7 +522,7 @@ test("message tools match ZCode summaries and keep coordinator inbox bodies out 
     await expect(page.locator("main .user-message")).toHaveCount(1);
     await expect(page.locator("main")).not.toContainText("PRIVATE COORDINATOR INBOX BODY");
     await page.locator("main").getByTestId("progress").first().click();
-    await page.getByRole("button", { name: "在侧栏查看 Stable research title", exact: true }).click();
+    await page.getByRole("button", { name: "在侧栏查看 Revise scope", exact: true }).click();
     await expect(page.locator(".subagent-pane")).toContainText("Initial findings");
     await page.locator(".subagent-pane").getByTestId("progress").first().click();
     const reply = page.locator('.subagent-pane [data-tool-name="RespondToCoordinator"]');
@@ -537,7 +537,7 @@ test("message tools match ZCode summaries and keep coordinator inbox bodies out 
     await expect(guidance).toContainText("目标");
     await expect(guidance).toContainText("REVISED REQUEST");
     await expect(guidance).not.toContainText("messageId");
-    await expect(page.getByRole("tab", { name: "Stable research title", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Revise scope", exact: true })).toBeVisible();
     await expect(page.locator(".subagent-pane")).toContainText("Revised findings");
   } finally {
     await runCleanup([

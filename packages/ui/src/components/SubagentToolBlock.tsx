@@ -29,7 +29,9 @@ function activitySummary(activity: string): string {
 
 export function SubagentToolBlock({ block, onCopy }: ToolBlockProps) {
   const { tasks, open } = useContext(SubagentContext);
-  const task = tasks.find((task) => task.parentToolCallId === block.toolCallId);
+  const task = tasks.find(
+    (task) => task.spawnToolCallId === block.toolCallId || task.parentToolCallId === block.toolCallId,
+  );
   const input = toolInput(block);
   const name =
     task?.agentType ??

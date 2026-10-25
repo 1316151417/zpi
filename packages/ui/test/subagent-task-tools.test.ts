@@ -197,3 +197,34 @@ test("incremental agent updates preserve other tasks and conversation references
     }).subagents,
   ).toHaveLength(3);
 });
+
+test("the original Agent row remains linked after SendMessage becomes the current parent call", () => {
+  const task: SubagentTask = {
+    agentId: "agent_1",
+    childSessionId: "child",
+    parentSessionId: "parent",
+    spawnToolCallId: block.toolCallId,
+    parentToolCallId: "follow-up",
+    agentType: "Explore",
+    description: "Revise scope",
+    color: "cyan",
+    background: true,
+    status: "completed",
+    modelLabel: "test",
+    startedAt: 1,
+    totalTokens: 0,
+    totalToolUseCount: 0,
+  };
+  const markup = renderToStaticMarkup(
+    createElement(
+      SubagentContext.Provider,
+      { value: { tasks: [task], open: () => {} } },
+      createElement(SubagentToolBlock, {
+        block: { ...block, name: "Agent" },
+        expanded: false,
+        toggle: () => {},
+      }),
+    ),
+  );
+  expect(markup).toContain('aria-label="在侧栏查看 Revise scope"');
+});

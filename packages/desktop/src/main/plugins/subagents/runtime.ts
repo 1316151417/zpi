@@ -1,11 +1,14 @@
 // Agent launch and SendMessage contracts follow ZCode (Apache-2.0).
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
+
 import type { ToolDefinition } from "zpi-coding-agent";
 import type { SubagentTask } from "zpi-ui";
 import type { CombinedSelection } from "../../../shared/bridge.ts";
 import type { SubagentProfile } from "../../../shared/subagents.ts";
+import { SubagentArtifacts, textResult } from "./artifacts.ts";
 import type { SubagentProfiles } from "./profiles.ts";
 import {
   agentDescription,
@@ -14,6 +17,19 @@ import {
   taskOutputDescription,
   taskStopDescription,
 } from "./prompts.ts";
+import {
+  type AgentBackgroundedOutput,
+  completedAgentOutput,
+  formatAgentOutputForModel,
+  formatCoordinatorSteer,
+  formatRespondToCoordinatorModelContent,
+  formatSendMessageModelContent,
+  formatTaskOutputModelContent,
+  providerTaskStatus,
+  type SendMessageOutput,
+  type TaskOutputResult,
+} from "./protocol.ts";
+import { assertToolArguments, validateToolArguments } from "./validation.ts";
 
 interface SubagentPort {
   cwd(parentId: string): string;
@@ -111,7 +127,7 @@ export function prepareTaskOutputArguments(args: unknown) {
     timeout: input.timeout === undefined ? 30000 : input.timeout,
   };
 }
-const result = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
+const result = textResult;
 
 export class SubagentPlugin {
   readonly tasks = new Map<string, SubagentTask>();
@@ -126,7 +142,9 @@ export class SubagentPlugin {
   private definitions = new Map<string, SubagentProfile[]>();
   readonly profiles: SubagentProfiles;
   private port: SubagentPort;
-  constructor(profiles: SubagentProfiles, port: SubagentPort) {
+  private artifacts: SubagentArtifacts;
+  constructor(profiles: SubagentProfiles, port: SubagentPort, outputRoot = join(tmpdir(), "zpi-agents")) {
+    this.artifacts = new SubagentArtifacts(outputRoot);
     this.profiles = profiles;
     this.port = port;
   }
@@ -146,12 +164,43 @@ export class SubagentPlugin {
       .join("\n");
   }
   private profile(parentId: string, name: string) {
-    const profile = this.definitions.get(parentId)?.findLast((agent) => agent.name === name);
-    if (!profile) throw new Error(`configuration: 未知或已禁用的子智能体 ${name}`);
-    return structuredClone(profile);
+    const profiles = this.definitions.get(parentId) ?? [];
+    const normalize = (value: string) =>
+      value
+        .trim()
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/[\p{White_Space}\p{Pd}_]+/gu, "");
+    const exact = profiles.find((profile) => profile.name === name);
+    if (exact) return structuredClone(exact);
+    const matches = normalize(name)
+      ? profiles.filter((profile) => normalize(profile.name) === normalize(name))
+      : [];
+    if (matches.length === 1) return structuredClone(matches[0]);
+    if (matches.length > 1)
+      throw new Error(
+        `Agent type '${name}' is ambiguous — matches ${matches.map((profile) => profile.name).join(", ")} — Use the exact name: ${matches.map((profile) => profile.name).join(" or ")}`,
+      );
+    throw new Error(
+      `Agent type '${name}' not found. Available agents: ${profiles.map((profile) => profile.name).join(", ")}`,
+    );
+  }
+  private contract(tool: ToolDefinition): ToolDefinition {
+    const prepare = (args: unknown) =>
+      validateToolArguments(
+        tool.name,
+        tool.parameters,
+        tool.name === "TaskOutput" ? prepareTaskOutputArguments(args) : args,
+      );
+    return {
+      ...tool,
+      prepareArguments: prepare,
+      execute: async (id, params, signal, update, context) =>
+        tool.execute(id, prepare(params), signal, update, context),
+    };
   }
   childTools(childId: string): ToolDefinition[] {
-    return [
+    const tools: ToolDefinition[] = [
       {
         name: "RespondToCoordinator",
         label: "回复",
@@ -159,29 +208,39 @@ export class SubagentPlugin {
         description: respondToCoordinatorDescription,
         metadata: { concurrentSafe: true, sideEffectScope: "session", destructive: false },
         execute: async (_id, params, signal) => {
-          if (!Value.Check(responseParameters, params))
-            throw new Error("invalid_input: RespondToCoordinator 参数无效");
+          assertToolArguments("RespondToCoordinator", responseParameters, params);
           signal?.throwIfAborted();
           const task = this.taskForChild(childId);
           if (!task || this.closing)
-            throw new Error("configuration: Coordinator response port is not configured");
+            throw new Error("Coordinator response port is not configured for RespondToCoordinator");
           const responseId = `response_${randomUUID()}`;
-          const continuation =
-            "Continue the current task unless the coordinator explicitly changed or ended it.";
+          let output: Parameters<typeof formatRespondToCoordinatorModelContent>[0];
           try {
             await this.port.notify(task, params);
-            return result(`Response ${responseId} was queued for the coordinator. ${continuation}`);
+            output = {
+              status: "success" as const,
+              responseId,
+              message: "Response was queued for the coordinator.",
+            };
           } catch (error) {
-            return {
-              ...result(
-                `Response ${responseId} failed to queue for the coordinator. ${continuation} Failure: ${error instanceof Error ? error.message : String(error)}.`,
-              ),
-              isError: true,
+            output = {
+              status: "failed" as const,
+              responseId,
+              message: "Response could not be queued for the coordinator.",
+              error: error instanceof Error ? error.message : String(error),
             };
           }
+          return this.artifacts.result(
+            task.parentSessionId,
+            _id,
+            "RespondToCoordinator",
+            formatRespondToCoordinatorModelContent(output),
+            output,
+          );
         },
       },
     ];
+    return tools.map((tool) => this.contract(tool));
   }
   list(parentId: string) {
     return structuredClone([...this.tasks.values()].filter((task) => task.parentSessionId === parentId));
@@ -189,7 +248,9 @@ export class SubagentPlugin {
   restore(task: SubagentTask) {
     this.childAgents.set(task.childSessionId, task.agentId);
     this.tasks.set(task.agentId, {
+      ...this.artifacts.paths(task.parentSessionId, task.agentId),
       ...task,
+      spawnToolCallId: task.spawnToolCallId ?? task.parentToolCallId,
       ...(task.status === "running"
         ? { status: "interrupted" as const, endedAt: Date.now(), waitingForInput: false }
         : {}),
@@ -226,7 +287,9 @@ export class SubagentPlugin {
     const next = { ...previous, ...fields };
     this.tasks.set(agentId, next);
     try {
-      this.port.publish(next);
+      // A completed UI card must not precede its output files and durable inbox delivery.
+      // Stops remain synchronous so a publication failure cannot skip cancellation.
+      if (!this.jobs.has(agentId) || !["completed", "error"].includes(next.status)) this.port.publish(next);
     } finally {
       // Readers observe the terminal in-memory owner even if persistence failed.
       this.outputWaiters.get(agentId)?.forEach((wake) => {
@@ -252,7 +315,12 @@ export class SubagentPlugin {
         // Mark before cancelling so completion cannot publish a successful result, but
         // a failed persistence/UI publication must never skip actual cancellation.
         try {
-          this.update(agentId, { status: "aborted", endedAt: Date.now(), waitingForInput: false });
+          this.update(agentId, {
+            status: "aborted",
+            endedAt: Date.now(),
+            waitingForInput: false,
+            error: "Background agent task stopped.",
+          });
         } catch (error) {
           publicationError = error;
         }
@@ -271,6 +339,8 @@ export class SubagentPlugin {
           throw error;
         }
         await job?.catch(() => {});
+        const latest = this.tasks.get(agentId);
+        if (latest) await this.artifacts.finish(latest);
         if (publicationError) throw publicationError;
       })
       .finally(() => {
@@ -280,11 +350,11 @@ export class SubagentPlugin {
     return stopped;
   }
   async stopAll(parentId: string) {
+    const tasks = this.list(parentId);
     await Promise.all(
-      this.list(parentId)
-        .filter((task) => task.status === "running")
-        .map((task) => this.stop(parentId, task.agentId)),
+      tasks.filter((task) => task.status === "running").map((task) => this.stop(parentId, task.agentId)),
     );
+    await Promise.allSettled(tasks.map((task) => this.jobs.get(task.agentId)));
   }
   async close() {
     this.closing = true;
@@ -293,6 +363,7 @@ export class SubagentPlugin {
         .filter((task) => task.status === "running")
         .map((task) => this.stop(task.parentSessionId, task.agentId)),
     );
+    await Promise.allSettled([...this.jobs.values()]);
   }
   private begin(
     task: SubagentTask,
@@ -311,6 +382,11 @@ export class SubagentPlugin {
         latestActivity: undefined,
         result: undefined,
         waitingForInput: false,
+        totalTokens: 0,
+        tokensReported: false,
+        totalToolUseCount: 0,
+        usage: undefined,
+        prompt,
       });
     }
     this.pendingRuns.set(task.agentId, (this.pendingRuns.get(task.agentId) ?? 0) + 1);
@@ -324,12 +400,20 @@ export class SubagentPlugin {
       )
         return;
       try {
+        const current = this.tasks.get(task.agentId) ?? task;
+        if (resume) await this.artifacts.metadata(current, resume.profile);
         await this.port.run(task.childSessionId, prompt, resume?.profile, resume?.selection);
       } catch (error) {
         if (this.tasks.get(task.agentId)?.status !== "aborted")
-          this.update(task.agentId, { status: "error", error: String(error), endedAt: Date.now() });
+          this.update(task.agentId, {
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+            endedAt: Date.now(),
+          });
       }
       const latest = this.tasks.get(task.agentId);
+      if (latest && this.jobs.get(task.agentId) === done && latest.status !== "running")
+        await this.artifacts.finish(latest);
       // Only the last queued turn notifies the parent, with the complete follow-up result.
       if (
         this.jobs.get(task.agentId) === done &&
@@ -342,6 +426,8 @@ export class SubagentPlugin {
         await this.port.notify(latest);
         this.notified.add(latest);
       }
+      if (latest && latest.status !== "running" && this.tasks.get(task.agentId) === latest)
+        this.port.publish(latest);
     })().finally(() => {
       const pending = (this.pendingRuns.get(task.agentId) ?? 1) - 1;
       if (pending) this.pendingRuns.set(task.agentId, pending);
@@ -376,25 +462,30 @@ export class SubagentPlugin {
     });
   }
   tools(parentId: string): ToolDefinition[] {
-    return [
+    const tools: ToolDefinition[] = [
       {
         name: "Agent",
         label: "子智能体",
         parameters: launchParameters,
         description: agentDescription,
-        execute: async (_callId, params, signal, onUpdate) => {
-          if (!Value.Check(launchParameters, params)) throw new Error("invalid_input: Agent 参数无效");
+        execute: async (_callId, params, signal, onUpdate, context) => {
+          assertToolArguments("Agent", launchParameters, params);
           signal?.throwIfAborted();
           if (this.closing) throw new Error("busy: 子智能体插件正在关闭");
           const name = params.subagent_type ?? "general-purpose";
           const profile = this.profile(parentId, name);
           const selection = profile.modelSelection ?? this.port.selection(parentId);
           const childSessionId = await this.port.create(parentId, profile, selection, params.description);
+          const agentId = `agent_${randomUUID()}`;
           const task: SubagentTask = {
-            agentId: `agent_${randomUUID()}`,
+            agentId,
+            ...this.artifacts.paths(parentId, agentId),
+            prompt: params.prompt,
+            cwd: this.port.cwd(parentId),
             childSessionId,
             parentSessionId: parentId,
             parentToolCallId: _callId,
+            spawnToolCallId: _callId,
             agentType: profile.name,
             description: params.description,
             color: profile.color,
@@ -405,6 +496,7 @@ export class SubagentPlugin {
             totalToolUseCount: 0,
             totalTokens: 0,
           };
+          await this.artifacts.metadata(task, profile);
           this.tasks.set(task.agentId, task);
           this.childAgents.set(childSessionId, task.agentId);
           this.port.publish(task);
@@ -422,8 +514,25 @@ export class SubagentPlugin {
           const job = this.begin(task, params.prompt);
           if (task.background) {
             signal?.removeEventListener("abort", abort);
-            return result(
-              `Async agent launched successfully.\nagentId: ${task.agentId} (internal ID - do not mention to user. Use SendMessage with to: '${task.agentId}' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.\nDo not duplicate this agent's work - avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.`,
+            const tools = context?.getToolNames?.() ?? ["read", "bash"];
+            const output: AgentBackgroundedOutput = {
+              status: "async_launched",
+              isAsync: true,
+              agentId: task.agentId,
+              agentType: task.agentType,
+              description: task.description,
+              prompt: params.prompt,
+              childSessionId,
+              backgroundTaskId: task.agentId,
+              outputFile: task.outputFile as string,
+              canReadOutputFile: tools.some((name) => ["Read", "Bash", "read", "bash"].includes(name)),
+            };
+            return this.artifacts.result(
+              parentId,
+              _callId,
+              "Agent",
+              formatAgentOutputForModel(output),
+              output,
             );
           }
           try {
@@ -433,10 +542,10 @@ export class SubagentPlugin {
           }
           signal?.throwIfAborted();
           const completed = this.tasks.get(task.agentId) as SubagentTask;
-          if (completed.status === "error") throw new Error(completed.error ?? "Child runtime failed");
-          return result(
-            `${completed.result || "(Subagent completed but returned no output.)"}\nagentId: ${task.agentId} (use SendMessage with to: '${completed.agentId}' to continue this agent)\n<usage>subagent_tokens: ${completed.totalTokens}\ntool_uses: ${completed.totalToolUseCount}\nduration_ms: ${(completed.endedAt ?? Date.now()) - completed.startedAt}</usage>`,
-          );
+          if (completed.status !== "completed")
+            throw new Error(completed.error ?? "Background agent task stopped.");
+          const output = completedAgentOutput(completed);
+          return this.artifacts.result(parentId, _callId, "Agent", formatAgentOutputForModel(output), output);
         },
       },
       {
@@ -445,22 +554,87 @@ export class SubagentPlugin {
         parameters: messageParameters,
         description: sendMessageDescription,
         execute: async (_id, params, signal) => {
-          if (!Value.Check(messageParameters, params)) throw new Error("invalid_input: SendMessage 参数无效");
-          signal?.throwIfAborted();
-          const task = this.owned(parentId, params.to);
-          if (this.closing) throw new Error("busy: 子智能体插件正在关闭");
-          if (this.stopping.has(task.agentId)) throw new Error("busy: 子智能体正在停止");
-          const activeJob = this.jobs.get(task.agentId);
-          const prompt = `The coordinator sent a message while you were working:\n${params.summary}\n\n${params.message}`;
-          const steered = task.status === "running" && this.port.steer(task.childSessionId, prompt);
-          if (!steered) {
-            const profile = this.profile(parentId, task.agentType);
+          assertToolArguments("SendMessage", messageParameters, params);
+          const messageId = `msg_${randomUUID()}`;
+          const failure = (error: string) => {
+            const output: SendMessageOutput = {
+              status: "failed",
+              messageId,
+              agentId: params.to,
+              error,
+              message: error,
+            };
+            return this.artifacts.result(
+              parentId,
+              _id,
+              "SendMessage",
+              formatSendMessageModelContent(output),
+              output,
+            );
+          };
+          if (signal?.aborted || this.closing || this.stopping.has(params.to))
+            return failure(`SendMessage was aborted for ${params.to}.`);
+          const task = this.tasks.get(params.to);
+          if (!task || task.parentSessionId !== parentId)
+            return failure(`No active local_agent task found for target ${params.to}.`);
+          const prompt = params.summary?.trim()
+            ? `${params.summary.trim()}\n\n${params.message}`
+            : params.message;
+          let delivery: "queued" | "steered" | "resumed_background";
+          let message: string;
+          if (task.status === "running") {
+            let steered = false;
+            try {
+              steered = this.port.steer(task.childSessionId, formatCoordinatorSteer(prompt));
+            } catch {
+              // ZCode retains the message for the next tool round when steering rejects.
+            }
+            if (!steered) {
+              const profile = this.profile(parentId, task.agentType);
+              const selection = profile.modelSelection ?? this.port.selection(parentId);
+              void this.begin(task, formatCoordinatorSteer(prompt), { profile, selection }).catch(() => {});
+            }
+            delivery = steered ? "steered" : "queued";
+            message = steered
+              ? `Message ${messageId} was sent to its active turn for local agent ${task.agentId}.`
+              : `Message queued for delivery to ${task.agentId} at its next tool round.`;
+          } else {
+            let profile: SubagentProfile;
+            try {
+              profile = this.profile(parentId, task.agentType);
+            } catch {
+              return failure(
+                `Cannot resume local agent ${task.agentId}: profile ${task.agentType} is unavailable.`,
+              );
+            }
+            if (!task.childSessionId)
+              return failure(`Cannot resume local agent ${task.agentId}: missing child session id.`);
             const selection = profile.modelSelection ?? this.port.selection(parentId);
-            const pending = this.begin(task, prompt, { profile, selection });
-            void pending.catch(() => {});
+            const status = providerTaskStatus(task);
+            this.update(task.agentId, {
+              description: params.summary || task.description,
+              parentToolCallId: _id,
+            });
+            void this.begin(task, params.message, { profile, selection }).catch(() => {});
+            delivery = "resumed_background";
+            message = `Agent "${task.agentId}" was stopped (${status}); resumed it in the background with your message. You'll be notified when it finishes. Output: ${task.outputFile}`;
           }
-          const delivery = steered ? "steered" : activeJob ? "queued" : "resumed_background";
-          return result(`Message ${randomUUID()} was ${delivery} for local agent ${task.agentId}.`);
+          const output: SendMessageOutput = {
+            status: "success",
+            messageId,
+            agentId: task.agentId,
+            taskId: task.agentId,
+            outputFile: task.outputFile,
+            delivery,
+            message,
+          };
+          return this.artifacts.result(
+            parentId,
+            _id,
+            "SendMessage",
+            formatSendMessageModelContent(output),
+            output,
+          );
         },
       },
       {
@@ -469,47 +643,56 @@ export class SubagentPlugin {
         parameters: outputParameters,
         description: taskOutputDescription,
         metadata: { concurrentSafe: true, sideEffectScope: "session", destructive: false },
-        prepareArguments: (args) =>
-          prepareTaskOutputArguments(args) as { task_id: string; block: boolean; timeout: number },
+
         execute: async (_id, params, signal) => {
-          params = prepareTaskOutputArguments(params) as typeof params;
-          if (!Value.Check(outputParameters, params)) throw new Error("invalid_input: TaskOutput 参数无效");
+          assertToolArguments("TaskOutput", outputParameters, params);
           signal?.throwIfAborted();
-          this.owned(parentId, params.task_id);
-          if (params.block !== false)
-            await this.waitForOutput(parentId, params.task_id, params.timeout ?? 30000, signal);
+          if (!params.task_id) throw new Error("<tool_use_error>Task ID is required</tool_use_error>");
+          const owned = this.tasks.get(params.task_id);
+          if (!owned || owned.parentSessionId !== parentId)
+            throw new Error(`<tool_use_error>No task found with ID: ${params.task_id}</tool_use_error>`);
+          if (params.block) await this.waitForOutput(parentId, params.task_id, params.timeout, signal);
           signal?.throwIfAborted();
-          const task = this.owned(parentId, params.task_id);
-          const status =
-            task.status === "running" ? (params.block === false ? "not_ready" : "timeout") : "success";
-          const output = task.result ?? task.latestActivity ?? "";
-          if (status === "success") this.notified.add(task);
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: [
-                  `<retrieval_status>${status}</retrieval_status>`,
-                  `<task_id>${task.agentId}</task_id>`,
-                  "<task_type>local_agent</task_type>",
-                  `<status>${task.status}</status>`,
-                  ...(output.trim() ? [`<output>\n${output.trimEnd()}\n</output>`] : []),
-                  ...(task.error ? [`<error>${task.error}</error>`] : []),
-                ].join("\n\n"),
-              },
-            ],
-            details: {
-              retrieval_status: status,
-              task: {
-                task_id: task.agentId,
-                task_type: "local_agent",
-                status: task.status,
-                description: task.description,
-                output,
-                ...(task.error ? { error: task.error } : {}),
-              },
+          const task = this.tasks.get(params.task_id);
+          if (!task) {
+            const output: TaskOutputResult = { retrieval_status: "timeout", task: null };
+            return this.artifacts.result(
+              parentId,
+              _id,
+              "TaskOutput",
+              formatTaskOutputModelContent(output),
+              output,
+            );
+          }
+          const diskOutput = await this.artifacts.read(task.outputFile, signal);
+          const clean = task.status === "completed" ? task.result : undefined;
+          const text = clean || diskOutput;
+          const output: TaskOutputResult = {
+            retrieval_status:
+              task.status === "running" ? (params.block ? "timeout" : "not_ready") : "success",
+            task: {
+              task_id: task.agentId,
+              task_type: "local_agent",
+              status: providerTaskStatus(task),
+              description: task.description,
+              output: text,
+              ...(task.outputFile ? { outputFile: task.outputFile } : {}),
+              ...(task.prompt ? { prompt: task.prompt } : {}),
+              ...(text ? { result: text } : {}),
+              ...(task.error ? { error: task.error } : {}),
             },
           };
+          signal?.throwIfAborted();
+          const projected = await this.artifacts.result(
+            parentId,
+            _id,
+            "TaskOutput",
+            formatTaskOutputModelContent(output),
+            output,
+          );
+          signal?.throwIfAborted();
+          if (output.retrieval_status === "success") this.notified.add(task);
+          return projected;
         },
       },
       {
@@ -518,7 +701,7 @@ export class SubagentPlugin {
         parameters: stopParameters,
         description: taskStopDescription,
         execute: async (_id, params, signal) => {
-          if (!Value.Check(stopParameters, params)) throw new Error("invalid_input: TaskStop 参数无效");
+          assertToolArguments("TaskStop", stopParameters, params);
           signal?.throwIfAborted();
           const taskId = params.task_id ?? params.shell_id;
           if (!taskId) throw new Error("Missing required parameter: task_id");
@@ -528,18 +711,23 @@ export class SubagentPlugin {
               `Invalid task ID "${taskId}". This lookup failure does not mean the task has completed or stopped; use the full task_id returned when the task started to stop it.`,
             );
           if (task.status !== "running")
-            throw new Error(`Task ${taskId} is not running (status: ${task.status})`);
+            throw new Error(`Task ${taskId} is not running (status: ${providerTaskStatus(task)})`);
           await this.stop(parentId, taskId);
-          return result(
-            JSON.stringify({
-              message: `Successfully stopped task: ${task.agentId} (${task.description})`,
-              task_id: task.agentId,
-              task_type: "local_agent",
-              command: task.description,
-            }),
-          );
+          const stopped = this.tasks.get(taskId);
+          if (stopped?.background && !this.closing && !this.notified.has(stopped)) {
+            await this.port.notify(stopped);
+            this.notified.add(stopped);
+          }
+          const output = {
+            message: `Successfully stopped task: ${task.agentId} (${task.description})`,
+            task_id: task.agentId,
+            task_type: "local_agent",
+            command: task.description,
+          };
+          return this.artifacts.result(parentId, _id, "TaskStop", JSON.stringify(output), output);
         },
       },
     ];
+    return tools.map((tool) => this.contract(tool));
   }
 }

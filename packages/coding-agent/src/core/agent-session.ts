@@ -716,13 +716,15 @@ export class AgentSession {
     return this.running;
   }
   /** Queue-only input can preempt completed reasoning/commentary, but never a final answer. */
-  steer(text: string, options: { queueOnly?: boolean } = {}): boolean {
-    if (!text.trim() || text.length > 100000) throw new Error("Invalid steering input");
+  steer(text: string, options: { queueOnly?: boolean; inputId?: string } = {}): boolean {
+    if (!text.trim() || (!options.queueOnly && text.length > 100000))
+      throw new Error("Invalid steering input");
     if (this.active !== "prompt" || this.disposed || this.abortRequested) return false;
     (options.queueOnly ? this.pendingMessages : this.steering).push({
       role: "user",
       content: text,
       timestamp: Date.now(),
+      ...(options.inputId ? { inputId: options.inputId } : {}),
     });
     return true;
   }

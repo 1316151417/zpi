@@ -4,7 +4,6 @@ import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { Value } from "typebox/value";
 import { contentText, isJsonObject } from "zpi-ai";
 import {
   type AgentSession,
@@ -97,7 +96,12 @@ import { readShortMemory } from "./memory/short-memory.ts";
 import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
 import { agentConcurrencyNote, subagentCommonNotes } from "./plugins/subagents/prompts.ts";
-import { prepareTaskOutputArguments, SubagentPlugin } from "./plugins/subagents/runtime.ts";
+import {
+  agentTaskNotification,
+  formatAgentIncoming,
+  formatSubagentMessage,
+} from "./plugins/subagents/protocol.ts";
+import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
@@ -112,7 +116,12 @@ import { WebTools } from "./web-tools.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
 
-type AgentInboxInput = RunInput & { backgroundNotification?: boolean };
+type AgentInboxInput = RunInput & {
+  backgroundNotification?: boolean;
+  deliveryId?: string;
+  agentMessageKind?: "reply" | "notification";
+  receivedDuringRun?: string;
+};
 
 interface SessionConfiguration extends SessionCapabilities {
   memory?: { short: boolean; long: boolean };
@@ -366,92 +375,96 @@ export class SessionHost {
       },
       error: (error) => this.errors.write("background.task", error),
     });
-    this.subagents = new SubagentPlugin(new SubagentProfiles(dir, settings.state), {
-      cwd: (id) => this.cwd(this.record(id)),
-      selection: (id) => {
-        const session = this.sessions.get(id);
-        const selection = session
-          ? {
-              provider: session.model.provider,
-              modelId: session.model.id,
-              reasoning: toPreset(session.thinkingLevel, session.model),
+    this.subagents = new SubagentPlugin(
+      new SubagentProfiles(dir, settings.state),
+      {
+        cwd: (id) => this.cwd(this.record(id)),
+        selection: (id) => {
+          const session = this.sessions.get(id);
+          const selection = session
+            ? {
+                provider: session.model.provider,
+                modelId: session.model.id,
+                reasoning: toPreset(session.thinkingLevel, session.model),
+              }
+            : this.getControls(id).selection;
+          if (!selection) throw new Error("configuration: 请先选择模型");
+          return selection;
+        },
+        create: (id, profile, selection, description) =>
+          this.createSubagentSession(id, profile, selection, description),
+        run: async (id, prompt, profile, selection) => {
+          if (profile && selection) {
+            const record = this.record(id);
+            if (record.archivedAt != null) {
+              const parent = record.parentSessionId ? this.records.get(record.parentSessionId) : undefined;
+              const task = this.subagents.taskForChild(id);
+              if (
+                !this.configuration(id).subagentProfile ||
+                !parent ||
+                task?.childSessionId !== id ||
+                task.parentSessionId !== parent.id ||
+                parent.archivedAt != null ||
+                this.closing ||
+                this.deleting.has(parent.id) ||
+                this.updating.has(parent.id) ||
+                this.closingChildren.has(parent.id) ||
+                this.activeRuns.get(parent.id)?.aborted
+              )
+                throw new Error("busy: 父会话已停止或关闭");
+              // Repair a legacy cascade when its parent was restored before upgrading.
+              this.restoreSessionState(id);
             }
-          : this.getControls(id).selection;
-        if (!selection) throw new Error("configuration: 请先选择模型");
-        return selection;
-      },
-      create: (id, profile, selection, description) =>
-        this.createSubagentSession(id, profile, selection, description),
-      run: async (id, prompt, profile, selection) => {
-        if (profile && selection) {
-          const record = this.record(id);
-          if (record.archivedAt != null) {
-            const parent = record.parentSessionId ? this.records.get(record.parentSessionId) : undefined;
-            const task = this.subagents.taskForChild(id);
-            if (
-              !this.configuration(id).subagentProfile ||
-              !parent ||
-              task?.childSessionId !== id ||
-              task.parentSessionId !== parent.id ||
-              parent.archivedAt != null ||
-              this.closing ||
-              this.deleting.has(parent.id) ||
-              this.updating.has(parent.id) ||
-              this.closingChildren.has(parent.id) ||
-              this.activeRuns.get(parent.id)?.aborted
-            )
-              throw new Error("busy: 父会话已停止或关闭");
-            // Repair a legacy cascade when its parent was restored before upgrading.
-            this.restoreSessionState(id);
+            if (!this.settings.isSelectionValid(selection))
+              throw new Error("configuration: 子智能体模型不可用");
+            const configuration = {
+              ...this.configuration(id),
+              subagentProfile: structuredClone(profile),
+              subagentInstructions: this.parentInstructions.get(this.record(id).parentSessionId ?? "") ?? [],
+            };
+            this.saveTask(id, { frozenConfiguration: configuration });
+            this.configurations.set(id, configuration);
+            const level = toThinking(selection.reasoning, this.settings.getModel(selection));
+            this.saveTask(id, {
+              currentSelection: selection,
+              ...(level !== "off" ? { lastThinkingLevel: level } : {}),
+            });
+            this.sessions.get(id)?.dispose();
+            this.sessions.delete(id);
           }
-          if (!this.settings.isSelectionValid(selection))
-            throw new Error("configuration: 子智能体模型不可用");
-          const configuration = {
-            ...this.configuration(id),
-            subagentProfile: structuredClone(profile),
-            subagentInstructions: this.parentInstructions.get(this.record(id).parentSessionId ?? "") ?? [],
-          };
-          this.saveTask(id, { frozenConfiguration: configuration });
-          this.configurations.set(id, configuration);
-          const level = toThinking(selection.reasoning, this.settings.getModel(selection));
-          this.saveTask(id, {
-            currentSelection: selection,
-            ...(level !== "off" ? { lastThinkingLevel: level } : {}),
+          this.refreshSubagentMemory(id);
+          await this.startRun({ sessionId: id, text: prompt }, undefined, true);
+          // Settlement can reserve a follow-up when guidance arrives after the SDK inbox closes.
+          while (this.activeRuns.has(id)) await this.activeRuns.get(id)?.done;
+        },
+        stop: async (id) => {
+          const run = this.activeRuns.get(id);
+          if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+          else await this.backgroundTasks.stopAll(id);
+        },
+        steer: (id, prompt) => {
+          const active = this.activeRuns.get(id);
+          if (!active || active.aborted) return false;
+          if (this.sessions.get(id)?.steer(prompt)) return true;
+          // Cover both startup and the SDK's closed-inbox settlement boundary.
+          const inbox = this.pendingSubagentMessages.get(id) ?? [];
+          inbox.push({ sessionId: id, text: prompt });
+          this.pendingSubagentMessages.set(id, inbox);
+          return true;
+        },
+        publish: (task) => {
+          if (!this.records.has(task.childSessionId) || !this.records.has(task.parentSessionId)) return;
+          this.settings.state.setRuntime(task.childSessionId, "subagent", task.agentId, task, task.status);
+          if (!this.views.has(task.parentSessionId)) this.getSessionSnapshot(task.parentSessionId);
+          this.emit(task.parentSessionId, "subagents", {
+            type: "subagent_changed",
+            task: structuredClone(task),
           });
-          this.sessions.get(id)?.dispose();
-          this.sessions.delete(id);
-        }
-        this.refreshSubagentMemory(id);
-        await this.startRun({ sessionId: id, text: prompt }, undefined, true);
-        // Settlement can reserve a follow-up when guidance arrives after the SDK inbox closes.
-        while (this.activeRuns.has(id)) await this.activeRuns.get(id)?.done;
+        },
+        notify: (task, message) => this.deliverSubagentMessage(task, message),
       },
-      stop: async (id) => {
-        const run = this.activeRuns.get(id);
-        if (run) await this.abortRun({ sessionId: id, runId: run.runId });
-        else await this.backgroundTasks.stopAll(id);
-      },
-      steer: (id, prompt) => {
-        const active = this.activeRuns.get(id);
-        if (!active || active.aborted) return false;
-        if (this.sessions.get(id)?.steer(prompt)) return true;
-        // Cover both startup and the SDK's closed-inbox settlement boundary.
-        const inbox = this.pendingSubagentMessages.get(id) ?? [];
-        inbox.push({ sessionId: id, text: prompt });
-        this.pendingSubagentMessages.set(id, inbox);
-        return true;
-      },
-      publish: (task) => {
-        if (!this.records.has(task.childSessionId) || !this.records.has(task.parentSessionId)) return;
-        this.settings.state.setRuntime(task.childSessionId, "subagent", task.agentId, task, task.status);
-        if (!this.views.has(task.parentSessionId)) this.getSessionSnapshot(task.parentSessionId);
-        this.emit(task.parentSessionId, "subagents", {
-          type: "subagent_changed",
-          task: structuredClone(task),
-        });
-      },
-      notify: (task, message) => this.deliverSubagentMessage(task, message),
-    });
+      join(this.dir, "agent", "subagents"),
+    );
     this.projects = settings.state.listProjects();
   }
   async init(): Promise<void> {
@@ -571,7 +584,7 @@ export class SessionHost {
         if (runtime.kind === "subagent_inbox") {
           const queued = runtime.data as RunInput[];
           if (queued.length) {
-            const pending = new Set(queued.map((input) => input.text));
+            const pending = new Set(queued.map((input: AgentInboxInput) => input.deliveryId ?? input.text));
             const index = this.requiredIndex(task.id);
             const snapshot = index.snapshot();
             for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot, ["message"])) {
@@ -580,10 +593,12 @@ export class SessionHost {
                 entry.message.role === "user" &&
                 typeof entry.message.content === "string"
               )
-                pending.delete(entry.message.content);
+                pending.delete(entry.message.inputId ?? entry.message.content);
               if (!pending.size) break;
             }
-            const inbox = queued.filter((input) => pending.has(input.text));
+            const inbox = queued.filter((input: AgentInboxInput) =>
+              pending.has(input.deliveryId ?? input.text),
+            );
             if (inbox.length) this.pendingSubagentMessages.set(task.id, inbox);
             if (inbox.length !== queued.length) this.saveSubagentInbox(task.id);
           }
@@ -617,6 +632,7 @@ export class SessionHost {
       async (taskId) => {
         await this.attachments.deleteSession(taskId);
         await rm(join(this.dir, "agent", "tool-output", taskId), { recursive: true, force: true });
+        await rm(join(this.dir, "agent", "subagents", taskId), { recursive: true, force: true });
         await rm(join(this.dir, "agent", "session-context", taskId), { recursive: true, force: true });
       },
       (error, taskId) => this.errors.write("session.delete.cleanup", error, { sessionId: taskId }),
@@ -1016,17 +1032,28 @@ export class SessionHost {
       if (
         !offered.has(input) &&
         (!input.backgroundNotification || toolBoundary) &&
-        run.session.steer(input.text, {
-          queueOnly: !!input.subagentNotification && !input.backgroundNotification,
-        })
+        run.session.steer(
+          input.agentMessageKind
+            ? formatAgentIncoming(
+                input.text,
+                input.agentMessageKind === "reply",
+                input.receivedDuringRun === run.runId,
+              )
+            : input.text,
+          {
+            queueOnly: !!input.subagentNotification && !input.backgroundNotification,
+            inputId: input.deliveryId,
+          },
+        )
       )
         offered.add(input);
     }
   }
 
-  private acknowledgeSubagentMessage(id: string, text: unknown) {
+  private acknowledgeSubagentMessage(id: string, text: unknown, inputId?: string) {
     const inbox = this.pendingSubagentMessages.get(id);
-    const index = inbox?.findIndex((input) => input.text === text) ?? -1;
+    const index =
+      inbox?.findIndex((input) => (inputId ? input.deliveryId === inputId : input.text === text)) ?? -1;
     if (!inbox || index < 0) return;
     inbox.splice(index, 1);
     if (!inbox.length) this.pendingSubagentMessages.delete(id);
@@ -1037,7 +1064,8 @@ export class SessionHost {
     task: Pick<
       SubagentTask,
       "parentSessionId" | "agentId" | "agentType" | "description" | "status" | "result" | "error"
-    >,
+    > &
+      Partial<SubagentTask>,
     reply?: { summary: string; message: string },
     backgroundNotification = false,
   ) {
@@ -1052,12 +1080,36 @@ export class SessionHost {
       throw new Error("busy: 父会话已关闭");
     const escapeXml = (value: string) =>
       value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const tag = reply ? "subagent-message" : "task-notification";
-    const text = `<${tag}>\nnotificationId: ${randomUUID()}\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(reply?.summary ?? task.description)}\n${escapeXml(reply?.message ?? task.result ?? task.error ?? "No output.")}\n</${tag}>`;
+    const text = backgroundNotification
+      ? `<task-notification>\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(task.description)}\n${escapeXml(task.result ?? task.error ?? "No output.")}\n</task-notification>`
+      : reply
+        ? formatSubagentMessage({
+            agentId: task.agentId,
+            agentType: task.agentType,
+            summary: reply.summary,
+            message: reply.message,
+          })
+        : agentTaskNotification({
+            ...task,
+            parentToolCallId: task.parentToolCallId ?? task.agentId,
+            childSessionId: task.childSessionId ?? "",
+            color: task.color ?? "blue",
+            background: task.background ?? true,
+            startedAt: task.startedAt ?? Date.now(),
+            totalToolUseCount: task.totalToolUseCount ?? 0,
+            totalTokens: task.totalTokens ?? 0,
+          } as SubagentTask);
     const input: AgentInboxInput = {
       sessionId: parentId,
+      deliveryId: randomUUID(),
       ...(backgroundNotification ? { backgroundNotification: true } : {}),
       text,
+      ...(!backgroundNotification
+        ? {
+            agentMessageKind: reply ? ("reply" as const) : ("notification" as const),
+            receivedDuringRun: this.activeRuns.get(parentId)?.runId,
+          }
+        : {}),
       subagentNotification: {
         agentId: task.agentId,
         agentType: task.agentType,
@@ -1087,9 +1139,7 @@ export class SessionHost {
           ...tool,
           label: tool.name === "TaskOutput" ? "查看任务输出" : "停止任务",
           execute: async (callId, params, signal, update, context) => {
-            if (tool.name === "TaskOutput") params = prepareTaskOutputArguments(params);
-            if (!Value.Check(tool.parameters, params))
-              throw new Error(`invalid_input: ${tool.name} 参数无效`);
+            params = tool.prepareArguments?.(params) ?? params;
             const input = params as {
               task_id?: string;
               shell_id?: string;
@@ -3148,7 +3198,7 @@ export class SessionHost {
           if (e.type === "turn_end" && e.message.role === "assistant" && e.message.stopReason === "toolUse")
             this.offerSubagentMessages(id, run, true);
           if (e.type === "message_end" && e.message.role === "user")
-            this.acknowledgeSubagentMessage(id, e.message.content);
+            this.acknowledgeSubagentMessage(id, e.message.content, e.message.inputId);
           if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
             manager.appendCustomEntry("zpi.agent_call", {
@@ -3178,9 +3228,24 @@ export class SessionHost {
               totalToolUseCount: childTask.totalToolUseCount + 1,
             });
           if (childTask && e.type === "message_end" && e.message.role === "assistant")
-            this.subagents.update(childTask.agentId, {
-              totalTokens: childTask.totalTokens + e.message.usage.totalTokens,
-            });
+            if (e.message.usageAvailable || e.message.usage.totalTokens > 0) {
+              const usage = e.message.usage;
+              const delta: Record<string, number> = {
+                inputTokens: usage.input,
+                outputTokens: usage.output,
+                totalTokens: usage.totalTokens,
+                cacheReadTokens: usage.cacheRead,
+                cacheWriteTokens: usage.cacheWrite,
+                ...(usage.reasoning === undefined ? {} : { reasoningTokens: usage.reasoning }),
+              };
+              this.subagents.update(childTask.agentId, {
+                totalTokens: childTask.totalTokens + usage.totalTokens,
+                tokensReported: true,
+                usage: Object.fromEntries(
+                  Object.entries(delta).map(([key, value]) => [key, (childTask.usage?.[key] ?? 0) + value]),
+                ),
+              });
+            }
           const projected = projectEvent(e, `${run.runId}:${run.ordinal}`);
           if (projected) this.emit(id, run.runId, projected);
         });
@@ -3429,7 +3494,6 @@ export class SessionHost {
       inbox.length > 0 && !run.aborted && !this.closing && !this.deleting.has(id) && !this.blocked.has(id);
     const childTask = this.subagents.taskForChild(id);
     if (childTask) {
-      const messages = run.session?.messages ?? [];
       const result = last ? contentText(last.content) : undefined;
       try {
         this.subagents.update(childTask.agentId, {
@@ -3438,11 +3502,6 @@ export class SessionHost {
           error: message,
           result: continueInbox ? undefined : result,
           waitingForInput: false,
-          totalToolUseCount: messages.filter((message) => message.role === "toolResult").length,
-          totalTokens: messages.reduce(
-            (total, message) => total + (message.role === "assistant" ? message.usage.totalTokens : 0),
-            0,
-          ),
         });
       } catch (error) {
         storageFailure(error, "subagent.persist");

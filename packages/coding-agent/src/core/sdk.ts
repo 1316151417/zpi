@@ -127,6 +127,7 @@ export async function createAgentSession(
     signal,
     isIdle: () => session.isIdle,
     getSystemPrompt: () => session.systemPrompt,
+    getToolNames: () => session.state.tools.map((tool) => tool.name),
   });
   const wrap = (definition: ToolDefinition<TSchema, unknown>): AgentTool =>
     wrapToolDefinition(definition, toolContext, false);

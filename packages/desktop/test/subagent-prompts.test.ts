@@ -9,6 +9,9 @@ import { fixture, run } from "./helpers/context-fixture.ts";
 const reference = JSON.parse(
   readFileSync(new URL("./fixtures/zcode-subagents.json", import.meta.url), "utf8"),
 ) as Record<string, string>;
+const schemas = JSON.parse(
+  readFileSync(new URL("./fixtures/zcode-subagent-schemas.json", import.meta.url), "utf8"),
+) as Record<string, Record<string, unknown>>;
 const adapt = (text: string) =>
   text
     .replaceAll("ZCode CLI", "ZPI")
@@ -74,13 +77,24 @@ test.each(["general-purpose", "Explore"])(
       ["Agent", "agent"],
       ["SendMessage", "sendMessage"],
       ["TaskStop", "taskStop"],
+      ["TaskOutput", "taskOutput"],
     ])
       expect(parentTools.find((entry) => entry.name === tool)?.description).toBe(adapt(reference[key]));
-    const childTools = (child.tools as { function: { name: string; description: string } }[]).map(
-      (entry) => entry.function,
-    );
+    for (const [name, { $schema: _version, ...schema }] of Object.entries(schemas)) {
+      if (name !== "RespondToCoordinator")
+        expect(parentTools.find((entry) => entry.name === name)?.parameters).toEqual(schema);
+    }
+    const childTools = (
+      child.tools as {
+        function: { name: string; description: string; parameters: Record<string, unknown> };
+      }[]
+    ).map((entry) => entry.function);
     expect(childTools.find((entry) => entry.name === "RespondToCoordinator")?.description).toBe(
       reference.respondToCoordinator,
+    );
+    const { $schema: _version, ...responseSchema } = schemas.RespondToCoordinator;
+    expect(childTools.find((entry) => entry.name === "RespondToCoordinator")?.parameters).toEqual(
+      responseSchema,
     );
     expect(JSON.stringify(parent.messages)).toContain(reference.concurrency);
     expect(JSON.stringify(parent.messages)).toContain("<system-reminder>");
@@ -93,7 +107,7 @@ test.each(["general-purpose", "Explore"])(
     expect(agentSchema?.required).toEqual(["description", "prompt"]);
     const rows = f.server.requests.at(-1)?.messages as { role: string; content: string }[];
     expect(rows.find((row) => row.role === "tool")?.content).toBe(
-      `Findings\nagentId: ${task.agentId} (use SendMessage with to: '${task.agentId}' to continue this agent)\n<usage>subagent_tokens: ${task.totalTokens}\ntool_uses: ${task.totalToolUseCount}\nduration_ms: ${(task.endedAt as number) - task.startedAt}</usage>`,
+      `Findings\nagentId: ${task.agentId} (use SendMessage with to: '${task.agentId}' to continue this agent)\n<usage>tool_uses: ${task.totalToolUseCount}\nduration_ms: ${(task.endedAt as number) - task.startedAt}</usage>`,
     );
     const context = {
       cwd: f.workspace,

@@ -1,0 +1,111 @@
+{
+  "Agent": {
+    "type": "object",
+    "properties": {
+      "description": {
+        "type": "string",
+        "description": "A short (3-5 word) description of the task"
+      },
+      "prompt": {
+        "type": "string",
+        "description": "The task for the agent to perform"
+      },
+      "subagent_type": {
+        "type": "string",
+        "description": "The type of specialized agent to use for this task"
+      },
+      "run_in_background": {
+        "type": "boolean",
+        "description": "Set to true to run this agent in the background. You will be notified when it completes."
+      }
+    },
+    "required": ["description", "prompt"],
+    "additionalProperties": false,
+    "$schema": "https://json-schema.org/draft/2020-12/schema"
+  },
+  "SendMessage": {
+    "type": "object",
+    "properties": {
+      "to": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "Recipient: local agent ID returned by Agent (format agent_<uuid>)."
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "A 5-10 word summary shown as a preview in the UI."
+      },
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 20000,
+        "description": "Plain text message content"
+      }
+    },
+    "required": ["to", "summary", "message"],
+    "additionalProperties": false,
+    "$schema": "https://json-schema.org/draft/2020-12/schema"
+  },
+  "TaskOutput": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "The task ID to get output from"
+      },
+      "block": {
+        "type": "boolean",
+        "default": true,
+        "description": "Whether to wait for completion"
+      },
+      "timeout": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 600000,
+        "default": 30000,
+        "description": "Max wait time in ms"
+      }
+    },
+    "required": ["task_id", "block", "timeout"],
+    "additionalProperties": false,
+    "$schema": "https://json-schema.org/draft/2020-12/schema"
+  },
+  "TaskStop": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "The ID of the background task to stop"
+      },
+      "shell_id": {
+        "type": "string",
+        "description": "Deprecated: use task_id instead"
+      }
+    },
+    "additionalProperties": false,
+    "$schema": "https://json-schema.org/draft/2020-12/schema"
+  },
+  "RespondToCoordinator": {
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "Short summary of the response."
+      },
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 20000,
+        "description": "Response or progress update for the coordinator."
+      }
+    },
+    "required": ["summary", "message"],
+    "additionalProperties": false,
+    "$schema": "https://json-schema.org/draft/2020-12/schema"
+  }
+}

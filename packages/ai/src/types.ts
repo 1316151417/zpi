@@ -202,6 +202,8 @@ export interface SystemMessage {
   toolsRemoved?: { name: string }[];
 }
 export interface UserMessage {
+  /** Stable identity for queued input; never sent as provider message content. */
+  inputId?: string;
   cacheControl?: CacheControl;
   synthetic?: boolean;
   role: "user";

@@ -128,6 +128,14 @@ export interface RunView {
   preparation?: string | null;
 }
 export interface SubagentTask {
+  prompt?: string;
+  outputFile?: string;
+  taskOutputFile?: string;
+  metadataFile?: string;
+  spawnToolCallId?: string;
+  cwd?: string;
+  tokensReported?: boolean;
+  usage?: Record<string, number>;
   agentId: string;
   childSessionId: string;
   parentSessionId: string;
