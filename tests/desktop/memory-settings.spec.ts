@@ -22,7 +22,7 @@ async function savedMemorySettings(page: Page) {
   });
 }
 
-test("memory settings keep independent defaults, preview absent files safely and persist across restart", async () => {
+test("memory settings keep mutually exclusive defaults, preview absent files safely and persist across restart", async () => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-memory-settings-desktop-")));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "No model request is needed by this settings test." }));
@@ -127,11 +127,13 @@ test("memory settings keep independent defaults, preview absent files safely and
     await expect(panel.locator(".memory-notice")).toHaveText("长期记忆已清空。");
     await expect(stat(longFile)).rejects.toMatchObject({ code: "ENOENT" });
 
-    // Exercise all four combinations without sending a foreground or background model request.
+    // Exercise both exclusive modes and the off state without sending a foreground or background model request.
     for (const [control, expected] of [
       [short, { short: true, long: false }],
-      [long, { short: true, long: true }],
-      [short, { short: false, long: true }],
+      [long, { short: false, long: true }],
+      [short, { short: true, long: false }],
+      [short, { short: false, long: false }],
+      [long, { short: false, long: true }],
       [long, { short: false, long: false }],
     ] as const) {
       await control.click();
@@ -149,7 +151,7 @@ test("memory settings keep independent defaults, preview absent files safely and
     await expect(generation).toBeEnabled();
     await expect
       .poll(() => savedMemorySettings(page))
-      .toMatchObject({ short: true, long: true, generate: false });
+      .toMatchObject({ short: false, long: true, generate: false });
     await expect(panel.getByRole("button", { name: "立即检查更新", exact: true })).toBeDisabled();
     await expect(panel.locator(".memory-status")).toContainText("已暂停生成");
 
@@ -169,7 +171,7 @@ test("memory settings keep independent defaults, preview absent files safely and
     page = await app.firstWindow();
     await openMemorySettings(page);
     expect(await savedMemorySettings(page)).toEqual(saved);
-    await expect(page.getByRole("switch", { name: "短记忆", exact: true })).toBeChecked();
+    await expect(page.getByRole("switch", { name: "短记忆", exact: true })).not.toBeChecked();
     await expect(page.getByRole("switch", { name: "长期记忆", exact: true })).toBeChecked();
     await expect(page.getByRole("switch", { name: "自动生成长期记忆", exact: true })).not.toBeChecked();
     await expect(stat(userFile)).rejects.toMatchObject({ code: "ENOENT" });

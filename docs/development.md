@@ -47,7 +47,7 @@ SDK 的新增工具、内置工具覆盖与追加指令分别使用 `customTools
 
 桌面追加规则通过同一 `customInstructions` 入口接入，界面称为「追加指令」和「扩展能力」。持久化的 `capabilities` 字段、首次发送冻结逻辑、工具名称以及实际提示词正文和顺序保持不变。这里没有插件注册表或插件生命周期；子智能体、后台命令等服务仍由桌面管理。
 
-短/长期记忆也沿用这些入口：`SessionHost` 在既有资源刷新边界准备记忆快照，通过 `customInstructions` 注入，使用会话事件记录实际摘要读取；四个 core 工具不增加分支。桌面 owner 负责后台模型批次、停用/清空/关闭和来源撤销；设置及处理水位复用 `SettingsStore/StateStore`，v2 产物放在活动用户存储的固定 `memories_v2/` 目录，后台用现有 SDK 和文件工具原地增量维护摘要，内部 Git 计算基线差异。记忆选项首次发送冻结，全局长期停用立即取消生成；快速对话独立且不接入记忆。详见 [记忆实现及参考差异](memory.md)。
+短/长期记忆也沿用这些入口：`SessionHost` 在既有资源刷新边界准备记忆快照，通过 `customInstructions` 注入，使用会话事件记录实际摘要读取；四个 core 工具不增加分支。桌面 owner 负责后台模型批次、停用/清空/关闭和来源撤销；设置及处理水位复用 `SettingsStore/StateStore`，v2 产物放在活动用户存储的固定 `memories_v2/` 目录，后台用现有 SDK 和文件工具原地增量维护摘要，内部 Git 计算基线差异。短/长期记忆开关互斥，首次发送冻结；旧双开配置按长期优先迁移。明确长期请求写入 `extensions/ad_hoc/notes/` 独立文件，整合 Agent 读取 Codex ad-hoc 说明，应用差异并保留 notes，来源标记为 `[ad-hoc note]`。全局长期停用立即取消生成；快速对话独立且不接入记忆。详见 [记忆实现及参考差异](memory.md)。
 
 - `packages/coding-agent` 的默认工具是 `read`、`write`、`edit`、`bash`。SDK 用 `customTools` 增加工具，用 `toolOverrides` 显式替换同名基础工具，不依赖 Electron。
 - 桌面端的 `SessionHost` 负责通过 `customTools` 注入 `AskUserQuestion`、子智能体工具与可选的 `web_search`/`web_fetch`，通过 `toolOverrides` 替换后台版 `bash`。子智能体通过 `Agent`、`SendMessage` 委派和沟通，通过 `RespondToCoordinator` 汇报；`TaskOutput`、`TaskStop` 统一读取和停止子任务与后台命令，关闭子智能体扩展后仍提供这两个后台任务工具。

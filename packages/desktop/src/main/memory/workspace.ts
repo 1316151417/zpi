@@ -1,13 +1,16 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { syncDirectory } from "../storage-generation.ts";
+import { adHocInstructions } from "./ad-hoc-instructions.ts";
 
 const exec = promisify(execFile);
 export const summaryLimit = 10_000;
 export const diffFile = "phase2_workspace_diff.md";
+export const memoryNotesDirectory = "extensions/ad_hoc/notes";
+export const memoryNotesInstructions = "extensions/ad_hoc/instructions.md";
 const backupFile = ".summary-backup.json";
 
 export async function readMemoryFile(path: string, maxBytes = 512_000): Promise<string> {
@@ -92,11 +95,84 @@ export async function resetMemoryBaseline(root: string): Promise<void> {
   await git(root, ["commit", "--quiet", "--allow-empty", "-m", "Memory baseline"]);
 }
 
+/** Seed Codex's ad-hoc source without overwriting user edits or following directory symlinks. */
+async function prepareMemoryNotes(root: string): Promise<void> {
+  let directory = root;
+  for (const segment of memoryNotesDirectory.split("/")) {
+    directory = join(directory, segment);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const info = await lstat(directory);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`记忆目录必须为普通目录：${directory}`);
+  }
+  const path = join(root, memoryNotesInstructions);
+  try {
+    const file = await open(path, "wx", 0o600);
+    try {
+      await file.writeFile(adHocInstructions, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    syncDirectory(dirname(path));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
+
+/** Retire the old single-file inbox only after its complete contents are durably preserved. */
+export async function migrateMemoryNotes(root: string, legacyDirectories: string[] = []): Promise<void> {
+  for (const directory of [root, ...legacyDirectories]) {
+    const path = join(directory, "memory_notes.md");
+    const content = await readMemoryFile(path, 32_000);
+    if (content) {
+      const hash = createHash("sha256").update(content).digest("hex").slice(0, 20);
+      const target = join(root, memoryNotesDirectory, `migrated-${hash}.md`);
+      let exists = true;
+      try {
+        await lstat(target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        exists = false;
+      }
+      if (exists && (await readMemoryFile(target, 32_000)) !== content)
+        throw new Error(`迁移后的记忆请求已被修改，原文件保留：${path}`);
+      if (!exists) await replaceMemoryFile(target, content);
+    }
+    await rm(path, { force: true });
+    // The legacy directory may not exist at all.
+    if (content) syncDirectory(directory);
+  }
+}
+
+/** Immutable inputs for one consolidation attempt; notes are never consumed or rewritten by the worker. */
+export async function readMemoryNotes(root: string): Promise<{ path: string; content: string }[]> {
+  const inputs = [
+    { path: memoryNotesInstructions, content: await readMemoryFile(join(root, memoryNotesInstructions)) },
+  ];
+  const visit = async (directory: string) => {
+    const info = await lstat(join(root, directory));
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw new Error(`记忆请求目录必须为普通目录：${directory}`);
+    const entries = await readdir(join(root, directory), { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isSymbolicLink()) throw new Error(`记忆请求不允许符号链接：${path}`);
+      if (entry.isDirectory()) await visit(path);
+      else if (entry.isFile() && entry.name.endsWith(".md"))
+        inputs.push({ path, content: await readMemoryFile(join(root, path)) });
+      else throw new Error(`记忆请求必须为 Markdown 普通文件：${path}`);
+    }
+  };
+  await visit(memoryNotesDirectory);
+  return inputs;
+}
+
 export async function prepareMemoryWorkspace(root: string): Promise<void> {
   await mkdir(root, { recursive: true, mode: 0o700 });
   const info = await lstat(root);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("记忆工作目录必须为普通目录。");
   await mkdir(join(root, "rollout_summaries"), { recursive: true, mode: 0o700 });
+  await prepareMemoryNotes(root);
   await rm(join(root, diffFile), { force: true });
   try {
     if (!(await lstat(join(root, ".git"))).isDirectory()) throw new Error("Invalid Git baseline");
@@ -169,7 +245,18 @@ export async function validateMemoryWorkspace(
   root: string,
   inputs: { path: string; content: string }[],
 ): Promise<string> {
-  const allowed = new Set(["memory_summary.md", backupFile, diffFile, ...inputs.map(({ path }) => path)]);
+  const allowed = new Set([
+    "memory_summary.md",
+    backupFile,
+    diffFile,
+    memoryNotesInstructions,
+    ...inputs.map(({ path }) => path),
+  ]);
+  const directories = new Set(["rollout_summaries", "extensions", "extensions/ad_hoc", memoryNotesDirectory]);
+  for (const { path } of inputs) {
+    const segments = path.split("/");
+    for (let count = 1; count < segments.length; count++) directories.add(segments.slice(0, count).join("/"));
+  }
   const validateEntries = async (directory: string, prefix = "") => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = `${prefix}${entry.name}`;
@@ -177,7 +264,7 @@ export async function validateMemoryWorkspace(
       if (
         entry.isSymbolicLink() ||
         (!entry.isDirectory() && !allowed.has(path)) ||
-        (entry.isDirectory() && path !== "rollout_summaries")
+        (entry.isDirectory() && !directories.has(path))
       )
         throw new Error(`记忆工作目录包含不允许的产物：${path}`);
       if (entry.isDirectory()) await validateEntries(join(directory, entry.name), `${path}/`);

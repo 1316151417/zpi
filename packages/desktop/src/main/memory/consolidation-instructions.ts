@@ -42,6 +42,28 @@ description and either the exact filename or complete thread identifier.
 Read \`phase2_workspace_diff.md\` in \`the supplied working directory/\` first. Use the
 existing \`memory_summary.md\` and supplied sources as needed.
 
+Memory extensions (under the supplied working directory/extensions/):
+
+- <extension_name>/instructions.md
+  - Source-specific guidance for interpreting additional memory signals. If an
+    extension folder exists, you must read its instructions.md to determine how to use this memory
+    source.
+
+If the user has any memory extensions, you MUST read the instructions for each extension to
+determine how to use the memory source. If the workspace diff shows deleted extension resource files,
+remove stale memories derived only from those resources. If it has no extension folders, continue
+with the standard memory inputs only.
+
+
+Optional source-specific inputs:
+Under \`the supplied working directory/extensions/\`:
+
+- \`<extension_name>/instructions.md\`
+  - If extension folders exist, read each instructions.md first and follow it when interpreting
+    that extension's memory source.
+
+If the workspace diff shows deleted memory extension resources, use that extension-specific deletion
+signal to remove stale memories derived only from those resources.
 
 
 Apply user edits and source changes. Remove claims supported only by deleted
@@ -53,5 +75,5 @@ Create or update \`the supplied working directory/memory_summary.md\` in the req
 Leave a valid summary unchanged when no update is needed; write a minimal valid
 summary if no supported content remains.
 
-ZPI adaptations: Read the Git workspace diff first. Only memory_summary.md is writable through existing read/write/edit tools. Use read offset/limit and the supplied source inventory for selective lookups; no shell or delegation is available. Never generate skills, MEMORY.md or raw_memories.md. Explicit requests in memory_notes.md override old evidence and must be applied on every run. Complete file edits before a brief final reply.
+ZPI adaptations: Only memory_summary.md is writable through existing read/write/edit tools. Use read offset/limit and the supplied source inventory for selective lookups; no shell or delegation is available. Never generate skills, MEMORY.md or raw_memories.md. Complete file edits before a brief final reply.
 `;

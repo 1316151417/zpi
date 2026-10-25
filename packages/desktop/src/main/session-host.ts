@@ -57,7 +57,12 @@ import type {
   TaskSearchResult,
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
-import type { MemorySettings, MemorySource, MemoryStatus } from "../shared/memory.ts";
+import {
+  exclusiveMemoryMode,
+  type MemorySettings,
+  type MemorySource,
+  type MemoryStatus,
+} from "../shared/memory.ts";
 import { type ReviewDiffData, reviewPatchStats } from "../shared/review.ts";
 import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
@@ -666,7 +671,10 @@ export class SessionHost {
       throw new Error("Invalid session configuration");
     const snapshot = {
       ...structuredClone(config),
-      memory: config.memory ?? { short: false, long: false },
+      memory: exclusiveMemoryMode(config.memory ?? { short: false, long: false }),
+      ...(config.memory?.short && config.memory.long && config.subagentProfile
+        ? { memoryInstructions: [], memoryShortInstructions: [] }
+        : {}),
       communicationStyle: config.communicationStyle ?? false,
       subagents: config.subagents ?? false,
       webSearch: config.webSearch ?? false,
@@ -674,6 +682,7 @@ export class SessionHost {
       proactiveExecution: config.proactiveExecution ?? false,
     };
     if (snapshot.template.id === piTemplate.id) snapshot.template = structuredClone(piTemplate);
+    if (config.memory?.short && config.memory.long) this.saveTask(id, { frozenConfiguration: snapshot });
     this.configurations.set(id, snapshot);
     return snapshot;
   }

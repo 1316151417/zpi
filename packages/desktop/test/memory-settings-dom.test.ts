@@ -99,7 +99,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-test("independent default-off switches keep the page compact", async () => {
+test("mutually exclusive default-off switches keep the page compact", async () => {
   await render();
   expect(toggle("短记忆").checked).toBe(false);
   expect(toggle("长期记忆").checked).toBe(false);
@@ -109,9 +109,11 @@ test("independent default-off switches keep the page compact", async () => {
   await click(toggle("短记忆"));
   expect(saveMemorySettings).toHaveBeenLastCalledWith({ ...defaultMemorySettings, short: true });
   await click(toggle("长期记忆"));
-  expect(settings).toMatchObject({ short: true, long: true });
-  await click(toggle("短记忆"));
   expect(settings).toMatchObject({ short: false, long: true });
+  await click(toggle("短记忆"));
+  expect(settings).toMatchObject({ short: true, long: false });
+  await click(toggle("短记忆"));
+  expect(settings).toMatchObject({ short: false, long: false });
   expect(clearLongMemory).not.toHaveBeenCalled();
 });
 

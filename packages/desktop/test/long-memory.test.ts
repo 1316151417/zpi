@@ -9,6 +9,7 @@ import {
   type MemoryRunRequest,
   type MemoryRunResult,
 } from "../src/main/memory/long-memory.ts";
+import { memoryNotesDirectory, readMemoryNotes } from "../src/main/memory/workspace.ts";
 import type { CombinedSelection } from "../src/shared/bridge.ts";
 import { defaultMemorySettings, type MemorySettings } from "../src/shared/memory.ts";
 
@@ -129,8 +130,7 @@ test.each([
   { short: false, long: false, calls: 0 },
   { short: true, long: false, calls: 0 },
   { short: false, long: true, calls: 2 },
-  { short: true, long: true, calls: 2 },
-])("independent switches: short=$short long=$long", async ({ short, long, calls }) => {
+])("exclusive modes: short=$short long=$long", async ({ short, long, calls }) => {
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, { ...enabled, short, long });
@@ -174,7 +174,7 @@ test("two phases publish source-linked files, inject only summary, and skip unch
   expect(status.cost).toBe(0.002);
   expect((await readdir(status.path)).sort()).toEqual([
     ".git",
-    "memory_notes.md",
+    "extensions",
     "memory_summary.md",
     "rollout_summaries",
   ]);
@@ -323,7 +323,7 @@ test("clear cancels pending tasks, clears artifacts and notes, and tombstones ex
   const f = await fixture();
   f.sources = [f.source()];
   await f.service.check(model, enabled);
-  await writeFile(join(f.directory, "memory_notes.md"), "Forget the API preference.");
+  await writeFile(join(f.directory, memoryNotesDirectory, "request.md"), "Forget the API preference.");
   f.sources[0].boundary = "1:20";
   let release!: (value: MemoryRunResult) => void;
   f.run.mockImplementationOnce(
@@ -372,14 +372,14 @@ test("persistent forget notes change the fingerprint and remain an input after a
   f.sources = [f.source()];
   await f.service.check(model, enabled);
   const note = "2026-10-23: Forget the API preference for /workspace/a.";
-  await writeFile(join(f.directory, "memory_notes.md"), note);
+  await writeFile(join(f.directory, memoryNotesDirectory, "request.md"), note);
   await f.service.check(model, enabled);
   expect(f.requests.at(-1)?.stage).toBe("consolidate");
   expect(f.inputs.at(-1)).toContain(note);
   f.sources[0].boundary = "1:20";
   await f.service.check(model, enabled);
   expect(f.inputs.at(-1)).toContain(note);
-  expect(await readFile(join(f.directory, "memory_notes.md"), "utf8")).toBe(note);
+  expect(await readFile(join(f.directory, memoryNotesDirectory, "request.md"), "utf8")).toBe(note);
 });
 
 test("retention propagates removal but keeps success boundary to avoid regenerating old evidence", async () => {
@@ -847,7 +847,10 @@ test("legacy generations migrate once to the fixed v2 library and explicit clear
   expect(state.tombstones.cleared).toBe("1:3");
   expect(state.tokens).toBe(30);
   expect((await service.context()).instructions.join("\n")).toContain("Explicit legacy preference");
-  expect(await readFile(join(directory, "memory_notes.md"), "utf8")).toBe("Forget obsolete advice.");
+  expect((await readMemoryNotes(directory)).map(({ content }) => content)).toContain(
+    "Forget obsolete advice.",
+  );
+  await expect(readFile(join(directory, "memory_notes.md"))).rejects.toMatchObject({ code: "ENOENT" });
   expect(await readdir(directory)).not.toContain("generations");
   expect(run).not.toHaveBeenCalled();
   await service.clear();
@@ -911,11 +914,79 @@ test("credential-bearing notes are diagnosed before the Git diff is sent to the 
   f.sources = [f.source()];
   await f.service.check(model, enabled);
   const note = "api_key=sk-1234567890123456";
-  await writeFile(join(f.directory, "memory_notes.md"), note);
+  await writeFile(join(f.directory, memoryNotesDirectory, "request.md"), note);
   await f.service.check(model, enabled);
   expect(f.run).toHaveBeenCalledTimes(2);
   expect(f.service.status().status).toBe("failed");
   expect(f.service.status().message).toContain("包含可识别凭据");
   expect(f.service.status().message).not.toContain("sk-1234567890123456");
-  expect(await readFile(join(f.directory, "memory_notes.md"), "utf8")).toBe(note);
+  expect(await readFile(join(f.directory, memoryNotesDirectory, "request.md"), "utf8")).toBe(note);
+});
+
+test("notes alone trigger consolidation; new and edited requests retain their provenance and old notes", async () => {
+  const f = await fixture();
+  await f.service.init();
+  const directory = join(f.directory, memoryNotesDirectory);
+  const addition = join(directory, "remember.md");
+  const correction = join(directory, "correct.md");
+  await writeFile(addition, "Remember Chinese responses for project A. NOTE_BODY_ONLY");
+  await f.service.check(model, enabled);
+  expect(f.requests.map(({ stage }) => stage)).toEqual(["consolidate"]);
+  expect(f.inputs.at(-1)).toContain("+Remember Chinese responses");
+  expect(f.inputs.at(-1)).toContain("Never delete a note file");
+  expect(f.inputs.at(-1)).toContain("[ad-hoc note]");
+  const context = (await f.service.context()).instructions.join("\n");
+  expect(context).toContain("extensions/ad_hoc/notes/");
+  expect(context).toContain("separate, uniquely named note");
+  expect(context).not.toContain("NOTE_BODY_ONLY");
+  expect(context).not.toContain("Never delete a note file");
+  expect(context).not.toContain("memory_notes.md");
+  await f.service.check(model, enabled);
+  expect(f.run).toHaveBeenCalledTimes(1);
+  await writeFile(correction, "Correction: English responses for project A.");
+  await f.service.check(model, enabled);
+  expect(f.run).toHaveBeenCalledTimes(2);
+  expect(f.inputs.at(-1)).toContain("Correction: English responses");
+  await writeFile(correction, "Correction: French responses for project A.");
+  await f.service.check(model, enabled);
+  expect(f.run).toHaveBeenCalledTimes(3);
+  expect(f.inputs.at(-1)).toContain("-Correction: English responses");
+  expect(f.inputs.at(-1)).toContain("+Correction: French responses");
+  expect(await readFile(addition, "utf8")).toContain("Remember Chinese responses");
+  expect(await readFile(correction, "utf8")).toContain("French responses");
+});
+
+test("a failed note consolidation keeps the previous summary, request and uncommitted Git diff for retry", async () => {
+  const f = await fixture();
+  f.sources = [f.source()];
+  await f.service.check(model, enabled);
+  const previous = await readFile(join(f.directory, "memory_summary.md"), "utf8");
+  const note = join(f.directory, memoryNotesDirectory, "forget.md");
+  await writeFile(note, "Forget the project A procedure.");
+  f.run.mockImplementationOnce(async (request) => {
+    await writeFile(join(request.directory as string, "memory_summary.md"), "Incomplete");
+    throw new Error("provider: interrupted");
+  });
+  await f.service.check(model, enabled);
+  expect(f.service.status().status).toBe("failed");
+  expect(await readFile(join(f.directory, "memory_summary.md"), "utf8")).toBe(previous);
+  expect(await readFile(note, "utf8")).toContain("Forget the project A procedure");
+  f.now += HOUR + 1;
+  await f.service.check(model, enabled);
+  expect(f.inputs.at(-1)).toContain("+Forget the project A procedure");
+  expect(f.service.status().status).toBe("success");
+});
+
+test("a note removed externally is propagated through the next consolidation diff", async () => {
+  const f = await fixture();
+  await f.service.init();
+  const path = join(f.directory, memoryNotesDirectory, "obsolete.md");
+  await writeFile(path, "Old requested preference.");
+  await f.service.check(model, enabled);
+  await rm(path);
+  await f.service.check(model, enabled);
+  expect(f.run).toHaveBeenCalledTimes(2);
+  expect(f.inputs.at(-1)).toContain("deleted file mode");
+  expect(f.requests.at(-1)?.instructions).toContain("Remove claims supported only by deleted");
+  expect(await readdir(join(f.directory, memoryNotesDirectory))).toEqual([]);
 });

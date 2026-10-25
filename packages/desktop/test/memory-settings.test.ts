@@ -37,7 +37,7 @@ async function fixture() {
   return { settings, state, open };
 }
 
-test("memory defaults are independent and do not create data or inherit the conversation model", async () => {
+test("memory defaults are off and do not create data or inherit the conversation model", async () => {
   const { settings, state } = await fixture();
   settings.rememberSelection({ provider: "provider", modelId: "thinking", reasoning: "high" });
   expect(settings.getMemorySettings()).toEqual(defaultMemorySettings);
@@ -51,8 +51,7 @@ test.each([
   [false, false],
   [true, false],
   [false, true],
-  [true, true],
-])("persists short=%s long=%s independently across restarts", async (short, long) => {
+])("persists exclusive short=%s long=%s across restarts", async (short, long) => {
   const { settings, open } = await fixture();
   const input = { ...defaultMemorySettings, short, long, generate: false };
   settings.saveMemorySettings(input);
@@ -99,6 +98,7 @@ test("keeps missing model selection visible for a runtime diagnostic and permits
 });
 
 test.each([
+  { ...defaultMemorySettings, short: true, long: true },
   null,
   [],
   {},
@@ -137,4 +137,13 @@ test("failed durable writes leave the previous setting available", async () => {
   });
   expect(() => settings.saveMemorySettings({ ...defaultMemorySettings, long: true })).toThrow("disk full");
   expect(open().getMemorySettings()).toEqual({ ...defaultMemorySettings, short: true });
+});
+
+test("legacy dual-enabled settings migrate to long memory without changing model or thresholds", async () => {
+  const { settings, state, open } = await fixture();
+  state.setSetting("memory.settings", { ...defaultMemorySettings, short: true, long: true, maxAgeDays: 90 });
+  const expected = { ...defaultMemorySettings, short: false, long: true, maxAgeDays: 90 };
+  expect(settings.getMemorySettings()).toEqual(expected);
+  expect(state.getSetting("memory.settings")).toEqual(expected);
+  expect(open().getMemorySettings()).toEqual(expected);
 });

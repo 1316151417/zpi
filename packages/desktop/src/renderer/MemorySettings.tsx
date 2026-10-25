@@ -270,7 +270,7 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                 <strong>启用短记忆</strong>
                 <SettingsHelp
                   label="短记忆"
-                  text="保存明确偏好与可复用约束，由主 Agent 维护用户和当前项目的 MEMORY.md。每个文件最多 20 条、正文共 2,000 个 Unicode 字符；异常文件不加载。开关在新对话首次发送时生效，已有对话保留原配置；文件内容在安全轮次刷新。关闭保留数据，快速对话不加载。"
+                  text="与长期记忆互斥，开启时自动关闭长期记忆。保存明确偏好与可复用约束，由主 Agent 维护用户和当前项目的 MEMORY.md。每个文件最多 20 条、正文共 2,000 个 Unicode 字符；异常文件不加载。开关在新对话首次发送时生效，已有对话保留原配置；文件内容在安全轮次刷新。关闭保留数据，快速对话不加载。"
                 />
               </span>
               <span className="settings-switch">
@@ -281,7 +281,9 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                   aria-checked={settings.short}
                   checked={settings.short}
                   disabled={busy}
-                  onChange={(event) => save({ short: event.target.checked })}
+                  onChange={(event) =>
+                    save(event.target.checked ? { short: true, long: false } : { short: false })
+                  }
                 />
                 <span aria-hidden="true" />
               </span>
@@ -328,7 +330,7 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                 <strong>启用长期记忆</strong>
                 <SettingsHelp
                   label="长期记忆"
-                  text="从历史会话提取可复用经验，仅自动加载简短摘要，详情按需读取。新对话首次发送时保存开关配置；关闭立即取消后台任务并保留数据，已有对话仍按原配置读取。快速对话不加载或生成记忆。"
+                  text="从历史会话提取可复用经验，仅自动加载简短摘要，详情按需读取。与短记忆互斥，开启时自动关闭短记忆。新对话首次发送时保存开关配置；关闭立即取消后台任务并保留数据，已有对话仍按原配置读取。快速对话不加载或生成记忆。"
                 />
               </span>
               <span className="settings-switch">
@@ -339,7 +341,9 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                   aria-checked={settings.long}
                   checked={settings.long}
                   disabled={busy}
-                  onChange={(event) => save({ long: event.target.checked })}
+                  onChange={(event) =>
+                    save(event.target.checked ? { long: true, short: false } : { long: false })
+                  }
                 />
                 <span aria-hidden="true" />
               </span>

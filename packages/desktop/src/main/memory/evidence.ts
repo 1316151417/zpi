@@ -4,9 +4,9 @@ import { sessionReferenceTranscriptReverse } from "../session-references.ts";
 
 // Memory reads and writes are derivative material, never fresh preference evidence.
 const memoryMaterial =
-  /(?:^|[\s/\\"'])MEMORY\.md\b|memory_summary\.md|raw_memories\.md|memory_notes\.md|rollout_summaries[/\\]/i;
+  /(?:^|[\s/\\"'])MEMORY\.md\b|memory_summary\.md|raw_memories\.md|memory_notes\.md|rollout_summaries[/\\]|extensions[/\\]ad_hoc[/\\]/i;
 const memoryPath =
-  /(?:^|[/\\])(?:MEMORY\.md|memory_summary\.md|raw_memories\.md|memory_notes\.md)$|(?:^|[/\\])rollout_summaries(?:[/\\]|$)/i;
+  /(?:^|[/\\])(?:MEMORY\.md|memory_summary\.md|raw_memories\.md|memory_notes\.md)$|(?:^|[/\\])rollout_summaries(?:[/\\]|$)|(?:^|[/\\])extensions[/\\]ad_hoc(?:[/\\]|$)/i;
 
 function memoryOperation(name: string, args: unknown): boolean {
   if (!isJsonObject(args)) return false;

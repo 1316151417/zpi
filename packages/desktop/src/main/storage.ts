@@ -48,7 +48,12 @@ import {
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
-import { defaultMemorySettings, type MemorySettings, memorySettingLimits } from "../shared/memory.ts";
+import {
+  defaultMemorySettings,
+  exclusiveMemoryMode,
+  type MemorySettings,
+  memorySettingLimits,
+} from "../shared/memory.ts";
 import { quickChatSelectionIsValid } from "../shared/quick-chat-settings.ts";
 import {
   defaultShortcuts,
@@ -301,10 +306,13 @@ export class SettingsStore {
   getMemorySettings(): MemorySettings {
     const value = this.state.getSetting<MemorySettings>("memory.settings") ?? defaultMemorySettings;
     this.validateMemorySettings(value);
-    return structuredClone(value);
+    const normalized = exclusiveMemoryMode(value);
+    if (normalized !== value) this.state.setSetting("memory.settings", normalized);
+    return structuredClone(normalized);
   }
   saveMemorySettings(input: MemorySettings): MemorySettings {
     this.validateMemorySettings(input);
+    if (input.short && input.long) throw new Error("invalid_input: 短记忆和长期记忆不能同时开启");
     const previous = this.getMemorySettings();
     for (const key of ["selection", "extractSelection", "consolidateSelection"] as const) {
       const selection = input[key];

@@ -69,6 +69,18 @@ test.each([
   ["read", { file_path: "/storage/memories/memory_summary.md" }],
   ["read", { path: "/storage/memories/raw_memories.md" }],
   ["read", { path: "/storage/memories/rollout_summaries/source.md" }],
+  ["read", { path: "/storage/memories_v2/extensions/ad_hoc/notes/request.md" }],
+  ["read", { path: "/storage/memories_v2/extensions/ad_hoc/instructions.md" }],
+  ["write", { path: "extensions/ad_hoc/notes/new.md", content: "DERIVATIVE PREFERENCE" }],
+  [
+    "edit",
+    {
+      path: "C:\\memory\\extensions\\ad_hoc\\notes\\request.md",
+      oldText: "x",
+      newText: "DERIVATIVE PREFERENCE",
+    },
+  ],
+  ["bash", { command: "cat /memory/extensions/ad_hoc/notes/*.md" }],
   ["bash", { command: "cat ~/.zpi/MEMORY.md" }],
   ["bash", { command: "rg preference /storage/memories/rollout_summaries/source.md" }],
 ] satisfies [string, JsonObject][])("omits memory operation %s %j and its result", (name, args) => {

@@ -26,6 +26,11 @@ export const defaultMemorySettings: Readonly<MemorySettings> = {
   maxRolloutsPerBatch: 2,
 };
 
+/** Compatibility for configurations saved before memory modes became mutually exclusive. */
+export function exclusiveMemoryMode<T extends { short: boolean; long: boolean }>(value: T): T {
+  return value.short && value.long ? { ...value, short: false } : value;
+}
+
 export const memorySettingLimits = {
   minIdleHours: { min: 1, max: 168 },
   maxAgeDays: { min: 1, max: 365 },

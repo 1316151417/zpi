@@ -1,8 +1,8 @@
 # 记忆
 
-「设置 → 记忆」分别控制短记忆和长期记忆，默认都关闭。两个开关在新对话首次发送时保存为会话配置；旧对话保留原配置。关闭全局长期开关或暂停生成会立即取消后台批次，已有会话仍可按其配置读取已保存的记忆。暂停不删除数据，清空是独立操作。快速对话不读取或生成记忆。
+「设置 → 记忆」提供互斥的短记忆和长期记忆，默认都关闭。开启一种会自动关闭另一种，也可以都关闭；切换不删除数据。开关在新对话首次发送时保存为会话配置，已有单模式对话保留原配置，不随全局切换改变。升级前同时开启的全局配置与会话配置按长期记忆优先归一化，短记忆文件保留。关闭全局长期开关或暂停生成会立即取消后台批次，已有会话仍可按其配置读取已保存的记忆。暂停不删除数据，清空是独立操作。快速对话不读取或生成记忆。
 
-当前用户要求和 AGENTS.md 高于记忆；明确的短记忆偏好高于长期记忆中的推断。历史事实可能过期，助手仍须核验。记忆是上下文，不是权限隔离，也不构成项目之间的访问隔离。
+当前用户要求和 AGENTS.md 高于记忆。每个普通会话只加载并维护其所选模式，避免两套明确记忆入口重叠。历史事实可能过期，助手仍须核验。记忆是上下文，不是权限隔离，也不构成项目之间的访问隔离。
 
 ## 短记忆
 
@@ -35,7 +35,8 @@
 | --- | --- |
 | `memory_summary.md` | 自动注入的用户偏好、通用提示和按项目/日期组织的来源导航；总大小小于 10,000 UTF-8 字节 |
 | `rollout_summaries/*.md` | 每个历史会话的任务经过、结果、纠正、范围、不确定性和原始会话定位；按需读取 |
-| `memory_notes.md` | 用户明确的 remember/forget/correct 请求，由前台用现有文件工具维护，持续参与后续整合 |
+| `extensions/ad_hoc/notes/*.md` | 用户明确的 remember/forget/correct 请求；主 Agent 为每次请求新增独立 Markdown note，正文不默认注入 |
+| `extensions/ad_hoc/instructions.md` | Codex 原版 ad-hoc 来源解释规则，由后台整合 Agent 读取；首次创建，不覆盖已有编辑 |
 | `phase2_workspace_diff.md` | 程序生成的本批 Git 基线差异及来源文件清单，整合 Agent 首先读取；成功后移除 |
 | `.git/` | 内部变化基线，成功后重建为单个提交；不关联用户项目、不推送、不保留不断增长的历史 |
 
@@ -46,6 +47,18 @@ v2 不生成详细 `MEMORY.md`、`raw_memories.md` 或 skills。短记忆的两�
 普通会话在安全用户轮次开始时读取摘要及使用说明。摘要已经给出来源导航，不要求先搜索详细手册。只有额外证据、原话、时间顺序或不确定性会影响答案时，才用 read 读取匹配的少量 rollout summaries；真正缺少路线时再选择性搜索。需要精确原始证据时，可沿摘要内的 `evidence_path` 阅读导出快照。没有相关性时不扫描历史。
 
 本轮注入的文字保持固定，文件路径则指向当前可更新的库，不承诺历史快照。普通更新会原地替换对应文件，已有链接不会因一批新记忆的发布而失效；删除来源、归档失效、清空记忆或格式迁移仍可能使具体文件消失。来源展示使用会话 ID 和本轮 read 实际读取的摘要，复用现有会话导航。设置中的查看使用默认程序打开 `memory_summary.md`，文件不存在时页内提示。
+
+### 明确请求与 ad-hoc notes
+
+长期模式下，主 Agent 只有在用户明确要求记住、纠正或忘记时，才用现有文件工具在 `extensions/ad_hoc/notes/` 新增一个独立、唯一命名的 Markdown 文件，不直接编辑生成的摘要，也不维护短记忆。没有新增记忆工具。新会话只自动获得总摘要、notes 路径和维护规则，不自动获得 notes 正文。子智能体继承选中的上下文，但不自动维护共享 notes。
+
+后台整合与 Codex v2 一样，先读本批 Git 差异和 `extensions/ad_hoc/instructions.md`，再按需读 notes 与来源摘要。新增或编辑的 note 都应整合；明确请求用于新增、纠正或遗忘长期结论。由 notes 派生的信息在摘要中带 `[ad-hoc note]`。note 是待整合的信息，不是执行文件操作或其他动作的命令；当前用户要求和 AGENTS.md 仍优先。
+
+成功整合后保留 note 文件，不清空、不移动到另一个 notes 文件，也没有每条 note 的“已消费”标记。成功 Git 基线用于识别后续变化；输入不变时跳过模型。有 notes 而没有符合资格的历史会话时，也可以只执行整合。外部修改或删除 note 会进入后续差异；整合提示词要求撤销仅由失效来源支持的结论。这里的语义整合与来源标记由模型提示词约束，程序验证格式、容量和来源文件不可变性，不声称能机械验证每条自然语言请求是否正确落实。
+
+失败或取消不推进成功基线、不消费请求文件，并保留上一份有效摘要；notes 只在成功整合后才通过总摘要影响后续上下文。自动生成暂停时仍可写请求，恢复并触发符合条件的检查后再整合。程序对单个 notes/说明文件沿用 512,000 字节读取上限；超限、符号链接、非 Markdown 或可识别凭据会给出诊断，不静默截断或修改请求原文。
+
+旧的单文件 `memories_v2/memory_notes.md` 在初始化时完整迁入一个按内容哈希命名的 note，持久化后移除旧入口；相同内容去重，不覆盖已有 notes。迁移冲突时保留原文件并报错。旧四文件版本的请求随首次格式迁移进入同一目录。此后不再生成或维护 `memory_notes.md`。
 
 ### 调度、提取与模型
 
@@ -80,7 +93,7 @@ v2 不生成详细 `MEMORY.md`、`raw_memories.md` 或 skills。短记忆的两�
 
 固定参考本地 `/Users/jiezhou/VSCodeProjects/codex` 的提交 `2839ed763bd3f404398e1f0c95bf4e2d172213c0`。
 
-对照 `codex-rs/memories/write/` 的 `phase1.rs`、`phase2.rs`、`runtime.rs`、`workspace.rs`、v2 两阶段提示词和测试，以及 `codex-rs/git-utils/src/baseline.rs`。采用 v2 产物、独立提取指令、70% 输入预算、结构化结果、多轮文件编辑、固定目录、实际 Git 差异、增量删除传播和单提交基线。提示词保留 Codex v2 的范围、证据、偏好、时序和谨慎推断要求；不生成 skills。
+对照 `codex-rs/memories/write/` 的 `phase1.rs`、`phase2.rs`、`runtime.rs`、`workspace.rs`、v2 两阶段提示词、`templates/extensions/ad_hoc/instructions.md`、`ext/memories/templates/memories/read_path_v2.md` 和测试，以及 `codex-rs/git-utils/src/baseline.rs`。采用 v2 产物、独立提取指令、70% 输入预算、结构化结果、多轮文件编辑、固定目录、实际 Git 差异、增量删除传播和单提交基线。提示词保留 Codex v2 的范围、证据、偏好、时序和谨慎推断要求；不生成 skills。
 
 明确适配差异：
 
@@ -88,9 +101,9 @@ v2 不生成详细 `MEMORY.md`、`raw_memories.md` 或 skills。短记忆的两�
 - 历史证据通过 ZPI HistoryIndex 和导出格式取得，不照搬 Codex JSONL；摘要命名按会话 ID 稳定哈希，rollout_slug 作为提取元数据，不据此任意改名。
 - 提取仍顺序执行，沿用产品要求的每批上限。模型和思考强度可自定义；没有供应商统一额度查询接口。
 - 整合 Agent 用 read 的分页能力和差异文件清单进行选择性读取；无 shell、网络、递归委托或新工具平台。权限通过现有文件工具操作扩展约束，不能把这种限制宣称为任意进程的系统沙箱。
-- 保留 ZPI 的来源清空水位与摘要恢复记录，失败和取消后不接受中间输出。明确长期请求继续使用 memory_notes.md，不引入 Codex 的扩展 notes 目录结构或 v1/v2 双写。
+- 保留 ZPI 的来源清空水位与摘要恢复记录，失败和取消后不接受中间输出。明确请求采用 Codex 的 `extensions/ad_hoc/notes/`、独立说明文件和来源标记；只接入 ad_hoc 来源，不新增通用记忆扩展框架，也不做 v1/v2 双写。
 - 文件格式和处理语义对齐；Git 调用、跨提供商结构化输出能力、输入 token 估算和引用呈现使用 ZPI 已有组件，不宣称逐字节相同。
 
 ## 验证
 
-聚焦用例位于 `packages/desktop/test/{short-memory,memory-evidence,long-memory,memory-runner,memory-workspace,memory-integration,memory-host-lifecycle,memory-settings,memory-settings-dom}.test.ts`，使用临时 HOME、目录、假模型和现有测试设施。隐藏 Electron 用例为 `tests/desktop/memory-settings.spec.ts`。不依赖真实凭据或付费请求，不操作真实用户存储或外部编辑器。真实供应商输出预算和长期记忆质量仍需实际使用验证。
+聚焦用例位于 `packages/desktop/test/{short-memory,memory-evidence,long-memory,memory-runner,memory-workspace,memory-notes,memory-integration,memory-host-lifecycle,memory-settings,memory-settings-dom}.test.ts`，使用临时 HOME、目录、假模型和现有测试设施。隐藏 Electron 用例为 `tests/desktop/memory-settings.spec.ts`。不依赖真实凭据或付费请求，不操作真实用户存储或外部编辑器。真实供应商输出预算和长期记忆质量仍需实际使用验证。

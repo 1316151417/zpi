@@ -159,7 +159,7 @@ test.each(["delete-child", "close-app"])(
 );
 
 test.each(["clear", "restart"])(
-  "resuming a child after %s withdraws stale long memory while preserving inherited short memory",
+  "resuming a child after %s withdraws stale long memory without loading short memory",
   async (action) => {
     const f = await fixture((body, response) => {
       const tools = body.tools as { function: { name: string } }[] | undefined;
@@ -198,7 +198,7 @@ test.each(["clear", "restart"])(
     });
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
     await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [language] RETAINED_SHORT_MEMORY\n");
-    await f.host.saveMemorySettings({ ...defaultMemorySettings, short: true, long: true });
+    await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
     vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
       instructions: ["STALE_LONG_MEMORY"],
       sources: [],
@@ -241,11 +241,11 @@ test.each(["clear", "restart"])(
     );
     await vi.waitFor(() => {
       expect(host.activeRuns.has(task.childSessionId)).toBe(true);
-      expect(host.sessions.get(task.childSessionId)?.systemPrompt).toContain("RETAINED_SHORT_MEMORY");
+      expect(host.sessions.get(task.childSessionId)?.systemPrompt).not.toContain("RETAINED_SHORT_MEMORY");
       expect(host.sessions.get(task.childSessionId)?.systemPrompt).not.toContain("STALE_LONG_MEMORY");
     });
     const prompt = host.sessions.get(task.childSessionId)?.systemPrompt;
-    expect(prompt).toContain("RETAINED_SHORT_MEMORY");
+    expect(prompt).not.toContain("RETAINED_SHORT_MEMORY");
     expect(prompt).not.toContain("STALE_LONG_MEMORY");
     expect(context).not.toHaveBeenCalled();
     expect(checks).not.toHaveBeenCalled();

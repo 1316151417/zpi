@@ -10,9 +10,8 @@ test.each([
   [false, false],
   [true, false],
   [false, true],
-  [true, true],
 ])(
-  "freezes independent short=%s long=%s switches and refreshes content only at user boundaries",
+  "freezes exclusive short=%s long=%s switches and refreshes content only at user boundaries",
   async (short, long) => {
     const f = await fixture();
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
@@ -30,7 +29,8 @@ test.each([
     expect(system().includes("LONG_SUMMARY_MARKER")).toBe(long);
     expect(check).toHaveBeenCalledTimes(long ? 1 : 0);
     expect(context.mock.calls.length > 0).toBe(long);
-    await f.host.saveMemorySettings({ ...defaultMemorySettings, short: !short, long: !long });
+    const nextMode = long ? { short: true, long: false } : { short: false, long: true };
+    await f.host.saveMemorySettings({ ...defaultMemorySettings, ...nextMode });
     await writeFile(path, "# Memory\n- [language] USER_MEMORY_SECOND\n");
     expect(system().includes("USER_MEMORY_SECOND")).toBe(false);
     await run(f, "second");
@@ -40,8 +40,8 @@ test.each([
     const next = f.host.createSession(null);
     await f.host.startRun({ sessionId: next.id, text: "new session" });
     await f.host.activeRuns.get(next.id)?.done;
-    expect(f.host.sessions.get(next.id)?.systemPrompt.includes("USER_MEMORY_SECOND")).toBe(!short);
-    expect(f.host.sessions.get(next.id)?.systemPrompt.includes("LONG_SUMMARY_MARKER")).toBe(!long);
+    expect(f.host.sessions.get(next.id)?.systemPrompt.includes("USER_MEMORY_SECOND")).toBe(nextMode.short);
+    expect(f.host.sessions.get(next.id)?.systemPrompt.includes("LONG_SUMMARY_MARKER")).toBe(nextMode.long);
     expect(await readFile(path, "utf8")).toContain("USER_MEMORY_SECOND");
   },
 );
@@ -201,7 +201,11 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   expect(host.longMemory.status().sources).toEqual([]);
   expect(host.sessionPath(sourceId)).toBeTruthy();
   await mkdir(join(f.dir, "memories_v2"), { recursive: true });
-  await writeFile(join(f.dir, "memories_v2", "memory_notes.md"), "Remember this explicit scoped request.");
+  await mkdir(join(f.dir, "memories_v2", "extensions", "ad_hoc", "notes"), { recursive: true });
+  await writeFile(
+    join(f.dir, "memories_v2", "extensions", "ad_hoc", "notes", "request.md"),
+    "Remember this explicit scoped request.",
+  );
   await host.saveMemorySettings({
     ...defaultMemorySettings,
     long: true,
@@ -225,4 +229,125 @@ test("explicit edit creates only missing short memory files and never overwrites
   expect((await f.host.openMemoryFile(null, "user", "edit")).content).toBe("existing custom text");
   await expect(f.host.openMemoryFile(null, "project", "edit")).rejects.toThrow("没有项目");
   await expect(f.host.openMemoryFile(null, "long", "edit")).rejects.toThrow("后台维护");
+});
+
+test("restored legacy dual-memory sessions select long memory and persist an exclusive configuration", async () => {
+  const f = await fixture();
+  await mkdir(join(f.resources, ".zpi"), { recursive: true });
+  await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [language] LEGACY_SHORT_MEMORY\n");
+  await f.host.saveMemorySettings({ ...defaultMemorySettings, short: true });
+  await run(f, "An existing short-memory session.");
+  await f.host.close();
+  const task = f.settings.state.getTask(f.session.id);
+  if (!task) throw new Error("Missing session");
+  const config = task.frozenConfiguration as { memory: { short: boolean; long: boolean } };
+  f.settings.state.upsertTask({
+    ...task,
+    frozenConfiguration: { ...config, memory: { short: true, long: true } },
+  });
+  const host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
+  cleanup.push(() => host.close());
+  await host.init();
+  vi.spyOn(host.longMemory, "context").mockResolvedValue({
+    instructions: ["RESTORED_LONG_MEMORY"],
+    sources: [],
+  });
+  vi.spyOn(host.longMemory, "check").mockResolvedValue();
+  await host.startRun({ sessionId: f.session.id, text: "Continue the legacy session." });
+  await host.activeRuns.get(f.session.id)?.done;
+  const prompt = host.sessions.get(f.session.id)?.systemPrompt;
+  expect(prompt).toContain("RESTORED_LONG_MEMORY");
+  expect(prompt).not.toContain("LEGACY_SHORT_MEMORY");
+  expect(f.settings.state.getTask(f.session.id)?.frozenConfiguration).toMatchObject({
+    memory: { short: false, long: true },
+  });
+});
+
+test("the main agent appends separate notes and the real consolidation runner reads instructions and notes before publishing", async () => {
+  let library = "";
+  const noteA = "Remember Chinese responses for project A. NOTE_A_BODY";
+  const noteB = "Correction: English responses for project A. NOTE_B_BODY";
+  const summary =
+    "v1\n## User Profile\n\n## User preferences\nEnglish responses for project A. [ad-hoc note]\n\n## General Tips\n\n## What's in Memory\n";
+  const f = await fixture((body, response) => {
+    const messages = body.messages as { role: string; content: string }[];
+    const consolidation = JSON.stringify(messages).includes("Consolidate the supplied rollout summaries");
+    const emitTool = (name: string, args: object) => {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: `call-${messages.length}`,
+              type: "function",
+              function: { name, arguments: JSON.stringify(args) },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    };
+    if (consolidation) {
+      const results = messages.filter(({ role }) => role === "tool");
+      if (results.length === 0) return emitTool("read", { path: "phase2_workspace_diff.md" });
+      if (results.length === 1) return emitTool("read", { path: "extensions/ad_hoc/instructions.md" });
+      if (results.length === 2) {
+        expect(JSON.stringify(results.at(-1))).toContain("Never delete a note file");
+        return emitTool("read", { path: "extensions/ad_hoc/notes/remember.md" });
+      }
+      if (results.length === 3) return emitTool("read", { path: "extensions/ad_hoc/notes/correct.md" });
+      if (results.length === 4) {
+        expect(JSON.stringify(results)).toContain("NOTE_A_BODY");
+        expect(JSON.stringify(results)).toContain("NOTE_B_BODY");
+        return emitTool("write", { path: "memory_summary.md", content: summary });
+      }
+    } else if (body.tools) {
+      const lastUser = messages.findLastIndex(({ role }) => role === "user");
+      const request = messages[lastUser]?.content ?? "";
+      if (!messages.slice(lastUser + 1).some(({ role }) => role === "tool")) {
+        if (request === "NOTE_REQUEST_A")
+          return emitTool("write", {
+            path: join(library, "extensions/ad_hoc/notes/remember.md"),
+            content: noteA,
+          });
+        if (request === "NOTE_REQUEST_B")
+          return emitTool("write", {
+            path: join(library, "extensions/ad_hoc/notes/correct.md"),
+            content: noteB,
+          });
+      }
+    }
+    send(response, chunk({ content: "Done." }));
+    done(response);
+  });
+  library = join(f.dir, "memories_v2");
+  await mkdir(join(f.resources, ".zpi"), { recursive: true });
+  await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [old] SHORT_MEMORY_MUST_STAY_OUT\n");
+  await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true, generate: false });
+  await run(f, "NOTE_REQUEST_A");
+  await run(f, "NOTE_REQUEST_B");
+  const notePath = (name: string) => join(library, "extensions/ad_hoc/notes", name);
+  expect(await readFile(notePath("remember.md"), "utf8")).toBe(noteA);
+  expect(await readFile(notePath("correct.md"), "utf8")).toBe(noteB);
+  const before = f.host.sessions.get(f.session.id)?.systemPrompt;
+  expect(before).toContain("separate, uniquely named note");
+  expect(before).not.toContain("NOTE_A_BODY");
+  expect(before).not.toContain("SHORT_MEMORY_MUST_STAY_OUT");
+  await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
+  await f.host.checkMemoryNow(f.session.id);
+  await vi.waitFor(() => expect(f.host.longMemory.status().status).toBe("success"));
+  expect(await readFile(join(library, "memory_summary.md"), "utf8")).toBe(summary);
+  expect(await readFile(notePath("remember.md"), "utf8")).toBe(noteA);
+  expect(await readFile(notePath("correct.md"), "utf8")).toBe(noteB);
+  await run(f, "USE_MEMORY");
+  const after = f.host.sessions.get(f.session.id)?.systemPrompt;
+  expect(after).toContain("English responses for project A. [ad-hoc note]");
+  expect(after).not.toContain("NOTE_A_BODY");
+  expect(after).not.toContain("NOTE_B_BODY");
+  expect(after).not.toContain("SHORT_MEMORY_MUST_STAY_OUT");
+  const calls = f.server.requests.length;
+  await f.host.checkMemoryNow(f.session.id);
+  await vi.waitFor(() => expect(f.host.longMemory.status().running).toBe(false));
+  expect(f.server.requests).toHaveLength(calls);
 });
