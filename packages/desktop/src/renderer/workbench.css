@@ -2,7 +2,8 @@
 /* Workbench: ZCode-style task actions and tabbed side pane. */
 .sidebar {
   --color-sidebar: light-dark(#f0f0f0, #161616);
-  background: var(--color-sidebar);
+  /* ZCode's desktop sidebar exposes the window surface and macOS vibrancy. */
+  background: transparent;
   min-height: 0;
   padding: 48px 0 12px;
   overflow: clip;
@@ -4565,7 +4566,7 @@
   border-radius: 8px;
 }
 .task-running-row:hover {
-  background: var(--color-menu-hover);
+  background: var(--color-hover);
 }
 .task-row-open {
   position: absolute;
@@ -5155,7 +5156,7 @@
   color: var(--color-text-subtle);
 }
 .task-search-more:hover {
-  background: var(--color-menu-hover);
+  background: var(--color-hover);
   color: var(--color-foreground);
 }
 .task-search-highlight {

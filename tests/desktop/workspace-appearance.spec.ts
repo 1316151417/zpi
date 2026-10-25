@@ -16,7 +16,7 @@ async function bounds(locator: Locator) {
 test("drafts and completed tasks retain ZCode's four corner insets with both sidebars collapsed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-window-corners-"));
   const server = await fakeServer((_, response) => {
-    send(response, chunk({ content: "完成" }));
+    send(response, chunk({ content: "完成\n\n```text\nZCode theme\n```" }));
     done(response);
   });
   let app: Awaited<ReturnType<typeof launchDesktop>>;
@@ -47,6 +47,13 @@ test("drafts and completed tasks retain ZCode's four corner insets with both sid
             "background-color",
             colorScheme === "light" ? "rgb(255, 255, 255)" : "rgb(43, 43, 43)",
           );
+          if (state === "task") {
+            // ZCode message.tsx gives fenced code the card surface, independent of the panel surface.
+            await expect(main.locator(".markdown-code")).toHaveCSS(
+              "background-color",
+              colorScheme === "light" ? "rgb(255, 255, 255)" : "rgb(43, 43, 43)",
+            );
+          }
           await expect
             .poll(() =>
               main.evaluate((element) => {
@@ -110,7 +117,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     expect(newTaskBounds.x).toBe(8);
     expect(newTaskBounds.y).toBe(mac ? 60 : 56);
     await expect(page.locator(".sidebar")).toHaveCSS("transition-duration", "0.2s, 0.2s, 0.2s");
-    await expect(page.locator(".right-pane")).toHaveCSS("transition-duration", /^0\.2s(?:, 0\.2s)*$/);
+    await expect(page.locator(".right-pane")).toHaveCSS("transition-duration", "0s");
     await expect(page.locator(".composer")).toHaveCSS("transition-duration", "0.15s, 0.15s");
     const panelRadius = await app.evaluate(() =>
       process.platform === "win32"
@@ -146,7 +153,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
       await expect(page.locator(".shell")).toHaveCSS("background-color", expected);
     }
     await expectBackdrop();
-    await expect(page.locator(".sidebar")).toHaveCSS("background-color", "rgb(240, 240, 240)");
+    await expect(page.locator(".sidebar")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     for (const panel of [main, frame]) {
       await expect(panel).toHaveCSS("background-color", "rgb(248, 248, 248)");
       await expect(panel).toHaveCSS("border-radius", `${panelRadius}px`);
@@ -206,8 +213,23 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.emulateMedia({ colorScheme: "dark" });
     await expectBackdrop(true);
+    await page.getByLabel("展开侧边栏", { exact: true }).click();
+    // The sidebar must expose DesktopWindowFrame's gray backdrop, including after collapse/expand.
+    await expect(page.locator(".sidebar")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(main).toHaveCSS("background-color", "rgb(22, 22, 22)");
     await expect(frame).toHaveCSS("background-color", "rgb(22, 22, 22)");
+    const plus = page.locator(".composer-plus");
+    await plus.hover();
+    await expect(plus).toHaveCSS("background-color", "rgba(255, 255, 255, 0.05)");
+    await page.locator(".model-trigger").click();
+    const menu = page.locator(".model-menu");
+    await expect(menu).toHaveCSS("background-color", "rgb(43, 43, 43)");
+    const item = menu.getByRole("menuitem").first();
+    await item.hover();
+    await expect(item).toHaveCSS("background-color", "rgb(54, 54, 54)");
+    await page.screenshot({ path: "test-results/workspace-dark-menu.png" });
+    await page.keyboard.press("Escape");
+    await page.getByLabel("收起侧边栏", { exact: true }).click();
     await expect(launcher.getByRole("button", { name: "浏览器", exact: true })).toHaveCSS(
       "background-color",
       "rgba(0, 0, 0, 0)",

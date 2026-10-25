@@ -84,7 +84,7 @@ select:disabled {
   --tw-inset-ring-shadow: 0 0 #0000 !important;
 }
 button:hover:not(:disabled) {
-  background-color: var(--color-menu-hover);
+  background-color: var(--color-hover);
 }
 svg {
   flex-shrink: 0;
@@ -2808,7 +2808,7 @@ button.inline-mention,
   cursor: default;
 }
 .markdown-code {
-  background: var(--color-surface);
+  background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: 12px;
   overflow: hidden;
