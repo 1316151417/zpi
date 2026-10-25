@@ -481,7 +481,8 @@ export function App() {
       else if (command === "find") {
         if (find.open) find.close();
         else find.show();
-      } else if (command === "task-menu" && record && !record.draft) setTaskMenuOpen(true);
+      } else if (command === "task-menu" && record && !record.draft && !usePane.getState().fullView)
+        setTaskMenuOpen(true);
       else if (command === "focus-composer" || command === "toggle-window") {
         const id = useStore.getState().selected;
         if (id) focusComposer(id, { onlyIfFocusLost: command === "toggle-window" });
