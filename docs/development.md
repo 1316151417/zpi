@@ -39,6 +39,8 @@ macOS 数据目录：
 
 主窗口的异常统一走 `Notice`（`packages/ui/src/components/Notice.tsx`），落点由 scope 决定：`input` 留在 composer 草稿里，供用户改完重试；`turn` 留在该轮消息末尾（运行失败随会话保存）；`window` 浮在主区域右上角，5 秒自动消失且悬停暂停；`config` 常驻标题下，修好配置后才消失。窗口提示挂在 `.workspace-surface` 之外，打开设置时仍然可见，并通过 `--right-pane-offset` 对齐主区域。同一个失败只出现一次，新增错误时复用这四个 scope，不要再发明位置。默认 `report()` 走窗口级；能就地重试的提交失败传 `{ input: sessionId, revision: draftRevision }`，版本不匹配的迟到失败只进带“上一次发送失败”上下文的窗口提示。
 
+模型失败后进入自动重试时，已输出的正文和思考标为中断；正文默认折叠为“回复已中断”，可手动展开，新尝试沿用独立消息身份。已完成工具保持原有结果。历史恢复从失败消息后的下一条 assistant 消息重建中断边界，兼容已有会话；重试等待期间停止且没有替代消息时，保留最后的半截回答。
+
 ## 工具与会话边界
 
 SDK 的新增工具、内置工具覆盖与追加指令分别使用 `customTools`、`toolOverrides`、`customInstructions`。工具作者共用 `ToolDefinition` / `ToolContext`，注册包装逻辑也共用；`outputSchema` 作为可选结果元数据接受，不新增输出校验或改变模型协议。独立调用工具时上下文可以省略；通过 SDK 执行时提供工作目录、模型、会话管理器、思考级别、取消信号和会话查询方法。

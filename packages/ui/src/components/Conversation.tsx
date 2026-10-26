@@ -280,7 +280,7 @@ function ProcessBlock({
         <button className="block-toggle" aria-expanded={expanded} onClick={toggle}>
           <Brain size={16} aria-hidden="true" className="process-icon" />
           <strong className={streamingLabel ? "thinking-label-streaming" : undefined}>
-            {streamingLabel ? "正在思考" : "思考"}
+            {block.interrupted ? "思考已中断" : streamingLabel ? "正在思考" : "思考"}
           </strong>
           {(thinkingSummary || !streamingLabel) && <span className="process-separator">·</span>}
           {thinkingSummary && (
@@ -311,7 +311,7 @@ function ProcessBlock({
       </div>
     );
   }
-  return (
+  const content = (
     <div
       className="process-text answer"
       data-find-key={block.id}
@@ -329,6 +329,21 @@ function ProcessBlock({
         onFile={onFile}
         onFileAction={onFileAction}
       />
+    </div>
+  );
+  if (!block.interrupted) return content;
+  return (
+    <div className="process-thinking" data-testid="interrupted-reply">
+      <button className="block-toggle" aria-expanded={expanded} onClick={toggle}>
+        <Hand size={16} aria-hidden="true" className="process-icon" />
+        <strong>回复已中断</strong>
+        <ChevronRight
+          size={16}
+          aria-hidden="true"
+          className={`process-chevron ${expanded ? "rotated" : ""}`}
+        />
+      </button>
+      {expanded && <div className="interrupted-reply-body">{content}</div>}
     </div>
   );
 }

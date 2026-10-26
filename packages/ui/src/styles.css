@@ -516,6 +516,9 @@ small {
   line-height: 20px;
   color: var(--color-process-subtlest);
 }
+.interrupted-reply-body {
+  margin-top: 12px;
+}
 .tool-details {
   min-width: 0;
   margin: 0 0 8px;

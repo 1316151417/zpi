@@ -95,6 +95,18 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     else run.orderedBlocks[i] = block;
   };
   const tool = (id: string) => run.orderedBlocks.find((b) => b.type === "tool" && b.toolCallId === id);
+  const interruptFailedMessage = () => {
+    if (!run.failedMessageId) return;
+    const messageId = run.failedMessageId;
+    run.orderedBlocks = run.orderedBlocks.map((block) =>
+      block.messageId === messageId && block.type !== "tool"
+        ? { ...block, streaming: false, interrupted: true }
+        : block,
+    );
+    run.finalAnswerBlockIds = run.finalAnswerBlockIds.filter(
+      (id) => !run.orderedBlocks.some((block) => block.id === id && block.messageId === messageId),
+    );
+  };
   if (event.type === "started") {
     run.historyContinuation = event.historyContinuation;
     run.userMessage = event.text;
@@ -123,7 +135,13 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.notice = event.text;
   } else if (event.type === "model_retry") {
     run.apiRetry = run.status === "running" ? event.status : null;
-    if (run.apiRetry) run.error = undefined;
+    if (run.apiRetry) {
+      interruptFailedMessage();
+      run.error = undefined;
+    }
+  } else if (event.type === "message_start" && event.role === "assistant") {
+    interruptFailedMessage();
+    run.failedMessageId = undefined;
   } else if (event.type === "message_reset") {
     const removed = new Set(
       run.orderedBlocks.filter((b) => b.messageId === event.messageId).map((b) => b.id),
@@ -140,6 +158,27 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         ...(block.startedAt !== undefined ? { endedAt: event.timestamp } : {}),
       });
   } else if (event.type === "settled") {
+    // Stopping in the retry delay has no replacement message in the transcript.
+    // Keep the last partial answer visible, matching a subsequent history restore.
+    if (
+      run.failedMessageId &&
+      run.orderedBlocks.some(
+        (block) => block.messageId === run.failedMessageId && block.type !== "tool" && block.interrupted,
+      )
+    ) {
+      const failedBlocks = run.orderedBlocks.filter(
+        (block) => block.messageId === run.failedMessageId && block.type !== "tool",
+      );
+      run.orderedBlocks = run.orderedBlocks.map((block) =>
+        failedBlocks.includes(block) ? { ...block, interrupted: undefined } : block,
+      );
+      run.finalAnswerBlockIds = run.orderedBlocks.some(
+        (block) => block.messageId === run.failedMessageId && block.type === "tool",
+      )
+        ? []
+        : failedBlocks.filter((block) => block.type === "text").map((block) => block.id);
+    }
+    run.failedMessageId = undefined;
     run.preparation = null;
     run.apiRetry = null;
     run.status = event.status;
@@ -257,6 +296,9 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   } else if (event.type === "message_end") {
     const m = event.message;
     if (m.role === "assistant") {
+      // History has message facts rather than live retry events. Close the failed
+      // attempt before projecting its replacement, just as the live retry does.
+      if (run.failedMessageId !== event.messageId) interruptFailedMessage();
       const oldBlocks = new Map(run.orderedBlocks.map((block) => [block.id, block]));
       const oldTools = new Map(
         run.orderedBlocks.filter((b) => b.type === "tool").map((b) => [b.toolCallId, b]),
@@ -303,6 +345,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
       }
       run.finalAnswerBlockIds = hasTools ? [] : finalIds;
       run.error = m.errorMessage;
+      run.failedMessageId = m.stopReason === "error" ? event.messageId : undefined;
     }
     if (m.role === "toolResult") {
       const b = tool(m.toolCallId);

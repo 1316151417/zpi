@@ -83,6 +83,7 @@ export type ViewBlock =
       type: "text" | "thinking";
       text: string;
       streaming?: boolean;
+      interrupted?: boolean;
       startedAt?: number;
       endedAt?: number;
     }
@@ -126,6 +127,8 @@ export interface RunView {
   compactions?: CompactionView[];
   apiRetry?: ModelRetryStatus | null;
   preparation?: string | null;
+  /** Failed assistant awaiting a retry; retained until the replacement starts. */
+  failedMessageId?: string;
 }
 export interface SubagentTask {
   prompt?: string;
