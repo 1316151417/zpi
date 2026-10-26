@@ -28,8 +28,9 @@ function textNodes(element: Element, includeHidden = false): Text[] {
   const nodes: Text[] = [];
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
+      // Inline links render as buttons, but their labels are part of the message text.
       return node.parentElement?.closest(
-        'button,input,textarea,select,script,style,.katex-mathml,[contenteditable="true"],[data-find-ignore]',
+        'button:not([data-conversation-inline-link="true"]),input,textarea,select,script,style,.katex-mathml,[contenteditable="true"],[data-find-ignore]',
       ) ||
         (!includeHidden && node.parentElement?.closest("[hidden]"))
         ? NodeFilter.FILTER_REJECT

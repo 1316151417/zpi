@@ -28,7 +28,7 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     send(
       response,
       chunk({
-        content: `项目说明\n\nPROJECT 示例。\n\n跨**格式**匹配。\n\n${"正文内容\n\n".repeat(35)}唯一定位词`,
+        content: `项目说明\n\nPROJECT 示例。\n\n跨**格式**匹配。\n\n查看[链接文案](https://example.com/private-destination)以及[文件文案](./notes.md)。\n\n[链接**文案**](https://example.org)。\n\n${"正文内容\n\n".repeat(35)}唯一定位词`,
       }),
     );
     done(response);
@@ -89,6 +89,23 @@ test("task find matches ZCode layout, shortcuts, wraparound, highlights and focu
     await input.fill("跨格式匹配");
     await expect(count(page)).toHaveText("1/1");
     await expect.poll(() => highlight(page)).toEqual([{ text: "跨格式匹配", key: expect.any(String) }]);
+    await input.fill("链接文案");
+    await expect(count(page)).toHaveText("1/2");
+    await expect.poll(() => highlight(page)).toEqual([{ text: "链接文案", key: expect.any(String) }]);
+    await input.press("Enter");
+    await expect(count(page)).toHaveText("2/2");
+    await expect.poll(() => highlight(page)).toEqual([{ text: "链接文案", key: expect.any(String) }]);
+    await input.press("Enter");
+    await expect(count(page)).toHaveText("1/2");
+    for (const query of ["文件文案", "查看链接文案以及文件文案。"]) {
+      await input.fill(query);
+      await expect(count(page)).toHaveText("1/1");
+      await expect.poll(() => highlight(page)).toEqual([{ text: query, key: expect.any(String) }]);
+    }
+    for (const query of ["private-destination", "复制", "重新生成"]) {
+      await input.fill(query);
+      await expect(count(page)).toHaveText("0/0");
+    }
     await input.fill("示例。跨");
     await expect(count(page)).toHaveText("0/0");
     await input.fill("唯一定位词");
