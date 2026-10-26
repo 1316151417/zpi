@@ -51,6 +51,9 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   ]);
   const runId = f.host.getSessionSnapshot(f.session.id).view.runs[0].runId;
   expect((await f.host.getChanges(f.session.id, runId))[0].patch).toBe(entries[0].patch);
+  const summary = await f.host.getChanges(f.session.id, runId, false, true);
+  expect(summary[0]).toMatchObject({ added: 1, removed: 1 });
+  expect(summary[0].patch).toBeUndefined();
   expect(await f.host.readPatch(f.session.id, null, entries[0].id)).toBe(entries[0].patch);
   const first = await f.host.readPatch(f.session.id, runId, "operation:write-0");
   const second = await f.host.readPatch(f.session.id, runId, "operation:write-1");
@@ -80,6 +83,7 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   expect((await reopened.getDraft(f.session.id)).text).toBe("未发送草稿");
   expect((await reopened.getChanges(f.session.id, null))[0].patch).toBe(entries[0].patch);
   expect(await reopened.getTaskSearchChanges(f.session.id)).toEqual(searchChanges);
+  expect(await reopened.getChanges(f.session.id, runId, false, true)).toEqual(summary);
   expect(await reopened.readPatch(f.session.id, runId, "operation:write-1")).toBe(second);
 });
 
@@ -424,3 +428,53 @@ test("selected file patches only project that file and metadata previews omit pa
     project.mockRestore();
   }
 });
+
+test.each([
+  ["created then edited", null, "a\nb\nc\nd\ne\n", "a\n", 1, 0],
+  ["edited twice", "original\n", "intermediate\n", "final\n", 1, 1],
+  ["restored within the turn", "original\n", "intermediate\n", "original\n", 0, 0],
+] as const)(
+  "net summary uses first-before and final-after for %s",
+  async (_name, original, intermediate, final, added, removed) => {
+    const f = await fixture();
+    const root = join(f.dir, "summary-snapshots");
+    await mkdir(root);
+    const beforeFile = join(root, "before");
+    const middleFile = join(root, "middle");
+    const afterFile = join(root, "after");
+    if (original !== null) await writeFile(beforeFile, original);
+    await writeFile(middleFile, intermediate);
+    await writeFile(afterFile, final);
+    const changes: FileChange[] = [
+      {
+        path: "file.txt",
+        toolCallId: "first",
+        operation: original === null ? "created" : "modified",
+        beforeHash: original === null ? null : "original",
+        afterHash: "middle",
+        beforeFile: original === null ? undefined : beforeFile,
+        afterFile: middleFile,
+      },
+      {
+        path: "file.txt",
+        toolCallId: "second",
+        operation: "modified",
+        beforeHash: "middle",
+        afterHash: "final",
+        beforeFile: middleFile,
+        afterFile,
+      },
+    ];
+    const items = await fileChanges(changes, root, "本轮变更", {
+      includePatch: false,
+      includeStats: true,
+      maxPatchBytes: 1,
+    });
+    if (!added && !removed) expect(items).toEqual([]);
+    else {
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ path: "file.txt", added, removed, patchAvailable: true });
+      expect(items[0].patch).toBeUndefined();
+    }
+  },
+);

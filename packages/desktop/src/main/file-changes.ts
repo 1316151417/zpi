@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { isJsonObject } from "zpi-ai";
 import type { FileChange, SessionEntry } from "zpi-coding-agent";
-import { readFileBounded } from "zpi-coding-agent";
+import { patchLineCounts, readFileBounded } from "zpi-coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import { isPathInside } from "./path-bounds.ts";
 
@@ -124,6 +124,7 @@ function createFilePatch(
 }
 export interface FileChangesOptions {
   includePatch?: boolean;
+  includeStats?: boolean;
   maxPatchBytes?: number;
   signal?: AbortSignal;
 }
@@ -132,7 +133,7 @@ export async function fileChanges(
   changes: FileChange[],
   root: string,
   area: string,
-  { includePatch = true, maxPatchBytes = Infinity, signal }: FileChangesOptions = {},
+  { includePatch = true, includeStats = false, maxPatchBytes = Infinity, signal }: FileChangesOptions = {},
 ): Promise<DiffItem[]> {
   const groups = new Map<string, FileChange[]>();
   for (const change of changes) {
@@ -156,10 +157,12 @@ export async function fileChanges(
         if (before === after && first.beforeHash !== null) continue;
         // Defer large inputs before computing a patch that would only be stripped for IPC.
         const deferred = !includePatch || beforeBytes.length + afterBytes.length > maxPatchBytes;
-        const patch = deferred
-          ? undefined
-          : await createFilePatch(path, first.beforeHash === null, before, after, signal);
+        const patch =
+          deferred && !includeStats
+            ? undefined
+            : await createFilePatch(path, first.beforeHash === null, before, after, signal);
         const patchAvailable = deferred || (patch !== undefined && Buffer.byteLength(patch) > maxPatchBytes);
+        const stats = includeStats && patch !== undefined ? patchLineCounts(patch) : undefined;
         result.push({
           id: `file:${path}`,
           path,
@@ -168,6 +171,7 @@ export async function fileChanges(
           patch: patchAvailable ? undefined : patch,
           ...(patchAvailable ? { patchAvailable: true } : {}),
           failed: writes.some((c) => c.failed),
+          ...(stats ? { added: stats.additions, removed: stats.deletions } : {}),
           ...(!patch && !patchAvailable ? { reason: "文件已变化，比对超时" } : {}),
         });
       } catch (error) {
@@ -192,11 +196,20 @@ export async function fileChanges(
         if (!patch && change.patchFile) {
           try {
             const actual = await snapshotPath(change.patchFile, root, 8 * 1024 * 1024);
-            if (!includePatch || (await stat(actual)).size > maxPatchBytes) patchAvailable = true;
+            if (!includeStats && (!includePatch || (await stat(actual)).size > maxPatchBytes))
+              patchAvailable = true;
             else patch = (await readFileBounded(actual, 8 * 1024 * 1024)).toString("utf8");
           } catch (error) {
             reason = `文件快照不可用：${String(error)}`;
             snapshotUnavailable = true;
+          }
+        }
+        let stats: { additions: number; deletions: number } | undefined;
+        if (includeStats && patch) {
+          try {
+            stats = patchLineCounts(patch);
+          } catch {
+            // Malformed legacy patches remain inspectable without invented counts.
           }
         }
         if (patch && (!includePatch || Buffer.byteLength(patch) > maxPatchBytes)) {
@@ -213,6 +226,7 @@ export async function fileChanges(
           reason,
           ...(snapshotUnavailable ? { snapshotUnavailable: true } : {}),
           failed: change.failed,
+          ...(stats ? { added: stats.additions, removed: stats.deletions } : {}),
         });
       }
     }

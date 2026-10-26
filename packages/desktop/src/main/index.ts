@@ -597,7 +597,7 @@ async function launch(): Promise<void> {
         importAttachment: 2,
         readAttachment: 2,
         removeAttachment: 2,
-        getChanges: 3,
+        getChanges: 4,
         readPatch: 3,
         getReview: 2,
         readReviewDiff: 4,
@@ -942,7 +942,8 @@ async function launch(): Promise<void> {
           break;
         case "getChanges":
           if (typeof args[2] !== "boolean") throw new Error("invalid_input: 参数必须是布尔值");
-          value = await host.getChanges(string(0), args[1] === null ? null : string(1), args[2]);
+          if (typeof args[3] !== "boolean") throw new Error("invalid_input: 参数必须是布尔值");
+          value = await host.getChanges(string(0), args[1] === null ? null : string(1), args[2], args[3]);
           break;
         case "getReview": {
           const source = string(1);

@@ -143,7 +143,8 @@ const bridge: DesktopBridge = {
   },
   readAttachment: (id, image) => call("readAttachment", id, image),
   removeAttachment: (id, image) => call("removeAttachment", id, image),
-  getChanges: (id, run, includePatch = true) => call("getChanges", id, run, includePatch),
+  getChanges: (id, run, includePatch = true, includeStats = false) =>
+    call("getChanges", id, run, includePatch, includeStats),
   readPatch: (id, run, patch) => call("readPatch", id, run, patch),
   getReview: (id, source) => call("getReview", id, source),
   readReviewDiff: (id, source, path, run) => call("readReviewDiff", id, source, path, run),

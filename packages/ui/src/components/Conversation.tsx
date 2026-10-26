@@ -716,6 +716,8 @@ export const RunGroup = memo(function RunGroup({
           {answer && previews}
           <ChangedFiles
             run={run}
+            sessionId={sessionId}
+            readFileChanges={context?.readFileChanges}
             cwd={workspace?.cwd}
             onChanges={onChanges}
             onFile={onFile}

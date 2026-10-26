@@ -2276,7 +2276,7 @@ export class SessionHost {
   private async allChanges(
     id: string,
     runId: string | null,
-    options: { includePatch?: boolean; maxPatchBytes?: number } = {},
+    options: { includePatch?: boolean; includeStats?: boolean; maxPatchBytes?: number } = {},
     path?: string,
   ): Promise<DiffItem[]> {
     const changes = this.recordedChanges(id, runId);
@@ -2293,8 +2293,13 @@ export class SessionHost {
       this.diffJobs.delete(job);
     }
   }
-  getChanges(id: string, runId: string | null, includePatch = true): Promise<DiffItem[]> {
-    return this.allChanges(id, runId, { includePatch, maxPatchBytes: 64 * 1024 });
+  getChanges(
+    id: string,
+    runId: string | null,
+    includePatch = true,
+    includeStats = false,
+  ): Promise<DiffItem[]> {
+    return this.allChanges(id, runId, { includePatch, includeStats, maxPatchBytes: 64 * 1024 });
   }
   async getLastTurnReview(id: string) {
     this.record(id);

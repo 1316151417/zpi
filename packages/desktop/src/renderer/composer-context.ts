@@ -2,6 +2,13 @@ import type { ComposerContext } from "zpi-ui";
 import { readMarkdownImage } from "./markdown-image.ts";
 import { unwrap } from "./unwrap.ts";
 export const inputContext: ComposerContext = {
+  readFileChanges: async (sessionId, runId) =>
+    unwrap(await window.zpi.getChanges(sessionId, runId, false, true)).map((change) => ({
+      path: change.path,
+      additions: change.added,
+      deletions: change.removed,
+      failed: change.failed,
+    })),
   readImage: readMarkdownImage,
   readWebSourceIcon: async (sessionId, runId, sourceUrl) =>
     unwrap(await window.zpi.readWebSourceIcon(sessionId, runId, sourceUrl)).dataUrl,
