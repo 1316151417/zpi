@@ -83,7 +83,7 @@ export async function readShortMemory(options: { homeDir: string; workspace?: st
   const paths: { path: string; scope: ShortMemoryFileStatus["scope"] }[] = [
     { path: resolve(options.homeDir, ".zpi", "MEMORY.md"), scope: "user" },
     ...(options.workspace
-      ? [{ path: join(resolve(options.workspace), "MEMORY.md"), scope: "project" as const }]
+      ? [{ path: join(resolve(options.workspace), ".zpi", "MEMORY.md"), scope: "project" as const }]
       : []),
   ];
   const files: ShortMemoryFileStatus[] = [];
@@ -141,7 +141,7 @@ export async function readShortMemory(options: { homeDir: string; workspace?: st
         if (!duplicate && parsed.injected)
           instructions.push(
             `<short_memory scope="${scope}" path="${xml(path)}">\n` +
-              `${scope === "user" ? "User-wide preferences." : `Applies only to workspace ${JSON.stringify(dirname(path))}.`}\n` +
+              `${scope === "user" ? "User-wide preferences." : `Applies only to workspace ${JSON.stringify(dirname(dirname(path)))}.`}\n` +
               `${parsed.injected}\n</short_memory>`,
           );
       } finally {

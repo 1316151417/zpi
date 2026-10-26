@@ -2090,7 +2090,7 @@ export class SessionHost {
       scope === "user"
         ? join(this.homeDir, ".zpi", "MEMORY.md")
         : scope === "project" && record
-          ? join(this.cwd(record), "MEMORY.md")
+          ? join(this.cwd(record), ".zpi", "MEMORY.md")
           : join(this.longMemory.status().path, "memory_summary.md");
     if (action === "edit") {
       await mkdir(join(path, ".."), { recursive: true });

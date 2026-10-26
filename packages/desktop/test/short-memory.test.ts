@@ -14,7 +14,10 @@ async function fixture() {
   temporary.push(root);
   const homeDir = join(root, "home");
   const workspace = join(root, "workspace");
-  await Promise.all([mkdir(join(homeDir, ".zpi"), { recursive: true }), mkdir(workspace)]);
+  await Promise.all([
+    mkdir(join(homeDir, ".zpi"), { recursive: true }),
+    mkdir(join(workspace, ".zpi"), { recursive: true }),
+  ]);
   return { homeDir, workspace, userPath: join(homeDir, ".zpi", "MEMORY.md") };
 }
 
@@ -84,31 +87,33 @@ test("loads both scopes from the bound workspace without changing existing files
   const project = "# Memory\n- [constraint] 项目约束";
   await Promise.all([
     writeFile(f.userPath, user),
-    writeFile(join(f.workspace, "MEMORY.md"), project),
+    writeFile(join(f.workspace, ".zpi", "MEMORY.md"), project),
     mkdir(join(f.workspace, "nested")),
   ]);
   await writeFile(join(f.workspace, "nested", "MEMORY.md"), "- [wrong] 不应加载");
+  await writeFile(join(f.workspace, "MEMORY.md"), "- [legacy] 不应加载根目录文件");
   const result = await readShortMemory(f);
   const injected = result.instructions.filter((part) => part.startsWith("<short_memory"));
   expect(injected).toHaveLength(2);
   expect(injected[0]).toContain('scope="user"');
   expect(injected[1]).toContain('scope="project"');
+  expect(result.files[1].path).toBe(join(f.workspace, ".zpi", "MEMORY.md"));
   expect(injected[1]).toContain(`workspace ${JSON.stringify(f.workspace)}`);
   expect(result.instructions.join("\n")).not.toContain("不应加载");
   expect(await readFile(f.userPath, "utf8")).toBe(user);
-  expect(await readFile(join(f.workspace, "MEMORY.md"), "utf8")).toBe(project);
+  expect(await readFile(join(f.workspace, ".zpi", "MEMORY.md"), "utf8")).toBe(project);
 });
 
 test("uses worktree roots independently and refreshes only on a requested new snapshot", async () => {
   const f = await fixture();
   const worktree = join(f.workspace, "worktree");
-  await mkdir(worktree);
-  await writeFile(join(f.workspace, "MEMORY.md"), "- [scope] original checkout");
-  await writeFile(join(worktree, "MEMORY.md"), "- [scope] worktree checkout");
+  await mkdir(join(worktree, ".zpi"), { recursive: true });
+  await writeFile(join(f.workspace, ".zpi", "MEMORY.md"), "- [scope] original checkout");
+  await writeFile(join(worktree, ".zpi", "MEMORY.md"), "- [scope] worktree checkout");
   const first = await readShortMemory({ homeDir: f.homeDir, workspace: worktree });
   expect(first.instructions.join("\n")).toContain("worktree checkout");
   expect(first.instructions.join("\n")).not.toContain("original checkout");
-  await writeFile(join(worktree, "MEMORY.md"), "- [scope] updated checkout");
+  await writeFile(join(worktree, ".zpi", "MEMORY.md"), "- [scope] updated checkout");
   expect(first.instructions.join("\n")).not.toContain("updated checkout");
   const second = await readShortMemory({ homeDir: f.homeDir, workspace: worktree });
   expect(second.instructions.join("\n")).toContain("updated checkout");
@@ -117,7 +122,7 @@ test("uses worktree roots independently and refreshes only on a requested new sn
 test.each(["symlink", "hard link"])("deduplicates the same user/project file through a %s", async (kind) => {
   const f = await fixture();
   await writeFile(f.userPath, "- [same] only once");
-  await (kind === "symlink" ? symlink : link)(f.userPath, join(f.workspace, "MEMORY.md"));
+  await (kind === "symlink" ? symlink : link)(f.userPath, join(f.workspace, ".zpi", "MEMORY.md"));
   const result = await readShortMemory(f);
   expect(result.files.map((file) => [file.scope, file.count, file.characters])).toEqual([
     ["user", 1, 9],
@@ -152,7 +157,7 @@ test("invalid or oversized files retain disk contents and expose diagnostics whi
   const f = await fixture();
   const source = `- [too-long] ${"x".repeat(2001)}`;
   await writeFile(f.userPath, source);
-  await writeFile(join(f.workspace, "MEMORY.md"), "- [project] valid");
+  await writeFile(join(f.workspace, ".zpi", "MEMORY.md"), "- [project] valid");
   const result = await readShortMemory(f);
   expect(result.files[0]).toMatchObject({ exists: true, count: 1, characters: 2001 });
   expect(result.diagnostics).toContainEqual({
@@ -202,7 +207,7 @@ test("maintenance instructions preserve scope, priority, evidence and tool bound
     "explicit short-memory preferences take precedence over long-term inferences",
     "existing read/write/edit tools",
     JSON.stringify(f.userPath),
-    JSON.stringify(join(f.workspace, "MEMORY.md")),
+    JSON.stringify(join(f.workspace, ".zpi", "MEMORY.md")),
     "read its latest contents",
     "background memory outputs are not fresh user evidence",
     "When asked to forget, delete",

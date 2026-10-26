@@ -49,19 +49,20 @@ test.each([
 test("loads the bound worktree project file, excludes project files without a project, and exposes diagnostics", async () => {
   const f = await fixture();
   await f.host.saveMemorySettings({ ...defaultMemorySettings, short: true });
-  await writeFile(join(f.workspace, "MEMORY.md"), "# Memory\n- [root] MAIN_CHECKOUT_MEMORY\n");
+  await mkdir(join(f.workspace, ".zpi"), { recursive: true });
+  await writeFile(join(f.workspace, ".zpi", "MEMORY.md"), "# Memory\n- [root] MAIN_CHECKOUT_MEMORY\n");
   await run(f, "projectless");
   expect(f.host.sessions.get(f.session.id)?.systemPrompt).not.toContain("MAIN_CHECKOUT_MEMORY");
   const project = await f.host.addProject(f.workspace);
   const worktree = join(f.dir, "worktree");
-  await mkdir(worktree);
-  await writeFile(join(worktree, "MEMORY.md"), "# Memory\n- [branch] WORKTREE_MEMORY\n");
+  await mkdir(join(worktree, ".zpi"), { recursive: true });
+  await writeFile(join(worktree, ".zpi", "MEMORY.md"), "# Memory\n- [branch] WORKTREE_MEMORY\n");
   const session = f.host.createSession(project.id, { cwd: worktree });
   await f.host.startRun({ sessionId: session.id, text: "bound checkout" });
   await f.host.activeRuns.get(session.id)?.done;
   expect(f.host.sessions.get(session.id)?.systemPrompt).toContain("WORKTREE_MEMORY");
   expect(f.host.sessions.get(session.id)?.systemPrompt).not.toContain("MAIN_CHECKOUT_MEMORY");
-  const path = join(worktree, "MEMORY.md");
+  const path = join(worktree, ".zpi", "MEMORY.md");
   await writeFile(path, `# Memory\n- [bad] ${"长".repeat(2001)}`);
   await f.host.startRun({ sessionId: session.id, text: "refresh" });
   await f.host.activeRuns.get(session.id)?.done;
@@ -74,6 +75,7 @@ test("loads the bound worktree project file, excludes project files without a pr
   ).toBe(true);
   const status = await f.host.getMemoryStatus(session.id);
   expect(status.shortFiles.find((item) => item.scope === "project")?.characters).toBe(2001);
+  expect((await f.host.openMemoryFile(session.id, "project", "view")).path).toBe(path);
   expect((await f.host.openMemoryFile(session.id, "project", "view")).content).toContain("长".repeat(2001));
 });
 
@@ -227,6 +229,21 @@ test("explicit edit creates only missing short memory files and never overwrites
   expect((await f.host.openMemoryFile(null, "user", "edit")).content).toBe("# Memory\n");
   await writeFile(viewed.path, "existing custom text");
   expect((await f.host.openMemoryFile(null, "user", "edit")).content).toBe("existing custom text");
+  const project = await f.host.addProject(f.workspace);
+  const session = f.host.createSession(project.id);
+  const projectPath = join(f.workspace, ".zpi", "MEMORY.md");
+  expect(await f.host.openMemoryFile(session.id, "project", "view")).toEqual({
+    path: projectPath,
+    content: "",
+    exists: false,
+  });
+  await expect(readFile(projectPath)).rejects.toMatchObject({ code: "ENOENT" });
+  expect((await f.host.openMemoryFile(session.id, "project", "edit")).content).toBe("# Memory\n");
+  await writeFile(projectPath, "existing project memory");
+  expect((await f.host.openMemoryFile(session.id, "project", "edit")).content).toBe(
+    "existing project memory",
+  );
+  await expect(readFile(join(f.workspace, "MEMORY.md"))).rejects.toMatchObject({ code: "ENOENT" });
   await expect(f.host.openMemoryFile(null, "project", "edit")).rejects.toThrow("没有项目");
   await expect(f.host.openMemoryFile(null, "long", "edit")).rejects.toThrow("后台维护");
 });
