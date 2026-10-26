@@ -83,9 +83,12 @@ export function buildSystemPrompt(options: {
       .map((line) => line.replace(/^\s*-\s*/, ""))
       .filter(Boolean),
   );
+  const toolSnippets = options.tools
+    .filter((tool) => ["read", "write", "edit", "bash"].includes(tool.name) && tool.promptSnippet)
+    .map((tool) => `- ${tool.name}: ${tool.promptSnippet}`);
   const sections = [
     resourceBaseInstructions(options.loader) ?? renderTemplate(template.preamble, context),
-    `<tools>\n${options.tools.map((t) => `- ${t.name}: ${t.promptSnippet ?? t.description}`).join("\n") || "(none)"}\n</tools>`,
+    ...(toolSnippets.length ? [`<tools>\n${toolSnippets.join("\n")}\n</tools>`] : []),
     `<rules>\n${[...new Set(rules)].map((r) => `- ${r}`).join("\n")}\n</rules>`,
     ...resourceInstructions(options.loader).filter((part) => !part.startsWith("<skills>")),
     ...(options.customInstructions ?? []),

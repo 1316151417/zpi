@@ -110,7 +110,7 @@ test("custom instructions are literal additions and reject invalid runtime value
     );
 });
 
-test("default Pi template and generated prompt remain byte-for-byte stable", () => {
+test("default Pi template and generated prompt omit the mirrored tool catalog", () => {
   const preamble =
     "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
   const expected = {
@@ -123,8 +123,36 @@ test("default Pi template and generated prompt remain byte-for-byte stable", () 
   expect(createPiTemplate()).toEqual(expected);
   expect(createPiTemplate({ writable: true })).toEqual(expected);
   expect(buildSystemPrompt({ cwd: "/project", tools: [] })).toBe(
-    `${preamble}\n\n<tools>\n(none)\n</tools>\n\n<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>\n\n<cwd>\n/project\n</cwd>`,
+    `${preamble}\n\n<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>\n\n<cwd>\n/project\n</cwd>`,
   );
+});
+
+test("only built-in tool snippets enter system instructions, without description fallback", () => {
+  const prompt = buildSystemPrompt({
+    cwd: "/project",
+    tools: [
+      ...["read", "write", "edit", "bash"].map((name) => ({
+        name,
+        description: `FULL DESCRIPTION ${name}`,
+        promptSnippet: `SHORT ${name}`,
+      })),
+      { name: "Agent", description: "DELEGATION DESCRIPTION" },
+      {
+        name: "custom",
+        description: "CUSTOM DESCRIPTION",
+        promptSnippet: "CUSTOM SNIPPET",
+        promptGuidelines: ["CUSTOM GUIDELINE"],
+      },
+    ],
+  });
+  for (const name of ["read", "write", "edit", "bash"]) expect(prompt).toContain(`- ${name}: SHORT ${name}`);
+  expect(prompt).not.toMatch(/FULL DESCRIPTION|DELEGATION DESCRIPTION|CUSTOM DESCRIPTION|CUSTOM SNIPPET/);
+  expect(prompt).toContain("- CUSTOM GUIDELINE");
+  const withoutSnippet = buildSystemPrompt({
+    cwd: "/project",
+    tools: [{ name: "bash", description: "FULL DESCRIPTION" }],
+  });
+  expect(withoutSnippet).not.toMatch(/<tools>|FULL DESCRIPTION/);
 });
 
 test("read-only Pi variant reuses the base template without advertising file changes", () => {

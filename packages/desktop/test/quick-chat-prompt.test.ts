@@ -20,7 +20,7 @@ describe("quick-chat prompt", () => {
     expect(piTemplate.rules).not.toContain("read-only");
   });
 
-  it("uses the ordinary system prompt tools, rules and cwd sections with read and bash", () => {
+  it("includes built-in snippets, rules and cwd without full tool descriptions", () => {
     const prompt = buildSystemPrompt({ cwd, tools, template: quickChatPromptTemplate });
     expect(prompt.startsWith(quickChatPromptTemplate.preamble)).toBe(true);
     expect(prompt).toContain("<tools>\n- read:");
@@ -46,12 +46,13 @@ describe("quick-chat prompt", () => {
     expect(rules).not.toContain("cannot execute commands");
   });
 
-  it("describes optional web tools only when those tools are supplied", () => {
+  it("leaves optional web tool descriptions in the provider tool definitions", () => {
     const web = { name: "web_search", description: "Search public sources" };
     const offline = buildSystemPrompt({ cwd, tools, template: quickChatPromptTemplate });
     const online = buildSystemPrompt({ cwd, tools: [...tools, web], template: quickChatPromptTemplate });
     expect(offline).not.toContain("- web_search:");
-    expect(online).toContain("- web_search: Search public sources");
+    expect(online).not.toContain("Search public sources");
+    expect(online).toBe(offline);
     expect(online).toContain("Cite public source URLs");
   });
 });

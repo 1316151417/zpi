@@ -13,6 +13,7 @@ Responses 的 summary/text done 只是子片段结束，输出项还可能补充
 | 项目 | 对齐与差异 | 原因 |
 | --- | --- | --- |
 | Agent | 保留完整 provider 描述，包括“委派搜索后等待结果”；缺省 general-purpose、前台运行。取消原有额外字符串长度限制。产品路径 `.zcode/agents` 替换为 `.zpi/agents`，不包含 CreateWorkflow 条款 | ZPI 无工作流工具；对应 ZCode `dynamicWorkflowEnabled=false` 分支 |
+| 工具描述注入 | 完整 description 仅由模型请求的 tools 字段承载；系统提示词只保留 read、write、edit、bash 的 promptSnippet，不回退 description，不注入扩展工具的 promptSnippet；保留 promptGuidelines 行为规则 | 扩展工具对齐 ZCode，避免重复强调 Agent 的委派指导；保留四个内置工具的简短说明 |
 | Agent 返回 | 前台最终正文、空结果占位、继续 agent 的说明、可选 token usage，以及后台有/无 Read/Bash 两个分支完整对齐 | 返回真实 output_file；不再省略文件路径、禁止读取说明或结束回复分支 |
 | SendMessage | 使用 runner 实际生成的 queued、steered、resumed_background 原文；不再使用 formatter 的兜底模板。失败保留 status/messageId/agentId/error/message；终态恢复使用 message 正文为新 prompt，summary 更新任务描述 | 活跃指导保留 summary、正文及 coordinator_steer 包装；内部运行仍复用桌面会话 |
 | RespondToCoordinator | 完整描述和六条 Usage 指令；成功/失败的 continuation、responseId、结构化结果和发给主 agent 的完整 XML 一致。业务失败保留有效工具返回，不标记为执行异常 | 父消息投递成功即返回 queued，是否继续模型请求由收件箱决定 |

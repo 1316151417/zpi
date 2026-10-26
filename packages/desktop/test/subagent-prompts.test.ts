@@ -56,6 +56,12 @@ test.each(["general-purpose", "Explore"])(
     });
     await run(f, "Research");
     const parent = f.server.requests[0];
+    const parentInstructions = (parent.messages as { role: string; content: string }[])
+      .filter((row) => ["system", "developer"].includes(row.role))
+      .map((row) => row.content)
+      .join("\n");
+    expect(parentInstructions).not.toContain(adapt(reference.agent));
+    expect(parentInstructions).not.toContain("- Agent:");
     const task = f.host.subagents.list(f.session.id)[0];
     const child = f.server.requests.find(
       (request) =>
