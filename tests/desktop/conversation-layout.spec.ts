@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
@@ -114,6 +114,120 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({ path: "test-results/conversation-footer-dark.png" });
   } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("task status keeps the composer aligned across scrollbar and panel breakpoints", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-status-layout-"));
+  const finish = deferred();
+  const server = await fakeServer(async (body, response) => {
+    const messages = body.messages as { role: string }[];
+    if (messages.some((message) => message.role === "tool")) {
+      send(response, chunk({ content: "检查输入框对齐。\n\n".repeat(60) }));
+      await finish.promise;
+      done(response);
+      return;
+    }
+    send(
+      response,
+      chunk({
+        tool_calls: [
+          {
+            index: 0,
+            id: "layout-task",
+            type: "function",
+            function: {
+              name: "bash",
+              arguments: JSON.stringify({ command: "echo done", run_in_background: true }),
+            },
+          },
+        ],
+      }),
+    );
+    done(response, "tool_calls");
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("检查任务状态面板旁的输入框布局");
+    await editor.press("Enter");
+    await expect(page.locator("main .answer").first()).toContainText("检查输入框对齐。");
+    await expect(page.getByTestId("run").first()).toHaveAttribute("data-status", "running");
+    const panel = page.getByRole("complementary", { name: "任务状态", exact: true });
+    await expect(panel).toBeVisible();
+    const body = page.locator("main .task-body");
+    const column = page.locator("main .conversation-inner");
+    const dock = page.locator("main .composer-container");
+    const outsideWidth = await body.evaluate((element) => innerWidth - element.getBoundingClientRect().width);
+    // Exercise classic scrollbars even on macOS with overlay scrollbars enabled.
+    // Auto color uses the app's WebKit fallback, which reserves a 14px gutter.
+    const scrollbars = await page.addStyleTag({ content: "main .conversation { scrollbar-color: auto; }" });
+    for (const gutter of [true, false]) {
+      if (!gutter) {
+        finish.resolve();
+        await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+        await scrollbars.evaluate((element) => element.parentNode?.removeChild(element));
+      }
+      for (const width of [1279, 1280, 1293, 1294, 1320, 1500, 1279]) {
+        await app.evaluate(
+          ({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 900),
+          Math.round(outsideWidth + width),
+        );
+        await expect.poll(() => body.evaluate((element) => element.clientWidth)).toBe(width);
+        if (gutter) {
+          await expect
+            .poll(() =>
+              page
+                .locator("main .conversation")
+                .evaluate((element) => (element as HTMLElement).offsetWidth - element.clientWidth),
+            )
+            .toBe(14);
+        }
+        for (const mode of ["auto", "mini", "panel"] as const) {
+          if (mode === "mini") {
+            const expand = panel.getByLabel("展开状态", { exact: true });
+            if (await expand.isVisible()) await expand.click();
+            await panel.getByLabel("收起为胶囊", { exact: true }).click();
+          }
+          if (mode === "panel" || (mode === "auto" && width < 1280))
+            await panel.getByLabel("展开状态", { exact: true }).click();
+          if (mode === "auto") {
+            await panel.getByLabel("状态面板展开策略", { exact: true }).click();
+            await page.getByRole("menuitemradio", { name: "自动展开", exact: true }).click();
+          }
+          await expect(panel).toHaveAttribute("data-display-mode", mode);
+          await expect(column).toHaveCSS(
+            "transform",
+            width >= 1280 && mode !== "mini" ? "matrix(1, 0, 0, 1, -168, 0)" : "none",
+          );
+          await expect
+            .poll(async () => {
+              const message = await column.boundingBox();
+              const composer = await dock.boundingBox();
+              if (!message || !composer) throw new Error("Missing conversation column or composer");
+              return { left: composer.x - message.x, width: composer.width - message.width };
+            })
+            .toEqual({ left: 0, width: 0 });
+          await expect(editor).toBeInViewport();
+          if (width === 1280 && mode === "auto")
+            await page.screenshot({
+              path: test.info().outputPath(`composer-alignment-gutter-${gutter}.png`),
+            });
+        }
+        // Restore automatic mode before resizing across the next breakpoint.
+        await panel.getByLabel("状态面板展开策略", { exact: true }).click();
+        await page.getByRole("menuitemradio", { name: "自动展开", exact: true }).click();
+      }
+    }
+  } finally {
+    finish.resolve();
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
       () => server.close(),

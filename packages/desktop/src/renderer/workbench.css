@@ -2045,7 +2045,7 @@
 .task-body {
   position: relative;
   container-type: inline-size;
-  container-name: conversation;
+  container-name: task-layout;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -4654,7 +4654,9 @@
 .task-ended > span:last-of-type {
   margin-left: auto;
 }
-@container conversation (min-width: 1280px) {
+/* The status panel and both columns must query the same outer width, even when
+   a classic scrollbar makes the nested conversation narrower at this breakpoint. */
+@container task-layout (min-width: 1280px) {
   .task-activity[data-display-mode="auto"] {
     width: 320px;
     max-height: min(64dvh, 512px);
