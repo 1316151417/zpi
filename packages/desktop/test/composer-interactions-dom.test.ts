@@ -256,10 +256,14 @@ it.each([true, false])(
       ),
     );
     const owner = element("section");
+    const viewport = element(".conversation");
     const column = element(".conversation-inner");
     const observer = observers.find((candidate) => candidate.targets.includes(column));
     if (!observer) throw new Error("Column resize observer not registered");
     let width = 819;
+    let gutter = 15;
+    vi.spyOn(viewport, "offsetWidth", "get").mockImplementation(() => 900 + gutter);
+    vi.spyOn(viewport, "clientWidth", "get").mockReturnValue(900);
     vi.spyOn(column, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, width, 100));
     column.style.marginLeft = "48px";
     const notify = () => act(async () => observer.callback([], {} as ResizeObserver));
@@ -268,20 +272,22 @@ it.each([true, false])(
     await notify();
     expect(writes).not.toHaveBeenCalled();
     expect(owner.style.getPropertyValue("--conversation-column-width")).toBe(composer ? "819px" : "");
-    expect(owner.style.getPropertyValue("--conversation-column-left")).toBe(composer ? "48px" : "");
+    expect(owner.style.getPropertyValue("--conversation-scrollbar-width")).toBe(composer ? "15px" : "");
+    expect(owner.style.getPropertyValue("--conversation-column-left")).toBe("");
     // Hidden retained panes keep the last usable bounds; showing/resizing measures anew.
     width = 0;
     await notify();
     expect(owner.style.getPropertyValue("--conversation-column-width")).toBe(composer ? "819px" : "");
     width = 834;
+    gutter = 0;
     column.style.marginLeft = "0px";
     await notify();
     expect(owner.style.getPropertyValue("--conversation-column-width")).toBe(composer ? "834px" : "");
-    expect(owner.style.getPropertyValue("--conversation-column-left")).toBe(composer ? "0px" : "");
+    expect(owner.style.getPropertyValue("--conversation-scrollbar-width")).toBe(composer ? "0px" : "");
     await act(async () => root.render(null));
     expect(observer.disconnect).toHaveBeenCalledOnce();
     expect(owner.style.getPropertyValue("--conversation-column-width")).toBe("");
-    expect(owner.style.getPropertyValue("--conversation-column-left")).toBe("");
+    expect(owner.style.getPropertyValue("--conversation-scrollbar-width")).toBe("");
   },
 );
 

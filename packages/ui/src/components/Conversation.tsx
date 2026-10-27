@@ -1258,11 +1258,11 @@ export function Conversation({
       if (!column || !owner || !composer) return;
       const width = column.getBoundingClientRect().width;
       if (!width) return;
-      // A native scrollbar changes the available column width and its breakpoints.
-      // Share layout bounds with the sibling composer, excluding visual translations.
+      // Share size constraints only. Auto margins can change without a resize;
+      // the sibling composer must calculate its position in CSS instead of caching it.
       for (const [property, value] of [
         ["--conversation-column-width", `${width}px`],
-        ["--conversation-column-left", getComputedStyle(column).marginLeft],
+        ["--conversation-scrollbar-width", `${root.offsetWidth - root.clientWidth}px`],
       ]) {
         if (owner.style.getPropertyValue(property) !== value) owner.style.setProperty(property, value);
         shared.set(property, value);

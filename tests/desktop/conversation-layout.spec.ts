@@ -122,6 +122,69 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
   }
 });
 
+test("composer stays centered when switching running tasks and drafts without resizing the window", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-composer-session-layout-"));
+  const finish = deferred();
+  const server = await fakeServer(async (_, response) => {
+    send(response, chunk({ content: "流式输出中的长对话。\n\n".repeat(60) }));
+    await finish.promise;
+    done(response);
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1512, 894));
+    await page.evaluate(() => window.zpi.updatePreferences({ sidebarWidth: 342.328125 }));
+    await page.reload();
+    const editor = page.getByLabel("消息", { exact: true });
+    const ids: string[] = [];
+    for (const name of ["布局任务 A", "布局任务 B"]) {
+      await editor.fill(name);
+      await editor.press("Enter");
+      await expect(page.locator("main .answer")).toContainText("流式输出中的长对话。");
+      const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+      if (!id) throw new Error("Missing running session");
+      ids.push(id);
+      await page.getByLabel("新建任务", { exact: true }).first().click();
+      await expect(page.locator("main")).toHaveClass(/draft-main/);
+    }
+    for (const classic of [false, true]) {
+      const fallback = classic
+        ? await page.addStyleTag({ content: "main .conversation { scrollbar-color: auto; }" })
+        : undefined;
+      for (const id of [...ids, ...ids.toReversed()]) {
+        await page.locator(`.sidebar .session-row[data-session-id="${id}"]`).click();
+        await expect(page.locator("main")).not.toHaveClass(/draft-main/);
+        await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
+        await expect
+          .poll(() =>
+            page.evaluate(() => {
+              const column = document.querySelector("main .conversation-inner")?.getBoundingClientRect();
+              const composer = document.querySelector("main .composer-container")?.getBoundingClientRect();
+              if (!column || !composer) return null;
+              return { left: composer.left - column.left, width: composer.width - column.width };
+            }),
+          )
+          .toEqual({ left: 0, width: 0 });
+        await page.getByLabel("新建任务", { exact: true }).first().click();
+        await expect(page.locator("main")).toHaveClass(/draft-main/);
+        await expect(editor).toBeInViewport();
+      }
+      await fallback?.evaluate((element) => element.parentNode?.removeChild(element));
+    }
+    await page.locator(`.sidebar .session-row[data-session-id="${ids[0]}"]`).click();
+    await page.screenshot({ path: test.info().outputPath("composer-after-session-switch.png") });
+  } finally {
+    finish.resolve();
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("task status keeps the composer aligned across scrollbar and panel breakpoints", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-composer-status-layout-"));
   const finish = deferred();
