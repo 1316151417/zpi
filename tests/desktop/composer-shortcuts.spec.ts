@@ -3,11 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { presetModels } from "zpi-ai";
-import {
-  availablePresets,
-  defaultPreset,
-  modelReasoningLabel,
-} from "../../packages/desktop/src/shared/config.ts";
+import { availablePresets, modelReasoningLabel } from "../../packages/desktop/src/shared/config.ts";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
@@ -79,9 +75,9 @@ test("send-next sends the draft immediately, preserves the queue, and sends the 
 test("model shortcut navigates models and supported reasoning levels, confirms explicitly, and restores the composer on cancel", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-model-shortcut-"));
   const server = await fakeServer((_, response) => done(response));
-  const models = presetModels("openai-chatgpt").filter(
-    (model) => model.name === "GPT-6.1 Sol" || model.name === "GPT-6 Astra",
-  );
+  const models = presetModels("openai-chatgpt")
+    .filter((model) => model.name === "GPT-6.1 Sol" || model.name === "GPT-6 Astra")
+    .map((model) => ({ ...model, defaultThinkingLevel: "low" }));
   expect(models).toHaveLength(2);
   let app: ElectronApplication | undefined;
   try {
@@ -116,12 +112,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     const levels = page.locator(".reasoning-menu [role=menuitem]");
     const supported = availablePresets(models[0]);
     expect(supported).not.toContain("none");
-    await expect(levels).toHaveText(
-      supported.map(
-        (reasoning) =>
-          `${modelReasoningLabel(models[0], reasoning)}${models[0].defaultThinkingLevel && reasoning === defaultPreset(models[0]) ? " · 默认" : ""}`,
-      ),
-    );
+    await expect(levels).toHaveText(supported.map((reasoning) => modelReasoningLabel(models[0], reasoning)));
     await expect(levels.first()).toBeFocused();
     await page.keyboard.press("ArrowLeft");
     await expect(page.locator(".reasoning-menu")).toHaveCount(0);
@@ -152,7 +143,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
     await page.keyboard.press("Enter");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(trigger).toContainText(models[1].name ?? models[1].id);
-    await expect(trigger).toContainText(modelReasoningLabel(models[1], defaultPreset(models[1])));
+    await expect(trigger).toContainText("中");
     await expect(editor).toBeFocused();
     await expect(editor).toHaveText("preserved draft");
     expect(server.requests).toHaveLength(0);

@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "zpi-agent";
-import { anthropicMessagesCompatKeys, defaultThinkingLevel, thinkingChoices } from "zpi-ai";
+import { anthropicMessagesCompatKeys, thinkingChoices } from "zpi-ai";
 import { defaultCodePreview } from "zpi-ui/code-preview";
 import type { InterfacePreferences, ModelSettings, ReasoningPreset, SessionCapabilities } from "./bridge.ts";
 export const defaultCapabilities: SessionCapabilities = {
@@ -111,7 +111,9 @@ export function reasoningModel(model: ModelSettings, api?: import("zpi-ai").Prov
   };
 }
 export function defaultPreset(model: ModelSettings): ReasoningPreset {
-  return toPreset(defaultThinkingLevel(reasoningModel(model)), model);
+  const choices = availablePresets(model);
+  const medium = choices.find((level) => level === "medium" || level === "中");
+  return medium ?? choices[Math.floor((choices.length - 1) / 2)] ?? "none";
 }
 
 export function modelReasoningLabel(model: ModelSettings | undefined, preset: ReasoningPreset): string {

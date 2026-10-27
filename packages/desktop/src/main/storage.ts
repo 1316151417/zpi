@@ -43,6 +43,7 @@ import {
   availablePresets,
   defaultCapabilities,
   defaultPreferences,
+  defaultPreset,
   modelDefaults,
   sidebarLimits,
   toThinking,
@@ -102,7 +103,7 @@ export interface SettingsData {
   interface: InterfacePreferences;
 }
 export function resolveModel(provider: ProviderData, input: ModelSettings): Model {
-  return {
+  const model: Model = {
     id: input.id,
     name: input.name?.trim() || input.id,
     api: providerApi(provider.preset, provider.api ?? "openai-completions"),
@@ -122,6 +123,8 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
     ...(input.samplingParams ? { samplingParams: structuredClone(input.samplingParams) } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
+  model.defaultThinkingLevel = toThinking(defaultPreset(model), model);
+  return model;
 }
 export class SettingsStore {
   private data: SettingsData = {

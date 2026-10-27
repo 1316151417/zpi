@@ -279,12 +279,7 @@ export function SessionToolbar({
                                     select(p.id, m.id, reasoning);
                                   }}
                                 >
-                                  <span>
-                                    {modelReasoningLabel(m, reasoning)}
-                                    {m.defaultThinkingLevel && defaultPreset(m) === reasoning && (
-                                      <small> · 默认</small>
-                                    )}
-                                  </span>
+                                  <span>{modelReasoningLabel(m, reasoning)}</span>
                                   {chosen?.provider === p.id &&
                                     chosen.modelId === m.id &&
                                     chosen.reasoning === reasoning && <Check size={12} />}

@@ -1,6 +1,44 @@
 import { expect, it } from "vitest";
 import type { ModelSettings } from "../src/shared/bridge.ts";
-import { mergeDiscoveredModels } from "../src/shared/config.ts";
+import { defaultPreset, mergeDiscoveredModels } from "../src/shared/config.ts";
+
+it.each([
+  { levels: ["low", "medium", "high"], expected: "medium" },
+  { levels: ["medium", "high", "xhigh", "max"], expected: "medium" },
+  { levels: ["中", "高", "极高"], expected: "中" },
+  { levels: ["low", "high", "max"], expected: "high" },
+  { levels: ["low", "high", "xhigh", "max"], expected: "high" },
+  { levels: ["low", "high"], expected: "low" },
+  { levels: ["high"], expected: "high" },
+  { levels: ["brief", "balanced", "thorough"], expected: "balanced" },
+  { levels: ["brief", "balanced", "thorough", "deep"], expected: "balanced" },
+  { levels: [], expected: "none" },
+])(
+  "defaults to $expected for ordered choices $levels, ignoring provider defaults",
+  ({ levels, expected }) => {
+    const model = {
+      id: "test",
+      reasoning: true,
+      defaultThinkingLevel: levels.at(-1),
+      reasoningConfig: { levels, map: '{"reasoning_effort": reasoningLevel}' },
+    };
+    expect(defaultPreset(model)).toBe(expected);
+  },
+);
+
+it("chooses among actual displayed strengths and keeps non-reasoning models off", () => {
+  expect(
+    defaultPreset({
+      id: "binary",
+      reasoning: true,
+      compat: { thinkingFormat: "deepseek", supportsReasoningEffort: false },
+    }),
+  ).toBe("none");
+  expect(defaultPreset({ id: "plain", reasoning: false, defaultThinkingLevel: "high" })).toBe("none");
+  for (const defaultThinkingLevel of ["low", "high"]) {
+    expect(defaultPreset({ id: "gpt", reasoning: true, defaultThinkingLevel })).toBe("medium");
+  }
+});
 
 it("refreshes recommended models in discovery order and removes missing recommended models", () => {
   const current: ModelSettings[] = [

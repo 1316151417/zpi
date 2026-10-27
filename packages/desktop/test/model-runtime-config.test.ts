@@ -83,7 +83,7 @@ const expectedModels = (): NonNullable<ProviderConfigInput["models"]> => [
       map: '{"reasoning_effort": reasoningLevel, "thinking_budget": 2048}',
     },
     thinkingLevelMap: { off: "none", high: { thinking_budget: 2048, reasoning_budget: 1024 }, max: null },
-    defaultThinkingLevel: "high",
+    defaultThinkingLevel: "off",
     samplingParams: { temperature: 0.4, top_p: 0.8, stream_options: { include_usage: false } },
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   },
@@ -96,6 +96,7 @@ const expectedModels = (): NonNullable<ProviderConfigInput["models"]> => [
     contextWindow: 1000000,
     maxTokens: 128000,
     compat: { supportsReasoningEffort: true },
+    defaultThinkingLevel: "medium",
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   },
 ];
@@ -236,7 +237,7 @@ test.each(["quick", "task"] as const)(
       body: {
         model: "advanced",
         max_completion_tokens: 8192,
-        reasoning_effort: "high",
+        reasoning_effort: kind === "quick" ? "off" : "high",
         thinking_budget: 2048,
         stream_options: { include_usage: false },
         temperature: 0.4,

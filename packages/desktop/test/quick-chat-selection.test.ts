@@ -66,7 +66,7 @@ describe("quick-chat model catalog", () => {
     expect(saved).not.toBe(selection);
   });
 
-  it("preserves custom reasoning names, including none, and uses the model's default", () => {
+  it("preserves saved custom reasoning names and falls back to the lower middle choice", () => {
     const providers = [
       provider("custom", [
         {
@@ -91,7 +91,7 @@ describe("quick-chat model catalog", () => {
     expect(matchQuickChatSelection(models, invalid)).toBeUndefined();
     expect(quickChatSelection({ providers, quickChat: { defaultSelection: invalid } })).toEqual({
       ...invalid,
-      reasoning: "balanced",
+      reasoning: "none",
     });
   });
 
