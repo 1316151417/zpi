@@ -1,6 +1,6 @@
-import { type RefObject, useEffect, useRef } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import {
-  buildFindMatches,
+  FindIndex,
   type FindMatch,
   type FindRequest,
   type FindState,
@@ -9,6 +9,14 @@ import {
   findSearchTargetIndex,
   normalizeFindQuery,
 } from "../find.ts";
+import { FindDomIndex, mountedFindElements } from "./find-dom.ts";
+
+export const findHighlightLimit = 2000;
+function highlightRanges(ranges: readonly Range[]): Highlight {
+  const highlight = new Highlight();
+  for (const range of ranges) highlight.add(range);
+  return highlight;
+}
 
 export const findHighlightCSS = ["conversation", "changes"]
   .map(
@@ -24,64 +32,6 @@ function ensureHighlightStyle() {
   if (style.textContent !== findHighlightCSS) style.textContent = findHighlightCSS;
   if (!style.isConnected) document.head.append(style);
 }
-function textNodes(element: Element, includeHidden = false): Text[] {
-  const nodes: Text[] = [];
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      // Inline links render as buttons, but their labels are part of the message text.
-      return node.parentElement?.closest(
-        'button:not([data-conversation-inline-link="true"]),input,textarea,select,script,style,.katex-mathml,[contenteditable="true"],[data-find-ignore]',
-      ) ||
-        (!includeHidden && node.parentElement?.closest("[hidden]"))
-        ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
-  return nodes;
-}
-function readText(element: Element, includeHidden = false) {
-  let text = "",
-    previousBlock: Element | null = null;
-  const segments: { node: Text; start: number; end: number }[] = [];
-  for (const node of textNodes(element, includeHidden)) {
-    const block = node.parentElement?.closest("p,li,pre,h1,h2,h3,h4,h5,h6,tr") ?? null;
-    if (text && block !== previousBlock) text += "\n";
-    const start = text.length;
-    text += node.data;
-    segments.push({ node, start, end: text.length });
-    previousBlock = block;
-  }
-  return { text, segments };
-}
-function rangeFor(element: Element, match: FindMatch): Range | undefined {
-  if (element.closest("[hidden]")) return;
-  const { segments } = readText(element);
-  const range = document.createRange();
-  let started = false;
-  for (const { node, start, end } of segments) {
-    if (!started && match.start >= start && match.start < end) {
-      range.setStart(node, match.start - start);
-      started = true;
-    }
-    if (started && match.end <= end) {
-      range.setEnd(node, match.end - start);
-      return range;
-    }
-  }
-}
-function mountedElements(root: HTMLElement): Map<string, Element[]> {
-  const elements = new Map<string, Element[]>();
-  const add = (key: string, element: Element) => elements.set(key, [...(elements.get(key) ?? []), element]);
-  for (const element of root.querySelectorAll<HTMLElement>("[data-find-key]"))
-    add(element.dataset.findKey as string, element);
-  for (const entry of root.querySelectorAll<HTMLElement>("[data-diff-id]"))
-    for (const host of entry.querySelectorAll("diffs-container"))
-      for (const line of host.shadowRoot?.querySelectorAll<HTMLElement>("[data-code] [data-line]") ?? [])
-        add(`${entry.dataset.diffId}:${line.dataset.lineIndex?.split(",")[0]}`, line);
-  return elements;
-}
-
 /** Search rendered message text, or a supplied index for lazily mounted diff files. */
 export function useTextFind({
   rootRef,
@@ -92,6 +42,7 @@ export function useTextFind({
   onStateChange,
   onNavigate,
   highlightScope = "conversation",
+  navigateUnmounted = true,
 }: {
   highlightScope?: "conversation" | "changes";
   rootRef: RefObject<HTMLDivElement | null>;
@@ -101,6 +52,8 @@ export function useTextFind({
   targets?: readonly FindTarget[];
   onStateChange?: (state: FindState) => void;
   onNavigate?: (match: FindMatch, range?: Range) => void;
+  /** Revisit an already revealed match when its DOM range disappears (for lazy diff files). */
+  navigateUnmounted?: boolean;
 }) {
   const previous = useRef<{
     query: string;
@@ -108,9 +61,18 @@ export function useTextFind({
     navigation: number;
     key?: string;
     scroll?: string;
+    revealed?: string;
+    hasRange?: boolean;
   }>({ query: "", index: -1, navigation: -1 });
+  const [findIndex] = useState(() => new FindIndex());
+  const [dom] = useState(() => new FindDomIndex());
   const highlightName = `zpi-${highlightScope}-find`;
-  const owned = useRef<{ all?: Highlight; active?: Highlight }>({});
+  const owned = useRef<{
+    all?: Highlight;
+    active?: Highlight;
+    ranges?: Range[];
+    activeRanges?: Range[];
+  }>({});
   const clear = () => {
     if (CSS.highlights.get(highlightName) === owned.current.all) CSS.highlights.delete(highlightName);
     if (CSS.highlights.get(`${highlightName}-active`) === owned.current.active)
@@ -119,27 +81,40 @@ export function useTextFind({
   };
   useEffect(() => {
     previous.current = { query: "", index: -1, navigation: -1 };
-  }, [scopeKey]);
+    findIndex.clear();
+    dom.clear();
+  }, [scopeKey, findIndex, dom]);
   useEffect(() => {
     const root = rootRef.current;
     const query = normalizeFindQuery(request?.query ?? "");
     if (!root || !query || !request) {
       clear();
+      findIndex.clear();
+      dom.clear();
       previous.current = { query: "", index: -1, navigation: -1 };
       return;
     }
     let frame = 0;
     ensureHighlightStyle();
-    const observers: MutationObserver[] = [];
+    const observers = new Map<Node, MutationObserver>();
     const scan = () => {
-      const elements = mountedElements(root);
-      const source =
-        targets ??
-        [...elements].map(([key, nodes]) => ({
-          key,
-          text: readText(nodes[0], Boolean(nodes[0].closest("[data-find-index]"))).text,
-        }));
-      const matches = buildFindMatches(source, query);
+      for (const [node, observer] of observers) {
+        dom.invalidate(observer.takeRecords());
+        if (node instanceof ShadowRoot && !root.contains(node.host)) {
+          observer.disconnect();
+          observers.delete(node);
+        }
+      }
+      const elements = mountedFindElements(root);
+      const source = targets
+        ? targets.map((target) => {
+            const element = elements.get(target.key)?.[0];
+            return element && (target.rendered || element.querySelector("[data-find-rendered]"))
+              ? { ...target, text: dom.target(element, target.key).text }
+              : target;
+          })
+        : [...elements].map(([key, nodes]) => dom.target(nodes[0], key));
+      const matches = findIndex.search(source, query);
       const last = previous.current;
       const explicit =
         query !== last.query ||
@@ -162,40 +137,98 @@ export function useTextFind({
         activeRanges: Range[] = [];
       for (const match of matches)
         for (const element of elements.get(match.key) ?? []) {
-          const range = rangeFor(element, match);
+          const cache = ranges.length < findHighlightLimit;
+          if (!cache && match !== active) continue;
+          const range = dom.range(element, match, query, cache);
           if (range) {
-            ranges.push(range);
+            if (cache) ranges.push(range);
             if (match === active) activeRanges.push(range);
           }
         }
-      const all = new Highlight(...ranges),
-        current = new Highlight(...activeRanges);
-      current.priority = 1;
-      CSS.highlights.set(highlightName, all);
-      CSS.highlights.set(`${highlightName}-active`, current);
-      owned.current = { all, active: current };
+      const same = (a: Range[] | undefined, b: Range[]) =>
+        a?.length === b.length &&
+        a.every(
+          (range, i) =>
+            range.startContainer === b[i].startContainer &&
+            range.endContainer === b[i].endContainer &&
+            range.startOffset === b[i].startOffset &&
+            range.endOffset === b[i].endOffset,
+        );
+      // Navigation changes only the active highlight; stable history keeps its ranges and registry entry.
+      if (!same(owned.current.ranges, ranges) || CSS.highlights.get(highlightName) !== owned.current.all) {
+        owned.current.all = highlightRanges(ranges);
+        owned.current.ranges = ranges;
+        CSS.highlights.set(highlightName, owned.current.all);
+      }
+      if (
+        !same(owned.current.activeRanges, activeRanges) ||
+        CSS.highlights.get(`${highlightName}-active`) !== owned.current.active
+      ) {
+        owned.current.active = highlightRanges(activeRanges);
+        owned.current.active.priority = 1;
+        owned.current.activeRanges = activeRanges;
+        CSS.highlights.set(`${highlightName}-active`, owned.current.active);
+      }
       onStateChange?.({ total: matches.length, activeIndex: index });
       const scroll = `${query}:${key}:${request.navigationId}`;
-      previous.current = { query, index, navigation: request.navigationId, key, scroll: last.scroll };
-      if (active && (scroll !== last.scroll || (!activeRanges.length && targets))) {
+      const hasRange = activeRanges.length > 0;
+      previous.current = {
+        query,
+        index,
+        navigation: request.navigationId,
+        key,
+        scroll: last.scroll,
+        revealed: last.revealed,
+        hasRange,
+      };
+      if (
+        active &&
+        (scroll !== last.scroll ||
+          (hasRange && scroll !== last.revealed) ||
+          (!hasRange && last.hasRange && targets && navigateUnmounted))
+      ) {
         onNavigate?.(active, activeRanges[0]);
-        if (activeRanges[0]) previous.current.scroll = scroll;
+        previous.current.scroll = scroll;
+        if (hasRange) previous.current.revealed = scroll;
       }
       for (const host of root.querySelectorAll("diffs-container")) {
-        if (!host.shadowRoot || observed.has(host.shadowRoot)) continue;
+        if (!host.shadowRoot || observers.has(host.shadowRoot)) continue;
         observe(host.shadowRoot);
       }
     };
     const schedule = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(scan);
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        scan();
+      });
     };
-    const observed = new Set<Node>();
     const observe = (node: Node) => {
-      observed.add(node);
-      const observer = new MutationObserver(schedule);
-      observer.observe(node, { childList: true, characterData: true, subtree: true });
-      observers.push(observer);
+      const observer = new MutationObserver((records) => {
+        dom.invalidate(records);
+        schedule();
+      });
+      observer.observe(node, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: [
+          "hidden",
+          "class",
+          "contenteditable",
+          "data-find-key",
+          "data-find-index",
+          "data-find-ignore",
+          "data-conversation-inline-link",
+          "data-diff-id",
+          "data-line",
+          "data-line-index",
+          "data-code",
+          "data-find-rendered",
+        ],
+      });
+      observers.set(node, observer);
     };
     observe(root);
     root.addEventListener("zpi-diff-render", schedule);
@@ -203,9 +236,25 @@ export function useTextFind({
     return () => {
       cancelAnimationFrame(frame);
       root.removeEventListener("zpi-diff-render", schedule);
-      for (const observer of observers) observer.disconnect();
+      for (const observer of observers.values()) {
+        // React may have committed changed text before the previous effect is cleaned up.
+        dom.invalidate(observer.takeRecords());
+        observer.disconnect();
+      }
     };
-  }, [rootRef, request, content, scopeKey, targets, onStateChange, onNavigate, highlightName]);
+  }, [
+    rootRef,
+    request,
+    content,
+    scopeKey,
+    targets,
+    onStateChange,
+    onNavigate,
+    highlightName,
+    navigateUnmounted,
+    findIndex,
+    dom,
+  ]);
   useEffect(
     () => () => {
       clear();

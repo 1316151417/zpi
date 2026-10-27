@@ -36,6 +36,18 @@ test("ZCode turn actions stay near the composer and share the turn hover area at
         ({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(size[0], size[1]),
         [width, height],
       );
+      await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const column = document.querySelector(".conversation-inner");
+            const dock = document.querySelector(".composer-container");
+            return column && dock
+              ? dock.getBoundingClientRect().width - column.getBoundingClientRect().width
+              : null;
+          }),
+        )
+        .toBe(0);
       await area.evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });

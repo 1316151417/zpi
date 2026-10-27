@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -15,7 +15,7 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
   const project = join(dir, "project");
   await mkdir(project);
   const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="176"><rect width="240" height="176" fill="#4c8ee8"/><circle cx="120" cy="88" r="48" fill="white"/></svg>';
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="176"><!-- 图片预览 --><rect width="240" height="176" fill="#4c8ee8"/><circle cx="120" cy="88" r="48" fill="white"/></svg>';
   await writeFile(join(project, "image.svg"), svg);
   const images = createServer((req, response) => {
     if (req.url === "/image.svg") response.setHeader("content-type", "image/svg+xml").end(svg);
@@ -36,6 +36,41 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
   try {
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
+    // The shared launcher rejects native downloads. Capture only the download boundary,
+    // leaving the real table/image click handlers and preload validation in place.
+    await page.evaluate(() => {
+      const blobs = new Map<string, Blob>();
+      const downloads = new Map<string, string>();
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => {
+        const url = create(blob);
+        if (blob instanceof Blob) blobs.set(url, blob);
+        return url;
+      };
+      const click = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        const blob = blobs.get(this.href);
+        if (!this.download || !blob) return click.call(this);
+        const filename = this.download;
+        blobs.delete(this.href);
+        void blob.arrayBuffer().then((buffer) => {
+          downloads.set(filename, new TextDecoder("utf-8", { ignoreBOM: true }).decode(buffer));
+        });
+      };
+      Object.assign(window, { zpiBlobDownload: (name: string) => downloads.get(name) });
+    });
+    await app.evaluate(({ BrowserWindow }) => {
+      const urls: string[] = [];
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.downloadURL = (url) => {
+          urls.push(url);
+        };
+      Object.assign(globalThis, { zpiImageDownloads: urls });
+    });
+    const imageDownloads = () =>
+      app.evaluate(
+        () => (globalThis as typeof globalThis & { zpiImageDownloads: string[] }).zpiImageDownloads,
+      );
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.emulateMedia({ colorScheme: "light" });
@@ -69,13 +104,15 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     });
     await table.getByRole("button", { name: "复制 Markdown", exact: true }).click();
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(tableText);
-    const csvPath = join(dir, "table.csv");
-    await app.evaluate(({ session }, path) => {
-      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path));
-    }, csvPath);
     await table.getByRole("button", { name: "下载 CSV", exact: true }).click();
     await expect
-      .poll(async () => readFile(csvPath, "utf8").catch(() => ""))
+      .poll(() =>
+        page.evaluate(() =>
+          (window as typeof window & { zpiBlobDownload(name: string): string | undefined }).zpiBlobDownload(
+            "table.csv",
+          ),
+        ),
+      )
       .toBe(
         "\uFEFF语言,类型系统,首次发布,主要用途\r\nPython,动态,1991,数据科学、脚本、Web\r\nGo,静态,2009,后端服务、云原生\r\nRust,静态,2015,系统编程、高性能场景\r\nTypeScript,静态,2012,前端、全栈开发",
       );
@@ -138,19 +175,14 @@ test("tables use theme borders and support Markdown copy, CSV, preview and horiz
     );
     await imagePreview.getByRole("button", { name: "关闭图片预览" }).click();
     await gallery.getByRole("button", { name: "打开图片预览" }).first().click();
-    const localImagePath = join(dir, "local-image.svg");
-    await app.evaluate(({ session }, path) => {
-      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path));
-    }, localImagePath);
     await imagePreview.getByRole("link", { name: "下载图片" }).click();
-    await expect.poll(async () => readFile(localImagePath, "utf8").catch(() => "")).toBe(svg);
+    await expect.poll(async () => (await imageDownloads()).length).toBe(1);
+    const localImage = (await imageDownloads())[0];
+    expect(localImage).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(Buffer.from(localImage.slice(localImage.indexOf(",") + 1), "base64").toString("utf8")).toBe(svg);
     await imagePreview.getByRole("button", { name: "下一张图片" }).click();
-    const remoteImagePath = join(dir, "remote-image.svg");
-    await app.evaluate(({ session }, path) => {
-      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path));
-    }, remoteImagePath);
     await imagePreview.getByRole("link", { name: "下载图片" }).click();
-    await expect.poll(async () => readFile(remoteImagePath, "utf8").catch(() => "")).toBe(svg);
+    await expect.poll(imageDownloads).toEqual([localImage, imageUrl]);
     await imagePreview.getByRole("button", { name: "关闭图片预览" }).click();
     const rejected = await page.evaluate(async () => [
       await window.zpi.downloadImage("file:///etc/hosts"),

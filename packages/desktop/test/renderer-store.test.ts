@@ -1,14 +1,49 @@
 import { afterEach, expect, it, vi } from "vitest";
-import type { DesktopEventEnvelope } from "zpi-ui";
+import { type DesktopEventEnvelope, emptySession, reduceSession } from "zpi-ui";
 import { shallow } from "zustand/shallow";
 import { deferred } from "../../../tests/fake-server.ts";
+import { sessionActivityAt } from "../src/main/session-activity.ts";
 import { selectAppState, selectTaskRecords } from "../src/renderer/app-state.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";
+import { eventBatchMaxEvents } from "../src/shared/event-batches.ts";
 import { emptyTaskGroups } from "../src/shared/task-groups.ts";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("restores only through the page containing a reading anchor even if the old cursor was zero", async () => {
+  const f = await setup();
+  const run = (n: number) => ({
+    runId: `run-${n}`,
+    status: "completed" as const,
+    startedAt: 1,
+    userMessage: "Question",
+    orderedBlocks: [],
+    finalAnswerBlockIds: [],
+  });
+  Object.assign(f.snapshot, { historyCursor: 90, view: { ...f.snapshot.view, runs: [run(90)] } });
+  localStorage.setItem(
+    `zpi.reading.${f.session.id}`,
+    JSON.stringify({ top: 50_000, following: false, cursor: 0, runId: "run-85", offset: 9 }),
+  );
+  const page = vi.fn(async () => ({
+    ok: true,
+    value: { cursor: 80, view: { ...f.snapshot.view, runs: [run(85)] } },
+  }));
+  Object.assign(f.bridge, { getHistoryPage: page });
+  await f.store.selectSession(f.session.id);
+  expect(page).toHaveBeenCalledExactlyOnceWith(f.session.id, 90);
+  expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBe(80);
+  f.unsubscribe();
+});
+
+it("keeps unloaded suggestion defaults stable across unrelated app updates", async () => {
+  const f = await setup();
+  const first = selectAppState(f.store.useStore.getState()).activeSuggestions;
+  expect(selectAppState({ ...f.store.useStore.getState(), errorVersion: 1 }).activeSuggestions).toBe(first);
+  f.unsubscribe();
 });
 
 async function setup() {
@@ -22,7 +57,7 @@ async function setup() {
   const frames: FrameRequestCallback[] = [];
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
-  let emit!: (event: DesktopEventEnvelope) => void;
+  let emit!: (events: readonly DesktopEventEnvelope[]) => void;
   let beforeQuit!: () => Promise<void>;
   const session: SessionRecord = {
     id: "session",
@@ -63,7 +98,7 @@ async function setup() {
       value: [] as ReturnType<typeof import("zpi-coding-agent").listCommands>,
     })),
     listSessionSkills: vi.fn(async (_id?: string) => ({ ok: true, value: { skills: [], diagnostics: [] } })),
-    onEvent: vi.fn((listener: typeof emit) => {
+    onEvents: vi.fn((listener: typeof emit) => {
       emit = listener;
       return () => {};
     }),
@@ -89,7 +124,8 @@ async function setup() {
     document,
     unsubscribe,
     beforeQuit: () => beforeQuit(),
-    emit: (event: DesktopEventEnvelope) => emit(event),
+    emit: (event: DesktopEventEnvelope) => emit([event]),
+    batch: (events: readonly DesktopEventEnvelope[]) => emit(events),
     frame: () => {
       for (const callback of frames.splice(0)) callback(0);
     },
@@ -261,6 +297,46 @@ it("main app selectors retain active streaming, history, task metadata and unrea
   f.unsubscribe();
 });
 
+it("keeps task-list records stable during content streaming and publishes sampled activity and terminal state", async () => {
+  const f = await setup();
+  f.store.useStore.setState({ selected: f.session.id, views: new Map([[f.session.id, f.snapshot.view]]) });
+  let seq = 0;
+  let now = 10_000;
+  const emit = (event: DesktopEventEnvelope["event"]) => {
+    const record = f.store.useStore.getState().sessions.get(f.session.id);
+    if (!record) throw new Error("Missing fixture session");
+    const activityAt = sessionActivityAt(event, record.updatedAt, now);
+    f.emit({ sessionId: f.session.id, runId: "run", seq: ++seq, event, activityAt });
+    f.frame();
+  };
+  emit({ type: "started", text: "hello", startedAt: now, modelLabel: "m" });
+  emit({ type: "block_start", messageId: "m", contentIndex: 0, kind: "text" });
+  const records = f.store.useStore.getState().sessions;
+  const tasks = selectTaskRecords(f.store.useStore.getState());
+  const view = selectAppState(f.store.useStore.getState()).activeView;
+  for (let i = 0; i < 100; i++) {
+    now += 10;
+    emit({ type: "block_delta", messageId: "m", contentIndex: 0, delta: "x" });
+  }
+  expect(f.store.useStore.getState().sessions).toBe(records);
+  expect(shallow(selectTaskRecords(f.store.useStore.getState()), tasks)).toBe(true);
+  expect(selectAppState(f.store.useStore.getState()).activeView).not.toBe(view);
+  expect(f.store.useStore.getState().views.get(f.session.id)?.runs[0].orderedBlocks[0]).toMatchObject({
+    text: "x".repeat(100),
+  });
+  now = 15_000;
+  emit({ type: "block_delta", messageId: "m", contentIndex: 0, delta: "y" });
+  expect(f.store.useStore.getState().sessions.get(f.session.id)?.updatedAt).toBe(now);
+  emit({ type: "settled", status: "error", endedAt: now + 1, error: "failed", unreadAt: now + 1 });
+  expect(selectAppState(f.store.useStore.getState()).activeRecord).toMatchObject({
+    status: "error",
+    running: false,
+    updatedAt: now + 1,
+    unreadAt: now + 1,
+  });
+  f.unsubscribe();
+});
+
 it("ignores replayed and unknown events without replacing maps or notifying subscribers", async () => {
   const f = await setup();
   f.store.useStore.setState({ views: new Map([[f.session.id, f.snapshot.view]]) });
@@ -283,6 +359,86 @@ it("ignores replayed and unknown events without replacing maps or notifying subs
   expect(f.store.useStore.getState()).toBe(state);
   expect(changed).not.toHaveBeenCalled();
   off();
+  f.unsubscribe();
+});
+
+it.each([true, false])(
+  "replays a batch spanning the pending snapshot watermark exactly once (frame=%s)",
+  async (frame) => {
+    const f = await setup();
+    const gate = deferred();
+    const events: DesktopEventEnvelope[] = [
+      {
+        sessionId: f.session.id,
+        runId: "run",
+        seq: 1,
+        event: { type: "started", text: "hello", startedAt: 1, modelLabel: "fake" },
+      },
+      {
+        sessionId: f.session.id,
+        runId: "run",
+        seq: 2,
+        event: { type: "block_start", messageId: "m", contentIndex: 0, kind: "text" },
+      },
+      ...["a", "b", "c"].map(
+        (delta, i): DesktopEventEnvelope => ({
+          sessionId: f.session.id,
+          runId: "run",
+          seq: i + 3,
+          event: { type: "block_delta", messageId: "m", contentIndex: 0, delta },
+        }),
+      ),
+    ];
+    const view = events.slice(0, 4).reduce(reduceSession, emptySession(f.session.id));
+    Object.assign(f.snapshot, { seq: 4, view });
+    f.bridge.getSessionSnapshot.mockImplementationOnce(async () => {
+      await gate.promise;
+      return { ok: true, value: f.snapshot };
+    });
+    const selecting = f.store.selectSession(f.session.id);
+    await vi.waitFor(() => expect(f.bridge.getSessionSnapshot).toHaveBeenCalledOnce());
+    f.batch(events);
+    if (frame) f.frame();
+    gate.resolve();
+    await selecting;
+    const restored = f.store.useStore.getState().views.get(f.session.id);
+    expect(restored?.seq).toBe(5);
+    expect(restored?.runs[0].orderedBlocks[0]).toMatchObject({ text: "abc" });
+    f.unsubscribe();
+  },
+);
+
+it("drains a full frame event budget even when animation frames have not run", async () => {
+  const f = await setup();
+  const prefix: DesktopEventEnvelope[] = [
+    {
+      sessionId: f.session.id,
+      runId: "run",
+      seq: 1,
+      event: { type: "started", text: "hello", startedAt: 1, modelLabel: "fake" },
+    },
+    {
+      sessionId: f.session.id,
+      runId: "run",
+      seq: 2,
+      event: { type: "block_start", messageId: "m", contentIndex: 0, kind: "text" },
+    },
+  ];
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, prefix.reduce(reduceSession, emptySession(f.session.id))]]),
+  });
+  f.batch(
+    Array.from({ length: eventBatchMaxEvents }, (_, i) => ({
+      sessionId: f.session.id,
+      runId: "run",
+      seq: i + 3,
+      event: { type: "block_delta", messageId: "m", contentIndex: 0, delta: "x" },
+    })),
+  );
+  expect(f.store.useStore.getState().views.get(f.session.id)?.runs[0].orderedBlocks[0]).toMatchObject({
+    text: "x".repeat(eventBatchMaxEvents),
+  });
+  f.frame();
   f.unsubscribe();
 });
 

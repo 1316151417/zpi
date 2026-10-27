@@ -87,6 +87,7 @@ export function MarkdownPreview({
     <dialog
       ref={dialog}
       className={`markdown-preview ${className}`}
+      data-find-ignore
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();

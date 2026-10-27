@@ -1069,7 +1069,7 @@ export function App() {
                 commands={view.backgroundTasks}
               />
               <Conversation
-                suggestions={state.activeSuggestions ?? []}
+                suggestions={state.activeSuggestions}
                 onOpenSubagent={showSubagent}
                 previewServices={previewServices}
                 findRequest={find.open && find.scope === "conversation" ? find.request : undefined}
@@ -1196,7 +1196,7 @@ export function App() {
                         />
                       )
                     }
-                    suggestions={state.activeSuggestions ?? []}
+                    suggestions={state.activeSuggestions}
                     onSubmit={async (text, input, { draftRevision }) => {
                       try {
                         const result = await window.zpi.submitInput({

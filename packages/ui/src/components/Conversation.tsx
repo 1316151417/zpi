@@ -35,7 +35,13 @@ import {
   type ConversationSelection,
   parseSelectionPrompt,
 } from "../conversation-selections.ts";
-import { type FindMatch, type FindRequest, type FindState, normalizeFindQuery } from "../find.ts";
+import {
+  type FindMatch,
+  type FindRequest,
+  type FindState,
+  type FindTarget,
+  normalizeFindQuery,
+} from "../find.ts";
 import {
   type FileLocation,
   type FileOpenHandler,
@@ -44,6 +50,7 @@ import {
   type WebOpenOptions,
 } from "../link-target.ts";
 import type { PreviewServices } from "../preview/preview-lifecycle.ts";
+import { type ReadingBookmark, readingAnchor, readReadingBookmark } from "../reading-position.ts";
 import { progressSummary } from "../reducer.ts";
 import type {
   CompactionView,
@@ -63,6 +70,7 @@ import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCar
 import { collectAnswerSources } from "./answer-sources.ts";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CompactionDivider } from "./CompactionDivider.tsx";
+import { ConversationHistory, historyWindowThreshold } from "./ConversationHistory.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
 import {
@@ -72,6 +80,7 @@ import {
   slashTokenEnd,
   subagentNames,
 } from "./command-suggestions.ts";
+import { useConversationFindTargets } from "./conversation-find.ts";
 import { DraftGreeting } from "./DraftGreeting.tsx";
 import { FileRewindConflictDialog } from "./FileRewindConflictDialog.tsx";
 import { fileMentionQuery } from "./file-mention-query.ts";
@@ -88,7 +97,7 @@ import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageAc
 import { Notice } from "./Notice.tsx";
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
-import { displayReferences, FileIcon, Reference } from "./Reference.tsx";
+import { FileIcon, messageReferences, Reference } from "./Reference.tsx";
 import { StreamEntrance } from "./StreamEntrance.tsx";
 import { SubagentContext } from "./SubagentToolBlock.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
@@ -384,6 +393,7 @@ export const RunGroup = memo(function RunGroup({
   blocks,
   onBlockToggle,
   finding = false,
+  findTargets,
   context,
   readWebSourceIcon = context?.readWebSourceIcon,
   onChanges,
@@ -417,6 +427,7 @@ export const RunGroup = memo(function RunGroup({
   blocks: Record<string, boolean>;
   onBlockToggle: (blockId: string, value: boolean) => void;
   finding?: boolean;
+  findTargets?: ReadonlyMap<string, FindTarget>;
 }) {
   const openToolChange = useCallback(
     (path: string, toolCallId: string) => onChanges?.(run.runId, path, toolCallId),
@@ -485,7 +496,11 @@ export const RunGroup = memo(function RunGroup({
     <article className="run-group" data-testid="run" data-run-id={run.runId} data-status={run.status}>
       <div className="assistant-turn">
         {run.subagentNotification ? (
-          <div className="background-result-heading" data-testid="background-result-heading">
+          <div
+            className="background-result-heading"
+            data-testid="background-result-heading"
+            data-find-key={`${run.runId}:user`}
+          >
             {run.subagentNotification.description}
           </div>
         ) : (
@@ -526,7 +541,12 @@ export const RunGroup = memo(function RunGroup({
                       {(() => {
                         const parts: ReactNode[] = [];
                         let previous = 0;
-                        const mentions = displayReferences(parsedUser.text, commandNames, agentNames);
+                        const { inline: mentions, trailing } = messageReferences(
+                          parsedUser.text,
+                          run.fileReferences,
+                          commandNames,
+                          agentNames,
+                        );
                         for (const mention of mentions) {
                           const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
                           parts.push(parsedUser.text.slice(previous, mention.start));
@@ -544,8 +564,7 @@ export const RunGroup = memo(function RunGroup({
                           previous = mention.end;
                         }
                         parts.push(parsedUser.text.slice(previous));
-                        for (const path of run.fileReferences ?? []) {
-                          if (mentions.some((m) => m.path === path)) continue;
+                        for (const { path, label } of trailing) {
                           const file = splitFileLocation(path);
                           parts.push(
                             <Reference
@@ -553,7 +572,7 @@ export const RunGroup = memo(function RunGroup({
                               kind="file"
                               path={file?.path ?? path}
                               location={file?.location}
-                              label={path.split("/").at(-1) ?? path}
+                              label={label}
                               onOpen={onFile}
                               onAction={onFileAction}
                             />,
@@ -642,13 +661,17 @@ export const RunGroup = memo(function RunGroup({
             {process.map((block) =>
               block.type === "text" ? (
                 <div key={block.id} data-find-key={block.id}>
-                  <Markdown
-                    text={block.text}
-                    workspace={workspace}
-                    streaming={false}
-                    onLink={onLink}
-                    onFile={onFile}
-                  />
+                  {findTargets?.has(block.id) && !findTargets.get(block.id)?.rendered ? (
+                    findTargets.get(block.id)?.text
+                  ) : (
+                    <Markdown
+                      text={block.text}
+                      workspace={workspace}
+                      streaming={false}
+                      onLink={onLink}
+                      onFile={onFile}
+                    />
+                  )}
                 </div>
               ) : null,
             )}
@@ -819,6 +842,7 @@ export function Conversation({
   onCopy?: (text: string) => Promise<void>;
   onFile?: FileOpenHandler;
 }) {
+  const { sessionId, forkOrigin } = view;
   const previewAutoOpen = usePreviewAutoOpen(view);
   const subagentContext = useMemo(
     () => ({ tasks: view.subagents ?? [], open: onOpenSubagent }),
@@ -828,38 +852,37 @@ export function Conversation({
   const [blocks, setBlocks] = useState<Record<string, boolean>>({});
   const lifecycle = useRef(new Map<string, boolean>());
   const manualBlocks = useRef(new Set<string>());
+  const processedRuns = useRef(new WeakSet<RunView>());
+  const processedBlocks = useRef(new WeakSet<ViewBlock>());
+  const processedSession = useRef("");
   useEffect(() => {
-    setExpanded((current) => {
-      const next = { ...current };
-      for (const run of view.runs) {
-        const key = `run:${view.sessionId}:${run.runId}`;
-        const wasRunning = lifecycle.current.get(key);
-        if (wasRunning && run.status !== "running") next[run.runId] = false;
-        lifecycle.current.set(key, run.status === "running");
+    if (processedSession.current !== view.sessionId) {
+      processedSession.current = view.sessionId;
+      processedRuns.current = new WeakSet();
+      processedBlocks.current = new WeakSet();
+    }
+    const runUpdates: Record<string, boolean> = {};
+    const blockUpdates: Record<string, boolean> = {};
+    for (const run of view.runs) {
+      if (processedRuns.current.has(run)) continue;
+      processedRuns.current.add(run);
+      const key = `run:${view.sessionId}:${run.runId}`;
+      const wasRunning = lifecycle.current.get(key);
+      if (wasRunning && run.status !== "running") runUpdates[run.runId] = false;
+      lifecycle.current.set(key, run.status === "running");
+      for (const block of run.orderedBlocks) {
+        if (block.type !== "thinking" || processedBlocks.current.has(block)) continue;
+        processedBlocks.current.add(block);
+        const key = `block:${view.sessionId}:${run.runId}:${block.id}`;
+        const wasStreaming = lifecycle.current.get(key);
+        if (wasStreaming && !block.streaming && !manualBlocks.current.has(`${view.sessionId}:${block.id}`))
+          blockUpdates[block.id] = false;
+        lifecycle.current.set(key, Boolean(block.streaming));
       }
-      return Object.keys(next).length === Object.keys(current).length &&
-        Object.keys(next).every((key) => next[key] === current[key])
-        ? current
-        : next;
-    });
-    setBlocks((current) => {
-      const next = { ...current };
-      for (const run of view.runs)
-        for (const block of run.orderedBlocks) {
-          if (block.type !== "thinking") continue;
-          const key = `block:${view.sessionId}:${run.runId}:${block.id}`;
-          const wasStreaming = lifecycle.current.get(key);
-          if (wasStreaming && !block.streaming && !manualBlocks.current.has(`${view.sessionId}:${block.id}`))
-            next[block.id] = false;
-          else if (next[block.id] === undefined) next[block.id] = false;
-          lifecycle.current.set(key, Boolean(block.streaming));
-        }
-      return Object.keys(next).length === Object.keys(current).length &&
-        Object.keys(next).every((key) => next[key] === current[key])
-        ? current
-        : next;
-    });
-  }, [view]);
+    }
+    if (Object.keys(runUpdates).length) setExpanded((current) => ({ ...current, ...runUpdates }));
+    if (Object.keys(blockUpdates).length) setBlocks((current) => ({ ...current, ...blockUpdates }));
+  }, [view.runs, view.sessionId]);
   const toggleBlock = useCallback(
     (blockId: string, value: boolean) => {
       manualBlocks.current.add(`${view.sessionId}:${blockId}`);
@@ -873,62 +896,106 @@ export function Conversation({
   );
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
+  const saveReadingRef = useRef(() => {});
+  const readingReady = useRef(true);
+  const scrollNavigation = useRef(0);
+  const findQuery = normalizeFindQuery(findRequest?.query ?? "");
+  const [findRun, setFindRun] = useState<{ sessionId: string; query: string; runId: string }>();
   const lastScrollTop = useRef(0);
   const latestRun = useRef<string | undefined>(undefined);
-  const navigateFind = useCallback((match: FindMatch, range?: Range) => {
-    const root = ref.current;
-    if (!root) return;
-    if (!range) {
-      const target = root.querySelector(`[data-find-key="${CSS.escape(match.key)}"]`);
-      const runId = target?.closest<HTMLElement>("[data-run-id]")?.dataset.runId;
-      if (runId) {
-        following.current = false;
-        setExpanded((current) => ({ ...current, [runId]: true }));
+  const navigateFind = useCallback(
+    (match: FindMatch, range?: Range) => {
+      const root = ref.current;
+      if (!root) return;
+      scrollNavigation.current++;
+      readingReady.current = true;
+      if (match.runId)
+        setFindRun((current) =>
+          current?.sessionId === sessionId && current.query === findQuery && current.runId === match.runId
+            ? current
+            : { sessionId, query: findQuery, runId: match.runId as string },
+        );
+      if (!range) {
+        const target = root.querySelector(`[data-find-key="${CSS.escape(match.key)}"]`);
+        const runId = match.runId ?? target?.closest<HTMLElement>("[data-run-id]")?.dataset.runId;
+        if (runId) {
+          following.current = false;
+          if (match.key !== `${runId}:user` && match.key !== `${runId}:answer`) {
+            setExpanded((current) => (current[runId] ? current : { ...current, [runId]: true }));
+            setBlocks((current) => (current[match.key] ? current : { ...current, [match.key]: true }));
+          }
+          const row = root.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(runId)}"]`);
+          if (row && !target)
+            root.scrollTop += row.getBoundingClientRect().top - root.getBoundingClientRect().top;
+        }
+        return;
       }
-      return;
-    }
-    following.current = false;
-    const node = range.startContainer;
-    const element = node instanceof Element ? node : node.parentElement;
-    const content = element?.closest(".user-message-content-inner");
-    const scroll = () => {
-      const bounds = range.getBoundingClientRect();
-      const viewport = root.getBoundingClientRect();
-      root.scrollTo({
-        top: root.scrollTop + bounds.top - viewport.top - root.clientHeight / 2 + bounds.height / 2,
-        // ZCode first brings the target turn into view, then refines the visible hit smoothly.
-        behavior: bounds.bottom < viewport.top || bounds.top > viewport.bottom ? "instant" : "smooth",
-      });
-    };
-    if (content) {
-      content.dispatchEvent(new Event("zpi-reveal-user-message"));
-      requestAnimationFrame(scroll);
-    } else scroll();
-  }, []);
+      following.current = false;
+      const node = range.startContainer;
+      const element = node instanceof Element ? node : node.parentElement;
+      const content = element?.closest(".user-message-content-inner");
+      const scroll = () => {
+        // Explicit navigation replaces the reading anchor, including an adjustment queued by pagination.
+        const anchoring = root.style.overflowAnchor;
+        root.style.overflowAnchor = "none";
+        const top = root.scrollTop;
+        const bounds = range.getBoundingClientRect();
+        const viewport = root.getBoundingClientRect();
+        root.scrollTo({
+          top: top + bounds.top - viewport.top - root.clientHeight / 2 + bounds.height / 2,
+          // ZCode first brings the target turn into view, then refines the visible hit smoothly.
+          behavior: bounds.bottom < viewport.top || bounds.top > viewport.bottom ? "instant" : "smooth",
+        });
+        root.style.overflowAnchor = anchoring;
+      };
+      if (content) {
+        content.dispatchEvent(new Event("zpi-reveal-user-message"));
+        requestAnimationFrame(scroll);
+      } else scroll();
+    },
+    [sessionId, findQuery],
+  );
+  const commandNames = useMemo(() => customCommandNames(suggestions ?? []), [suggestions]);
+  const agentNames = useMemo(() => subagentNames(suggestions ?? []), [suggestions]);
+  const findTargets = useConversationFindTargets({
+    runs: view.runs,
+    active: Boolean(findQuery),
+    sessionId: view.sessionId,
+    workspace,
+    commandNames,
+    agentNames,
+  });
+  const findTargetsByKey = useMemo(
+    () => new Map(findTargets.map((target) => [target.key, target])),
+    [findTargets],
+  );
+  const pinnedFindRuns = useMemo(() => {
+    const ids = new Set(
+      findTargets.filter((target) => target.rendered && target.runId).map((target) => target.runId as string),
+    );
+    if (findQuery && findRun?.sessionId === view.sessionId && findRun.query === findQuery)
+      ids.add(findRun.runId);
+    return ids;
+  }, [findTargets, findQuery, findRun, view.sessionId]);
   useTextFind({
     rootRef: ref,
     request: findRequest,
-    content: view,
+    content: view.runs,
     scopeKey: view.sessionId,
+    targets: findTargets,
     onStateChange: onFindStateChange,
     onNavigate: navigateFind,
+    navigateUnmounted: false,
   });
-  const findQuery = normalizeFindQuery(findRequest?.query ?? "");
-  const findLoadAttempt = useRef("");
-  useEffect(() => {
-    if (
-      !findQuery ||
-      !hasEarlier ||
-      loadingEarlier ||
-      !onLoadEarlier ||
-      view.runs.reduce((count, run) => count + 1 + run.orderedBlocks.length, 0) >= 1200
-    )
-      return;
-    const attempt = `${view.sessionId}:${findQuery}:${historyCursor}`;
-    if (attempt === findLoadAttempt.current) return;
-    findLoadAttempt.current = attempt;
-    void onLoadEarlier().catch((error) => setHistoryError(userErrorMessage(error)));
-  }, [findQuery, hasEarlier, loadingEarlier, onLoadEarlier, historyCursor, view]);
+  const windowed = view.runs.length > historyWindowThreshold;
+  const reading = useMemo(() => {
+    try {
+      return persistReading ? readReadingBookmark(localStorage.getItem(`zpi.reading.${sessionId}`)) : null;
+    } catch {
+      return null;
+    }
+  }, [sessionId, persistReading]);
+  const restoreReadingRef = useRef(() => {});
   const scrollToBottom = () => {
     const el = ref.current;
     if (!el) return;
@@ -941,11 +1008,14 @@ export function Conversation({
       const detail = (event as CustomEvent<{ sessionId: string; runId: string }>).detail;
       const root = ref.current;
       if (!root || detail.sessionId !== view.sessionId) return;
-      const target = root.querySelector<HTMLElement>(`[data-run-id="${CSS.escape(detail.runId)}"]`);
+      const target = root.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(detail.runId)}"]`);
       if (!target) return;
+      scrollNavigation.current++;
+      readingReady.current = true;
       following.current = false;
       root.scrollTop += target.getBoundingClientRect().top - root.getBoundingClientRect().top;
       setShowLatest(root.scrollHeight - root.scrollTop - root.clientHeight >= 60);
+      saveReadingRef.current();
     };
     window.addEventListener("zpi:scroll-to-run", navigate);
     return () => window.removeEventListener("zpi:scroll-to-run", navigate);
@@ -957,6 +1027,7 @@ export function Conversation({
     const root = ref.current;
     if (!root) return;
     const wheel = (event: WheelEvent) => {
+      readingReady.current = true;
       // At the top of the conversation an upward gesture has nothing to reveal.
       if (event.deltaY >= 0 || root.scrollTop <= 0) return;
       for (
@@ -976,9 +1047,16 @@ export function Conversation({
     return () => root.removeEventListener("wheel", wheel);
   }, [view.sessionId]);
 
-  const prepend = useRef<{ height: number; top: number; cursor: number | null | undefined } | null>(null);
+  const prepend = useRef<{
+    cursor: number | null | undefined;
+    height: number;
+    top: number;
+    navigation: number;
+    anchor?: { id: string; top: number };
+  } | null>(null);
   const historyTrigger = useRef<HTMLButtonElement>(null);
   const historyRequest = useRef<object | null>(null);
+  const [historyPending, setHistoryPending] = useState(false);
   const autoLoadAttempt = useRef("");
   const [historyError, setHistoryError] = useState("");
   const loadHistory = useCallback(() => {
@@ -986,8 +1064,22 @@ export function Conversation({
     if (!el || !hasEarlier || loadingEarlier || !onLoadEarlier || historyRequest.current) return;
     const request = {};
     historyRequest.current = request;
+    setHistoryPending(true);
     following.current = false;
-    prepend.current = { height: el.scrollHeight, top: el.scrollTop, cursor: historyCursor };
+    prepend.current = {
+      cursor: historyCursor,
+      height: el.scrollHeight,
+      top: el.scrollTop,
+      navigation: scrollNavigation.current,
+    };
+    const viewportTop = el.getBoundingClientRect().top;
+    for (const node of el.querySelectorAll<HTMLElement>("[data-history-run]")) {
+      const top = node.getBoundingClientRect().top;
+      if (top >= viewportTop) {
+        prepend.current.anchor = { id: node.dataset.historyRun ?? "", top };
+        break;
+      }
+    }
     setHistoryError("");
     void onLoadEarlier()
       .catch((error) => {
@@ -996,10 +1088,45 @@ export function Conversation({
         setHistoryError(userErrorMessage(error));
       })
       .finally(() => {
-        if (historyRequest.current === request) historyRequest.current = null;
+        if (historyRequest.current === request) {
+          historyRequest.current = null;
+          setHistoryPending(false);
+        }
       });
   }, [hasEarlier, loadingEarlier, onLoadEarlier, historyCursor]);
-  const readingWrite = useRef<{ key: string; value: string } | null>(null);
+  const findLoadAttempt = useRef("");
+  useEffect(() => {
+    if (
+      !findQuery ||
+      historyPending ||
+      !hasEarlier ||
+      loadingEarlier ||
+      !onLoadEarlier ||
+      view.runs.reduce((count, run) => count + 1 + run.orderedBlocks.length, 0) >= 1200
+    )
+      return;
+    const attempt = `${sessionId}:${findQuery}:${historyCursor}`;
+    if (findLoadAttempt.current === attempt) return;
+    findLoadAttempt.current = attempt;
+    loadHistory();
+  }, [
+    findQuery,
+    hasEarlier,
+    loadingEarlier,
+    onLoadEarlier,
+    historyCursor,
+    view.runs,
+    sessionId,
+    loadHistory,
+    historyPending,
+  ]);
+  const readingWrite = useRef<{
+    key: string;
+    sessionId: string;
+    root: HTMLDivElement;
+    bookmark: ReadingBookmark;
+    windowed: boolean;
+  } | null>(null);
   const readingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flushReading = useCallback(() => {
     clearTimeout(readingTimer.current);
@@ -1008,7 +1135,15 @@ export function Conversation({
     readingWrite.current = null;
     if (pending) {
       try {
-        localStorage.setItem(pending.key, pending.value);
+        if (
+          !pending.bookmark.following &&
+          pending.windowed &&
+          pending.root.dataset.readingSession === pending.sessionId
+        ) {
+          const anchor = readingAnchor(pending.root);
+          if (anchor) Object.assign(pending.bookmark, anchor);
+        }
+        localStorage.setItem(pending.key, JSON.stringify(pending.bookmark));
       } catch {
         // A bookmark is optional when browser storage is unavailable.
       }
@@ -1019,51 +1154,82 @@ export function Conversation({
     return () => window.removeEventListener("pagehide", flushReading);
   }, [flushReading]);
   const saveReading = () => {
-    if (!persistReading) return;
+    if (!persistReading || !readingReady.current) return;
     const el = ref.current;
     if (!el) return;
-    readingWrite.current = {
-      key: `zpi.reading.${view.sessionId}`,
-      value: JSON.stringify({ top: el.scrollTop, following: following.current, cursor: historyCursor ?? 0 }),
+    const bookmark: ReadingBookmark = {
+      top: el.scrollTop,
+      following: following.current,
+      cursor: historyCursor ?? 0,
     };
+    readingWrite.current = { key: `zpi.reading.${sessionId}`, sessionId, root: el, bookmark, windowed };
     readingTimer.current ??= setTimeout(flushReading, 250);
   };
-  useLayoutEffect(() => {
-    let saved: { top: number; following: boolean } | undefined;
-    try {
-      if (persistReading)
-        saved = JSON.parse(localStorage.getItem(`zpi.reading.${view.sessionId}`) ?? "null") ?? undefined;
-    } catch {
-      /* Invalid optional bookmark starts at latest. */
+  saveReadingRef.current = saveReading;
+  restoreReadingRef.current = () => {
+    const el = ref.current;
+    if (!el || readingReady.current) return;
+    if (reading?.runId && reading.offset !== undefined) {
+      const anchor = el.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(reading.runId)}"]`);
+      if (!anchor) return;
+      el.scrollTop += anchor.getBoundingClientRect().top - el.getBoundingClientRect().top + reading.offset;
+      readingReady.current = true;
+    } else if (reading && reading.top <= el.scrollHeight - el.clientHeight + 1) {
+      el.scrollTop = reading.top;
+      readingReady.current = true;
     }
+    lastScrollTop.current = el.scrollTop;
+  };
+  useLayoutEffect(() => {
     prepend.current = null;
     historyRequest.current = null;
+    setHistoryPending(false);
     autoLoadAttempt.current = "";
+    findLoadAttempt.current = "";
     setHistoryError("");
-    following.current = saved?.following ?? true;
+    following.current = reading?.following ?? true;
+    readingReady.current = following.current || !reading;
     latestRun.current = view.runs.at(-1)?.runId;
-    if (ref.current) ref.current.scrollTop = following.current ? ref.current.scrollHeight : (saved?.top ?? 0);
+    if (ref.current)
+      ref.current.scrollTop = following.current ? ref.current.scrollHeight : (reading?.top ?? 0);
+    restoreReadingRef.current();
     const el = ref.current;
     lastScrollTop.current = el?.scrollTop ?? 0;
     setShowLatest(Boolean(el && el.scrollHeight - el.clientHeight - el.scrollTop >= 60));
     return flushReading;
-  }, [view.sessionId, flushReading, persistReading]);
+  }, [sessionId, flushReading, reading]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const tail = view.runs.at(-1)?.runId;
+    restoreReadingRef.current();
     if (tail !== latestRun.current) {
       latestRun.current = tail;
-      if (!findQuery) following.current = true;
+      if (!findQuery) {
+        following.current = true;
+        readingReady.current = true;
+      }
     }
     if (prepend.current && prepend.current.cursor !== historyCursor) {
-      el.scrollTop = prepend.current.top + el.scrollHeight - prepend.current.height;
+      // The page can fill a partial first turn as well as prepend rows. Apply the explicit
+      // page anchor with native anchoring suspended for this layout, then resume it for images/diagrams.
+      const anchor = prepend.current.anchor;
+      const node = anchor
+        ? el.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(anchor.id)}"]`)
+        : null;
+      const anchoring = el.style.overflowAnchor;
+      el.style.overflowAnchor = "none";
+      if (prepend.current.navigation === scrollNavigation.current) {
+        if (node && anchor) el.scrollTop += node.getBoundingClientRect().top - anchor.top;
+        else el.scrollTop = prepend.current.top + el.scrollHeight - prepend.current.height;
+      }
+      el.style.overflowAnchor = anchoring;
       lastScrollTop.current = el.scrollTop;
       prepend.current = null;
     } else if (following.current) scrollToBottom();
     setShowLatest(el.scrollHeight - el.scrollTop - el.clientHeight >= 60);
     saveReading();
-  }, [view, historyCursor]);
+  }, [view.runs, historyCursor]);
   useEffect(() => {
     const root = ref.current;
     const trigger = historyTrigger.current;
@@ -1105,6 +1271,7 @@ export function Conversation({
     shareColumn();
     const observer = new ResizeObserver(() => {
       shareColumn();
+      restoreReadingRef.current();
       const el = ref.current;
       if (!el) return;
       if (following.current) scrollToBottom();
@@ -1118,6 +1285,77 @@ export function Conversation({
         if (owner?.style.getPropertyValue(property) === value) owner.style.removeProperty(property);
     };
   }, [view.sessionId]);
+  const latestRunId = view.runs.at(-1)?.runId;
+  const renderRun = useCallback(
+    (run: RunView) => (
+      <Fragment>
+        <RunGroup
+          suggestions={suggestions}
+          workspace={workspace}
+          run={run}
+          previewServices={previewServices}
+          previewAutoOpen={previewAutoOpen}
+          sessionId={sessionId}
+          context={context}
+          readWebSourceIcon={readWebSourceIcon}
+          onEdit={run.runId === latestRunId ? onEdit : undefined}
+          onFork={onFork}
+          onChanges={onChanges}
+          onLoadToolPatch={onLoadToolPatch}
+          onFileAction={onFileAction}
+          onCopy={onCopy}
+          onFile={onFile}
+          onLink={onLink}
+          expanded={Boolean(expanded[run.runId])}
+          finding={Boolean(findQuery)}
+          findTargets={findTargetsByKey}
+          onToggle={toggle}
+          blocks={blocks}
+          onBlockToggle={toggleBlock}
+        />
+        {forkOrigin?.runId === run.runId && (
+          <button
+            type="button"
+            className="fork-notice"
+            onClick={() => forkOrigin && onNavigateOrigin?.(forkOrigin)}
+          >
+            <span />
+            <strong>
+              <GitBranch size={14} />
+              <span>从对话中派生</span>
+            </strong>
+            <span />
+          </button>
+        )}
+      </Fragment>
+    ),
+    [
+      suggestions,
+      workspace,
+      previewServices,
+      previewAutoOpen,
+      sessionId,
+      context,
+      readWebSourceIcon,
+      latestRunId,
+      onEdit,
+      onFork,
+      onChanges,
+      onLoadToolPatch,
+      onFileAction,
+      onCopy,
+      onFile,
+      onLink,
+      expanded,
+      findQuery,
+      findTargetsByKey,
+      toggle,
+      blocks,
+      toggleBlock,
+      forkOrigin,
+      onNavigateOrigin,
+    ],
+  );
   return (
     <SubagentContext.Provider value={subagentContext}>
       <div className="conversation-wrap">
@@ -1125,6 +1363,11 @@ export function Conversation({
         <div
           ref={ref}
           className="conversation"
+          data-windowed={windowed}
+          data-reading-session={sessionId}
+          onPointerDownCapture={() => {
+            readingReady.current = true;
+          }}
           onScroll={() => {
             const el = ref.current;
             if (el) {
@@ -1154,48 +1397,15 @@ export function Conversation({
             )}
             {historyError && <Notice scope="turn" message={historyError} />}
             {view.runs.length ? (
-              view.runs.map((run) => (
-                <Fragment key={run.runId}>
-                  <RunGroup
-                    suggestions={suggestions}
-                    workspace={workspace}
-                    key={run.runId}
-                    run={run}
-                    previewServices={previewServices}
-                    previewAutoOpen={previewAutoOpen}
-                    sessionId={view.sessionId}
-                    context={context}
-                    readWebSourceIcon={readWebSourceIcon}
-                    onEdit={run.runId === view.runs.at(-1)?.runId ? onEdit : undefined}
-                    onFork={onFork}
-                    onChanges={onChanges}
-                    onLoadToolPatch={onLoadToolPatch}
-                    onFileAction={onFileAction}
-                    onCopy={onCopy}
-                    onFile={onFile}
-                    onLink={onLink}
-                    expanded={Boolean(expanded[run.runId])}
-                    finding={Boolean(findQuery)}
-                    onToggle={toggle}
-                    blocks={blocks}
-                    onBlockToggle={toggleBlock}
-                  />
-                  {view.forkOrigin?.runId === run.runId && (
-                    <button
-                      type="button"
-                      className="fork-notice"
-                      onClick={() => view.forkOrigin && onNavigateOrigin?.(view.forkOrigin)}
-                    >
-                      <span />
-                      <strong>
-                        <GitBranch size={14} />
-                        <span>从对话中派生</span>
-                      </strong>
-                      <span />
-                    </button>
-                  )}
-                </Fragment>
-              ))
+              <ConversationHistory
+                key={view.sessionId}
+                runs={view.runs}
+                root={ref}
+                windowed={windowed}
+                initialRunId={reading?.runId}
+                pinnedRunIds={pinnedFindRuns}
+                renderRun={renderRun}
+              />
             ) : (
               <div className="empty-chat">
                 <DraftGreeting />
@@ -1217,6 +1427,7 @@ export function Conversation({
             type="button"
             aria-label="回到最新"
             onClick={() => {
+              readingReady.current = true;
               following.current = true;
               scrollToBottom();
               setShowLatest(false);

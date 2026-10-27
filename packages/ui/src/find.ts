@@ -1,3 +1,5 @@
+export const findTextBlockTags = ["p", "li", "pre", "h1", "h2", "h3", "h4", "h5", "h6", "tr"] as const;
+
 export interface FindRequest {
   query: string;
   activeIndex: number;
@@ -14,6 +16,9 @@ export interface FindTarget {
   key: string;
   text: string;
   path?: string;
+  runId?: string;
+  /** Some content (streaming or custom diagrams) needs its mounted text instead of a static projection. */
+  rendered?: boolean;
 }
 export interface FindMatch extends FindTarget {
   start: number;
@@ -22,40 +27,83 @@ export interface FindMatch extends FindTarget {
 export function normalizeFindQuery(query: string): string {
   return query.trim().toLocaleLowerCase();
 }
-export function buildFindMatches(targets: readonly FindTarget[], query: string): FindMatch[] {
-  const needle = normalizeFindQuery(query);
-  if (!needle) return [];
+function matchFindTarget(target: FindTarget, needle: string, folded: string) {
   const matches: FindMatch[] = [];
-  for (const target of targets) {
-    // Lowercasing can change UTF-16 length (for example İ). Keep DOM offsets in the source text.
-    const folded = target.text.toLocaleLowerCase();
-    if (!folded.includes(needle)) continue;
-    const starts: number[] = [],
-      ends: number[] = [];
-    if (folded.length !== target.text.length) {
-      let offset = 0;
-      for (const character of target.text) {
-        const lower = character.toLocaleLowerCase();
-        for (let i = 0; i < lower.length; i++) {
-          starts.push(offset);
-          ends.push(offset + character.length);
-        }
-        offset += character.length;
+  if (!folded.includes(needle)) return matches;
+  const starts: number[] = [],
+    ends: number[] = [];
+  // Lowercasing can change UTF-16 length (for example İ). Keep DOM offsets in the source text.
+  // These offsets are temporary: only the folded text and current matches remain cached.
+  if (folded.length !== target.text.length) {
+    let offset = 0;
+    for (const character of target.text) {
+      const lower = character.toLocaleLowerCase();
+      for (let i = 0; i < lower.length; i++) {
+        starts.push(offset);
+        ends.push(offset + character.length);
       }
-    }
-    let from = 0;
-    while (from < folded.length) {
-      const start = folded.indexOf(needle, from);
-      if (start < 0) break;
-      matches.push({
-        ...target,
-        start: starts[start] ?? start,
-        end: ends[start + needle.length - 1] ?? start + needle.length,
-      });
-      from = start + needle.length;
+      offset += character.length;
     }
   }
+  let from = 0;
+  while (from < folded.length) {
+    const start = folded.indexOf(needle, from);
+    if (start < 0) break;
+    matches.push({
+      ...target,
+      start: starts[start] ?? start,
+      end: ends[start + needle.length - 1] ?? start + needle.length,
+    });
+    from = start + needle.length;
+  }
   return matches;
+}
+export function buildFindMatches(targets: readonly FindTarget[], query: string): FindMatch[] {
+  const needle = normalizeFindQuery(query);
+  return needle
+    ? targets.flatMap((target) => matchFindTarget(target, needle, target.text.toLocaleLowerCase()))
+    : [];
+}
+
+/** One current query per loaded target; stable history is not rescanned on streaming updates. */
+export class FindIndex {
+  private entries = new Map<
+    string,
+    { target: FindTarget; folded: string; query: string; matches: FindMatch[] }
+  >();
+
+  clear() {
+    this.entries.clear();
+  }
+
+  search(targets: readonly FindTarget[], query: string): FindMatch[] {
+    const needle = normalizeFindQuery(query);
+    if (!needle) {
+      this.clear();
+      return [];
+    }
+    const next: typeof this.entries = new Map();
+    const matches: FindMatch[] = [];
+    for (const target of targets) {
+      let entry = this.entries.get(target.key);
+      if (
+        !entry ||
+        entry.target.text !== target.text ||
+        entry.target.path !== target.path ||
+        entry.target.runId !== target.runId ||
+        entry.target.rendered !== target.rendered
+      )
+        entry = { target, folded: target.text.toLocaleLowerCase(), query: "", matches: [] };
+      if (entry.query !== needle) {
+        entry.matches = matchFindTarget(target, needle, entry.folded);
+        entry.query = needle;
+      }
+      next.set(target.key, entry);
+      for (const match of entry.matches) matches.push(match);
+    }
+    this.entries = next;
+    return matches;
+  }
 }
 export function findMatchKey(match: FindMatch): string {
   return `${match.key}:${match.start}:${match.end}`;

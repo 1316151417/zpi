@@ -1,6 +1,7 @@
 import { LucideProvider } from "lucide-react";
 import { createRoot } from "react-dom/client";
 import { AppBoundary } from "./AppBoundary.tsx";
+import { startRendererPerformanceDiagnostics } from "./performance-diagnostics.ts";
 import "zpi-ui/styles.css";
 
 const root = document.getElementById("root");
@@ -24,7 +25,15 @@ async function startRenderer(root: HTMLElement) {
     logRendererError("unhandled-rejection", event.reason),
   );
   const stopAppearance = startAppearance();
-  window.addEventListener("beforeunload", stopAppearance, { once: true });
+  const stopPerformance = startRendererPerformanceDiagnostics();
+  window.addEventListener(
+    "beforeunload",
+    () => {
+      stopAppearance();
+      stopPerformance();
+    },
+    { once: true },
+  );
   // ZCode Root supplies this default to navigation, settings and portal menus.
   createRoot(root).render(
     <AppBoundary>

@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { buildFindMatches, findKeyDirection, findSearchTargetIndex, moveFindIndex } from "../src/find.ts";
+import { describe, expect, it, vi } from "vitest";
+import {
+  buildFindMatches,
+  FindIndex,
+  findKeyDirection,
+  findSearchTargetIndex,
+  moveFindIndex,
+} from "../src/find.ts";
 import { patchFindTargets } from "../src/patch-find.ts";
 
 describe("task find", () => {
@@ -48,6 +54,59 @@ describe("task find", () => {
     expect(buildFindMatches(targets, "header")).toHaveLength(0);
   });
 });
+
+it("reuses stable target matches and case folds across navigation, streaming and query changes", () => {
+  const targets = Array.from({ length: 200 }, (_, i) => ({ key: `run-${i}`, text: `Needle history ${i}` }));
+  const index = new FindIndex();
+  const initial = index.search(targets, "needle");
+  const fold = vi.spyOn(String.prototype, "toLocaleLowerCase");
+  try {
+    const again = index.search(
+      targets.map((target) => ({ ...target })),
+      "needle",
+    );
+    expect(again).toEqual(initial);
+    expect(again[0]).toBe(initial[0]);
+    expect(fold.mock.contexts.filter((value) => String(value).includes("history"))).toHaveLength(0);
+    const streamed = index.search(
+      [...targets.slice(0, -1), { ...targets[199], text: "Needle new tail" }],
+      "needle",
+    );
+    expect(streamed[0]).toBe(initial[0]);
+    expect(streamed[199]).not.toBe(initial[199]);
+    expect(streamed[199].text).toBe("Needle new tail");
+    index.search(targets.slice(0, -1), "history");
+    expect(fold.mock.contexts.filter((value) => String(value).startsWith("Needle history"))).toHaveLength(0);
+  } finally {
+    fold.mockRestore();
+  }
+});
+
+it("drops removed targets, releases closed searches and invalidates changed paths", () => {
+  const index = new FindIndex();
+  const target = { key: "a", text: "needle", path: "before.ts" };
+  const initial = index.search([target], "needle")[0];
+  const changed = index.search([{ ...target, path: "after.ts" }], "needle")[0];
+  expect(changed.path).toBe("after.ts");
+  expect(changed).not.toBe(initial);
+  index.search([], "needle");
+  const returned = index.search([target], "needle")[0];
+  expect(returned).not.toBe(initial);
+  expect(index.search([target], " ")).toEqual([]);
+  expect(index.search([target], "needle")[0]).not.toBe(returned);
+  index.clear();
+  expect(index.search([target], "needle")[0]).not.toBe(returned);
+});
+
+it.each(["😀", "İ", "项目", "ος", "aa", "不存在"])(
+  "cached search preserves literal offsets for %s",
+  (query) => {
+    const targets = [{ key: "a", text: "😀İ 项目 ΟΣ aaaa" }];
+    const index = new FindIndex();
+    expect(index.search(targets, query)).toEqual(buildFindMatches(targets, query));
+    expect(index.search(targets, query)).toEqual(buildFindMatches(targets, query));
+  },
+);
 
 it("locates the chosen snippet among repeated hits in a single turn after history loads", () => {
   const text = "first needle apple and second needle orange and third needle pear";

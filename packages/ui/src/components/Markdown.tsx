@@ -1,82 +1,24 @@
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { createMathPlugin } from "@streamdown/math";
 import type { ComponentProps, ReactNode } from "react";
 import { Children, Component, isValidElement, memo, useMemo } from "react";
-import rehypeSanitize from "rehype-sanitize";
 import type { ExtraProps, StreamdownProps } from "streamdown";
-import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
-import { fileCitationRemarkPlugin, projectFileCitations } from "../file-citation.ts";
+import { Streamdown, useIsCodeFenceIncomplete } from "streamdown";
 import { resolveMarkdownLinkTarget, type WebOpenOptions } from "../link-target.ts";
-import { type MarkdownFence, markdownFence } from "../markdown-fence.ts";
-import { markdownLinkRemarkPlugin } from "../markdown-link-nodes.ts";
 import { MarkdownContext, type MarkdownServices, useMarkdown } from "./MarkdownActions.tsx";
 import { MarkdownCode } from "./MarkdownCode.tsx";
 import { MarkdownImage } from "./MarkdownImage.tsx";
 import { MarkdownLink } from "./MarkdownLink.tsx";
 import { MarkdownTable } from "./MarkdownTable.tsx";
 import { MermaidBlock } from "./MermaidBlock.tsx";
-import { normalizeMath } from "./markdown-math.ts";
+import {
+  markdownCodeLanguage,
+  markdownPlugins,
+  markdownRehypePlugins,
+  markdownRemarkPlugins,
+  markdownSource,
+} from "./markdown-configuration.ts";
 import { shouldRenderMermaidCodeBlock } from "./mermaid-language.ts";
 import { Reference } from "./Reference.tsx";
 
-type Plugin = NonNullable<StreamdownProps["remarkPlugins"]>[number];
-const noSingleTilde = (plugin: Plugin): Plugin => {
-  const [attach, options] = Array.isArray(plugin) ? plugin : [plugin, {}];
-  if (typeof attach !== "function") return plugin;
-  return [attach, { ...(typeof options === "object" ? options : {}), singleTilde: false }];
-};
-const after = cjk.remarkPluginsAfter.map(noSingleTilde);
-const plugins = {
-  code,
-  math: createMathPlugin({ singleDollarTextMath: true }),
-  cjk: { ...cjk, remarkPlugins: [...cjk.remarkPluginsBefore, ...after], remarkPluginsAfter: after },
-};
-const remarkPlugins = Object.entries(defaultRemarkPlugins).map(([name, plugin]) =>
-  name === "gfm" ? noSingleTilde(plugin) : plugin,
-);
-type Schema = NonNullable<Parameters<typeof rehypeSanitize>[0]>;
-const sanitizeSchema = (defaultRehypePlugins.sanitize as [unknown, Schema])[1];
-interface MarkdownNode {
-  type: string;
-  tagName?: string;
-  properties?: Record<string, unknown>;
-  children?: MarkdownNode[];
-}
-function preserveTargets() {
-  return (tree: MarkdownNode) => {
-    const visit = (node: MarkdownNode) => {
-      if (node.properties) {
-        const key = node.tagName === "a" ? "href" : node.tagName === "img" ? "src" : undefined;
-        const target = node.properties.dataZpiTarget ?? (key ? node.properties[key] : undefined);
-        if (key && typeof target === "string") {
-          node.properties.dataZpiTarget = target;
-          // Keep the original destination before sanitizer/harden normalize local paths.
-          if (!/^https?:/i.test(target) && !(key === "src" && /^data:image\//i.test(target)))
-            node.properties[key] = "/zpi-local-target";
-        }
-      }
-      node.children?.forEach(visit);
-    };
-    visit(tree);
-  };
-}
-const rehypePlugins: StreamdownProps["rehypePlugins"] = [
-  defaultRehypePlugins.raw,
-  preserveTargets,
-  [
-    rehypeSanitize,
-    {
-      ...sanitizeSchema,
-      attributes: {
-        ...sanitizeSchema.attributes,
-        a: [...(sanitizeSchema.attributes?.a ?? []), "dataZpiTarget"],
-        img: [...(sanitizeSchema.attributes?.img ?? []), "dataZpiTarget"],
-      },
-    },
-  ],
-  defaultRehypePlugins.harden,
-];
 function rawText(value: unknown): string {
   if (typeof value === "string" || typeof value === "number") return String(value);
   if (Array.isArray(value)) return value.map(rawText).join("");
@@ -85,7 +27,7 @@ function rawText(value: unknown): string {
 }
 function RenderCode(props: ComponentProps<"code"> & ExtraProps) {
   const incomplete = useIsCodeFenceIncomplete();
-  const language = /language-([^\s]+)/.exec(props.className ?? "")?.[1]?.toLowerCase() ?? "text";
+  const language = markdownCodeLanguage(props.className);
   if (!("data-block" in props)) {
     const { node: _node, className: _className, ...codeProps } = props;
     return <code {...codeProps} className="markdown-inline-code" />;
@@ -153,25 +95,6 @@ const components: NonNullable<StreamdownProps["components"]> = {
   img: MarkdownImage,
 };
 
-// Keep consecutive image-only paragraphs together, without touching code examples.
-function groupImages(text: string): string {
-  const lines = text.split("\n");
-  const grouped: string[] = [];
-  let fence: MarkdownFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const marker = markdownFence(line, fence);
-    if (marker) fence = fence ? null : marker;
-    grouped.push(line);
-    if (!fence && /^\s*!\[[^\]]*]\([^\n]+\)\s*$/.test(line)) {
-      let next = i + 1;
-      while (next < lines.length && !lines[next].trim()) next++;
-      if (/^\s*!\[[^\]]*]\([^\n]+\)\s*$/.test(lines[next] ?? "")) i = next - 1;
-    }
-  }
-  return grouped.join("\n");
-}
-
 class MarkdownBoundary extends Component<{ text: string; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
@@ -182,7 +105,9 @@ class MarkdownBoundary extends Component<{ text: string; children: ReactNode }, 
   }
   render() {
     return this.state.failed ? (
-      <div className="markdown-fallback">{this.props.text}</div>
+      <div className="markdown-fallback" data-find-rendered>
+        {this.props.text}
+      </div>
     ) : (
       this.props.children
     );
@@ -203,14 +128,8 @@ export const Markdown = memo(function Markdown({
   text: string;
   onLink: (url: string, options?: WebOpenOptions) => void;
 }) {
-  const markdown = useMemo(
-    () => normalizeMath(groupImages(projectFileCitations(text, streaming))),
-    [text, streaming],
-  );
-  const remarks = useMemo(
-    () => [...remarkPlugins, fileCitationRemarkPlugin(workspace ?? {}), markdownLinkRemarkPlugin],
-    [workspace],
-  );
+  const markdown = useMemo(() => markdownSource(text, streaming), [text, streaming]);
+  const remarks = useMemo(() => markdownRemarkPlugins(workspace), [workspace]);
   return (
     <MarkdownContext.Provider
       value={{ streaming, workspace, onLink, onFile, onFileAction, onCopy, onImage, onDownloadImage }}
@@ -222,8 +141,8 @@ export const Markdown = memo(function Markdown({
           parseIncompleteMarkdown={streaming}
           skipHtml
           components={components}
-          plugins={plugins}
-          rehypePlugins={rehypePlugins}
+          plugins={markdownPlugins}
+          rehypePlugins={markdownRehypePlugins}
           remarkPlugins={remarks}
           shikiTheme={["github-light", "github-dark"]}
           animated={false}

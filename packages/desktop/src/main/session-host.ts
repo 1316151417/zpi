@@ -103,6 +103,7 @@ import {
 } from "./plugins/subagents/protocol.ts";
 import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
 import { projectEvent, restoreView } from "./projection.ts";
+import { sessionActivityAt } from "./session-activity.ts";
 import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import type { StorageIntent, TaskState } from "./state-store.ts";
@@ -2459,21 +2460,7 @@ export class SessionHost {
     const seq = (this.sequences.get(id) ?? view?.seq ?? 0) + 1;
     this.sequences.set(id, seq);
     const record = this.record(id);
-    const activity = ![
-      "session_changed",
-      "controls_changed",
-      "model_performance",
-      "queue_changed",
-      "history_reset",
-      "question_changed",
-    ].includes(event.type);
-    const activityAt = activity
-      ? event.type === "started"
-        ? event.startedAt
-        : event.type === "settled"
-          ? event.endedAt
-          : Date.now()
-      : undefined;
+    const activityAt = sessionActivityAt(event, record.updatedAt, Date.now());
     if (activityAt !== undefined) {
       record.updatedAt = activityAt;
       record.activitySeq = seq;

@@ -185,6 +185,44 @@ SDK 本地 Bash 在输出文件背压时暂停 stdout/stderr，排空后恢复�
 
 输入框的临时错误提示在正常对话和快速对话中统一为发送按钮旁的单个感叹号：浮窗自动展示 3 秒，图标在 8 秒后收起；悬停或键盘聚焦时保留，发送消息时清除。需要重新加载的连接错误保留操作入口，回合错误与配置提示继续保留。快速对话在图标存在期间保留浮窗空间，悬停显隐不再反复调整原生窗口高度；输入框按测量高度贴底，图标消失时即使原生窗口延迟收缩，也不会暂时拉高输入框。
 
+## 本地性能诊断
+
+主窗口默认将慢操作的数字摘要写入数据目录的 `agent/logs/error.log`，沿用现有轮转与脱敏规则，不上传数据。`renderer.performance` 汇总可见窗口内超过 200ms 的长任务和超过 50ms 的事件批处理；`main.performance` 汇总主进程定时器超过 250ms 的延迟。每 10 秒只写出现慢操作的类别，保留次数、最大/累计耗时，以及慢事件批次的事件数，不保留正文、工具参数、路径或逐事件历史。系统 suspend/resume 会重置主进程采样时钟；隐藏窗口的 renderer 样本不参与汇总。
+
+`renderer.unresponsive` / `renderer.responsive` 记录 Electron 检测到的无响应及恢复时长，并带 `webContentsId`。长任务记录在任务结束后才能产生，定时器延迟也不等同于具体函数的执行时间；这些摘要用于区分界面工作、事件处理与主进程延迟，不能替代卡顿现场的 CPU profile。长任务 API 不可用时仍保留事件批次和主进程诊断。
+
+正文、思考和工具输出增量继续完整送达；仅任务列表的流式活动时间最多每 5 秒更新一次，开始、结束、工具完成等边界仍立即发布。这样正文更新不会逐 token 使侧栏任务记录与缓存失效。
+
+正文、思考和工具参数的 `block_delta` 在 Main 侧按 30ms 窗口批量发送，每批保留原始事件与序号；开始、结束、问题、工具结果等其他事件先排空增量再立即发送。待发送队列与 Renderer 普通帧队列使用 256 条事件、128K UTF-16 字符（约 256 KiB 增量文本）的预算，达到预算提前排空；单条超大事件单独处理，不截断内容。这是应用待处理队列的预算，不是 Chromium 内部在途 IPC 或快照等待队列的总内存上限。
+
+Renderer 在已知快照水位后，才把相同 session/run/message/block 的连续新追加合并为一次 reducer 更新。活动时间、结构事件、不同块、序号间隙与重复投递都形成合并边界。等待快照时保留原始序号，防止一段合并文本跨过快照水位后重复追加已包含的前缀。会话核心和 Main 权威投影继续逐条推进；`onEvents` 供 store 批量接收，`onEvent` 保留逐条回调，供变更与审查面板监听工具完成等状态边界。
+
+定向回归：`npm run test:unit -- packages/desktop/test/session-activity.test.ts packages/desktop/test/renderer-store.test.ts packages/desktop/test/performance-diagnostics.test.ts`。
+
+真实 Chromium 诊断链路：`npm run test:desktop -- tests/desktop/performance-diagnostics.spec.ts`。该用例只在隔离的隐藏窗口内注入 300ms 页面任务，验证长任务摘要落盘、无响应事件记录和恢复输入；它不是原始卡顿的复现或优化前后性能基准。
+
+批量事件回归：`npm run test:unit -- packages/desktop/test/event-batches.test.ts packages/desktop/test/event-batch-preload.test.ts packages/desktop/test/renderer-store.test.ts`；真实 IPC、运行中快照与刷新恢复使用 `npm run test:desktop -- tests/desktop/event-batches.spec.ts`。
+
+已加载历史超过 40 轮时，`ConversationHistory` 只挂载视口上下 1200px 内的内容、最近四轮及运行中的轮次；其他轮次保留带实测高度的轻量容器，供分页和跨轮导航定位。选区、焦点或消息编辑仍占用的轮次保留内容，释放后再裁剪。初次未测量的高度为估计值；可见正文保留 Chromium 原生滚动锚定，占位容器不参与锚定，使同一长回复中阅读位置上方的图片变高时保持文本位置，下方图片变高不额外滚动。分页按具体轮次的坐标补偿，显式搜索跳转使过期的分页锚点失效；手动定位期间暂时关闭原生锚定，避免重复补偿。卸载轮次前记录 details 展开态和内部滚动位置，重挂载时恢复。历史生命周期检查跳过未变化的轮次与思考块。
+
+阅读书签校验字段类型，保存轮次 ID 与轮内偏移，并兼容旧的像素书签。恢复加载到锚点所在页即停止，不因旧书签的 `cursor: 0` 拉完全部历史；首次挂载保留锚点相邻轮次。位置被短内容钳制或锚点尚未到达时保留旧书签，内容增高后重试。几何读取、序列化及存储写入统一按 250ms 节流，退出或隐藏页面时排空；锚点从轮次几何取得，不受搜索浮层覆盖影响。
+
+这减少已加载历史的 Markdown、工具与其他富内容 DOM，不减少会话投影或轻量容器的数量。搜索期间继续按需挂载，额外保留当前命中的轮次，跳转先定位轻量容器，再用实际正文范围精确定位。实现参考 ZCode 的高度缓存、稳定尾部与滚动锚点原则，沿用 ZPI 的分页和组件，不引入列表依赖。
+
+历史按需挂载回归：`npm run test:unit -- packages/ui/test/conversation-history-dom.test.ts`；真实布局、分页阈值、流式阅读、搜索、选区和重启恢复使用 `npm run test:desktop -- tests/desktop/conversation-history.spec.ts tests/desktop/history-auto-load.spec.ts tests/desktop/task-find.spec.ts tests/desktop/window-scroll.spec.ts`。这些用例验证功能和挂载数量，不代表原始冻结已复现或完成端到端耗时基准。
+
+搜索对每个当前目标复用小写正文和当前查询的匹配结果；查询改变时替换匹配，流式追加只重新匹配变化的正文。DOM 文本、文本节点偏移和当前查询的高亮范围按元素弱引用缓存，通过 MutationObserver 的正文、结构和可搜索属性变化失效。React effect 清理时处理尚未投递的 mutation，避免提交后的新正文复用旧快照。导航只切换活动高亮，不重建稳定的全部命中高亮；文件 Diff 的 Shadow DOM 仍单独观察，移出当前容器后断开。关闭搜索和切换 scope 清空索引，移除的目标不会继续留在匹配缓存中。
+
+首次搜索使用与显示共享的 Markdown 预处理、语法插件和 sanitization，将普通历史正文投影为纯文本，避免为屏幕外消息创建代码高亮、图片读取、表格和其他组件。投影按不可变 RunView 弱引用缓存，用户消息使用显示中的引用标签；思考、工具结果和纯压缩轮不参与。每个 task 最多处理四个未缓存轮次，并以 8ms 为让出目标，随后用定时器继续；单轮解析不可被这个预算中断。关闭搜索或切换会话会取消剩余任务；分页保留已有索引结果，再补充新目标。查询改变复用文本投影，匹配缓存仍只保留当前查询，不积累查询历史或落盘。
+
+流式正文与 Mermaid 等动态内容仍读取实际挂载文本，相应轮次在搜索期间保留；这些特殊内容很多时仍会增加挂载数量。折叠过程中的静态块只保留轻量纯文本索引，动态块仍挂载 Markdown。文件引用标签与正文使用同一转换逻辑，预览对话框和临时操作错误不参与搜索；渲染失败的原文回退读取实际 DOM。建议列表内容相同不重建索引，实际需要重建时沿用旧目标直到新索引完成。
+
+纯文本索引覆盖屏幕外目标，CSS Highlight 同时最多绘制 2000 个普通命中，活动命中始终单独绘制，完整结果仍计数和可导航。通过逐个添加 Range 避免大量命中触发函数参数上限；等价范围不反复替换高亮注册项。导航到中断回复同时展开所属轮次和回复块，未挂载目标只发出一次定位尝试，挂载后再精确定位。`remark-parse` 和 `remark-rehype` 采用 Streamdown 已使用的版本并声明为直接依赖，没有增加传递包。普通历史首次索引仍有解析成本，新查询仍需匹配目标文字，不能把按需挂载当作总内存上限。
+
+预览加载继续合并在途请求；历史轮次重挂载后复查文件存在性，避免长期缓存已删除或修改文件的状态。APNG、ICO 与其他预览图片共用下载 MIME 列表；截断的 SVG 返回明确错误，避免生成损坏的图片地址。主窗口只在导航实际提交后清空事件批次，被阻止的导航不丢失增量；渲染进程崩溃后暂停入队，重载后从快照恢复。
+
+`npm run test:unit -- packages/ui/test/find.test.ts packages/ui/test/text-find-dom.test.ts packages/ui/test/conversation-find-dom.test.ts` 覆盖缓存失效、投影与真实渲染文本的逐字对照、取消与分批索引、Unicode/跨格式定位、折叠正文与 Shadow DOM；`npm run test:desktop -- tests/desktop/task-find.spec.ts` 验证真实 Chromium 中 160 轮冷搜索的挂载数量、屏幕外命中跳转，以及导航与流式追加不重新读取稳定历史正文。这些是受控工作量检查，不是用户现场的耗时或内存基准。
+
 ## 测试
 
 文件入口、聊天文件预览和单文件 Diff 统一由 `FileManagerPane` 持有预览／目录布局，内容仍复用 `FilePane` 和 `ChangesPane`。目录显隐偏好按工作目录共享；桌面端始终保留预览与目录的可拖拽分栏，选中文件不自动收起目录。两栏的最小宽度取 160px 和面板宽度三分之一中的较小值，目录最大占 60%，窄面板也能拖到各占一半；预览不可折叠，旧的目录占满布局会按这些约束恢复；目录范围是整个工作区，“仅显示变更文件”依据工作区 Git 状态，不依据某一轮快照。导航由 pane store 更新当前标签页，保持标签 ID、任务归属和工作目录；从 Diff 导航到文件后变为普通文件预览。重开来源按当前内容查找可复用标签，不能按旧 ID 覆盖已导航的页面。审查入口继续展示改动集合。预览右上“使用默认程序打开”通过 preload 的 `fileAction(..., "open")` 使用系统文件关联，与聊天文件菜单保持一致；不读取项目编辑器偏好，也不依赖编辑器发现结果。项目工具栏的编辑器选择仅影响项目打开。文件树菜单使用 Lucide `FolderOpen`，聊天文件菜单的 Finder 图片继续复用 ZCode 素材。相关验证为 `pane-isolation.test.ts`、`changes-pane-dom.test.ts`、`workspace-editor-dom.test.ts` 和后台 Electron 的 `tests/desktop/file-manager.spec.ts`，后者包含明暗主题截图及窄布局。

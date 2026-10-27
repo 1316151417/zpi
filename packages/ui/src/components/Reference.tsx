@@ -55,6 +55,19 @@ export function displayReferences(
   return references.sort((a, b) => a.start - b.start);
 }
 
+export function messageReferences(
+  text: string,
+  paths: readonly string[] = [],
+  commandNames: readonly string[] = [],
+  agentNames: readonly string[] = [],
+) {
+  const inline = displayReferences(text, commandNames, agentNames);
+  const trailing = paths
+    .filter((path) => !inline.some((reference) => reference.path === path))
+    .map((path) => ({ path, label: path.split("/").at(-1) ?? path }));
+  return { inline, trailing };
+}
+
 export function referenceStyle(kind: DisplayReference["kind"], path: string): CSSProperties {
   const source =
     kind === "file"
@@ -171,7 +184,7 @@ export function Reference({
         </ContextMenu.Portal>
       </ContextMenu.Root>
       {error && (
-        <span role="alert" className="run-error">
+        <span role="alert" className="run-error" data-find-ignore>
           {error}
         </span>
       )}

@@ -1126,3 +1126,66 @@ are imported.
 # ZCode task list header and project sorting update
 
 `TaskListHeader.tsx`, `TaskViewMenu.tsx`, `SortableProjects.tsx`, `sidebar-task-model.ts`, and the corresponding workbench styles adapt ZCode commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`, `packages/ui/src/project-sidebar/{ProjectSidebarListHeader,SortableProjects,ProjectNode,PurposeSections,view,timelineDates}.tsx/ts` and `WorkspaceSidebar/WorkspacePurposeSection.tsx` and `components/ui/dropdown-menu.tsx`. Folder, Hash, Clock, ListFilter, Search and expand/collapse icons reuse Lucide. The Apache-2.0 and Lucide licenses reproduced above apply. Project and task-group writes retain ZPI's desktop state owner and SQLite storage. The grouped drag lifecycle and final-position commands also adapt `project-sidebar/grouped/{useGroupedDrag,drag,model}.ts` at the same commit.
+
+Conversation history content windowing in `ConversationHistory.tsx` and reading anchors in `Conversation.tsx` follow the measured-height, stable live-tail and scroll-anchor principles of ZCode `packages/ui/src/v4/ConversationTimeline.tsx` at commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`. Adapted to ZPI's existing pagination with normal-flow placeholders and IntersectionObserver, without copying its virtualizer or adding dependencies. The ZCode Apache-2.0 notice above applies.
+
+Per-target search caching in `find.ts` and `use-text-find.ts` follows the stable-unit match cache in ZCode `packages/ui/src/v4/useConversationTimelineFind.ts` at the same commit. Adapted to ZPI's rendered-text matching, mutation-based DOM invalidation and reusable CSS Highlight ranges, preserving existing Unicode offsets and diff search. The ZCode Apache-2.0 notice above applies.
+
+First-search text projection in `conversation-find.ts` and `markdown-find.ts` follows ZCode `v4/useConversationTimelineFind.ts`'s separation of a full text index from mounted-row highlights at commit `3c5b227649371507ddc4eb46ac5133afe6db1cab`. Adapted to ZPI's shared Markdown pipeline, short indexing tasks, existing history placeholders and a mounted fallback for dynamic content. The ZCode Apache-2.0 notice above applies.
+
+## remark-parse
+
+Used by the existing Streamdown parser and directly by the lightweight conversation search projection.
+
+```text
+(The MIT License)
+
+Copyright (c) 2014 Titus Wormer <tituswormer@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+## remark-rehype
+
+Used by the existing Streamdown parser and directly by the lightweight conversation search projection.
+
+```text
+(The MIT License)
+
+Copyright (c) Titus Wormer <tituswormer@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```

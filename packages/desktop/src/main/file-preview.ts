@@ -18,6 +18,20 @@ const imageTypes: Record<string, string> = {
   ico: "image/x-icon",
 };
 
+const downloadableImageTypes = new Set([...Object.values(imageTypes), "image/svg+xml"]);
+export function downloadableImageUrl(src: string): boolean {
+  if (src.length > 48 * 1024 * 1024) return false;
+  if (/^https?:/i.test(src)) {
+    try {
+      return ["http:", "https:"].includes(new URL(src).protocol);
+    } catch {
+      return false;
+    }
+  }
+  const mime = /^data:([^;,]+);base64,/i.exec(src)?.[1]?.toLowerCase();
+  return !!mime && downloadableImageTypes.has(mime);
+}
+
 async function openPreviewFile(path: string) {
   if (!(await stat(path)).isFile()) throw new Error("invalid_input: 仅支持预览普通文件");
   // A writer can replace the checked path with a FIFO or symlink before open completes.

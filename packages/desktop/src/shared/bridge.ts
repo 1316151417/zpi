@@ -528,6 +528,7 @@ export interface DesktopBridge {
   importCommands(input: CommandImportRequest, projectId?: string): Promise<Result<CommandImportResult>>;
   openExternal(url: string): Promise<Result<void>>;
   onEvent(listener: (event: DesktopEventEnvelope) => void): () => void;
+  onEvents(listener: (events: readonly DesktopEventEnvelope[]) => void): () => void;
 }
 export const methods = [
   "getMemorySettings",

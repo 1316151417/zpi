@@ -13,6 +13,7 @@
     "./fuzzy-search": "./src/fuzzy-search.ts",
     "./links": "./src/link-target.ts",
     "./errors": "./src/user-error.ts",
+    "./reading-position": "./src/reading-position.ts",
     "./media-preview": "./src/preview/media-preview.ts",
     "./code-preview": "./src/code-preview.ts"
   },
@@ -38,6 +39,8 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "rehype-sanitize": "6.0.0",
+    "remark-parse": "11.0.0",
+    "remark-rehype": "11.1.2",
     "shiki": "4.5.0",
     "streamdown": "2.7.0",
     "unified": "11.0.5",

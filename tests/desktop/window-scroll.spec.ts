@@ -21,6 +21,8 @@ test("wheel and editor focus scroll only their viewport across drafts, conversat
     const page = await app.firstWindow();
     const editor = page.getByLabel("消息", { exact: true });
     await expect(editor).toBeVisible();
+    await page.getByLabel("添加项目", { exact: true }).click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toHaveText("workspace");
     const headerTop = (await page.locator(".topbar").boundingBox())?.y;
     await expect(page.locator("body")).toHaveCSS("overflow", "hidden");
     const assertFixedWindow = async () => {

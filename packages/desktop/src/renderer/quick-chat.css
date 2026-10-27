@@ -61,7 +61,7 @@ html[data-quick-chat="true"] #root {
   padding: 12px 18px 16px;
 }
 
-.quick-chat .conversation-inner > :is(.run-group, .compaction-run):first-child {
+.quick-chat .conversation-inner > [data-history-run]:first-child > :is(.run-group, .compaction-run) {
   padding-top: 8px;
 }
 

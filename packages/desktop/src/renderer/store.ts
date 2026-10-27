@@ -9,11 +9,19 @@ import {
   reduceSession,
   sessionViewBytes,
 } from "zpi-ui";
+import { readReadingBookmark } from "zpi-ui/reading-position";
 import { create } from "zustand";
 import type { DesktopBridge, ProjectRecord, PublicSettings, SessionRecord } from "../shared/bridge.ts";
+import {
+  coalesceSessionEvents,
+  eventBatchMaxChars,
+  eventBatchMaxEvents,
+  streamEventChars,
+} from "../shared/event-batches.ts";
 import { emptyTaskGroups, type TaskGroupState, taskGroupFor } from "../shared/task-groups.ts";
 import { workspaceShortcutBlocked } from "./app-shortcuts.ts";
 import { logRendererError } from "./error-log.ts";
+import { recordEventBatch } from "./performance-diagnostics.ts";
 import { previewLoader } from "./preview-loader.ts";
 import { hasRestorableFocus, isVisibleShortcutTarget } from "./shortcut-context.ts";
 import { readTaskPreferences, taskPreferencesKey } from "./sidebar-task-model.ts";
@@ -198,6 +206,7 @@ export async function closeSideChat(id: string): Promise<void> {
   trimViews(useStore.getState().selected);
 }
 let queue: DesktopEventEnvelope[] = [];
+let queueChars = 0;
 let frame = 0;
 function reduceSessionRecord(
   record: SessionRecord,
@@ -238,7 +247,9 @@ function apply(events: DesktopEventEnvelope[]): void {
   const state = useStore.getState();
   let views = state.views,
     records = state.sessions;
-  for (const e of events) {
+  for (const e of coalesceSessionEvents(events, (id) =>
+    pendingSnapshots.has(id) ? Number.POSITIVE_INFINITY : (state.views.get(id)?.seq ?? 0),
+  )) {
     const pending = pendingSnapshots.get(e.sessionId);
     if (pending) {
       pending.push(e);
@@ -301,7 +312,13 @@ export function subscribeEvents(): () => void {
     frame = 0;
     const batch = queue;
     queue = [];
-    apply(batch);
+    queueChars = 0;
+    const startedAt = performance.now();
+    try {
+      apply(batch);
+    } finally {
+      recordEventBatch(performance.now() - startedAt, batch.length);
+    }
   };
   const visibility = () => {
     if (document.visibilityState === "hidden") {
@@ -310,11 +327,18 @@ export function subscribeEvents(): () => void {
     }
   };
   document.addEventListener("visibilitychange", visibility);
-  const off = window.zpi.onEvent((e) => {
-    if (e.event.type === "history_reset") previewLoader.clear(e.sessionId);
-    queue.push(e);
+  const off = window.zpi.onEvents((events) => {
+    for (const e of events) {
+      if (e.event.type === "history_reset") previewLoader.clear(e.sessionId);
+      const chars = streamEventChars(e);
+      if (queue.length && (queue.length >= eventBatchMaxEvents || queueChars + chars > eventBatchMaxChars))
+        flushEvents();
+      queue.push(e);
+      queueChars += chars;
+      if (queue.length >= eventBatchMaxEvents || queueChars >= eventBatchMaxChars) flushEvents();
+    }
     if (document.visibilityState === "hidden") flushEvents();
-    else if (!frame) frame = requestAnimationFrame(flushEvents);
+    else if (queue.length && !frame) frame = requestAnimationFrame(flushEvents);
   });
   return () => {
     flushEvents();
@@ -478,12 +502,13 @@ async function selectSessionForNavigation(id: string, generation: number): Promi
       let view = snapshot.view,
         cursor = snapshot.historyCursor ?? null;
       try {
-        const reading = JSON.parse(localStorage.getItem(`zpi.reading.${id}`) ?? "null");
+        const reading = readReadingBookmark(localStorage.getItem(`zpi.reading.${id}`));
         while (
           reading?.following === false &&
-          Number.isSafeInteger(reading.cursor) &&
           cursor !== null &&
-          cursor > reading.cursor
+          (reading.runId
+            ? !view.runs.some((run) => run.runId === reading.runId)
+            : reading.cursor !== undefined && cursor > reading.cursor)
         ) {
           const page = unwrap(await window.zpi.getHistoryPage(id, cursor));
           view = mergeHistory(page.view, view);
@@ -495,8 +520,10 @@ async function selectSessionForNavigation(id: string, generation: number): Promi
 
       const queued = queue.filter((e) => e.sessionId === id);
       queue = queue.filter((e) => e.sessionId !== id);
+      queueChars = queue.reduce((chars, event) => chars + streamEventChars(event), 0);
       const buffered = [...(pendingSnapshots.get(id) ?? []), ...queued].sort((a, b) => a.seq - b.seq);
-      for (const event of buffered) if (event.seq > snapshot.seq) view = reduceSession(view, event);
+      for (const event of coalesceSessionEvents(buffered, () => snapshot.seq))
+        if (event.seq > snapshot.seq) view = reduceSession(view, event);
       pendingSnapshots.delete(id);
       loadedSessions.add(id);
       const state = useStore.getState();
@@ -520,6 +547,7 @@ async function selectSessionForNavigation(id: string, generation: number): Promi
         ...queue.filter((event) => event.sessionId === id),
       ];
       queue = queue.filter((event) => event.sessionId !== id);
+      queueChars = queue.reduce((chars, event) => chars + streamEventChars(event), 0);
       pendingSnapshots.delete(id);
       if (!useStore.getState().views.has(id)) {
         const state = useStore.getState();

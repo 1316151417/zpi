@@ -311,6 +311,9 @@ small {
   margin: auto;
   padding: 0;
 }
+[data-history-mounted="false"] {
+  overflow-anchor: none;
+}
 .run-group,
 .compaction-run {
   padding: 56px 16px 20px;

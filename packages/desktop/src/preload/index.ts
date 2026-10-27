@@ -225,9 +225,14 @@ const bridge: DesktopBridge = {
   listCommands: () => call("listCommands"),
   openExternal: (url) => call("openExternal", url),
   onEvent(listener) {
-    const handler = (_: Electron.IpcRendererEvent, event: DesktopEventEnvelope) => listener(event);
-    ipcRenderer.on("zpi:event", handler);
-    return () => ipcRenderer.removeListener("zpi:event", handler);
+    return bridge.onEvents((events) => {
+      for (const event of events) listener(event);
+    });
+  },
+  onEvents(listener) {
+    const handler = (_: Electron.IpcRendererEvent, events: DesktopEventEnvelope[]) => listener(events);
+    ipcRenderer.on("zpi:events", handler);
+    return () => ipcRenderer.removeListener("zpi:events", handler);
   },
 };
 contextBridge.exposeInMainWorld("zpi", bridge);

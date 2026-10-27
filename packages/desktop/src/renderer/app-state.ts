@@ -1,6 +1,9 @@
+import type { InputSuggestion } from "zpi-ui";
 import type { useStore } from "./store.ts";
 
 type Store = ReturnType<typeof useStore.getState>;
+
+const emptySuggestions: InputSuggestion[] = [];
 
 export function selectAppState(state: Store) {
   const id = state.selected ?? "";
@@ -15,7 +18,7 @@ export function selectAppState(state: Store) {
     ready: state.ready,
     activeRecord: state.sessions.get(id),
     activeView: state.views.get(id),
-    activeSuggestions: state.suggestions.get(id),
+    activeSuggestions: state.suggestions.get(id) ?? emptySuggestions,
     activeDiagnostics: state.resourceDiagnostics.get(id),
     historyCursor: state.historyCursors.get(id),
     loadingEarlier: state.historyLoading.has(id),

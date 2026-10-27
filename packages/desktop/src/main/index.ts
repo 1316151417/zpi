@@ -12,6 +12,7 @@ import {
   Menu,
   nativeTheme,
   net,
+  powerMonitor,
   safeStorage,
   screen,
   shell,
@@ -38,13 +39,15 @@ import { ChatGPTAuth } from "./chatgpt-auth.ts";
 import { defaultFileOpener } from "./default-file-open.ts";
 import { getInstalledEditors, openInEditor } from "./editors.ts";
 import { ErrorLog } from "./error-log.ts";
+import { EventBatcher } from "./event-batcher.ts";
 import { performFileAction } from "./file-actions.ts";
-import { readFilePreview, readPreviewRange } from "./file-preview.ts";
+import { downloadableImageUrl, readFilePreview, readPreviewRange } from "./file-preview.ts";
 import { gitReview, gitReviewDiff } from "./git-review.ts";
 import { loadRenderer } from "./load-renderer.ts";
 import { macQuickChatCapture } from "./mac-quick-chat-capture.ts";
 import { macQuickChatFocus } from "./mac-quick-chat-focus.ts";
 import { PaneServices } from "./pane-services.ts";
+import { startMainPerformanceDiagnostics, trackRendererResponsiveness } from "./performance-diagnostics.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
 import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
 import { previewPrintHostScript, previewPrintIsolationCss } from "./preview-print-host.ts";
@@ -109,6 +112,16 @@ const errors = new ErrorLog(app.getPath("userData"), {
   version: app.isPackaged ? app.getVersion() : version,
   electron: process.versions.electron,
 });
+const mainPerformance = startMainPerformanceDiagnostics(errors);
+void app.whenReady().then(() => {
+  powerMonitor.on("suspend", mainPerformance.suspend);
+  powerMonitor.on("resume", mainPerformance.resume);
+});
+app.once("will-quit", () => {
+  powerMonitor.removeListener("suspend", mainPerformance.suspend);
+  powerMonitor.removeListener("resume", mainPerformance.resume);
+  mainPerformance.stop();
+});
 process.on("uncaughtExceptionMonitor", (error, origin) =>
   errors.write(origin === "unhandledRejection" ? "main.unhandled-rejection" : "main.uncaught", error),
 );
@@ -118,6 +131,7 @@ process.on("unhandledRejection", (error) => {
   console.error("Unhandled promise rejection:", error);
 });
 app.on("web-contents-created", (_event, contents) => {
+  trackRendererResponsiveness(contents, errors);
   contents.on("preload-error", (_event, _path, error) => errors.write("preload", error));
   contents.on("render-process-gone", (_event, details) => {
     if (!ending && details.reason !== "clean-exit")
@@ -496,13 +510,28 @@ async function launch(): Promise<void> {
     write: (path, data) => writeFile(path, data),
   });
   const notifications = new TaskNotifications(window, () => settings.get().interface);
-  host.subscribe((event) => {
-    if (!window.isDestroyed()) window.webContents.send("zpi:event", event);
+  const eventBatcher = new EventBatcher((events) => {
+    if (window.isDestroyed() || window.webContents.isDestroyed() || window.webContents.isCrashed()) return;
+    try {
+      window.webContents.send("zpi:events", events);
+    } catch (error) {
+      // 定时发送已离开 Host 订阅者的异常边界；导航/进程退出不能让定时器异常终止主进程。
+      errors.write("renderer.event-delivery", error);
+    }
+  });
+  const offEvents = host.subscribe((event) => {
+    if (!window.webContents.isCrashed()) eventBatcher.push(event);
     if (!ending && event.event.type === "settled") {
       const title = host.notificationTitle(event.sessionId);
       if (title !== undefined) notifications.handle(event, title);
     }
   });
+  window.on("closed", () => {
+    offEvents();
+    eventBatcher.close();
+  });
+  window.webContents.on("render-process-gone", () => eventBatcher.clear());
+  window.webContents.on("did-navigate", () => eventBatcher.clear());
   ipcMain.handle("zpi:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)
@@ -853,13 +882,7 @@ async function launch(): Promise<void> {
         }
         case "downloadImage": {
           const src = string(0);
-          if (
-            src.length > 48 * 1024 * 1024 ||
-            (!/^https?:/i.test(src) &&
-              !/^data:image\/(?:png|jpeg|gif|webp|svg\+xml|bmp|avif);base64,/i.test(src))
-          )
-            throw new Error("invalid_input: 图片下载地址无效");
-          if (/^https?:/i.test(src)) new URL(src);
+          if (!downloadableImageUrl(src)) throw new Error("invalid_input: 图片下载地址无效");
           window.webContents.downloadURL(src);
           break;
         }

@@ -22,6 +22,139 @@ const highlight = (page: Page, scope = "conversation") =>
       : [];
   }, scope);
 
+test("cold search indexes offscreen history without mounting every rich turn and jumps to its hit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-find-cold-")),
+    cwd = join(dir, "workspace");
+  await mkdir(cwd);
+  const seed = seedHistory(dir, cwd, 160);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    await expect(page.getByTestId("run")).toHaveCount(10);
+    await page.addInitScript(
+      (id) =>
+        localStorage.setItem(
+          `zpi.reading.${id}`,
+          JSON.stringify({ following: false, cursor: 0, top: 0, runId: "run-0", offset: 0 }),
+        ),
+      seed.id,
+    );
+    await page.reload();
+    await expect(page.locator("[data-history-run]")).toHaveCount(160);
+    await expect.poll(() => page.getByTestId("run").count()).toBeLessThan(30);
+    await page.evaluate(() => {
+      const area = document.querySelector(".conversation");
+      if (!area) throw new Error("Missing history viewport");
+      let max = 0;
+      const count = () => {
+        max = Math.max(max, area.querySelectorAll('[data-history-mounted="true"]').length);
+      };
+      new MutationObserver(count).observe(area, {
+        childList: true,
+        attributes: true,
+        subtree: true,
+        attributeFilter: ["data-history-mounted"],
+      });
+      Object.assign(window, { zpiMaxMountedFindRuns: () => max });
+      count();
+    });
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
+    const input = bar(page).getByRole("textbox");
+    await input.fill("最终回复 117");
+    await expect(count(page)).toHaveText("1/1");
+    await expect.poll(() => highlight(page)).toEqual([{ text: "最终回复 117", key: "run-117:answer" }]);
+    await expect(page.locator('[data-run-id="run-117"] .answer')).toBeInViewport();
+    await input.fill("最终回复 0");
+    await expect(count(page)).toHaveText("1/1");
+    await expect.poll(() => highlight(page)).toEqual([{ text: "最终回复 0", key: "run-0:answer" }]);
+    await expect(page.locator('[data-run-id="run-0"] .answer')).toBeInViewport();
+    expect(
+      await page.evaluate(() =>
+        (window as typeof window & { zpiMaxMountedFindRuns(): number }).zpiMaxMountedFindRuns(),
+      ),
+    ).toBeLessThan(40);
+    await input.press("Escape");
+    await expect.poll(() => page.getByTestId("run").count()).toBeLessThan(30);
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
+
+test("cached history search avoids rereading stable text during navigation and streaming", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-find-cache-")),
+    cwd = join(dir, "workspace");
+  await mkdir(cwd);
+  seedHistory(dir, cwd, 60);
+  const release = deferred();
+  const server = await fakeServer(async (_, response) => {
+    send(response, chunk({ content: "最终回复 新内容" }));
+    await release.promise;
+    send(response, chunk({ content: "，最终回复 后续内容" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await expect(page.getByTestId("run")).toHaveCount(10);
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+f`);
+    const input = bar(page).getByRole("textbox");
+    await input.fill("最终回复");
+    await expect(page.locator("[data-history-run]")).toHaveCount(60);
+    await expect.poll(() => page.getByTestId("run").count()).toBeLessThan(30);
+    await expect(count(page)).toHaveText("1/60");
+    await page.evaluate(() => {
+      const root = document.querySelector(".conversation");
+      const old = new Set(
+        [...(root?.querySelectorAll<HTMLElement>("[data-find-key]") ?? [])].map(
+          (node) => node.dataset.findKey,
+        ),
+      );
+      const reads: string[] = [];
+      const walk = document.createTreeWalker.bind(document);
+      document.createTreeWalker = (node, ...args) => {
+        if (node instanceof HTMLElement && node.dataset.findKey) reads.push(node.dataset.findKey);
+        return walk(node, ...args);
+      };
+      Object.assign(window, {
+        zpiFindCacheProbe: () => ({
+          stableReads: reads.filter((key) => old.has(key)).length,
+          newReads: reads.filter((key) => !old.has(key)).length,
+        }),
+      });
+    });
+    const probe = () =>
+      page.evaluate(() =>
+        (
+          window as typeof window & {
+            zpiFindCacheProbe(): { stableReads: number; newReads: number };
+          }
+        ).zpiFindCacheProbe(),
+      );
+    await input.press("Enter");
+    await expect(count(page)).toHaveText("2/60");
+    // Navigation can mount a new offscreen turn; only stable mounted text must avoid rereads.
+    expect((await probe()).stableReads).toBe(0);
+    const editor = page.getByLabel("消息", { exact: true });
+    await editor.fill("继续输出");
+    await editor.press("Enter");
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
+    await expect(count(page)).toHaveText("2/61");
+    release.resolve();
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(count(page)).toHaveText("2/62");
+    expect(await probe()).toMatchObject({ stableReads: 0, newReads: expect.any(Number) });
+    expect((await probe()).newReads).toBeGreaterThan(0);
+    await input.press("Escape");
+    await expect.poll(() => highlight(page)).toEqual([]);
+    await expect.poll(() => page.getByTestId("run").count()).toBeLessThan(30);
+  } finally {
+    release.resolve();
+    await runCleanup([server.close, () => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
+
 test("task find matches ZCode layout, shortcuts, wraparound, highlights and focus", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-find-"));
   const server = await fakeServer((_, response) => {
