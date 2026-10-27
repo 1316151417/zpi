@@ -122,13 +122,13 @@ it("uses dynamic registration, validates state and OIDC identity, discovers acco
     chatgptAccount: { connected: true },
     hasApiKey: false,
   });
-  expect(result.settings.providers[0].models[0]).toMatchObject({
+  expect(result.settings.providers[0].models.find((model) => model.id === "fake")).toMatchObject({
     id: "fake",
     name: "Test model",
     input: ["text", "image"],
     thinkingLevelMap: { off: "none", xhigh: "xhigh", max: null },
   });
-  expect(result.settings.providers[0].models).toHaveLength(4);
+  expect(result.settings.providers[0].models).toHaveLength(5);
   expect(JSON.stringify(result.settings)).not.toContain("private-");
   expect(JSON.stringify(settings.state.getSetting("app"))).not.toContain("private-");
   expect(settings.getProviderCredentials(result.providerId)).toEqual({ apiKey: "" });

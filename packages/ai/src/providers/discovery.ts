@@ -207,8 +207,11 @@ export async function fetchProviderModels(
         ),
       );
       const supplemental = catalog.filter((model) => !returned.has(model.id));
+      const order = new Map(catalog.map((model, index) => [model.id, index]));
       return {
-        models: [...models, ...supplemental],
+        models: [...models, ...supplemental].sort(
+          (a, b) => (order.get(a.id) ?? catalog.length) - (order.get(b.id) ?? catalog.length),
+        ),
         source: "remote",
         ...(supplemental.length
           ? {

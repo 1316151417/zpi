@@ -943,14 +943,6 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                           <span className="model-row-name" title={model.name || model.id}>
                                             {model.name || model.id}
                                           </span>
-                                          {model.availability === "unverified" && (
-                                            <span
-                                              className="model-context-badge"
-                                              title="账号目录尚未返回该模型，调用取决于账号权限。"
-                                            >
-                                              预置 · 待验证
-                                            </span>
-                                          )}
                                           <span
                                             className="model-context-badge"
                                             title={`上下文窗口 ${model.contextWindow ?? modelDefaults.contextWindow}`}

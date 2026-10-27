@@ -69,36 +69,71 @@ it("reads the account catalog without cache, uses slugs, and keeps new models di
       ],
     });
   }) as typeof fetch);
-  expect(result.models.map((model) => model.id)).toEqual(["gpt-6-astra", "new-account-model", "gpt-6.1-sol"]);
-  expect(result.models[0]).toMatchObject({ availability: "listed", contextWindow: 300000 });
-  expect(result.models[2]).toMatchObject({ availability: "unverified", defaultThinkingLevel: "medium" });
+  expect(result.models.map((model) => model.id)).toEqual([
+    "gpt-6.1-terra",
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "new-account-model",
+  ]);
+  expect(result.models[2]).toMatchObject({ availability: "listed", contextWindow: 300000 });
+  expect(result.models[1]).toMatchObject({ availability: "unverified", defaultThinkingLevel: "medium" });
   expect(result.warning).toContain("账号可用性待验证");
-  expect(thinkingChoices(result.models[1] as Parameters<typeof thinkingChoices>[0])).toEqual([
+  expect(thinkingChoices(result.models[3] as Parameters<typeof thinkingChoices>[0])).toEqual([
     "off",
     "medium",
     "xhigh",
   ]);
-  expect(result.models[1].thinkingLevelMap?.max).toBeNull();
+  expect(result.models[3].thinkingLevelMap?.max).toBeNull();
+});
+
+it("orders GPT presets Terra, Sol, Luna, Astra and provides Terra's default capabilities", () => {
+  const models = presetModels("openai-chatgpt");
+  expect(models.map((model) => model.id)).toEqual([
+    "gpt-6.1-terra",
+    "gpt-6.1-sol",
+    "gpt-6-luna",
+    "gpt-6-astra",
+  ]);
+  expect(models[0]).toMatchObject({
+    name: "GPT-6.1 Terra",
+    input: ["text", "image"],
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    defaultThinkingLevel: "medium",
+  });
+  expect(thinkingChoices({ ...models[0], reasoning: true })).toEqual([
+    "off",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
 });
 
 it("discovers newly returned GPT models with their complete efforts and account defaults", async () => {
   const result = await fetchProviderModels({ preset: "openai-chatgpt", apiKey: "fake" }, (async () =>
     Response.json({
-      models: presetModels("openai-chatgpt").map((model) => ({
-        slug: model.id,
-        visibility: "list",
-        supported_reasoning_levels: (model.id === "gpt-6-luna"
-          ? ["none", "low", "medium", "high", "xhigh", "max"]
-          : ["low", "medium", "high", "xhigh", "max"]
-        ).map((effort) => ({ effort })),
-        default_reasoning_level: "medium",
-      })),
+      models: presetModels("openai-chatgpt")
+        .toReversed()
+        .map((model) => ({
+          slug: model.id,
+          visibility: "list",
+          supported_reasoning_levels: (model.id === "gpt-6-luna" || model.id === "gpt-6.1-terra"
+            ? ["none", "low", "medium", "high", "xhigh", "max"]
+            : ["low", "medium", "high", "xhigh", "max"]
+          ).map((effort) => ({ effort })),
+          default_reasoning_level: "medium",
+        })),
     })) as typeof fetch);
   expect(result.warning).toBeUndefined();
+  expect(result.models.map((model) => model.id)).toEqual(
+    presetModels("openai-chatgpt").map((model) => model.id),
+  );
   for (const model of result.models) {
     const reasoningModel = { ...model, reasoning: true };
     expect(thinkingChoices(reasoningModel)).toEqual(
-      model.id === "gpt-6-luna"
+      model.id === "gpt-6-luna" || model.id === "gpt-6.1-terra"
         ? ["off", "low", "medium", "high", "xhigh", "max"]
         : ["low", "medium", "high", "xhigh", "max"],
     );

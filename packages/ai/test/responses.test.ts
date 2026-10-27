@@ -286,7 +286,7 @@ describe("Responses protocol and portable transcripts", () => {
       const model: Model = { ...responsesModel(), ...metadata, input: ["text", "image"], reasoning: true };
       for (const effort of [
         undefined,
-        ...(metadata.id === "gpt-6-luna" ? ["off" as const] : []),
+        ...(metadata.thinkingLevelMap?.off === "none" ? ["off" as const] : []),
         "low",
         "medium",
         "high",
