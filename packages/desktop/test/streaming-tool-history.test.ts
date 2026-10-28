@@ -27,15 +27,15 @@ it("recovers only unresolved journal facts, preserves known results, and never d
     const call = { type: "toolCall" as const, id: "read", name: "read", arguments: { path: "README.md" } };
     const message = { ...emptyAssistant(fakeModel("")), content: [call] };
     const journal = new StreamingToolJournal(manager, () => {});
-    journal.observe({ type: "message_start", message });
-    journal.observe({
+    await journal.observe({ type: "message_start", message });
+    await journal.observe({
       type: "tool_execution_start",
       toolCallId: "read",
       toolName: "read",
       args: call.arguments,
       executionTiming: "during_stream",
     });
-    journal.observe({
+    await journal.observe({
       type: "tool_execution_end",
       toolCallId: "read",
       toolName: "read",

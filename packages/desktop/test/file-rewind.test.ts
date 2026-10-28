@@ -23,7 +23,7 @@ it("restores a BOM file byte-for-byte from an edit checkpoint", async () => {
   expect(await readFile(change.afterFile as string)).toEqual(await readFile(path));
   const plan = await planFileRewind([change], snapshots, cwd);
   expect(plan.conflicts).toEqual([]);
-  expect(applyFileRewind(plan, () => {})).toEqual([]);
+  expect(await applyFileRewind(plan, () => {})).toEqual([]);
   expect(await readFile(path)).toEqual(before);
 });
 
@@ -61,18 +61,19 @@ it("file reset rolls back all files if transcript commit fails, and rechecks con
     workspace,
   );
   expect(plan.conflicts).toEqual([]);
-  expect(() =>
-    applyFileRewind(plan, () => {
+  await expect(
+    applyFileRewind(plan, async () => {
       expect(readFileSync(modified, "utf8")).toBe("original");
       expect(existsSync(created)).toBe(false);
+      await Promise.resolve();
       throw new Error("transcript disk full");
     }),
-  ).toThrow("disk full");
+  ).rejects.toThrow("disk full");
   expect(await readFile(modified, "utf8")).toBe("agent");
   expect(await readFile(created, "utf8")).toBe("created");
   await writeFile(modified, "external");
   const commit = vi.fn();
-  expect(applyFileRewind(plan, commit)).toEqual([{ path: modified, reason: "当前文件已被外部修改" }]);
+  expect(await applyFileRewind(plan, commit)).toEqual([{ path: modified, reason: "当前文件已被外部修改" }]);
   expect(commit).not.toHaveBeenCalled();
   expect(await readFile(modified, "utf8")).toBe("external");
   expect(await readFile(created, "utf8")).toBe("created");

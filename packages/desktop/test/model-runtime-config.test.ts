@@ -209,7 +209,7 @@ test.each(["quick", "task"] as const)(
       const host = new SessionHost(dir, settings, join(dir, "home"), dir, transport);
       cleanup.push(() => host.close());
       await host.init();
-      const task = host.createSession(null, { cwd: dir });
+      const task = await host.createSession(null, { cwd: dir });
       // Naming is a separate runtime; this test isolates the ordinary task request.
       const record = settings.state.getTask(task.id);
       if (!record) throw new Error("Missing task");

@@ -84,7 +84,7 @@ for (const sizeMiB of [1, 3]) {
         expect(plan.conflicts).toEqual([]);
         let committed = false;
         expect(
-          applyFileRewind(plan, () => {
+          await applyFileRewind(plan, () => {
             committed = true;
           }),
         ).toEqual([]);

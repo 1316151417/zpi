@@ -165,7 +165,9 @@ test("side chats fit narrow panes, add references to their own draft and copy on
     await expect(main.getByLabel("消息", { exact: true })).toHaveText("保留主草稿");
     await expect(main.locator(".selection-reference-chip")).toHaveCount(0);
     await page.screenshot({ path: "test-results/side-chat-selection.png" });
+    const previousRuns = await side.getByTestId("run").count();
     await side.getByLabel("发送", { exact: true }).click();
+    await expect(side.getByTestId("run")).toHaveCount(previousRuns + 1);
     await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
     expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("# userselect:");
     expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("可以引用的辅助回答");

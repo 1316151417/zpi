@@ -9,7 +9,7 @@ it("records asynchronous provider failures with the session and run IDs", async 
     response.writeHead(400, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ error: { message: "Synthetic provider failure" } }));
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const { runId } = await f.host.startRun({ sessionId: id, text: "PRIVATE_USER_MESSAGE" });
   await expect.poll(() => f.host.getSessionSnapshot(id).view.runs.at(-1)?.status).toBe("error");
   const contents = await readFile(join(f.dir, "agent", "logs", "error.log"), "utf8");
@@ -26,7 +26,7 @@ it("records asynchronous provider failures with the session and run IDs", async 
 
 it("does not classify a user-aborted task as an exception", async () => {
   const f = await fixture((_body, response) => send(response, chunk({ content: "waiting" })));
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const { runId } = await f.host.startRun({ sessionId: id, text: "wait" });
   await expect.poll(() => f.server.requests.length).toBeGreaterThan(0);
   await f.host.abortRun({ sessionId: id, runId });

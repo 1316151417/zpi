@@ -96,7 +96,7 @@ async function fixture(
     return host;
   };
   const host = await open();
-  const session = host.createSession(null);
+  const session = await host.createSession(null);
   return { dir, settings, host, session, requests, webRequests, open };
 }
 async function run(host: SessionHost, id: string, text = "Find information") {
@@ -121,7 +121,7 @@ test("one capability drives catalog, live tools and first-send frozen inheritanc
   const side = await f.host.createSideChat(f.session.id);
   await run(f.host, side.id, "Side chat inherits");
   expect(toolNames(f.requests.at(-1) ?? {})).toContain("web_search");
-  const next = f.host.createSession(null);
+  const next = await f.host.createSession(null);
   await run(f.host, next.id, "New chat has no web tools");
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
   await f.host.close();
@@ -185,7 +185,7 @@ test("other chat providers use independent DeepSeek web credentials, stream deta
   expect(f.host.recordedWebSourceIcon(f.session.id, runId, "https://other.example/article")).toBeUndefined();
   expect(f.host.recordedWebSourceIcon(f.session.id, runId, "http://127.0.0.1/")).toBeUndefined();
   expect(() => f.host.recordedWebSourceIcon(f.session.id, "unrecorded-run", source.url)).toThrow();
-  const emptySession = f.host.createSession(null);
+  const emptySession = await f.host.createSession(null);
   expect(() => f.host.recordedWebSourceIcon(emptySession.id, runId, source.url)).toThrow();
   expect(view.runs[0].orderedBlocks).toContainEqual(
     expect.objectContaining({
@@ -275,7 +275,7 @@ test("new sessions freeze availability only after provider and global switches a
   const side = await f.host.createSideChat(f.session.id);
   await run(f.host, side.id, "Side inherits frozen false");
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
-  const fresh = f.host.createSession(null);
+  const fresh = await f.host.createSession(null);
   await run(f.host, fresh.id, "Ready at first send");
   expect(toolNames(f.requests.at(-1) ?? {})).toContain("web_search");
   f.settings.setCapabilityEnabled("webSearch", false);

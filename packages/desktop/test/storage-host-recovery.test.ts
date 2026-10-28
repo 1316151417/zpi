@@ -9,7 +9,7 @@ it.each([false, true])(
   "recovers accepted input without replay when cache retention is stale=%s",
   async (stale) => {
     const f = await fixture((_, response) => done(response));
-    const task = f.host.createSession(f.a.id);
+    const task = await f.host.createSession(f.a.id);
     const attachment = await f.host.importAttachment(task.id, "accepted.txt", Buffer.from("retain payload"));
     const unsent = await f.host.importAttachment(task.id, "unsent.txt", Buffer.from("discard draft cache"));
     if (!("path" in attachment)) throw new Error("Expected cached file attachment");
@@ -50,7 +50,7 @@ it.each([false, true])(
 
 it("recovers older accepted attachment cache after a later run has completed", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const attachment = await f.host.importAttachment(task.id, "older.txt", Buffer.from("older payload"));
   const unsent = await f.host.importAttachment(task.id, "unsent.txt", Buffer.from("unused payload"));
   const retention = vi.spyOn(f.host.attachments, "markUsed").mockResolvedValue();
@@ -71,7 +71,7 @@ it("recovers older accepted attachment cache after a later run has completed", a
 
 it("retains legacy attachment cache when its owned transcript needs explicit repair", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const attachment = await f.host.importAttachment(task.id, "accepted.txt", Buffer.from("repair payload"));
   const retention = vi.spyOn(f.host.attachments, "markUsed").mockResolvedValue();
   await f.host.startRun({ sessionId: task.id, text: "first", attachments: [attachment.id] });
@@ -90,7 +90,7 @@ it("retains legacy attachment cache when its owned transcript needs explicit rep
 
 it("does not accept or execute an input when retaining its attachment cache fails", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const attachment = await f.host.importAttachment(task.id, "input.txt", Buffer.from("retry payload"));
   const failure = vi.spyOn(f.host.attachments, "markUsed").mockRejectedValue(new Error("cache write failed"));
   await expect(
@@ -109,20 +109,24 @@ it("does not accept or execute an input when retaining its attachment cache fail
 
 it("retains incomplete acceptance and blocks resubmission rather than running it again", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const owner = f.host as unknown as {
-    indexes: Map<
-      string,
-      { append(entry: { type: string; customType?: string; data?: { phase?: string } }): void }
-    >;
+    indexes: Map<string, import("../src/main/history-storage.ts").WorkerHistoryIndex>;
   };
   const index = owner.indexes.get(task.id);
   if (!index) throw new Error("Missing index fixture");
-  const append = index.append.bind(index);
-  const failure = vi.spyOn(index, "append").mockImplementation((entry) => {
-    if (entry.customType === "zpi.run" && entry.data?.phase === "accepted")
+  const append = index.appendAsync.bind(index);
+  const failure = vi.spyOn(index, "appendAsync").mockImplementation(async (entry) => {
+    if (
+      entry.type === "custom" &&
+      entry.customType === "zpi.run" &&
+      typeof entry.data === "object" &&
+      entry.data !== null &&
+      "phase" in entry.data &&
+      entry.data.phase === "accepted"
+    )
       throw new Error("accept marker failed");
-    append(entry);
+    await append(entry);
   });
   await expect(f.host.startRun({ sessionId: task.id, text: "uncertain input" })).rejects.toThrow(
     "accept marker failed",
@@ -139,7 +143,7 @@ it("retains incomplete acceptance and blocks resubmission rather than running it
 
 it("shares successful shutdown and never flushes a retired host again", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const owner = f.host as unknown as { indexes: Map<string, { flush(): void }> };
   const index = owner.indexes.get(task.id);
   if (!index) throw new Error("Missing index fixture");
@@ -153,7 +157,7 @@ it("shares successful shutdown and never flushes a retired host again", async ()
 
 it("does not resurrect an accepted queue item when a stale queue snapshot is saved", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const queue = {
     autoDrain: true,
     items: [
@@ -189,7 +193,7 @@ it("does not resurrect an accepted queue item when a stale queue snapshot is sav
 
 it("keeps a committed task deletion deleted when attachment cleanup fails", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   vi.spyOn(f.host.attachments, "deleteSession").mockRejectedValue(new Error("cleanup failed"));
   await expect(f.host.deleteSession(task.id)).resolves.toBeUndefined();
   expect(f.settings.state.getTask(task.id)).toBeUndefined();
@@ -208,7 +212,7 @@ it("keeps a committed task deletion deleted when attachment cleanup fails", asyn
 
 it("retains the in-memory task when committing its deletion fails", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const before = f.settings.state.getTask(task.id);
   const attachments = vi.spyOn(f.host.attachments, "deleteSession");
   vi.spyOn(f.settings.state, "deleteTask").mockImplementation(() => {
@@ -223,17 +227,22 @@ it("retains the in-memory task when committing its deletion fails", async () => 
 for (const phase of ["prepared", "durable", "published"] as const) {
   it(`reopens the authoritative generation after a ${phase} replacement failure`, async () => {
     const f = await fixture((_, response) => done(response));
-    const task = f.host.createSession(f.a.id);
+    const task = await f.host.createSession(f.a.id);
     const { HistoryIndex } = await import("../src/main/history-index.ts");
-    const owner = f.host as unknown as { indexes: Map<string, InstanceType<typeof HistoryIndex>> };
+    const owner = f.host as unknown as {
+      indexes: Map<string, import("../src/main/history-storage.ts").WorkerHistoryIndex>;
+    };
     const index = owner.indexes.get(task.id);
     if (!index) throw new Error("Missing index fixture");
     const oldPath = index.path;
     const original = await readFile(oldPath);
     const originalCount = index.snapshot().endSeq;
     let fault: ReturnType<typeof vi.spyOn> | undefined;
+    const { DatabaseSync } = await import("node:sqlite");
+    const cache = new DatabaseSync(join(f.dir, "history.sqlite"));
+    cleanup.push(async () => cache.close());
     if (phase === "prepared") {
-      f.settings.state.db.exec(`CREATE TRIGGER fail_replacement AFTER INSERT ON transcript_entries
+      cache.exec(`CREATE TRIGGER fail_replacement AFTER INSERT ON transcript_entries
         WHEN NEW.entry_id='replacement-2' BEGIN SELECT RAISE(ABORT, 'injected prepared failure'); END`);
     } else {
       const complete = f.settings.state.completeIntent.bind(f.settings.state);
@@ -253,9 +262,9 @@ for (const phase of ["prepared", "durable", "published"] as const) {
       timestamp: new Date(1).toISOString(),
       message: { role: "user" as const, content: `replacement ${n}`, timestamp: n },
     }));
-    expect(() => index.replace(index.getHeader(), entries)).toThrow(`injected ${phase} failure`);
+    await expect(index.replaceAsync(index.getHeader(), entries)).rejects.toThrow(`injected ${phase} failure`);
     fault?.mockRestore();
-    f.settings.state.db.exec("DROP TRIGGER IF EXISTS fail_replacement");
+    cache.exec("DROP TRIGGER IF EXISTS fail_replacement");
     expect(await readFile(oldPath)).toEqual(original);
     expect(index.path).toBe(oldPath);
     const intents = f.settings.state.listIntents();

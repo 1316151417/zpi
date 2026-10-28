@@ -165,7 +165,7 @@ it("continues one persisted task across all three protocols with all four tools,
     await writeFile(join(dir, "README.md"), "portable local history");
     await host.init();
     const project = await host.addProject(dir);
-    const task = host.createSession(project.id);
+    const task = await host.createSession(project.id);
     const run = async (text: string) => {
       await host.startRun({ sessionId: task.id, text });
       await host.activeRuns.get(task.id)?.done;

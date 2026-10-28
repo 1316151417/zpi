@@ -125,8 +125,8 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
   await host.init();
   cleanup.push(() => host.close());
   const project = await host.addProject(dir),
-    a = host.createSession(project.id),
-    b = host.createSession(project.id);
+    a = await host.createSession(project.id),
+    b = await host.createSession(project.id);
   await mkdir(join(dir, "agent", ".zpi", "AGENTS.md"), { recursive: true });
   expect((await host.listSkills(project.id)).diagnostics).toContainEqual({
     path: join(dir, "agent", ".zpi", "AGENTS.md"),
@@ -250,7 +250,7 @@ it("environment discovery persists private preset credentials; models normalize 
       models: presetModels(provider.preset),
     });
     const model = provider.models[0];
-    const task = host.createSession(null);
+    const task = await host.createSession(null);
     await host.setSessionSelection(task.id, {
       provider: provider.id,
       modelId: model.id,
@@ -271,7 +271,7 @@ it("environment discovery persists private preset credentials; models normalize 
     new SettingsStore(dir, codec).get().providers.find((provider) => provider.id === disabled.id)?.models[0]
       .enabled,
   ).toBe(false);
-  await expect(host.setSessionSelection(host.createSession(null).id, choice)).rejects.toThrow("关闭");
+  await expect(host.setSessionSelection((await host.createSession(null)).id, choice)).rejects.toThrow("关闭");
   settings.saveProvider({ ...disabled, enabled: false });
   expect(settings.isSelectionValid(choice)).toBe(false);
   settings.saveProvider({ ...disabled, enabled: true });

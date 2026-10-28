@@ -37,7 +37,7 @@ export interface RunBoundary {
   auxiliary?: boolean;
   runId: string;
 }
-interface IndexData {
+export interface IndexData {
   header: TranscriptHeader;
   parentId: string | null;
   size: number;
@@ -46,6 +46,13 @@ interface IndexData {
   cacheInput: number;
   lastActivityAt?: number;
   diagnostic?: string;
+}
+export interface HistoryMetadata {
+  path: string;
+  data: IndexData;
+  seq: number;
+  currentRun: string;
+  state: TranscriptState;
 }
 type Row = Record<string, string | number | null>;
 // Rebuild truncated search projections without changing the authoritative transcript or SQL schema.
@@ -75,12 +82,30 @@ export class HistoryIndex implements TranscriptStore {
   private generationHooks?: GenerationHooks;
   private missingDerivedTables = false;
   private batchStatements?: Map<string, StatementSync>;
-  constructor(path: string, db: DatabaseSync, generationHooks?: GenerationHooks) {
+  constructor(path: string, db: DatabaseSync, generationHooks?: GenerationHooks, readOnly = false) {
     this.generationHooks = generationHooks;
     this.path = path;
     this.db = db;
     this.key = transcriptPathKey(db, path);
-    this.missingDerivedTables = ensureTranscriptSchema(db);
+    this.missingDerivedTables = ensureTranscriptSchema(db, readOnly);
+  }
+  publishedMetadata(): HistoryMetadata {
+    return {
+      path: this.path,
+      data: this.data,
+      seq: this.seq,
+      currentRun: this.currentRun,
+      state: this.state,
+    };
+  }
+  protected adoptMetadata(value: HistoryMetadata): void {
+    if (this.path !== value.path) this.key = transcriptPathKey(this.db, value.path);
+    this.path = value.path;
+    this.data = value.data;
+    this.seq = value.seq;
+    this.currentRun = value.currentRun;
+    this.state = value.state;
+    this.writeError = undefined;
   }
   private prepare(sql: string): StatementSync {
     if (!this.batchStatements) return this.db.prepare(sql);
@@ -728,6 +753,10 @@ export class HistoryIndex implements TranscriptStore {
     const row = this.one("SELECT * FROM transcript_runs WHERE path=? AND run_id=?", runId);
     return row ? runBoundary(row) : undefined;
   }
+  latestRun(): RunBoundary | undefined {
+    const row = this.one("SELECT * FROM transcript_runs WHERE path=? ORDER BY start DESC LIMIT 1");
+    return row ? runBoundary(row) : undefined;
+  }
   *listRuns(): Iterable<RunBoundary> {
     for (const row of this.db
       .prepare("SELECT * FROM transcript_runs WHERE path=? ORDER BY start DESC")
@@ -837,7 +866,7 @@ export class HistoryIndex implements TranscriptStore {
       : undefined;
   }
   /** Build an unpublished generation with bounded memory and one durability boundary. */
-  private static stageGeneration(
+  static stageGeneration(
     path: string,
     db: DatabaseSync,
     header: SessionHeader,
@@ -886,13 +915,7 @@ export class HistoryIndex implements TranscriptStore {
     const staged = HistoryIndex.stageGeneration(nextPath, this.db, header, entries);
     // Publication changes only the DB locator. The previous immutable generation survives every failure.
     this.generationHooks?.commit(this.path, nextPath, staged.getHeader(), staged.data.size);
-    this.path = staged.path;
-    this.key = staged.key;
-    this.data = staged.data;
-    this.seq = staged.seq;
-    this.currentRun = staged.currentRun;
-    this.state = staged.state;
-    this.writeError = undefined;
+    this.adoptMetadata(staged.publishedMetadata());
   }
 }
 function runBoundary(row: Row): RunBoundary {

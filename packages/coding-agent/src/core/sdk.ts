@@ -11,7 +11,7 @@ import { ModelRuntime } from "./model-runtime.ts";
 import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
-import { recoverCanonicalToolCalls } from "./streaming-tool-journal.ts";
+import { recoverCanonicalToolCallsAsync } from "./streaming-tool-journal.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
 import { wrapToolDefinition } from "./tools/pi/tool-definition-wrapper.ts";
@@ -90,7 +90,7 @@ export async function createAgentSession(
     throw new Error("Model authentication or provider is not configured");
   if (!selection.model || selection.model.modelId !== model.id || selection.model.provider !== model.provider)
     manager.appendModelChange(model.provider, model.id);
-  recoverCanonicalToolCalls(manager, restored.messages);
+  await recoverCanonicalToolCallsAsync(manager, restored.messages);
   let session: AgentSession;
   const fileReadState = new FileReadState();
   const builtin = createCodingTools(
@@ -172,7 +172,7 @@ export async function createAgentSession(
   }
   const thinking = clampThinkingLevel(model, requestedThinking);
   if (thinking !== selection.thinkingLevel) manager.appendThinkingLevelChange(thinking);
-  session = new AgentSession(
+  session = await AgentSession.create(
     model,
     runtime,
     manager,

@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { done } from "../../../tests/fake-server.ts";
-import type { HistoryIndex } from "../src/main/history-index.ts";
+import type { WorkerHistoryIndex as HistoryIndex } from "../src/main/history-storage.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { retryStorageCleanup } from "../src/main/storage-cleanup.ts";
 import { transcriptTables } from "../src/main/transcript-schema.ts";
@@ -14,8 +15,8 @@ function history(host: SessionHost, id: string): HistoryIndex {
   if (!index) throw new Error("missing history fixture");
   return index;
 }
-function append(index: HistoryIndex, id: string) {
-  index.append({
+async function append(index: HistoryIndex, id: string) {
+  await index.appendAsync({
     id: `${id}-run`,
     parentId: index.data.parentId,
     type: "custom",
@@ -23,7 +24,7 @@ function append(index: HistoryIndex, id: string) {
     customType: "zpi.run",
     data: { runId: id, phase: "start", text: "retained search text" },
   });
-  index.append({
+  await index.appendAsync({
     id,
     parentId: index.data.parentId,
     type: "message",
@@ -40,14 +41,14 @@ async function reopen(f: Awaited<ReturnType<typeof fixture>>) {
 }
 it("retains archived transcripts/search, then deletes every generation and all transcript projections", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
-  const other = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
+  const other = await f.host.createSession(f.a.id);
   const index = history(f.host, task.id);
-  append(index, "first");
-  append(history(f.host, other.id), "other");
+  await append(index, "first");
+  await append(history(f.host, other.id), "other");
   const oldPath = index.path;
   const oldKey = index.key;
-  index.replace(index.getHeader(), [
+  await index.replaceAsync(index.getHeader(), [
     {
       type: "message",
       id: "new",
@@ -63,7 +64,8 @@ it("retains archived transcripts/search, then deletes every generation and all t
     `${task.id}.generation-11111111-1111-1111-1111-111111111111.jsonl`,
   );
   const files = [oldPath, currentPath];
-  const db = f.settings.state.db;
+  const db = new DatabaseSync(join(f.dir, "history.sqlite"));
+  cleanup.push(async () => db.close());
   db.prepare("INSERT INTO transcript_search VALUES (?,?,?,?)").run(
     orphanKey,
     1,
@@ -107,10 +109,14 @@ it("retains archived transcripts/search, then deletes every generation and all t
 });
 it("retries persisted resource and transcript-index failures after restart without resurrecting the task", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const index = history(f.host, task.id);
-  append(index, "content");
+  await append(index, "content");
   const path = index.path;
+  // A released installation can also leave projections in the old shared state database.
+  f.settings.state.db
+    .prepare("INSERT INTO transcript_entries VALUES (?,?,?,?,?,?,?,?,?,?)")
+    .run(index.key, 1, "legacy", "message", "user", 0, 1, null, 0, null);
   f.settings.state.db.exec(`CREATE TRIGGER fail_cleanup BEFORE DELETE ON transcript_entries
     BEGIN SELECT RAISE(ABORT,'injected cleanup failure'); END;`);
   const failure = vi
@@ -134,11 +140,11 @@ it("retries persisted resource and transcript-index failures after restart witho
 });
 it("protects current/archived task paths and unresolved recovery generations until references are released", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const index = history(f.host, task.id);
   const original = index.path;
   const originalKey = index.key;
-  index.replace(index.getHeader(), []);
+  await index.replaceAsync(index.getHeader(), []);
   const current = index.path;
   const state = f.settings.state;
   state.db.prepare("UPDATE transcript_state SET path=? WHERE path=?").run(original, originalKey);
@@ -174,8 +180,8 @@ it("protects current/archived task paths and unresolved recovery generations unt
 });
 it("preserves mismatched generations and external files, recording a retryable diagnostic", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
-  const other = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
+  const other = await f.host.createSession(f.a.id);
   const foreign = join(
     dirname(f.host.sessionPath(task.id)),
     `${task.id}.generation-00000000-0000-0000-0000-000000000000.jsonl`,
@@ -192,7 +198,7 @@ it("preserves mismatched generations and external files, recording a retryable d
 });
 it("retries file removal failures without discarding archived/current data", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const file = f.host.sessionPath(task.id);
   await rename(file, `${file}.saved`);
   await mkdir(file);
@@ -207,8 +213,8 @@ it("retries file removal failures without discarding archived/current data", asy
 });
 it("reports bad task fields before startup mutates valid task state", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
-  const other = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
+  const other = await f.host.createSession(f.a.id);
   await f.host.close();
   const before = f.settings.state.getTask(other.id);
   const bad = JSON.stringify({ ...f.settings.state.getTask(task.id), title: 42 });
@@ -221,7 +227,7 @@ it("reports bad task fields before startup mutates valid task state", async () =
 });
 it("keeps a task with a missing transcript locator visible with an explicit diagnostic", async () => {
   const f = await fixture((_, response) => done(response));
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const state = f.settings.state;
   const saved = state.getTask(task.id);
   if (!saved) throw new Error("missing task");

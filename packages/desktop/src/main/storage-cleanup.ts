@@ -56,6 +56,7 @@ export async function retryStorageCleanup(
   deleteResources: (id: string) => Promise<void>,
   report: (error: unknown, id: string) => void,
   onlyTask?: string,
+  deleteIndex?: (file: string) => Promise<void>,
 ): Promise<void> {
   const dataRoot = dirname(canonicalTranscriptPath(join(directory, "state.sqlite")));
   const sessions = join(dataRoot, "agent", "sessions");
@@ -181,6 +182,7 @@ export async function retryStorageCleanup(
         await assertOwner(file, job.taskId, declaredDeletedFile);
         await rm(file); // ENOENT on retry is accepted by managedPath; no recursive transcript deletion.
       }
+      await deleteIndex?.(file);
       state.transaction("cleanup.transcript", job.taskId, () => {
         for (const path of keys) deleteTranscriptIndex(state.db, path);
         finish(job.kind, job.taskId, job.path);

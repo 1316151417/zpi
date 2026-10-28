@@ -10,7 +10,7 @@ it("cache failure before accepting a run preserves the draft and releases the ru
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const markUsed = vi
     .spyOn(f.host.attachments, "markUsed")
     .mockRejectedValueOnce(new Error("attachment failure"));
@@ -34,7 +34,7 @@ it("cache failure before accepting a run preserves the draft and releases the ru
 
 it("running tasks reject archive/restore/delete while metadata rename and pin preserve the conversation", async () => {
   const f = await fixture((_, response) => send(response, chunk({ content: "still running" })));
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const first = await f.host.startRun({ sessionId: id, text: "original input" });
   await expect.poll(() => f.host.getSessionSnapshot(id).view.runs[0].orderedBlocks.length).toBe(1);
   const before = f.host.getSessionSnapshot(id).view.runs;
@@ -66,7 +66,7 @@ it("archive discards pending messages and restores task ownership without revivi
       .at(-1)?.content;
     if (user !== "hold") done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const run = await f.host.submitInput({ sessionId: id, text: "hold" });
   if (!("runId" in run) || !run.runId) throw new Error("missing run");
   await expect.poll(() => f.server.requests.length).toBe(1);
@@ -102,7 +102,7 @@ it("damaged tasks are listed for deletion, cannot restore, and deletion removes 
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   await f.host.close();
   const file = join(f.dir, "agent", "sessions", f.a.id, `${id}.jsonl`);
   const attachments = join(f.dir, "agent", "attachments", id);

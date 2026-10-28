@@ -37,7 +37,7 @@ test("session resources remain bound to the project root after bash changes dire
     }
   });
   const project = await f.host.addProject(f.workspace);
-  f.session = f.host.createSession(project.id);
+  f.session = await f.host.createSession(project.id);
   const nested = join(f.workspace, "nested");
   await mkdir(join(nested, ".zpi", "skills", "nested-only"), { recursive: true });
   await mkdir(join(f.workspace, ".zpi", "skills", "root-only"), { recursive: true });
@@ -146,7 +146,7 @@ test("prompt snapshots and skill defaults survive restart; the read-only preview
   const original = f.session;
   await run(f, "original first message");
   f.server.requests.splice(0);
-  f.session = f.host.createSession(null, { cwd: f.workspace });
+  f.session = await f.host.createSession(null, { cwd: f.workspace });
   expect(f.session.draft).toBe(true);
 
   const preview = await f.host.previewPrompt();
@@ -166,7 +166,7 @@ test("prompt snapshots and skill defaults survive restart; the read-only preview
   expect(f.server.requests[1].messages).toContainEqual(
     expect.objectContaining({ role: "user", content: "$review task" }),
   );
-  f.session = f.host.createSession(null, { cwd: f.workspace });
+  f.session = await f.host.createSession(null, { cwd: f.workspace });
   expect((await f.host.listSessionSkills(f.session.id)).skills).toHaveLength(0);
   const linked = `${buildMentionMarkdown("$review", path)} task`;
   await run(f, linked);

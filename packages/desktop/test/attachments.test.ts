@@ -50,7 +50,7 @@ test("opaque image ownership, actual image_url, raw visible references, restart 
   const f = await fixture();
   await writeFile(join(f.workspace, "hello world.ts"), "let value=1");
   const image = await f.host.importImage(f.session.id, "original.jpg", await png());
-  const other = f.host.createSession(null);
+  const other = await f.host.createSession(null);
   await expect(f.host.readAttachment(other.id, image.id)).rejects.toThrow("不属于");
   await run(f, "Inspect", { attachments: [image.id], fileReferences: ["hello world.ts"] });
   const body = JSON.stringify(f.server.requests[0]);
@@ -102,7 +102,7 @@ test("file attachments work with text-only models, include bounded text and pres
     path: await realpath(pdfPath),
     mimeType: "application/pdf",
   });
-  const other = f.host.createSession(null);
+  const other = await f.host.createSession(null);
   await expect(f.host.readAttachment(other.id, pdf.id)).rejects.toThrow("不属于");
   await run(f, "Read the attachments", { attachments: [text.id, pdf.id] });
   const body = JSON.stringify(f.server.requests[0]);

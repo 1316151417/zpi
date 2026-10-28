@@ -13,16 +13,16 @@ it("lists persisted cross-project conversations current workspace first, excludi
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const current = f.host.createSession(f.a.id);
-  const local = f.host.createSession(f.a.id);
-  const other = f.host.createSession(f.b.id);
+  const current = await f.host.createSession(f.a.id);
+  const local = await f.host.createSession(f.a.id);
+  const other = await f.host.createSession(f.b.id);
   for (const session of [local, other]) {
     await f.host.startRun({ sessionId: session.id, text: "history" });
     await f.host.activeRuns.get(session.id)?.done;
   }
   f.host.renameSession(local.id, "A [中文]");
   f.host.renameSession(other.id, "B newer");
-  f.host.createSession(f.a.id);
+  await f.host.createSession(f.a.id);
   const side = await f.host.createSideChat(local.id);
   await f.host.startRun({ sessionId: side.id, text: "side history" });
   await f.host.activeRuns.get(side.id)?.done;
@@ -64,10 +64,10 @@ it("sends only a lightweight reminder and reads a clean immutable snapshot on de
       done(response);
     }
   });
-  const source = f.host.createSession(f.b.id);
+  const source = await f.host.createSession(f.b.id);
   await f.host.startRun({ sessionId: source.id, text: "source-user-marker" });
   await f.host.activeRuns.get(source.id)?.done;
-  const current = f.host.createSession(f.a.id);
+  const current = await f.host.createSession(f.a.id);
   const text = `${buildSessionMentionMarkdown(source.id, "Earlier conversation")} continue`;
   await f.host.startRun({ sessionId: current.id, text });
   await f.host.activeRuns.get(current.id)?.done;
@@ -134,7 +134,7 @@ it("reports missing, deleted and self references without inventing history or bl
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const current = f.host.createSession(f.a.id);
+  const current = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: current.id, text: `#sess_missing #${current.id} continue` });
   await f.host.activeRuns.get(current.id)?.done;
   expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain(
@@ -150,13 +150,13 @@ it("degrades an unreadable reference snapshot without blocking the user's curren
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const source = f.host.createSession(f.b.id);
+  const source = await f.host.createSession(f.b.id);
   await f.host.startRun({ sessionId: source.id, text: "source history" });
   await f.host.activeRuns.get(source.id)?.done;
   const root = join(f.dir, "agent", "session-context");
   await mkdir(root, { recursive: true });
   await writeFile(join(root, source.id), "not a directory");
-  const current = f.host.createSession(f.a.id);
+  const current = await f.host.createSession(f.a.id);
   await f.host.startRun({
     sessionId: current.id,
     text: `${buildSessionMentionMarkdown(source.id, "Source")} continue`,

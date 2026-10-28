@@ -113,7 +113,7 @@ test("snapshots custom instructions on first send and keeps them when global set
   expect(system()).not.toContain("return local file references as Markdown links");
   expect(system()).not.toContain("Reuse file content already in context");
   expect(system()).not.toContain("When you have enough information to act, act.");
-  const next = host.createSession(null);
+  const next = await host.createSession(null);
   await host.startRun({ sessionId: next.id, text: "new conversation" });
   await host.activeRuns.get(next.id)?.done;
   expect(system()).toContain("Before the first tool call");

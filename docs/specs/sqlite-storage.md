@@ -13,7 +13,8 @@
   agent/logs/error.log
   storage/<generationId>/
     ready.json
-    state.sqlite                # 运行时可能同时存在 -wal、-shm
+    state.sqlite                # 权威业务状态，运行时可能同时存在 -wal、-shm
+    history.sqlite              # 可重建历史索引，由专用 Worker 写入
     credentials.enc
     agent/sessions/...
     agent/attachments/...       # 内容文件与专用 index.json
@@ -29,9 +30,17 @@
 - 草稿文本、选择范围、文件引用、revision 存在 `drafts`。旧 revision 写入被忽略；非法新格式记录报错，不清空后重建。输入草稿与任务 draft 标记及待发送队列分别保存。
 - 分组与成员/根级顺序通过 `StateStore.setTaskGroups` 的事务保存；删除组保留任务。展开状态仍由 renderer 保存。
 - `operation_log` 随状态事务记录成功/失败，不用于重建业务状态，也不包含完整提示词/工具输出。保留清理不能代替业务备份。
-- `HistoryIndex` 在同一个数据库维护 `transcript_*` 派生表，包括偏移、run/call、checkpoint、journal 与搜索投影。只能重建这些派生数据，禁止把整个 `state.sqlite` 当旧缓存删除。
+- 桌面运行时由 `HistoryStorage` 的专用 Node Worker 写 JSONL、执行 fsync，并在独立的 `history.sqlite` 维护 `transcript_*` 派生表，包括偏移、run/call、checkpoint、journal 与搜索投影。主线程只读这些索引，业务状态继续写 `state.sqlite`，避免批量导入的 SQLite 写锁阻塞任务与草稿保存。旧 `state.sqlite` 中的 transcript 表保留兼容账本、迁移与清理；运行时不再写入。禁止把整个 `state.sqlite` 当旧缓存删除。
 - 会话文件使用 v2 header 与递增 seq；允许消息、压缩及 run/call/tool_journal/context_anchor 等明确事实类型。标题、置顶、选择、队列等产品快照不属于日志。运行时适配层使用内部 SessionEntry 类型不意味着允许旧 JSONL 直接打开。
 - 附件继续采用受控内容文件和附件索引，不在本次强行迁 SQLite。fork 复制合并多个批次，保留目标已有附件；缓存文件通过文件复制保留，父任务删除后子任务自己的副本仍可读取。外部项目文件仍是外部引用，不会因为 fork 自动备份整个工作目录。
+
+### 后台历史持久化
+
+新建、追加、冷索引重建、未完成工具日志恢复和批量 generation 校验/写入均在 Worker 内执行。追加返回前，JSONL 已完成同步且索引事务已提交，主线程才接管新的序号水位、发布消息或允许工具执行。异步元数据事实与核心消息共用每会话追加队列；回合结束和退出会等待队列排空。Worker 退出会拒绝所有待确认请求，存储失败按现有流程阻止该任务继续，不自动重跑工具。
+
+批量替换以有界的逐条确认传输到临时 spool，最终校验、ID 重映射、整批事务与文件同步在 Worker 完成；新路径仍由主线程的权威恢复意图事务发布。失败时旧 generation 保留。附件/快照搬运和继承统计仍在桌面编排层，复制 spool 使用异步文件 IO；历史页和实际模型上下文的读取、投影仍由调用方执行，未承诺所有大消息处理均无主线程成本。
+
+首次启用独立历史库时，缺失的索引由 JSONL 重建，启动完成时间仍取决于历史量。历史库必须与所属 generation 一起备份或在应用退出后按 JSONL 重建；权威业务库和会话原文件不能作为缓存删除。SDK 仅增加通用异步存储入口，保留同步存储兼容，不依赖 Electron 或 Worker。
 
 ### SQLite 顺序升级与任务校验
 
@@ -84,7 +93,7 @@ ZPI_TEST_MODE=1 ZPI_TEST_SHOW_WINDOW=1 ZPI_TEST_DATA_DIR="$TRIAL_ROOT" npm run d
 6. 仅在可丢弃副本进行数据库失败、半行日志、索引失效、文件换代故障测试；保留原文件与错误证据。绝不能通过删权威库让启动“恢复正常”。
 7. 在目标发行平台分别验证 Electron 41.10.7 的 `node:sqlite`、WAL、重开和打包路径。真实系统加密/快捷键用专用 OS 测试账户或完整独立测试身份验收，不以测试模式的 mock 代替。
 
-按需读取已有 [100 MiB/1 GiB 合成样本测量报告](../storage-lazy-restore-benchmark.md)，包括环境、读字节、parse 数、内存端点及明确未测项。单次暖缓存样本不等于完整预算验收，Node 单测也不等于目标 Electron GUI、发行包或掉电恢复验收。无压缩且全部历史都是有效上下文时，首次模型请求仍需要完整有效历史。
+后台写入与超长单回合覆盖见 [Worker 回归与测量](../history-worker-benchmark.md)。按需读取已有 [100 MiB/1 GiB 合成样本测量报告](../storage-lazy-restore-benchmark.md)，包括环境、读字节、parse 数、内存端点及明确未测项。单次暖缓存样本不等于完整预算验收，Node 单测也不等于目标 Electron GUI、发行包或掉电恢复验收。无压缩且全部历史都是有效上下文时，首次模型请求仍需要完整有效历史。
 
 ## 独立迁移 CLI
 

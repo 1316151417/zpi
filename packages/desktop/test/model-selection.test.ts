@@ -11,7 +11,7 @@ it("medium, xhigh and max survive task reload and reach the provider unchanged; 
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   for (const reasoning of ["medium", "xhigh", "max"] as const) {
     await f.host.setSessionSelection(task.id, { provider: "custom", modelId: "fake", reasoning });
     await f.host.startRun({ sessionId: task.id, text: reasoning });
@@ -63,8 +63,8 @@ it("running selection changes preserve old tool turns and use the new provider o
     }
   });
   await writeFile(join(f.a.path, "x"), "old");
-  const a = f.host.createSession(f.a.id),
-    b = f.host.createSession(f.a.id);
+  const a = await f.host.createSession(f.a.id),
+    b = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: a.id, text: "A" });
   await aStarted.promise;
   f.settings.saveProvider({

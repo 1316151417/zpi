@@ -41,10 +41,10 @@ test("the picker uses the assigned project root, including drafts and worktree t
   await Promise.all([mkdir(projectPath), mkdir(worktree), mkdir(f.workspace)]);
   const project = await f.host.addProject(projectPath);
   const sessions = [
-    f.host.createSession(project.id),
-    f.host.createSession(project.id, { cwd: worktree }),
+    await f.host.createSession(project.id),
+    await f.host.createSession(project.id, { cwd: worktree }),
     // Synthetic mismatch guards project precedence; normal project drafts already use the project root.
-    f.host.createSession(project.id, { cwd: f.workspace }),
+    await f.host.createSession(project.id, { cwd: f.workspace }),
   ];
   for (const session of sessions) {
     const originalCwd = f.host.workspaceInfo(session.id).cwd;
@@ -63,7 +63,7 @@ test("a task still bound to a hidden project uses its root without unhiding it",
   const worktree = join(f.home, "worktree");
   await Promise.all([mkdir(projectPath), mkdir(worktree)]);
   const project = await f.host.addProject(projectPath);
-  const session = f.host.createSession(project.id, { cwd: worktree });
+  const session = await f.host.createSession(project.id, { cwd: worktree });
   f.host.removeProject(project.id);
   await openProjectFromDialog(session.id, f.host, f.showDialog, f.home);
   expect(f.showDialog).toHaveBeenLastCalledWith({ properties: ["openDirectory"], defaultPath: projectPath });
@@ -76,7 +76,7 @@ test("restored ordinary project drafts resolve the project root even with a diff
   const projectPath = join(f.home, "project");
   await Promise.all([mkdir(projectPath), mkdir(f.workspace)]);
   const project = await f.host.addProject(projectPath);
-  const draft = f.host.createSession(project.id, { cwd: f.workspace });
+  const draft = await f.host.createSession(project.id, { cwd: f.workspace });
   const persisted = f.settings.state.getTask(draft.id);
   if (!persisted) throw new Error("Missing task fixture");
   f.settings.state.upsertTask({ ...persisted, cwd: projectPath });
@@ -95,7 +95,10 @@ test("unassigned tasks retain their actual cwd rather than an unrelated project"
   const customPath = join(f.home, "custom-task");
   await mkdir(projectPath);
   await f.host.addProject(projectPath);
-  for (const session of [f.host.createSession(null), f.host.createSession(null, { cwd: customPath })]) {
+  for (const session of [
+    await f.host.createSession(null),
+    await f.host.createSession(null, { cwd: customPath }),
+  ]) {
     await openProjectFromDialog(session.id, f.host, f.showDialog, f.home);
     expect(f.showDialog).toHaveBeenLastCalledWith({
       properties: ["openDirectory"],
@@ -110,7 +113,7 @@ test("a deleted project root falls back to home rather than a worktree or defaul
   const worktree = join(f.home, "worktree");
   await Promise.all([mkdir(projectPath), mkdir(worktree)]);
   const project = await f.host.addProject(projectPath);
-  const session = f.host.createSession(project.id, { cwd: worktree });
+  const session = await f.host.createSession(project.id, { cwd: worktree });
   await rm(projectPath, { recursive: true });
   await openProjectFromDialog(session.id, f.host, f.showDialog, f.home);
   expect(f.showDialog).toHaveBeenLastCalledWith({ properties: ["openDirectory"], defaultPath: f.home });

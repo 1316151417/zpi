@@ -37,7 +37,7 @@ test.each([
     expect(system().includes("USER_MEMORY_SECOND")).toBe(short);
     expect(system().includes("USER_MEMORY_FIRST")).toBe(false);
     expect(system().includes("LONG_SUMMARY_MARKER")).toBe(long);
-    const next = f.host.createSession(null);
+    const next = await f.host.createSession(null);
     await f.host.startRun({ sessionId: next.id, text: "new session" });
     await f.host.activeRuns.get(next.id)?.done;
     expect(f.host.sessions.get(next.id)?.systemPrompt.includes("USER_MEMORY_SECOND")).toBe(nextMode.short);
@@ -57,7 +57,7 @@ test("loads the bound worktree project file, excludes project files without a pr
   const worktree = join(f.dir, "worktree");
   await mkdir(join(worktree, ".zpi"), { recursive: true });
   await writeFile(join(worktree, ".zpi", "MEMORY.md"), "# Memory\n- [branch] WORKTREE_MEMORY\n");
-  const session = f.host.createSession(project.id, { cwd: worktree });
+  const session = await f.host.createSession(project.id, { cwd: worktree });
   await f.host.startRun({ sessionId: session.id, text: "bound checkout" });
   await f.host.activeRuns.get(session.id)?.done;
   expect(f.host.sessions.get(session.id)?.systemPrompt).toContain("WORKTREE_MEMORY");
@@ -161,10 +161,10 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   const host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
   cleanup.push(() => host.close());
   await host.init();
-  const trigger = host.createSession(null);
+  const trigger = await host.createSession(null);
   await host.startRun({ sessionId: trigger.id, text: "new task" });
   await host.activeRuns.get(trigger.id)?.done;
-  await vi.waitFor(() => expect(host.longMemory.status().status).toBe("success"));
+  await vi.waitFor(() => expect(host.longMemory.status().status).toBe("success"), { timeout: 5000 });
   const status = host.longMemory.status();
   expect(status.sources.map((item) => item.sessionId)).toEqual([sourceId]);
   expect(status.tokens).toBe(120);
@@ -230,7 +230,7 @@ test("explicit edit creates only missing short memory files and never overwrites
   await writeFile(viewed.path, "existing custom text");
   expect((await f.host.openMemoryFile(null, "user", "edit")).content).toBe("existing custom text");
   const project = await f.host.addProject(f.workspace);
-  const session = f.host.createSession(project.id);
+  const session = await f.host.createSession(project.id);
   const projectPath = join(f.workspace, ".zpi", "MEMORY.md");
   expect(await f.host.openMemoryFile(session.id, "project", "view")).toEqual({
     path: projectPath,

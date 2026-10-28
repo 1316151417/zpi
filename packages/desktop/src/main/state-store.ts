@@ -130,7 +130,7 @@ function changedFields(before: unknown, after: unknown, fields: readonly string[
   const next = after as Record<string, unknown> | undefined;
   return fields.filter((field) => !isDeepStrictEqual(old?.[field], next?.[field]));
 }
-/** Authoritative desktop state. Transcript projections may share db, never rebuild these tables. */
+/** Authoritative desktop state; legacy transcript projections remain for schema compatibility. */
 export class StateStore {
   readonly db: DatabaseSync;
   readonly ownerEpoch = randomUUID();

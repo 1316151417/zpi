@@ -63,7 +63,7 @@ it("defaults new and old settings to on, validates and preserves an explicit opt
 
 it("backfills historical counts on upgrade and continues accumulating after restart", async () => {
   const { dir, cwd, host, settings } = await setup();
-  const task = host.createSession(null, { cwd });
+  const task = await host.createSession(null, { cwd });
   await host.startRun({ sessionId: task.id, text: "first" });
   await host.activeRuns.get(task.id)?.done;
   const first = host.getSessionSnapshot(task.id).view.modelPerformance;

@@ -70,7 +70,7 @@ test("non-Git task changes merge original-to-final snapshots and survive archive
   await run(f, "read only followup");
   expect((await f.host.getLastTurnReview(f.session.id)).entries).toEqual([]);
   await expect(f.host.readPatch(f.session.id, runId, "operation:missing")).rejects.toThrow("not_found");
-  const otherSession = f.host.createSession(null);
+  const otherSession = await f.host.createSession(null);
   await expect(f.host.readPatch(otherSession.id, null, "operation:write-0")).rejects.toThrow("not_found");
   f.host.saveDraft(f.session.id, { text: "未发送草稿", fileReferences: [], selection: [3, 3], revision: 1 });
   await f.host.archiveSession(f.session.id);

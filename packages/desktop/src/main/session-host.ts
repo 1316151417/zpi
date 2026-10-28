@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
@@ -82,8 +82,9 @@ import { ErrorLog } from "./error-log.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges, readFileSnapshot } from "./file-changes.ts";
 import { readFilePreview } from "./file-preview.ts";
 import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
-import { HistoryIndex } from "./history-index.ts";
+import type { HistoryIndex } from "./history-index.ts";
 import { HistoryPerformance, historyPerformance, sideChatGuard } from "./history-performance.ts";
+import { HistoryStorage, type WorkerHistoryIndex } from "./history-storage.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { localFileCandidate } from "./local-file-path.ts";
 import { memoryEvidence } from "./memory/evidence.ts";
@@ -196,7 +197,9 @@ export class SessionHost {
   private runtimes = new Map<string, ModelRuntime>();
   private managers = new Map<string, SessionManager>();
   private views = new Map<string, SessionView>();
-  private indexes = new Map<string, HistoryIndex>();
+  private indexes = new Map<string, WorkerHistoryIndex>();
+  private readonly historyStorage: HistoryStorage;
+  private readonly settlements = new WeakMap<ActiveRun, Promise<void>>();
   private titleJobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   private sequences = new Map<string, number>();
   private cursors = new Map<string, number | null>();
@@ -257,6 +260,7 @@ export class SessionHost {
     this.taskGroups = new TaskGroupsStore(settings.state);
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
+    this.historyStorage = new HistoryStorage(join(dir, "history.sqlite"));
     this.longMemory = new LongMemoryService({
       directory: join(dir, "memories_v2"),
       legacyDirectory: join(dir, "memories"),
@@ -473,6 +477,7 @@ export class SessionHost {
     this.projects = settings.state.listProjects();
   }
   async init(): Promise<void> {
+    await this.historyStorage.start();
     // Validate all task payloads before recovery writes or runtime restoration.
     const tasks = this.settings.state.listTasks();
     this.settings.state.pruneAudit();
@@ -488,8 +493,7 @@ export class SessionHost {
       // New events must follow the persisted activity watermark after restart.
       this.sequences.set(task.id, record.activitySeq ?? 0);
       try {
-        const index = this.historyIndex(this.path(record));
-        await index.load();
+        const index = await this.historyIndex(this.path(record));
         if (index.data.header.id !== task.id) throw new Error("Session identity mismatch");
         this.indexes.set(task.id, index);
       } catch (error) {
@@ -635,6 +639,7 @@ export class SessionHost {
       this.settings.state,
       this.dir,
       async (taskId) => {
+        await this.historyStorage.forgetTask(taskId);
         await this.attachments.deleteSession(taskId);
         await rm(join(this.dir, "agent", "tool-output", taskId), { recursive: true, force: true });
         await rm(join(this.dir, "agent", "subagents", taskId), { recursive: true, force: true });
@@ -642,6 +647,7 @@ export class SessionHost {
       },
       (error, taskId) => this.errors.write("session.delete.cleanup", error, { sessionId: taskId }),
       id,
+      (file) => this.historyStorage.forget(file),
     );
   }
   private webSearchAvailable(): boolean {
@@ -929,18 +935,18 @@ export class SessionHost {
         })),
     );
   }
-  createSession(
+  async createSession(
     projectId: string | null,
     options: { cwd?: string; parentSessionId?: string; groupId?: string | null } = {},
-  ): SessionRecord {
+  ): Promise<SessionRecord> {
     if (this.closing) throw new Error("busy: 应用正在关闭");
     const id = randomUUID();
     const cwd =
       options.cwd ??
       (projectId === null ? join(this.defaultWorkspace, `draft-${id}`) : this.project(projectId).path);
-    if (projectId === null) mkdirSync(cwd, { recursive: true });
-    if (!statSync(cwd).isDirectory()) throw new Error("configuration: 工作目录不可用");
-    mkdirSync(join(this.dir, "agent", "sessions", projectId ?? "_unassigned"), { recursive: true });
+    if (projectId === null) await mkdir(cwd, { recursive: true });
+    if (!(await stat(cwd)).isDirectory()) throw new Error("configuration: 工作目录不可用");
+    await mkdir(join(this.dir, "agent", "sessions", projectId ?? "_unassigned"), { recursive: true });
     const file = join(this.dir, "agent", "sessions", projectId ?? "_unassigned", `${id}.jsonl`);
     const operationId = randomUUID();
     const createdAt = Date.now();
@@ -964,19 +970,15 @@ export class SessionHost {
       targetFile: relative(this.dir, file),
     });
     try {
-      const index = HistoryIndex.create(
-        file,
-        this.settings.state.db,
-        {
-          type: "session",
-          format: "zpi",
-          version: 2,
-          id,
-          cwd,
-          timestamp: new Date(createdAt).toISOString(),
-        },
-        this.generationHooks(),
-      );
+      const index = await this.historyStorage.open(file, this.generationHooks(), {
+        type: "session",
+        format: "zpi",
+        version: 2,
+        id,
+        cwd,
+        timestamp: new Date(createdAt).toISOString(),
+      });
+      if (this.closing) throw new Error("busy: 应用正在关闭");
       this.settings.state.completeIntent(operationId, () => {
         this.settings.state.upsertTask({
           ...record,
@@ -1215,7 +1217,10 @@ export class SessionHost {
       this.activeRuns.get(parentId)?.aborted
     )
       throw new Error("busy: 父会话已停止或关闭");
-    const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: parentId });
+    const child = await this.createSession(parent.projectId, {
+      cwd: this.cwd(parent),
+      parentSessionId: parentId,
+    });
     try {
       const configuration = {
         ...structuredClone(this.configuration(parentId)),
@@ -1405,7 +1410,7 @@ export class SessionHost {
     const selection = parentTask?.currentSelection;
     const lastThinkingLevel = parentTask?.lastThinkingLevel ?? inherited.lastThinkingLevel;
     const inheritedPerformance = new HistoryPerformance();
-    const child = this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
+    const child = await this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id });
     const operationId = randomUUID();
     const originalFile = relative(this.dir, this.path(child));
     this.settings.state.putIntent({
@@ -1450,11 +1455,11 @@ export class SessionHost {
       const inheritedTotals = inheritedPerformance.snapshot;
       const manager = this.manager(child.id);
       try {
-        manager.replaceEntries(staged.entries());
+        await manager.replaceEntriesAsync(staged.entries());
       } finally {
-        staged.close();
+        await staged.close();
       }
-      manager.appendMessage({
+      await manager.appendMessageAsync({
         role: "user",
         timestamp: Date.now(),
         content: sideChatGuard,
@@ -2309,7 +2314,7 @@ export class SessionHost {
   }
   async getLastTurnReview(id: string) {
     this.record(id);
-    const latest = this.requiredIndex(id).listRuns()[Symbol.iterator]().next().value;
+    const latest = this.requiredIndex(id).latestRun();
     const changes = latest ? await this.allChanges(id, latest.runId) : [];
     const entries = changes.map((entry) => {
       return {
@@ -2619,7 +2624,7 @@ export class SessionHost {
     }
     if (!hasAnswer) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
     const inherited = index.getStateAt(snapshot);
-    const child = this.createSession(parent.projectId, { cwd: this.cwd(parent) });
+    const child = await this.createSession(parent.projectId, { cwd: this.cwd(parent) });
     const operationId = randomUUID();
     const originalFile = relative(this.dir, this.path(child));
     this.settings.state.putIntent({
@@ -2661,12 +2666,12 @@ export class SessionHost {
       });
       const manager = this.manager(child.id);
       try {
-        manager.replaceEntries(staged.entries());
+        await manager.replaceEntriesAsync(staged.entries());
       } finally {
-        staged.close();
+        await staged.close();
       }
       if (relocated.size)
-        manager.appendMessage({
+        await manager.appendMessageAsync({
           role: "user",
           timestamp: Date.now(),
           content: `File attachments were copied for this fork. Use these current paths instead of the historical paths:\n${[...relocated].map(([from, to]) => `${JSON.stringify(from)} -> ${JSON.stringify(to)}`).join("\n")}`,
@@ -2710,7 +2715,7 @@ export class SessionHost {
     if (this.closing || this.deleting.has(id) || this.updating.has(id) || record.archivedAt != null)
       throw new Error("busy: 任务正在关闭或更新");
     const { index, start } = this.runBoundary(id, runId);
-    const latest = index.listRuns()[Symbol.iterator]().next().value;
+    const latest = index.latestRun();
     if (latest && latest.start.start !== index.findRun(runId)?.start.start)
       throw new Error("invalid_input: 只能编辑最新一轮用户消息");
     if (input.workspaceMode !== undefined && !["preserve", "rewind"].includes(input.workspaceMode))
@@ -2805,11 +2810,11 @@ export class SessionHost {
         );
         if (plan.conflicts.length) return { conflicts: plan.conflicts };
         await preserveEditedInput();
-        const conflicts = applyFileRewind(plan, () => manager.replaceEntries(transcript()));
+        const conflicts = await applyFileRewind(plan, () => manager.replaceEntriesAsync(transcript()));
         if (conflicts.length) return { conflicts };
       } else {
         await preserveEditedInput();
-        manager.replaceEntries(transcript());
+        await manager.replaceEntriesAsync(transcript());
       }
       await this.longMemory.invalidateSource(id);
       this.sessions.get(id)?.dispose();
@@ -2818,7 +2823,7 @@ export class SessionHost {
       this.views.delete(id);
       this.cursors.delete(id);
       await current.index.load();
-      current.index.flush();
+      await current.index.flush();
       const restored = this.getSessionSnapshot(id);
       this.emit(id, runId, { type: "history_reset", view: restored.view });
       this.updating.delete(id);
@@ -2960,7 +2965,7 @@ export class SessionHost {
           if (queueItemId) this.settings.state.reserveQueuedInput(preparedAcceptance);
           else this.settings.state.putIntent(preparedAcceptance);
         });
-        manager.appendCustomEntry("zpi.run", {
+        await manager.appendCustomEntryAsync("zpi.run", {
           phase: "start",
           runId: run.runId,
           text,
@@ -2983,7 +2988,7 @@ export class SessionHost {
             supportsImages: model.input.includes("image"),
           },
         });
-        manager.appendCustomEntry("zpi.run", {
+        await manager.appendCustomEntryAsync("zpi.run", {
           phase: "accepted",
           runId: run.runId,
           ...(queueItemId ? { queueItemId } : {}),
@@ -3021,7 +3026,7 @@ export class SessionHost {
             (message) => this.emit(id, run.runId, { type: "run_preparation", message }),
             record.worktreeBaseRef,
           );
-          manager.setCwd(worktree.path);
+          await manager.setCwdAsync(worktree.path);
           Object.assign(record, { cwd: worktree.path, worktree });
           await this.indexes.get(id)?.load();
           this.saveTask(id, { cwd: worktree.path, worktree, newWorktree: true });
@@ -3215,19 +3220,23 @@ export class SessionHost {
             this.acknowledgeSubagentMessage(id, e.message.content, e.message.inputId);
           if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
-            manager.appendCustomEntry("zpi.agent_call", {
-              phase: e.type === "agent_start" ? "start" : "end",
-              runId: run.runId,
-              ordinal: run.ordinal,
-            });
+            void manager
+              .appendCustomEntryAsync("zpi.agent_call", {
+                phase: e.type === "agent_start" ? "start" : "end",
+                runId: run.runId,
+                ordinal: run.ordinal,
+              })
+              .catch(() => {});
           if (e.type === "compaction")
-            manager.appendCustomEntry("zpi.compaction", {
-              runId: run.runId,
-              id: e.id,
-              status: e.status,
-              origin: e.origin,
-              ...(e.error ? { error: e.error } : {}),
-            });
+            void manager
+              .appendCustomEntryAsync("zpi.compaction", {
+                runId: run.runId,
+                id: e.id,
+                status: e.status,
+                origin: e.origin,
+                ...(e.error ? { error: e.error } : {}),
+              })
+              .catch(() => {});
           if (e.type === "entry_appended" && e.entry.type === "compaction")
             this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
           // Match restoreView and HistoryIndex: internal system declarations have no visible ordinal.
@@ -3290,7 +3299,7 @@ export class SessionHost {
       }
       if (started) {
         record.draft = false;
-        this.settle(id, run, error);
+        await this.settle(id, run, error);
         throw error;
       }
       if (record.draft) {
@@ -3354,9 +3363,10 @@ export class SessionHost {
       },
     };
   }
-  private historyIndex(path: string): HistoryIndex {
-    return new HistoryIndex(path, this.settings.state.db, this.generationHooks());
+  private historyIndex(path: string): Promise<WorkerHistoryIndex> {
+    return this.historyStorage.open(path, this.generationHooks());
   }
+
   async getDraft(id: string) {
     this.record(id);
     const draft = this.drafts.get(id),
@@ -3460,8 +3470,20 @@ export class SessionHost {
       modelRuntimeConfig(config, () => this.settings.getRequestApiKey(providerId, this.requestFetch)),
     );
   }
-  private settle(id: string, run: ActiveRun, error?: unknown): void {
+  private settle(id: string, run: ActiveRun, error?: unknown): Promise<void> {
+    const existing = this.settlements.get(run);
+    if (existing) return existing;
+    const operation = this.settleRun(id, run, error);
+    this.settlements.set(run, operation);
+    return operation;
+  }
+  private async settleRun(id: string, run: ActiveRun, error?: unknown): Promise<void> {
     if (this.activeRuns.get(id) !== run) return;
+    try {
+      await this.managers.get(id)?.flushAsync();
+    } catch (failure) {
+      error ??= failure;
+    }
     if (!this.configuration(id).subagentProfile) {
       this.memorySelections.delete(id);
     }
@@ -3491,7 +3513,7 @@ export class SessionHost {
       this.blocked.set(id, message);
     };
     try {
-      this.manager(id).appendCustomEntry("zpi.run", {
+      await this.manager(id).appendCustomEntryAsync("zpi.run", {
         phase: "end",
         runId: run.runId,
         status,
@@ -3507,7 +3529,7 @@ export class SessionHost {
     // Derived-index persistence and child publication must not strand run.done,
     // which cancellation and application close both await.
     try {
-      this.indexes.get(id)?.flush();
+      await this.indexes.get(id)?.flush();
     } catch (error) {
       storageFailure(error, "agent.index");
     }
@@ -3648,6 +3670,8 @@ export class SessionHost {
     await cleanup(() => this.longMemory.drain());
     await queueClose;
     for (const index of this.indexes.values()) await cleanup(() => index.flush());
+    await cleanup(() => this.historyStorage.close());
+    this.indexes.clear();
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, "Failed to close all session resources cleanly");
   }

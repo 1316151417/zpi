@@ -108,7 +108,7 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
     }
   });
   expect(existsSync(f.workspace)).toBe(false);
-  const s = f.host.createSession(null);
+  const s = await f.host.createSession(null);
   expect(s).toMatchObject({ projectId: null, cwd: join(f.workspace, `draft-${s.id}`) });
   expect(f.host.listProjects()).toEqual([]);
   await mkdir(join(String(s.cwd), ".zpi", "skills", "inspect"), { recursive: true });
@@ -142,16 +142,18 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
   expect(restarted.getSessionSnapshot(s.id).session.cwd).toBe(s.cwd);
   expect(restarted.listRecentSessions().map((s) => s.id)).toEqual([s.id]);
   const p = await f.host.addProject(f.workspace);
-  const explicit = f.host.createSession(p.id);
+  const explicit = await f.host.createSession(p.id);
   expect(explicit.projectId).toBe(p.id);
   expect(f.host.listSessions(p.id).map((s) => s.id)).toEqual([explicit.id]);
-  expect(() => f.host.createSession("missing")).toThrow("项目不存在");
+  await expect(f.host.createSession("missing")).rejects.toThrow("项目不存在");
 });
 
 it("five pins are enforced globally, idempotently and persist through unpin/archive/restart", async () => {
   const f = await fixture();
   const project = await f.host.addProject(f.dir);
-  const tasks = Array.from({ length: 7 }, (_, i) => f.host.createSession(i % 2 ? project.id : null));
+  const tasks = await Promise.all(
+    Array.from({ length: 7 }, (_, i) => f.host.createSession(i % 2 ? project.id : null)),
+  );
   for (const task of tasks.slice(0, 5)) f.host.setSessionPinned(task.id, true);
   const initial = f.host.listRecentSessions().filter((r) => r.pinnedAt != null);
   expect(() => f.host.setSessionPinned(tasks[5].id, true)).toThrow("最多置顶 5 个");
@@ -203,7 +205,7 @@ it("keeps manually ordered slots through reopen, hidden projects, stale commands
 it("keeps hidden project ownership and cwd when an archived task is restored", async () => {
   const f = await fixture();
   const project = await f.host.addProject(f.dir);
-  const task = f.host.createSession(project.id);
+  const task = await f.host.createSession(project.id);
   await f.host.archiveSession(task.id);
   f.host.removeProject(project.id);
   const restored = f.host.restoreSession(task.id);

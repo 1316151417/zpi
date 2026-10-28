@@ -9,7 +9,7 @@ vi.mock("../src/main/workspace-files.ts", async (original) => ({
 
 test("file mentions cancel superseded scans and close cancels independent searches", async () => {
   const f = await fixture(() => {});
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const signals: AbortSignal[] = [];
   vi.mocked(searchFiles).mockImplementation(
     async (_cwd, _query, signal) =>
@@ -23,7 +23,7 @@ test("file mentions cancel superseded scans and close cancels independent search
   const second = f.host.searchFiles(id, "second");
   expect(signals[0].aborted).toBe(true);
   await first;
-  const otherId = f.host.createSession(f.a.id).id;
+  const otherId = (await f.host.createSession(f.a.id)).id;
   const mention = f.host.searchFiles(otherId, "readme");
   expect(signals[1].aborted).toBe(false);
   expect(signals[2].aborted).toBe(false);
@@ -34,8 +34,8 @@ test("file mentions cancel superseded scans and close cancels independent search
 
 test("notification titles include only visible top-level sessions", async () => {
   const f = await fixture(() => {});
-  const root = f.host.createSession(f.a.id);
-  const child = f.host.createSession(f.a.id, { parentSessionId: root.id });
+  const root = await f.host.createSession(f.a.id);
+  const child = await f.host.createSession(f.a.id, { parentSessionId: root.id });
   expect(f.host.notificationTitle(root.id)).toBe(root.title);
   expect(f.host.notificationTitle(child.id)).toBeUndefined();
   expect(f.host.notificationTitle("missing")).toBeUndefined();

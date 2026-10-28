@@ -64,7 +64,7 @@ it.each(["length", "tool_calls", "invalid_json", "provider_error"])(
       ...config,
       models: config.models.map((model) => ({ ...model, maxTokens: 10000 })),
     });
-    const record = host.createSession(null);
+    const record = await host.createSession(null);
     await host.startRun({ sessionId: record.id, text: "请解释计算周期和合同周期" });
     await idle(host, record.id);
     const logPath = join(dir, "agent", "logs", "error.log");
@@ -96,7 +96,7 @@ it("title is independent, snapshot-bound, once-only and preserves the complete f
       done(res);
     }
   });
-  const record = host.createSession(null),
+  const record = await host.createSession(null),
     text = "这是完整用户消息，超过十个字，绝对不截断消息原文。";
   await host.startRun({ sessionId: record.id, text });
   await idle(host, record.id);
@@ -143,7 +143,7 @@ it("default titles keep twenty graphemes, truncating only longer input without c
   });
   const grapheme = "👨‍👩‍👧‍👦";
   for (const length of [19, 20, 21]) {
-    const record = host.createSession(null);
+    const record = await host.createSession(null);
     const text = grapheme.repeat(length);
     await host.startRun({ sessionId: record.id, text });
     await idle(host, record.id);
@@ -163,8 +163,8 @@ it("manual rename and deletion win over late title responses; title failure is n
       done(res);
     }
   });
-  const a = host.createSession(null),
-    b = host.createSession(null);
+  const a = await host.createSession(null),
+    b = await host.createSession(null);
   await host.startRun({ sessionId: a.id, text: "first A" });
   await idle(host, a.id);
   await host.startRun({ sessionId: b.id, text: "first B" });
@@ -189,7 +189,7 @@ it("manual rename and deletion win over late title responses; title failure is n
     send(res, chunk({ content: '{"session_title":false}' }));
     done(res);
   });
-  const c = failed.host.createSession(null);
+  const c = await failed.host.createSession(null);
   await failed.host.startRun({ sessionId: c.id, text: "临时标题" });
   await idle(failed.host, c.id);
   await failed.host.startRun({ sessionId: c.id, text: "再次发送" });

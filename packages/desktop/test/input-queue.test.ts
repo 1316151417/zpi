@@ -53,7 +53,7 @@ it("queued inputs reorder, withdraw, preempt and drain once without entering his
     if (user === "hold") await release.promise;
     if (!response.destroyed) done(response);
   });
-  const session = f.host.createSession(f.a.id),
+  const session = await f.host.createSession(f.a.id),
     id = session.id;
   await f.host.submitInput({ sessionId: id, text: "hold" });
   await expect.poll(() => f.server.requests.length).toBe(1);
@@ -102,7 +102,7 @@ it("immediate drafts validate before stopping, bypass queued inputs, and resume 
     send(response, chunk({ content: "reply" }));
     if (user !== "hold" && user !== "immediate") done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   await f.host.submitInput({ sessionId: id, text: "hold" });
   await expect.poll(() => f.server.requests.length).toBe(1);
   for (const text of ["queued first", "queued second"]) await f.host.submitInput({ sessionId: id, text });
@@ -162,8 +162,8 @@ it("stopped queues and image ownership survive restart; errors pause without los
     contextWindow: 32768,
     maxTokens: 4096,
   });
-  const id = f.host.createSession(f.a.id).id;
-  const b = f.host.createSession(f.b.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
+  const b = (await f.host.createSession(f.b.id)).id;
   const first = await f.host.startRun({ sessionId: id, text: "hold" });
   const image = await f.host.importImage(
     id,
@@ -206,7 +206,7 @@ it("withdrawing queued quoted input restores editable text and reference cards",
     await release.promise;
     if (!response.destroyed) done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   await f.host.submitInput({ sessionId: id, text: "hold" });
   await expect.poll(() => f.server.requests.length).toBe(1);
   const selections = [{ text: "const result = 1;", path: join(f.dir, "example.ts") }];
@@ -244,7 +244,7 @@ it("preserves truncated text and pauses queued input instead of completing the r
     await release.promise;
     done(response, "length");
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   await f.host.submitInput({ sessionId: id, text: "first" });
   await expect.poll(() => f.server.requests.length).toBe(1);
   await f.host.submitInput({ sessionId: id, text: "queued follow-up" });
@@ -267,7 +267,7 @@ it.each([false, true])(
       send(response, chunk({ content: "answer" }));
       done(response);
     });
-    const id = f.host.createSession(f.a.id).id;
+    const id = (await f.host.createSession(f.a.id)).id;
     const itemId = "restored-first-input";
     if (queued)
       f.host.inputQueue.restore(id, {

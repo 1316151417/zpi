@@ -28,8 +28,8 @@ it("uses the submitting session project before user commands and preserves origi
   });
   await host.customCommands.create({ name: "review", prompt: "USER $ARGUMENTS" });
   await host.commandServices(a.id).commands.create({ name: "review", prompt: "PROJECT A $1" });
-  const sessionA = host.createSession(a.id),
-    sessionB = host.createSession(b.id);
+  const sessionA = await host.createSession(a.id),
+    sessionB = await host.createSession(b.id);
   host.activateSession(sessionB.id);
   const commandsA = await host.listSessionCustomCommands(sessionA.id);
   expect(commandsA.commands.filter((command) => command.name === "/review")).toHaveLength(1);
@@ -51,7 +51,7 @@ it("disabled project command does not fall back to user command, and no request 
   const project = host.commandServices(a.id).commands;
   const command = await project.create({ name: "review", prompt: "PROJECT" });
   await project.setEnabled({ id: command.id, enabled: false });
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   await expect(host.startRun({ sessionId: session.id, text: "/review" })).rejects.toThrow("禁用");
   expect(server.requests).toHaveLength(0);
   expect(host.getSessionSnapshot(session.id).view.runs).toHaveLength(0);
@@ -64,7 +64,7 @@ it("fresh disk content is used at invocation without scanning other framework di
   await mkdir(ignored, { recursive: true });
   await writeFile(join(ignored, "secret.md"), "DO NOT DISCOVER");
   await writeFile(command.filePath, "---\ndescription: Updated\n---\nNEW $ARGUMENTS");
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   expect((await host.listSessionCustomCommands(session.id)).commands.map((item) => item.name)).toEqual([
     "/review",
   ]);
@@ -81,7 +81,7 @@ it("built-in init remains authoritative over a conflicting custom command", asyn
   expect(
     (await host.customCommands.list()).diagnostics.some((item) => item.code === "unsupported_name"),
   ).toBe(true);
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   await host.startRun({ sessionId: session.id, text: "/init" });
   await host.activeRuns.get(session.id)?.done;
   expect(JSON.stringify(server.requests[0].messages)).toContain("AGENTS.md");
@@ -116,8 +116,8 @@ it("shell expansion runs only on dispatch, once, in the submitting session and k
   cleanup.push(() => host.close());
   await host.init();
   await host.commandServices(f.a.id).commands.create({ name: "shell", prompt: "Result !`fixture $1`" });
-  const a = host.createSession(f.a.id),
-    b = host.createSession(f.b.id);
+  const a = await host.createSession(f.a.id),
+    b = await host.createSession(f.b.id);
   await host.listSessionCustomCommands(a.id);
   expect(calls).toHaveLength(0);
   await host.startRun({ sessionId: a.id, text: "first" });
@@ -158,7 +158,7 @@ it("abort cancels template preparation and never sends a model request or automa
   cleanup.push(() => host.close());
   await host.init();
   await host.customCommands.create({ name: "shell", prompt: "!`fixture`" });
-  const session = host.createSession(f.a.id);
+  const session = await host.createSession(f.a.id);
   const run = await host.startRun({ sessionId: session.id, text: "/shell" });
   await expect.poll(() => calls).toBe(1);
   await host.abortRun({ sessionId: session.id, runId: run.runId });
@@ -177,7 +177,7 @@ it("required skills use the owning session resource loader and preserve metadata
   );
   const command = await host.commandServices(a.id).commands.create({ name: "review", prompt: "REVIEW" });
   await writeFile(command.filePath, "---\nskills: [review-skill]\ndisable-noninteractive: true\n---\nREVIEW");
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   const catalog = await host.listSessionCustomCommands(session.id);
   expect(catalog.commands[0].disableNonInteractive).toBe(true);
   await host.startRun({ sessionId: session.id, text: "/review" });
@@ -189,7 +189,7 @@ it("required skills use the owning session resource loader and preserve metadata
 it("subagent mentions route through the existing Agent tool and honor session capability snapshots", async () => {
   const { host, settings, a, server } = await fixture((_, response) => done(response));
   settings.setCapabilityEnabled("subagents", true);
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   expect(
     (await host.listSessionCustomCommands(session.id)).subagents?.some((agent) => agent.name === "Explore"),
   ).toBe(true);
@@ -202,7 +202,7 @@ it("subagent mentions route through the existing Agent tool and honor session ca
   );
   settings.setCapabilityEnabled("subagents", false);
   expect((await host.listSessionCustomCommands(session.id)).subagents?.length).toBeGreaterThan(0);
-  const disabled = host.createSession(a.id);
+  const disabled = await host.createSession(a.id);
   expect((await host.listSessionCustomCommands(disabled.id)).subagents).toEqual([]);
   await expect(host.startRun({ sessionId: disabled.id, text: "@Explore inspect" })).rejects.toThrow("未启用");
   expect(server.requests).toHaveLength(1);
@@ -212,7 +212,7 @@ it("internal subagent inputs never interpret user command templates or agent men
   const shell = vi.fn(async () => "MOCK SHELL");
   const { host, a, server } = await fixture((_, response) => done(response), shell);
   await host.customCommands.create({ name: "shell", prompt: "!`MUST NEVER EXECUTE`" });
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   await host.startRun({ sessionId: session.id, text: "/shell" }, undefined, true);
   await host.activeRuns.get(session.id)?.done;
   expect(JSON.stringify(server.requests[0].messages)).toContain("/shell");
@@ -286,7 +286,7 @@ it("a readonly Agent delegation cannot run command shell templates", async () =>
     },
   });
   await host.customCommands.create({ name: "shell", prompt: "!`fixture`" });
-  const session = host.createSession(f.a.id);
+  const session = await host.createSession(f.a.id);
   await host.startRun({ sessionId: session.id, text: "delegate inspection" });
   await host.activeRuns.get(session.id)?.done;
   expect(shell).not.toHaveBeenCalled();
@@ -309,7 +309,7 @@ it("a command appearing during preparation cannot introduce unaccepted shell sid
     if (reads === 2) await host.customCommands.create({ name: "late", prompt: "!`fixture-never-run`" });
     return original(id);
   });
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   try {
     await expect(host.startRun({ sessionId: session.id, text: "/late" })).rejects.toThrow("准备期间已更改");
     expect(server.requests).toHaveLength(0);
@@ -335,7 +335,7 @@ it.each(["edited", "deleted", "disabled"])(
       }
       return original(id);
     });
-    const session = host.createSession(a.id);
+    const session = await host.createSession(a.id);
     try {
       await host.startRun({ sessionId: session.id, text: "/race" });
       await host.activeRuns.get(session.id)?.done;
@@ -356,7 +356,7 @@ it("uses the same normalized uppercase colon invocation in both preparation phas
   const directory = join(host.customCommands.rootDirectory, "Tools");
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, "Review.md"), "NESTED $ARGUMENTS");
-  const session = host.createSession(a.id);
+  const session = await host.createSession(a.id);
   await host.startRun({ sessionId: session.id, text: "/TOOLS:REVIEW argument" });
   await host.activeRuns.get(session.id)?.done;
   expect(JSON.stringify(server.requests[0].messages)).toContain("NESTED argument");

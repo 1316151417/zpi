@@ -132,13 +132,13 @@ test("unassigned drafts allocate unique workspace directories, persist them and 
   const host = new SessionHost(join(home, "storage"), settings, home);
   cleanups.push(() => host.close());
   await host.init();
-  const first = host.createSession(null),
-    second = host.createSession(null);
+  const first = await host.createSession(null),
+    second = await host.createSession(null);
   expect(first.cwd).toBe(join(home, ".zpi", "workspace", `draft-${first.id}`));
   expect(second.cwd).toBe(join(home, ".zpi", "workspace", `draft-${second.id}`));
   expect(host.listProjects()).toEqual([]);
   await writeFile(join(String(first.cwd), "keep.txt"), "first draft data");
-  expect(host.createSession(null, { cwd: first.cwd, parentSessionId: first.id }).cwd).toBe(first.cwd);
+  expect((await host.createSession(null, { cwd: first.cwd, parentSessionId: first.id })).cwd).toBe(first.cwd);
   await host.close();
   const restarted = new SessionHost(join(home, "storage"), settings, home);
   cleanups.push(() => restarted.close());

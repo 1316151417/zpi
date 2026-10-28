@@ -5,7 +5,7 @@ import { cleanup, setup } from "./helpers/session-fixture.ts";
 
 it("ignores legacy JSON drafts and retains SQLite state", async () => {
   const { host, dir } = await setup();
-  const id = host.createSession(null).id;
+  const id = (await host.createSession(null)).id;
   host.saveDraft(id, { text: "original", fileReferences: [], selection: [0, 0], revision: 1 });
   await mkdir(join(dir, "drafts"), { recursive: true });
   const path = join(dir, "drafts", `${id}.json`);
@@ -16,8 +16,8 @@ it("ignores legacy JSON drafts and retains SQLite state", async () => {
 
 it("text drafts persist with selection, reject stale writes, and retain invalid links with diagnostics", async () => {
   const { host, dir, cwd, settings } = await setup();
-  const a = host.createSession(null),
-    b = host.createSession(null);
+  const a = await host.createSession(null),
+    b = await host.createSession(null);
   const text = `中文 [missing](${cwd}/missing.txt) [$skill](${cwd}/missing/SKILL.md)`;
   host.saveDraft(a.id, { text, fileReferences: [], selection: [2, 2], revision: 2 });
   host.saveDraft(a.id, { text: "stale", fileReferences: [], selection: [0, 0], revision: 1 });

@@ -186,7 +186,7 @@ async function fixture(holdText?: string) {
   };
   const host = await open();
   const project = await host.addProject(dir);
-  const task = host.createSession(project.id);
+  const task = await host.createSession(project.id);
   const select = (owner: SessionHost, id: string, provider: string) =>
     owner.setSessionSelection(id, {
       provider,

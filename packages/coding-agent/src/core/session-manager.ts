@@ -66,6 +66,11 @@ export interface SessionContext {
   model: { provider: string; modelId: string } | null;
   lastThinkingLevel: ThinkingLevel;
 }
+export type SessionEntryInput = SessionEntry extends infer Entry
+  ? Entry extends SessionEntry
+    ? Omit<Entry, keyof EntryBase>
+    : never
+  : never;
 export class SessionManager {
   private header: SessionHeader;
   private store?: TranscriptStore;
@@ -74,6 +79,8 @@ export class SessionManager {
   private entries: SessionEntry[] = [];
   private file?: string;
   private storageError?: Error;
+  private appendQueue: Promise<unknown> = Promise.resolve();
+  private lastEntry?: SessionEntry;
   private appendListeners = new Set<(entry: SessionEntry) => void>();
   subscribeEntries(listener: (entry: SessionEntry) => void): () => void {
     this.appendListeners.add(listener);
@@ -253,35 +260,71 @@ export class SessionManager {
     return this.entries.slice();
   }
   getLastEntry(): SessionEntry | undefined {
-    return this.store ? this.store.getTail(this.store.snapshot())?.entry : this.entries.at(-1);
+    return this.store
+      ? (this.lastEntry ?? this.store.getTail(this.store.snapshot())?.entry)
+      : this.entries.at(-1);
+  }
+  /** Serialize durable appends, including concurrently finishing tools, before notifying readers. */
+  appendEntryAsync(fields: SessionEntryInput): Promise<string> {
+    return this.enqueueWrite(() => this.persistEntry(fields));
+  }
+  private enqueueWrite<T>(write: () => T | Promise<T>): Promise<T> {
+    const operation = this.appendQueue.then(() => {
+      if (this.storageError) throw this.storageError;
+      return write();
+    });
+    this.appendQueue = operation.catch(() => {});
+    return operation;
+  }
+  private async persistEntry(fields: SessionEntryInput): Promise<string> {
+    if (!this.store?.appendAsync) return this.append(fields);
+    const entry = this.createEntry(fields);
+    try {
+      await this.store.appendAsync(entry);
+    } catch (error) {
+      this.storageError = new Error(`storage: ${error instanceof Error ? error.message : String(error)}`);
+      throw this.storageError;
+    }
+    this.publishEntry(entry);
+    return entry.id;
+  }
+  async flushAsync(): Promise<void> {
+    await this.appendQueue;
+    if (this.storageError) throw this.storageError;
+  }
+  appendMessageAsync(message: Message): Promise<string> {
+    return this.appendEntryAsync({ type: "message", message });
+  }
+  appendCustomEntryAsync(customType: string, data?: JsonValue): Promise<string> {
+    return this.appendEntryAsync({ type: "custom", customType, data });
+  }
+  setCwdAsync(cwd: string): Promise<void> {
+    return this.enqueueWrite(async () => {
+      if (!this.store?.replaceAsync) return this.setCwd(cwd);
+      if (this.getStateAt().lastMessageSeq || this.getStateAt().lastCompactionSeq)
+        throw new Error("Cannot move a session with messages");
+      const header = { ...this.header, cwd: resolve(cwd) };
+      await this.store.replaceAsync(header, this.iterateEntries());
+      this.header = header;
+      this.lastEntry = undefined;
+      this.contextCache = undefined;
+    });
+  }
+  replaceEntriesAsync(source: Iterable<SessionEntry>): Promise<void> {
+    return this.enqueueWrite(async () => {
+      if (!this.store?.replaceAsync) return this.replaceEntries(source);
+      await this.store.replaceAsync(this.header, source, { remapIds: true });
+      this.lastEntry = undefined;
+      this.contextCache = undefined;
+    });
   }
   /** Atomically replace a transcript after a stable fork or conversation rewind. */
   replaceEntries(source: Iterable<SessionEntry>): void {
     if (this.storageError) throw this.storageError;
     if (this.store) {
-      const nonce = randomUUID();
-      const remap = (id: string) =>
-        createHash("sha256").update(nonce).update("\0").update(id).digest("hex").slice(0, 32);
-      function* rewritten(): Iterable<SessionEntry> {
-        let parentId: string | null = null;
-        for (const entry of source) {
-          const next: SessionEntry = { ...structuredClone(entry), id: remap(entry.id), parentId };
-          if (next.type === "compaction") next.firstKeptEntryId = remap(next.firstKeptEntryId);
-          if (
-            next.type === "custom" &&
-            next.customType === "zpi.streaming_tools" &&
-            isJsonObject(next.data) &&
-            typeof next.data.anchorId === "string"
-          )
-            next.data.anchorId = remap(next.data.anchorId);
-          if (!isSessionEntry(next) || Buffer.byteLength(JSON.stringify(next)) > maxSessionEntryBytes)
-            throw new Error("Invalid session entry");
-          parentId = next.id;
-          yield next;
-        }
-      }
-      this.store.replace(this.header, rewritten());
+      this.store.replace(this.header, remapSessionEntries(source));
       this.contextCache = undefined;
+      this.lastEntry = undefined;
       return;
     }
     const materialized: SessionEntry[] = Array.isArray(source) ? source : Array.from(source);
@@ -441,11 +484,23 @@ export class SessionManager {
     details?: { readFiles: string[]; modifiedFiles: string[] },
     usage?: Usage,
   ): string {
+    return this.append(this.compactionInput(summary, firstKeptEntryId, tokensBefore, details, usage));
+  }
+  appendCompactionAsync(...args: Parameters<SessionManager["appendCompaction"]>): Promise<string> {
+    return this.enqueueWrite(() => this.persistEntry(this.compactionInput(...args)));
+  }
+  private compactionInput(
+    summary: string,
+    firstKeptEntryId: string,
+    tokensBefore?: number,
+    details?: { readFiles: string[]; modifiedFiles: string[] },
+    usage?: Usage,
+  ): Extract<SessionEntryInput, { type: "compaction" }> {
     if (!summary.trim() || !this.readEntryById(firstKeptEntryId))
       throw new Error("Invalid compaction boundary or summary");
     const current = this.buildSessionContext().messages;
     const systemMessage = collapseSystemMessages(current, Date.now());
-    return this.append({
+    return {
       type: "compaction",
       summary,
       firstKeptEntryId,
@@ -453,25 +508,25 @@ export class SessionManager {
       details,
       usage,
       systemMessage,
-    });
+    };
   }
-  private append(
-    fields:
-      | Omit<Extract<SessionEntry, { type: "message" }>, keyof EntryBase>
-      | Omit<Extract<SessionEntry, { type: "model_change" }>, keyof EntryBase>
-      | Omit<Extract<SessionEntry, { type: "thinking_level_change" }>, keyof EntryBase>
-      | Omit<Extract<SessionEntry, { type: "session_info" }>, keyof EntryBase>
-      | Omit<Extract<SessionEntry, { type: "custom" }>, keyof EntryBase>
-      | Omit<Extract<SessionEntry, { type: "microcompact" }>, keyof EntryBase>
-      | Omit<Extract<SessionEntry, { type: "compaction" }>, keyof EntryBase>,
-  ): string {
-    if (this.storageError) throw this.storageError;
-    const entry = {
+  private createEntry(fields: SessionEntryInput): SessionEntry {
+    return {
       ...fields,
       id: randomUUID(),
       parentId: this.getLastEntry()?.id ?? null,
       timestamp: new Date().toISOString(),
     } as SessionEntry;
+  }
+  private publishEntry(entry: SessionEntry): void {
+    if (this.store) this.lastEntry = entry;
+    else this.entries.push(entry);
+    this.contextCache = undefined;
+    for (const listener of this.appendListeners) listener(structuredClone(entry));
+  }
+  private append(fields: SessionEntryInput): string {
+    if (this.storageError) throw this.storageError;
+    const entry = this.createEntry(fields);
     if (!isSessionEntry(entry)) throw new Error("Invalid session entry");
     const line = JSON.stringify(entry);
     if (Buffer.byteLength(line) > maxSessionEntryBytes) throw new Error("Session entry exceeds 8 MiB");
@@ -485,10 +540,7 @@ export class SessionManager {
       this.storageError = new Error(`storage: ${e instanceof Error ? e.message : String(e)}`);
       throw this.storageError;
     }
-    const saved = entry;
-    if (!this.store) this.entries.push(saved);
-    this.contextCache = undefined;
-    for (const listener of this.appendListeners) listener(structuredClone(saved));
+    this.publishEntry(entry);
     return entry.id;
   }
 }
@@ -578,4 +630,27 @@ function replayMicrocompact(messages: Message[], entries: SessionEntry[]): Messa
     messages = messages.map((message) => replacements.get(message) ?? message);
   }
   return messages;
+}
+
+/** Stream ID remapping without retaining the whole transcript. */
+export function* remapSessionEntries(source: Iterable<SessionEntry>): Iterable<SessionEntry> {
+  const nonce = randomUUID();
+  const remap = (id: string) =>
+    createHash("sha256").update(nonce).update("\0").update(id).digest("hex").slice(0, 32);
+  let parentId: string | null = null;
+  for (const entry of source) {
+    const next: SessionEntry = { ...structuredClone(entry), id: remap(entry.id), parentId };
+    if (next.type === "compaction") next.firstKeptEntryId = remap(next.firstKeptEntryId);
+    if (
+      next.type === "custom" &&
+      next.customType === "zpi.streaming_tools" &&
+      isJsonObject(next.data) &&
+      typeof next.data.anchorId === "string"
+    )
+      next.data.anchorId = remap(next.data.anchorId);
+    if (!isSessionEntry(next) || Buffer.byteLength(JSON.stringify(next)) > maxSessionEntryBytes)
+      throw new Error("Invalid session entry");
+    parentId = next.id;
+    yield next;
+  }
 }

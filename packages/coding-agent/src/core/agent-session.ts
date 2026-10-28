@@ -134,31 +134,8 @@ export class AgentSession {
     this.resources = resources;
     this.settingsManager = resources?.settingsManager ?? SettingsManager.inMemory();
     this.allTools = new Map(allTools.map((t) => [t.name, t]));
-    const restored = manager.buildSessionContext();
-    if (!restored.messages.some((m) => m.role === "system"))
-      manager.appendMessage({
-        role: "system",
-        content: "",
-        sections: { "zpi.instructions": systemPrompt },
-        toolsAdded: activeTools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-        })),
-        timestamp: Date.now(),
-      });
-    const sections = restored.messages
-      .filter((m) => m.role === "system")
-      .map((m) => m.sections?.["zpi.instructions"])
-      .filter((value) => value !== undefined);
-    const prior = sections.at(-1);
-    if (prior !== undefined && prior !== systemPrompt)
-      manager.appendMessage({
-        role: "system",
-        content: "",
-        sections: { "zpi.instructions": systemPrompt },
-        timestamp: Date.now(),
-      });
+    for (const message of initialSystemMessages(manager, activeTools, systemPrompt))
+      manager.appendMessage(message);
     this.lastAssistantCompletedAtMs = manager
       .buildSessionContext()
       .messages.findLast(
@@ -191,7 +168,7 @@ export class AgentSession {
           for (const [index, message] of messages.entries())
             if (result.messages[index] !== message)
               this.microcompactProjection.set(message, result.messages[index]);
-          this.manager.appendMicrocompact(result.boundary);
+          await this.manager.appendEntryAsync({ type: "microcompact", data: result.boundary });
           this.notifyLastEntry();
         }
         return result.messages;
@@ -212,11 +189,11 @@ export class AgentSession {
       getPendingMessages: () => this.pendingMessages.splice(0),
     });
     const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
-    this.agent.subscribe((event) => {
+    this.agent.subscribe(async (event) => {
       try {
         if (event.type === "tool_execution_start") this.performance.toolStart(event.toolCallId);
         if (event.type === "tool_execution_end") this.performance.toolEnd(event.toolCallId);
-        streamingTools.observe(event);
+        await streamingTools.observe(event);
         if (
           event.type === "message_end" &&
           event.message.role === "assistant" &&
@@ -232,7 +209,7 @@ export class AgentSession {
         if (event.type === "message_end") {
           if (event.message.role === "assistant" && !["error", "aborted"].includes(event.message.stopReason))
             this.lastAssistantCompletedAtMs = Date.now();
-          this.manager.appendMessage(event.message);
+          await this.manager.appendEntryAsync({ type: "message", message: event.message });
           this.notifyLastEntry();
         }
       } catch (e) {
@@ -250,6 +227,12 @@ export class AgentSession {
           : event,
       );
     });
+  }
+  static async create(...args: ConstructorParameters<typeof AgentSession>): Promise<AgentSession> {
+    const [, , manager, , activeTools, systemPrompt] = args;
+    for (const message of initialSystemMessages(manager, activeTools, systemPrompt))
+      await manager.appendEntryAsync({ type: "message", message });
+    return new AgentSession(...args);
   }
   get state(): AgentState {
     return this.agent.state;
@@ -309,17 +292,20 @@ export class AgentSession {
     if (input.kind !== "prompt") throw new Error("Input must be prepared before execution");
     return this.prompt(withReferences(input.text, context.fileReferences), { images: context.images });
   }
-  private syncSection(name: string, value: string | null): void {
+  private async syncSection(name: string, value: string | null): Promise<void> {
     const prior = this.agent.state.messages
       .filter((m) => m.role === "system" && m.sections && name in m.sections)
       .at(-1);
     if (prior?.role === "system" && prior.sections?.[name] === value) return;
     if (!prior && value === null) return;
-    this.manager.appendMessage({
-      role: "system",
-      content: "",
-      sections: { [name]: value },
-      timestamp: Date.now(),
+    await this.manager.appendEntryAsync({
+      type: "message",
+      message: {
+        role: "system",
+        content: "",
+        sections: { [name]: value },
+        timestamp: Date.now(),
+      },
     });
     this.notifyLastEntry();
     this.agent.state.messages = this.manager.buildSessionContext().messages;
@@ -327,7 +313,7 @@ export class AgentSession {
   private async refreshInstructions(): Promise<void> {
     await this.resources?.loader.reload?.();
 
-    if (this.resources) this.syncSection("zpi.instructions", this.resources.buildPrompt());
+    if (this.resources) await this.syncSection("zpi.instructions", this.resources.buildPrompt());
   }
   private compactionBoundary() {
     const preparation = prepareCompaction(
@@ -543,7 +529,7 @@ export class AgentSession {
       this.runtime.mediaProjectionObserver(this.model, this.sessionId),
     );
     signal?.throwIfAborted();
-    this.manager.appendCompaction(
+    await this.manager.appendCompactionAsync(
       result.summary,
       result.firstKeptEntryId,
       result.tokensBefore,
@@ -852,4 +838,38 @@ export class AgentSession {
     if (this.manager.appendSessionInfo(name)) this.notifyLastEntry();
     this.notify({ type: "session_info_changed", name });
   }
+}
+
+function initialSystemMessages(
+  manager: SessionManager,
+  activeTools: AgentTool[],
+  systemPrompt: string,
+): Extract<Message, { role: "system" }>[] {
+  const messages: Extract<Message, { role: "system" }>[] = [];
+  const restored = manager.buildSessionContext();
+  if (!restored.messages.some((m) => m.role === "system"))
+    messages.push({
+      role: "system",
+      content: "",
+      sections: { "zpi.instructions": systemPrompt },
+      toolsAdded: activeTools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      })),
+      timestamp: Date.now(),
+    });
+  const sections = restored.messages
+    .filter((m) => m.role === "system")
+    .map((m) => m.sections?.["zpi.instructions"])
+    .filter((value) => value !== undefined);
+  const prior = sections.at(-1);
+  if (prior !== undefined && prior !== systemPrompt)
+    messages.push({
+      role: "system",
+      content: "",
+      sections: { "zpi.instructions": systemPrompt },
+      timestamp: Date.now(),
+    });
+  return messages;
 }

@@ -15,7 +15,7 @@ test.each([false, true])(
         done(response);
       }
     });
-    const session = f.host.createSession(f.a.id);
+    const session = await f.host.createSession(f.a.id);
     const run = await f.host.startRun({ sessionId: session.id, text: "original input" });
     if (!active) await f.host.activeRuns.get(session.id)?.done;
     await expect.poll(() => f.server.requests.length).toBe(1);
@@ -42,7 +42,7 @@ test.each([false, true])(
     const f = await fixture((_, response) => {
       send(response, chunk({ content: "waiting" }));
     });
-    const id = f.host.createSession(f.a.id).id;
+    const id = (await f.host.createSession(f.a.id)).id;
     const run = await f.host.startRun({ sessionId: id, text: "original" });
     if (withFollowUp) await f.host.submitInput({ sessionId: id, text: "follow-up" });
     let projected = f.host.getSessionSnapshot(id).view;
@@ -76,7 +76,7 @@ test("editing keeps the replacement input recoverable if interrupted after histo
     send(response, chunk({ content: "old answer" }));
     done(response);
   });
-  const task = f.host.createSession(f.a.id);
+  const task = await f.host.createSession(f.a.id);
   const run = await f.host.startRun({ sessionId: task.id, text: "old input" });
   await f.host.activeRuns.get(task.id)?.done;
   const oldPath = f.host.sessionPath(task.id);
@@ -114,7 +114,7 @@ test("finishing an edit does not release a newer operation's update lock", async
     send(response, chunk({ content: "answer" }));
     done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const run = await f.host.startRun({ sessionId: id, text: "original" });
   await f.host.activeRuns.get(id)?.done;
   const updating = Reflect.get(f.host, "updating") as Set<string>;

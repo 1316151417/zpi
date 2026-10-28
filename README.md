@@ -198,7 +198,7 @@ npm run package:win          # Windows NSIS 安装包
 
 开发客户端以 **ZPI Preview** 身份运行，与打包的 Preview 共用数据目录；正式版使用独立目录。升级 Electron 后需重新运行 `npm run install:terminal`。
 
-本分支将当前设置、项目、任务、草稿、队列与分组保存到 SQLite，会话事实保存到 JSONL v2。旧数据不会在启动时自动读取或迁移。首次试用请使用隔离目录，并先阅读 [存储格式、迁移与回滚限制](docs/specs/sqlite-storage.md)；开发版默认仍使用已有 Preview 数据目录，不能直接当作安全沙盒。
+本分支将当前设置、项目、任务、草稿、队列与分组保存到 SQLite，会话事实保存到 JSONL v2。桌面历史写入和索引重建由后台 Worker 执行，派生索引保存在独立的 `history.sqlite`。旧数据不会在启动时自动读取或迁移。首次试用请使用隔离目录，并先阅读 [存储格式、迁移与回滚限制](docs/specs/sqlite-storage.md)；开发版默认仍使用已有 Preview 数据目录，不能直接当作安全沙盒。
 
 架构保持分层：
 

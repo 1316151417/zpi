@@ -20,7 +20,7 @@ it("inherits the current selection while preserving historical model and thinkin
     apiKey: "test",
     models: [{ id: "other-model", reasoning: true, compat: { supportsReasoningEffort: true } }],
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.setSessionSelection(parent.id, { provider: "custom", modelId: "fake", reasoning: "high" });
   await f.host.startRun({ sessionId: parent.id, text: "first model" });
   await f.host.activeRuns.get(parent.id)?.done;
@@ -67,7 +67,7 @@ it("directly creates a side chat after crash recovery without dropping known jou
     send(response, chunk({ content: "answer" }));
     done(response);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: parent.id, text: "prior completed turn" });
   await f.host.activeRuns.get(parent.id)?.done;
   const path = f.host.sessionPath(parent.id);
@@ -83,15 +83,18 @@ it("directly creates a side chat after crash recovery without dropping known jou
     arguments: { path: "README.md" },
   };
   const journal = new StreamingToolJournal(manager, () => {});
-  journal.observe({ type: "message_start", message: { ...emptyAssistant(fakeModel("")), content: [call] } });
-  journal.observe({
+  await journal.observe({
+    type: "message_start",
+    message: { ...emptyAssistant(fakeModel("")), content: [call] },
+  });
+  await journal.observe({
     type: "tool_execution_start",
     toolCallId: call.id,
     toolName: call.name,
     args: call.arguments,
     executionTiming: "during_stream",
   });
-  journal.observe({
+  await journal.observe({
     type: "tool_execution_end",
     toolCallId: call.id,
     toolName: call.name,

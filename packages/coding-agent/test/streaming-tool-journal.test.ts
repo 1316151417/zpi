@@ -35,7 +35,7 @@ async function fixture() {
     ],
   };
   const journal = new StreamingToolJournal(manager, () => {});
-  journal.observe({ type: "message_start", message });
+  await journal.observe({ type: "message_start", message });
   const start = (id = call.id) =>
     journal.observe({
       type: "tool_execution_start",
@@ -58,8 +58,8 @@ async function fixture() {
 for (const completed of [false, true]) {
   it(`restores ${completed ? "a completed" : "an unresolved"} streamed call after a crash without rerunning it`, async () => {
     const f = await fixture();
-    f.start();
-    if (completed) f.end();
+    await f.start();
+    if (completed) await f.end();
     const before = await readFile(f.file, "utf8");
     expect(before).toContain("zpi.streaming_tools");
     expect(before).not.toContain("discarded");
@@ -94,10 +94,10 @@ for (const completed of [false, true]) {
 
 it("merges independent call records in declaration order and recovers the gap after assistant commit", async () => {
   const f = await fixture();
-  f.start();
-  f.start("second");
-  f.end("second");
-  f.end();
+  await f.start();
+  await f.start("second");
+  await f.end("second");
+  await f.end();
   const final = {
     ...f.message,
     content: f.message.content.filter((c) => c.type === "toolCall"),
@@ -132,10 +132,10 @@ it("merges independent call records in declaration order and recovers the gap af
 for (const canonical of [false, true]) {
   it(`restores mixed streamed and deferred calls in declaration order ${canonical ? "after" : "before"} assistant commit`, async () => {
     const f = await fixture();
-    f.start("second");
-    f.end("second");
+    await f.start("second");
+    await f.end("second");
     const final = { ...f.message, stopReason: "toolUse" as const };
-    f.journal.observe({ type: "message_end", message: final });
+    await f.journal.observe({ type: "message_end", message: final });
     if (canonical) f.manager.appendMessage(final);
     const entries = f.manager.getEntries();
     const projected = projectStreamedToolJournal(entries);
@@ -159,16 +159,16 @@ for (const canonical of [false, true]) {
 
 it("checkpoints calls supplied only by the final response before any execution starts", async () => {
   const f = await fixture();
-  f.journal.observe({ type: "message_start", message: emptyAssistant(fakeModel("")) });
-  f.journal.observe({ type: "message_end", message: f.message });
+  await f.journal.observe({ type: "message_start", message: emptyAssistant(fakeModel("")) });
+  await f.journal.observe({ type: "message_end", message: f.message });
   f.manager.appendMessage(f.message);
-  f.journal.observe({
+  await f.journal.observe({
     type: "tool_execution_start",
     toolCallId: f.second.id,
     toolName: f.second.name,
     args: f.second.arguments,
   });
-  f.end("second");
+  await f.end("second");
   expect(
     SessionManager.open(f.file)
       .buildSessionContext()
@@ -187,7 +187,7 @@ it("checkpoints the closed declaration instead of a stale partial with the same 
     namespace: "custom-provider",
     thoughtSignature: "provider-signature",
   };
-  f.journal.observe({
+  await f.journal.observe({
     type: "tool_execution_start",
     toolCallId: closed.id,
     toolName: closed.name,
@@ -200,9 +200,9 @@ it("checkpoints the closed declaration instead of a stale partial with the same 
 
 it("a committed journal does not resurrect calls or add model messages", async () => {
   const f = await fixture();
-  f.start();
-  f.end();
-  f.journal.observe({ type: "turn_end", message: f.message, toolResults: [] });
+  await f.start();
+  await f.end();
+  await f.journal.observe({ type: "turn_end", message: f.message, toolResults: [] });
   const before = await readFile(f.file, "utf8");
   expect(projectStreamedToolJournal(f.manager.getEntries())).toEqual(f.manager.getEntries());
   SessionManager.open(f.file);

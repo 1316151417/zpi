@@ -50,8 +50,15 @@ export interface TranscriptStore {
   /** Each group contains only an unresolved journal's updates, anchor and canonical turn. */
   readUnresolvedToolJournals(snapshot: TranscriptSnapshot): Iterable<SessionEntry[]>;
   append(entry: SessionEntry): void;
+  /** Optional asynchronous persistence; completion has the same durability/publication contract. */
+  appendAsync?(entry: SessionEntry): Promise<void>;
   /** Implementations stage a fresh generation; preserve the old one on any failure. */
   replace(header: SessionHeader, entries: Iterable<SessionEntry>): void;
+  replaceAsync?(
+    header: SessionHeader,
+    entries: Iterable<SessionEntry>,
+    options?: { remapIds?: boolean },
+  ): Promise<void>;
 }
 export interface MessageProvenance {
   entryId: string;

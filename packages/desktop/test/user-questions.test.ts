@@ -194,7 +194,7 @@ it("snapshots the plugin for new sessions, resumes with answers, and restores th
     }
   });
   f.settings.setCapabilityEnabled("askUserQuestion", true);
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: session.id, text: "choose" });
   const running = f.host.activeRuns.get(session.id)?.done;
   await expect.poll(() => f.host.getSessionSnapshot(session.id).view.question?.id).toBe("ask");
@@ -208,7 +208,7 @@ it("snapshots the plugin for new sessions, resumes with answers, and restores th
       .getSessionSnapshot(session.id)
       .view.runs[0].orderedBlocks.find((block) => block.type === "tool" && block.name === "AskUserQuestion");
   expect(questionBlock()).toMatchObject({ questionAnswers: { answers: { "使用哪种方案？": "B" } } });
-  const next = f.host.createSession(f.a.id);
+  const next = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: next.id, text: "new" });
   await f.host.activeRuns.get(next.id)?.done;
   expect(JSON.stringify(f.server.requests.at(-1)?.tools)).not.toContain("AskUserQuestion");

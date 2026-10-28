@@ -302,15 +302,15 @@ for (const fault of ["child-publication", "index-flush"] as const) {
     const run = f.host.activeRuns.get(id);
     if (!run) throw new Error("missing active fixture run");
     const settleOwner = f.host as unknown as {
-      settle(id: string, active: typeof run, error?: unknown): void;
+      settle(id: string, active: typeof run, error?: unknown): Promise<void>;
       indexes: Map<string, { flush(): void }>;
     };
     const originalSettle = settleOwner.settle.bind(f.host);
     const observed = deferred();
     let settlementError: unknown;
-    const settleSpy = vi.spyOn(settleOwner, "settle").mockImplementation((id, active, error) => {
+    const settleSpy = vi.spyOn(settleOwner, "settle").mockImplementation(async (id, active, error) => {
       try {
-        originalSettle(id, active, error);
+        await originalSettle(id, active, error);
       } catch (failure) {
         settlementError = failure;
       } finally {
@@ -350,7 +350,7 @@ for (const fault of ["child-publication", "index-flush"] as const) {
       settleSpy.mockRestore();
       // The baseline intentionally fails before releasing this promise. Repair
       // only the isolated fixture so a regression failure cannot hang cleanup.
-      if (f.host.activeRuns.get(id) === run) originalSettle(id, run);
+      if (f.host.activeRuns.get(id) === run) await originalSettle(id, run);
       run.finish();
       await abort;
     }
@@ -396,7 +396,7 @@ it("shutdown surfaces subagent failure only after other live owners and resource
 it("shutdown reports all cleanup errors after attempting every history index", async () => {
   const f = await fixture();
   await run(f, "seed");
-  const other = f.host.createSession(null);
+  const other = await f.host.createSession(null);
   const owner = f.host as unknown as { indexes: Map<string, { flush(): void }> };
   const firstError = new Error("subagent cleanup failed");
   const firstIndexError = new Error("first index failed");

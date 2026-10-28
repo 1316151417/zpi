@@ -25,8 +25,8 @@ it("manual model retry targets only its live session and run without stopping co
       done(response);
     }
   });
-  const first = f.host.createSession(f.a.id);
-  const other = f.host.createSession(f.b.id);
+  const first = await f.host.createSession(f.a.id);
+  const other = await f.host.createSession(f.b.id);
   expect(f.host.retryModelRequest({ sessionId: first.id, runId: "missing" })).toBe(false);
   const run = await f.host.startRun({ sessionId: first.id, text: "recover" });
   const concurrent = await f.host.startRun({ sessionId: other.id, text: "other" });
@@ -84,7 +84,11 @@ it("same-project and cross-project sessions stream concurrently; busy, stale can
       if (observed.size === 3) rendered.resolve();
     }
   });
-  const sessions = [host.createSession(a.id), host.createSession(a.id), host.createSession(b.id)];
+  const sessions = [
+    await host.createSession(a.id),
+    await host.createSession(a.id),
+    await host.createSession(b.id),
+  ];
   host.activateSession(sessions[2].id);
   const ack = await Promise.all(sessions.map((s) => host.startRun({ sessionId: s.id, text: s.id })));
   await seen.promise;
@@ -138,21 +142,25 @@ it("failure and storage error affect only their session; closing aborts all", as
       response.destroy();
     } else first.resolve();
   });
+  const settled = new Map<string, string>();
+  f.host.subscribe(({ sessionId, event }) => {
+    if (event.type === "settled") settled.set(sessionId, event.status);
+  });
   // 固定重试预算与退避，验证断流恢复上限本身，而不依赖默认 agent 重试次数。
   await writeFile(
     join(f.dir, "agent", "settings.json"),
     JSON.stringify({ retry: { maxRetries: 3, baseDelayMs: 0 } }),
   );
-  const a = f.host.createSession(f.a.id),
-    b = f.host.createSession(f.a.id);
+  const a = await f.host.createSession(f.a.id),
+    b = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: a.id, text: "fail" });
   await f.host.startRun({ sessionId: b.id, text: "hang" });
   await first.promise;
   await f.host.activeRuns.get(a.id)?.done;
   await f.host.close();
   expect(f.host.activeRuns.size).toBe(0);
-  expect(f.host.getSessionSnapshot(a.id).view.runs[0].status).toBe("error");
-  expect(f.host.getSessionSnapshot(b.id).view.runs[0].status).toBe("aborted");
+  expect(settled.get(a.id)).toBe("error");
+  expect(settled.get(b.id)).toBe("aborted");
 });
 
 it("credential values never leave settings reader or metadata and hidden projects retain history", async () => {
@@ -160,7 +168,7 @@ it("credential values never leave settings reader or metadata and hidden project
     send(r, chunk({ content: "ok" }));
     done(r);
   });
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: session.id, text: "hello" });
   await Promise.all([...f.host.activeRuns.values()].map((r) => r.done));
   const saved = JSON.stringify(f.settings.state.getSetting("app"));

@@ -24,11 +24,15 @@ export class StreamingToolJournal {
     this.manager = manager;
     this.notify = notify;
   }
-  private save(data: unknown) {
-    this.manager.appendCustomEntry(JOURNAL_TYPE, JSON.parse(JSON.stringify(data)) as JsonValue);
+  private async save(data: unknown) {
+    await this.manager.appendEntryAsync({
+      type: "custom",
+      customType: JOURNAL_TYPE,
+      data: JSON.parse(JSON.stringify(data)) as JsonValue,
+    });
     this.notify();
   }
-  observe(event: AgentEvent) {
+  async observe(event: AgentEvent) {
     if (event.type === "message_start" && event.message.role === "assistant") {
       this.partial = event.message;
       this.journal = {
@@ -49,7 +53,7 @@ export class StreamingToolJournal {
         // when a later read has already run during streaming. Persist it before
         // the canonical assistant, including calls not yet prepared/executed.
         journal.assistant = structuredClone({ ...event.message, content: calls });
-        this.save({ ...journal, results: [], responseComplete: true });
+        await this.save({ ...journal, results: [], responseComplete: true });
       }
     }
     if (event.type === "tool_execution_start") {
@@ -63,7 +67,7 @@ export class StreamingToolJournal {
       if (call?.type !== "toolCall") throw new Error("Missing closed tool call");
       if (!journal.assistant.content.some((c) => c.type === "toolCall" && c.id === call.id)) {
         journal.assistant.content.push(structuredClone(call));
-        this.save({ ...journal, assistant: { ...journal.assistant, content: [call] }, results: [] });
+        await this.save({ ...journal, assistant: { ...journal.assistant, content: [call] }, results: [] });
       }
     }
     if (
@@ -80,10 +84,14 @@ export class StreamingToolJournal {
         timestamp: Date.now(),
       };
       const call = journal.assistant.content.find((c) => c.type === "toolCall" && c.id === event.toolCallId);
-      this.save({ ...journal, assistant: { ...journal.assistant, content: [call] }, results: [result] });
+      await this.save({
+        ...journal,
+        assistant: { ...journal.assistant, content: [call] },
+        results: [result],
+      });
     }
     if (event.type === "turn_end") {
-      if (journal.assistant.content.length) this.save({ id: journal.id, committed: true });
+      if (journal.assistant.content.length) await this.save({ id: journal.id, committed: true });
       this.journal = undefined;
       this.partial = undefined;
     }
@@ -231,7 +239,10 @@ export function projectStreamedToolJournal(entries: SessionEntry[]): SessionEntr
 }
 
 /** Repair legacy canonical gaps within their declaring turn, without rerunning tools. */
-export function recoverCanonicalToolCalls(manager: SessionManager, messages: Message[]): void {
+function canonicalRepairPlan(
+  manager: SessionManager,
+  messages: Message[],
+): { entries?: Iterable<SessionEntry>; trailing: Message[] } {
   const pending = new Map<string, ToolCall>();
   const insertions = new Map<string, ToolResultMessage[]>();
   const interrupted = (): ToolResultMessage[] => {
@@ -275,7 +286,21 @@ export function recoverCanonicalToolCalls(manager: SessionManager, messages: Mes
         yield entry;
       }
     }
-    manager.replaceEntries(repaired());
+    return { entries: repaired(), trailing: interrupted() };
   }
-  for (const message of interrupted()) manager.appendMessage(message);
+  return { trailing: interrupted() };
+}
+
+export function recoverCanonicalToolCalls(manager: SessionManager, messages: Message[]): void {
+  const plan = canonicalRepairPlan(manager, messages);
+  if (plan.entries) manager.replaceEntries(plan.entries);
+  for (const message of plan.trailing) manager.appendMessage(message);
+}
+export async function recoverCanonicalToolCallsAsync(
+  manager: SessionManager,
+  messages: Message[],
+): Promise<void> {
+  const plan = canonicalRepairPlan(manager, messages);
+  if (plan.entries) await manager.replaceEntriesAsync(plan.entries);
+  for (const message of plan.trailing) await manager.appendEntryAsync({ type: "message", message });
 }

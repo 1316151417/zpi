@@ -1,5 +1,9 @@
 export const mainBuild = {
-  entry: ["packages/desktop/src/main/index.ts", "packages/desktop/src/main/diff-worker.ts"],
+  entry: [
+    "packages/desktop/src/main/index.ts",
+    "packages/desktop/src/main/diff-worker.ts",
+    "packages/desktop/src/main/history-worker.ts",
+  ],
   outDir: "packages/desktop/dist/main",
   format: ["esm"],
   bundle: true,

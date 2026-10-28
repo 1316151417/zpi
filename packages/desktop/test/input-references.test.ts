@@ -12,7 +12,7 @@ it.each([false, true])(
       send(response, chunk({ content: "ok" }));
       done(response);
     });
-    const session = f.host.createSession(f.a.id);
+    const session = await f.host.createSession(f.a.id);
     await writeFile(join(f.a.path, "existing.ts"), "export {};\n");
     const path = absolute ? join(f.a.path, "missing.ts") : "./missing.ts";
     const fileReferences = ["./existing.ts", path, `${path}:422:3`, `${path}#L422-L428`, `${path}/folder/`];
@@ -38,7 +38,7 @@ it.each(["../missing.ts", "../missing.ts:422", "../missing.ts#L422-L428", "missi
   "still rejects invalid or out-of-workspace references: %j",
   async (reference) => {
     const f = await fixture((_, response) => done(response));
-    const session = f.host.createSession(f.a.id);
+    const session = await f.host.createSession(f.a.id);
     await expect(
       f.host.submitInput({ sessionId: session.id, text: "review", fileReferences: [reference] }),
     ).rejects.toThrow(/invalid_input/);
@@ -51,7 +51,7 @@ it("submits Markdown code examples without treating sample links as required fil
     send(response, chunk({ content: "explanation" }));
     done(response);
   });
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   const text = "Explain this Markdown example:\n```markdown\n[API](./nonexistent-example.md)\n```";
   const fileReferences = parseMentions(text)
     .filter((mention) => mention.kind === "file")

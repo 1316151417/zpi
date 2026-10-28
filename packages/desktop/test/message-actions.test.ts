@@ -40,7 +40,7 @@ it("fork copies only the chosen completed boundary, retains context after restar
     send(res, chunk({ content: "answer" }));
     done(res);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   const first = await f.host.startRun({ sessionId: parent.id, text: "first" });
   await f.host.activeRuns.get(parent.id)?.done;
   await f.host.startRun({ sessionId: parent.id, text: "second" });
@@ -113,7 +113,7 @@ it.each(["report.csv", "report.pdf"])(
         done(res);
       }
     });
-    const parent = f.host.createSession(f.a.id);
+    const parent = await f.host.createSession(f.a.id);
     const attachment = await f.host.importAttachment(
       parent.id,
       name,
@@ -203,7 +203,7 @@ it("file reset rejects external changes without pruning history, restores origin
       done(res);
     }
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   const existing = join(f.a.path, "existing.txt"),
     created = join(f.a.path, "created.txt");
   await writeFile(existing, "original\n");
@@ -244,7 +244,7 @@ it("editing only the latest user input stops its running reply, removes old cont
     }
     done(res);
   });
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   const first = await f.host.startRun({ sessionId: session.id, text: "first" });
   await f.host.activeRuns.get(session.id)?.done;
   const second = await f.host.startRun({ sessionId: session.id, text: "old latest" });
@@ -293,7 +293,7 @@ it("forking an older reply leaves a concurrent parent running and rejects an unf
     }
     done(res);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   const first = await f.host.startRun({ sessionId: parent.id, text: "first" });
   await f.host.activeRuns.get(parent.id)?.done;
   const running = await f.host.startRun({ sessionId: parent.id, text: "running" });
@@ -334,7 +334,7 @@ it("file reset blocks shell side effects and preserves history and workspace unt
       done(res);
     }
   });
-  const parent = f.host.createSession(f.a.id),
+  const parent = await f.host.createSession(f.a.id),
     path = join(f.a.path, "changed.txt");
   await writeFile(path, "original");
   const turn = await f.host.startRun({ sessionId: parent.id, text: "write through shell" });

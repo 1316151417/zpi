@@ -1206,7 +1206,7 @@ async function launch(): Promise<void> {
         case "createSession":
           if (args[1] !== undefined && args[1] !== null && typeof args[1] !== "string")
             throw new Error("invalid_input: 无效分组 ID");
-          value = host.createSession(args[0] === null ? null : string(0), {
+          value = await host.createSession(args[0] === null ? null : string(0), {
             groupId: args[1] as string | null | undefined,
           });
           break;

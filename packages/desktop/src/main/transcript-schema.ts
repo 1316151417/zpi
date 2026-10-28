@@ -38,7 +38,7 @@ export const transcriptTables = [
 const searchFunctions = new WeakSet<DatabaseSync>();
 
 /** Missing projections are rebuildable; existing incompatible definitions are rejected at startup. */
-export function ensureTranscriptSchema(db: DatabaseSync): boolean {
+export function ensureTranscriptSchema(db: DatabaseSync, readOnly = false): boolean {
   if (!searchFunctions.has(db)) {
     // SQLite's built-in lower() only folds ASCII. Match the renderer's Unicode search semantics.
     db.function("zpi_lower", { deterministic: true }, (value) =>
@@ -50,6 +50,10 @@ export function ensureTranscriptSchema(db: DatabaseSync): boolean {
     (table) =>
       !db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(`transcript_${table}`),
   );
+  if (readOnly) {
+    if (missing) throw new Error("storage: Missing prepared transcript cache");
+    return false;
+  }
   db.exec(transcriptSchemaV1 + transcriptIndexesV2);
   if (missing) db.exec("DELETE FROM transcript_state");
   return missing;

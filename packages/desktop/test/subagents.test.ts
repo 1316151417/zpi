@@ -182,7 +182,7 @@ test("publishes child updates without rebuilding cached parent snapshots and res
     expect(snapshots).not.toHaveBeenCalled();
     const cached = f.host.getSessionSnapshot(f.session.id);
     expect(cached.view.subagents?.[0].latestActivity).toBe("cached update");
-    for (let index = 0; index < 9; index++) f.host.getSessionSnapshot(f.host.createSession(null).id);
+    for (let index = 0; index < 9; index++) f.host.getSessionSnapshot((await f.host.createSession(null)).id);
     snapshots.mockClear();
     f.host.subagents.update(task.agentId, { latestActivity: "restored update" });
     expect(snapshots).toHaveBeenCalledExactlyOnceWith(f.session.id);
@@ -202,7 +202,7 @@ test("plugin enablement defaults on and is frozen on first send, including resta
   f.settings.setCapabilityEnabled("subagents", false);
   await run(f, "existing session");
   expect(tools(f.server.requests.at(-1) ?? {})).toContain("Agent");
-  const next = f.host.createSession(null);
+  const next = await f.host.createSession(null);
   await f.host.startRun({ sessionId: next.id, text: "new session" });
   await f.host.activeRuns.get(next.id)?.done;
   expect(tools(f.server.requests.at(-1) ?? {})).not.toContain("Agent");
@@ -454,7 +454,7 @@ test("SendMessage resumes a completed child with its own history and automatical
   expect(JSON.stringify(childRequests[1])).toContain("Follow-up request");
   expect(JSON.stringify(f.server.requests)).toContain("Follow-up findings");
 
-  const other = f.host.createSession(null);
+  const other = await f.host.createSession(null);
   await expect(f.host.subagents.stop(other.id, task.agentId)).rejects.toThrow("不属于当前会话");
 });
 

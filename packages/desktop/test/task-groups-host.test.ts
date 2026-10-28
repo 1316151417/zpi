@@ -10,9 +10,9 @@ it("keeps cross-project membership through pin/archive/restore and restart, then
     send(response, chunk({ content: "ok" }));
     done(response);
   });
-  const first = host.createSession(a.id),
-    second = host.createSession(b.id),
-    third = host.createSession(a.id);
+  const first = await host.createSession(a.id),
+    second = await host.createSession(b.id),
+    third = await host.createSession(a.id);
   const group = host.updateTaskGroups({ type: "create" }).groups[0];
   for (const record of [first, second])
     host.updateTaskGroups({ type: "moveTask", id: record.id, groupId: group.id });
@@ -43,10 +43,10 @@ it("puts newly created and forked public tasks at root top without moving existi
     send(response, chunk({ content: "forkable answer" }));
     done(response);
   });
-  const first = host.createSession(a.id),
-    second = host.createSession(a.id);
+  const first = await host.createSession(a.id),
+    second = await host.createSession(a.id);
   host.updateTaskGroups({ type: "taskTop", id: first.id });
-  const third = host.createSession(a.id);
+  const third = await host.createSession(a.id);
   expect(host.getTaskGroups().roots.map((node) => node.id)).toEqual([third.id, first.id, second.id]);
   const complete = new Promise<void>((resolve) => {
     const off = host.subscribe((event) => {
@@ -75,7 +75,7 @@ it("rolls back task publication when group commit fails and preserves the recove
   const failure = vi.spyOn(settings.state, "setTaskGroups").mockImplementation(() => {
     throw new Error("group commit failed");
   });
-  expect(() => host.createSession(a.id)).toThrow("group commit failed");
+  await expect(host.createSession(a.id)).rejects.toThrow("group commit failed");
   failure.mockRestore();
   expect(host.listRecentSessions()).toEqual([]);
   expect(settings.state.listTasks()).toEqual([]);
@@ -87,16 +87,16 @@ it("creates a draft inside its chosen group in one operation, and rejects a stal
     done(response);
   });
   const group = host.updateTaskGroups({ type: "create" }).groups[0];
-  const draft = host.createSession(a.id, { groupId: group.id });
+  const draft = await host.createSession(a.id, { groupId: group.id });
   expect(host.getTaskGroups().members[group.id]).toEqual([draft.id]);
-  expect(() => host.createSession(a.id, { groupId: "deleted-group" })).toThrow("not_found");
+  await expect(host.createSession(a.id, { groupId: "deleted-group" })).rejects.toThrow("not_found");
   expect(host.listRecentSessions().map((record) => record.id)).toEqual([draft.id]);
 });
 
 it("rejects stale drag sources and removed anchors without overwriting newer organization", async () => {
   const { host, settings, a } = await fixture((_, response) => done(response));
-  const first = host.createSession(a.id),
-    second = host.createSession(a.id);
+  const first = await host.createSession(a.id),
+    second = await host.createSession(a.id);
   const group = host.updateTaskGroups({ type: "create" }).groups[0];
   host.updateTaskGroups({ type: "moveTask", id: first.id, groupId: group.id });
   const before = host.getTaskGroups();
@@ -135,8 +135,8 @@ it("rejects stale drag sources and removed anchors without overwriting newer org
 
 it("rejects a drag when its task or anchor was archived after the gesture started", async () => {
   const { host, a } = await fixture((_, response) => done(response));
-  const first = host.createSession(a.id),
-    second = host.createSession(a.id);
+  const first = await host.createSession(a.id),
+    second = await host.createSession(a.id);
   await host.archiveSession(first.id);
   const before = host.getTaskGroups();
   expect(() =>

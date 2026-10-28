@@ -42,6 +42,7 @@ test("scrolling then opening a conversation reference dismisses the old text sel
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toContainText("project");
     const composer = page.locator(".composer-container").getByLabel("消息", { exact: true });
     await composer.fill("first message");
     await page.getByLabel("发送", { exact: true }).click();
@@ -124,6 +125,7 @@ test("selections inside or crossing Markdown file and web links can be added to 
     });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toContainText("project");
     await page.getByLabel("消息", { exact: true }).fill("链接划词");
     await page.getByLabel("发送", { exact: true }).click();
     const run = page.getByTestId("run");
@@ -233,6 +235,7 @@ test("message hover actions, inline editing, selection wire format, draft restar
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toContainText("project");
     await page.getByLabel("消息", { exact: true }).fill("first user input");
     await page.getByLabel("发送", { exact: true }).click();
     const run = page.getByTestId("run");
@@ -427,6 +430,7 @@ test("Markdown selections use source paths, cross-message selections are exclude
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toContainText("project");
     await page.getByLabel("消息", { exact: true }).fill("change file");
     await page.getByLabel("发送", { exact: true }).click();
     const turn = page.getByTestId("run");

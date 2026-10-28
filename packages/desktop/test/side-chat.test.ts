@@ -13,7 +13,7 @@ for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
       send(response, chunk({ content: "retained answer" }));
       done(response);
     });
-    const parent = f.host.createSession(f.a.id);
+    const parent = await f.host.createSession(f.a.id);
     await f.host.startRun({ sessionId: parent.id, text: "retained question" });
     await f.host.activeRuns.get(parent.id)?.done;
     await f.host.close();
@@ -29,7 +29,7 @@ for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
     if (!boundary) throw new Error("Missing boundary fixture");
     // Streaming journals can also be the first kept entry in real desktop transcripts.
     if (boundaryType === "streaming-tools") {
-      manager.replaceEntries(
+      await manager.replaceEntriesAsync(
         [...manager.iterateEntries()].map((entry) =>
           entry.id === boundary.id
             ? {
@@ -49,8 +49,8 @@ for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
           )
         : boundary;
     if (!firstKept) throw new Error("Missing kept entry");
-    manager.appendCompaction("earlier decisions", firstKept.id);
-    manager.appendCompaction("updated earlier decisions", firstKept.id);
+    await manager.appendCompactionAsync("earlier decisions", firstKept.id);
+    await manager.appendCompactionAsync("updated earlier decisions", firstKept.id);
     const expected = manager.buildSessionContext().messages;
     const persisted = f.settings.state.getTask(parent.id);
     if (!persisted) throw new Error("Missing task fixture");
@@ -83,7 +83,7 @@ it("opens independent hidden chats with inherited context and an empty timeline,
     send(response, chunk({ content: "parent answer" }));
     done(response);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: parent.id, text: "parent question" });
   await f.host.activeRuns.get(parent.id)?.done;
   await f.host.setSessionSelection(parent.id, { provider: "custom", modelId: "fake", reasoning: "high" });
@@ -130,7 +130,7 @@ it.each(["idle", "running", "deleted historical provider"])(
       }
       done(response);
     });
-    const parent = f.host.createSession(f.a.id);
+    const parent = await f.host.createSession(f.a.id);
     await f.host.startRun({ sessionId: parent.id, text: "parent question" });
     if (state === "running") await started.promise;
     else await f.host.activeRuns.get(parent.id)?.done;
@@ -190,7 +190,7 @@ it("copies the committed active user input without partial assistant output and 
     }
     done(response);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: parent.id, text: "active parent input" });
   await parentStarted.promise;
   const child = await f.host.createSideChat(parent.id);
@@ -216,7 +216,7 @@ it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages 
     send(response, chunk({ content: "answer" }));
     done(response);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: parent.id, text: "first" });
   await f.host.activeRuns.get(parent.id)?.done;
   const manager = f.host["manager"](parent.id);
@@ -224,13 +224,13 @@ it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages 
     (entry) => entry.type === "message" && entry.message.role === "assistant",
   );
   if (assistant?.type !== "message" || assistant.message.role !== "assistant") throw new Error("fixture");
-  manager.appendCustomEntry("zpi.run", { phase: "start", runId: "second", startedAt: Date.now() });
+  await manager.appendCustomEntryAsync("zpi.run", { phase: "start", runId: "second", startedAt: Date.now() });
   for (let i = 0; i < 27; i++) {
     if (i % 5 === 0)
-      manager.appendMessage({ role: "user", content: "internal prompt", timestamp: Date.now() });
-    manager.appendMessage(assistant.message);
+      await manager.appendMessageAsync({ role: "user", content: "internal prompt", timestamp: Date.now() });
+    await manager.appendMessageAsync(assistant.message);
   }
-  manager.appendCompaction("retained decisions", assistant.id, undefined, undefined, {
+  await manager.appendCompactionAsync("retained decisions", assistant.id, undefined, undefined, {
     input: 10,
     output: 2,
     cacheRead: 3,
@@ -238,7 +238,7 @@ it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages 
     totalTokens: 15,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   });
-  manager.appendCustomEntry("zpi.run", { phase: "end", runId: "second" });
+  await manager.appendCustomEntryAsync("zpi.run", { phase: "end", runId: "second" });
   const child = await f.host.createSideChat(parent.id);
   const index = f.host["requiredIndex"](child.id);
   const reads = index.readBytes;
@@ -284,7 +284,7 @@ it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages 
   expect(restored.getSessionSnapshot(child.id).historyCursor).toBeNull();
   // A transcript generation rewrite must validate, rather than blindly trust, its old sequence boundary.
   const rewritten = restored["manager"](child.id);
-  rewritten.replaceEntries([...rewritten.iterateEntries()]);
+  await rewritten.replaceEntriesAsync(rewritten.iterateEntries());
   expect(restored.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 3, steps: 30 });
   expect(f.settings.state.getTask(child.id)?.sideChatInheritance?.childGeneration).toBe(
     restored["requiredIndex"](child.id).snapshot().generation,
@@ -296,7 +296,7 @@ it("keeps legacy usage and timings but omits unprovable inherited turns", async 
     send(response, chunk({ content: "answer" }));
     done(response);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: parent.id, text: "original" });
   await f.host.activeRuns.get(parent.id)?.done;
   const child = await f.host.createSideChat(parent.id);
@@ -305,7 +305,7 @@ it("keeps legacy usage and timings but omits unprovable inherited turns", async 
   f.settings.state.upsertTask({ ...saved, sideChatInheritance: undefined });
   // IDs alone cannot verify a historical message if the parent's content was replaced.
   const manager = f.host["manager"](parent.id);
-  manager.replaceEntries(
+  await manager.replaceEntriesAsync(
     [...manager.iterateEntries()].map((entry) =>
       entry.type === "message" && entry.message.role === "user"
         ? { ...entry, message: { ...entry.message, content: "changed" } }
@@ -336,7 +336,7 @@ it("freezes an active parent's completed prefix rather than its later totals", a
     }
     done(response);
   });
-  const parent = f.host.createSession(f.a.id);
+  const parent = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: parent.id, text: "completed input" });
   await f.host.activeRuns.get(parent.id)?.done;
   await f.host.startRun({ sessionId: parent.id, text: "active input" });

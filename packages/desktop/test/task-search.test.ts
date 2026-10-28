@@ -17,7 +17,7 @@ it("finds non-ASCII body text with the same case conversion as titles and snippe
     send(response, chunk({ content: "Äpfel ÉCOLE ΟΣ İx" }));
     done(response);
   });
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   const run = await f.host.startRun({ sessionId: session.id, text: "Fruit glossary" });
   await f.host.activeRuns.get(session.id)?.done;
   f.host.renameSession(session.id, "Fruit glossary");
@@ -97,7 +97,7 @@ describe("task list search", () => {
     expect(host.searchTasks("最终回复 0")[0].snippets[0].runId).toBe("run-0");
     expect(host.searchTasks("工具结果")).toEqual([]);
     expect(host.searchTasks("思考")).toEqual([]);
-    host.createSession(null);
+    await host.createSession(null);
     const searchText = vi.spyOn(HistoryIndex.prototype, "searchTextFor");
     expect(host.searchTasks("  ")).toMatchObject([{ id: seed.id, snippets: [] }]);
     expect(searchText).not.toHaveBeenCalled();

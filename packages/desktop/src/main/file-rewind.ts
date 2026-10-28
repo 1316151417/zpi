@@ -70,7 +70,10 @@ function replaceFile(path: string, content: Buffer, mode: number) {
   }
 }
 /** Keep workspace and transcript together; roll workspace back if the transcript cannot commit. */
-export function applyFileRewind(plan: FileRewindPlan, commit: () => void): FileRewindConflict[] {
+export async function applyFileRewind(
+  plan: FileRewindPlan,
+  commit: () => void | Promise<void>,
+): Promise<FileRewindConflict[]> {
   if (plan.conflicts.length) return plan.conflicts;
   const conflicts: FileRewindConflict[] = [];
   for (const file of plan.files) {
@@ -89,7 +92,7 @@ export function applyFileRewind(plan: FileRewindPlan, commit: () => void): FileR
       else replaceFile(file.path, file.before, file.mode);
       applied.push(file);
     }
-    commit();
+    await commit();
   } catch (error) {
     for (const file of applied.reverse()) replaceFile(file.path, file.current, file.mode);
     throw error;

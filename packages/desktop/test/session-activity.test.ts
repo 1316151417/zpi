@@ -12,7 +12,7 @@ it("uses the header creation time and persisted conversation activity, excluding
     send(response, chunk({ content: "done" }));
     done(response);
   });
-  const created = f.host.createSession(f.a.id);
+  const created = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: created.id, text: "hello" });
   await f.host.activeRuns.get(created.id)?.done;
   const completed = f.host.getSessionSnapshot(created.id).session;
@@ -36,7 +36,7 @@ it("uses the header creation time and persisted conversation activity, excluding
 
 it("stamps streaming activity at the Host and does not promote metadata or stale status to running", async () => {
   const f = await fixture((_, response) => send(response, chunk({ content: "partial" })));
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const events: import("zpi-ui").DesktopEventEnvelope[] = [];
   f.host.subscribe((e) => events.push(e));
   await f.host.startRun({ sessionId: id, text: "hello" });
@@ -76,7 +76,7 @@ it("delivers every streamed delta without stamping task activity for each token"
     for (let i = 0; i < 100; i++) send(response, chunk({ content: "x" }));
     done(response);
   });
-  const id = f.host.createSession(f.a.id).id;
+  const id = (await f.host.createSession(f.a.id)).id;
   const events: import("zpi-ui").DesktopEventEnvelope[] = [];
   f.host.subscribe((event) => events.push(event));
   const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
@@ -100,7 +100,7 @@ it("reconstructs last message activity for an interrupted historical run", async
   vi.useFakeTimers({ toFake: ["Date"] });
   try {
     vi.setSystemTime(new Date("2026-10-01T01:00:00Z"));
-    const task = f.host.createSession(f.a.id);
+    const task = await f.host.createSession(f.a.id);
     const index = new HistoryIndex(f.host.sessionPath(task.id), f.settings.state.db);
     await index.load();
     const manager = SessionManager.fromStore(index);

@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdtempSync, statSync, truncateSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { maxSessionEntryBytes, type SessionEntry } from "zpi-coding-agent";
@@ -7,7 +7,20 @@ import { stageTranscript } from "../src/main/transcript-copy.ts";
 
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
-  return { ...fs, mkdtempSync: vi.fn(fs.mkdtempSync), closeSync: vi.fn(fs.closeSync) };
+  return { ...fs, closeSync: vi.fn(fs.closeSync) };
+});
+
+const spools = vi.hoisted(() => [] as string[]);
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...fs,
+    mkdtemp: vi.fn(async (prefix: string) => {
+      const path = await fs.mkdtemp(prefix);
+      spools.push(path);
+      return path;
+    }),
+  };
 });
 
 function message(content: string): SessionEntry {
@@ -21,7 +34,7 @@ function message(content: string): SessionEntry {
 }
 
 function spoolDirectory(): string {
-  return vi.mocked(mkdtempSync).mock.results.at(-1)?.value as string;
+  return spools.at(-1) as string;
 }
 
 test("spool reads preserve split UTF-8, multiple lines and large records across reused chunks", async () => {
@@ -36,7 +49,7 @@ test("spool reads preserve split UTF-8, multiple lines and large records across 
     expect([...staged.entries()]).toEqual(entries);
     expect([...staged.entries()]).toEqual(entries);
   } finally {
-    staged.close();
+    await staged.close();
   }
   expect(existsSync(directory)).toBe(false);
 });
@@ -57,7 +70,7 @@ test.each([
     expect(() => [...staged.entries()]).toThrow(error);
     expect(vi.mocked(closeSync).mock.calls.length).toBe(closes + 1);
   } finally {
-    staged.close();
+    await staged.close();
   }
   expect(existsSync(directory)).toBe(false);
 });
@@ -70,7 +83,7 @@ test("spool closes an abandoned iterator and removes staging files after transfo
     for (const _entry of staged.entries()) break;
     expect(vi.mocked(closeSync).mock.calls.length).toBe(closes + 1);
   } finally {
-    staged.close();
+    await staged.close();
   }
   expect(existsSync(directory)).toBe(false);
   await expect(
@@ -105,7 +118,7 @@ test("artifact relocation spools incrementally and permits independent bounded r
     expect([...staged.entries()]).toHaveLength(500);
     expect([...staged.entries()][499]).toMatchObject({ message: { content: "中文499" } });
   } finally {
-    staged.close();
+    await staged.close();
   }
 });
 test("reference export stops consuming history after its visible text budget", () => {

@@ -129,7 +129,7 @@ it("restores existing named worktrees without detaching them or allocating anoth
   await repo(f.a.path);
   const path = join(f.dir, "legacy-tree");
   await git(f.a.path, "worktree", "add", "-b", "legacy", path);
-  const session = f.host.createSession(f.a.id, { cwd: path });
+  const session = await f.host.createSession(f.a.id, { cwd: path });
   await f.host.close();
   const worktree = { branch: "legacy", path, sourceCwd: f.a.path };
   const persisted = f.settings.state.getTask(session.id);
@@ -151,7 +151,7 @@ it("restores the chosen starting branch and resolves its latest commit at first 
   const f = await fixture((_, response) => done(response));
   await repo(f.a.path);
   await git(f.a.path, "branch", "feature/topic");
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   expect(await f.host.setNewWorktree(session.id, true)).toMatchObject({ worktreeBaseRef: "refs/heads/main" });
   await f.host.setNewWorktree(session.id, true, "refs/heads/feature/topic");
   await f.host.setNewWorktree(session.id, false);
@@ -208,7 +208,7 @@ it("reports a deleted starting branch without running the model and retries that
   const f = await fixture((_, response) => done(response));
   await repo(f.a.path);
   await git(f.a.path, "branch", "feature/topic");
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   await expect(f.host.setNewWorktree(session.id, true, "refs/heads/missing")).rejects.toThrow(
     "起始分支不存在",
   );
@@ -266,7 +266,7 @@ it("defers creation until sending and restores the actual worktree for prompts, 
   const host = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, undefined, root);
   await host.init();
   cleanup.push(() => host.close());
-  const session = host.createSession(f.a.id);
+  const session = await host.createSession(f.a.id);
   await host.setNewWorktree(session.id, true);
   expect(host.workspaceInfo(session.id).cwd).toBe(f.a.path);
   await writeFile(join(f.a.path, "tracked.txt"), "second");
@@ -318,7 +318,7 @@ it("resolves relative line references in the new worktree while preserving expli
   );
   await host.init();
   cleanup.push(() => host.close());
-  const session = host.createSession(f.a.id);
+  const session = await host.createSession(f.a.id);
   await host.setNewWorktree(session.id, true);
   const sourceFile = join(f.a.path, "tracked.txt");
   const references = ["tracked.txt", "tracked.txt:1", "tracked.txt#L1", `${sourceFile}:1`];
@@ -355,7 +355,7 @@ for (const reference of ["tracked.txt", "tracked.txt:1"]) {
     );
     await host.init();
     cleanup.push(() => host.close());
-    const session = host.createSession(f.a.id);
+    const session = await host.createSession(f.a.id);
     await host.setNewWorktree(session.id, true, "refs/heads/without-file");
     await host.startRun({ sessionId: session.id, text: "read reference", fileReferences: [reference] });
     await host.activeRuns.get(session.id)?.done;
@@ -405,7 +405,7 @@ for (const workspaceMode of ["preserve", "rewind"] as const) {
     const host = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined, undefined, root);
     await host.init();
     cleanup.push(() => host.close());
-    const session = host.createSession(f.a.id);
+    const session = await host.createSession(f.a.id);
     await host.setNewWorktree(session.id, true);
     const first = await host.startRun({ sessionId: session.id, text: "first message" });
     await host.activeRuns.get(session.id)?.done;
@@ -453,7 +453,7 @@ it("acknowledges a send and publishes preparation before checkout while keeping 
     return actual(cwd, join(f.dir, "trees"), onProgress);
   });
   const { host } = f;
-  const session = host.createSession(f.a.id);
+  const session = await host.createSession(f.a.id);
   await host.setNewWorktree(session.id, true);
   const result = await host.submitInput({ sessionId: session.id, text: "work" });
   if (!("runId" in result)) throw new Error("Expected an accepted run");
@@ -464,7 +464,7 @@ it("acknowledges a send and publishes preparation before checkout while keeping 
   ]);
   expect(f.server.requests).toHaveLength(0);
   await expect(host.createSideChat(session.id)).rejects.toThrow("工作树尚未创建");
-  expect(host.getSessionSnapshot(host.createSession(f.b.id).id).session.cwd).toBe(f.b.path);
+  expect(host.getSessionSnapshot((await host.createSession(f.b.id)).id).session.cwd).toBe(f.b.path);
   await expect(host.startRun({ sessionId: session.id, text: "duplicate" })).rejects.toThrow("正在运行");
   const finished = host.activeRuns.get(session.id)?.done;
   gate.resolve();
@@ -485,7 +485,7 @@ it("shows checkout failures in the accepted task and retries creating the worktr
   vi.spyOn(worktrees, "createWorktree")
     .mockRejectedValueOnce(new Error("checkout failed"))
     .mockImplementation((cwd, _root, onProgress) => actual(cwd, join(f.dir, "trees"), onProgress));
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   await f.host.setNewWorktree(session.id, true);
   await f.host.submitInput({ sessionId: session.id, text: "work" });
   await f.host.activeRuns.get(session.id)?.done;
@@ -517,7 +517,7 @@ it("does not call the model after stopping during checkout", async () => {
     await gate.promise;
     return actual(cwd, join(f.dir, "trees"), onProgress);
   });
-  const session = f.host.createSession(f.a.id);
+  const session = await f.host.createSession(f.a.id);
   await f.host.setNewWorktree(session.id, true);
   const { runId } = await f.host.startRun({ sessionId: session.id, text: "work" });
   const stopped = f.host.abortRun({ sessionId: session.id, runId });

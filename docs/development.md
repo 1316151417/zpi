@@ -12,7 +12,7 @@
 
 ## 本地数据与凭据
 
-本分支使用 SQLite 存储当前业务状态，JSONL v2 存储会话事实。应用数据根的 `active-generation.json` 指向 `storage/<generationId>/`；该目录包含 `state.sqlite`、`credentials.enc`、`agent/sessions` 和受控附件等文件。设置、项目、任务、草稿、队列与分组从 SQLite 读取，不再加载旧 `settings.json`、`projects.json` 或 `task-groups.json`。附件仍保留专用文件与 `index.json`，不是所有 JSON 都被删除。折叠状态和视图选择仍是 renderer 本地偏好。分组不修改工作目录，删除分组不删除会话。
+本分支使用 SQLite 存储当前业务状态，JSONL v2 存储会话事实。应用数据根的 `active-generation.json` 指向 `storage/<generationId>/`；该目录包含 `state.sqlite`、派生历史索引 `history.sqlite`、`credentials.enc`、`agent/sessions` 和受控附件等文件。设置、项目、任务、草稿、队列与分组从 SQLite 读取，不再加载旧 `settings.json`、`projects.json` 或 `task-groups.json`。附件仍保留专用文件与 `index.json`，不是所有 JSON 都被删除。折叠状态和视图选择仍是 renderer 本地偏好。分组不修改工作目录，删除分组不删除会话。
 
 发现旧数据但没有已激活的新 generation 时，启动会拒绝继续，并要求离线迁移；不会自动转换或回退读取。可用 `ZPI_DATA_DIR="/absolute/path/to/trial" npm run dev` 覆盖数据根进行隔离试用（只隔离数据，不隔离项目或权限）。个人智能体正文保留为 generation 内 `agents/*.md`，启用/选择状态在 SQLite 的 `subagentProfiles` 配置中。完整合同、隔离试用、迁移命令与回滚限制见 [SQLite 存储说明](specs/sqlite-storage.md)。
 
@@ -246,6 +246,8 @@ Renderer 在已知快照水位后，才把相同 session/run/message/block 的�
 辅助对话保留继承上下文，但不显示继承时间线。创建时，继承统计与历史复制使用同一父快照和截止边界，保存统计基线后只累计辅助对话自己的新请求；主任务仍在运行时，不直接复制其最新实时总量。旧辅助对话只在原始继承前缀可核实时修正多算的轮数，并保留步数、用量及已记录耗时；无法可靠恢复时省略轮数，不显示猜测值或零。重启和累计统计重建须保持这一行为。
 
 辅助对话打开时立即平滑展开侧栏，不显示创建中的文字提示；保留内部加载状态，草稿与快照就绪后才允许编辑，命令和 Skill 建议后台加载。侧栏仅在显式打开或关闭时执行平滑宽度与透明度过渡，动画期间固定内部内容宽度；拖拽调整和窗口尺寸变化保持即时响应，并尊重减少动态效果的系统偏好。可见历史默认按最近十次模型调用分页（不是十轮用户交互），另有约 2 MiB 软限制；分页不会读取辅助对话隐藏的继承前缀。向上加载会累计可见页，不等同于虚拟列表。
+
+桌面 JSONL 追加、fsync、冷索引重建及批量 generation 的校验/索引/写入由专用 Worker 执行；主线程通过独立的只读 `history.sqlite` 连接读取，业务元数据仍写 `state.sqlite`。消息、工具执行和 generation 发布均等待对应持久化确认。详见 [后台写入与超长单回合回归](history-worker-benchmark.md)。
 
 辅助对话复制、分叉和回退所需的新历史 generation 使用批量导入：单文件句柄顺序写入，有界逐条校验及索引构建，整批文件同步与索引提交完成后才发布新 generation。普通运行时追加仍逐条持久化。固定记录 schema 仅编译一次并复用，所有原有校验继续执行；继承统计在同一遍历史读取中累计。创建性能应测量创建至输入可用的总路径，不能只以快照加载耗时或 fsync 次数作为验收；故障测试需覆盖写入、校验、索引、同步与发布边界，并确认旧历史仍可恢复。
 

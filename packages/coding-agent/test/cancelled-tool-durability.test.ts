@@ -62,8 +62,8 @@ for (const mode of ["sequential", "parallel"] as const) {
       },
     });
     // Exercise the same journal-before-canonical writer order as AgentSession.
-    agent.subscribe((event) => {
-      journal.observe(event);
+    agent.subscribe(async (event) => {
+      await journal.observe(event);
       if (event.type === "message_end") manager.appendMessage(event.message);
     });
     await agent.prompt("run the inert batch");
