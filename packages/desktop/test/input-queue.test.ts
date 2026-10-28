@@ -59,10 +59,10 @@ it("queued inputs reorder, withdraw, preempt and drain once without entering his
   await expect.poll(() => f.server.requests.length).toBe(1);
   const one = await f.host.submitInput({ sessionId: id, text: "one" });
   const two = await f.host.submitInput({ sessionId: id, text: "two" });
-  const three = await f.host.submitInput({ sessionId: id, text: "three" });
+  const three = await f.host.submitInput({ sessionId: id, text: "three", fileReferences: ["missing"] });
   expect(f.host.getSessionSnapshot(id).view.runs.map((r) => r.userMessage)).toEqual(["hold"]);
   await expect(
-    f.host.submitInput({ sessionId: id, text: "invalid", fileReferences: ["missing"] }),
+    f.host.submitInput({ sessionId: id, text: "invalid", fileReferences: [""] }),
   ).rejects.toThrow();
   if (
     !("queueItemId" in one) ||
@@ -89,6 +89,7 @@ it("queued inputs reorder, withdraw, preempt and drain once without entering his
       ["one revised", "completed"],
     ]);
   expect(f.host.getSessionSnapshot(id).view.queue?.items).toHaveLength(0);
+  expect(f.host.getSessionSnapshot(id).view.runs[1].fileReferences).toEqual(["missing"]);
   expect(f.server.requests).toHaveLength(3);
   release.resolve();
 });
@@ -107,7 +108,7 @@ it("immediate drafts validate before stopping, bypass queued inputs, and resume 
   for (const text of ["queued first", "queued second"]) await f.host.submitInput({ sessionId: id, text });
   const queued = f.host.inputQueue.get(id).items;
   await expect(
-    f.host.submitInput({ sessionId: id, text: "invalid", fileReferences: ["missing"] }, undefined, true),
+    f.host.submitInput({ sessionId: id, text: "invalid", fileReferences: [""] }, undefined, true),
   ).rejects.toThrow();
   expect(f.host.getSessionSnapshot(id).view.runs[0].status).toBe("running");
   expect(f.host.inputQueue.get(id).items).toEqual(queued);

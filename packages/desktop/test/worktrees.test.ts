@@ -336,7 +336,7 @@ it("resolves relative line references in the new worktree while preserving expli
 });
 
 for (const reference of ["tracked.txt", "tracked.txt:1"]) {
-  it(`rejects ${reference} when absent from the selected worktree branch before calling the model`, async () => {
+  it(`submits ${reference} even when absent from the selected worktree branch`, async () => {
     const f = await fixture((_, response) => done(response));
     await repo(f.a.path);
     await git(f.a.path, "checkout", "-b", "without-file");
@@ -359,8 +359,18 @@ for (const reference of ["tracked.txt", "tracked.txt:1"]) {
     await host.setNewWorktree(session.id, true, "refs/heads/without-file");
     await host.startRun({ sessionId: session.id, text: "read reference", fileReferences: [reference] });
     await host.activeRuns.get(session.id)?.done;
-    expect(f.server.requests).toHaveLength(0);
-    expect(host.getSessionSnapshot(session.id).view.runs[0].status).toBe("error");
+    expect(f.server.requests).toHaveLength(1);
+    const snapshot = host.getSessionSnapshot(session.id);
+    expect(snapshot.view.runs[0]).toMatchObject({
+      status: "completed",
+      fileReferences: [reference],
+    });
+    const expected =
+      reference === "tracked.txt" ? reference : join(snapshot.session.cwd as string, "tracked.txt");
+    const messages = f.server.requests[0].messages as unknown as { role: string; content: string }[];
+    expect(messages.find((message) => message.role === "user")?.content).toContain(
+      `- ${JSON.stringify(expected)}`,
+    );
   });
 }
 

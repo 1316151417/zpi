@@ -84,6 +84,7 @@ import { applyFileRewind, planFileRewind } from "./file-rewind.ts";
 import { HistoryIndex } from "./history-index.ts";
 import { HistoryPerformance, historyPerformance, sideChatGuard } from "./history-performance.ts";
 import { SessionInputQueue } from "./input-queue.ts";
+import { localFileCandidate } from "./local-file-path.ts";
 import { memoryEvidence } from "./memory/evidence.ts";
 import {
   LongMemoryService,
@@ -2542,7 +2543,14 @@ export class SessionHost {
   private async resolveInputReferences(id: string, references: string[]): Promise<string[]> {
     const inputReferences: string[] = [];
     for (const path of references) {
-      const actual = await this.referencedFile(id, path);
+      let actual: string;
+      try {
+        actual = await this.referencedFile(id, path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        // Missing files are still useful prompt context; keep relative paths bounded.
+        actual = localFileCandidate(this.cwd(this.record(id)), splitFileLocation(path)?.path ?? path);
+      }
       // Keep the original references in the transcript, but give tools real paths,
       // not destinations whose trailing line/column would become part of a filename.
       inputReferences.push(splitFileLocation(path)?.location.line ? actual : path);
