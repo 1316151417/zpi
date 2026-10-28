@@ -9,7 +9,7 @@ import { directory } from "./helpers/session-fixture.ts";
 
 afterEach(() => vi.useRealTimers());
 
-it("recovers stalled streams from the last committed tool result, grows the window by 30s and never replays writes", async () => {
+it("recovers stalled streams with a fixed window from the last committed tool result without replaying writes", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   const started = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
@@ -76,12 +76,12 @@ it("recovers stalled streams from the last committed tool result, grows the wind
     await vi.waitFor(() => expect(contexts).toHaveLength(3), { interval: 1 });
     await started[1].promise;
     expect(signals[0].reason).toMatchObject({ timeoutMs: 100 });
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(50);
     expect(signals[1].aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(1_102);
+    await vi.advanceTimersByTimeAsync(1_100);
     await vi.waitFor(() => expect(session.isIdle).toBe(true), { interval: 1 });
     await running;
-    expect(signals[1].reason).toMatchObject({ timeoutMs: 30_100 });
+    expect(signals[1].reason).toMatchObject({ timeoutMs: 100 });
     expect(writes).toBe(1);
     expect(await readFile(join(cwd, "once.txt"), "utf8")).toBe("once");
     expect(contexts).toHaveLength(4);
@@ -99,14 +99,14 @@ it("recovers stalled streams from the last committed tool result, grows the wind
           ? [e.message.errorDetails]
           : [],
       );
-    expect(failures.map((f) => f.timeoutMs)).toEqual([100, 30_100]);
+    expect(failures.map((f) => f.timeoutMs)).toEqual([100, 100]);
     expect(session.isIdle).toBe(true);
   } finally {
     session.dispose();
   }
 });
 
-it("applies the same watchdog and growing retry window to compaction", async () => {
+it("applies the same fixed watchdog to compaction retries", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   let requests = 0;
@@ -118,7 +118,7 @@ it("applies the same watchdog and growing retry window to compaction", async () 
       output.content = [{ type: "text", text: "summary ".repeat(100) }];
       requests++;
       if (requests === 1) events.end(output);
-      else if (requests === 3) setTimeout(() => events.end(output), 200);
+      else if (requests === 3) setTimeout(() => events.end(output), 50);
       return events;
     },
   });

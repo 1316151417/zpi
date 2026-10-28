@@ -483,8 +483,15 @@ async function launch(): Promise<void> {
   });
   window.on("closed", () => directoryWatchers.close());
   window.webContents.on("render-process-gone", () => directoryWatchers.close());
+  const fileSearchOwner = window.webContents.id;
+  const clearFileSearches = () => void host.workspaceFileSearches.close(fileSearchOwner);
+  window.on("closed", clearFileSearches);
+  window.webContents.on("render-process-gone", clearFileSearches);
   window.webContents.on("did-start-navigation", (details) => {
-    if (details.isMainFrame && !details.isSameDocument) directoryWatchers.close();
+    if (details.isMainFrame && !details.isSameDocument) {
+      directoryWatchers.close();
+      clearFileSearches();
+    }
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -651,7 +658,8 @@ async function launch(): Promise<void> {
         listRecentSessions: 0,
         searchTasks: 2,
         getTaskSearchChanges: 1,
-        listTaskFiles: 2,
+        searchWorkspaceFiles: 2,
+        cancelWorkspaceFileSearch: 1,
         listSessionMentions: 1,
         setSessionPinned: 2,
         getProviderCredentials: 1,
@@ -673,6 +681,7 @@ async function launch(): Promise<void> {
         forkSession: 2,
         editUserMessage: 3,
         abortRun: 1,
+        retryModelRequest: 1,
         getSettings: 0,
         getMemorySettings: 0,
         saveMemorySettings: 1,
@@ -1113,8 +1122,22 @@ async function launch(): Promise<void> {
         case "searchTasks":
           value = host.searchTasks(string(0), args[1] === null ? null : string(1));
           break;
-        case "listTaskFiles":
-          value = await host.listTaskFiles(sessionContext(), fileTreeRoot(1));
+        case "searchWorkspaceFiles":
+          value = await host.searchWorkspaceFiles(
+            sessionContext(),
+            object(1, [
+              "query",
+              "requestId",
+              "rootPath",
+              "filesOnly",
+              "limit",
+              "continuation",
+            ]) as unknown as import("../shared/workspace-files.ts").WorkspaceFileSearchInput,
+            window.webContents.id,
+          );
+          break;
+        case "cancelWorkspaceFileSearch":
+          value = await host.workspaceFileSearches.cancel(window.webContents.id, string(0));
           break;
         case "listRecentSessions":
           value = host.listRecentSessions();
@@ -1260,6 +1283,13 @@ async function launch(): Promise<void> {
           host.workspaceInfo(string(0));
           await host.inputQueue.resume(string(0));
           break;
+        case "retryModelRequest": {
+          const o = object(0, ["sessionId", "runId"]);
+          if (typeof o.sessionId !== "string" || typeof o.runId !== "string")
+            throw new Error("invalid_input: 重试参数无效");
+          value = host.retryModelRequest({ sessionId: o.sessionId, runId: o.runId });
+          break;
+        }
         case "abortRun": {
           const o = object(0, ["sessionId", "runId"]);
           if (typeof o.sessionId !== "string" || typeof o.runId !== "string")

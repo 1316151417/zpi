@@ -57,6 +57,10 @@ export function userErrorMessage(error: unknown): string {
   const summary = message.split(/[\r\n]/, 1)[0]?.slice(0, 1000) ?? "";
   const signal = `${code} ${summary}`;
   const status = typeof details?.status === "number" ? details.status : undefined;
+  if (/MODEL_RECOVERY_DEADLINE|Model recovery time limit exceeded/i.test(signal))
+    return "模型连接恢复已超时，请检查网络或切换模型后继续。";
+  if (/MODEL_STREAM_IDLE_TIMEOUT|Model stream stalled/i.test(signal))
+    return "模型长时间没有响应，请检查网络或切换模型后重试。";
   if (/MEDIA_BUDGET_CURRENT_ATTACHMENT_TOO_LARGE/i.test(signal))
     return "本次附件过大，请移除或压缩附件后重试。";
   if (/\bENOENT\b|no such file or directory|file not found|找不到文件|文件不存在/i.test(signal)) {

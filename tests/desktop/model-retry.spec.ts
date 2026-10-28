@@ -11,8 +11,8 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
   const dir = await mkdtemp(join(tmpdir(), "zpi-model-retry-"));
   const project = join(dir, "project");
   await mkdir(project);
-  await mkdir(join(dir, "agent"));
-  await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ retry: { baseDelayMs: 12000 } }));
+  await mkdir(join(project, ".zpi"));
+  await writeFile(join(project, ".zpi/settings.json"), JSON.stringify({ retry: { baseDelayMs: 12000 } }));
   const counts = new Map<string, number>();
   const finishRecoveredStream = Promise.withResolvers<void>();
   const server = await fakeServer((body, response) => {
@@ -58,7 +58,8 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
     await expect(run()).toHaveAttribute("data-status", "running");
-    await expect(run().locator(".notice-turn")).toHaveCount(0);
+    await expect(run().locator(".notice-error")).toHaveCount(0);
+    await expect(run().getByRole("button", { name: "立即重试", exact: true })).toBeVisible();
     await expect(page.getByTestId("api-retry-status")).toHaveAttribute("title", /HTTP 429/);
     await expect(page.getByTestId("api-retry-status")).toHaveCSS("height", "28px");
     await expect(page.locator(".api-retry-label")).toHaveCSS("animation-duration", "4s");
@@ -74,6 +75,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await page.screenshot({ path: "test-results/model-retry-dark.png" });
     await page.reload();
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await run().getByRole("button", { name: "立即重试", exact: true }).click();
     await expect(run().locator(".answer")).toHaveText("recovered answer", { timeout: 15_000 });
     await expect(run()).toHaveAttribute("data-status", "running");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
@@ -98,7 +100,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(run()).toHaveAttribute("data-status", "error");
     await expect(run().locator(".notice-turn")).toContainText("服务请求过于频繁或额度不足");
     expect(counts.get("quota")).toBe(3);
-    await writeFile(join(dir, "agent/settings.json"), JSON.stringify({ retry: { baseDelayMs: 0 } }));
+    await writeFile(join(project, ".zpi/settings.json"), JSON.stringify({ retry: { baseDelayMs: 0 } }));
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await submit("exhaust");
     await expect(run()).toHaveAttribute("data-status", "error");
@@ -119,9 +121,9 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
   const dir = await mkdtemp(join(tmpdir(), "zpi-stream-stall-"));
   const project = join(dir, "project");
   await mkdir(project);
-  await mkdir(join(dir, "agent"));
+  await mkdir(join(project, ".zpi"));
   await writeFile(
-    join(dir, "agent/settings.json"),
+    join(project, ".zpi/settings.json"),
     JSON.stringify({ streamIdleTimeoutMs: 1000, retry: { baseDelayMs: 3000 } }),
   );
   const counts = new Map<string, number>();
@@ -156,7 +158,7 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
     await submit("stall");
     const run = () => page.getByTestId("run").last();
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
-    await expect(run().locator(".notice-turn")).toHaveCount(0);
+    await expect(run().locator(".notice-error")).toHaveCount(0);
     await expect.poll(() => closed).toContain("stall");
     await page.reload();
     await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
@@ -171,6 +173,62 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
     await expect.poll(() => closed).toContain("stop live request");
     expect(counts.get("stop live request")).toBe(1);
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
+test("shows a quiet first request and retries it immediately within the same turn", async () => {
+  test.setTimeout(45000);
+  const dir = await mkdtemp(join(tmpdir(), "zpi-model-wait-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  await mkdir(join(project, ".zpi"));
+  await writeFile(
+    join(project, ".zpi/settings.json"),
+    JSON.stringify({ streamFirstResponseTimeoutMs: 60000 }),
+  );
+  let requests = 0;
+  let closed = false;
+  const server = await fakeServer((_body, response) => {
+    requests++;
+    if (requests > 1) {
+      send(response, chunk({ content: "recovered immediately" }));
+      done(response);
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(": keepalive\n\n");
+    const heartbeat = setInterval(() => response.write(": keepalive\n\n"), 100);
+    response.on("close", () => {
+      clearInterval(heartbeat);
+      closed = true;
+    });
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("retry the waiting request");
+    await page.getByLabel("发送", { exact: true }).click();
+    const run = page.getByTestId("run");
+    await expect(run).toContainText("正在等待模型首次响应", { timeout: 20000 });
+    await expect(run).toContainText(/已等待 \d+ 秒/);
+    expect(requests).toBe(1);
+    await page.reload();
+    await expect(run.getByRole("button", { name: "立即重试", exact: true })).toBeVisible();
+    await run.getByRole("button", { name: "立即重试", exact: true }).click();
+    await expect(run).toHaveAttribute("data-status", "completed", { timeout: 5000 });
+    await expect(run.locator(".answer")).toHaveText("recovered immediately");
+    await expect(run).toHaveCount(1);
+    await expect(run.locator(".notice-turn")).toHaveCount(0);
+    expect(requests).toBe(2);
+    await expect.poll(() => closed).toBe(true);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

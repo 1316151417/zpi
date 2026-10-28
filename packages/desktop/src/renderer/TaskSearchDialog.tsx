@@ -6,6 +6,7 @@ import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useStat
 import { FileIcon } from "zpi-ui";
 import type { ProjectRecord, SessionRecord, TaskSearchChange, TaskSearchResult } from "../shared/bridge.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
+import { FileSearchStatus } from "./FileSearchStatus.tsx";
 import { HighlightedMatchText } from "./HighlightedMatchText.tsx";
 import { formatTaskRelativeTime } from "./sidebar-task-model.ts";
 import { report, useStore } from "./store.ts";
@@ -21,6 +22,7 @@ import { resolveSearchScope, searchScopePrefix, taskSearchRows } from "./task-se
 import { unwrap } from "./unwrap.ts";
 import { useDialogDismiss } from "./use-dialog-dismiss.ts";
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
+import { useWorkspaceFileSearch } from "./use-workspace-file-search.ts";
 import { userErrorMessage } from "./user-error.ts";
 
 export interface SearchCommand {
@@ -33,7 +35,6 @@ export interface SearchCommand {
   disabled?: boolean;
   run: () => unknown;
 }
-type SearchFile = Awaited<ReturnType<typeof window.zpi.listTaskFiles>> & { ok: true };
 const scopes = [
   ["all", "全部", List],
   ["commands", "操作", Rocket],
@@ -79,12 +80,18 @@ export function TaskSearchDialog({
   const [history, setHistory] = useState(() => readCommandCenterSearchHistory(workspaceKey));
   const [result, setResult] = useState<{ query: string; tasks: TaskSearchResult[] }>();
   const [taskError, setTaskError] = useState("");
-  const [files, setFiles] = useState<SearchFile["value"]>();
-  const [fileError, setFileError] = useState("");
   const [changes, setChanges] = useState<TaskSearchChange[]>([]);
   const actionSelected = useRef(false);
   const searchingTasks = scope === "all" || scope === "conversations";
   const searchingFiles = Boolean(query) && (scope === "all" || scope === "files");
+  const fileSearch = useWorkspaceFileSearch({
+    sessionId: selected ?? null,
+    query,
+    enabled: open && searchingFiles,
+    filesOnly: true,
+    limit: 80,
+  });
+  const fileError = fileSearch.error;
   const taskRevision = useStore((state) =>
     [...state.sessions.values()]
       .filter((task) => !task.draft && !task.parentSessionId && task.archivedAt == null)
@@ -117,22 +124,6 @@ export function TaskSearchDialog({
     };
   }, [open, query, searchingTasks, workspaceKey, taskRevision]);
   useEffect(() => {
-    if (!open || !searchingFiles || files || fileError) return;
-    let cancelled = false;
-    void window.zpi
-      .listTaskFiles(selected ?? null)
-      .then(unwrap)
-      .then((entries) => {
-        if (!cancelled) setFiles(entries);
-      })
-      .catch((error) => {
-        if (!cancelled) setFileError(userErrorMessage(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, searchingFiles, selected, files, fileError]);
-  useEffect(() => {
     if (!open || !selected) return;
     let cancelled = false;
     void window.zpi
@@ -149,18 +140,7 @@ export function TaskSearchDialog({
   const tasks = result?.query === query ? result.tasks : [];
   const loadingTasks = searchingTasks && result?.query !== query && !taskError;
   const rows = useMemo(() => taskSearchRows(tasks, query), [tasks, query]);
-  const fileRows = useMemo(() => {
-    const parts = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    return query
-      ? (files ?? [])
-          .filter(
-            (entry) =>
-              entry.type === "file" &&
-              parts.every((part) => `${entry.name} ${entry.path}`.toLocaleLowerCase().includes(part)),
-          )
-          .slice(0, 80)
-      : [];
-  }, [files, query]);
+  const fileRows = fileSearch.result?.entries ?? [];
   const commandRows = commands.filter((command) =>
     query
       .trim()
@@ -187,8 +167,8 @@ export function TaskSearchDialog({
   const hasResults =
     ((scope === "all" || scope === "commands") && commandRows.length > 0) ||
     (searchingTasks && rows.length > 0) ||
-    (searchingFiles && fileRows.length > 0);
-  const fileLoading = searchingFiles && !files && !fileError;
+    (searchingFiles && (fileRows.length > 0 || Boolean(fileSearch.result?.continuation)));
+  const fileLoading = fileSearch.loading;
   const more = (section: "conversations" | "files", count: number) =>
     !expanded.has(section) && count > 3 && scope === "all" ? (
       <button
@@ -397,13 +377,13 @@ export function TaskSearchDialog({
                   {more("conversations", rows.length)}
                 </Section>
               )}
-              {query && searchingFiles && (fileRows.length > 0 || fileLoading || fileError) && (
+              {query && searchingFiles && (fileSearch.result || fileLoading || fileError) && (
                 <Section title="文件">
                   {fileError ? (
                     <div role="alert" className="task-search-empty">
                       {fileError}
                     </div>
-                  ) : fileLoading ? (
+                  ) : fileLoading && !fileSearch.result ? (
                     <div className="task-search-empty">正在加载文件…</div>
                   ) : (
                     visibleFiles.map((file) => (
@@ -429,6 +409,12 @@ export function TaskSearchDialog({
                     ))
                   )}
                   {more("files", fileRows.length)}
+                  <FileSearchStatus
+                    result={fileSearch.result}
+                    loading={fileLoading}
+                    onContinue={fileSearch.loadMore}
+                    error={fileError}
+                  />
                 </Section>
               )}
               {query &&

@@ -754,10 +754,6 @@
   color: var(--color-foreground);
   background: transparent;
 }
-.sidebar .sidebar-heading button:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
 .sidebar .sidebar-heading button:active {
   transform: none;
 }
@@ -3471,14 +3467,6 @@
 .sidebar .task-show-more button:hover {
   color: var(--color-text-subtle);
   background: transparent;
-}
-.sidebar .session-row:focus,
-.sidebar .session-row:focus-visible,
-.sidebar .session-row button:focus-visible,
-.sidebar .task-group-toggle:focus-visible,
-.sidebar .task-view-trigger:focus-visible {
-  outline: none;
-  box-shadow: none;
 }
 .timeline-group + .timeline-group {
   margin-top: 4px;

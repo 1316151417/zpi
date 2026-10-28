@@ -133,6 +133,8 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.compactions = markers;
   } else if (event.type === "notice") {
     run.notice = event.text;
+  } else if (event.type === "model_wait") {
+    run.modelWait = run.status === "running" ? event.status : null;
   } else if (event.type === "model_retry") {
     run.apiRetry = run.status === "running" ? event.status : null;
     if (run.apiRetry) {
@@ -181,6 +183,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
     run.failedMessageId = undefined;
     run.preparation = null;
     run.apiRetry = null;
+    run.modelWait = null;
     run.status = event.status;
     run.endedAt = event.endedAt;
     run.error = event.error;

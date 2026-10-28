@@ -263,6 +263,10 @@ export interface ModelRetryStatus {
   retryDelayMs: number;
   errorStatus: number | null;
 }
+export interface ModelWaitStatus {
+  phase: "first_response" | "stream";
+  startedAt: number;
+}
 export interface ToolResultMessage {
   cacheControl?: CacheControl;
   role: "toolResult";
@@ -307,10 +311,18 @@ export interface StreamOptions {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
-  /** Model-event idle deadline; ZCode default is 600s, <= 0 disables it. */
+  /** First meaningful model event deadline; defaults to 120s, <= 0 disables it. */
+  streamFirstResponseTimeoutMs?: number;
+  /** Model-event idle deadline after output starts; defaults to 300s, <= 0 disables it. */
   streamIdleTimeoutMs?: number;
-  /** Recovery count: add 30s to the idle window for every retry. */
+  /** @deprecated Retained for compatibility; retries no longer extend the idle deadline. */
   streamIdleTimeoutRetryNumber?: number;
+  /** Absolute recovery deadline, independent of model-event activity. */
+  streamDeadlineMs?: number;
+  /** Retry this request without cancelling the enclosing agent turn. */
+  retrySignal?: AbortSignal;
+  /** Transient waiting state; emitted only after 15s without a meaningful model event. */
+  onModelWait?: (status: ModelWaitStatus | null) => void;
   maxRetries?: number;
   maxRetryDelayMs?: number;
   onRetry?: (status: ModelRetryStatus | null) => void;

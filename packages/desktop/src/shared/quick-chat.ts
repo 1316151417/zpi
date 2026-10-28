@@ -28,6 +28,7 @@ export interface QuickChatBridge {
   readAttachment(sessionId: string, id: string): Promise<Result<{ metadata: ImageAttachment; data: string }>>;
   removeAttachment(sessionId: string, id: string): Promise<Result<void>>;
   stop(): Promise<Result<void>>;
+  retryModelRequest(sessionId: string, runId: string): Promise<Result<boolean>>;
   reset(): Promise<Result<void>>;
   hide(): Promise<Result<void>>;
   setComposerHeight(sessionId: string, height: number): Promise<Result<void>>;

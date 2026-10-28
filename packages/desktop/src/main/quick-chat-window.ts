@@ -876,6 +876,7 @@ export class QuickChatWindow {
         readAttachment: 2,
         removeAttachment: 2,
         stop: 0,
+        retryModelRequest: 2,
         reset: 0,
         hide: 0,
         copyText: 1,
@@ -996,6 +997,9 @@ export class QuickChatWindow {
           break;
         case "stop":
           await host.stop();
+          break;
+        case "retryModelRequest":
+          value = host.retryModelRequest(text(256), text(256, 1));
           break;
         case "reset":
           await this.resetConversation();

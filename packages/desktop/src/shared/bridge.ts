@@ -24,6 +24,7 @@ import type { EditorInfo } from "./editors.ts";
 import type { MemorySettings, MemoryStatus } from "./memory.ts";
 import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
 import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
+import type { WorkspaceFileSearchInput, WorkspaceFileSearchResult } from "./workspace-files.ts";
 
 export type { SessionControls } from "zpi-ui";
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
@@ -459,10 +460,11 @@ export interface DesktopBridge {
   listSessions(projectId: string): Promise<Result<SessionRecord[]>>;
   getTaskSearchChanges(sessionId: string): Promise<Result<TaskSearchChange[]>>;
   searchTasks(query: string, workspaceKey: string | null): Promise<Result<TaskSearchResult[]>>;
-  listTaskFiles(
+  searchWorkspaceFiles(
     sessionId: string | null,
-    rootPath?: string,
-  ): Promise<Result<{ path: string; name: string; absolutePath: string; type: "file" | "directory" }[]>>;
+    input: WorkspaceFileSearchInput,
+  ): Promise<Result<WorkspaceFileSearchResult>>;
+  cancelWorkspaceFileSearch(requestId: string): Promise<Result<void>>;
   listRecentSessions(): Promise<Result<SessionRecord[]>>;
   listSessionMentions(sessionId: string): Promise<Result<SessionMentionSuggestion[]>>;
   createSession(projectId: string | null, groupId?: string | null): Promise<Result<SessionRecord>>;
@@ -486,6 +488,7 @@ export interface DesktopBridge {
   forkSession(id: string, runId: string): Promise<Result<SessionRecord>>;
   editUserMessage(id: string, runId: string, input: EditUserInput): Promise<Result<EditUserResult>>;
   abortRun(input: { sessionId: string; runId: string }): Promise<Result<void>>;
+  retryModelRequest(input: { sessionId: string; runId: string }): Promise<Result<boolean>>;
   getSettings(): Promise<Result<PublicSettings>>;
   updateShortcuts(input: ShortcutSettings): Promise<Result<PublicSettings>>;
   setShortcutCapture(capturing: boolean): Promise<Result<void>>;
@@ -615,7 +618,8 @@ export const methods = [
   "listSessions",
   "getTaskSearchChanges",
   "searchTasks",
-  "listTaskFiles",
+  "searchWorkspaceFiles",
+  "cancelWorkspaceFileSearch",
   "listRecentSessions",
   "listSessionMentions",
   "setSessionPinned",
@@ -634,6 +638,7 @@ export const methods = [
   "forkSession",
   "editUserMessage",
   "abortRun",
+  "retryModelRequest",
   "getSettings",
   "updateShortcuts",
   "setShortcutCapture",

@@ -3,6 +3,7 @@
 import type { ModelFailure } from "../types.ts";
 
 const TERMINAL_CODES = new Set([
+  "MODEL_RECOVERY_DEADLINE",
   "1005",
   "1006",
   "1008",
@@ -67,6 +68,7 @@ const TRANSIENT_CODES = new Set([
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
   "MODEL_STREAM_IDLE_TIMEOUT",
+  "MODEL_REQUEST_RETRY",
 ]);
 
 function record(value: unknown): Record<string, unknown> {
@@ -137,8 +139,12 @@ export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure
       (status === 409 && shouldRetry !== "false") ||
       (status === undefined && shouldRetry === "true"));
   const stall = records.find((r) => r.code === "MODEL_STREAM_IDLE_TIMEOUT");
+  const recoveryCode = codes.find(
+    (code) => code === "MODEL_REQUEST_RETRY" || code === "MODEL_RECOVERY_DEADLINE",
+  );
   return {
     retryable,
+    ...(recoveryCode ? { code: recoveryCode } : {}),
     ...(stall
       ? {
           code: "MODEL_STREAM_IDLE_TIMEOUT",

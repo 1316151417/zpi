@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "zpi-agent";
-import type { Message, ModelRetryStatus, ToolCall, ToolResultMessage } from "zpi-ai";
+import type { Message, ModelRetryStatus, ModelWaitStatus, ToolCall, ToolResultMessage } from "zpi-ai";
 import type { Attachment, ContextUsage, ModelPerformance, ResourceDiagnostic } from "zpi-coding-agent";
 import type { FileLocation } from "./link-target.ts";
 export interface SessionControls {
@@ -126,6 +126,7 @@ export interface RunView {
   kind?: "compact";
   compactions?: CompactionView[];
   apiRetry?: ModelRetryStatus | null;
+  modelWait?: ModelWaitStatus | null;
   preparation?: string | null;
   /** Failed assistant awaiting a retry; retained until the replacement starts. */
   failedMessageId?: string;
@@ -215,6 +216,7 @@ export type DesktopEvent =
   | { type: "question_changed"; question: UserQuestionRequest | null }
   | ({ type: "compaction" } & Omit<CompactionView, "afterBlockId">)
   | { type: "model_retry"; status: ModelRetryStatus | null }
+  | { type: "model_wait"; status: ModelWaitStatus | null }
   | { type: "message_reset"; messageId: string }
   | { type: "history_reset"; view: SessionView }
   | { type: "queue_changed"; queue: InputQueue }

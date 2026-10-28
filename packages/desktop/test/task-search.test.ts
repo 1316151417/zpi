@@ -44,6 +44,40 @@ it("maps expanded lowercase matches and context back to the original run offsets
   ]);
 });
 
+it("reads matching history segments lazily and stops after four snippets", () => {
+  let visited = 0;
+  function* segments() {
+    for (let i = 0; i < 80; i++) {
+      visited++;
+      yield { runId: `run-${i}`, text: `${"x".repeat(210_000)} Needle ${i}` };
+    }
+  }
+  const snippets = buildTaskSearchSnippets(segments(), "needle");
+  expect(visited).toBe(4);
+  expect(snippets.map((snippet) => snippet.runId)).toEqual(["run-0", "run-1", "run-2", "run-3"]);
+  expect(snippets.every((snippet) => snippet.text.length <= 140)).toBe(true);
+});
+
+it("keeps original Unicode match context beyond the old index limit without crossing entries", () => {
+  const prefix = `İ${"x".repeat(210_000)} `;
+  expect(buildTaskSearchSnippets([{ runId: "long", text: `${prefix}ÄPFEL İx suffix` }], "i")).toMatchObject([
+    { runId: "long", matchBefore: "", matchAfter: "x".repeat(72) },
+    { runId: "long", matchBefore: `${"x".repeat(13)} ÄPFEL `, matchAfter: "x suffix" },
+  ]);
+  expect(
+    buildTaskSearchSnippets(
+      [
+        { runId: "first", text: "before needle" },
+        { runId: "second", text: "after needle" },
+      ],
+      "needle",
+    ),
+  ).toMatchObject([
+    { runId: "first", matchBefore: "before ", matchAfter: "" },
+    { runId: "second", matchBefore: "after ", matchAfter: "" },
+  ]);
+});
+
 describe("task list search", () => {
   it("finds unopened history, rebuilds old indexes, excludes drafts/children/archives and ignores tools/thinking", async () => {
     const f = await setup();
@@ -121,7 +155,13 @@ describe("task list search", () => {
     expect(host.searchTasks("最终回复").map((task) => task.id)).toEqual([second.id, first.id]);
     expect(host.searchTasks("", f.cwd).map((task) => task.id)).toEqual([first.id]);
     await Promise.all(Array.from({ length: 25 }, (_, i) => writeFile(join(f.cwd, `source-${i}.ts`), "")));
-    const files = await host.listTaskFiles(first.id);
+    const files = (
+      await host.searchWorkspaceFiles(first.id, {
+        query: "source-",
+        requestId: "task-search",
+        filesOnly: true,
+      })
+    ).entries;
     expect(files.filter((file) => file.type === "file")).toHaveLength(25);
     expect(files.some((file) => file.name === "source-24.ts")).toBe(true);
   });

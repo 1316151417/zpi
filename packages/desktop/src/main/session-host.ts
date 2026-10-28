@@ -65,6 +65,7 @@ import {
 import { type ReviewDiffData, reviewPatchStats } from "../shared/review.ts";
 import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
+import type { WorkspaceFileSearchInput } from "../shared/workspace-files.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { BackgroundTasks } from "./background-tasks.ts";
 import { CommandImportService } from "./command-import.ts";
@@ -115,6 +116,7 @@ import { stageTranscript } from "./transcript-copy.ts";
 import { UserQuestions } from "./user-questions.ts";
 import { publicWebUrl } from "./web-client.ts";
 import { WebTools } from "./web-tools.ts";
+import { WorkspaceFileSearches } from "./workspace-file-searches.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
 
@@ -225,6 +227,7 @@ export class SessionHost {
   private requestFetch?: typeof fetch;
   private configurations = new Map<string, SessionConfiguration>();
   private searches = new Map<string, AbortController>();
+  readonly workspaceFileSearches = new WorkspaceFileSearches();
   private errors: ErrorLog;
   private worktreeRoot: string;
   private readonly commandShellRunner: CustomCommandShellRunner;
@@ -907,8 +910,9 @@ export class SessionHost {
         b.lastTurnIndex - a.lastTurnIndex || b.writeCount - a.writeCount || a.path.localeCompare(b.path),
     );
   }
-  async listTaskFiles(id: string | null, rootPath = this.workspaceInfo(id).cwd) {
-    return this.findFiles(`task-files:${id ?? ""}`, rootPath, "", 15000);
+  searchWorkspaceFiles(id: string | null, input: WorkspaceFileSearchInput, owner = 0) {
+    if (this.closing) throw new Error("busy: 应用正在关闭");
+    return this.workspaceFileSearches.search(owner, id, this.workspaceInfo(id).cwd, input);
   }
   listArchivedSessions() {
     return structuredClone(
@@ -3572,6 +3576,11 @@ export class SessionHost {
       this.inputQueue.settled(id, status);
     }
   }
+  retryModelRequest(input: { sessionId: string; runId: string }): boolean {
+    const run = this.activeRuns.get(input.sessionId);
+    if (!run || run.runId !== input.runId || run.aborted) return false;
+    return run.session?.retryModelRequest() ?? false;
+  }
   async abortRun(input: { sessionId: string; runId: string }): Promise<void> {
     const run = this.activeRuns.get(input.sessionId);
     if (!run || run.runId !== input.runId) throw new Error("not_found: 当前运行不存在");
@@ -3598,6 +3607,7 @@ export class SessionHost {
   private async closeResources(): Promise<void> {
     this.closing = true;
     for (const controller of this.searches.values()) controller.abort();
+    await this.workspaceFileSearches.close();
     this.diffAbort.abort();
     await Promise.allSettled([...this.diffJobs]);
     const errors: unknown[] = [];

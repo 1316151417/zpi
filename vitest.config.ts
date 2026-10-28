@@ -8,6 +8,7 @@ const domTests = [
   "packages/ui/test/changed-files-dom.test.ts",
   "packages/desktop/test/search-settings-dom.test.ts",
   "packages/desktop/test/workspace-tree-lifecycle-dom.test.ts",
+  "packages/desktop/test/workspace-file-search-dom.test.ts",
   "packages/desktop/test/renderer-lifecycle-dom.test.ts",
   "packages/ui/test/markdown-selection-dom.test.ts",
   "packages/ui/test/notice.test.ts",

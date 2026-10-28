@@ -34,6 +34,7 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
     "reportComposerState",
     "reportPresentation",
     "reset",
+    "retryModelRequest",
     "send",
     "setComposerHeight",
     "setNoticeHeight",
@@ -77,6 +78,8 @@ test("quick-chat preload exposes only its narrow isolated bridge and unsubscribe
   ]);
   await bridge.reset();
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "reset", []);
+  await bridge.retryModelRequest("session", "run");
+  expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "retryModelRequest", ["session", "run"]);
   await bridge.readWebSourceIcon("session", "run", "https://example.com/article");
   expect(electron.invoke).toHaveBeenLastCalledWith("zpi:quick-chat", "readWebSourceIcon", [
     "session",

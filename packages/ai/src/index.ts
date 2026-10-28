@@ -43,7 +43,11 @@ export {
   validateThinkingMap,
 } from "./utils/reasoning.ts";
 export * from "./utils/retry.ts";
-export { DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS } from "./utils/stream-idle-timeout.ts";
+export {
+  DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS,
+  DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,
+  ModelRequestRetryError,
+} from "./utils/stream-idle-timeout.ts";
 export {
   assertSupportedOptions,
   contentText,

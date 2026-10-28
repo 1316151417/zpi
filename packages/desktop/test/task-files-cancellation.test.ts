@@ -7,7 +7,7 @@ vi.mock("../src/main/workspace-files.ts", async (original) => ({
   searchFiles: vi.fn(),
 }));
 
-test("file listing cancels superseded scans and close cancels remaining independent searches", async () => {
+test("file mentions cancel superseded scans and close cancels independent searches", async () => {
   const f = await fixture(() => {});
   const id = f.host.createSession(f.a.id).id;
   const signals: AbortSignal[] = [];
@@ -19,11 +19,12 @@ test("file listing cancels superseded scans and close cancels remaining independ
         signal.addEventListener("abort", () => resolve([]), { once: true });
       }),
   );
-  const first = f.host.listTaskFiles(id);
-  const second = f.host.listTaskFiles(id);
+  const first = f.host.searchFiles(id, "first");
+  const second = f.host.searchFiles(id, "second");
   expect(signals[0].aborted).toBe(true);
   await first;
-  const mention = f.host.searchFiles(id, "readme");
+  const otherId = f.host.createSession(f.a.id).id;
+  const mention = f.host.searchFiles(otherId, "readme");
   expect(signals[1].aborted).toBe(false);
   expect(signals[2].aborted).toBe(false);
   await f.host.close();

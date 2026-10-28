@@ -58,6 +58,17 @@ test("preset discovery, model configuration and custom provider persist without 
       .click();
     await expect(page.getByLabel("Base URL", { exact: true })).toHaveAttribute("readonly", "");
     await page.getByLabel("API key", { exact: true }).fill("isolated-key");
+    await page.getByLabel("关闭设置", { exact: true }).click();
+    const unsaved = page.getByRole("dialog", { name: "放弃未保存的更改？", exact: true });
+    await expect(unsaved).toBeVisible();
+    await unsaved.getByRole("button", { name: "继续编辑", exact: true }).click();
+    await expect(page.getByLabel("API key", { exact: true })).toHaveValue("isolated-key");
+    await page.getByLabel("API key", { exact: true }).press("Escape");
+    await expect(unsaved).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(unsaved).toHaveCount(0);
+    await expect(page.locator(".settings-screen")).toBeVisible();
+    await expect(page.getByLabel("API key", { exact: true })).toHaveValue("isolated-key");
     await page.getByRole("button", { name: "保存提供商", exact: true }).click();
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.locator(".provider-model-row")).toHaveCount(2);

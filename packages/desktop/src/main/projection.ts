@@ -52,7 +52,7 @@ function fileChangeSummary(details: unknown): FileChangeSummary | undefined {
 
 export function projectEvent(event: AgentSessionEvent, messageId: string): DesktopEvent | undefined {
   if (event.type === "model_performance") return { type: event.type, performance: event.performance };
-  if (event.type === "model_retry") return event;
+  if (event.type === "model_retry" || event.type === "model_wait") return event;
   if (event.type === "compaction") return event;
   if (event.type === "message_start") return { type: "message_start", messageId, role: event.message.role };
   if (event.type === "message_end")

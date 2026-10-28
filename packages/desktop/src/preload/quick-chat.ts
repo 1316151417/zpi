@@ -26,6 +26,7 @@ const bridge: QuickChatBridge = {
   readAttachment: (sessionId, id) => call("readAttachment", sessionId, id),
   removeAttachment: (sessionId, id) => call("removeAttachment", sessionId, id),
   stop: () => call("stop"),
+  retryModelRequest: (sessionId, runId) => call("retryModelRequest", sessionId, runId),
   reset: () => call("reset"),
   hide: () => call("hide"),
   setComposerHeight: (sessionId, height) => call("setComposerHeight", sessionId, height),

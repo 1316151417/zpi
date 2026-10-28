@@ -1069,6 +1069,9 @@ export function App() {
                 commands={view.backgroundTasks}
               />
               <Conversation
+                onRetryModel={(runId) =>
+                  window.zpi.retryModelRequest({ sessionId: view.sessionId, runId }).then(unwrap)
+                }
                 suggestions={state.activeSuggestions}
                 onOpenSubagent={showSubagent}
                 previewServices={previewServices}

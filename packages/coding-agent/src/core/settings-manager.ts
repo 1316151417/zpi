@@ -4,7 +4,12 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "zpi-agent";
-import { DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS, type Model, type RetryPolicy } from "zpi-ai";
+import {
+  DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS,
+  DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,
+  type Model,
+  type RetryPolicy,
+} from "zpi-ai";
 import type { CompactionOptions, CompactionSettings } from "./compaction.ts";
 
 export interface ProviderRetrySettings {
@@ -22,6 +27,7 @@ export interface Settings {
   retry?: RetrySettings;
   httpIdleTimeoutMs?: number | string;
   streamIdleTimeoutMs?: number;
+  streamFirstResponseTimeoutMs?: number;
 }
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -104,6 +110,7 @@ export class SettingsManager {
       maxRetries: config?.maxRetries ?? 10,
       baseDelayMs: config?.baseDelayMs ?? 2000,
       maxAgentDelayMs: config?.maxAgentDelayMs ?? 60000,
+      maxElapsedMs: Number.isFinite(config?.maxElapsedMs) ? config?.maxElapsedMs : 600000,
     };
   }
   getProviderRetrySettings(): ProviderRetrySettings {
@@ -115,6 +122,11 @@ export class SettingsManager {
   getStreamIdleTimeoutMs(): number {
     const value = this.settings.streamIdleTimeoutMs;
     return value === undefined || !Number.isFinite(value) ? DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS : value;
+  }
+  getStreamFirstResponseTimeoutMs(): number {
+    // Preserve an explicit legacy single-window override for both phases.
+    const value = this.settings.streamFirstResponseTimeoutMs ?? this.settings.streamIdleTimeoutMs;
+    return value === undefined || !Number.isFinite(value) ? DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS : value;
   }
   getHttpIdleTimeoutMs(): number {
     const value = this.settings.httpIdleTimeoutMs;

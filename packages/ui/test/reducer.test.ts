@@ -57,6 +57,33 @@ it("keeps retry state in live snapshots, resets only the failed message and clea
   expect(view.runs[0].apiRetry).toBeNull();
 });
 
+it.each(["completed", "error", "aborted", "interrupted"] as const)(
+  "clears model waiting on %s and rejects late or cross-run waiting events",
+  (status) => {
+    let view = emptySession("s");
+    let seq = 0;
+    const apply = (event: DesktopEvent, runId = "r") => {
+      view = reduceSession(view, { sessionId: "s", runId, seq: ++seq, event });
+    };
+    const waiting = { phase: "first_response" as const, startedAt: 10 };
+    apply({ type: "started", text: "hello", startedAt: 1, modelLabel: "fake" });
+    apply({ type: "model_wait", status: waiting });
+    expect(structuredClone(view).runs[0].modelWait).toEqual(waiting);
+    apply({ type: "model_wait", status: null });
+    expect(view.runs[0].modelWait).toBeNull();
+    apply({ type: "model_wait", status: waiting });
+    apply({ type: "settled", status, endedAt: 100 });
+    expect(view.runs[0].modelWait).toBeNull();
+    apply({ type: "started", text: "next", startedAt: 200, modelLabel: "fake" }, "next");
+    apply({ type: "model_wait", status: { phase: "stream", startedAt: 210 } }, "next");
+    apply({ type: "model_wait", status: waiting });
+    expect(view.runs[0]).toMatchObject({ status, modelWait: null });
+    expect(view.runs[1].modelWait).toEqual({ phase: "stream", startedAt: 210 });
+    apply({ type: "model_wait", status: waiting }, "unknown");
+    expect(view.runs).toHaveLength(2);
+  },
+);
+
 it("authoritative final replaces streamed content, tool updates replace snapshots, errors stay visible", () => {
   let view = emptySession("s");
   let seq = 0;

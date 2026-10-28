@@ -538,7 +538,11 @@ export async function completeSummarization(
     cacheRetention: "none",
     sessionId: options.sessionId ?? randomUUID(),
   };
-  const produce = async (): Promise<AssistantMessage> => {
+  const produce = async (deadlineMs?: number): Promise<AssistantMessage> => {
+    const attemptOptions = {
+      ...requestOptions,
+      streamDeadlineMs: deadlineMs ?? requestOptions.streamDeadlineMs,
+    };
     let requestContext = context;
     let strippedMedia = false;
     let contextTrims = 0;
@@ -571,8 +575,8 @@ export async function completeSummarization(
             })
           : requestContext;
         const result = await (streamFn
-          ? await streamFn(model, projected, requestOptions)
-          : streamSimple(model, projected, requestOptions)
+          ? await streamFn(model, projected, attemptOptions)
+          : streamSimple(model, projected, attemptOptions)
         ).result();
         if (
           result.stopReason === "error" &&

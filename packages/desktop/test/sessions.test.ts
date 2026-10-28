@@ -6,6 +6,61 @@ import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
+it("manual model retry targets only its live session and run without stopping concurrent work", async () => {
+  const seen = new Map<string, ReturnType<typeof deferred>>([
+    ["recover", deferred()],
+    ["other", deferred()],
+    ["new", deferred()],
+  ]);
+  const requests = new Map<string, number>();
+  const f = await fixture((body, response) => {
+    const rows = body.messages as unknown as { role: string; content: string }[];
+    const text = rows.findLast((row) => row.role === "user")?.content ?? "";
+    const count = (requests.get(text) ?? 0) + 1;
+    requests.set(text, count);
+    response.flushHeaders();
+    seen.get(text)?.resolve(undefined);
+    if (text === "recover" && count === 2) {
+      send(response, chunk({ content: "recovered answer" }));
+      done(response);
+    }
+  });
+  const first = f.host.createSession(f.a.id);
+  const other = f.host.createSession(f.b.id);
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: "missing" })).toBe(false);
+  const run = await f.host.startRun({ sessionId: first.id, text: "recover" });
+  const concurrent = await f.host.startRun({ sessionId: other.id, text: "other" });
+  await Promise.all([seen.get("recover")?.promise, seen.get("other")?.promise]);
+  const finished = f.host.activeRuns.get(first.id)?.done;
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: concurrent.runId })).toBe(false);
+  expect(f.host.retryModelRequest({ sessionId: "missing", runId: run.runId })).toBe(false);
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: run.runId })).toBe(true);
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: run.runId })).toBe(false);
+  await finished;
+  expect(f.host.getSessionSnapshot(first.id).view.runs[0]).toMatchObject({
+    status: "completed",
+    modelWait: null,
+  });
+  expect(JSON.stringify(f.host.getSessionSnapshot(first.id).view)).toContain("recovered answer");
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: run.runId })).toBe(false);
+  expect(f.host.getSessionSnapshot(other.id).view.runs[0].status).toBe("running");
+  expect(requests.get("other")).toBe(1);
+  const replacement = await f.host.startRun({ sessionId: first.id, text: "new" });
+  await seen.get("new")?.promise;
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: run.runId })).toBe(false);
+  const stopping = f.host.abortRun({ sessionId: first.id, runId: replacement.runId });
+  expect(f.host.retryModelRequest({ sessionId: first.id, runId: replacement.runId })).toBe(false);
+  await stopping;
+  await f.host.abortRun({ sessionId: other.id, runId: concurrent.runId });
+  expect(requests).toEqual(
+    new Map([
+      ["recover", 2],
+      ["other", 1],
+      ["new", 1],
+    ]),
+  );
+});
+
 it("same-project and cross-project sessions stream concurrently; busy, stale cancel and snapshot identity", async () => {
   const seen = deferred();
   let arrived = 0;

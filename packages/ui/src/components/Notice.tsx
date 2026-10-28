@@ -8,12 +8,15 @@ export type NoticeTone = "error" | "warning" | "info";
 export interface NoticeAction {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 export interface NoticeProps {
   scope: NoticeScope;
   tone?: NoticeTone;
   message: string;
+  /** Callers with frequently changing text may provide a separate, stable live announcement. */
+  announce?: boolean;
   action?: NoticeAction;
   onDismiss?: () => void;
   dismissLabel?: string;
@@ -21,7 +24,15 @@ export interface NoticeProps {
 
 const icons = { error: CircleAlert, warning: TriangleAlert, info: Info } as const;
 
-export function Notice({ scope, tone = "error", message, action, onDismiss, dismissLabel }: NoticeProps) {
+export function Notice({
+  scope,
+  tone = "error",
+  message,
+  announce = true,
+  action,
+  onDismiss,
+  dismissLabel,
+}: NoticeProps) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   useEffect(() => {
@@ -33,11 +44,11 @@ export function Notice({ scope, tone = "error", message, action, onDismiss, dism
 
   const Icon = icons[tone];
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: The notice exposes role=alert/status; hover only pauses the window timer.
+    // biome-ignore lint/a11y/noStaticElementInteractions: Hover only pauses the window timer; callers can own the live announcement.
     <div
       className={`notice notice-${scope} notice-${tone}`}
       data-notice-scope={scope}
-      role={tone === "error" ? "alert" : "status"}
+      role={announce ? (tone === "error" ? "alert" : "status") : undefined}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}
@@ -48,7 +59,7 @@ export function Notice({ scope, tone = "error", message, action, onDismiss, dism
       <Icon size={16} aria-hidden="true" />
       <span className="notice-message">{message}</span>
       {action && (
-        <button type="button" className="notice-action" onClick={action.onClick}>
+        <button type="button" className="notice-action" disabled={action.disabled} onClick={action.onClick}>
           {action.label}
         </button>
       )}

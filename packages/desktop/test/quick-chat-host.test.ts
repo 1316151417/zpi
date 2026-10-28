@@ -93,7 +93,7 @@ async function fixture(
     }
     if (!request.url.startsWith("https://chat.example/v1/")) throw new Error("Unexpected test endpoint");
     const body = (await request.json()) as JsonObject;
-    return handler(body, requests.push(body) - 1, request.signal);
+    return handler(body, requests.push(body) - 1, init?.signal ?? request.signal);
   };
   const host = new QuickChatHost(settings, cwd, transport, now);
   cleanups.push(() => host.close());
@@ -103,6 +103,51 @@ async function run(host: QuickChatHost, text = "hello") {
   host.send(text);
   await host.waitForIdle();
 }
+
+test("manual retry rejects stale quick-chat sessions and runs and never restarts a stopped request", async () => {
+  const signals: AbortSignal[] = [];
+  const f = await fixture((_body, index, signal) => {
+    if (index === 1) return sse({ content: "manual retry recovered" });
+    signals.push(signal);
+    return new Promise<Response>((_, reject) => {
+      if (signal.aborted) reject(signal.reason);
+      else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  });
+  const sessionId = f.host.sessionId;
+  expect(f.host.retryModelRequest(sessionId, "missing")).toBe(false);
+  f.host.send("first");
+  const runId = f.host.getSnapshot().session.runs[0].runId;
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  expect(f.host.retryModelRequest("stale-session", runId)).toBe(false);
+  expect(f.host.retryModelRequest(sessionId, "stale-run")).toBe(false);
+  expect(signals[0].aborted).toBe(false);
+  expect(f.host.retryModelRequest(sessionId, runId)).toBe(true);
+  expect(f.host.retryModelRequest(sessionId, runId)).toBe(false);
+  await f.host.waitForIdle();
+  expect(f.requests).toHaveLength(2);
+  expect(signals[0].aborted).toBe(true);
+  expect(f.host.getSnapshot().session.runs[0]).toMatchObject({ status: "completed", modelWait: null });
+  expect(JSON.stringify(f.host.getSnapshot())).toContain("manual retry recovered");
+  expect(f.host.retryModelRequest(sessionId, runId)).toBe(false);
+  f.host.send("second");
+  const nextRunId = f.host.getSnapshot().session.runs.at(-1)?.runId ?? "";
+  await vi.waitFor(() => expect(f.requests).toHaveLength(3));
+  expect(f.host.retryModelRequest(sessionId, runId)).toBe(false);
+  const stopping = f.host.stop();
+  expect(f.host.retryModelRequest(sessionId, nextRunId)).toBe(false);
+  await stopping;
+  await f.host.reset();
+  f.host.send("replacement session");
+  const replacementRunId = f.host.getSnapshot().session.runs[0].runId;
+  await vi.waitFor(() => expect(f.requests).toHaveLength(4));
+  expect(f.host.sessionId).not.toBe(sessionId);
+  expect(f.host.retryModelRequest(sessionId, replacementRunId)).toBe(false);
+  expect(f.host.retryModelRequest(f.host.sessionId, nextRunId)).toBe(false);
+  await f.host.stop();
+  expect(f.requests).toHaveLength(4);
+  expect(f.host.retryModelRequest(f.host.sessionId, replacementRunId)).toBe(false);
+});
 
 test("idle reset publishes before yielding and reserves the replacement against reentrant work", async () => {
   const f = await fixture();

@@ -1,7 +1,7 @@
 // Adapted from ZCode 872ad960, adapters/model/stream-idle-timeout.ts (Apache-2.0).
 // See THIRD_PARTY_NOTICES.md. Time model events, not HTTP bytes or SSE comments.
-export const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 600_000;
-const MODEL_STREAM_IDLE_TIMEOUT_RETRY_INCREMENT_MS = 30_000;
+export const DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS = 120_000;
+export const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 300_000;
 
 export function resolveModelStreamIdleTimeoutMs(options: {
   baseTimeoutMs?: number;
@@ -11,12 +11,23 @@ export function resolveModelStreamIdleTimeoutMs(options: {
     options.baseTimeoutMs === undefined || !Number.isFinite(options.baseTimeoutMs)
       ? DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS
       : options.baseTimeoutMs;
-  if (baseTimeoutMs <= 0) return baseTimeoutMs;
-  const retryNumber =
-    options.retryNumber === undefined || !Number.isFinite(options.retryNumber)
-      ? 0
-      : Math.max(0, Math.floor(options.retryNumber));
-  return baseTimeoutMs + retryNumber * MODEL_STREAM_IDLE_TIMEOUT_RETRY_INCREMENT_MS;
+  return baseTimeoutMs;
+}
+
+export class ModelRequestRetryError extends Error {
+  readonly code = "MODEL_REQUEST_RETRY";
+  constructor() {
+    super("Model request retry requested");
+    this.name = "ModelRequestRetryError";
+  }
+}
+
+export class ModelRecoveryDeadlineError extends Error {
+  readonly code = "MODEL_RECOVERY_DEADLINE";
+  constructor() {
+    super("Model recovery time limit exceeded; retry or select another model.");
+    this.name = "ModelRecoveryDeadlineError";
+  }
 }
 
 export class ModelStreamIdleTimeoutError extends Error {
@@ -53,27 +64,31 @@ export async function readNextWithStreamIdleTimeout<T>(
     abortController: AbortController;
     onTimeout?: (error: ModelStreamIdleTimeoutError) => void | Promise<void>;
     timeoutMs: number;
+    startedAt?: number;
   },
 ): Promise<IteratorResult<T>> {
-  const readStartedAt = Date.now();
+  const readStartedAt = options.startedAt ?? Date.now();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let removeAbortListener: (() => void) | undefined;
   let timeoutError: ModelStreamIdleTimeoutError | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     // Disabling the deadline must not disable Stop for an abort-ignoring provider.
     if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) return;
-    timeout = setTimeout(() => {
-      if (options.abortController.signal.aborted) {
-        reject(options.abortController.signal.reason ?? new Error("Model stream aborted."));
-        return;
-      }
-      timeoutError = new ModelStreamIdleTimeoutError({
-        idleMs: Math.max(0, Date.now() - readStartedAt),
-        timeoutMs: options.timeoutMs,
-      });
-      options.abortController.abort(timeoutError);
-      reject(timeoutError);
-    }, options.timeoutMs);
+    timeout = setTimeout(
+      () => {
+        if (options.abortController.signal.aborted) {
+          reject(options.abortController.signal.reason ?? new Error("Model stream aborted."));
+          return;
+        }
+        timeoutError = new ModelStreamIdleTimeoutError({
+          idleMs: Math.max(0, Date.now() - readStartedAt),
+          timeoutMs: options.timeoutMs,
+        });
+        options.abortController.abort(timeoutError);
+        reject(timeoutError);
+      },
+      Math.max(1, options.timeoutMs - (Date.now() - readStartedAt)),
+    );
   });
   const abortPromise = new Promise<never>((_, reject) => {
     const signal = options.abortController.signal;

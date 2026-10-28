@@ -94,6 +94,7 @@ import { InputNotice } from "./InputNotice.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MentionEditor, type MentionEditorHandle } from "./MentionEditor.tsx";
 import { ActionHint, CopyMessage, MessageAction, messageTime } from "./MessageActions.tsx";
+import { ModelWaitNotice } from "./ModelWaitNotice.tsx";
 import { Notice } from "./Notice.tsx";
 import { reasoningDuration, reasoningSummary, runPresentation } from "./process-presentation.ts";
 import { appendPromptHistory, readPromptHistory, savePromptHistory } from "./prompt-history.ts";
@@ -404,11 +405,13 @@ export const RunGroup = memo(function RunGroup({
   sessionId,
   onEdit,
   onFork,
+  onRetryModel,
   suggestions,
 }: {
   suggestions?: InputSuggestion[];
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
+  onRetryModel?: (runId: string) => Promise<unknown>;
   run: RunView;
   previewServices?: PreviewServices;
   previewAutoOpen?: ReturnType<typeof usePreviewAutoOpen>;
@@ -712,6 +715,12 @@ export const RunGroup = memo(function RunGroup({
             )}
           </div>
         )}
+        {run.status === "running" && (run.modelWait || run.apiRetry?.attempt) ? (
+          <ModelWaitNotice
+            wait={run.modelWait}
+            onRetry={onRetryModel ? () => onRetryModel(run.runId) : undefined}
+          />
+        ) : null}
         {run.error && run.status !== "running" && (
           <Notice scope="turn" message={userErrorMessage(run.error)} />
         )}
@@ -802,6 +811,7 @@ export function Conversation({
   historyCursor,
   onEdit,
   onFork,
+  onRetryModel,
   onAddSelection,
   addSelectionLabel,
   onSideChat,
@@ -822,6 +832,7 @@ export function Conversation({
   onNavigateOrigin?: (origin: NonNullable<SessionView["forkOrigin"]>) => void;
   onEdit?: EditMessage;
   onFork?: (runId: string) => Promise<void>;
+  onRetryModel?: (runId: string) => Promise<unknown>;
   onAddSelection?: (reference: ConversationSelection) => void;
   addSelectionLabel?: string;
   onSideChat?: (reference: ConversationSelection) => void;
@@ -1300,6 +1311,7 @@ export function Conversation({
           readWebSourceIcon={readWebSourceIcon}
           onEdit={run.runId === latestRunId ? onEdit : undefined}
           onFork={onFork}
+          onRetryModel={onRetryModel}
           onChanges={onChanges}
           onLoadToolPatch={onLoadToolPatch}
           onFileAction={onFileAction}
@@ -1340,6 +1352,7 @@ export function Conversation({
       latestRunId,
       onEdit,
       onFork,
+      onRetryModel,
       onChanges,
       onLoadToolPatch,
       onFileAction,

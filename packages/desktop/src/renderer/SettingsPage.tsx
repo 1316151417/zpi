@@ -402,14 +402,23 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
           event.keyCode !== 229 &&
           !event.defaultPrevented &&
           !(event.target instanceof Element && event.target.closest('[role="dialog"]'))
-        )
-          onClose();
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          requestSelection(onClose);
+        }
       }}
     >
       <aside className="settings-sidebar">
         <div className="settings-sidebar-drag-space" aria-hidden="true" />
         <ActionHint appearance="control" label="返回工作区" side="right">
-          <button ref={back} className="settings-back" aria-label="关闭设置" onClick={onClose}>
+          <button
+            ref={back}
+            className="settings-back"
+            aria-label="关闭设置"
+            disabled={saving}
+            onClick={() => requestSelection(onClose)}
+          >
             <ArrowLeft size={16} />
             <span>返回任务</span>
           </button>
@@ -1034,35 +1043,6 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                   <Dialog.Root
-                    open={pendingSelection !== null}
-                    onOpenChange={(open) => {
-                      if (!open) setPendingSelection(null);
-                    }}
-                  >
-                    <Dialog.Portal>
-                      <Dialog.Overlay className="model-config-backdrop" />
-                      <Dialog.Content className="provider-delete-dialog">
-                        <header>
-                          <Dialog.Title>放弃未保存的更改？</Dialog.Title>
-                          <Dialog.Description>切换提供商会丢弃当前尚未保存的编辑。</Dialog.Description>
-                        </header>
-                        <footer>
-                          <Dialog.Close className="secondary">继续编辑</Dialog.Close>
-                          <button
-                            className="primary"
-                            onClick={() => {
-                              const action = pendingSelection;
-                              setPendingSelection(null);
-                              action?.();
-                            }}
-                          >
-                            放弃更改并切换
-                          </button>
-                        </footer>
-                      </Dialog.Content>
-                    </Dialog.Portal>
-                  </Dialog.Root>
-                  <Dialog.Root
                     open={confirmDelete}
                     onOpenChange={(open) => {
                       if (!saving) setConfirmDelete(open);
@@ -1152,6 +1132,35 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+      <Dialog.Root
+        open={pendingSelection !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSelection(null);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="model-config-backdrop" />
+          <Dialog.Content className="provider-delete-dialog">
+            <header>
+              <Dialog.Title>放弃未保存的更改？</Dialog.Title>
+              <Dialog.Description>离开当前编辑会丢弃尚未保存的提供商配置。</Dialog.Description>
+            </header>
+            <footer>
+              <Dialog.Close className="secondary">继续编辑</Dialog.Close>
+              <button
+                className="primary"
+                onClick={() => {
+                  const action = pendingSelection;
+                  setPendingSelection(null);
+                  action?.();
+                }}
+              >
+                放弃更改并继续
+              </button>
+            </footer>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </section>
   );
 }

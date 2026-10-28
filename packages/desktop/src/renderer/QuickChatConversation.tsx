@@ -28,6 +28,7 @@ export default function QuickChatConversation({ view, cwd, onError }: QuickChatC
   const workspace = useMemo(() => ({ cwd }), [cwd]);
   return (
     <Conversation
+      onRetryModel={(runId) => window.zpiQuickChat.retryModelRequest(view.sessionId, runId).then(unwrap)}
       view={view}
       persistReading={false}
       workspace={workspace}

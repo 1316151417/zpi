@@ -6,6 +6,7 @@ import type {
   Message,
   Model,
   ModelRetryStatus,
+  ModelWaitStatus,
   SimpleStreamOptions,
   TranscriptContext,
 } from "zpi-ai";
@@ -17,6 +18,7 @@ import {
   isContextOverflowMessage,
   isRecoverableLength,
   isRetryableAssistantError,
+  ModelRequestRetryError,
   retryDelayMs,
 } from "zpi-ai";
 import type { ParsedInput } from "./commands.ts";
@@ -68,6 +70,7 @@ export type AgentSessionEvent =
   | { type: "session_info_changed"; name: string }
   | { type: "thinking_level_changed"; thinkingLevel: ThinkingLevel }
   | { type: "model_retry"; status: ModelRetryStatus | null }
+  | { type: "model_wait"; status: ModelWaitStatus | null }
   | {
       type: "compaction";
       id: string;
@@ -98,6 +101,8 @@ export class AgentSession {
   readonly settingsManager: SettingsManager;
   private overflowRecoveryAttempted = false;
   private retryAttempt = 0;
+  private recoveryStartedAt?: number;
+  private retryCurrentRequest?: () => boolean;
   private lastAssistantCompletedAtMs?: number;
   private microcompactProjection = new WeakMap<Message, Message>();
   private recoveredCalls = new WeakSet<object>();
@@ -218,9 +223,10 @@ export class AgentSession {
           !this.recoveredCalls.has(event.message)
         ) {
           if (!["error", "length"].includes(event.message.stopReason)) this.overflowRecoveryAttempted = false;
-          if (event.message.stopReason !== "error" && this.retryAttempt > 0) {
+          if (event.message.stopReason !== "error") {
             this.notify({ type: "model_retry", status: null });
             this.retryAttempt = 0;
+            this.recoveryStartedAt = undefined;
           }
         }
         if (event.type === "message_end") {
@@ -400,9 +406,14 @@ export class AgentSession {
   ): Promise<boolean> {
     if (!this.canRetry(message)) return false;
     const settings = this.settingsManager.getRetrySettings();
+    const manualRetry = message.errorDetails?.code === "MODEL_REQUEST_RETRY";
+    if (manualRetry) {
+      this.retryAttempt = 0;
+      this.recoveryStartedAt = Date.now();
+    } else this.recoveryStartedAt ??= Date.now();
     this.dropFailedAssistant();
     this.retryAttempt++;
-    const delay = retryDelayMs(settings, this.retryAttempt);
+    const delay = manualRetry ? 0 : retryDelayMs(settings, this.retryAttempt);
     this.notify({
       type: "model_retry",
       status: {
@@ -412,34 +423,62 @@ export class AgentSession {
         errorStatus: message.errorDetails?.status ?? null,
       },
     });
-    await new Promise<void>((resolve, reject) => {
-      const abort = () => {
+    if (await this.waitForRetryDelay(delay, signal)) {
+      this.recoveryStartedAt = Date.now();
+      this.retryAttempt = 1;
+    }
+    return true;
+  }
+  private waitForRetryDelay(delay: number, signal?: AbortSignal): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const cleanup = () => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);
+        if (this.retryCurrentRequest === retryNow) this.retryCurrentRequest = undefined;
+      };
+      const retryNow = () => {
+        cleanup();
+        resolve(true);
+        return true;
+      };
+      const abort = () => {
+        cleanup();
         reject(new DOMException("Request aborted", "AbortError"));
       };
       const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", abort);
-        resolve();
+        cleanup();
+        resolve(false);
       }, delay);
+      this.retryCurrentRequest = retryNow;
       if (signal?.aborted) abort();
       else signal?.addEventListener("abort", abort, { once: true });
     });
-    return true;
   }
   private canRetry(message: Extract<AgentState["messages"][number], { role: "assistant" }>): boolean {
     const settings = this.settingsManager.getRetrySettings();
+    if (!this.abortRequested && message.errorDetails?.code === "MODEL_REQUEST_RETRY") return true;
+    const deadline = this.recoveryDeadline(this.recoveryStartedAt ?? Date.now());
     return (
       !this.abortRequested &&
       !(
         !settings.enabled ||
         this.retryAttempt >= settings.maxRetries ||
+        (deadline !== undefined && Date.now() + retryDelayMs(settings, this.retryAttempt + 1) >= deadline) ||
         isContextOverflowMessage(message, this.model.contextWindow) ||
         !isRetryableAssistantError(message)
       )
     );
   }
-  private requestOptions(options: SimpleStreamOptions): SimpleStreamOptions {
+  private recoveryDeadline(startedAt = this.recoveryStartedAt): number | undefined {
+    const limit = this.settingsManager.getRetrySettings().maxElapsedMs;
+    return limit && limit > 0 && startedAt !== undefined ? startedAt + limit : undefined;
+  }
+  /** Only the active model request or retry backoff can be retried; tools keep their lifecycle. */
+  retryModelRequest(): boolean {
+    if (this.abortRequested || this.disposed || !this.active) return false;
+    return this.retryCurrentRequest?.() ?? false;
+  }
+  private requestOptions(options: SimpleStreamOptions = {}): SimpleStreamOptions {
     const provider = this.settingsManager.getProviderRetrySettings();
     const idle = this.settingsManager.getHttpIdleTimeoutMs();
     const requestFetch = options.fetch ?? this.runtime.fetch;
@@ -448,7 +487,8 @@ export class AgentSession {
       ...options,
       timeoutMs: options.timeoutMs ?? provider.timeoutMs ?? (idle === 0 ? 2147483647 : idle),
       streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? this.settingsManager.getStreamIdleTimeoutMs(),
-      streamIdleTimeoutRetryNumber: options.streamIdleTimeoutRetryNumber ?? this.retryAttempt,
+      streamFirstResponseTimeoutMs:
+        options.streamFirstResponseTimeoutMs ?? this.settingsManager.getStreamFirstResponseTimeoutMs(),
       maxRetries: options.maxRetries ?? provider.maxRetries,
       maxRetryDelayMs: options.maxRetryDelayMs ?? provider.maxRetryDelayMs,
       fetch: withHttpIdleTimeout(requestFetch, idle),
@@ -479,7 +519,6 @@ export class AgentSession {
   private async summarizeContext(manual: boolean, instructions: string, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     const preparation = this.compactionBoundary();
-    let retryNumber = 0;
     const result = await compactContext(
       preparation,
       this.model,
@@ -488,22 +527,17 @@ export class AgentSession {
       instructions || undefined,
       signal,
       this.thinkingLevel,
-      (model, context, options) =>
-        this.measuredStream(
-          model,
-          context,
-          this.requestOptions({ ...options, streamIdleTimeoutRetryNumber: retryNumber }),
-        ),
+      (model, context, options) => this.measuredStream(model, context, this.requestOptions(options)),
       this.settingsManager.getRetrySettings(),
       {
         onRetryScheduled: (attempt, maxRetries, retryDelayMs) => {
-          retryNumber = attempt;
           this.notify({
             type: "model_retry",
             status: { attempt, maxRetries, retryDelayMs, errorStatus: null },
           });
         },
         onRetryFinished: () => this.notify({ type: "model_retry", status: null }),
+        waitBeforeRetry: (delay, signal) => this.waitForRetryDelay(delay, signal),
       },
       randomUUID(),
       this.runtime.mediaProjectionObserver(this.model, this.sessionId),
@@ -531,7 +565,12 @@ export class AgentSession {
       const response = this.measuredStream(
         model,
         context,
-        this.requestOptions({ ...options, sessionId: this.sessionId }),
+        this.requestOptions({
+          ...options,
+          sessionId: this.sessionId,
+          streamDeadlineMs:
+            options.streamDeadlineMs ?? (this.retryAttempt > 0 ? this.recoveryDeadline() : undefined),
+        }),
       );
       let started = false;
       for await (const event of response) {
@@ -574,18 +613,29 @@ export class AgentSession {
   private measuredStream(model: Model, context: TranscriptContext, options: SimpleStreamOptions) {
     const output = createAssistantMessageEventStream();
     const request = this.performance.request();
+    const retry = new AbortController();
+    const retryNow = () => {
+      if (retry.signal.aborted || options.signal?.aborted) return false;
+      retry.abort(new ModelRequestRetryError());
+      return true;
+    };
+    this.retryCurrentRequest = retryNow;
     void (async () => {
       try {
         const response = this.runtime.streamSimple(model, context, {
           ...options,
           onPerformance: request.update,
+          retrySignal: retry.signal,
+          onModelWait: (status) => this.notify({ type: "model_wait", status }),
         });
         for await (const event of response) {
-          if (event.type === "done" || event.type === "error")
+          if (event.type === "done" || event.type === "error") {
+            if (this.retryCurrentRequest === retryNow) this.retryCurrentRequest = undefined;
             request.finish(
               event.type === "done" && event.reason !== "length" && !options.signal?.aborted,
               event.type === "done" ? event.message : event.error,
             );
+          }
           output.push(event);
         }
       } catch (error) {
@@ -594,6 +644,7 @@ export class AgentSession {
         failure.errorMessage = error instanceof Error ? error.message : String(error);
         output.end(failure);
       } finally {
+        if (this.retryCurrentRequest === retryNow) this.retryCurrentRequest = undefined;
         request.finish(false);
       }
     })();
@@ -614,6 +665,8 @@ export class AgentSession {
     this.active = "compact";
     this.performance.begin();
     this.abortRequested = false;
+    this.retryAttempt = 0;
+    this.recoveryStartedAt = undefined;
     const controller = new AbortController();
     this.compactController = controller;
     this.running = (async () => {
@@ -623,6 +676,9 @@ export class AgentSession {
     })().finally(() => {
       this.performance.settle();
       this.compactController = undefined;
+      this.retryCurrentRequest = undefined;
+      this.notify({ type: "model_retry", status: null });
+      this.notify({ type: "model_wait", status: null });
       this.active = undefined;
       this.running = undefined;
       this.notify({ type: "agent_settled" });
@@ -674,6 +730,7 @@ export class AgentSession {
     this.abortRequested = false;
     this.overflowRecoveryAttempted = false;
     this.retryAttempt = 0;
+    this.recoveryStartedAt = undefined;
     this.compactController = new AbortController();
     this.running = Promise.resolve()
       .then(async () => {
@@ -709,6 +766,8 @@ export class AgentSession {
         this.performance.settle();
         this.compactController = undefined;
         this.notify({ type: "model_retry", status: null });
+        this.notify({ type: "model_wait", status: null });
+        this.retryCurrentRequest = undefined;
         this.active = undefined;
         this.running = undefined;
         this.steering = [];

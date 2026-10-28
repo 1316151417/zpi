@@ -49,6 +49,7 @@ it("loads global/project settings with recursive overrides and ZPI defaults", as
     maxRetries: 10,
     baseDelayMs: 100,
     maxAgentDelayMs: 60000,
+    maxElapsedMs: 600000,
   });
   expect(settings.getProviderRetrySettings()).toEqual({
     maxRetries: 1,
@@ -66,12 +67,22 @@ it("loads global/project settings with recursive overrides and ZPI defaults", as
     maxRetries: 10,
     baseDelayMs: 2000,
     maxAgentDelayMs: 60000,
+    maxElapsedMs: 600000,
   });
   expect(defaults.getHttpIdleTimeoutMs()).toBe(0);
-  expect(defaults.getStreamIdleTimeoutMs()).toBe(600000);
+  expect(defaults.getStreamIdleTimeoutMs()).toBe(300000);
+  expect(defaults.getStreamFirstResponseTimeoutMs()).toBe(120000);
   expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 0 }).getStreamIdleTimeoutMs()).toBe(0);
   expect(SettingsManager.inMemory({ streamIdleTimeoutMs: -1 }).getStreamIdleTimeoutMs()).toBe(-1);
-  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: NaN }).getStreamIdleTimeoutMs()).toBe(600000);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: NaN }).getStreamIdleTimeoutMs()).toBe(300000);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 100 }).getStreamFirstResponseTimeoutMs()).toBe(100);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 0 }).getStreamFirstResponseTimeoutMs()).toBe(0);
+  expect(
+    SettingsManager.inMemory({
+      streamFirstResponseTimeoutMs: 500,
+      streamIdleTimeoutMs: 100,
+    }).getStreamFirstResponseTimeoutMs(),
+  ).toBe(500);
   settings.applyOverrides({ retry: { maxRetries: 0 } });
   expect(settings.getRetrySettings().maxRetries).toBe(0);
   settings.applyOverrides({ compaction: { reserveTokens: -1 } });

@@ -337,6 +337,10 @@ export class QuickChatHost {
   async waitForIdle(): Promise<void> {
     await this.active?.done;
   }
+  retryModelRequest(sessionId: string, runId: string): boolean {
+    if (sessionId !== this.view.sessionId || this.active?.id !== runId || this.active.aborted) return false;
+    return this.session?.retryModelRequest() ?? false;
+  }
   async stop(): Promise<void> {
     const run = this.active;
     if (!run) return;

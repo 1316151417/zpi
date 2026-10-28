@@ -2,7 +2,16 @@ import { expect, it } from "vitest";
 import { emptyAssistant } from "zpi-ai";
 import { SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
-import { restoreView } from "../src/main/projection.ts";
+import { projectEvent, restoreView } from "../src/main/projection.ts";
+
+it("projects waiting and recovery boundaries without losing their timestamps", () => {
+  const status = { phase: "first_response" as const, startedAt: 12_345 };
+  expect(projectEvent({ type: "model_wait", status }, "m")).toEqual({ type: "model_wait", status });
+  expect(projectEvent({ type: "model_wait", status: null }, "m")).toEqual({
+    type: "model_wait",
+    status: null,
+  });
+});
 
 it("restores retried replies as interrupted while preserving successful tools and the final answer", () => {
   const manager = SessionManager.inMemory();

@@ -44,7 +44,7 @@ test.each(["running", "completed", "error", "aborted", "interrupted"] as const)(
   "shows background results without a work-duration fold while %s",
   (status) => {
     const markup = render(backgroundRun(status));
-    expect(markup).toContain('data-testid="background-result-heading">核查查询 SQL</div>');
+    expect(markup).toMatch(/<div\b[^>]*data-testid="background-result-heading"[^>]*>核查查询 SQL<\/div>/);
     expect(markup).toContain("核查过程说明");
     expect(markup).toContain("query.sql");
     expect(markup).toContain("补充结果");

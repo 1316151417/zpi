@@ -14,20 +14,187 @@ import {
   resolveModelStreamIdleTimeoutMs,
 } from "../src/utils/stream-idle-timeout.ts";
 
-// Parity vectors from ZCode 872ad960 stream-idle-timeout.ts and runner-stream.ts.
 afterEach(() => vi.useRealTimers());
 
 it.each([
-  [{}, 600_000],
-  [{ retryNumber: 1 }, 630_000],
-  [{ retryNumber: 10 }, 900_000],
-  [{ baseTimeoutMs: 500, retryNumber: 2.9 }, 60_500],
+  [{}, 300_000],
+  [{ retryNumber: 1 }, 300_000],
+  [{ retryNumber: 10 }, 300_000],
+  [{ baseTimeoutMs: 500, retryNumber: 2.9 }, 500],
   [{ baseTimeoutMs: 0, retryNumber: 10 }, 0],
   [{ baseTimeoutMs: -1, retryNumber: 10 }, -1],
-  [{ baseTimeoutMs: NaN, retryNumber: Infinity }, 600_000],
-  [{ retryNumber: -2 }, 600_000],
-])("matches ZCode's idle window resolution: %j", (options, expected) => {
+  [{ baseTimeoutMs: NaN, retryNumber: Infinity }, 300_000],
+  [{ retryNumber: -2 }, 300_000],
+])("keeps the idle window fixed across retries: %j", (options, expected) => {
   expect(resolveModelStreamIdleTimeoutMs(options)).toBe(expected);
+});
+
+it("uses the first-response deadline through empty starts, then the idle deadline after output", async () => {
+  vi.useFakeTimers();
+  const model = fakeModel("");
+  for (const emitsText of [false, true]) {
+    const source = createAssistantMessageEventStream();
+    const partial = emptyAssistant(model);
+    const output = guardModelStream(model, () => source, {
+      streamFirstResponseTimeoutMs: 100,
+      streamIdleTimeoutMs: 300,
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    source.push({ type: "start", partial });
+    if (emitsText) {
+      partial.content = [{ type: "text", text: "x" }];
+      source.push({ type: "text_delta", contentIndex: 0, delta: "x", partial });
+    }
+    await vi.advanceTimersByTimeAsync(emitsText ? 1_300 : 1_050);
+    expect(await output.result()).toMatchObject({
+      errorDetails: { code: "MODEL_STREAM_IDLE_TIMEOUT", timeoutMs: emitsText ? 300 : 100 },
+    });
+    source.end(partial);
+  }
+});
+
+it("reports waiting only after 15 seconds and clears it on output and cancellation", async () => {
+  vi.useFakeTimers();
+  const model = fakeModel("");
+  const source = createAssistantMessageEventStream();
+  const partial = emptyAssistant(model);
+  const parent = new AbortController();
+  const onModelWait = vi.fn();
+  const output = guardModelStream(model, () => source, { signal: parent.signal, onModelWait });
+  await vi.advanceTimersByTimeAsync(14_999);
+  expect(onModelWait).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(onModelWait).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "first_response" }));
+  partial.content = [{ type: "text", text: "x" }];
+  source.push({ type: "text_delta", contentIndex: 0, delta: "x", partial });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(onModelWait).toHaveBeenLastCalledWith(null);
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(onModelWait).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "stream" }));
+  parent.abort();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect((await output.result()).stopReason).toBe("aborted");
+  expect(onModelWait).toHaveBeenLastCalledWith(null);
+  expect(vi.getTimerCount()).toBe(0);
+  source.end(partial);
+});
+
+it("reports waiting fifteen seconds after the latest output in a continuous stream", async () => {
+  vi.useFakeTimers();
+  const model = fakeModel("");
+  const source = createAssistantMessageEventStream();
+  const partial = emptyAssistant(model);
+  const parent = new AbortController();
+  const onModelWait = vi.fn();
+  const output = guardModelStream(model, () => source, { signal: parent.signal, onModelWait });
+  for (let index = 0; index < 3; index++) {
+    await vi.advanceTimersByTimeAsync(10_000);
+    source.push({ type: "text_delta", contentIndex: 0, delta: "x", partial });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onModelWait).not.toHaveBeenCalled();
+  }
+  const startedAt = Date.now();
+  await vi.advanceTimersByTimeAsync(14_999);
+  expect(onModelWait).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(onModelWait).toHaveBeenCalledExactlyOnceWith({ phase: "stream", startedAt });
+  parent.abort();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect((await output.result()).stopReason).toBe("aborted");
+  expect(onModelWait).toHaveBeenLastCalledWith(null);
+  expect(vi.getTimerCount()).toBe(0);
+  source.end(partial);
+});
+
+it.each([false, true])(
+  "empty content blocks neither extend the deadline nor clear waiting (streaming=%s)",
+  async (streaming) => {
+    vi.useFakeTimers();
+    const model = fakeModel("");
+    const source = createAssistantMessageEventStream();
+    const partial = emptyAssistant(model);
+    const onModelWait = vi.fn();
+    let requestSignal: AbortSignal | undefined;
+    const output = guardModelStream(
+      model,
+      (options) => {
+        requestSignal = options.signal;
+        return source;
+      },
+      {
+        streamFirstResponseTimeoutMs: 20_000,
+        streamIdleTimeoutMs: 40_000,
+        onModelWait,
+      },
+    );
+    if (streaming) source.push({ type: "text_delta", contentIndex: 0, delta: "output", partial });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(onModelWait).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        phase: streaming ? "stream" : "first_response",
+      }),
+    );
+    partial.content = [
+      { type: "text", text: "" },
+      { type: "thinking", thinking: "" },
+      { type: "toolCall", id: "empty", name: "", arguments: {} },
+    ];
+    source.push({ type: "text_start", contentIndex: 0, partial });
+    source.push({ type: "text_delta", contentIndex: 0, delta: "", partial });
+    source.push({ type: "text_end", contentIndex: 0, content: "", partial });
+    source.push({ type: "thinking_start", contentIndex: 1, partial });
+    source.push({ type: "thinking_delta", contentIndex: 1, delta: "", partial });
+    source.push({ type: "thinking_end", contentIndex: 1, content: "", partial });
+    source.push({ type: "toolcall_start", contentIndex: 2, partial });
+    source.push({ type: "toolcall_delta", contentIndex: 2, delta: "", partial });
+    const timeoutMs = streaming ? 40_000 : 20_000;
+    await vi.advanceTimersByTimeAsync(timeoutMs - 15_001);
+    expect(onModelWait).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_001);
+    expect(await output.result()).toMatchObject({
+      errorDetails: { code: "MODEL_STREAM_IDLE_TIMEOUT", timeoutMs, idleMs: timeoutMs },
+    });
+    expect(onModelWait).toHaveBeenCalledTimes(2);
+    expect(onModelWait).toHaveBeenLastCalledWith(null);
+    expect(vi.getTimerCount()).toBe(0);
+    source.end(partial);
+  },
+);
+
+it("enforces the recovery deadline even while output arrives and keeps manual retry distinct from Stop", async () => {
+  vi.useFakeTimers();
+  const model = fakeModel("");
+  for (const manual of [false, true]) {
+    const parent = new AbortController();
+    const retry = new AbortController();
+    const source = createAssistantMessageEventStream();
+    const partial = emptyAssistant(model);
+    const closed = { type: "toolCall" as const, id: "closed", name: "read", arguments: { path: "a" } };
+    partial.content = [closed];
+    source.push({ type: "toolcall_end", contentIndex: 0, toolCall: closed, partial });
+    const output = guardModelStream(model, () => source, {
+      signal: parent.signal,
+      retrySignal: retry.signal,
+      streamDeadlineMs: Date.now() + 100,
+      streamIdleTimeoutMs: 1_000,
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    if (manual) retry.abort();
+    else source.push({ type: "thinking_start", contentIndex: 1, partial });
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(await output.result()).toMatchObject({
+      stopReason: "error",
+      content: [closed],
+      errorDetails: {
+        retryable: manual,
+        code: manual ? "MODEL_REQUEST_RETRY" : "MODEL_RECOVERY_DEADLINE",
+      },
+    });
+    expect(parent.signal.aborted).toBe(false);
+    source.end(partial);
+    expect(vi.getTimerCount()).toBe(0);
+  }
 });
 
 it("aborts a stalled next() even when the iterator ignores cancellation, preserving the timeout reason", async () => {

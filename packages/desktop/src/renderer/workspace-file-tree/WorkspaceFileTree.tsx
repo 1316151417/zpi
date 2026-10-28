@@ -14,11 +14,12 @@ import {
 } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ActionHint } from "zpi-ui";
-import { fuzzyScore } from "zpi-ui/fuzzy-search";
 import type { EditorInfo } from "../../shared/editors.ts";
+import { FileSearchStatus } from "../FileSearchStatus.tsx";
 import { paneTask } from "../pane-store.ts";
 import { report } from "../store.ts";
 import { unwrap } from "../unwrap.ts";
+import { useWorkspaceFileSearch } from "../use-workspace-file-search.ts";
 import { FileTreeRow, fileManagerLabel } from "./FileTreeRow.tsx";
 import {
   areWorkspaceFilePathsEqual,
@@ -34,8 +35,6 @@ import {
 import { useWorkspaceFileTreeStickyFolders } from "./sticky-folders.ts";
 import { useWorkspaceFileTreeData } from "./use-tree-data.ts";
 
-// The index is separate from the lazy directory cache, including during search refresh.
-type SearchEntry = { path: string; name: string; absolutePath: string; type: "file" | "directory" };
 export function WorkspaceFileTree({
   sessionId,
   workspacePath,
@@ -54,12 +53,17 @@ export function WorkspaceFileTree({
   const [selected, setSelected] = useState<string | null>(null);
   const [changedOnly, setChangedOnly] = useState(false);
   const [editors, setEditors] = useState<EditorInfo[]>([]);
-  const [index, setIndex] = useState<SearchEntry[]>([]);
-  const [indexLoaded, setIndexLoaded] = useState(false);
-  const [indexLoading, setIndexLoading] = useState(false);
-  const [indexError, setIndexError] = useState<Error | null>(null);
   const [indexRevision, setIndexRevision] = useState(0);
   const searching = query.trim().length > 0;
+  const fileSearch = useWorkspaceFileSearch({
+    sessionId,
+    query,
+    rootPath: workspacePath,
+    revision: indexRevision,
+  });
+  const index = fileSearch.result?.entries ?? [];
+  const indexLoaded = Boolean(fileSearch.result);
+  const indexLoading = fileSearch.loading;
   const scroll = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const pendingReveal = useRef<{ path: string; search: boolean } | null>(null);
@@ -88,30 +92,6 @@ export function WorkspaceFileTree({
       active = false;
     };
   }, []);
-  useEffect(() => {
-    if (!searching) return;
-    let active = true;
-    setIndexLoading(true);
-    setIndexError(null);
-    void window.zpi
-      .listTaskFiles(sessionId, workspacePath)
-      .then(unwrap)
-      .then((entries) => {
-        if (active) {
-          setIndex(entries);
-          setIndexLoaded(true);
-        }
-      })
-      .catch((error) => {
-        if (active) setIndexError(error instanceof Error ? error : new Error(String(error)));
-      })
-      .finally(() => {
-        if (active) setIndexLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [searching, sessionId, workspacePath, indexRevision]);
   const directoryStatusesByPath = useMemo(
     () => buildWorkspaceDirectoryGitStatuses(data.gitStatusByPath),
     [data.gitStatusByPath],
@@ -124,25 +104,10 @@ export function WorkspaceFileTree({
         statusByPath: data.gitStatusByPath,
         directoryStatusesByPath,
       });
-    const normalized = query.trim().toLowerCase();
     return index
-      .map((entry) => ({
-        entry,
-        score: Math.min(
-          fuzzyScore(entry.name, normalized),
-          fuzzyScore(entry.path, normalized) + 25,
-          fuzzyScore(entry.absolutePath, normalized) + 300,
-        ),
-      }))
-      .filter(
-        ({ entry, score }) =>
-          Number.isFinite(score) &&
-          (!changedOnly || getWorkspaceFileGitStatus(data.gitStatusByPath, entry.absolutePath)),
-      )
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 1000)
+      .filter((entry) => !changedOnly || getWorkspaceFileGitStatus(data.gitStatusByPath, entry.absolutePath))
       .map(
-        ({ entry }): WorkspaceFileTreeRow => ({
+        (entry): WorkspaceFileTreeRow => ({
           path: entry.absolutePath,
           name: entry.path,
           type: entry.type,
@@ -153,7 +118,7 @@ export function WorkspaceFileTree({
           error: null,
         }),
       );
-  }, [searching, query, index, changedOnly, data.rows, data.gitStatusByPath, directoryStatusesByPath]);
+  }, [searching, index, changedOnly, data.rows, data.gitStatusByPath, directoryStatusesByPath]);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
@@ -286,7 +251,11 @@ export function WorkspaceFileTree({
     if (searching) setIndexRevision((n) => n + 1);
   };
   const loading = !rootLoaded || (searching && indexLoading && !indexLoaded);
-  const error = searching ? indexError : !rootLoaded ? rootError : null;
+  const errorMessage = searching
+    ? fileSearch.error || undefined
+    : !rootLoaded
+      ? rootError?.message
+      : undefined;
   const refreshing =
     data.loadingDirectoryPaths.has(workspacePath) || data.refreshingLoadedDirectories || indexLoading;
   const hiddenHeight = sticky.length * 28;
@@ -365,12 +334,20 @@ export function WorkspaceFileTree({
           </button>
         </ActionHint>
       </div>
+      {searching && (
+        <FileSearchStatus
+          result={fileSearch.result}
+          loading={indexLoading}
+          onContinue={fileSearch.loadMore}
+          error={fileSearch.error}
+        />
+      )}
       <div ref={scroll} className={`file-tree-scroll${bottomMask ? " bottom-mask" : ""}`}>
-        {error ? (
+        {errorMessage !== undefined ? (
           <div className="file-tree-notice" role="alert">
             <AlertCircle size={16} />
             <span>读取目录失败</span>
-            <p>{error.message}</p>
+            <p>{errorMessage}</p>
           </div>
         ) : loading ? (
           <div className="file-tree-notice" role="status">
@@ -380,7 +357,13 @@ export function WorkspaceFileTree({
         ) : rows.length === 0 ? (
           <div className="file-tree-notice">
             <Files size={16} />
-            <span>{searching || changedOnly ? "没有匹配的文件。" : "当前目录为空。"}</span>
+            <span>
+              {fileSearch.result?.continuation
+                ? "已搜索范围内暂无匹配。"
+                : searching || changedOnly
+                  ? "没有匹配的文件。"
+                  : "当前目录为空。"}
+            </span>
           </div>
         ) : (
           <>

@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   emptyAssistant,
   isRetryableAssistantError,
+  ModelRequestRetryError,
   normalizeContext,
   retryAssistantCall,
   retryDelayMs,
@@ -19,6 +20,32 @@ const failed = (errorMessage: string) => ({
   ...emptyAssistant(fakeModel("")),
   stopReason: "error" as const,
   errorMessage,
+});
+
+it("starts the recovery budget after the first failure and passes its absolute deadline only to retries", async () => {
+  vi.useFakeTimers();
+  const startedAt = Date.now();
+  const deadlines: (number | undefined)[] = [];
+  const produce = vi.fn(async (deadline?: number) => {
+    deadlines.push(deadline);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return failed("network error");
+  });
+  const result = retryAssistantCall(produce, { ...policy, baseDelayMs: 10, maxElapsedMs: 100 }, undefined);
+  await vi.runAllTimersAsync();
+  expect((await result).stopReason).toBe("error");
+  expect(deadlines).toEqual([undefined, startedAt + 130, startedAt + 130]);
+});
+
+it("allows an explicit retry during compaction even when automatic retries are disabled", async () => {
+  const error = new ModelRequestRetryError();
+  const manual = { ...failed(error.message), errorDetails: modelFailure(error) };
+  expect(manual.errorDetails).toMatchObject({ retryable: true, code: "MODEL_REQUEST_RETRY" });
+  expect(isRetryableAssistantError(manual)).toBe(true);
+  const success = emptyAssistant(fakeModel(""));
+  const produce = vi.fn().mockResolvedValueOnce(manual).mockResolvedValueOnce(success);
+  expect(await retryAssistantCall(produce, { ...policy, enabled: false }, undefined)).toBe(success);
+  expect(produce).toHaveBeenCalledTimes(2);
 });
 
 it("uses Pi deterministic agent backoff and excludes subscription/billing limits", () => {

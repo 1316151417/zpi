@@ -114,6 +114,8 @@ export interface RetryPolicy {
   baseDelayMs: number;
   /** Optional cap for agent-level retry delays in ms. Defaults to 60 seconds. */
   maxAgentDelayMs?: number;
+  /** Recovery time allowed after the first failure; <= 0 disables the cap. */
+  maxElapsedMs?: number;
 }
 
 export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
@@ -138,6 +140,8 @@ export interface RetryCallbacks {
   ) => void | Promise<void>;
   /** Emitted after the backoff sleep, immediately before the retried call starts. */
   onRetryAttemptStart?: () => void | Promise<void>;
+  /** Optional interruptible backoff. Return true when an explicit user retry resets the recovery budget. */
+  waitBeforeRetry?: (delayMs: number, signal?: AbortSignal) => Promise<boolean>;
   /** Emitted once when the loop ends: success if a later call completed normally. */
   onRetryFinished?: (success: boolean, attempt: number, finalError?: string) => void | Promise<void>;
 }
@@ -181,21 +185,22 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  *   the retried call starts, and `onRetryFinished` once at the end (whether the loop
  *   ends in success, exhausted retries, or an aborted backoff).
  *
- * When `policy` is undefined or disabled, the first response is returned unchanged
- * (equivalent to calling `produce()` directly).
+ * When `policy` is undefined or disabled, only an explicit manual retry can repeat a request.
  */
 export async function retryAssistantCall(
-  produce: () => Promise<AssistantMessage>,
+  produce: (deadlineMs?: number) => Promise<AssistantMessage>,
   policy: RetryPolicy | undefined,
   signal: AbortSignal | undefined,
   callbacks?: RetryCallbacks,
 ): Promise<AssistantMessage> {
   const maxAttempts = policy?.enabled ? policy.maxRetries : 0;
+  const recoveryLimit = policy?.maxElapsedMs;
+  let deadlineMs: number | undefined;
 
   let attempt = 0;
   let lastRetry: { attempt: number; errorMessage: string } | undefined;
   for (;;) {
-    const response = await produce();
+    const response = await produce(attempt > 0 ? deadlineMs : undefined);
 
     // Abort: terminal but not successful. Never retry an aborted message.
     if (response.stopReason === "aborted") {
@@ -209,24 +214,42 @@ export async function retryAssistantCall(
       return response;
     }
 
-    // Non-retryable, or budget exhausted: return the final error message.
-    if (!policy || attempt >= maxAttempts || !isRetryableAssistantError(response)) {
+    const manualRetry = response.errorDetails?.code === "MODEL_REQUEST_RETRY";
+    if (manualRetry) {
+      attempt = 0;
+      deadlineMs = recoveryLimit && recoveryLimit > 0 ? Date.now() + recoveryLimit : undefined;
+    }
+    if (deadlineMs === undefined && recoveryLimit && recoveryLimit > 0)
+      deadlineMs = Date.now() + recoveryLimit;
+    // An explicit retry remains available when automatic retry is disabled or exhausted.
+    if (
+      !manualRetry &&
+      (!policy ||
+        attempt >= maxAttempts ||
+        !isRetryableAssistantError(response) ||
+        (deadlineMs !== undefined && Date.now() + retryDelayMs(policy, attempt + 1) >= deadlineMs))
+    ) {
       if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
       return response;
     }
 
     attempt++;
     lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
-    const delayMs = retryDelayMs(policy, attempt);
+    const delayMs = manualRetry || !policy ? 0 : retryDelayMs(policy, attempt);
     await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage);
 
     // Normalize aborts during retry backoff to the same AssistantMessage shape as
     // provider stream aborts, so callers do not need to care when cancellation happened.
     try {
-      await sleep(delayMs, signal);
+      if (callbacks?.waitBeforeRetry) {
+        if (await callbacks.waitBeforeRetry(delayMs, signal)) {
+          attempt = 1;
+          deadlineMs = recoveryLimit && recoveryLimit > 0 ? Date.now() + recoveryLimit : undefined;
+        }
+      } else await sleep(delayMs, signal);
     } catch (error) {
       await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
-      if (error instanceof RetrySleepAbortError) {
+      if (signal?.aborted || error instanceof RetrySleepAbortError) {
         const { errorMessage: _errorMessage, ...rest } = response;
         return { ...rest, stopReason: "aborted" };
       }
@@ -247,6 +270,8 @@ export async function retryAssistantCall(
  */
 export function isRetryableAssistantError(message: AssistantMessage): boolean {
   if (message.stopReason !== "error" || !message.errorMessage) return false;
+  if (message.errorDetails?.code === "MODEL_REQUEST_RETRY") return true;
+  if (message.errorDetails?.code === "MODEL_RECOVERY_DEADLINE") return false;
   const errorMessage = message.errorMessage;
   if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
   return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);

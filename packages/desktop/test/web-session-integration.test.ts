@@ -104,14 +104,15 @@ async function run(host: SessionHost, id: string, text = "Find information") {
   await host.activeRuns.get(id)?.done;
 }
 
-test("one capability drives catalog, preview, live tools and first-send frozen inheritance", async () => {
+test("one capability drives catalog, live tools and first-send frozen inheritance", async () => {
   const f = await fixture();
   expect(f.host.listTools().map((t) => t.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
   f.settings.setCapabilityEnabled("webSearch", true);
   expect(f.host.listTools().map((t) => t.name)).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
-  expect((await f.host.previewPrompt()).prompt).toContain("web_search");
+  // Extension schemas travel with the request; the prompt's tool list only summarizes core tools.
+  expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   await run(f.host, f.session.id);
   expect(toolNames(f.requests.at(-1) ?? {})).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
   f.settings.setCapabilityEnabled("webSearch", false);
@@ -268,7 +269,7 @@ test("new sessions freeze availability only after provider and global switches a
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true });
   f.settings.setCapabilityEnabled("webSearch", true);
   expect(f.host.listTools().map((tool) => tool.name)).toContain("web_search");
-  expect((await f.host.previewPrompt()).prompt).toContain("web_search");
+  expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   await run(f.host, f.session.id, "Old session stays restricted");
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
   const side = await f.host.createSideChat(f.session.id);

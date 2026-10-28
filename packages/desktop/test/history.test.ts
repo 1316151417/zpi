@@ -169,6 +169,50 @@ it("rebuilds only derived tables and catches up an unindexed durable tail", asyn
   expect(rebuilt.snapshot().endSeq).toBe(2);
   expect(rebuilt.readBytes).toBeGreaterThan(0);
 });
+it("searches complete long histories and rebuilds truncated search projections only once", async () => {
+  const { db, path, index, append } = fixture();
+  append({
+    type: "custom",
+    customType: "zpi.run",
+    data: { phase: "start", runId: "first", text: "First request" },
+  });
+  const assistant = emptyAssistant(fakeModel("http://127.0.0.1:1/v1"));
+  const text = `${"x".repeat(200_000)} Long answer ÄPFEL`;
+  append({ type: "message", message: { ...assistant, content: [{ type: "text", text }] } });
+  append({
+    type: "custom",
+    customType: "zpi.run",
+    data: { phase: "start", runId: "later", text: "Late request marker" },
+  });
+  expect(index.hasSearchText("äpfel")).toBe(true);
+  expect([...index.searchTextFor("äpfel")]).toEqual([{ runId: "first", text }]);
+  expect([...index.searchTextFor("late request")]).toEqual([{ runId: "later", text: "Late request marker" }]);
+  const source = readFileSync(path);
+  db.exec(
+    "UPDATE transcript_search SET text=substr(text,1,100000); DELETE FROM transcript_search WHERE seq>2",
+  );
+  db.prepare("UPDATE transcript_state SET generation=?").run(`${index.snapshot().generation}:reasoning-v2`);
+  const rebuilt = new HistoryIndex(path, db);
+  await rebuilt.load();
+  expect(rebuilt.hasSearchText("äpfel")).toBe(true);
+  expect(rebuilt.hasSearchText("late request")).toBe(true);
+  expect(rebuilt.readBytes).toBeGreaterThanOrEqual(source.length);
+  expect(readFileSync(path)).toEqual(source);
+  const cached = new HistoryIndex(path, db);
+  await cached.load();
+  expect(cached.readBytes).toBeLessThan(256);
+  cached.append({
+    type: "custom",
+    customType: "zpi.run",
+    id: "after-reopen",
+    parentId: cached.data.parentId,
+    timestamp: new Date().toISOString(),
+    data: { phase: "start", runId: "reopened", text: "Incremental after reopen" },
+  });
+  expect([...cached.searchTextFor("incremental")]).toEqual([
+    { runId: "reopened", text: "Incremental after reopen" },
+  ]);
+});
 it("never truncates or silently skips malformed complete records or partial tails", async () => {
   const { db, path, append } = fixture();
   append({ type: "message", message: { role: "user", content: "keep me", timestamp: 1 } });

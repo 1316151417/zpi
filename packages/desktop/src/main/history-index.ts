@@ -48,8 +48,8 @@ interface IndexData {
   diagnostic?: string;
 }
 type Row = Record<string, string | number | null>;
-// Derived checkpoints from the fixed-level reducer need one rebuild, without changing transcript format.
-const projectionVersion = "reasoning-v2";
+// Rebuild truncated search projections without changing the authoritative transcript or SQL schema.
+const projectionVersion = "reasoning-v2-search-v2";
 const initialState = (): TranscriptState => ({
   model: null,
   thinkingLevel: "off",
@@ -67,7 +67,6 @@ export class HistoryIndex implements TranscriptStore {
   readBytes = 0;
   private seq = 0;
   private currentRun = "";
-  private searchChars = 0;
   private writeError?: unknown;
   private state = initialState();
   path: string;
@@ -149,7 +148,6 @@ export class HistoryIndex implements TranscriptStore {
     });
     this.seq = 0;
     this.currentRun = "";
-    this.searchChars = 0;
     this.state = initialState();
     this.data = { header, parentId: null, size, modified: 0, cacheRead: 0, cacheInput: 0 };
   }
@@ -187,9 +185,6 @@ export class HistoryIndex implements TranscriptStore {
         this.currentRun = String(cached.current_run);
         this.state = this.getStateAt(this.snapshot());
         this.getState();
-        this.searchChars = Number(
-          this.one("SELECT COALESCE(SUM(length(text)),0) AS n FROM transcript_search WHERE path=?")?.n ?? 0,
-        );
         // A small tail check detects truncation/replacement at the published boundary.
         if (this.data.size && this.readBytesAt(this.data.size - 1, 1)[0] !== 10)
           throw new Error("storage: Indexed boundary mismatch");
@@ -477,13 +472,7 @@ export class HistoryIndex implements TranscriptStore {
       text = entry.data.text;
     if (entry.type === "message" && entry.message.role === "assistant")
       text = contentText(entry.message.content);
-    if (text) {
-      const bounded = text.slice(0, Math.max(0, 200000 - this.searchChars));
-      if (bounded) {
-        this.run("INSERT INTO transcript_search VALUES(?,?,?,?)", seq, this.currentRun, bounded);
-        this.searchChars += bounded.length;
-      }
-    }
+    if (text) this.run("INSERT INTO transcript_search VALUES(?,?,?,?)", seq, this.currentRun, text);
   }
   private project(key: string, seq: number, entry: SessionEntry): void {
     this.run(
@@ -720,12 +709,12 @@ export class HistoryIndex implements TranscriptStore {
       result[String(row.key)] = JSON.parse(String(row.value)) as SessionEntry;
     return result;
   }
-  searchTextFor(query: string, limit = 80): { runId: string; text: string }[] {
-    return this.all(
+  *searchTextFor(query: string, limit = 80): Iterable<{ runId: string; text: string }> {
+    // Consume one bounded transcript record at a time; the snippet builder can stop early.
+    for (const row of this.prepare(
       "SELECT run_id,text FROM transcript_search WHERE path=? AND instr(zpi_lower(text),zpi_lower(?))>0 ORDER BY seq LIMIT ?",
-      query,
-      Math.min(80, Math.max(1, limit)),
-    ).map((row) => ({ runId: String(row.run_id), text: String(row.text) }));
+    ).iterate(this.key, query, Math.min(80, Math.max(1, limit))))
+      yield { runId: String(row.run_id), text: String(row.text) };
   }
   hasSearchText(query: string): boolean {
     return Boolean(
@@ -734,12 +723,6 @@ export class HistoryIndex implements TranscriptStore {
         query,
       ),
     );
-  }
-  searchText(): { runId: string; text: string }[] {
-    return this.all("SELECT run_id,text FROM transcript_search WHERE path=? ORDER BY seq").map((row) => ({
-      runId: String(row.run_id),
-      text: String(row.text),
-    }));
   }
   findRun(runId: string): RunBoundary | undefined {
     const row = this.one("SELECT * FROM transcript_runs WHERE path=? AND run_id=?", runId);
@@ -909,7 +892,6 @@ export class HistoryIndex implements TranscriptStore {
     this.seq = staged.seq;
     this.currentRun = staged.currentRun;
     this.state = staged.state;
-    this.searchChars = staged.searchChars;
     this.writeError = undefined;
   }
 }

@@ -74,14 +74,14 @@ select:disabled {
   cursor: default;
   opacity: 0.5;
 }
-/* ZCode suppresses focus rings. Clear ring layers separately to preserve the
-   ordinary elevation shadows of focused menus and dialogs. */
-*:focus,
-*:focus-visible {
-  outline: none !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
-  --tw-inset-ring-shadow: 0 0 #0000 !important;
+/* Keep keyboard focus visible above component outline resets. An inset outline
+   stays inside clipped rows without changing geometry or elevation shadows. */
+:focus-visible {
+  outline: 2px solid var(--color-file-link) !important;
+  outline-offset: -2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
 }
 button:hover:not(:disabled) {
   background-color: var(--color-hover);

@@ -26,6 +26,9 @@ export function SubagentPane({ tab }: { tab: Extract<PaneTab, { type: "subagent"
     >
       <h2 className="sr-only">{tab.title}</h2>
       <Conversation
+        onRetryModel={(runId) =>
+          window.zpi.retryModelRequest({ sessionId: view.sessionId, runId }).then(unwrap)
+        }
         view={view}
         workspace={workspace}
         context={inputContext}

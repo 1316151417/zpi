@@ -10,56 +10,53 @@ export interface TaskSearchSnippet {
   matchAfter?: string;
 }
 export function buildTaskSearchSnippets(
-  segments: readonly TaskSearchText[],
+  segments: Iterable<TaskSearchText>,
   query: string,
 ): TaskSearchSnippet[] {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return [];
-  const text = segments.map((segment) => segment.text).join("\n");
-  if (!text.trim()) return [];
-  const folded = text.toLocaleLowerCase();
-  const starts: number[] = [];
-  const ends: number[] = [];
-  if (folded.length !== text.length) {
-    // Case conversion can expand a grapheme (İ -> i + combining dot).
-    // Keep match offsets in the original text, including when a match ends inside an expansion.
-    for (const { segment, index } of new Intl.Segmenter().segment(text)) {
-      const length = segment.toLocaleLowerCase().length;
-      for (let i = 0; i < length; i++) {
-        starts.push(index);
-        ends.push(index + segment.length);
-      }
-    }
-  }
   const snippets: TaskSearchSnippet[] = [];
-  const ranges: { start: number; end: number }[] = [];
   const normalize = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, 140);
-  let from = 0;
-  while (snippets.length < 4 && from < folded.length) {
-    const match = folded.indexOf(needle, from);
-    if (match < 0) break;
-    const matchStart = starts[match] ?? match;
-    const matchEnd = ends[match + needle.length - 1] ?? match + needle.length;
-    const start = Math.max(0, matchStart - 20);
-    const end = Math.min(text.length, matchEnd + 72);
-    if (!ranges.some((range) => Math.min(range.end, end) > Math.max(range.start, start))) {
-      let offset = 0;
-      const segment = segments.find((segment) => {
-        const contains = matchStart >= offset && matchStart < offset + segment.text.length;
-        offset += segment.text.length + 1;
-        return contains;
-      });
-      const segmentStart = segment ? offset - segment.text.length - 1 : 0;
-      const localMatch = matchStart - segmentStart;
-      snippets.push({
-        text: normalize(`${start ? "..." : ""}${text.slice(start, end)}${end < text.length ? "..." : ""}`),
-        runId: segment?.runId,
-        matchBefore: segment?.text.slice(Math.max(0, localMatch - 20), localMatch),
-        matchAfter: segment?.text.slice(matchEnd - segmentStart, matchEnd - segmentStart + 72),
-      });
-      ranges.push({ start, end });
+  let fallback = "";
+  for (const { runId, text } of segments) {
+    const folded = text.toLocaleLowerCase();
+    // Map only visited matches back to the original text. Expanded lowercase graphemes
+    // (İ -> i + combining dot) must not require arrays proportional to the whole history.
+    const graphemes =
+      folded.length !== text.length ? new Intl.Segmenter().segment(text)[Symbol.iterator]() : undefined;
+    let grapheme: Intl.SegmentData | undefined;
+    let foldedEnd = 0;
+    const originalOffset = (offset: number, after = false) => {
+      if (!graphemes) return offset + Number(after);
+      while (foldedEnd <= offset) {
+        grapheme = graphemes.next().value;
+        if (!grapheme) return text.length;
+        foldedEnd += grapheme.segment.toLocaleLowerCase().length;
+      }
+      return (grapheme?.index ?? 0) + (after ? (grapheme?.segment.length ?? 0) : 0);
+    };
+    let from = 0;
+    let previousEnd = 0;
+    while (from < folded.length) {
+      const match = folded.indexOf(needle, from);
+      if (match < 0) break;
+      const matchStart = originalOffset(match);
+      const matchEnd = originalOffset(match + needle.length - 1, true);
+      const start = Math.max(0, matchStart - 20);
+      const end = Math.min(text.length, matchEnd + 72);
+      if (start >= previousEnd) {
+        snippets.push({
+          text: normalize(`${start ? "..." : ""}${text.slice(start, end)}${end < text.length ? "..." : ""}`),
+          runId,
+          matchBefore: text.slice(start, matchStart),
+          matchAfter: text.slice(matchEnd, end),
+        });
+        if (snippets.length === 4) return snippets;
+        previousEnd = end;
+      }
+      from = match + needle.length;
     }
-    from = match + needle.length;
+    if (!snippets.length) fallback ||= normalize(text);
   }
-  return snippets.length ? snippets : [{ text: normalize(text) }];
+  return snippets.length ? snippets : fallback ? [{ text: fallback }] : [];
 }

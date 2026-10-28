@@ -191,6 +191,7 @@ beforeEach(() => {
     })),
     removeAttachment: vi.fn(async () => ok()),
     stop: vi.fn(async () => ok()),
+    retryModelRequest: vi.fn(async () => ({ ok: true as const, value: false })),
     reset: vi.fn(async () => ok()),
     hide: vi.fn(async () => ok()),
     setComposerHeight: vi.fn(async () => ok()),
