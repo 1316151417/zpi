@@ -17,7 +17,7 @@ const focusStyle = (locator: Locator) =>
     };
   });
 
-test("keyboard focus remains visible in both themes without changing layout or mouse button focus", async () => {
+test("keyboard focus stays subtle and composer editors avoid an inner ring in both themes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-focus-visible-"));
   let app: ElectronApplication | undefined;
   try {
@@ -28,8 +28,8 @@ test("keyboard focus remains visible in both themes without changing layout or m
       const ring = {
         visible: true,
         style: "solid",
-        width: "2px",
-        color: theme === "light" ? "rgb(0, 102, 221)" : "rgb(128, 190, 255)",
+        width: "1px",
+        color: theme === "light" ? "rgba(13, 13, 13, 0.15)" : "rgba(255, 255, 255, 0.15)",
       };
       const search = page.getByTestId("sidebar-search-open");
       await expect(search).toBeVisible();
@@ -61,6 +61,18 @@ test("keyboard focus remains visible in both themes without changing layout or m
       await expect.poll(() => focusStyle(size)).toEqual(ring);
       expect(await size.boundingBox()).toEqual(inputBounds);
       await page.getByRole("button", { name: "关闭设置", exact: true }).click();
+
+      const editor = page.getByLabel("消息", { exact: true });
+      const composer = page.locator(".composer").filter({ has: editor });
+      const composerBounds = await composer.boundingBox();
+      await editor.click();
+      await expect(editor).toBeFocused();
+      expect(await focusStyle(editor)).toMatchObject({ style: "none", width: "0px" });
+      await page.keyboard.press("Tab");
+      await editor.focus();
+      expect(await focusStyle(editor)).toMatchObject({ style: "none", width: "0px" });
+      expect(await composer.boundingBox()).toEqual(composerBounds);
+      await composer.screenshot({ path: `test-results/composer-focus-${theme}.png` });
     }
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);

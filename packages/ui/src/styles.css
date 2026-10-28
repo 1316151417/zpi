@@ -74,11 +74,11 @@ select:disabled {
   cursor: default;
   opacity: 0.5;
 }
-/* Keep keyboard focus visible above component outline resets. An inset outline
-   stays inside clipped rows without changing geometry or elevation shadows. */
-:focus-visible {
-  outline: 2px solid var(--color-file-link) !important;
-  outline-offset: -2px;
+/* Use a subtle neutral cue for keyboard navigation. Composer editors already
+   show focus on their rounded container, so they must not draw an inner ring. */
+:focus-visible:not(:where(.composer [contenteditable], .composer textarea)) {
+  outline: 1px solid var(--color-focus) !important;
+  outline-offset: -1px;
 }
 :focus:not(:focus-visible) {
   outline: none;
