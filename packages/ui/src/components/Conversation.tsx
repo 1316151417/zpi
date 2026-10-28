@@ -472,6 +472,7 @@ export const RunGroup = memo(function RunGroup({
     ) : null;
   const markers = run.compactions ?? [];
   const compacting = markers.some((marker) => marker.status === "running");
+  const modelWaiting = !run.preparation && Boolean(run.modelWait || run.apiRetry?.attempt);
   const items: (ProcessItem | { kind: "compaction"; id: string; marker: CompactionView })[] = [];
   let offset = 0;
   for (const marker of markers) {
@@ -686,15 +687,13 @@ export const RunGroup = memo(function RunGroup({
             {run.notice}
           </div>
         )}
-        {run.status === "running" && !compacting && (
+        {run.status === "running" && (!compacting || modelWaiting) && (
           <div
-            className="chat-loading-slot"
+            className={`chat-loading-slot${modelWaiting ? " model-wait-row" : ""}`}
             data-stream-entrance={run.preparation ? undefined : "true"}
-            role="status"
-            aria-label={run.preparation || (run.apiRetry?.attempt ? undefined : "加载中")}
           >
             {run.preparation ? (
-              <span className="run-preparation" data-testid="run-preparation">
+              <span className="run-preparation" data-testid="run-preparation" role="status">
                 <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
                 {run.preparation}
               </span>
@@ -709,18 +708,23 @@ export const RunGroup = memo(function RunGroup({
                 </span>
               </span>
             ) : (
-              <div className="chat-loading-icon">
+              <div
+                className="chat-loading-icon"
+                role="status"
+                aria-label="加载中"
+                aria-hidden={modelWaiting || undefined}
+              >
                 <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
               </div>
             )}
+            {modelWaiting && (
+              <ModelWaitNotice
+                wait={run.modelWait}
+                onRetry={onRetryModel ? () => onRetryModel(run.runId) : undefined}
+              />
+            )}
           </div>
         )}
-        {run.status === "running" && (run.modelWait || run.apiRetry?.attempt) ? (
-          <ModelWaitNotice
-            wait={run.modelWait}
-            onRetry={onRetryModel ? () => onRetryModel(run.runId) : undefined}
-          />
-        ) : null}
         {run.error && run.status !== "running" && (
           <Notice scope="turn" message={userErrorMessage(run.error)} />
         )}

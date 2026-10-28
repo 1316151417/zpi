@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ModelWaitStatus } from "zpi-ai";
 import { userErrorMessage } from "../user-error.ts";
-import { Notice } from "./Notice.tsx";
 
 /** A single local clock; waiting does not send periodic IPC or persist timer ticks. */
 export function ModelWaitNotice({
@@ -49,29 +48,29 @@ export function ModelWaitNotice({
       });
   };
   const seconds = Math.max(0, Math.floor((now - (startedAt ?? now)) / 1000));
-  const status = wait
-    ? phase === "first_response"
-      ? "正在等待模型首次响应"
-      : "模型暂时没有新输出"
-    : "正在等待重新连接";
+  const status = wait ? (phase === "first_response" ? "等待模型响应" : "等待新输出") : "正在等待重新连接";
   const guidance = onRetry ? "可以继续等待，或立即重试。" : "可以继续等待。";
-  const message = wait ? `${status}，已等待 ${seconds} 秒。${guidance}` : `${status}。${guidance}`;
   return (
-    <>
-      <Notice
-        scope="turn"
-        tone={error ? "error" : "info"}
-        message={error || message}
-        announce={false}
-        action={
-          onRetry
-            ? { label: pending ? "正在重试…" : "立即重试", onClick: retry, disabled: pending }
-            : undefined
-        }
-      />
+    <div className="model-wait">
+      {(wait || error) && (
+        <span className={`model-wait-message${error ? " model-wait-error" : ""}`}>
+          {error || `${status} · ${seconds} 秒`}
+        </span>
+      )}
+      {onRetry && (
+        <button
+          type="button"
+          className="model-wait-retry"
+          aria-label={pending ? "正在重试" : "立即重试"}
+          disabled={pending}
+          onClick={retry}
+        >
+          {pending ? "重试中…" : "重试"}
+        </button>
+      )}
       <span className="sr-only" role={error ? "alert" : "status"}>
         {error || (pending ? "正在重试模型请求。" : `${status}。${guidance}`)}
       </span>
-    </>
+    </div>
   );
 }

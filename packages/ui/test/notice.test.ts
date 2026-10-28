@@ -171,19 +171,20 @@ test("model wait seconds update locally without repeating the live announcement"
   const wait = { phase: "first_response" as const, startedAt: 80_000 };
   const retry = vi.fn(async () => true);
   await act(async () => root.render(createElement(ModelWaitNotice, { wait, onRetry: retry })));
-  expect(container.querySelector(".notice-message")?.textContent).toContain("已等待 20 秒");
+  expect(container.querySelector(".model-wait-message")?.textContent).toContain("等待模型响应 · 20 秒");
   const announcement = container.querySelector('[role="status"]');
   const text = announcement?.textContent;
-  expect(text).toContain("正在等待模型首次响应");
+  expect(text).toContain("等待模型响应");
   expect(text).not.toContain("秒");
-  expect(container.querySelector(".notice")?.hasAttribute("role")).toBe(false);
+  expect(container.querySelector(".model-wait")?.hasAttribute("role")).toBe(false);
+  expect(container.querySelector(".notice-turn")).toBeNull();
   expect(vi.getTimerCount()).toBe(1);
   await advance(1000);
-  expect(container.querySelector(".notice-message")?.textContent).toContain("已等待 21 秒");
+  expect(container.querySelector(".model-wait-message")?.textContent).toContain("等待模型响应 · 21 秒");
   expect(announcement?.textContent).toBe(text);
   await act(async () => root.render(createElement(ModelWaitNotice, { wait: { ...wait }, onRetry: retry })));
   await advance(2000);
-  expect(container.querySelector(".notice-message")?.textContent).toContain("已等待 23 秒");
+  expect(container.querySelector(".model-wait-message")?.textContent).toContain("等待模型响应 · 23 秒");
   expect(vi.getTimerCount()).toBe(1);
   expect(retry).not.toHaveBeenCalled();
 });
@@ -195,7 +196,7 @@ test("model retry blocks repeated clicks and retains failures across equal waiti
   const render = () =>
     act(async () => root.render(createElement(ModelWaitNotice, { wait: { ...wait }, onRetry: retry })));
   await render();
-  const button = container.querySelector<HTMLButtonElement>(".notice-action");
+  const button = container.querySelector<HTMLButtonElement>(".model-wait-retry");
   await act(async () => {
     button?.click();
     button?.click();
@@ -208,12 +209,12 @@ test("model retry blocks repeated clicks and retains failures across equal waiti
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("重试连接失败");
   await render();
   await advance(5000);
-  expect(container.querySelector(".notice-message")?.textContent).toContain("重试连接失败");
+  expect(container.querySelector(".model-wait-message")?.textContent).toContain("重试连接失败");
   retry.mockResolvedValueOnce(true);
   await act(async () => button?.click());
   expect(retry).toHaveBeenCalledTimes(2);
   expect(container.querySelector('[role="alert"]')).toBeNull();
-  expect(container.querySelector(".notice-message")?.textContent).toContain("模型暂时没有新输出");
+  expect(container.querySelector(".model-wait-message")?.textContent).toContain("等待新输出");
 });
 
 test("new waiting state ignores a previous retry result and unmount clears the local timer", async () => {
@@ -228,7 +229,7 @@ test("new waiting state ignores a previous retry result and unmount clears the l
       }),
     ),
   );
-  await act(async () => container.querySelector<HTMLButtonElement>(".notice-action")?.click());
+  await act(async () => container.querySelector<HTMLButtonElement>(".model-wait-retry")?.click());
   await act(async () =>
     root.render(
       createElement(ModelWaitNotice, {
@@ -237,11 +238,11 @@ test("new waiting state ignores a previous retry result and unmount clears the l
       }),
     ),
   );
-  expect(container.querySelector<HTMLButtonElement>(".notice-action")?.disabled).toBe(false);
+  expect(container.querySelector<HTMLButtonElement>(".model-wait-retry")?.disabled).toBe(false);
   await act(async () => reject(new Error("stale failure")));
   expect(container.textContent).not.toContain("stale failure");
-  expect(container.querySelector(".notice-message")?.textContent).toContain("已等待 1 秒");
-  await act(async () => container.querySelector<HTMLButtonElement>(".notice-action")?.click());
+  expect(container.querySelector(".model-wait-message")?.textContent).toContain("等待新输出 · 1 秒");
+  await act(async () => container.querySelector<HTMLButtonElement>(".model-wait-retry")?.click());
   await act(async () => root.render(null));
   expect(vi.getTimerCount()).toBe(0);
   await act(async () => reject(new Error("unmounted failure")));
@@ -252,7 +253,8 @@ test("new waiting state ignores a previous retry result and unmount clears the l
 
 test("reconnect notices do not start a clock and omit retry guidance without a retry action", async () => {
   await act(async () => root.render(createElement(ModelWaitNotice)));
-  expect(container.querySelector(".notice-message")?.textContent).toBe("正在等待重新连接。可以继续等待。");
+  expect(container.querySelector(".model-wait-message")).toBeNull();
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("正在等待重新连接。可以继续等待。");
   expect(container.querySelector("button")).toBeNull();
   expect(vi.getTimerCount()).toBe(0);
 });

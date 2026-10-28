@@ -217,8 +217,34 @@ test("shows a quiet first request and retries it immediately within the same tur
     await page.getByLabel("消息", { exact: true }).fill("retry the waiting request");
     await page.getByLabel("发送", { exact: true }).click();
     const run = page.getByTestId("run");
-    await expect(run).toContainText("正在等待模型首次响应", { timeout: 20000 });
-    await expect(run).toContainText(/已等待 \d+ 秒/);
+    await expect(run).toContainText("等待模型响应", { timeout: 20000 });
+    await expect(run.locator(".model-wait-message")).toHaveText(/等待模型响应 · \d+ 秒/);
+    const waiting = run.locator(".model-wait-row");
+    const retry = waiting.getByRole("button", { name: "立即重试", exact: true });
+    await expect(retry).toHaveText("重试");
+    await expect(retry).toHaveCSS("text-decoration-line", "none");
+    await expect(retry).toHaveCSS("height", "24px");
+    await expect(retry).toHaveCSS("border-top-width", "1px");
+    await expect(waiting).toHaveCSS("border-top-width", "0px");
+    await expect(run.locator(".notice-turn")).toHaveCount(0);
+    const spinnerBounds = await waiting.locator(".chat-loading-icon").boundingBox();
+    const retryBounds = await retry.boundingBox();
+    if (!spinnerBounds || !retryBounds) throw new Error("Missing model wait controls");
+    expect(
+      Math.abs(spinnerBounds.y + spinnerBounds.height / 2 - retryBounds.y - retryBounds.height / 2),
+    ).toBeLessThan(1);
+    await run.screenshot({ path: "test-results/model-wait-light.png" });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await run.evaluate(async (element) => {
+      await Promise.all(
+        element
+          .getAnimations({ subtree: true })
+          .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+          .map((animation) => animation.finished.catch(() => {})),
+      );
+    });
+    await run.screenshot({ path: "test-results/model-wait-dark.png" });
     expect(requests).toBe(1);
     await page.reload();
     await expect(run.getByRole("button", { name: "立即重试", exact: true })).toBeVisible();
