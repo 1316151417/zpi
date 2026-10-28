@@ -231,6 +231,7 @@ test("grouped task archive uses the menu icon and retains history while draft X 
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toContainText("workspace");
     await page.getByLabel("消息", { exact: true }).fill("归档按钮验证");
     await page.getByLabel("发送", { exact: true }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
@@ -300,6 +301,7 @@ test("grouped running task fades archive and explains why it is disabled", async
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByLabel("添加项目", { exact: true }).first().click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toContainText("workspace");
     await page.getByLabel("消息", { exact: true }).fill("运行中的任务");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "running");
@@ -380,6 +382,106 @@ test("group menus preserve focus/expansion, names/IME and colors survive reload,
       () => server.close(),
       () => app?.close(),
     ]);
+  }
+});
+
+test("virtualized group headers stay above their task rows while groups expand and the sidebar scrolls", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-group-layout-"));
+  const project = join(dir, "workspace");
+  await mkdir(project);
+  const rootCount = 90;
+  const ids = Array.from(
+    { length: rootCount + 24 },
+    (_, index) => seedHistory(dir, project, 0, { id: `layout-task-${index}` }).id,
+  );
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: "" });
+    const page = await app.firstWindow();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 862));
+    const groups = await page.evaluate(
+      async ({ tasks, rootCount }) => {
+        const groups: { id: string; title: string }[] = [];
+        let offset = rootCount;
+        for (const [title, count] of [
+          ["知识库", 8],
+          ["8.18 迭代", 7],
+          ["8.19 迭代", 8],
+          ["技术优化", 1],
+        ] as const) {
+          const created = await window.zpi.updateTaskGroups({ type: "create" });
+          if (!created.ok) throw new Error(created.error.message);
+          const id = created.value.groups.at(-1)?.id;
+          if (!id) throw new Error("Missing group");
+          groups.push({ id, title });
+          const renamed = await window.zpi.updateTaskGroups({ type: "rename", id, title });
+          if (!renamed.ok) throw new Error(renamed.error.message);
+          for (const task of tasks.slice(offset, offset + count)) {
+            const moved = await window.zpi.updateTaskGroups({ type: "moveTask", id: task, groupId: id });
+            if (!moved.ok) throw new Error(moved.error.message);
+          }
+          offset += count;
+        }
+        for (const id of tasks.slice(0, rootCount).reverse()) {
+          const moved = await window.zpi.updateTaskGroups({ type: "taskTop", id });
+          if (!moved.ok) throw new Error(moved.error.message);
+        }
+        const preferences = await window.zpi.updatePreferences({ sidebarWidth: 338, fontSize: 14 });
+        if (!preferences.ok) throw new Error(preferences.error.message);
+        localStorage.setItem("zpi.sidebarTaskPreferences", JSON.stringify({ organizeBy: "grouped" }));
+        localStorage.setItem(
+          "zpi.collapsedTaskGroups",
+          JSON.stringify(groups.filter((group) => group.title !== "8.19 迭代").map((group) => group.id)),
+        );
+        return groups;
+      },
+      { tasks: ids, rootCount },
+    );
+    await page.reload();
+    await expect(page.locator(".task-group-virtual-list")).toHaveCount(1);
+    const offset = (rootCount - 6) * 32;
+    const scrollTo = (top: number) =>
+      page.locator(".sidebar-sections").evaluate((element, top) => {
+        element.scrollTop = top;
+      }, top);
+    const overlappingHeaders = () =>
+      page.locator(".task-groups").evaluate((list) => {
+        const scroll = list.closest(".sidebar-sections");
+        if (!scroll) throw new Error("Missing scroll container");
+        return Array.from(list.querySelectorAll<HTMLElement>(".task-group")).flatMap((group) => {
+          const header = group.querySelector(".task-group-header");
+          const body = group.querySelector(".task-group-body-grid");
+          if (!header || !body) throw new Error("Missing group content");
+          const groupRect = group.getBoundingClientRect();
+          const headerRect = header.getBoundingClientRect();
+          const bodyTop = body.getBoundingClientRect().top;
+          // An unpinned header must precede its own content, including offscreen overscan rows.
+          return groupRect.top >= scroll.getBoundingClientRect().top && headerRect.bottom > bodyTop + 0.5
+            ? [{ title: header.ariaLabel, headerBottom: headerRect.bottom, bodyTop }]
+            : [];
+        });
+      });
+    const prior = groups.find((group) => group.title === "技术优化");
+    if (!prior) throw new Error("Missing preceding group");
+    const header = page.getByRole("button", { name: `分组 ${prior.title}`, exact: true });
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      for (const position of [offset, offset - 100, offset - 300, offset]) {
+        await scrollTo(position);
+        await expect(page.getByRole("button", { name: "分组 8.19 迭代", exact: true })).toBeVisible();
+        await expect.poll(overlappingHeaders).toEqual([]);
+      }
+      await page
+        .locator(".sidebar")
+        .screenshot({ path: test.info().outputPath(`group-layout-${theme}.png`) });
+      for (const expanded of [true, false]) {
+        await header.click();
+        await expect(header).toHaveAttribute("aria-expanded", String(expanded));
+        await expect.poll(overlappingHeaders).toEqual([]);
+      }
+    }
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }
 });
 

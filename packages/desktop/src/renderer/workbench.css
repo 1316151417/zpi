@@ -1248,6 +1248,10 @@
 .settings-switch input:checked + span::after {
   transform: translateX(14px);
 }
+.settings-switch input:focus-visible + span {
+  outline: 1px solid var(--color-focus);
+  outline-offset: 2px;
+}
 .settings-switch input:disabled {
   cursor: not-allowed;
 }
@@ -1646,6 +1650,9 @@
   color: var(--color-foreground);
   background: var(--color-input);
 }
+.settings-screen .provider-editor :is(input:not([type="checkbox"]), textarea):focus {
+  border-color: var(--color-border-strong);
+}
 .provider-heading-actions,
 .model-section-actions {
   margin-left: auto;
@@ -1841,9 +1848,6 @@
 }
 .pane-launcher-actions > button:hover {
   background: var(--color-fill-hover);
-}
-.pane-launcher-actions > button:focus-visible {
-  outline: 2px solid var(--color-focus);
 }
 .pane-launcher-icon {
   display: flex;
@@ -2424,6 +2428,9 @@
 .model-config-body textarea:hover,
 .model-config-body textarea:focus {
   background: var(--model-control-hover);
+}
+.model-config-body :is(input, textarea):focus {
+  border-color: var(--color-border-strong);
 }
 .model-config-body textarea {
   font: var(--text-body) / 1.625 var(--font-code);
@@ -3135,6 +3142,9 @@
   border: 0;
   background: transparent;
   padding: 0;
+}
+.archived-search:focus-within {
+  border-color: var(--color-border-strong);
 }
 .archived-group {
   margin-bottom: 32px;
@@ -4087,6 +4097,9 @@
   background: transparent;
   border: 0;
 }
+.subagent-search:focus-within {
+  border-color: var(--color-border-strong);
+}
 .subagent-settings-group {
   margin-top: 0;
 }
@@ -4234,6 +4247,9 @@
   resize: vertical;
   min-height: 64px;
   max-height: 224px;
+}
+.subagent-form :is(input:not([type="checkbox"]), textarea):focus {
+  border-color: var(--color-border-strong);
 }
 .subagent-form-scope {
   display: flex;
@@ -5927,12 +5943,6 @@
 .shortcut-settings button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-.settings-action-button:focus-visible,
-.shortcut-settings button:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-focus);
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
 }
 .shortcut-settings .shortcut-record-hint,
 .shortcut-settings .shortcut-record-error {

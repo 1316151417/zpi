@@ -74,14 +74,24 @@ select:disabled {
   cursor: default;
   opacity: 0.5;
 }
-/* Use a subtle neutral cue for keyboard navigation. Input controls own their
-   focus styles and must not receive an extra inner ring from this rule. */
-:focus-visible:not(:where(input, textarea, [contenteditable])) {
-  outline: 1px solid var(--color-focus) !important;
-  outline-offset: -1px;
-}
-:focus:not(:focus-visible) {
-  outline: none;
+@layer base {
+  /* Components can replace this keyboard-focus fallback with their own cue. */
+  :where(:focus-visible) {
+    outline: 1px solid var(--color-focus);
+    outline-offset: -1px;
+  }
+  /* Text fields use a caret and their container border; menu surfaces delegate
+     focus indication to the highlighted item. */
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"]),
+    textarea,
+    [contenteditable],
+    [role="menu"],
+    [role="listbox"]
+  ),
+  :where(:focus:not(:focus-visible)) {
+    outline: none;
+  }
 }
 button:hover:not(:disabled) {
   background-color: var(--color-hover);
@@ -1450,6 +1460,10 @@ small {
 .modal input[type="checkbox"] {
   width: auto;
   accent-color: var(--color-focus);
+}
+.modal :is(input:not([type="checkbox"]), select, textarea):focus {
+  border-color: var(--color-border-strong);
+  outline: none;
 }
 .modal-actions {
   justify-content: flex-end;

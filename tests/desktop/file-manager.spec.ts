@@ -86,6 +86,7 @@ test("chat file previews and single-file diffs share ZCode's file container and 
     page.on("pageerror", (error) => errors.push(error.message));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(920, 760));
     await page.getByLabel("添加项目", { exact: true }).click();
+    await expect(page.getByLabel("选择项目", { exact: true })).toContainText("project");
     await page.getByLabel("消息", { exact: true }).fill("创建文件");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");

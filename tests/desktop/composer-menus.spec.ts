@@ -35,6 +35,8 @@ test("environment shortcut navigates the worktree switch and branch submenu with
     await editor.press(`${primary}+j`);
     const toggle = page.getByRole("menuitemcheckbox", { name: "新工作树", exact: true });
     await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveCSS("outline-style", "none");
+    await expect(toggle).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await page.keyboard.press("Enter");
     await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(toggle).not.toHaveAttribute("aria-disabled", "true");

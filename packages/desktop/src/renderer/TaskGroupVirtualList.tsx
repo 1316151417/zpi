@@ -57,6 +57,7 @@ export function TaskGroupVirtualList<T>({
     },
   });
   if (!enabled) return <>{items.map((item) => renderItem(item))}</>;
+  // Transformed ancestors make sticky group headers clamp to the wrong scroll position.
   return (
     <div ref={list} className="task-group-virtual-list" style={{ height: virtualizer.getTotalSize() }}>
       {virtualizer.getVirtualItems().map((row) => (
@@ -65,7 +66,7 @@ export function TaskGroupVirtualList<T>({
           data-index={row.index}
           ref={virtualizer.measureElement}
           className="task-group-virtual-row"
-          style={{ transform: `translateY(${row.start - margin}px)` }}
+          style={{ top: row.start - margin }}
         >
           {renderItem(items[row.index])}
         </div>

@@ -243,6 +243,9 @@
   min-height: 112px;
   resize: vertical;
 }
+.settings-screen .command-form :is(input, textarea):focus {
+  border-color: var(--color-border-strong);
+}
 .command-form-top {
   display: flex;
   align-items: start;

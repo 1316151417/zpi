@@ -268,7 +268,7 @@
   background: var(--color-fill-hover);
 }
 .file-tree-row.selected {
-  border-color: var(--color-focus);
+  background: var(--color-active);
 }
 .file-tree-row:focus-visible {
   border-color: var(--color-border-strong);
