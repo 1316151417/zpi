@@ -74,9 +74,9 @@ select:disabled {
   cursor: default;
   opacity: 0.5;
 }
-/* Use a subtle neutral cue for keyboard navigation. Composer editors already
-   show focus on their rounded container, so they must not draw an inner ring. */
-:focus-visible:not(:where(.composer [contenteditable], .composer textarea)) {
+/* Use a subtle neutral cue for keyboard navigation. Input controls own their
+   focus styles and must not receive an extra inner ring from this rule. */
+:focus-visible:not(:where(input, textarea, [contenteditable])) {
   outline: 1px solid var(--color-focus) !important;
   outline-offset: -1px;
 }

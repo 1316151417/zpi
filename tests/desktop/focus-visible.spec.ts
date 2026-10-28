@@ -17,7 +17,7 @@ const focusStyle = (locator: Locator) =>
     };
   });
 
-test("keyboard focus stays subtle and composer editors avoid an inner ring in both themes", async () => {
+test("keyboard focus stays subtle and input controls avoid an extra inner ring in both themes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-focus-visible-"));
   let app: ElectronApplication | undefined;
   try {
@@ -40,6 +40,21 @@ test("keyboard focus stays subtle and composer editors avoid an inner ring in bo
       await expect.poll(() => focusStyle(search)).toEqual(ring);
       expect(await search.boundingBox()).toEqual(sidebarBounds);
 
+      await search.click();
+      const searchDialog = page.getByRole("dialog", { name: "搜索任务", exact: true });
+      const searchInput = searchDialog.getByRole("combobox");
+      await expect(searchInput).toBeFocused();
+      await searchInput.fill("yewen");
+      expect(await focusStyle(searchInput)).toMatchObject({ style: "none", width: "0px" });
+      await expect(searchInput).toHaveCSS("border-top-width", "0px");
+      await expect(searchInput).toHaveCSS("box-shadow", "none");
+      await page.keyboard.press("Tab");
+      await searchInput.focus();
+      expect(await focusStyle(searchInput)).toMatchObject({ style: "none", width: "0px" });
+      await searchDialog.screenshot({ path: `test-results/search-focus-${theme}.png` });
+      await searchInput.press("Escape");
+      await expect(searchDialog).toHaveCount(0);
+
       await page.getByRole("button", { name: "设置", exact: true }).click();
       const appearance = page.getByRole("button", { name: "界面设置", exact: true });
       await appearance.click();
@@ -58,7 +73,7 @@ test("keyboard focus stays subtle and composer editors avoid an inner ring in bo
       const size = page.getByRole("spinbutton", { name: "界面字号", exact: true });
       const inputBounds = await size.boundingBox();
       await size.focus();
-      await expect.poll(() => focusStyle(size)).toEqual(ring);
+      expect(await focusStyle(size)).toMatchObject({ style: "none", width: "0px" });
       expect(await size.boundingBox()).toEqual(inputBounds);
       await page.getByRole("button", { name: "关闭设置", exact: true }).click();
 
