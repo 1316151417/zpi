@@ -206,7 +206,11 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
     }
     if (e.type === "message" && e.message.role !== "system" && runId) {
       ordinal++;
-      apply({ type: "message_end", messageId: `${runId}:${ordinal}`, message: visibleMessage(e.message) });
+      apply({
+        type: "message_end",
+        messageId: `${runId}:${ordinal}`,
+        message: visibleMessage(mergeLegacyReasoningSummaries(e.message)),
+      });
     }
   }
   for (const r of view.runs.filter((r) => r.status === "running")) {
@@ -214,6 +218,48 @@ export function restoreView(sessionId: string, title: string, entries: SessionEn
     apply({ type: "settled", status: "interrupted", endedAt: Date.now() });
   }
   return { ...view, seq: 0 };
+}
+
+function mergeLegacyReasoningSummaries(message: Message): Message {
+  if (message.role !== "assistant" || message.api !== "openai-responses") return message;
+  const content: typeof message.content = [];
+  for (let index = 0; index < message.content.length; index++) {
+    const block = message.content[index];
+    content.push(block);
+    if (block.type !== "thinking" || !block.thinkingSignature) continue;
+    try {
+      const item: unknown = JSON.parse(block.thinkingSignature);
+      if (!isJsonObject(item) || item.type !== "reasoning" || !Array.isArray(item.summary)) continue;
+      const parts = item.summary;
+      // Older adapters stored each summary separately, with the item signature only on the first.
+      if (
+        parts.length < 2 ||
+        !parts.every((part, offset) => {
+          const next = message.content[index + offset];
+          return (
+            isJsonObject(part) &&
+            part.type === "summary_text" &&
+            typeof part.text === "string" &&
+            next?.type === "thinking" &&
+            (offset === 0 || !next.thinkingSignature) &&
+            next.thinking === part.text
+          );
+        })
+      )
+        continue;
+      content[content.length - 1] = {
+        ...block,
+        thinking: parts
+          .map((part) => part.text)
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+      index += parts.length - 1;
+    } catch {
+      // Malformed historical signatures must not prevent the conversation from opening.
+    }
+  }
+  return { ...message, content };
 }
 
 function visibleMessage(message: Message): Message {

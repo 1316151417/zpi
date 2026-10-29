@@ -285,6 +285,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       : await http();
     events.push({ type: "start", partial: output });
     const blocks = new Map<string, number>();
+    const thinkingParts = new Map<string, string[]>();
     const args = new Map<string, string>();
     const ended = new Set<string>();
     const invalidToolInputs = new Map<string, unknown>();
@@ -330,6 +331,12 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       if (text.startsWith(current)) append(key, "thinking", text.slice(current.length));
       else if (block?.type === "thinking") block.thinking = text;
     }
+    function updateThinkingPart(itemId: string, index: number, text: string, delta = false) {
+      const parts = thinkingParts.get(itemId) ?? [];
+      parts[index] = delta ? (parts[index] ?? "") + text : text;
+      thinkingParts.set(itemId, parts);
+      completeThinking(itemId, parts.filter(Boolean).join("\n\n"));
+    }
     function completeText(key: string, text: string) {
       const index = blocks.get(key);
       const block = index === undefined ? undefined : output.content[index];
@@ -343,7 +350,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     }
     function itemAdded(item: ResponseOutputItem) {
       if (item.type === "reasoning") {
-        if (!blocks.has(contentKey(item.id, 0))) append(contentKey(item.id, 0), "thinking", "");
+        if (!blocks.has(item.id)) append(item.id, "thinking", "");
         return;
       }
       if (item.type !== "function_call") return;
@@ -387,11 +394,18 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       } else if (item.type === "reasoning") {
         itemAdded(item);
         const parts = item.summary.length ? item.summary : (item.content ?? []);
-        for (const [index, part] of parts.entries()) completeThinking(contentKey(item.id, index), part.text);
-        const first = blocks.get(contentKey(item.id, 0));
+        if (parts.length)
+          completeThinking(
+            item.id,
+            parts
+              .map((part) => part.text)
+              .filter(Boolean)
+              .join("\n\n"),
+          );
+        const first = blocks.get(item.id);
         if (first !== undefined)
           (output.content[first] as ThinkingContent).thinkingSignature = JSON.stringify(item);
-        for (const key of [...blocks.keys()].filter((key) => key.startsWith(`${item.id}:`))) close(key);
+        close(item.id);
       } else if (item.type === "message") {
         item.content.forEach((part, index) => {
           const key = contentKey(item.id, index);
@@ -429,19 +443,19 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
           completeText(contentKey(event.item_id, event.content_index), event.refusal);
           break;
         case "response.reasoning_summary_text.delta":
-          append(contentKey(event.item_id, event.summary_index), "thinking", event.delta);
+          updateThinkingPart(event.item_id, event.summary_index, event.delta, true);
           break;
         case "response.reasoning_summary_text.done":
-          completeThinking(contentKey(event.item_id, event.summary_index), event.text);
+          updateThinkingPart(event.item_id, event.summary_index, event.text);
           break;
         case "response.reasoning_summary_part.done":
-          completeThinking(contentKey(event.item_id, event.summary_index), event.part.text);
+          updateThinkingPart(event.item_id, event.summary_index, event.part.text);
           break;
         case "response.reasoning_text.delta":
-          append(contentKey(event.item_id, event.content_index), "thinking", event.delta);
+          updateThinkingPart(event.item_id, event.content_index, event.delta, true);
           break;
         case "response.reasoning_text.done":
-          completeThinking(contentKey(event.item_id, event.content_index), event.text);
+          updateThinkingPart(event.item_id, event.content_index, event.text);
           break;
         case "response.function_call_arguments.delta": {
           args.set(event.item_id, (args.get(event.item_id) ?? "") + event.delta);

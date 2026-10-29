@@ -259,8 +259,118 @@ describe("Responses protocol and portable transcripts", () => {
       thinkingSignature: JSON.stringify(reasonItem),
     });
   });
+  it.each(["delta", "text.done", "part.done", "item.done", "terminal"])(
+    "groups summaries by reasoning item with %s events and preserves tool calls and replay",
+    async (delivery) => {
+      const item = {
+        ...reasonItem,
+        summary: ["检查记录", "检查覆盖范围", "汇总结果"].map((text) => ({ type: "summary_text", text })),
+      };
+      const next = { ...reasonItem, id: "rs_next" };
+      const summaryEvents = item.summary.flatMap((part, summary_index) => {
+        const base = { item_id: item.id, summary_index };
+        return delivery === "delta"
+          ? [
+              { ...base, type: "response.reasoning_summary_text.delta", delta: part.text.slice(0, 1) },
+              { ...base, type: "response.reasoning_summary_text.delta", delta: part.text.slice(1) },
+              { ...base, type: "response.reasoning_summary_text.done", text: part.text },
+              { ...base, type: "response.reasoning_summary_part.done", part },
+            ]
+          : delivery === "text.done"
+            ? [{ ...base, type: "response.reasoning_summary_text.done", text: part.text }]
+            : delivery === "part.done"
+              ? [{ ...base, type: "response.reasoning_summary_part.done", part }]
+              : [];
+      });
+      const stream = streamSimple(responsesModel(), normalizeContext({ messages: [] }), {
+        apiKey: "fake",
+        fetch: (async () =>
+          sse([
+            ...(delivery === "terminal"
+              ? []
+              : [
+                  { type: "response.output_item.added", item: { ...item, summary: [] } },
+                  ...summaryEvents,
+                  { type: "response.output_item.done", item },
+                ]),
+            terminal([item, textItem, next, callItem]),
+          ])) as typeof fetch,
+      });
+      const starts: number[] = [];
+      const ends: string[] = [];
+      const deltas: string[] = [];
+      for await (const event of stream) {
+        if (event.type === "thinking_start") starts.push(event.contentIndex);
+        if (event.type === "thinking_end") ends.push(event.content);
+        if (event.type === "thinking_delta" && event.contentIndex === 0) deltas.push(event.delta);
+      }
+      const text = "检查记录\n\n检查覆盖范围\n\n汇总结果";
+      const result = await stream.result();
+      expect(result.stopReason).toBe("toolUse");
+      expect(result.content).toMatchObject([
+        { type: "thinking", thinking: text, thinkingSignature: JSON.stringify(item) },
+        { type: "text", text: "你好" },
+        { type: "thinking", thinking: "计划", thinkingSignature: JSON.stringify(next) },
+        { type: "toolCall", name: "read", arguments: { path: "README.md" } },
+      ]);
+      expect(starts).toEqual([0, 2]);
+      expect(ends).toEqual([text, "计划"]);
+      expect(deltas.join("")).toBe(text);
+      const replay = responsesInput(responsesModel(), normalizeContext({ messages: [result] }));
+      expect(replay.filter((entry) => entry.type === "reasoning")).toEqual([item, next]);
+      expect(replay.filter((entry) => entry.type === "function_call")).toMatchObject([
+        { call_id: callItem.call_id, name: "read", arguments: callItem.arguments },
+      ]);
+    },
+  );
+  it("keeps streamed summaries when the completed reasoning item omits summary text", async () => {
+    const item = { ...reasonItem, summary: [] };
+    const result = await streamSimple(responsesModel(), normalizeContext({ messages: [] }), {
+      apiKey: "fake",
+      fetch: (async () =>
+        sse([
+          ...["检查记录", "汇总结果"].map((delta, summary_index) => ({
+            type: "response.reasoning_summary_text.delta",
+            item_id: item.id,
+            summary_index,
+            delta,
+          })),
+          terminal([item, textItem]),
+        ])) as typeof fetch,
+    }).result();
+    expect(result.stopReason).toBe("stop");
+    expect(result.content[0]).toEqual({
+      type: "thinking",
+      thinking: "检查记录\n\n汇总结果",
+      thinkingSignature: JSON.stringify(item),
+    });
+  });
+  it("keeps all streamed summary parts in one block when the response fails", async () => {
+    const stream = streamSimple(responsesModel(), normalizeContext({ messages: [] }), {
+      apiKey: "fake",
+      maxRetries: 0,
+      fetch: (async () =>
+        sse([
+          { type: "response.output_item.added", item: { ...reasonItem, summary: [] } },
+          ...["检查记录", "检查覆盖范围"].map((delta, summary_index) => ({
+            type: "response.reasoning_summary_text.delta",
+            item_id: reasonItem.id,
+            summary_index,
+            delta,
+          })),
+          { type: "response.failed", response: { error: { code: "server_error", message: "failed" } } },
+        ])) as typeof fetch,
+    });
+    const result = await stream.result();
+    expect(result.stopReason).toBe("error");
+    expect(result.content).toEqual([{ type: "thinking", thinking: "检查记录\n\n检查覆盖范围" }]);
+  });
   it("preserves reasoning_text events and completed content when no summary is returned", async () => {
-    const item = { ...reasonItem, summary: [], content: [{ type: "reasoning_text", text: "计划" }] };
+    const item = {
+      ...reasonItem,
+      summary: [],
+      content: ["计划", "核对"].map((text) => ({ type: "reasoning_text", text })),
+    };
     const stream = streamSimple(responsesModel(), normalizeContext({ messages: [] }), {
       apiKey: "fake",
       fetch: (async () =>
@@ -268,16 +378,18 @@ describe("Responses protocol and portable transcripts", () => {
           { type: "response.output_item.added", item: { ...item, content: [] } },
           { type: "response.reasoning_text.delta", item_id: item.id, content_index: 0, delta: "计" },
           { type: "response.reasoning_text.done", item_id: item.id, content_index: 0, text: "计划" },
+          { type: "response.reasoning_text.delta", item_id: item.id, content_index: 1, delta: "核" },
+          { type: "response.reasoning_text.done", item_id: item.id, content_index: 1, text: "核对" },
           { type: "response.output_item.done", item },
           terminal([item, textItem]),
         ])) as typeof fetch,
     });
     const deltas: string[] = [];
     for await (const event of stream) if (event.type === "thinking_delta") deltas.push(event.delta);
-    expect(deltas.join("")).toBe("计划");
+    expect(deltas.join("")).toBe("计划\n\n核对");
     expect((await stream.result()).content[0]).toEqual({
       type: "thinking",
-      thinking: "计划",
+      thinking: "计划\n\n核对",
       thinkingSignature: JSON.stringify(item),
     });
   });
