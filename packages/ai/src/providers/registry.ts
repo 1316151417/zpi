@@ -126,16 +126,16 @@ const anthropicBaseUrls: Record<string, string> = {
   "mimo-api": "https://api.xiaomimimo.com/anthropic",
 };
 export function providerApis(preset?: string): readonly ProviderApi[] {
-  return usesChatGPTAuth(preset) || preset === "openai-api"
-    ? ["openai-responses"]
-    : preset
-      ? ["anthropic-messages", "openai-completions"]
-      : ["anthropic-messages", "openai-completions", "openai-responses"];
+  if (usesChatGPTAuth(preset)) return ["openai-responses"];
+  if (preset === "openai-api") return ["openai-responses", "openai-completions"];
+  return preset
+    ? ["anthropic-messages", "openai-completions"]
+    : ["anthropic-messages", "openai-completions", "openai-responses"];
 }
 export function providerApi(preset?: string, api?: ProviderApi): ProviderApi {
-  return usesChatGPTAuth(preset) || preset === "openai-api"
+  return usesChatGPTAuth(preset)
     ? "openai-responses"
-    : (api ?? "anthropic-messages");
+    : (api ?? (preset === "openai-api" ? "openai-responses" : "anthropic-messages"));
 }
 export function providerBaseUrl(preset: string, api = providerApi(preset)): string {
   const descriptor = getProviderPreset(preset);

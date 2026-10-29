@@ -58,7 +58,7 @@ it("imports OpenAI API keys with Responses and the same four models as ChatGPT",
   const dir = await mkdtemp(join(tmpdir(), "zpi-openai-api-"));
   const settings = new SettingsStore(dir, codec);
   try {
-    expect(providerApis("openai-api")).toEqual(["openai-responses"]);
+    expect(providerApis("openai-api")).toEqual(["openai-responses", "openai-completions"]);
     expect(settings.discoverEnvironment({ OPENAI_API_KEY: "fake-api-key" })).toEqual(["env-openai-api"]);
     expect(settings.snapshot("env-openai-api")).toMatchObject({
       preset: "openai-api",
@@ -70,7 +70,7 @@ it("imports OpenAI API keys with Responses and the same four models as ChatGPT",
     expect(settings.discoverEnvironment({ OPENAI_API_KEY: "replacement" })).toEqual([]);
     expect(settings.snapshot("env-openai-api").apiKey).toBe("fake-api-key");
     expect(() =>
-      settings.saveProvider({ ...settings.snapshot("env-openai-api"), api: "openai-completions" }),
+      settings.saveProvider({ ...settings.snapshot("env-openai-api"), api: "anthropic-messages" }),
     ).toThrow("不支持的 API 格式");
   } finally {
     settings.close();

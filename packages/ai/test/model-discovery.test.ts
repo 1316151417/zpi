@@ -207,19 +207,22 @@ it("uses all four API presets when discovery fails, is empty or lists no matchin
   }
 });
 
-it("keeps all four API models listed without warnings when discovery returns the complete catalog", async () => {
-  const result = await fetchProviderModels({ preset: "openai-api", apiKey: "fake" }, async () =>
-    Response.json({
-      data: presetModels("openai-api")
-        .toReversed()
-        .map(({ id }) => ({ id })),
-    }),
-  );
-  expect(result.warning).toBeUndefined();
-  expect(result.models).toEqual(
-    presetModels("openai-chatgpt").map((model) => ({ ...model, availability: "listed" })),
-  );
-});
+it.each(["openai-responses", "openai-completions"] as const)(
+  "discovers all four API models with %s",
+  async (api) => {
+    const result = await fetchProviderModels({ preset: "openai-api", api, apiKey: "fake" }, async () =>
+      Response.json({
+        data: presetModels("openai-api")
+          .toReversed()
+          .map(({ id }) => ({ id })),
+      }),
+    );
+    expect(result.warning).toBeUndefined();
+    expect(result.models).toEqual(
+      presetModels("openai-chatgpt").map((model) => ({ ...model, availability: "listed" })),
+    );
+  },
+);
 
 it("Chinese catalogs offer only actual controls while keeping mapped levels usable", () => {
   const choices = (preset: string, id: string) => {

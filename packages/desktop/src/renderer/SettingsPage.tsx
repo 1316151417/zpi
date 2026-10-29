@@ -867,7 +867,15 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               </label>
                             )}
                             <div className="provider-api-field">
-                              <label htmlFor="provider-api-format">API 格式</label>
+                              <div className="settings-label">
+                                <label htmlFor="provider-api-format">API 格式</label>
+                                {preset === "openai-api" && (
+                                  <SettingsHelp
+                                    label="API 格式"
+                                    text="默认使用 Responses。部分模型的工具调用仅支持 Responses，切换 Chat Completions 前请确认模型兼容性。"
+                                  />
+                                )}
+                              </div>
                               <ProviderApiFormatSelect
                                 value={api}
                                 preset={preset}

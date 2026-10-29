@@ -40,7 +40,7 @@ ZPI 不内置 MCP、专用 REPL 或 Agent 浏览器控制工具。需要浏览�
 
 支持三种 API 格式：**OpenAI Chat Completions、OpenAI Responses、Anthropic Messages**。是否可用仍取决于服务端的协议和工具调用兼容性，不是任意模型都能无配置接入。
 
-OpenAI（API）只需填写 API Key，固定使用官方 Responses 接口。初始模型与 ChatGPT 预置一致：GPT-6.1 Terra、GPT-6.1 Sol、GPT-6 Luna、GPT-6 Astra。保存时自动查询 `/models`，也可手动刷新；目录缺少的模型或发现失败时仍保留预置，账号可用性待验证。自定义 Chat Completions 直连 OpenAI 官方地址时，输出上限默认使用 `max_completion_tokens`；其他兼容服务保留 `max_tokens`，可在模型的「请求参数」中手动指定。
+OpenAI（API）只需填写 API Key，默认使用官方 Responses 接口，也可切换到 Chat Completions；部分模型的工具调用仅支持 Responses，需按模型选择兼容的协议。初始模型与 ChatGPT 预置一致：GPT-6.1 Terra、GPT-6.1 Sol、GPT-6 Luna、GPT-6 Astra。保存时自动查询 `/models`，也可手动刷新；目录缺少的模型或发现失败时仍保留预置，账号可用性待验证。Chat Completions 直连 OpenAI 官方地址时，输出上限默认使用 `max_completion_tokens`；其他兼容服务保留 `max_tokens`，可在模型的「请求参数」中手动指定。
 
 - 自动初始化预置提供商，手动获取或刷新模型列表。
 - 启用、禁用和排序提供商与模型，只显示你常用的选项。
