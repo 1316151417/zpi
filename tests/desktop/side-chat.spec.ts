@@ -1,10 +1,100 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runPresentation } from "../../packages/ui/src/components/process-presentation.ts";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
+
+for (const pane of ["main", "side"] as const) {
+  test(`${pane} keeps the completed answer outside trailing reasoning in live and restored history`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-trailing-reasoning-"));
+    const finish = deferred();
+    const server = await fakeServer(async (_, response, index) => {
+      if (pane === "side" && index === 0) {
+        send(response, chunk({ content: "主对话已就绪" }));
+      } else {
+        send(response, chunk({ content: "已完成的查询结果" }));
+        send(response, chunk({ reasoning_content: "Awaiting user input" }));
+        await finish.promise;
+      }
+      done(response);
+    });
+    let app: Awaited<ReturnType<typeof launchDesktop>>;
+    try {
+      app = await launchDesktop({ dir, url: server.url });
+      const page = await app.firstWindow();
+      const main = page.locator("main");
+      if (pane === "side") {
+        await main.getByLabel("消息", { exact: true }).fill("主问题");
+        await main.getByLabel("发送", { exact: true }).click();
+        await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+        await page.getByLabel("展开右侧栏", { exact: true }).click();
+        await page
+          .locator(".pane-empty-launcher")
+          .getByRole("button", { name: "辅助对话", exact: true })
+          .click();
+      }
+      const target = pane === "main" ? main : page.getByRole("region", { name: "辅助对话", exact: true });
+      await target.getByLabel("消息", { exact: true }).fill("查询结果");
+      await target.getByLabel("发送", { exact: true }).click();
+      const run = target.getByTestId("run").last();
+      await expect(run).toHaveAttribute("data-status", "running");
+      await expect(run.getByTestId("process")).toContainText("已完成的查询结果");
+      await expect(run.getByTestId("thinking-block")).toContainText("Awaiting user input");
+      finish.resolve();
+      const assertCompleted = async () => {
+        await expect(run).toHaveAttribute("data-status", "completed");
+        await expect(run.locator(".assistant-message-row > .answer")).toHaveText("已完成的查询结果");
+        await expect(run.getByTestId("progress")).toHaveAttribute("aria-expanded", "false");
+        await expect(run.getByTestId("process")).toHaveCount(0);
+        await expect(run.getByTestId("thinking-block")).toHaveCount(0);
+      };
+      await assertCompleted();
+      await run.getByTestId("progress").click();
+      await expect(run.getByTestId("thinking-block")).toHaveCount(1);
+      expect(
+        await run.evaluate((element) => {
+          const thought = element.querySelector('[data-testid="thinking-block"]');
+          const answer = element.querySelector(".assistant-message-row > .answer");
+          return Boolean(
+            thought && answer && thought.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
+          );
+        }),
+      ).toBe(true);
+      await run.getByTestId("progress").click();
+      if (pane === "main") {
+        await page.reload();
+        await assertCompleted();
+      } else {
+        // Side-chat tabs are transient. Restart the host and read the persisted child through IPC.
+        const childId = await target.getAttribute("data-side-chat-session");
+        if (!childId) throw new Error("Missing side chat session");
+        await app.close();
+        app = await launchDesktop({ dir, url: server.url });
+        const restoredPage = await app.firstWindow();
+        const snapshot = await restoredPage.evaluate((id) => window.zpi.getSessionSnapshot(id), childId);
+        if (!snapshot.ok) throw new Error(snapshot.error.message);
+        const restored = snapshot.value.view.runs.at(-1);
+        if (!restored) throw new Error("Missing restored reply");
+        expect(restored.status).toBe("completed");
+        expect(runPresentation(restored)).toMatchObject({
+          answer: { text: "已完成的查询结果" },
+          process: [expect.objectContaining({ type: "thinking", text: "Awaiting user input" })],
+          defaultOpen: false,
+        });
+      }
+    } finally {
+      finish.resolve();
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => server.close(),
+        () => app?.close(),
+      ]);
+    }
+  });
+}
 
 for (const streamingPane of ["main", "side"] as const) {
   test(`auxiliary selection stays open and adds to its own draft while ${streamingPane} streams`, async () => {

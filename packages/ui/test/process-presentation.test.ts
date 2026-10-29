@@ -123,3 +123,35 @@ it("keeps work open when the only final prose is empty", () => {
     defaultOpen: true,
   });
 });
+
+it("folds trailing reasoning into completed work while keeping the final prose outside", () => {
+  const answer = text("answer", "text");
+  const thought = text("follow-up", "thinking", "Awaiting user input");
+  const blocks = [tool, answer, thought, text("empty", "text", "")];
+  const view = run(blocks, { finalAnswerBlockIds: [answer.id] });
+  expect(runPresentation(view)).toEqual({
+    process: [tool, thought],
+    answer,
+    defaultOpen: false,
+  });
+  expect(runPresentation({ ...view, status: "running" })).toEqual({
+    process: [tool, answer, thought],
+    answer: undefined,
+    defaultOpen: true,
+  });
+  expect(view.orderedBlocks).toEqual(blocks);
+});
+
+it("does not extract earlier prose across a trailing tool call and reasoning", () => {
+  const blocks = [text("earlier", "text"), tool, text("follow-up", "thinking")];
+  expect(runPresentation(run(blocks))).toEqual({
+    process: blocks,
+    answer: undefined,
+    defaultOpen: true,
+  });
+});
+
+it("keeps reasoning-only runs visible", () => {
+  const blocks = [text("thought", "thinking")];
+  expect(runPresentation(run(blocks))).toEqual({ process: blocks, answer: undefined, defaultOpen: true });
+});

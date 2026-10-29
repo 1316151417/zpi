@@ -63,7 +63,14 @@ function fixture(mode: "live" | "restored") {
 }
 
 describe.each(["live", "restored"] as const)("%s replies", (mode) => {
-  it.each(["", " \n\t", null])("keeps the answer visible after an empty peer follow-up (%j)", (text) => {
+  it.each([
+    { text: "", thinking: "" },
+    { text: " \n\t", thinking: "" },
+    { text: null, thinking: "" },
+    { text: "", thinking: "Awaiting user input" },
+    { text: " \n\t", thinking: "Awaiting user input" },
+    { text: null, thinking: "Awaiting user input" },
+  ])("keeps the answer visible after a follow-up with no prose (%j)", ({ text, thinking }) => {
     const { append, finish } = fixture(mode);
     append(assistant([{ type: "thinking", thinking: "核对表名" }]));
     append(assistant([{ type: "text", text: answer, phase: "final_answer" }]));
@@ -72,7 +79,7 @@ describe.each(["live", "restored"] as const)("%s replies", (mode) => {
       content: "<subagent-message>已收尾，无需补充。</subagent-message>",
       timestamp: 5,
     });
-    const empty: AssistantMessage["content"] = [{ type: "thinking", thinking: "" }];
+    const empty: AssistantMessage["content"] = [{ type: "thinking", thinking }];
     if (text !== null) empty.push({ type: "text", text, phase: "final_answer" });
     const running = append(assistant(empty));
     expect(runPresentation(running).answer).toBeUndefined();
@@ -91,7 +98,10 @@ describe.each(["live", "restored"] as const)("%s replies", (mode) => {
     );
     expect(markup).toContain(answer);
     expect(markup).not.toContain("核对表名");
+    expect(markup).not.toContain("Awaiting user input");
     expect(markup).not.toContain('data-testid="process"');
+    if (thinking)
+      expect(runPresentation(run).process).toContainEqual(expect.objectContaining({ text: thinking }));
   });
 
   it("keeps the newest real answer through repeated empty replies", () => {
