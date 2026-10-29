@@ -108,7 +108,7 @@ export class ResponsesSession {
             ? new SocksProxyAgent(proxy)
             : new HttpsProxyAgent(proxy)
           : undefined;
-        this.socket = new ResponsesWS(client, { handshakeTimeout: 1500, perMessageDeflate: true, agent });
+        this.socket = new ResponsesWS(client, { handshakeTimeout: 10_000, perMessageDeflate: true, agent });
         this.openedAt = Date.now();
         // An idle socket can fail when no request iterator is listening.
         this.socket.on("error", () => {});
@@ -161,6 +161,20 @@ export class ResponsesSession {
                 restart = true;
                 break;
               }
+              // SIWC also returns an uncoded 400 and closes the socket for an invalid parent.
+              // Let the transport fallback replay full input, rather than retrying that closing socket.
+              if (
+                parent &&
+                !progressed &&
+                detail &&
+                "status" in detail &&
+                detail.status === 400 &&
+                /previous_response_id/i.test(body?.message ?? "") &&
+                /invalid|not found|does not exist/i.test(body?.message ?? "")
+              ) {
+                this.previous = undefined;
+                throw record.error;
+              }
               // Request/auth/usage errors belong to the caller, rather than a silent transport retry.
               if (
                 detail &&
@@ -210,8 +224,9 @@ export class ResponsesSession {
               this.previous = undefined;
               completed = true;
             } else if (
-              !["response.created", "response.in_progress", "response.queued"].includes(event.type)
+              /^response\.(?:output_|reasoning_|function_call_arguments\.|refusal\.)/.test(event.type)
             ) {
+              // Transport metadata/heartbeats do not mean model output has started.
               progressed = true;
             }
             yield event;

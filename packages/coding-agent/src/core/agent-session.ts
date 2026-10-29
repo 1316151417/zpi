@@ -94,6 +94,8 @@ export class AgentSession {
   private fault?: Error;
   private runtime: ModelRuntime;
   private responsesSession?: ResponsesSession;
+  private responsesWarmupTimer?: ReturnType<typeof setTimeout>;
+  private responsesWarmupController?: AbortController;
   private resources?: {
     loader: ResourceLoader;
     buildPrompt: () => string;
@@ -232,28 +234,47 @@ export class AgentSession {
     this.prepareResponsesSession();
   }
   private prepareResponsesSession(): void {
+    clearTimeout(this.responsesWarmupTimer);
+    this.responsesWarmupTimer = undefined;
+    this.responsesWarmupController?.abort();
+    this.responsesWarmupController = undefined;
     this.responsesSession?.dispose();
     this.responsesSession = undefined;
     if (!this.runtime.canUseResponsesSession(this.model)) return;
     const connection = new ResponsesSession({ resolveProxy: this.runtime.responsesProxy });
     this.responsesSession = connection;
-    // Best effort, concurrent with resource loading/user input; it never enters the session journal or metrics.
-    void this.runtime
-      .streamSimple(
-        this.model,
-        { messages: this.messages },
-        {
-          sessionId: this.sessionId,
-          responsesSession: connection,
-          responsesWarmup: true,
-          reasoning: this.thinkingLevel,
-          signal: AbortSignal.timeout(3000),
-          streamFirstResponseTimeoutMs: 3000,
-          maxRetries: 0,
-        },
-      )
-      .result()
-      .catch(() => {});
+    // Let callers finish selecting model + reasoning before capturing warmup parameters.
+    this.responsesWarmupTimer = setTimeout(() => {
+      this.responsesWarmupTimer = undefined;
+      if (this.disposed || connection !== this.responsesSession) return;
+      const controller = new AbortController();
+      this.responsesWarmupController = controller;
+      // Best effort, concurrent with resource loading/user input; never journaled or measured.
+      void Promise.resolve()
+        .then(() => {
+          if (controller.signal.aborted || connection !== this.responsesSession) return;
+          return this.runtime
+            .streamSimple(
+              this.model,
+              { messages: this.messages },
+              {
+                sessionId: this.sessionId,
+                responsesSession: connection,
+                responsesWarmup: true,
+                reasoning: this.thinkingLevel,
+                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+                streamFirstResponseTimeoutMs: 15_000,
+                maxRetries: 0,
+              },
+            )
+            .result();
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (this.responsesWarmupController === controller) this.responsesWarmupController = undefined;
+        });
+    }, 0);
+    this.responsesWarmupTimer.unref();
   }
   static async create(...args: ConstructorParameters<typeof AgentSession>): Promise<AgentSession> {
     const [, , manager, , activeTools, systemPrompt] = args;
@@ -584,6 +605,9 @@ export class AgentSession {
     });
   }
   private streamWithRecovery(model: Model, context: TranscriptContext, options: SimpleStreamOptions = {}) {
+    // If input is already ready, generate directly instead of queueing a late warmup behind it.
+    clearTimeout(this.responsesWarmupTimer);
+    this.responsesWarmupTimer = undefined;
     const output = createAssistantMessageEventStream();
     let partial = emptyAssistant(model);
     void (async () => {
@@ -825,6 +849,8 @@ export class AgentSession {
     await this.running;
   }
   dispose(): void {
+    clearTimeout(this.responsesWarmupTimer);
+    this.responsesWarmupController?.abort();
     this.responsesSession?.dispose();
     this.performance.dispose();
     this.disposed = true;
@@ -876,10 +902,13 @@ export class AgentSession {
   }
   setThinkingLevel(thinkingLevel: ThinkingLevel): void {
     this.idleCheck();
+    const changed = thinkingLevel !== this.thinkingLevel;
     const entryId = this.manager.appendThinkingLevelChange(thinkingLevel);
     this.state.thinkingLevel = thinkingLevel;
     if (entryId) this.notifyLastEntry();
     this.notify({ type: "thinking_level_changed", thinkingLevel });
+    if (changed && (this.responsesWarmupTimer || this.responsesWarmupController))
+      this.prepareResponsesSession();
   }
   setSessionName(name: string): void {
     this.idleCheck();

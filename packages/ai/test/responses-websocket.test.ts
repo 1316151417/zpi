@@ -40,7 +40,11 @@ function completed(id: string, output: unknown[] = [text("hello")]) {
     },
   };
 }
-async function fixture(handle?: (request: Received, count: number) => void, rejectUpgrade = false) {
+async function fixture(
+  handle?: (request: Received, count: number) => void,
+  rejectUpgrade = false,
+  upgradeDelayMs = 0,
+) {
   const requests: Received[] = [];
   let httpCalls = 0;
   const server: Server = createServer((_request, response) => {
@@ -54,23 +58,28 @@ async function fixture(handle?: (request: Received, count: number) => void, reje
       socket.end("HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\n\r\n");
       return;
     }
-    sockets.handleUpgrade(request, socket, head, (ws) => {
-      ws.on("message", (raw) => {
-        const entry = {
-          body: JSON.parse(raw.toString()) as Request,
-          socket: ws,
-          authorization: request.headers.authorization,
-        };
-        requests.push(entry);
-        if (handle) handle(entry, requests.length);
-        else
-          ws.send(
-            JSON.stringify(
-              completed(`resp_${requests.length}`, entry.body.generate === false ? [] : undefined),
-            ),
-          );
+    const upgrade = () =>
+      sockets.handleUpgrade(request, socket, head, (ws) => {
+        ws.on("message", (raw) => {
+          const entry = {
+            body: JSON.parse(raw.toString()) as Request,
+            socket: ws,
+            authorization: request.headers.authorization,
+          };
+          requests.push(entry);
+          if (handle) handle(entry, requests.length);
+          else
+            ws.send(
+              JSON.stringify(
+                completed(`resp_${requests.length}`, entry.body.generate === false ? [] : undefined),
+              ),
+            );
+        });
       });
-    });
+    if (upgradeDelayMs) {
+      const timer = setTimeout(upgrade, upgradeDelayMs);
+      socket.on("close", () => clearTimeout(timer));
+    } else upgrade();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   cleanups.push(async () => {
@@ -336,6 +345,7 @@ it("supports GPT → domestic model → GPT in a real agent session, then resume
   await session.prompt("domestic question one");
   await session.prompt("domestic question two");
   await session.setModel(f.model);
+  await vi.waitFor(() => expect(f.requests.some((request) => request.body.generate === false)).toBe(true));
   await session.prompt("back to GPT");
   const warmup = f.requests.findLast((request) => request.body.generate === false);
   expect(warmup?.socket).not.toBe(originalSocket);
@@ -350,6 +360,113 @@ it("supports GPT → domestic model → GPT in a real agent session, then resume
   expect(
     manager.buildSessionContext().messages.filter((message) => message.role === "assistant"),
   ).toHaveLength(5);
+  expect(f.httpCalls()).toBe(0);
+});
+
+it("accepts a successful upgrade that takes longer than the old 1.5s limit", async () => {
+  const f = await fixture(undefined, false, 1700);
+  expect((await f.run([user("slow handshake")])).stopReason).toBe("stop");
+  expect(f.requests).toHaveLength(1);
+  expect(f.httpCalls()).toBe(0);
+});
+
+it.each([false, true])("recovers an uncoded SIWC parent error, with metadata=%s", async (metadata) => {
+  const f = await fixture(({ socket }, count) => {
+    if (count === 2) {
+      if (metadata) socket.send(JSON.stringify({ type: "codex.response.metadata" }));
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          status: 400,
+          error: { type: "invalid_request_error", message: "Invalid `previous_response_id`." },
+        }),
+      );
+      socket.close();
+    } else socket.send(JSON.stringify(completed(`resp_${count}`)));
+  });
+  const first = await f.run([user("first")]);
+  const second = await f.run([user("first"), first, user("next")]);
+  expect(second.stopReason).toBe("stop");
+  expect(second.responseId).toBe("http");
+  expect(f.httpCalls()).toBe(1);
+  expect(f.requests).toHaveLength(2);
+});
+
+it("does not recover a parent error after any model output", async () => {
+  const f = await fixture(({ socket }, count) => {
+    if (count === 2) {
+      socket.send(
+        JSON.stringify({
+          type: "response.output_text.delta",
+          item_id: "msg",
+          content_index: 0,
+          delta: "partial",
+          sequence_number: 0,
+        }),
+      );
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          status: 400,
+          error: { type: "invalid_request_error", message: "Invalid `previous_response_id`." },
+        }),
+      );
+    } else socket.send(JSON.stringify(completed(`resp_${count}`)));
+  });
+  const first = await f.run([user("first")]);
+  const second = await f.run([user("first"), first, user("next")]);
+  expect(second.stopReason).toBe("error");
+  expect(second.content).toMatchObject([{ type: "text", text: "partial" }]);
+  expect(f.httpCalls()).toBe(0);
+});
+
+function agentSession(f: Awaited<ReturnType<typeof fixture>>) {
+  const runtime = new ModelRuntime();
+  const model = { ...f.model, compat: { supportsReasoningEffort: true } };
+  const { provider, baseUrl, ...definition } = model;
+  runtime.registerProvider(provider, { baseUrl, apiKey: "local-key", models: [definition] });
+  vi.spyOn(runtime, "canUseResponsesSession").mockReturnValue(true);
+  const session = new AgentSession(model, runtime, SessionManager.inMemory(), [], [], "", "low");
+  cleanups.push(() => session.dispose());
+  return session;
+}
+
+it("captures final reasoning when a caller sets it immediately after changing models", async () => {
+  const f = await fixture();
+  const session = agentSession(f);
+  await session.setModel({ ...session.model, id: "new-model" });
+  session.setThinkingLevel("medium");
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  expect(f.requests[0].body).toMatchObject({ generate: false, reasoning: { effort: "medium" } });
+  await session.prompt("ready");
+  expect(f.requests[1].body).toMatchObject({
+    previous_response_id: "resp_1",
+    reasoning: { effort: "medium" },
+  });
+  expect(f.httpCalls()).toBe(0);
+});
+
+it("generates directly when input arrives before a scheduled warmup", async () => {
+  const f = await fixture();
+  const session = agentSession(f);
+  await session.prompt("ready immediately");
+  expect(f.requests).toHaveLength(1);
+  expect(f.requests[0].body.generate).toBeUndefined();
+});
+
+it("cancels obsolete in-flight warmup when reasoning changes", async () => {
+  const f = await fixture(({ socket, body }, count) => {
+    if (count !== 1)
+      socket.send(JSON.stringify(completed(`resp_${count}`, body.generate === false ? [] : undefined)));
+  });
+  const session = agentSession(f);
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  session.setThinkingLevel("medium");
+  await vi.waitFor(() => expect(f.requests).toHaveLength(2));
+  expect(f.requests[1].socket).not.toBe(f.requests[0].socket);
+  expect(f.requests[1].body).toMatchObject({ generate: false, reasoning: { effort: "medium" } });
+  await session.prompt("after change");
+  expect(f.requests[2].body.previous_response_id).toBe("resp_2");
   expect(f.httpCalls()).toBe(0);
 });
 
