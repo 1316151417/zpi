@@ -228,6 +228,7 @@ export class SessionHost {
   >();
   readonly inputQueue: SessionInputQueue;
   private requestFetch?: typeof fetch;
+  private readonly responsesProxy?: (url: string) => Promise<string | undefined>;
   private configurations = new Map<string, SessionConfiguration>();
   private searches = new Map<string, AbortController>();
   readonly workspaceFileSearches = new WorkspaceFileSearches();
@@ -243,9 +244,11 @@ export class SessionHost {
     errors = new ErrorLog(dir),
     privateWorktreeRoot = join(homedir(), ".zpi", "worktree"),
     commandShellRunner: CustomCommandShellRunner = runCustomCommandShell,
+    responsesProxy?: (url: string) => Promise<string | undefined>,
   ) {
     if (existsSync(homeDir)) homeDir = realpathSync(homeDir);
     this.commandShellRunner = commandShellRunner;
+    this.responsesProxy = responsesProxy;
     this.webTools = new WebTools({ getApiKey: () => settings.getWebSearchApiKey(), requestFetch });
     const commandsDirectory = join(homeDir, ".zpi", "commands");
     this.commandImports = new CommandImportService({
@@ -3046,6 +3049,8 @@ export class SessionHost {
           this.runtimes.get(id) ??
           (await ModelRuntime.create({
             fetch: this.requestFetch,
+            responsesTransport: "auto",
+            responsesProxy: this.responsesProxy,
             onMediaProjection: (stats, context) =>
               this.errors.mediaProjection(stats, { ...context, sessionId: id }),
           }));

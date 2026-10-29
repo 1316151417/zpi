@@ -61,12 +61,15 @@ export class QuickChatHost {
     requestFetch: typeof fetch = fetch,
     now: () => number = () => performance.now(),
     errors?: ErrorLog,
+    responsesProxy?: (url: string) => Promise<string | undefined>,
   ) {
     this.now = now;
     this.settings = settings;
     this.cwd = resolve(cwd);
     this.requestFetch = requestFetch;
     this.runtime = new ModelRuntime(requestFetch, {
+      responsesTransport: "auto",
+      responsesProxy,
       onMediaProjection: errors ? (stats, context) => errors.mediaProjection(stats, context) : undefined,
     });
     this.selection = this.initialSelection();

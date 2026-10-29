@@ -105,6 +105,8 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
     [
       "signal",
       "sessionId",
+      "responsesSession",
+      "responsesWarmup",
       "cacheRetention",
       "skipCacheWrite",
       "apiKey",
@@ -251,20 +253,35 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       payload.store = false;
     }
     output.contextBreakdown = measureContextBreakdown(payload);
-    const { data: chunks, response } = await retryProviderRequest(
-      () => {
-        events.startRequest();
-        return client.responses
-          .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
-          .withResponse();
-      },
-      { ...options, maxRetries: options.maxRetries ?? 2 },
-    );
-    await options.onResponse?.(
-      { status: response.status, headers: Object.fromEntries(response.headers) },
-      model,
-    );
-    if (options.signal?.aborted) throw new Error("Request aborted");
+    async function http() {
+      const { data: chunks, response } = await retryProviderRequest(
+        () => {
+          events.startRequest();
+          return client.responses
+            .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
+            .withResponse();
+        },
+        { ...options, maxRetries: options.maxRetries ?? 2 },
+      );
+      await options.onResponse?.(
+        { status: response.status, headers: Object.fromEntries(response.headers) },
+        model,
+      );
+      if (options.signal?.aborted) throw new Error("Request aborted");
+      return responsesEvents(chunks, response);
+    }
+    const session = options.responsesSession;
+    if (options.responsesWarmup && !session) throw new Error("Responses WebSocket warmup unavailable");
+    const chunks = session
+      ? session.events(
+          client,
+          model,
+          payload as Record<string, unknown> & { input: unknown[] },
+          options,
+          http,
+          () => events.startRequest(),
+        )
+      : await http();
     events.push({ type: "start", partial: output });
     const blocks = new Map<string, number>();
     const args = new Map<string, string>();
@@ -389,7 +406,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       }
     }
     let terminal = false;
-    for await (const event of responsesEvents(chunks, response)) {
+    for await (const event of chunks) {
       events.received();
       if (options.signal?.aborted) throw new Error("Request aborted");
       switch (event.type) {

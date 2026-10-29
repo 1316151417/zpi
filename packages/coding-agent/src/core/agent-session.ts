@@ -21,6 +21,7 @@ import {
   ModelRequestRetryError,
   retryDelayMs,
 } from "zpi-ai";
+import { ResponsesSession } from "zpi-ai/api/responses-session";
 import type { ParsedInput } from "./commands.ts";
 import { parseInput } from "./commands.ts";
 import {
@@ -92,6 +93,7 @@ export class AgentSession {
   private abortRequested = false;
   private fault?: Error;
   private runtime: ModelRuntime;
+  private responsesSession?: ResponsesSession;
   private resources?: {
     loader: ResourceLoader;
     buildPrompt: () => string;
@@ -227,6 +229,31 @@ export class AgentSession {
           : event,
       );
     });
+    this.prepareResponsesSession();
+  }
+  private prepareResponsesSession(): void {
+    this.responsesSession?.dispose();
+    this.responsesSession = undefined;
+    if (!this.runtime.canUseResponsesSession(this.model)) return;
+    const connection = new ResponsesSession({ resolveProxy: this.runtime.responsesProxy });
+    this.responsesSession = connection;
+    // Best effort, concurrent with resource loading/user input; it never enters the session journal or metrics.
+    void this.runtime
+      .streamSimple(
+        this.model,
+        { messages: this.messages },
+        {
+          sessionId: this.sessionId,
+          responsesSession: connection,
+          responsesWarmup: true,
+          reasoning: this.thinkingLevel,
+          signal: AbortSignal.timeout(3000),
+          streamFirstResponseTimeoutMs: 3000,
+          maxRetries: 0,
+        },
+      )
+      .result()
+      .catch(() => {});
   }
   static async create(...args: ConstructorParameters<typeof AgentSession>): Promise<AgentSession> {
     const [, , manager, , activeTools, systemPrompt] = args;
@@ -566,6 +593,7 @@ export class AgentSession {
         this.requestOptions({
           ...options,
           sessionId: this.sessionId,
+          ...(this.responsesSession ? { responsesSession: this.responsesSession } : {}),
           streamDeadlineMs:
             options.streamDeadlineMs ?? (this.retryAttempt > 0 ? this.recoveryDeadline() : undefined),
         }),
@@ -797,6 +825,7 @@ export class AgentSession {
     await this.running;
   }
   dispose(): void {
+    this.responsesSession?.dispose();
     this.performance.dispose();
     this.disposed = true;
     this.compactController?.abort();
@@ -831,12 +860,19 @@ export class AgentSession {
   }
   async setModel(model: Model): Promise<void> {
     this.idleCheck();
+    const changed =
+      model.provider !== this.model.provider ||
+      model.id !== this.model.id ||
+      model.api !== this.model.api ||
+      model.baseUrl !== this.model.baseUrl ||
+      model.auth !== this.model.auth;
     if (model.provider !== this.model.provider || model.id !== this.model.id) {
       if (this.manager.appendModelChange(model.provider, model.id)) this.notifyLastEntry();
     }
     this.state.model = model;
     const thinkingLevel = clampThinkingLevel(model, this.thinkingLevel);
     if (thinkingLevel !== this.thinkingLevel) this.setThinkingLevel(thinkingLevel);
+    if (changed) this.prepareResponsesSession();
   }
   setThinkingLevel(thinkingLevel: ThinkingLevel): void {
     this.idleCheck();

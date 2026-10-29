@@ -26,6 +26,10 @@ function streamRequest(
   options: SimpleStreamOptions & { getApiKey?: () => Promise<string> },
 ) {
   const { getApiKey, ...requestOptions } = options;
+  if (model.api !== "openai-responses") {
+    delete requestOptions.responsesSession;
+    delete requestOptions.responsesWarmup;
+  }
   const adapter: StreamFunction<Model["api"], SimpleStreamOptions> | undefined =
     model.api === "anthropic-messages"
       ? (anthropic as StreamFunction<Model["api"], SimpleStreamOptions>)

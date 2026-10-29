@@ -40,6 +40,8 @@ ZPI 不内置 MCP、专用 REPL 或 Agent 浏览器控制工具。需要浏览�
 
 支持三种 API 格式：**OpenAI Chat Completions、OpenAI Responses、Anthropic Messages**。是否可用仍取决于服务端的协议和工具调用兼容性，不是任意模型都能无配置接入。
 
+OpenAI 官方订阅与 API 的任务对话优先使用 Responses WebSocket 长连接：准备会话时以 `generate:false` 预热，同一连接内发送新增输入并通过 `previous_response_id` 续接。连接继承系统代理，空闲五分钟后释放；连接失败会自动回退 HTTP。已有输出后断线沿用请求恢复流程，不在传输层静默重放。切换到国产模型仍保留完整本地历史；切回 GPT 后会重新建立连接并发送包含中间对话的完整上下文，再恢复增量续接。压缩或编辑历史、改变模型参数、刷新凭证和断线重连也会校验或重建续接状态，连接状态不写入会话文件。
+
 OpenAI（API）只需填写 API Key，固定使用官方 Responses 接口。初始模型与 ChatGPT 预置一致：GPT-6.1 Terra、GPT-6.1 Sol、GPT-6 Luna、GPT-6 Astra。两种接入的四个预置模型统一使用上述显示名称，上下文默认均为 500,000，可在模型配置中手动调整；这是应用默认值，不代表服务端上限。发现接口不会覆盖这些名称和上下文默认值，也不再导入 GPT-6 Sol 与 GPT-5.6 系列旧模型。升级时会清理已保存的这四个旧模型，将 OpenAI（API）恢复为 Responses，并修正旧的 272,000 / 1,050,000 默认值。保存时自动查询 `/models`，也可手动刷新；目录缺少的模型或发现失败时仍保留预置，账号可用性待验证。自定义 Chat Completions 直连 OpenAI 官方地址时，输出上限默认使用 `max_completion_tokens`；其他兼容服务保留 `max_tokens`，可在模型的「请求参数」中手动指定。
 
 - 自动初始化预置提供商，手动获取或刷新模型列表。

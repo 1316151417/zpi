@@ -3,6 +3,7 @@ export type {
   AnthropicOptions,
   AnthropicThinkingDisplay,
 } from "./api/anthropic-messages.ts";
+export type { ResponsesSessionOptions } from "./api/responses-session.ts";
 export type { ModelDiscoveryInput, ModelDiscoveryResult } from "./providers/discovery.ts";
 export { fetchProviderModels } from "./providers/discovery.ts";
 export type { DiscoveredModel, ProviderPresetId } from "./providers/registry.ts";

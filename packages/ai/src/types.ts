@@ -308,6 +308,10 @@ export interface StreamOptions {
   signal?: AbortSignal;
   sessionId?: string;
   apiKey?: string;
+  /** Optional conversation-owned Responses connection; dispose it with the conversation. */
+  responsesSession?: import("./api/responses-session.ts").ResponsesSession;
+  /** Prepare request state with generate:false; never performs model generation or HTTP fallback. */
+  responsesWarmup?: boolean;
   fetch?: typeof globalThis.fetch;
   headers?: Record<string, string | null>;
   temperature?: number;

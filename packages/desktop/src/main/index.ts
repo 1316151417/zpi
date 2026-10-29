@@ -15,6 +15,7 @@ import {
   powerMonitor,
   safeStorage,
   screen,
+  session,
   shell,
   systemPreferences,
 } from "electron";
@@ -56,6 +57,7 @@ import { QuickChatCapture } from "./quick-chat-capture.ts";
 import { QuickChatHost } from "./quick-chat-host.ts";
 import { QuickChatTiming } from "./quick-chat-timing.ts";
 import { installQuickChatIpc, QuickChatWindow } from "./quick-chat-window.ts";
+import { responsesProxyUrl } from "./responses-proxy.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
 import {
@@ -89,6 +91,8 @@ const openFile = defaultFileOpener(
 if (process.platform === "darwin") app.commandLine.appendSwitch("lang", "en-US");
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });
+const responsesProxy = async (url: string) =>
+  responsesProxyUrl(await session.defaultSession.resolveProxy(url));
 let ending = false;
 // 与渲染端 --color-window-bg / --color-tooltip-foreground 保持一致的窗口按钮配色。
 function titleBarOverlay(): Electron.TitleBarOverlayOptions {
@@ -230,6 +234,8 @@ async function launch(): Promise<void> {
     requestFetch,
     errors,
     testMode ? join(app.getPath("userData"), "worktree") : undefined,
+    undefined,
+    responsesProxy,
   );
   await host.init();
   const display = screen.getPrimaryDisplay().workAreaSize;
@@ -327,6 +333,7 @@ async function launch(): Promise<void> {
     requestFetch,
     undefined,
     errors,
+    responsesProxy,
   );
   const quickChatTiming =
     process.env.ZPI_QUICK_CHAT_TIMING === "1"

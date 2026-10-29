@@ -4,6 +4,7 @@ import type {
   Context,
   MediaBudgetStats,
   Model,
+  ResponsesSessionOptions,
   SimpleStreamOptions,
   TranscriptContext,
 } from "zpi-ai";
@@ -16,6 +17,7 @@ import {
   validateReasoningConfig,
   validateThinkingMap,
 } from "zpi-ai";
+import { supportsResponsesWebSocket } from "zpi-ai/api/responses-session";
 export interface ProviderChatModelConfig extends Omit<Model, "provider" | "api" | "baseUrl"> {
   type?: "chat";
   api?: Api;
@@ -41,6 +43,9 @@ export interface MediaProjectionContext {
 }
 export interface ModelRuntimeOptions {
   fetch?: typeof fetch;
+  /** Custom fetch implementations use HTTP unless the host explicitly enables WebSocket connections. */
+  responsesTransport?: "auto" | "http";
+  responsesProxy?: ResponsesSessionOptions["resolveProxy"];
   /** Optional local diagnostics; the SDK has no dependency on a logging backend. */
   onMediaProjection?: (stats: MediaBudgetStats, context: MediaProjectionContext) => void;
 }
@@ -49,12 +54,23 @@ export class ModelRuntime {
   private keys = new Map<string, string>();
   private requestFetch?: typeof fetch;
   private onMediaProjection?: ModelRuntimeOptions["onMediaProjection"];
+  private responsesTransport: "auto" | "http";
+  readonly responsesProxy?: ResponsesSessionOptions["resolveProxy"];
   constructor(requestFetch?: typeof fetch, options: ModelRuntimeOptions = {}) {
     this.requestFetch = requestFetch ?? options.fetch;
+    this.responsesTransport = options.responsesTransport ?? (this.requestFetch ? "http" : "auto");
+    this.responsesProxy = options.responsesProxy;
     this.onMediaProjection = options.onMediaProjection;
   }
   get fetch(): typeof fetch {
     return this.requestFetch ?? globalThis.fetch;
+  }
+  canUseResponsesSession(model: Model): boolean {
+    return (
+      this.responsesTransport === "auto" &&
+      supportsResponsesWebSocket(model) &&
+      !this.providers.get(model.provider)?.streamSimple
+    );
   }
   static async create(options: ModelRuntimeOptions = {}): Promise<ModelRuntime> {
     return new ModelRuntime(options.fetch, options);
