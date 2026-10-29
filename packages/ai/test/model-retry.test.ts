@@ -198,6 +198,61 @@ it.each(["openai-completions", "openai-responses", "anthropic-messages"] as cons
     ).result();
     expect(result.errorMessage).toContain("insufficient_quota");
     expect(isRetryableAssistantError(result)).toBe(false);
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   },
 );
+
+it("uses structured retry facts before display text and retains unknown-error fallback", () => {
+  for (const [error, retryable] of [
+    [Object.assign(new Error("ENETUNREACH"), { code: "ENETUNREACH" }), true],
+    [Object.assign(new Error("fetch failed"), { cause: { code: "CERT_HAS_EXPIRED" } }), false],
+    [
+      Object.assign(new Error("503 busy"), {
+        status: 503,
+        headers: new Headers({ "x-should-retry": "false" }),
+      }),
+      false,
+    ],
+    [Object.assign(new Error("try again"), { status: 400 }), false],
+    [new Error("net::ERR_NETWORK_CHANGED"), true],
+  ] as const) {
+    expect(isRetryableAssistantError({ ...failed(error.message), errorDetails: modelFailure(error) })).toBe(
+      retryable,
+    );
+  }
+});
+
+it("honors server backoff in summary retries and refuses retries beyond the recovery deadline", async () => {
+  const response = {
+    ...failed("429 busy"),
+    errorDetails: modelFailure(
+      Object.assign(new Error("busy"), { status: 429, headers: new Headers({ "retry-after": "120" }) }),
+    ),
+  };
+  const delays: number[] = [];
+  const produce = vi
+    .fn()
+    .mockResolvedValueOnce(response)
+    .mockResolvedValue(emptyAssistant(fakeModel("")));
+  await retryAssistantCall(produce, policy, undefined, {
+    onRetryScheduled: (_attempt, _max, delay) => {
+      delays.push(delay);
+    },
+    waitBeforeRetry: async () => false,
+  });
+  expect(delays).toEqual([120000]);
+  const bounded = vi.fn().mockResolvedValue(response);
+  await retryAssistantCall(bounded, { ...policy, maxElapsedMs: 60000 }, undefined);
+  expect(bounded).toHaveBeenCalledTimes(1);
+});
+
+it("caps empty summary recovery at one retry and rejects waits that would overflow timers", async () => {
+  const response = {
+    ...failed("empty response"),
+    errorDetails: { code: "EMPTY_MODEL_RESPONSE", retryable: true },
+  };
+  const produce = vi.fn().mockResolvedValue(response);
+  await retryAssistantCall(produce, { ...policy, baseDelayMs: 0 }, undefined);
+  expect(produce).toHaveBeenCalledTimes(2);
+  expect(retryDelayMs(policy, 1, 2147483648)).toBe(Infinity);
+});

@@ -55,7 +55,7 @@ it("Pi estimates usage plus trailing text and both image sources; compaction cut
       timestamp: 2,
     },
   ];
-  expect(estimateContextTokens(messages).tokens).toBe(11);
+  expect(estimateContextTokens(messages).tokens).toBe(2401);
   const reply = emptyAssistant(model);
   reply.stopReason = "stop";
   reply.usage.input = 800;
@@ -266,4 +266,27 @@ it("compaction keeps full history, pairs tools, invalidates usage and survives r
   expect(f.server.requests).toHaveLength(requestCount);
   await f.session.prompt("after compact");
   expect(f.session.getContextUsage().inputTokens).toBe(120);
+});
+
+it("finds a compaction boundary for image-heavy history and underestimated server usage", () => {
+  const model = { ...fakeModel(""), contextWindow: 128000 };
+  for (const images of [true, false]) {
+    const manager = SessionManager.inMemory();
+    manager.appendModelChange(model.provider, model.id);
+    manager.appendThinkingLevelChange("off");
+    for (let i = 0; i < 40; i++) {
+      manager.appendMessage({
+        role: "user",
+        content: images ? [{ type: "image", data: "local-fixture", mimeType: "image/png" }] : "short",
+        timestamp: i * 2,
+      });
+      const reply = emptyAssistant(model);
+      reply.content = [{ type: "text", text: "Reviewed" }];
+      reply.usage.input = reply.usage.totalTokens = (i + 1) * 3000;
+      manager.appendMessage(reply);
+    }
+    const preparation = prepareCompaction(manager.getEntries(), DEFAULT_COMPACTION_SETTINGS);
+    expect(preparation?.messagesToSummarize.length).toBeGreaterThan(0);
+    expect(preparation?.firstKeptEntryId).not.toBe(manager.getEntries()[2].id);
+  }
 });

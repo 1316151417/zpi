@@ -268,8 +268,8 @@ export class QuickChatHost {
       this.runtime.clearProviders();
       this.runtime.registerProvider(
         selection.provider,
-        modelRuntimeConfig(config, () =>
-          this.settings.getRequestApiKey(selection.provider, this.requestFetch),
+        modelRuntimeConfig(config, (rejectedApiKey) =>
+          this.settings.getRequestApiKey(selection.provider, this.requestFetch, rejectedApiKey),
         ),
       );
       const model = this.runtime.getModel(selection.provider, selection.modelId);

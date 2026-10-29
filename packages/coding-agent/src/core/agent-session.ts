@@ -19,6 +19,7 @@ import {
   isRecoverableLength,
   isRetryableAssistantError,
   ModelRequestRetryError,
+  retryAttemptLimit,
   retryDelayMs,
 } from "zpi-ai";
 import { ResponsesSession } from "zpi-ai/api/responses-session";
@@ -450,7 +451,9 @@ export class AgentSession {
     } else this.recoveryStartedAt ??= Date.now();
     this.dropFailedAssistant();
     this.retryAttempt++;
-    const delay = manualRetry ? 0 : retryDelayMs(settings, this.retryAttempt);
+    const delay = manualRetry
+      ? 0
+      : retryDelayMs(settings, this.retryAttempt, message.errorDetails?.retryAfterMs);
     this.notify({
       type: "model_retry",
       status: {
@@ -496,12 +499,14 @@ export class AgentSession {
     const settings = this.settingsManager.getRetrySettings();
     if (!this.abortRequested && message.errorDetails?.code === "MODEL_REQUEST_RETRY") return true;
     const deadline = this.recoveryDeadline(this.recoveryStartedAt ?? Date.now());
+    const delay = retryDelayMs(settings, this.retryAttempt + 1, message.errorDetails?.retryAfterMs);
     return (
       !this.abortRequested &&
       !(
         !settings.enabled ||
-        this.retryAttempt >= settings.maxRetries ||
-        (deadline !== undefined && Date.now() + retryDelayMs(settings, this.retryAttempt + 1) >= deadline) ||
+        this.retryAttempt >= retryAttemptLimit(message, settings.maxRetries) ||
+        !Number.isFinite(delay) ||
+        (deadline !== undefined && Date.now() + delay >= deadline) ||
         isContextOverflowMessage(message, this.model.contextWindow) ||
         !isRetryableAssistantError(message)
       )

@@ -28,7 +28,8 @@ export interface ProviderConfigInput {
   baseUrl?: string;
   api?: Api;
   apiKey?: string;
-  getApiKey?: () => Promise<string>;
+  /** A rejected key requests one credential recovery; other callers resolve normally. */
+  getApiKey?: (rejectedApiKey?: string) => Promise<string>;
   headers?: Record<string, string>;
   models?: ProviderChatModelConfig[];
   streamSimple?: (

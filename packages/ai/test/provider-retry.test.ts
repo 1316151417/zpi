@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { normalizeContext } from "zpi-ai";
 import { streamSimple } from "zpi-ai/api/openai-completions";
 import { chunk, done, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
+import { modelFailure } from "../src/utils/model-retry.ts";
 import { retryProviderRequest } from "../src/utils/provider-retry.ts";
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -87,6 +88,8 @@ it("uses server retry policy, bounded delay and interruptible backoff", async ()
   const limited = vi.fn().mockRejectedValue(error(429, { "retry-after": "61" }));
   await expect(retryProviderRequest(limited, { maxRetries: 2 })).rejects.toThrow("max: 60s");
   expect(limited).toHaveBeenCalledTimes(1);
+  const capped = await retryProviderRequest(limited, { maxRetries: 2 }).catch((failure: unknown) => failure);
+  expect(modelFailure(capped)).toMatchObject({ status: 429, retryable: true, retryAfterMs: 61000 });
   const forbidden = vi.fn().mockRejectedValue(error(503, { "x-should-retry": "false" }));
   await expect(retryProviderRequest(forbidden, { maxRetries: 2 })).rejects.toThrow("provider unavailable");
   expect(forbidden).toHaveBeenCalledTimes(1);

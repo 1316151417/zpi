@@ -38,6 +38,19 @@ const credential = (): ChatGPTCredential => ({
   email: "account@example.com",
   scopes: ["chatgpt.tokens.use.direct"],
 });
+async function signedIdentity(kid: string, subject = "user") {
+  const keys = await generateKeyPair("RS256", { extractable: true });
+  const jwk = { ...(await exportJWK(keys.publicKey)), kid, alg: "RS256" };
+  const jwt = await new SignJWT({})
+    .setProtectedHeader({ alg: "RS256", kid })
+    .setIssuer("https://auth.openai.com")
+    .setAudience("oaiapp_test")
+    .setSubject(subject)
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(keys.privateKey);
+  return { jwk, jwt };
+}
 function add(settings: SettingsStore) {
   settings.saveProvider({
     id: "chatgpt",
@@ -343,4 +356,114 @@ it("clears local tokens and reports when remote sign-out cannot be confirmed", a
   expect(calls).toBe(2);
   expect(result.warning).toContain("无法确认远端撤销");
   expect(result.settings.providers[0].chatgptAccount?.connected).toBe(false);
+});
+
+it("persists rotation before JWKS validation and resumes validation after reopening without rotating again", async () => {
+  const { dir, settings } = await store();
+  add(settings);
+  settings.saveChatGPTCredential("chatgpt", { ...credential(), expires: 0 });
+  const { jwk, jwt } = await signedIdentity("rotated");
+  let tokenCalls = 0;
+  let unavailable = true;
+  const fetcher = vi.fn<typeof fetch>(async (url) => {
+    if (String(url).endsWith("jwks.json"))
+      return unavailable ? new Response(null, { status: 503 }) : Response.json({ keys: [jwk] });
+    tokenCalls++;
+    return Response.json({
+      access_token: "rotated-access",
+      refresh_token: "rotated-refresh",
+      expires_in: 3600,
+      scope: "chatgpt.tokens.use.direct",
+      id_token: jwt,
+    });
+  });
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow();
+  const reopened = new SettingsStore(dir, codec);
+  cleanup.push(() => reopened.close());
+  expect(reopened.getChatGPTCredential("chatgpt")).toMatchObject({
+    refresh: "rotated-refresh",
+    identityPending: true,
+  });
+  await expect(reopened.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow();
+  unavailable = false;
+  expect(await reopened.getRequestApiKey("chatgpt", fetcher)).toBe("rotated-access");
+  expect(reopened.getChatGPTCredential("chatgpt")?.identityPending).toBeUndefined();
+  expect(tokenCalls).toBe(1);
+  const requests = fetcher.mock.calls.length;
+  await verifyChatGPTIdentity(jwt, "oaiapp_test", undefined, fetcher);
+  expect(fetcher).toHaveBeenCalledTimes(requests);
+});
+
+it("does not restore credentials after sign-out while rotated identity validation is pending", async () => {
+  const { settings } = await store();
+  add(settings);
+  const { jwk, jwt } = await signedIdentity("pending");
+  const validating = Promise.withResolvers<void>();
+  const jwks = Promise.withResolvers<Response>();
+  const fetcher = vi.fn<typeof fetch>(async (url) => {
+    if (String(url).endsWith("jwks.json")) {
+      validating.resolve();
+      return jwks.promise;
+    }
+    return Response.json({
+      access_token: "rotated-access",
+      refresh_token: "rotated-refresh",
+      expires_in: 3600,
+      scope: "chatgpt.tokens.use.direct",
+      id_token: jwt,
+    });
+  });
+  const refresh = settings.getRequestApiKey("chatgpt", fetcher, "private-access");
+  const assertion = expect(refresh).rejects.toThrow("登录状态已改变");
+  await validating.promise;
+  expect(settings.getChatGPTCredential("chatgpt")?.identityPending).toBe(true);
+  settings.disconnectChatGPT("chatgpt");
+  jwks.resolve(Response.json({ keys: [jwk] }));
+  await assertion;
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow("请先登录");
+});
+
+it("deduplicates forced refreshes of the rejected token and reuses a newer token", async () => {
+  const { settings } = await store();
+  add(settings);
+  const fetcher = vi.fn<typeof fetch>(async () =>
+    Response.json({
+      access_token: "recovered",
+      refresh_token: "rotated",
+      expires_in: 3600,
+      scope: "chatgpt.tokens.use.direct",
+    }),
+  );
+  expect(await settings.getRequestApiKey("chatgpt", fetcher)).toBe("private-access");
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(
+    await Promise.all([
+      settings.getRequestApiKey("chatgpt", fetcher, "private-access"),
+      settings.getRequestApiKey("chatgpt", fetcher, "private-access"),
+    ]),
+  ).toEqual(["recovered", "recovered"]);
+  expect(await settings.getRequestApiKey("chatgpt", fetcher, "private-access")).toBe("recovered");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("does not publish a rotated identity that belongs to another account", async () => {
+  const { settings } = await store();
+  add(settings);
+  settings.saveChatGPTCredential("chatgpt", { ...credential(), expires: 0 });
+  const { jwk, jwt } = await signedIdentity("other", "other-user");
+  const fetcher = vi.fn<typeof fetch>(async (url) =>
+    String(url).endsWith("jwks.json")
+      ? Response.json({ keys: [jwk] })
+      : Response.json({
+          access_token: "wrong-account",
+          refresh_token: "rotated",
+          expires_in: 3600,
+          scope: "chatgpt.tokens.use.direct",
+          id_token: jwt,
+        }),
+  );
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow("账号不匹配");
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow("账号不匹配");
+  settings.disconnectChatGPT("chatgpt");
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow("请先登录");
 });

@@ -214,6 +214,45 @@ it("opens a fresh socket and chain after credentials change", async () => {
   expect(f.requests[1].socket).not.toBe(f.requests[0].socket);
 });
 
+it.each([false, true])("only accepts a no-content, no-usage completion during warmup=%s", async (warmup) => {
+  const f = await fixture(({ socket }, count) => {
+    const event = completed(`resp_${count}`, count === 1 ? [] : undefined);
+    socket.send(JSON.stringify({ ...event, response: { ...event.response, usage: null } }));
+  });
+  const result = await f.run([user("hello")], { responsesWarmup: warmup });
+  expect(result.stopReason).toBe(warmup ? "stop" : "error");
+  if (!warmup) expect(result.errorDetails?.code).toBe("EMPTY_MODEL_RESPONSE");
+  expect((await f.run([user("hello")])).stopReason).toBe("stop");
+  expect(f.requests[1].body.previous_response_id).toBe(warmup ? "resp_1" : undefined);
+  expect(f.requests[1].body.input).toHaveLength(warmup ? 0 : 1);
+});
+
+it("refreshes a pre-output WebSocket 401 once without an HTTP fallback", async () => {
+  const f = await fixture(({ socket }, count) =>
+    socket.send(
+      JSON.stringify(
+        count === 1
+          ? {
+              type: "error",
+              status: 401,
+              error: { type: "authentication_error", code: "unauthorized", message: "Unauthorized" },
+            }
+          : completed("recovered"),
+      ),
+    ),
+  );
+  const getApiKey = vi.fn(async (rejected?: string) => (rejected ? "new-key" : "old-key"));
+  const result = await streamSimple(f.model, normalizeContext({ messages: [user("hello")] }), {
+    responsesSession: f.session,
+    getApiKey,
+  }).result();
+  expect(result.stopReason).toBe("stop");
+  expect(f.requests.map((request) => request.authorization)).toEqual(["Bearer old-key", "Bearer new-key"]);
+  expect(f.requests[1].socket).not.toBe(f.requests[0].socket);
+  expect(f.httpCalls()).toBe(0);
+  expect(getApiKey.mock.calls).toEqual([[], ["old-key"]]);
+});
+
 it.each([false, true])(
   "reconnects an evicted previous response with full input, server closes=%s",
   async (closes) => {
@@ -689,4 +728,63 @@ it("keeps a timed-out warmup from delaying the next request with another WebSock
   expect((await f.run([user("continue over HTTP")])).responseId).toBe("http");
   expect(f.requests).toHaveLength(1);
   expect(f.httpCalls()).toBe(1);
+});
+
+it("releases a stuck proxy warmup on cancellation so generation can fall back to HTTP", async () => {
+  const f = await fixture();
+  const proxy = vi.fn(() => new Promise<string | undefined>(() => {}));
+  const session = new ResponsesSession({ resolveProxy: proxy });
+  cleanups.push(() => session.dispose());
+  const warmup = await f.run([user("hello")], {
+    responsesSession: session,
+    responsesWarmup: true,
+    streamFirstResponseTimeoutMs: 20,
+  });
+  expect(warmup.stopReason).toBe("error");
+  const result = await f.run([user("hello")], {
+    responsesSession: session,
+    streamFirstResponseTimeoutMs: 2000,
+  });
+  expect(result.stopReason).toBe("stop");
+  expect(f.httpCalls()).toBe(1);
+  expect(proxy).toHaveBeenCalledTimes(1);
+});
+
+it("cancels queued requests without disconnecting or overtaking the active request", async () => {
+  const f = await fixture(({ socket }, count) => {
+    if (count > 1) socket.send(JSON.stringify(completed(`resp_${count}`)));
+  });
+  const first = f.run([user("first")]);
+  await vi.waitFor(() => expect(f.requests).toHaveLength(1));
+  const controller = new AbortController();
+  const waiting = f.run([user("cancel me")], { signal: controller.signal });
+  controller.abort();
+  expect((await waiting).stopReason).toBe("aborted");
+  const third = f.run([user("third")]);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(f.requests).toHaveLength(1);
+  f.requests[0].socket.send(JSON.stringify(completed("resp_1")));
+  expect((await first).stopReason).toBe("stop");
+  expect((await third).stopReason).toBe("stop");
+  expect(f.requests).toHaveLength(2);
+});
+
+it("disposes both an unresolved proxy lookup and its queued requests", async () => {
+  const f = await fixture();
+  const entered = Promise.withResolvers<void>();
+  const session = new ResponsesSession({
+    resolveProxy: () => {
+      entered.resolve();
+      return new Promise<string | undefined>(() => {});
+    },
+  });
+  const first = f.run([user("first")], { responsesSession: session });
+  await entered.promise;
+  const second = f.run([user("second")], { responsesSession: session });
+  session.dispose();
+  for (const result of await Promise.all([first, second])) {
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toContain("disposed");
+  }
+  expect(f.httpCalls()).toBe(0);
 });

@@ -346,6 +346,7 @@ export function findCutPoint(
   startIndex: number,
   endIndex: number,
   keepRecentTokens: number,
+  forceProgress = false,
 ): CutPointResult {
   const cutPoints = findValidCutPoints(entries, startIndex, endIndex);
 
@@ -384,6 +385,14 @@ export function findCutPoint(
       break;
     }
     cutIndex--;
+  }
+
+  if (forceProgress && cutPoints.length > 1 && cutIndex <= cutPoints[0]) {
+    // Server usage can exceed local estimates. Summarize a complete turn when
+    // possible; a single long turn still splits only at a valid message boundary.
+    cutIndex =
+      cutPoints.find((index) => index > cutPoints[0] && isTurnStartEntry(entries[index])) ??
+      cutPoints[cutPoints.length - 1];
   }
 
   // Determine if this is a split turn
@@ -767,7 +776,13 @@ export function prepareCompaction(
 
   const tokensBefore = estimateContextTokens(buildSessionContext(pathEntries).messages).tokens;
 
-  const cutPoint = findCutPoint(pathEntries, boundaryStart, boundaryEnd, settings.keepRecentTokens);
+  const cutPoint = findCutPoint(
+    pathEntries,
+    boundaryStart,
+    boundaryEnd,
+    settings.keepRecentTokens,
+    tokensBefore > settings.keepRecentTokens,
+  );
 
   // Get UUID of first kept entry
   const firstKeptEntry = pathEntries[cutPoint.firstKeptEntryIndex];

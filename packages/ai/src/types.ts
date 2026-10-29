@@ -250,7 +250,8 @@ export interface AssistantMessage {
   timestamp: number;
 }
 export interface ModelFailure {
-  retryable: boolean;
+  /** Undefined when structured facts cannot classify the failure. */
+  retryable?: boolean;
   code?: string;
   idleMs?: number;
   timeoutMs?: number;

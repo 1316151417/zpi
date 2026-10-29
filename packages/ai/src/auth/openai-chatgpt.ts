@@ -34,6 +34,8 @@ export interface ChatGPTCredential {
   subject: string;
   email?: string;
   idToken: string;
+  /** Rotated tokens are durable but cannot be used until this identity is verified. */
+  identityPending?: boolean;
   scopes: string[];
 }
 export function isChatGPTCredential(value: unknown): value is ChatGPTCredential {
@@ -48,6 +50,7 @@ export function isChatGPTCredential(value: unknown): value is ChatGPTCredential 
     Boolean(value.clientId && value.subject) &&
     Array.isArray(value.scopes) &&
     value.scopes.every((v) => typeof v === "string") &&
+    (value.identityPending === undefined || typeof value.identityPending === "boolean") &&
     (value.email === undefined || typeof value.email === "string")
   );
 }
@@ -106,13 +109,19 @@ async function tokenRequest(body: URLSearchParams, fetcher: typeof fetch, signal
     scopes,
   };
 }
+const identityKeys = new WeakMap<typeof fetch, ReturnType<typeof createRemoteJWKSet>>();
+
 export async function verifyChatGPTIdentity(
   idToken: string,
   clientId: string,
   nonce: string | undefined,
   fetcher: typeof fetch,
 ) {
-  const keys = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`), { [customFetch]: fetcher });
+  let keys = identityKeys.get(fetcher);
+  if (!keys) {
+    keys = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`), { [customFetch]: fetcher });
+    identityKeys.set(fetcher, keys);
+  }
   const { payload } = await jwtVerify(idToken, keys, {
     issuer,
     audience: clientId,
@@ -126,6 +135,7 @@ export async function verifyChatGPTIdentity(
 export async function refreshChatGPTCredential(
   credential: ChatGPTCredential,
   fetcher: typeof fetch = fetch,
+  saveRotation?: (credential: ChatGPTCredential) => void,
 ): Promise<ChatGPTCredential> {
   const result = await tokenRequest(
     new URLSearchParams({
@@ -136,24 +146,33 @@ export async function refreshChatGPTCredential(
     }),
     fetcher,
   );
-  let identity = { subject: credential.subject, ...(credential.email ? { email: credential.email } : {}) };
-  let idToken = credential.idToken;
-  if (typeof result.token.id_token === "string") {
-    identity = await verifyChatGPTIdentity(result.token.id_token, credential.clientId, undefined, fetcher);
-    if (identity.subject !== credential.subject)
-      throw new Error("provider: ChatGPT 续期账号不匹配，请重新登录");
-    idToken = result.token.id_token;
-  }
-  return {
+  const next: ChatGPTCredential = {
+    ...credential,
     access: result.access,
     refresh: result.refresh,
     expires: result.expires,
     scopes: result.scopes,
-    clientId: credential.clientId,
-    ...identity,
-    idToken,
+    ...(typeof result.token.id_token === "string"
+      ? { idToken: result.token.id_token, identityPending: true }
+      : {}),
   };
+  // Rotation may invalidate the old refresh token. Persist before any further network I/O.
+  saveRotation?.(next);
+  return verifyRefreshedChatGPTCredential(next, fetcher);
 }
+
+export async function verifyRefreshedChatGPTCredential(
+  credential: ChatGPTCredential,
+  fetcher: typeof fetch = fetch,
+): Promise<ChatGPTCredential> {
+  if (!credential.identityPending) return credential;
+  const identity = await verifyChatGPTIdentity(credential.idToken, credential.clientId, undefined, fetcher);
+  if (identity.subject !== credential.subject)
+    throw new Error("provider: ChatGPT 续期账号不匹配，请重新登录");
+  const { identityPending: _, ...verified } = credential;
+  return { ...verified, ...identity };
+}
+
 export async function revokeChatGPTCredential(
   credential: ChatGPTCredential,
   fetcher: typeof fetch = fetch,

@@ -1,11 +1,75 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { AssistantMessage, ModelRetryStatus, TranscriptContext } from "zpi-ai";
 import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } from "zpi-coding-agent";
-import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
+import {
+  createAgentSession,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+  StaticResourceLoader,
+} from "zpi-coding-agent";
+import { chunk, fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
+
+it.each(["recover", "budget", "cancel"])(
+  "honors server backoff beyond the provider cap during session %s",
+  async (mode) => {
+    let requests = 0;
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      ++requests === 1
+        ? Response.json({ error: { message: "busy" } }, { status: 429, headers: { "retry-after": "120" } })
+        : new Response(
+            `data: ${JSON.stringify(chunk({ content: "recovered" }))}\n\ndata: ${JSON.stringify(chunk({}, "stop"))}\n\ndata: [DONE]\n\n`,
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+    );
+    const runtime = await ModelRuntime.create({ fetch: fetcher });
+    runtime.registerProvider("fake", { baseUrl: "http://local/v1", apiKey: "key", models: [fakeConfig("")] });
+    const { session } = await createAgentSession({
+      modelRuntime: runtime,
+      sessionManager: SessionManager.inMemory(),
+      resourceLoader: new StaticResourceLoader(),
+      settingsManager: SettingsManager.inMemory({
+        retry: { maxElapsedMs: mode === "budget" ? 60000 : 600000 },
+        compaction: { enabled: false },
+      }),
+      noTools: "all",
+    });
+    const scheduled = Promise.withResolvers<void>();
+    const delays: number[] = [];
+    session.subscribe((event) => {
+      if (event.type === "model_retry" && event.status) {
+        delays.push(event.status.retryDelayMs);
+        scheduled.resolve();
+      }
+    });
+    vi.useFakeTimers();
+    try {
+      const running = session.prompt("answer");
+      if (mode === "budget") {
+        await running;
+        expect(delays).toEqual([]);
+      } else {
+        await scheduled.promise;
+        expect(delays).toEqual([120000]);
+        if (mode === "cancel") await session.abort();
+        else {
+          await vi.advanceTimersByTimeAsync(119999);
+          expect(fetcher).toHaveBeenCalledTimes(1);
+          await vi.advanceTimersByTimeAsync(1);
+        }
+        await running;
+      }
+      expect(fetcher).toHaveBeenCalledTimes(mode === "recover" ? 2 : 1);
+      expect(session.isIdle).toBe(true);
+    } finally {
+      session.dispose();
+      vi.useRealTimers();
+    }
+  },
+);
 
 it("pairs an unexecuted write with a synthetic failure during streaming recovery, as in ZCode", async () => {
   const cwd = await directory();

@@ -1,5 +1,6 @@
 // Adapted from Pi (commit c20cb09772bf4e2590a316cb54514cef76df4293) Copyright (c) 2025 Mario Zechner. MIT license
 import type { ModelRetryStatus } from "../types.ts";
+import { modelFailure } from "./model-retry.ts";
 
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
@@ -23,30 +24,16 @@ function isProviderError(error: unknown): error is ProviderError {
   );
 }
 
-/** Mirrors the pinned OpenAI/Anthropic SDK retry policy; review when either SDK is upgraded. */
-function isRetryableProviderError(error: ProviderError): boolean {
-  const shouldRetry = error.headers?.get("x-should-retry");
-  if (shouldRetry === "true") return true;
-  if (shouldRetry === "false") return false;
-
-  if (error.status === undefined) return true;
-  return (
-    error.status === 408 ||
-    error.status === 409 ||
-    error.status === 429 ||
-    (typeof error.status === "number" && error.status >= 500)
-  );
-}
-
 function validateServerRetryDelayMs(
   delayMs: number,
   maxRetryDelayMs: number | undefined,
-  providerErrorMessage: string,
+  error: ProviderError,
 ): number {
   const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
-  if (maxDelayMs > 0 && delayMs > maxDelayMs) {
+  if (delayMs > 2147483647 || (maxDelayMs > 0 && delayMs > maxDelayMs)) {
     throw new Error(
-      `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s). ${providerErrorMessage}`,
+      `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s). ${error.message}`,
+      { cause: error },
     );
   }
   return delayMs;
@@ -56,19 +43,9 @@ function getRetryDelayMs(
   error: ProviderError,
   retryIndex: number,
   maxRetryDelayMs: number | undefined,
+  retryAfterMs: number | undefined,
 ): number {
-  const retryAfterMs = error.headers?.get("retry-after-ms");
-  if (retryAfterMs) {
-    const value = Number.parseFloat(retryAfterMs);
-    if (Number.isFinite(value)) return validateServerRetryDelayMs(value, maxRetryDelayMs, error.message);
-  }
-
-  const retryAfter = error.headers?.get("retry-after");
-  if (retryAfter) {
-    const seconds = Number.parseFloat(retryAfter);
-    const delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
-    if (Number.isFinite(delayMs)) return validateServerRetryDelayMs(delayMs, maxRetryDelayMs, error.message);
-  }
+  if (retryAfterMs !== undefined) return validateServerRetryDelayMs(retryAfterMs, maxRetryDelayMs, error);
 
   const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
   return exponentialDelay * (1 - Math.random() * 0.25);
@@ -125,11 +102,18 @@ export async function retryProviderRequest<T>(
         return await request();
       } catch (error) {
         if (options.signal?.aborted) throw createAbortError();
-        if (retriesRemaining <= 0 || !isProviderError(error) || !isRetryableProviderError(error)) throw error;
+        if (retriesRemaining <= 0 || !isProviderError(error)) throw error;
+        const failure = modelFailure(error);
+        if (!(failure.retryable ?? error.status === undefined)) throw error;
 
         const retryIndex = maxRetries - retriesRemaining;
         retriesRemaining--;
-        const retryDelayMs = getRetryDelayMs(error, retryIndex, options.maxRetryDelayMs);
+        const retryDelayMs = getRetryDelayMs(
+          error,
+          retryIndex,
+          options.maxRetryDelayMs,
+          failure.retryAfterMs,
+        );
         retrying = true;
         options.onRetry?.({
           attempt: retryIndex + 1,

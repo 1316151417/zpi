@@ -1,7 +1,14 @@
 import { streamSimple as anthropic } from "./api/anthropic-messages.ts";
 import { streamSimple as completions } from "./api/openai-completions.ts";
 import { streamSimple as responses } from "./api/openai-responses.ts";
-import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "./types.ts";
+import type {
+  AssistantMessageEvent,
+  Model,
+  SimpleStreamOptions,
+  StreamFunction,
+  TranscriptContext,
+} from "./types.ts";
+import { abortable } from "./utils/abort.ts";
 import { createAssistantMessageEventStream } from "./utils/event-stream.ts";
 import { guardModelStream } from "./utils/guard-model-stream.ts";
 import { modelFailure } from "./utils/model-retry.ts";
@@ -11,7 +18,7 @@ import { emptyAssistant } from "./utils/transcript.ts";
 export function streamSimple(
   model: Model,
   context: TranscriptContext,
-  options: SimpleStreamOptions & { getApiKey?: () => Promise<string> } = {},
+  options: SimpleStreamOptions & { getApiKey?: (rejectedApiKey?: string) => Promise<string> } = {},
 ) {
   const { getApiKey, ...requestOptions } = options;
   return guardModelStream(
@@ -24,7 +31,7 @@ export function streamSimple(
 function streamRequest(
   model: Model,
   context: TranscriptContext,
-  options: SimpleStreamOptions & { getApiKey?: () => Promise<string> },
+  options: SimpleStreamOptions & { getApiKey?: (rejectedApiKey?: string) => Promise<string> },
 ) {
   const { getApiKey, ...requestOptions } = options;
   if (model.api !== "openai-responses") {
@@ -43,20 +50,43 @@ function streamRequest(
   if (!getApiKey) return adapter(model, context, requestOptions);
   const events = createAssistantMessageEventStream();
   void (async () => {
-    if (options.signal?.aborted) throw new Error("Request aborted");
-    let onAbort: (() => void) | undefined;
-    const abort = new Promise<never>((_resolve, reject) => {
-      onAbort = () => reject(new Error("Request aborted"));
-      options.signal?.addEventListener("abort", onAbort, { once: true });
-    });
-    let apiKey: string;
-    try {
-      apiKey = await Promise.race([getApiKey(), abort]);
-    } finally {
-      if (onAbort) options.signal?.removeEventListener("abort", onAbort);
+    options.signal?.throwIfAborted();
+    let apiKey = await abortable(getApiKey(), options.signal);
+    for (let attempt = 0; ; attempt++) {
+      options.signal?.throwIfAborted();
+      let start: Extract<AssistantMessageEvent, { type: "start" }> | undefined;
+      let progressed = false;
+      let retry = false;
+      for await (const event of adapter(model, context, { ...requestOptions, apiKey })) {
+        if (event.type === "start") {
+          start = event;
+          continue;
+        }
+        if (
+          event.type === "error" &&
+          attempt === 0 &&
+          !progressed &&
+          event.error.content.length === 0 &&
+          event.error.errorDetails?.status === 401 &&
+          !options.signal?.aborted
+        ) {
+          const next = await abortable(getApiKey(apiKey), options.signal);
+          options.signal?.throwIfAborted();
+          if (next !== apiKey) {
+            apiKey = next;
+            retry = true;
+            break;
+          }
+        }
+        if (start) {
+          events.push(start);
+          start = undefined;
+        }
+        progressed = true;
+        events.push(event);
+      }
+      if (!retry) return;
     }
-    if (options.signal?.aborted) throw new Error("Request aborted");
-    for await (const event of adapter(model, context, { ...requestOptions, apiKey })) events.push(event);
   })().catch((error: unknown) => {
     const output = emptyAssistant(model);
     output.stopReason = options.signal?.aborted ? "aborted" : "error";

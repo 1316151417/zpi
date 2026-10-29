@@ -69,6 +69,7 @@ const TRANSIENT_CODES = new Set([
   "UND_ERR_BODY_TIMEOUT",
   "MODEL_STREAM_IDLE_TIMEOUT",
   "MODEL_REQUEST_RETRY",
+  "EMPTY_MODEL_RESPONSE",
 ]);
 
 function record(value: unknown): Record<string, unknown> {
@@ -79,9 +80,13 @@ function record(value: unknown): Record<string, unknown> {
 export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure {
   const seen = new Set<unknown>();
   const records: Record<string, unknown>[] = [];
-  for (let current = error; current && !seen.has(current); current = record(current).cause) {
+  const pending = [error];
+  while (pending.length) {
+    const current = pending.shift();
+    if (!current || seen.has(current)) continue;
     seen.add(current);
     records.push(record(current));
+    pending.push(record(current).cause, record(current).error);
   }
   const status = records.map((r) => r.status ?? r.statusCode).find((v) => typeof v === "number") as
     | number
@@ -113,38 +118,46 @@ export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure
     );
   });
   const aborted = signal?.aborted || records.some((r) => r.name === "AbortError" || r.code === "ABORT_ERR");
-  const terminal = codes.some((code) => TERMINAL_CODES.has(code) || /CERT|TLS|SSL/iu.test(code));
+  const terminal =
+    codes.some((code) => TERMINAL_CODES.has(code) || /CERT|TLS|SSL/iu.test(code)) ||
+    records.some((r) => r.type === "InvalidInput" || r.isRetryable === false);
+  const transient =
+    codes.some((code) => TRANSIENT_CODES.has(code) || code.toUpperCase().includes("PROXY")) ||
+    status === 408 ||
+    status === 429 ||
+    (status !== undefined && status >= 500) ||
+    records.some(
+      (r) =>
+        r.isRetryable === true ||
+        r.name === "APIConnectionError" ||
+        r.name === "APIConnectionTimeoutError" ||
+        r.name === "TimeoutError" ||
+        r.name === "timeout_error" ||
+        (record(r.error).type === "api_error" &&
+          ["500 internal network error", "internal network error", "internal network failure"].includes(
+            String(record(r.error).message ?? r.message ?? "")
+              .trim()
+              .toLowerCase(),
+          )) ||
+        (typeof r.message === "string" && /^Stream ended without /u.test(r.message)),
+    ) ||
+    (status === 409 && shouldRetry !== "false") ||
+    shouldRetry === "true";
   const retryable =
-    !aborted &&
-    !terminal &&
-    (codes.some((code) => TRANSIENT_CODES.has(code) || code.toUpperCase().includes("PROXY")) ||
-      status === 408 ||
-      status === 429 ||
-      (status !== undefined && status >= 500) ||
-      records.some(
-        (r) =>
-          r.isRetryable === true ||
-          r.name === "APIConnectionError" ||
-          r.name === "APIConnectionTimeoutError" ||
-          r.name === "TimeoutError" ||
-          r.name === "timeout_error" ||
-          (record(r.error).type === "api_error" &&
-            ["500 internal network error", "internal network error", "internal network failure"].includes(
-              String(record(r.error).message ?? r.message ?? "")
-                .trim()
-                .toLowerCase(),
-            )) ||
-          (typeof r.message === "string" && /^Stream ended without /u.test(r.message)),
-      ) ||
-      (status === 409 && shouldRetry !== "false") ||
-      (status === undefined && shouldRetry === "true"));
+    aborted || terminal || shouldRetry === "false" || shouldRetry === "0"
+      ? false
+      : transient
+        ? true
+        : status !== undefined
+          ? false
+          : undefined;
   const stall = records.find((r) => r.code === "MODEL_STREAM_IDLE_TIMEOUT");
   const recoveryCode = codes.find(
     (code) => code === "MODEL_REQUEST_RETRY" || code === "MODEL_RECOVERY_DEADLINE",
   );
   return {
-    retryable,
-    ...(recoveryCode ? { code: recoveryCode } : {}),
+    ...(retryable !== undefined ? { retryable } : {}),
+    ...((recoveryCode ?? codes[0]) ? { code: recoveryCode ?? codes[0] } : {}),
     ...(stall
       ? {
           code: "MODEL_STREAM_IDLE_TIMEOUT",

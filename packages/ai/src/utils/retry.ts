@@ -120,13 +120,25 @@ export interface RetryPolicy {
 
 export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
 
+/** Keep failure-specific retry limits shared by session and summary recovery. */
+export function retryAttemptLimit(message: AssistantMessage, configuredLimit: number): number {
+  return message.errorDetails?.code === "EMPTY_MODEL_RESPONSE"
+    ? Math.min(1, configuredLimit)
+    : configuredLimit;
+}
+
 export function retryDelayMs(
   policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs">,
   attempt: number,
+  retryAfterMs?: number,
 ): number {
   const delay = policy.baseDelayMs * 2 ** Math.max(0, attempt - 1);
   const safeDelay = Number.isSafeInteger(delay) ? delay : Number.MAX_SAFE_INTEGER;
-  return Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS);
+  const local = Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS);
+  const server = retryAfterMs !== undefined && Number.isFinite(retryAfterMs) ? Math.max(0, retryAfterMs) : 0;
+  // Never let setTimeout overflow into an immediate retry.
+  const wait = Math.max(local, server);
+  return wait > 2147483647 ? Infinity : wait;
 }
 
 /** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */
@@ -222,13 +234,16 @@ export async function retryAssistantCall(
     }
     if (deadlineMs === undefined && recoveryLimit && recoveryLimit > 0)
       deadlineMs = Date.now() + recoveryLimit;
+    const delayMs =
+      manualRetry || !policy ? 0 : retryDelayMs(policy, attempt + 1, response.errorDetails?.retryAfterMs);
     // An explicit retry remains available when automatic retry is disabled or exhausted.
     if (
       !manualRetry &&
       (!policy ||
-        attempt >= maxAttempts ||
+        attempt >= retryAttemptLimit(response, maxAttempts) ||
         !isRetryableAssistantError(response) ||
-        (deadlineMs !== undefined && Date.now() + retryDelayMs(policy, attempt + 1) >= deadlineMs))
+        !Number.isFinite(delayMs) ||
+        (deadlineMs !== undefined && Date.now() + delayMs >= deadlineMs))
     ) {
       if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
       return response;
@@ -236,7 +251,6 @@ export async function retryAssistantCall(
 
     attempt++;
     lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
-    const delayMs = manualRetry || !policy ? 0 : retryDelayMs(policy, attempt);
     await callbacks?.onRetryScheduled?.(
       attempt,
       maxAttempts,
@@ -279,7 +293,8 @@ export function isRetryableAssistantError(message: AssistantMessage): boolean {
   if (message.stopReason !== "error" || !message.errorMessage) return false;
   if (message.errorDetails?.code === "MODEL_REQUEST_RETRY") return true;
   if (message.errorDetails?.code === "MODEL_RECOVERY_DEADLINE") return false;
+  if (message.errorDetails?.retryable === false) return false;
   const errorMessage = message.errorMessage;
   if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
-  return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
+  return message.errorDetails?.retryable ?? RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

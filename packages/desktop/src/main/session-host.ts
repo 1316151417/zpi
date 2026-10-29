@@ -3474,7 +3474,9 @@ export class SessionHost {
     runtime.clearProviders();
     runtime.registerProvider(
       providerId,
-      modelRuntimeConfig(config, () => this.settings.getRequestApiKey(providerId, this.requestFetch)),
+      modelRuntimeConfig(config, (rejectedApiKey) =>
+        this.settings.getRequestApiKey(providerId, this.requestFetch, rejectedApiKey),
+      ),
     );
   }
   private settle(id: string, run: ActiveRun, error?: unknown): Promise<void> {

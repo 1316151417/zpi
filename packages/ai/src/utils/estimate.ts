@@ -8,7 +8,6 @@ import type {
   TranscriptContext,
   Usage,
 } from "../types.ts";
-import { mediaBlockToText } from "./media-policy.ts";
 import { getSystemMessageText } from "./text.ts";
 
 export interface ContextUsageEstimate {
@@ -23,6 +22,8 @@ export interface ContextUsageEstimate {
 }
 
 const CHARS_PER_TOKEN = 4;
+// Pi's conservative image allowance; attachment labels are not vision token costs.
+const ESTIMATED_IMAGE_CHARS = 4800;
 
 export function calculateContextTokens(usage: Usage): number {
   return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
@@ -40,8 +41,7 @@ function estimateTextAndImageContentChars(content: string | Array<TextContent | 
   if (typeof content === "string") return content.length;
 
   let chars = 0;
-  for (const block of content)
-    chars += block.type === "text" ? block.text.length : mediaBlockToText(block).length;
+  for (const block of content) chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
   return chars;
 }
 

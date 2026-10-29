@@ -512,6 +512,16 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       throw invalidToolInputs.values().next().value;
     for (const key of blocks.keys()) close(key);
     output.content = output.content.filter((block) => block.type !== "toolCall" || complete.has(block));
+    if (
+      !options.responsesWarmup &&
+      output.stopReason === "stop" &&
+      output.content.length === 0 &&
+      output.usage.totalTokens === 0
+    ) {
+      throw Object.assign(new Error("Model returned an empty response without text, tool calls or usage."), {
+        code: "EMPTY_MODEL_RESPONSE",
+      });
+    }
     calculateCost(model, output.usage);
     events.push({
       type: "done",

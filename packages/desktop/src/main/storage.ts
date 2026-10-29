@@ -23,6 +23,7 @@ import {
   type ChatGPTCredential,
   isChatGPTCredential,
   refreshChatGPTCredential,
+  verifyRefreshedChatGPTCredential,
 } from "zpi-ai/auth/openai-chatgpt";
 import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
 import { isCodePreviewSettings } from "zpi-ui/code-preview";
@@ -514,8 +515,9 @@ export class SettingsStore {
   disconnectChatGPT(id: string): PublicSettings {
     const credential = this.getChatGPTCredential(id);
     if (!credential) return this.get();
+    const { identityPending: _identityPending, ...disconnected } = credential;
     return this.saveChatGPTCredential(id, {
-      ...credential,
+      ...disconnected,
       access: "",
       refresh: "",
       idToken: "",
@@ -523,7 +525,11 @@ export class SettingsStore {
       scopes: [],
     });
   }
-  async getRequestApiKey(id: string, fetcher: typeof fetch = fetch): Promise<string> {
+  async getRequestApiKey(
+    id: string,
+    fetcher: typeof fetch = fetch,
+    rejectedApiKey?: string,
+  ): Promise<string> {
     const provider = this.data.providers.find((p) => p.id === id);
     if (!provider) throw new Error("configuration: 所选提供商已删除");
     if (!usesChatGPTAuth(provider.preset)) return this.getProviderCredentials(id).apiKey;
@@ -531,13 +537,25 @@ export class SettingsStore {
     if (pending) return pending;
     const credential = this.getChatGPTCredential(id);
     if (!credential?.access || !credential.refresh) throw new Error("configuration: 请先登录 ChatGPT");
-    if (credential.expires > Date.now() + 3 * 60 * 1000) return credential.access;
+    if (
+      !credential.identityPending &&
+      credential.access !== rejectedApiKey &&
+      credential.expires > Date.now() + 3 * 60 * 1000
+    )
+      return credential.access;
     const refresh = (async () => {
-      const next = await refreshChatGPTCredential(credential, fetcher);
-      const current = this.getChatGPTCredential(id);
-      if (current?.refresh !== credential.refresh || current.access !== credential.access)
-        throw new Error("configuration: ChatGPT 登录状态已改变，请重试");
-      this.saveChatGPTCredential(id, next);
+      let expected = credential;
+      const save = (next: ChatGPTCredential) => {
+        const current = this.getChatGPTCredential(id);
+        if (current?.refresh !== expected.refresh || current.access !== expected.access)
+          throw new Error("configuration: ChatGPT 登录状态已改变，请重试");
+        if (next !== expected) this.saveChatGPTCredential(id, next);
+        expected = next;
+      };
+      const next = credential.identityPending
+        ? await verifyRefreshedChatGPTCredential(credential, fetcher)
+        : await refreshChatGPTCredential(credential, fetcher, save);
+      save(next);
       return next.access;
     })();
     this.refreshes.set(id, refresh);

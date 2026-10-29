@@ -7,6 +7,7 @@ import { ResponsesWS } from "openai/resources/responses/ws";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import { WebSocket } from "ws";
 import type { Model, StreamOptions } from "../types.ts";
+import { abortable } from "../utils/abort.ts";
 import { isJsonObject } from "../utils/transcript.ts";
 
 type Payload = Record<string, unknown> & { input: unknown[] };
@@ -63,7 +64,7 @@ export class ResponsesSession {
   private idle?: ReturnType<typeof setTimeout>;
   private openedAt = 0;
   private httpUntil = 0;
-  private disposed = false;
+  private lifecycle = new AbortController();
   private tail: Promise<void> = Promise.resolve();
   private options: ResponsesSessionOptions;
   private stats: ResponsesSessionStats = {
@@ -88,6 +89,10 @@ export class ResponsesSession {
     return { ...this.stats };
   }
 
+  private get disposed(): boolean {
+    return this.lifecycle.signal.aborted;
+  }
+
   private report(diagnostic: Omit<ResponsesSessionDiagnostic, "stats">): void {
     try {
       this.options.onDiagnostic?.({ ...diagnostic, stats: this.diagnostics });
@@ -97,7 +102,7 @@ export class ResponsesSession {
   }
 
   dispose(): void {
-    this.disposed = true;
+    this.lifecycle.abort(new Error("Responses session disposed"));
     this.disconnect();
   }
 
@@ -123,7 +128,14 @@ export class ResponsesSession {
       release = resolve;
     });
     // Serialize warmup and generation, including callers that accidentally share a session concurrently.
-    await before;
+    const signal = AbortSignal.any([this.lifecycle.signal, ...(options.signal ? [options.signal] : [])]);
+    try {
+      await abortable(before, signal);
+    } catch (error) {
+      // A cancelled waiter must not let later requests overtake the current owner.
+      void before.then(release);
+      throw error;
+    }
     let completed = false;
     let progressed = false;
     let usingSocket = false;
@@ -205,7 +217,10 @@ export class ResponsesSession {
           if (!this.socket) {
             this.previous = undefined;
             parent = undefined;
-            const proxy = await this.options.resolveProxy?.(model.baseUrl);
+            const proxy = await abortable(
+              Promise.resolve(this.options.resolveProxy?.(model.baseUrl)),
+              AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+            );
             options.signal?.throwIfAborted();
             if (this.disposed) throw new Error("Responses session disposed");
             const agent = proxy
@@ -306,11 +321,20 @@ export class ResponsesSession {
             const event = record.message as ResponseStreamEvent;
             if (event.type === "response.completed") {
               try {
-                this.previous = {
-                  id: event.response.id,
-                  settings: structuredClone(settings),
-                  input: structuredClone([...payload.input, ...outputInput(event.response.output, model)]),
-                };
+                const hasResponse =
+                  options.responsesWarmup ||
+                  event.response.output.length > 0 ||
+                  (event.response.usage?.total_tokens ?? 0) > 0;
+                this.previous = hasResponse
+                  ? {
+                      id: event.response.id,
+                      settings: structuredClone(settings),
+                      input: structuredClone([
+                        ...payload.input,
+                        ...outputInput(event.response.output, model),
+                      ]),
+                    }
+                  : undefined;
               } catch {
                 // Malformed tool arguments are diagnosed by the adapter; never replay a completed generation.
                 this.previous = undefined;

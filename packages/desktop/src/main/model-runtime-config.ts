@@ -3,7 +3,7 @@ import { resolveModel, type SettingsStore } from "./storage.ts";
 
 export function modelRuntimeConfig(
   config: ReturnType<SettingsStore["snapshot"]>,
-  getApiKey: () => Promise<string>,
+  getApiKey: NonNullable<ProviderConfigInput["getApiKey"]>,
 ): ProviderConfigInput {
   return {
     baseUrl: config.baseUrl,
