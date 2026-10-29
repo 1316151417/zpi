@@ -258,6 +258,8 @@ export interface ModelFailure {
   retryAfterMs?: number;
 }
 export interface ModelRetryStatus {
+  /** Defaults to automatic recovery when omitted by a provider. */
+  origin?: "manual" | "auto";
   attempt: number;
   maxRetries: number;
   retryDelayMs: number;

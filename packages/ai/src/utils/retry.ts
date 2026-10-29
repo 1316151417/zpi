@@ -1,6 +1,6 @@
 // Adapted from Pi cd34e17ff039502f3664d8363b3c0a23f93a2ca3.
 // Copyright (c) 2025 Mario Zechner. MIT: THIRD_PARTY_NOTICES.md.
-import type { AssistantMessage } from "../types.ts";
+import type { AssistantMessage, ModelRetryStatus } from "../types.ts";
 
 function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
   return new RegExp(patterns.join("|"), "i");
@@ -137,6 +137,7 @@ export interface RetryCallbacks {
     maxAttempts: number,
     delayMs: number,
     errorMessage: string,
+    origin?: ModelRetryStatus["origin"],
   ) => void | Promise<void>;
   /** Emitted after the backoff sleep, immediately before the retried call starts. */
   onRetryAttemptStart?: () => void | Promise<void>;
@@ -236,7 +237,13 @@ export async function retryAssistantCall(
     attempt++;
     lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
     const delayMs = manualRetry || !policy ? 0 : retryDelayMs(policy, attempt);
-    await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage);
+    await callbacks?.onRetryScheduled?.(
+      attempt,
+      maxAttempts,
+      delayMs,
+      lastRetry.errorMessage,
+      manualRetry ? "manual" : "auto",
+    );
 
     // Normalize aborts during retry backoff to the same AssistantMessage shape as
     // provider stream aborts, so callers do not need to care when cancellation happened.

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import type { ModelWaitStatus } from "zpi-ai";
+import type { ModelRetryStatus, ModelWaitStatus } from "zpi-ai";
 import { userErrorMessage } from "../user-error.ts";
 
 /** A single local clock; waiting does not send periodic IPC or persist timer ticks. */
 export function ModelWaitNotice({
   wait,
+  retryStatus,
   onRetry,
 }: {
   wait?: ModelWaitStatus | null;
+  retryStatus?: ModelRetryStatus | null;
   onRetry?: () => Promise<unknown>;
 }) {
   const [now, setNow] = useState(Date.now);
@@ -16,7 +18,9 @@ export function ModelWaitNotice({
   const retryPending = useRef(false);
   const revision = useRef(0);
   const phase = wait?.phase;
-  const startedAt = wait?.startedAt;
+  const startedAt = retryStatus ? undefined : wait?.startedAt;
+  const origin = retryStatus?.origin;
+  const attempt = retryStatus?.attempt;
   useEffect(() => {
     revision.current++;
     retryPending.current = false;
@@ -29,7 +33,7 @@ export function ModelWaitNotice({
       retryPending.current = false;
       clearInterval(timer);
     };
-  }, [phase, startedAt]);
+  }, [phase, startedAt, origin, attempt]);
   const retry = () => {
     if (!onRetry || retryPending.current) return;
     retryPending.current = true;
@@ -48,13 +52,31 @@ export function ModelWaitNotice({
       });
   };
   const seconds = Math.max(0, Math.floor((now - (startedAt ?? now)) / 1000));
-  const status = wait ? (phase === "first_response" ? "等待模型响应" : "等待新输出") : "正在等待重新连接";
+  const waitingLabel = phase === "first_response" ? "等待模型响应" : "等待新输出";
+  const status =
+    pending || retryStatus?.origin === "manual"
+      ? "正在重新请求"
+      : retryStatus
+        ? "重新连接中"
+        : wait
+          ? waitingLabel
+          : "正在等待重新连接";
+  const message =
+    pending || retryStatus?.origin === "manual"
+      ? `${status}…`
+      : retryStatus
+        ? `${status}… ${retryStatus.attempt}/${retryStatus.maxRetries}`
+        : `${status} · ${seconds} 秒`;
   const guidance = onRetry ? "可以继续等待，或立即重试。" : "可以继续等待。";
   return (
     <div className="model-wait">
-      {(wait || error) && (
-        <span className={`model-wait-message${error ? " model-wait-error" : ""}`}>
-          {error || `${status} · ${seconds} 秒`}
+      {(wait || retryStatus || pending || error) && (
+        <span
+          className={`model-wait-message${error ? " model-wait-error" : ""}`}
+          data-testid={retryStatus ? "api-retry-status" : undefined}
+          title={retryStatus?.errorStatus == null ? undefined : `HTTP ${retryStatus.errorStatus}`}
+        >
+          {error || message}
         </span>
       )}
       {onRetry && (
@@ -69,7 +91,7 @@ export function ModelWaitNotice({
         </button>
       )}
       <span className="sr-only" role={error ? "alert" : "status"}>
-        {error || (pending ? "正在重试模型请求。" : `${status}。${guidance}`)}
+        {error || `${status}。${guidance}`}
       </span>
     </div>
   );

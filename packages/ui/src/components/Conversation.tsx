@@ -697,16 +697,6 @@ export const RunGroup = memo(function RunGroup({
                 <Loader className="chat-loading-spinner" size={16} aria-hidden="true" />
                 {run.preparation}
               </span>
-            ) : run.apiRetry && run.apiRetry.attempt > 0 ? (
-              <span
-                className="api-retry-status"
-                title={`重新连接中... ${run.apiRetry.attempt}/${run.apiRetry.maxRetries}${run.apiRetry.errorStatus == null ? "" : ` · HTTP ${run.apiRetry.errorStatus}`}`}
-                data-testid="api-retry-status"
-              >
-                <span className="thinking-label-streaming api-retry-label">
-                  重新连接中... {run.apiRetry.attempt}/{run.apiRetry.maxRetries}
-                </span>
-              </span>
             ) : (
               <div
                 className="chat-loading-icon"
@@ -720,6 +710,7 @@ export const RunGroup = memo(function RunGroup({
             {modelWaiting && (
               <ModelWaitNotice
                 wait={run.modelWait}
+                retryStatus={run.apiRetry}
                 onRetry={onRetryModel ? () => onRetryModel(run.runId) : undefined}
               />
             )}

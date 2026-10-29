@@ -1,6 +1,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import type { ModelRetryStatus } from "zpi-ai";
 import { InputNotice } from "../src/components/InputNotice.tsx";
 import { ModelWaitNotice } from "../src/components/ModelWaitNotice.tsx";
 import { Notice } from "../src/components/Notice.tsx";
@@ -203,7 +204,8 @@ test("model retry blocks repeated clicks and retains failures across equal waiti
   });
   expect(retry).toHaveBeenCalledOnce();
   expect(button?.disabled).toBe(true);
-  expect(container.querySelector('[role="status"]')?.textContent).toBe("正在重试模型请求。");
+  expect(container.querySelector(".model-wait-message")?.textContent).toBe("正在重新请求…");
+  expect(container.querySelector('[role="status"]')?.textContent).toContain("正在重新请求。");
   await act(async () => reject(new Error("重试连接失败")));
   expect(button?.disabled).toBe(false);
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("重试连接失败");
@@ -257,4 +259,31 @@ test("reconnect notices do not start a clock and omit retry guidance without a r
   expect(container.querySelector('[role="status"]')?.textContent).toBe("正在等待重新连接。可以继续等待。");
   expect(container.querySelector("button")).toBeNull();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test("uses one message for manual retries, automatic recovery and subsequent quiet output", async () => {
+  vi.setSystemTime(100_000);
+  const retry = vi.fn(async () => true);
+  const wait = { phase: "first_response" as const, startedAt: 80_000 };
+  const status: ModelRetryStatus = { attempt: 1, maxRetries: 10, retryDelayMs: 0, errorStatus: null };
+  const render = (retryStatus?: ModelRetryStatus) =>
+    act(async () => root.render(createElement(ModelWaitNotice, { wait, retryStatus, onRetry: retry })));
+  await render();
+  const message = container.querySelector(".model-wait-message");
+  const button = container.querySelector(".model-wait-retry");
+  await render({ ...status, origin: "manual" });
+  expect(container.querySelector(".model-wait-message")).toBe(message);
+  expect(message?.textContent).toBe("正在重新请求…");
+  expect(container.textContent).not.toContain("1/10");
+  expect(vi.getTimerCount()).toBe(0);
+  await render({ ...status, attempt: 2, errorStatus: 503 });
+  expect(container.querySelector(".model-wait-message")).toBe(message);
+  expect(message?.textContent).toBe("重新连接中… 2/10");
+  expect(message?.getAttribute("title")).toBe("HTTP 503");
+  expect(container.querySelector(".model-wait-retry")).toBe(button);
+  expect(vi.getTimerCount()).toBe(0);
+  await render();
+  expect(message?.textContent).toBe("等待模型响应 · 20 秒");
+  expect(message?.hasAttribute("title")).toBe(false);
+  expect(vi.getTimerCount()).toBe(1);
 });

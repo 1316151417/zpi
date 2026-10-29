@@ -47,6 +47,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     const submit = async (text: string) => {
       await page.getByLabel("消息", { exact: true }).fill(text);
       await page.getByLabel("发送", { exact: true }).click();
@@ -56,14 +57,16 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     const run = () => page.getByTestId("run").last();
     await expect(run().locator(".chat-loading-spinner")).toBeVisible();
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中… 1/10");
     await expect(run()).toHaveAttribute("data-status", "running");
     await expect(run().locator(".notice-error")).toHaveCount(0);
     await expect(run().getByRole("button", { name: "立即重试", exact: true })).toBeVisible();
     await expect(page.getByTestId("api-retry-status")).toHaveAttribute("title", /HTTP 429/);
-    await expect(page.getByTestId("api-retry-status")).toHaveCSS("height", "28px");
-    await expect(page.locator(".api-retry-label")).toHaveCSS("animation-duration", "4s");
-    await expect(page.locator(".api-retry-label")).toHaveCSS("font-weight", "500");
+    await expect(page.getByTestId("api-retry-status")).toHaveClass("model-wait-message");
+    await expect(page.getByTestId("api-retry-status")).toHaveCSS("font-size", "12px");
+    await expect(page.getByTestId("api-retry-status")).toHaveCSS("font-weight", "400");
+    await expect(page.getByTestId("api-retry-status")).toHaveCSS("animation-name", "none");
+    await expect(run().locator(".chat-loading-spinner")).toBeVisible();
     await page.screenshot({ path: "test-results/model-retry-light.png" });
     await page.getByRole("button", { name: "设置", exact: true }).click();
     const settings = page.getByRole("region", { name: "设置", exact: true });
@@ -74,7 +77,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.screenshot({ path: "test-results/model-retry-dark.png" });
     await page.reload();
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中… 1/10");
     await run().getByRole("button", { name: "立即重试", exact: true }).click();
     await expect(run().locator(".answer")).toHaveText("recovered answer", { timeout: 15_000 });
     await expect(run()).toHaveAttribute("data-status", "running");
@@ -91,7 +94,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await expect(run().locator(".answer")).toHaveText("recovered stream");
     await expect(run()).not.toContainText("discarded partial");
     await submit("stop");
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中… 1/10");
     await page.getByLabel("停止", { exact: true }).click();
     await expect(run()).toHaveAttribute("data-status", "aborted");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
@@ -102,6 +105,7 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     expect(counts.get("quota")).toBe(3);
     await writeFile(join(project, ".zpi/settings.json"), JSON.stringify({ retry: { baseDelayMs: 0 } }));
     await page.getByLabel("新建任务", { exact: true }).first().click();
+    await expect(page.locator(".draft-composer-header")).toBeVisible();
     await submit("exhaust");
     await expect(run()).toHaveAttribute("data-status", "error");
     expect(counts.get("exhaust")).toBe(33);
@@ -151,17 +155,18 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     const submit = async (text: string) => {
       await page.getByLabel("消息", { exact: true }).fill(text);
       await page.getByLabel("发送", { exact: true }).click();
     };
     await submit("stall");
     const run = () => page.getByTestId("run").last();
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中… 1/10");
     await expect(run().locator(".notice-error")).toHaveCount(0);
     await expect.poll(() => closed).toContain("stall");
     await page.reload();
-    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中... 1/10");
+    await expect(page.getByTestId("api-retry-status")).toHaveText("重新连接中… 1/10");
     await expect(run()).toHaveAttribute("data-status", "completed", { timeout: 10000 });
     await expect(run().locator(".answer")).toHaveText("recovered after idle timeout");
     await expect(page.getByTestId("api-retry-status")).toHaveCount(0);
@@ -194,11 +199,14 @@ test("shows a quiet first request and retries it immediately within the same tur
   );
   let requests = 0;
   let closed = false;
+  const finishRetry = Promise.withResolvers<void>();
   const server = await fakeServer((_body, response) => {
     requests++;
     if (requests > 1) {
-      send(response, chunk({ content: "recovered immediately" }));
-      done(response);
+      void finishRetry.promise.then(() => {
+        send(response, chunk({ content: "recovered immediately" }));
+        done(response);
+      });
       return;
     }
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -214,11 +222,14 @@ test("shows a quiet first request and retries it immediately within the same tur
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     await page.getByLabel("消息", { exact: true }).fill("retry the waiting request");
     await page.getByLabel("发送", { exact: true }).click();
     const run = page.getByTestId("run");
     await expect(run).toContainText("等待模型响应", { timeout: 20000 });
     await expect(run.locator(".model-wait-message")).toHaveText(/等待模型响应 · \d+ 秒/);
+    await expect(run.locator(".model-wait-message")).toHaveCSS("font-size", "12px");
+    await expect(run.locator(".model-wait-message")).toHaveCSS("font-weight", "400");
     const waiting = run.locator(".model-wait-row");
     const retry = waiting.getByRole("button", { name: "立即重试", exact: true });
     await expect(retry).toHaveText("重试");
@@ -246,9 +257,26 @@ test("shows a quiet first request and retries it immediately within the same tur
     });
     await run.screenshot({ path: "test-results/model-wait-dark.png" });
     expect(requests).toBe(1);
+    const waitStyle = await run.locator(".model-wait-message").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { color: style.color, fontSize: style.fontSize, lineHeight: style.lineHeight };
+    });
     await page.reload();
     await expect(run.getByRole("button", { name: "立即重试", exact: true })).toBeVisible();
     await run.getByRole("button", { name: "立即重试", exact: true }).click();
+    await expect(run.locator(".model-wait-message")).toHaveText("正在重新请求…");
+    await expect.poll(() => requests).toBe(2);
+    await page.reload();
+    await expect(run.locator(".model-wait-message")).toHaveText("正在重新请求…");
+    await expect(run).not.toContainText("1/10");
+    expect(
+      await run.locator(".model-wait-message").evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { color: style.color, fontSize: style.fontSize, lineHeight: style.lineHeight };
+      }),
+    ).toEqual(waitStyle);
+    await run.screenshot({ path: "test-results/model-manual-retry-dark.png" });
+    finishRetry.resolve();
     await expect(run).toHaveAttribute("data-status", "completed", { timeout: 5000 });
     await expect(run.locator(".answer")).toHaveText("recovered immediately");
     await expect(run).toHaveCount(1);
@@ -256,6 +284,7 @@ test("shows a quiet first request and retries it immediately within the same tur
     expect(requests).toBe(2);
     await expect.poll(() => closed).toBe(true);
   } finally {
+    finishRetry.resolve();
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
       () => server.close(),

@@ -403,6 +403,7 @@ export class AgentSession {
     this.notify({
       type: "model_retry",
       status: {
+        origin: manualRetry ? "manual" : "auto",
         attempt: this.retryAttempt,
         maxRetries: settings.maxRetries,
         retryDelayMs: delay,
@@ -462,7 +463,18 @@ export class AgentSession {
   /** Only the active model request or retry backoff can be retried; tools keep their lifecycle. */
   retryModelRequest(): boolean {
     if (this.abortRequested || this.disposed || !this.active) return false;
-    return this.retryCurrentRequest?.() ?? false;
+    if (!this.retryCurrentRequest?.()) return false;
+    this.notify({
+      type: "model_retry",
+      status: {
+        origin: "manual",
+        attempt: 1,
+        maxRetries: this.settingsManager.getRetrySettings().maxRetries,
+        retryDelayMs: 0,
+        errorStatus: null,
+      },
+    });
+    return true;
   }
   private requestOptions(options: SimpleStreamOptions = {}): SimpleStreamOptions {
     const provider = this.settingsManager.getProviderRetrySettings();
@@ -516,10 +528,10 @@ export class AgentSession {
       (model, context, options) => this.measuredStream(model, context, this.requestOptions(options)),
       this.settingsManager.getRetrySettings(),
       {
-        onRetryScheduled: (attempt, maxRetries, retryDelayMs) => {
+        onRetryScheduled: (attempt, maxRetries, retryDelayMs, _errorMessage, origin) => {
           this.notify({
             type: "model_retry",
-            status: { attempt, maxRetries, retryDelayMs, errorStatus: null },
+            status: { origin, attempt, maxRetries, retryDelayMs, errorStatus: null },
           });
         },
         onRetryFinished: () => this.notify({ type: "model_retry", status: null }),
