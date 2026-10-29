@@ -1,6 +1,6 @@
 // Adapted from ZCode lib/workDuration.ts, ai-elements/reasoning.tsx and
 // v4/conversationTurnWorkSegments.ts (Apache-2.0).
-// See THIRD_PARTY_NOTICES.md for provenance.
+// See licenses/third-party-notices.txt for provenance.
 import type { RunView } from "../types.ts";
 
 export function runPresentation(run: RunView) {

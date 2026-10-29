@@ -1,4 +1,4 @@
-// Adapted from ZCode workspace-file-tree; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode workspace-file-tree; see licenses/third-party-notices.txt.
 const WORKSPACE_FILE_TREE_ROW_HEIGHT_PX = 28;
 const WORKSPACE_FILE_TREE_ROW_GAP_PX = 0;
 export const WORKSPACE_FILE_TREE_VIRTUAL_ROW_HEIGHT_PX =

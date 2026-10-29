@@ -1,5 +1,5 @@
 // Adapted from Pi c20cb09772bf4e2590a316cb54514cef76df4293.
-// Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
+// Copyright (c) 2025 Mario Zechner. MIT license: licenses/third-party-notices.txt.
 import type { ResizedImage } from "./image-resize-core.ts";
 
 export type { ImageResizeOptions, ResizedImage } from "./image-resize-core.ts";

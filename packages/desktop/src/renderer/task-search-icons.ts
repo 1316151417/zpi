@@ -1,5 +1,5 @@
 // Lucide 1.17 SVG nodes used by ZCode; keep its assets across Lucide upgrades.
-// ISC license: see THIRD_PARTY_NOTICES.md.
+// ISC license: see licenses/third-party-notices.txt.
 import { createLucideIcon } from "lucide-react";
 export const Trash2 = createLucideIcon({
   name: "trash-2",

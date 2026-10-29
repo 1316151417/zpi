@@ -1,4 +1,4 @@
-// Adapted from ZCode workspace-file-tree; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode workspace-file-tree; see licenses/third-party-notices.txt.
 import type { CSSProperties } from "react";
 
 const WORKSPACE_FILE_TREE_HIERARCHY_GUIDE_BACKGROUND =

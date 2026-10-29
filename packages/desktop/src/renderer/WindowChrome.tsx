@@ -9,7 +9,7 @@ import { ActionHint } from "zpi-ui";
 import type { ShortcutCommand } from "../shared/shortcuts.ts";
 
 // Adapted from ZCode DesktopTopOverlay and WorkspaceSidePaneToggleButton.
-// See THIRD_PARTY_NOTICES.md for provenance.
+// See licenses/third-party-notices.txt for provenance.
 export function WindowChrome({
   leftCollapsed,
   rightOpen,

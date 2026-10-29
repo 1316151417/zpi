@@ -1,4 +1,4 @@
-// Adapted from ZCode main/editors.ts; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode main/editors.ts; see licenses/third-party-notices.txt.
 
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";

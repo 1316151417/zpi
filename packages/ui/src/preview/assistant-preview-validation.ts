@@ -1,5 +1,5 @@
 // Adapted from ZCode assistantPreviewCardValidation.ts (Apache-2.0), commit 872ad960.
-// See THIRD_PARTY_NOTICES.md and docs/specs/assistant-previews-and-sidebar.md.
+// See licenses/third-party-notices.txt and docs/internals/previews.md.
 import {
   ASSISTANT_PREVIEW_CARD_CANDIDATE_LIMIT,
   ASSISTANT_PREVIEW_CARD_VISIBLE_LIMIT,

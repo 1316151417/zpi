@@ -1,4 +1,4 @@
-// Adapted from ZCode commit 872ad96 (Apache-2.0); see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode commit 872ad96 (Apache-2.0); see licenses/third-party-notices.txt.
 
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo } from "react";

@@ -1,5 +1,5 @@
 // Rendering queue, palette normalization and base theme adapted from ZCode 872ad960.
-// Apache-2.0; desktop labels and theme tokens adapted for ZPI. See THIRD_PARTY_NOTICES.md.
+// Apache-2.0; desktop labels and theme tokens adapted for ZPI. See licenses/third-party-notices.txt.
 import { createMermaidPlugin, type MermaidConfig } from "@streamdown/mermaid";
 import { Maximize2, X } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useState } from "react";

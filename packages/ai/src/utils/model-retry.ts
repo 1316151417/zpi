@@ -1,5 +1,5 @@
 // Structured error details adapted from ZCode failure-classifier.ts (Apache-2.0).
-// Retry decisions use Pi utils/retry.ts. See THIRD_PARTY_NOTICES.md.
+// Retry decisions use Pi utils/retry.ts. See licenses/third-party-notices.txt.
 import type { ModelFailure } from "../types.ts";
 
 const TERMINAL_CODES = new Set([

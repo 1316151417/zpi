@@ -1,4 +1,4 @@
-// Adapted from ZCode 872ad960, Apache-2.0; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode 872ad960, Apache-2.0; see licenses/third-party-notices.txt.
 export function isMermaidLanguage(language: string): boolean {
   const normalized = language.trim().toLowerCase();
   return normalized === "mermaid" || normalized === "mmd";

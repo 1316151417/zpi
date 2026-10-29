@@ -1,4 +1,4 @@
-// Adapted from ZCode 872ad960, Apache-2.0; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode 872ad960, Apache-2.0; see licenses/third-party-notices.txt.
 const MERMAID_AUTO_RENDER_MAX_SOURCE_CHARS = 20_000;
 const MERMAID_AUTO_RENDER_MAX_LINES = 600;
 const MERMAID_AUTO_RENDER_MAX_COMPLEXITY_SCORE = 1_500;

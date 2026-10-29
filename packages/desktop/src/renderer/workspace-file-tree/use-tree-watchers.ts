@@ -1,4 +1,4 @@
-// Adapted from ZCode workspace-file-tree; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode workspace-file-tree; see licenses/third-party-notices.txt.
 import { useEffect, useRef } from "react";
 import type { IFileWatcherService } from "./services.ts";
 

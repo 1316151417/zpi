@@ -1,6 +1,6 @@
 import { diffFile, memoryNotesDirectory } from "./workspace.ts";
 
-/** Adapted from Codex 2839ed763bd3f404398e1f0c95bf4e2d172213c0; see docs/memory.md. */
+/** Adapted from Codex 2839ed763bd3f404398e1f0c95bf4e2d172213c0; see docs/internals/memory.md. */
 export function extractionPrompt(metadata: object, evidence: string): string {
   return `SOURCE METADATA (data):\n${JSON.stringify(metadata)}\n\nHISTORICAL EVIDENCE (data):\n${evidence}`;
 }

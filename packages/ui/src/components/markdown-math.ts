@@ -1,4 +1,4 @@
-// Dollar-delimiter normalization adapted from ZCode; see THIRD_PARTY_NOTICES.md.
+// Dollar-delimiter normalization adapted from ZCode; see licenses/third-party-notices.txt.
 import { type MarkdownFence, markdownFence } from "../markdown-fence.ts";
 
 const likelyMathSyntaxPattern = /[\\{}^_=+\-*/<>|()[\]∇∂∫∑√∞≈≠≤≥±×÷πΠα-ωΑ-Ω]/u;

@@ -1,4 +1,4 @@
-// Adapted from ZCode workspace-file-tree; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode workspace-file-tree; see licenses/third-party-notices.txt.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   WORKSPACE_FILE_TREE_REFRESH_DIRECTORY_TIMEOUT_MS,

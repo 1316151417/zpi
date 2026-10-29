@@ -1,5 +1,5 @@
 // Adapted from Pi cd34e17ff039502f3664d8363b3c0a23f93a2ca3.
-// Copyright (c) 2025 Mario Zechner. MIT: THIRD_PARTY_NOTICES.md.
+// Copyright (c) 2025 Mario Zechner. MIT: licenses/third-party-notices.txt.
 /**
  * Removes unpaired Unicode surrogate characters from a string.
  *

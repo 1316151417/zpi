@@ -1,4 +1,4 @@
-// Adapted from ZCode mentionSearch / workspaceFileSearch; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode mentionSearch / workspaceFileSearch; see licenses/third-party-notices.txt.
 /** The caller normalizes the query and applies any field-specific weighting. */
 export function fuzzyScore(text: string, query: string, allowSubsequence = true): number {
   const value = text.trim().toLowerCase();

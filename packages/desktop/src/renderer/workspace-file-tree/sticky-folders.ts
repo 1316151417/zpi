@@ -1,4 +1,4 @@
-// Adapted from ZCode workspace-file-tree; see THIRD_PARTY_NOTICES.md.
+// Adapted from ZCode workspace-file-tree; see licenses/third-party-notices.txt.
 
 import type { VirtualItem } from "@tanstack/react-virtual";
 import { useMemo } from "react";

@@ -11,7 +11,7 @@ import { expect, test } from "../helpers/test.ts";
 // Native focus/panel integration only; this invokes the app API, not the OS hotkey.
 // Synthetic paste does not use the OS clipboard. Real hotkeys, clipboard, macOS Spaces,
 // and latency still require the manual acceptance
-// sequence in docs/development.md. Listing this test does not run that acceptance.
+// sequence in docs/features/testing.md. Listing this test does not run that acceptance.
 test("interactive: floating focus returns to its source without revealing or hiding the main window", async ({
   desktopIsolation: _desktopIsolation,
 }, info) => {

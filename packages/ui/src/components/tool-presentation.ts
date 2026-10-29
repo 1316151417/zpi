@@ -1,5 +1,5 @@
 // Adapted from ZCode exploreToolCall.ts, conversationAssistantWorkItems.ts and
-// ToolCallBlocks/renderers (872ad96, Apache-2.0); see THIRD_PARTY_NOTICES.md.
+// ToolCallBlocks/renderers (872ad96, Apache-2.0); see licenses/third-party-notices.txt.
 import type { ViewBlock } from "../types.ts";
 import { completeToolInput, toolInputPreview } from "./tool-input-preview.ts";
 

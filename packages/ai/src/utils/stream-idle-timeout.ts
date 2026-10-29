@@ -1,5 +1,5 @@
 // Adapted from ZCode 872ad960, adapters/model/stream-idle-timeout.ts (Apache-2.0).
-// See THIRD_PARTY_NOTICES.md. Time model events, not HTTP bytes or SSE comments.
+// See licenses/third-party-notices.txt. Time model events, not HTTP bytes or SSE comments.
 export const DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS = 120_000;
 export const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 300_000;
 

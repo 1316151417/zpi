@@ -1,5 +1,5 @@
 // Adapted from ZCode assistantPathQuotes.ts (Apache-2.0), commit 872ad960.
-// See THIRD_PARTY_NOTICES.md and docs/specs/assistant-previews-and-sidebar.md.
+// See licenses/third-party-notices.txt and docs/internals/previews.md.
 const ASSISTANT_PATH_QUOTE_PAIRS: Readonly<Record<string, string>> = {
   '"': '"',
   "'": "'",
