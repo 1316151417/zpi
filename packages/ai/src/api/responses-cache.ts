@@ -14,6 +14,8 @@ export function responsesCache(
     options.sessionId && options.cacheRetention !== "none"
       ? { prompt_cache_key: options.sessionId.slice(0, 64) }
       : {};
+  // Sign in with ChatGPT rejects cache controls, including explicit input breakpoints.
+  if (model.auth === "chatgpt") return { ...key, input };
   const version = /^gpt-(\d+)(?:\.(\d+))?(?:-|$)/.exec(model.id);
   const explicit =
     version && (Number(version[1]) > 5 || (Number(version[1]) === 5 && Number(version[2]) >= 6));
@@ -40,7 +42,7 @@ export function responsesCache(
   return {
     ...key,
     input,
-    ...(legacyExtended && model.auth !== "chatgpt" && retention ? { prompt_cache_retention: retention } : {}),
+    ...(legacyExtended && retention ? { prompt_cache_retention: retention } : {}),
   };
 }
 

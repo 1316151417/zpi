@@ -4,6 +4,7 @@ import type {
   Context,
   MediaBudgetStats,
   Model,
+  ResponsesSessionDiagnostic,
   ResponsesSessionOptions,
   SimpleStreamOptions,
   TranscriptContext,
@@ -48,12 +49,14 @@ export interface ModelRuntimeOptions {
   responsesProxy?: ResponsesSessionOptions["resolveProxy"];
   /** Optional local diagnostics; the SDK has no dependency on a logging backend. */
   onMediaProjection?: (stats: MediaBudgetStats, context: MediaProjectionContext) => void;
+  onResponsesDiagnostic?: (diagnostic: ResponsesSessionDiagnostic, context: MediaProjectionContext) => void;
 }
 export class ModelRuntime {
   private providers = new Map<string, ProviderConfigInput>();
   private keys = new Map<string, string>();
   private requestFetch?: typeof fetch;
   private onMediaProjection?: ModelRuntimeOptions["onMediaProjection"];
+  private onResponsesDiagnostic?: ModelRuntimeOptions["onResponsesDiagnostic"];
   private responsesTransport: "auto" | "http";
   readonly responsesProxy?: ResponsesSessionOptions["resolveProxy"];
   constructor(requestFetch?: typeof fetch, options: ModelRuntimeOptions = {}) {
@@ -61,6 +64,7 @@ export class ModelRuntime {
     this.responsesTransport = options.responsesTransport ?? (this.requestFetch ? "http" : "auto");
     this.responsesProxy = options.responsesProxy;
     this.onMediaProjection = options.onMediaProjection;
+    this.onResponsesDiagnostic = options.onResponsesDiagnostic;
   }
   get fetch(): typeof fetch {
     return this.requestFetch ?? globalThis.fetch;
@@ -79,6 +83,12 @@ export class ModelRuntime {
     const report = this.onMediaProjection;
     return report
       ? (stats) => report(stats, { sessionId, provider: model.provider, modelId: model.id })
+      : undefined;
+  }
+  responsesDiagnosticObserver(model: Model, sessionId?: string): ResponsesSessionOptions["onDiagnostic"] {
+    const report = this.onResponsesDiagnostic;
+    return report
+      ? (diagnostic) => report(diagnostic, { sessionId, provider: model.provider, modelId: model.id })
       : undefined;
   }
   clearProviders(): void {

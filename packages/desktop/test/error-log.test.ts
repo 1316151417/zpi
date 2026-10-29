@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { ResponsesSession } from "zpi-ai/api/responses-session";
 import { ErrorLog, maxErrorLogBytes } from "../src/main/error-log.ts";
 
 const directories: string[] = [];
@@ -132,4 +133,34 @@ it("persists all media omission fields and the originating session ID without me
     evictionFrontier: { messageIndex: 4, blockIndex: 1 },
   });
   expect(record).not.toHaveProperty("data");
+});
+
+it("persists Responses transport counters and recovery reasons with session context", async () => {
+  const log = new ErrorLog(await directory());
+  const session = new ResponsesSession();
+  log.responsesTransport(
+    {
+      event: "reconnect",
+      transport: "websocket",
+      warmup: false,
+      reason: "connection_limit",
+      stats: { ...session.diagnostics, connectionsCreated: 2, deltaRequests: 3, reconnects: 1 },
+    },
+    { sessionId: "session", provider: "openai", modelId: "gpt-6.1-terra" },
+  );
+  session.dispose();
+  const record = JSON.parse(await readFile(log.path, "utf8"));
+  expect(record).toMatchObject({
+    source: "model.responses_transport",
+    sessionId: "session",
+    provider: "openai",
+    modelId: "gpt-6.1-terra",
+    event: "reconnect",
+    transport: "websocket",
+    reason: "connection_limit",
+    connectionsCreated: 2,
+    deltaRequests: 3,
+    reconnects: 1,
+  });
+  expect(record).not.toHaveProperty("stats");
 });

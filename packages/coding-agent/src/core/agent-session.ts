@@ -241,7 +241,10 @@ export class AgentSession {
     this.responsesSession?.dispose();
     this.responsesSession = undefined;
     if (!this.runtime.canUseResponsesSession(this.model)) return;
-    const connection = new ResponsesSession({ resolveProxy: this.runtime.responsesProxy });
+    const connection = new ResponsesSession({
+      resolveProxy: this.runtime.responsesProxy,
+      onDiagnostic: this.runtime.responsesDiagnosticObserver(this.model, this.sessionId),
+    });
     this.responsesSession = connection;
     // Let callers finish selecting model + reasoning before capturing warmup parameters.
     this.responsesWarmupTimer = setTimeout(() => {

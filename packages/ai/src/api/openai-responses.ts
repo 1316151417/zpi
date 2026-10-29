@@ -241,6 +241,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
         "multi_agent",
         "prompt",
         "prompt_cache_retention",
+        "prompt_cache_options",
         "safety_identifier",
         "temperature",
         "top_logprobs",

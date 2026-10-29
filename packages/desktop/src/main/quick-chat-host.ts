@@ -70,6 +70,9 @@ export class QuickChatHost {
     this.runtime = new ModelRuntime(requestFetch, {
       responsesTransport: "auto",
       responsesProxy,
+      onResponsesDiagnostic: errors
+        ? (diagnostic, context) => errors.responsesTransport(diagnostic, context)
+        : undefined,
       onMediaProjection: errors ? (stats, context) => errors.mediaProjection(stats, context) : undefined,
     });
     this.selection = this.initialSelection();

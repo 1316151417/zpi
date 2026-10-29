@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { MediaBudgetStats } from "zpi-ai";
+import type { MediaBudgetStats, ResponsesSessionDiagnostic } from "zpi-ai";
 
 export const maxErrorLogBytes = 5 * 1024 * 1024;
 type Context = Record<string, string | number | boolean | undefined | MediaBudgetStats["evictionFrontier"]>;
@@ -75,6 +75,19 @@ export class ErrorLog {
     this.write("model.media_projection", "Media omitted from provider request", {
       level: "debug",
       ...context,
+      ...stats,
+    });
+  }
+
+  responsesTransport(
+    diagnostic: ResponsesSessionDiagnostic,
+    context: { sessionId?: string; provider?: string; modelId?: string },
+  ): void {
+    const { stats, ...details } = diagnostic;
+    this.write("model.responses_transport", "Responses transport diagnostic", {
+      level: "debug",
+      ...context,
+      ...details,
       ...stats,
     });
   }

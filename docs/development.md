@@ -35,6 +35,10 @@ macOS 数据目录：
 
 达到 5 MB 后轮换为 `error.log.1`，保留一份旧日志。日志仅存本机，不记录 IPC 参数、完整请求或聊天内容，并屏蔽常见凭据格式；日志写入失败不影响原有错误处理。
 
+OpenAI Responses 会话通过 `model.responses_transport` 记录预热、请求、完成、重连与 HTTP 降级。字段包括 `sessionId`、`provider`、`modelId`、`transport`、`warmup`、固定类别的 `reason`，以及当前连接管理器累计的连接创建/复用、WebSocket 请求、预热、全量/增量请求、重连、失败、HTTP 请求及降级次数；`lastInputItems` 与 `lastFullInputItems` 分别是最近 WebSocket 请求实际发送与完整上下文的条目数。切换模型会创建新的连接管理器并重置计数，可按 session/model 关联日志。SDK 可通过 `ModelRuntimeOptions.onResponsesDiagnostic` 接收快照，直接使用 `ResponsesSession` 时也可读取 `diagnostics` 或注入 `onDiagnostic`。不记录正文、工具参数、凭据、响应 ID 或服务器错误正文；统计不上传，回调失败不影响请求。
+
+订阅请求不发送 `prompt_cache_options`、`prompt_cache_retention` 或显式缓存断点；压缩摘要的 `cacheRetention: none` 仅省略缓存路由键，无法强制关闭服务端自动缓存。WebSocket 在尚无模型输出时遇到连接寿命限制或无效续接，会重建连接并以完整历史重试一次；失败后保留 HTTP 回退与 60 秒冷却。已有模型输出、鉴权/额度错误或用户取消时不自动重放。
+
 ### 错误提示落点
 
 主窗口的异常统一走 `Notice`（`packages/ui/src/components/Notice.tsx`），落点由 scope 决定：`input` 留在 composer 草稿里，供用户改完重试；`turn` 留在该轮消息末尾（运行失败随会话保存）；`window` 浮在主区域右上角，5 秒自动消失且悬停暂停；`config` 常驻标题下，修好配置后才消失。窗口提示挂在 `.workspace-surface` 之外，打开设置时仍然可见，并通过 `--right-pane-offset` 对齐主区域。同一个失败只出现一次，新增错误时复用这四个 scope，不要再发明位置。默认 `report()` 走窗口级；能就地重试的提交失败传 `{ input: sessionId, revision: draftRevision }`，版本不匹配的迟到失败只进带“上一次发送失败”上下文的窗口提示。
@@ -67,7 +71,7 @@ SDK 的新增工具、内置工具覆盖与追加指令分别使用 `customTools
 - 子智能体完成结果和 `RespondToCoordinator` 回复先写入持久收件箱。运行中可在完整 reasoning、commentary、partial_answer 输出项结束时中止本次生成，带结果继续同一轮；已关闭的工具调用保留，执行中的工具不被取消或重复执行。final_answer（或没有阶段标记的正文）完成后，未消费结果留到后续用户输入；不自动开启补充轮，也不要求主任务等待所有子任务。重启保留收件箱，压缩、停止及异常结束不丢弃未消费结果。SDK 仅提供通用的 queue-only 输入，桌面拥有投递和持久化。后台命令沿用原来的工具边界投递及空闲自动补充策略。参考调用链和文案必要差异见 [主子智能体协作](subagent-collaboration.md)。
 - OpenAI Responses 的每段文本保留原始 `phase`（`commentary` / `final_answer`），同模型历史重放时原样回传；旧记录缺失标签时不猜测，切换模型时按既有规则移除供应商元信息。
 - Responses 的文本结束、消息结束和响应结束事件均以完整正文校正片段；支持网关在 `stream: true` 下返回 `application/json` 或 `+json` 完整响应，复用相同的工具、用量、拒绝和失败处理，不重复请求。HTTP 200 不代表生成成功，仍须检查响应终态。
-- Responses 缓存按官方[缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)分代处理：GPT-5.6 及更新模型的 `none` 使用无断点的 explicit 模式；`skipCacheWrite` 只在最后临时输入之前标记稳定前缀；`short` / `long` 均受当前仅支持 `30m` 的 TTL 限制。已确认支持扩展缓存的旧模型将 `long` 映射为 `24h`，支持短缓存的映射为 `in_memory`；GPT-5.5 不发送不支持的 `in_memory`。旧接口的 `none` 只能省略路由 key，不能关闭服务端自动缓存，`skipCacheWrite` 也不能控制旧接口边界。ChatGPT 认证保持现有旧 retention 参数限制，未知网关模型别名保持默认参数；定制控制可通过 `samplingParams` / `onPayload` 指定。缓存写入 token 从普通输入中分离，按模型配置的缓存写入价格计费。
+- Responses 缓存按官方[缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)分代处理：GPT-5.6 及更新模型的 `none` 使用无断点的 explicit 模式；`skipCacheWrite` 只在最后临时输入之前标记稳定前缀；`short` / `long` 均受当前仅支持 `30m` 的 TTL 限制。已确认支持扩展缓存的旧模型将 `long` 映射为 `24h`，支持短缓存的映射为 `in_memory`；GPT-5.5 不发送不支持的 `in_memory`。旧接口的 `none` 只能省略路由 key，不能关闭服务端自动缓存，`skipCacheWrite` 也不能控制旧接口边界。ChatGPT 认证不发送 retention、options 或显式输入断点，只保留可用的缓存路由键；未知网关模型别名保持默认参数。API Key 请求的定制控制可通过 `samplingParams` / `onPayload` 指定。缓存写入 token 从普通输入中分离，按模型配置的缓存写入价格计费。
 
 ### 联网工具边界
 

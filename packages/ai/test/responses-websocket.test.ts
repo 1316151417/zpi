@@ -1,11 +1,13 @@
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, connect } from "node:net";
+import type { ResponsesWS } from "openai/resources/responses/ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { createAssistantMessageEventStream, emptyAssistant, normalizeContext, streamSimple } from "zpi-ai";
 import { ResponsesSession } from "zpi-ai/api/responses-session";
 import { AgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
+import type { ResponsesSessionDiagnostic } from "../src/api/responses-session.ts";
 import type { Message, Model, SimpleStreamOptions } from "../src/types.ts";
 
 type Request = Record<string, unknown> & { input: unknown[] };
@@ -212,31 +214,37 @@ it("opens a fresh socket and chain after credentials change", async () => {
   expect(f.requests[1].socket).not.toBe(f.requests[0].socket);
 });
 
-it("recovers an evicted previous response by sending full input once", async () => {
-  const f = await fixture(({ body, socket }, count) => {
-    socket.send(
-      JSON.stringify(
-        body.previous_response_id
-          ? {
-              type: "error",
-              status: 400,
-              error: {
-                code: "previous_response_not_found",
-                message: "evicted",
-                type: "invalid_request_error",
-              },
-            }
-          : completed(`resp_${count}`),
-      ),
-    );
-  });
-  const first = await f.run([user("first")]);
-  expect((await f.run([user("first"), first, user("next")])).stopReason).toBe("stop");
-  expect(f.requests[1].body.previous_response_id).toBe("resp_1");
-  expect(f.requests[2].body.previous_response_id).toBeUndefined();
-  expect(f.requests[2].body.input).toHaveLength(3);
-  expect(f.httpCalls()).toBe(0);
-});
+it.each([false, true])(
+  "reconnects an evicted previous response with full input, server closes=%s",
+  async (closes) => {
+    const f = await fixture(({ body, socket }, count) => {
+      socket.send(
+        JSON.stringify(
+          body.previous_response_id
+            ? {
+                type: "error",
+                status: 400,
+                error: {
+                  code: "previous_response_not_found",
+                  message: "evicted",
+                  type: "invalid_request_error",
+                },
+              }
+            : completed(`resp_${count}`),
+        ),
+      );
+      if (body.previous_response_id && closes) socket.close();
+    });
+    const first = await f.run([user("first")]);
+    expect((await f.run([user("first"), first, user("next")])).stopReason).toBe("stop");
+    expect(f.requests[1].body.previous_response_id).toBe("resp_1");
+    expect(f.requests[2].body.previous_response_id).toBeUndefined();
+    expect(f.requests[2].body.input).toHaveLength(3);
+    expect(f.requests[2].socket).not.toBe(f.requests[1].socket);
+    expect(f.session.diagnostics.reconnects).toBe(1);
+    expect(f.httpCalls()).toBe(0);
+  },
+);
 
 it("reconnects with full history after the idle socket closes", async () => {
   const f = await fixture();
@@ -246,6 +254,27 @@ it("reconnects with full history after the idle socket closes", async () => {
   await f.run([user("first"), first, user("next")]);
   expect(f.requests[1].body.previous_response_id).toBeUndefined();
   expect(f.requests[1].body.input).toHaveLength(3);
+});
+
+it("reconnects before a slow close handshake finishes instead of reusing a closing socket", async () => {
+  const f = await fixture();
+  const first = await f.run([user("first")]);
+  const old = f.requests[0].socket;
+  old.pause(); // Delay the server's close acknowledgement, as on a high-latency network.
+  const client = (f.session as unknown as { socket: ResponsesWS }).socket;
+  client.close();
+  expect(client.socket.readyState).toBe(WebSocket.CLOSING);
+  try {
+    const second = await f.run([user("first"), first, user("next")]);
+    expect(second.responseId).toBe("resp_2");
+    expect(f.requests[1].socket).not.toBe(old);
+    expect(f.requests[1].body.previous_response_id).toBeUndefined();
+    expect(f.requests[1].body.input).toHaveLength(3);
+    expect(f.session.diagnostics).toMatchObject({ connectionsCreated: 2, reconnects: 1, httpFallbacks: 0 });
+    expect(f.httpCalls()).toBe(0);
+  } finally {
+    old.resume();
+  }
 });
 
 it("falls back to HTTP and avoids retrying a rejected upgrade every tool round", async () => {
@@ -260,6 +289,19 @@ it("never falls back to HTTP during warmup", async () => {
   const f = await fixture(undefined, true);
   await f.run([], { responsesWarmup: true });
   expect(f.httpCalls()).toBe(0);
+});
+
+it("does not replay a failed HTTP request while in transport cooldown", async () => {
+  const f = await fixture(undefined, true);
+  let attempts = 0;
+  const fetch: typeof globalThis.fetch = async () => {
+    attempts++;
+    return new Response(JSON.stringify({ error: { message: "upstream unavailable" } }), { status: 503 });
+  };
+  expect((await f.run([user("first")], { fetch })).stopReason).toBe("error");
+  expect((await f.run([user("next")], { fetch })).stopReason).toBe("error");
+  expect(attempts).toBe(2);
+  expect(f.session.diagnostics).toMatchObject({ httpFallbacks: 1, httpRequests: 2 });
 });
 
 it("does not silently replay a response after receiving partial output", async () => {
@@ -319,7 +361,10 @@ it("isolates two conversations even when they use the same credentials", async (
 
 it("supports GPT → domestic model → GPT in a real agent session, then resumes incrementally", async () => {
   const f = await fixture();
-  const runtime = new ModelRuntime();
+  const reports: { diagnostic: ResponsesSessionDiagnostic; sessionId?: string; modelId: string }[] = [];
+  const runtime = new ModelRuntime(undefined, {
+    onResponsesDiagnostic: (diagnostic, context) => reports.push({ diagnostic, ...context }),
+  });
   const { provider, baseUrl, ...definition } = f.model;
   runtime.registerProvider(provider, { baseUrl, apiKey: "local-key", models: [definition] });
   runtime.registerProvider("domestic", {
@@ -361,6 +406,12 @@ it("supports GPT → domestic model → GPT in a real agent session, then resume
     manager.buildSessionContext().messages.filter((message) => message.role === "assistant"),
   ).toHaveLength(5);
   expect(f.httpCalls()).toBe(0);
+  expect(reports.some(({ diagnostic }) => diagnostic.warmup)).toBe(true);
+  expect(reports.at(-1)).toMatchObject({
+    sessionId: session.sessionId,
+    modelId: f.model.id,
+    diagnostic: { event: "complete", transport: "websocket", stats: { deltaRequests: 2 } },
+  });
 });
 
 it("accepts a successful upgrade that takes longer than the old 1.5s limit", async () => {
@@ -387,9 +438,128 @@ it.each([false, true])("recovers an uncoded SIWC parent error, with metadata=%s"
   const first = await f.run([user("first")]);
   const second = await f.run([user("first"), first, user("next")]);
   expect(second.stopReason).toBe("stop");
-  expect(second.responseId).toBe("http");
-  expect(f.httpCalls()).toBe(1);
+  expect(second.responseId).toBe("resp_3");
+  expect(f.requests[2].socket).not.toBe(f.requests[1].socket);
+  expect(f.requests[2].body.input).toHaveLength(3);
+  expect(f.requests[2].body.previous_response_id).toBeUndefined();
+  await f.run([user("first"), first, user("next"), second, user("after recovery")]);
+  expect(f.requests[3].body.previous_response_id).toBe("resp_3");
+  expect(f.requests[3].body.input).toEqual([{ role: "user", content: "after recovery" }]);
+  expect(f.httpCalls()).toBe(0);
+});
+
+it("reconnects once on the connection lifetime limit and then resumes incrementally", async () => {
+  const f = await fixture(({ socket }, count) => {
+    if (count === 2) {
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          status: 400,
+          error: { code: "websocket_connection_limit_reached", message: "expired" },
+        }),
+      );
+      socket.close();
+    } else socket.send(JSON.stringify(completed(`resp_${count}`)));
+  });
+  const first = await f.run([user("first")]);
+  const history = [user("first"), first, user("next")];
+  const second = await f.run(history);
+  expect(second.responseId).toBe("resp_3");
+  expect(f.requests[2].socket).not.toBe(f.requests[0].socket);
+  expect(f.requests[2].body.previous_response_id).toBeUndefined();
+  expect(f.requests[2].body.input).toHaveLength(3);
+  await f.run([...history, second, user("continued")]);
+  expect(f.requests[3].body.previous_response_id).toBe("resp_3");
+  expect(f.session.diagnostics).toMatchObject({ connectionsCreated: 2, reconnects: 1, websocketFailures: 1 });
+  expect(f.httpCalls()).toBe(0);
+});
+
+it("falls back after one unsuccessful reconnect and keeps the HTTP cooldown", async () => {
+  const f = await fixture(({ socket }) => {
+    socket.send(
+      JSON.stringify({
+        type: "error",
+        status: 400,
+        error: { code: "websocket_connection_limit_reached", message: "expired" },
+      }),
+    );
+    socket.close();
+  });
+  expect((await f.run([user("first")])).responseId).toBe("http");
+  expect((await f.run([user("next")])).responseId).toBe("http");
   expect(f.requests).toHaveLength(2);
+  expect(f.session.diagnostics).toMatchObject({
+    connectionsCreated: 2,
+    reconnects: 1,
+    websocketFailures: 2,
+    httpRequests: 2,
+  });
+  expect(f.httpCalls()).toBe(2);
+});
+
+it("never reconnects or replays a connection limit error after model output", async () => {
+  const f = await fixture(({ socket }) => {
+    socket.send(
+      JSON.stringify({
+        type: "response.output_text.delta",
+        item_id: "msg",
+        content_index: 0,
+        delta: "partial",
+        sequence_number: 0,
+      }),
+    );
+    socket.send(
+      JSON.stringify({
+        type: "error",
+        status: 400,
+        error: { code: "websocket_connection_limit_reached", message: "expired" },
+      }),
+    );
+  });
+  expect((await f.run([user("first")])).stopReason).toBe("error");
+  expect(f.requests).toHaveLength(1);
+  expect(f.session.diagnostics.reconnects).toBe(0);
+  expect(f.httpCalls()).toBe(0);
+});
+
+it("reports isolated diagnostic snapshots for warmup and incremental requests without content", async () => {
+  const f = await fixture();
+  const reports: ResponsesSessionDiagnostic[] = [];
+  const session = new ResponsesSession({ onDiagnostic: (event) => reports.push(event) });
+  cleanups.push(() => session.dispose());
+  await f.run([], { responsesSession: session, responsesWarmup: true });
+  const first = await f.run([user("PRIVATE_PROMPT")], { responsesSession: session });
+  await f.run([user("PRIVATE_PROMPT"), first, user("next")], { responsesSession: session });
+  expect(session.diagnostics).toMatchObject({
+    connectionsCreated: 1,
+    connectionsReused: 2,
+    warmupRequests: 1,
+    websocketRequests: 3,
+    fullContextRequests: 1,
+    deltaRequests: 2,
+    lastInputItems: 1,
+    lastFullInputItems: 3,
+    httpRequests: 0,
+  });
+  expect(reports[0]).toMatchObject({ event: "request", warmup: true, stats: { websocketRequests: 1 } });
+  expect(reports.at(-1)).toMatchObject({ event: "complete", transport: "websocket", warmup: false });
+  expect(JSON.stringify(reports)).not.toContain("PRIVATE_PROMPT");
+  expect(JSON.stringify(reports)).not.toContain("local-test-key");
+  session.diagnostics.websocketRequests = 99;
+  expect(session.diagnostics.websocketRequests).toBe(3);
+});
+
+it("keeps diagnostic observers from breaking successful generation", async () => {
+  const f = await fixture();
+  const session = new ResponsesSession({
+    onDiagnostic: () => {
+      throw new Error("logging failed");
+    },
+  });
+  cleanups.push(() => session.dispose());
+  expect((await f.run([user("first")], { responsesSession: session })).stopReason).toBe("stop");
+  expect(f.requests).toHaveLength(1);
+  expect(f.httpCalls()).toBe(0);
 });
 
 it("does not recover a parent error after any model output", async () => {

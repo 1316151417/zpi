@@ -3051,6 +3051,8 @@ export class SessionHost {
             fetch: this.requestFetch,
             responsesTransport: "auto",
             responsesProxy: this.responsesProxy,
+            onResponsesDiagnostic: (diagnostic, context) =>
+              this.errors.responsesTransport(diagnostic, { ...context, sessionId: id }),
             onMediaProjection: (stats, context) =>
               this.errors.mediaProjection(stats, { ...context, sessionId: id }),
           }));

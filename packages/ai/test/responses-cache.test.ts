@@ -47,6 +47,46 @@ it("keeps default affinity and ChatGPT's legacy retention restrictions", () => {
   ).toEqual({ input: [] });
 });
 
+it.each(["gpt-5.4", "gpt-6.1-terra"])(
+  "omits all cache controls and breakpoints for subscriptions: %s",
+  (id) => {
+    const input: ResponseInput = [
+      { role: "assistant", content: "Stable answer" },
+      { role: "user", content: "Transient prompt" },
+    ];
+    for (const cacheRetention of ["none", "short", "long"] as const) {
+      const result = responsesCache(
+        { ...model, id, auth: "chatgpt" },
+        { cacheRetention, skipCacheWrite: true, sessionId: "affinity" },
+        input,
+      );
+      expect(result).toEqual({
+        input,
+        ...(cacheRetention !== "none" ? { prompt_cache_key: "affinity" } : {}),
+      });
+      expect(result.input).toBe(input);
+    }
+  },
+);
+
+it("filters subscription cache controls supplied by payload hooks too", async () => {
+  let body: Record<string, unknown> = {};
+  await streamSimple({ ...model, auth: "chatgpt" }, normalizeContext({ messages: [] }), {
+    apiKey: "fake",
+    onPayload: (payload) => ({
+      ...(payload as object),
+      prompt_cache_options: { mode: "explicit", ttl: "30m" },
+      prompt_cache_retention: "24h",
+    }),
+    fetch: async (_url, options) => {
+      body = JSON.parse(String(options?.body));
+      return new Response("", { headers: { "content-type": "text/event-stream" } });
+    },
+  }).result();
+  expect(body).not.toHaveProperty("prompt_cache_options");
+  expect(body).not.toHaveProperty("prompt_cache_retention");
+});
+
 it.each<ResponseInput[number]>([
   { role: "assistant", content: "Stable answer", phase: "final_answer" },
   {

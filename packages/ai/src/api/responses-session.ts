@@ -5,15 +5,49 @@ import type OpenAI from "openai";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses";
 import { ResponsesWS } from "openai/resources/responses/ws";
 import { SocksProxyAgent } from "socks-proxy-agent";
+import { WebSocket } from "ws";
 import type { Model, StreamOptions } from "../types.ts";
 import { isJsonObject } from "../utils/transcript.ts";
 
 type Payload = Record<string, unknown> & { input: unknown[] };
 type Previous = { id: string; settings: Record<string, unknown>; input: unknown[] };
 const IDLE_MS = 5 * 60_000;
+type FailureReason =
+  | "connection_limit"
+  | "previous_response_not_found"
+  | "invalid_previous_response"
+  | "closed_connection"
+  | "transport"
+  | "request_error"
+  | "observer_error"
+  | "aborted"
+  | "disposed";
+export interface ResponsesSessionStats {
+  connectionsCreated: number;
+  connectionsReused: number;
+  websocketRequests: number;
+  warmupRequests: number;
+  fullContextRequests: number;
+  deltaRequests: number;
+  reconnects: number;
+  websocketFailures: number;
+  httpRequests: number;
+  httpFallbacks: number;
+  lastInputItems: number;
+  lastFullInputItems: number;
+}
+export interface ResponsesSessionDiagnostic {
+  event: "request" | "reconnect" | "fallback" | "complete" | "error";
+  transport: "websocket" | "http";
+  warmup: boolean;
+  reason?: FailureReason;
+  stats: ResponsesSessionStats;
+}
 export interface ResponsesSessionOptions {
   /** Resolve a proxy URL, or undefined for a direct connection. Hosts can supply their system/PAC resolver. */
   resolveProxy?: (url: string) => Promise<string | undefined>;
+  /** Local counters only: no credentials, prompts, response IDs, or server error bodies. */
+  onDiagnostic?: (diagnostic: ResponsesSessionDiagnostic) => void;
 }
 
 export function supportsResponsesWebSocket(model: Model): boolean {
@@ -32,8 +66,34 @@ export class ResponsesSession {
   private disposed = false;
   private tail: Promise<void> = Promise.resolve();
   private options: ResponsesSessionOptions;
+  private stats: ResponsesSessionStats = {
+    connectionsCreated: 0,
+    connectionsReused: 0,
+    websocketRequests: 0,
+    warmupRequests: 0,
+    fullContextRequests: 0,
+    deltaRequests: 0,
+    reconnects: 0,
+    websocketFailures: 0,
+    httpRequests: 0,
+    httpFallbacks: 0,
+    lastInputItems: 0,
+    lastFullInputItems: 0,
+  };
   constructor(options: ResponsesSessionOptions = {}) {
     this.options = options;
+  }
+
+  get diagnostics(): ResponsesSessionStats {
+    return { ...this.stats };
+  }
+
+  private report(diagnostic: Omit<ResponsesSessionDiagnostic, "stats">): void {
+    try {
+      this.options.onDiagnostic?.({ ...diagnostic, stats: this.diagnostics });
+    } catch {
+      // Diagnostics must never change transport behavior or cause a generation to be replayed.
+    }
   }
 
   dispose(): void {
@@ -67,6 +127,26 @@ export class ResponsesSession {
     let completed = false;
     let progressed = false;
     let usingSocket = false;
+    let failureReason: FailureReason = "transport";
+    const report = (
+      event: ResponsesSessionDiagnostic["event"],
+      transport: ResponsesSessionDiagnostic["transport"],
+      reason?: FailureReason,
+    ) => this.report({ event, transport, warmup: !!options.responsesWarmup, reason });
+    const httpEvents = async function* (session: ResponsesSession) {
+      session.stats.httpRequests++;
+      report("request", "http");
+      try {
+        for await (const event of await http()) {
+          if (event.type === "response.completed" || event.type === "response.incomplete")
+            report("complete", "http");
+          yield event;
+        }
+      } catch (error) {
+        report("error", "http", "transport");
+        throw error;
+      }
+    };
     const abort = () => this.disconnect();
     try {
       options.signal?.throwIfAborted();
@@ -92,34 +172,12 @@ export class ResponsesSession {
       if (Date.now() - this.openedAt > 55 * 60_000) this.disconnect();
       clearTimeout(this.idle);
       if (Date.now() < this.httpUntil) {
-        if (!options.responsesWarmup) yield* await http();
+        if (!options.responsesWarmup) yield* httpEvents(this);
         completed = true;
         return;
       }
       options.signal?.addEventListener("abort", abort, { once: true });
       usingSocket = true;
-      if (!this.socket) {
-        this.previous = undefined;
-        const proxy = await this.options.resolveProxy?.(model.baseUrl);
-        options.signal?.throwIfAborted();
-        if (this.disposed) throw new Error("Responses session disposed");
-        const agent = proxy
-          ? /^socks/.test(proxy)
-            ? new SocksProxyAgent(proxy)
-            : new HttpsProxyAgent(proxy)
-          : undefined;
-        this.socket = new ResponsesWS(client, { handshakeTimeout: 10_000, perMessageDeflate: true, agent });
-        this.openedAt = Date.now();
-        // An idle socket can fail when no request iterator is listening.
-        this.socket.on("error", () => {});
-        const socket = this.socket;
-        socket.on("close", () => {
-          if (this.socket === socket) {
-            this.socket = undefined;
-            this.previous = undefined;
-          }
-        });
-      }
       const settings: Record<string, unknown> = { ...payload };
       delete settings.input;
       delete settings.stream;
@@ -132,12 +190,56 @@ export class ResponsesSession {
         previous.input.length <= payload.input.length &&
         previous.input.every((item, index) => isDeepStrictEqual(item, payload.input[index]));
       let parent = continuation ? previous.id : undefined;
+      let retried = false;
       for (;;) {
-        const socket = this.socket;
-        if (!socket) throw new Error("Responses WebSocket closed");
-        const iterator = socket.stream({ maxBufferedEvents: 4096 });
-        let restart = false;
+        let iterator: ReturnType<ResponsesWS["stream"]> | undefined;
+        let recoverable: FailureReason | undefined;
         try {
+          failureReason = "transport";
+          // A close handshake may take seconds before the SDK emits its close event.
+          if (this.socket && this.socket.socket.readyState >= WebSocket.CLOSING) {
+            this.disconnect();
+            this.stats.reconnects++;
+            report("reconnect", "websocket", "closed_connection");
+          }
+          if (!this.socket) {
+            this.previous = undefined;
+            parent = undefined;
+            const proxy = await this.options.resolveProxy?.(model.baseUrl);
+            options.signal?.throwIfAborted();
+            if (this.disposed) throw new Error("Responses session disposed");
+            const agent = proxy
+              ? /^socks/.test(proxy)
+                ? new SocksProxyAgent(proxy)
+                : new HttpsProxyAgent(proxy)
+              : undefined;
+            this.socket = new ResponsesWS(client, {
+              handshakeTimeout: 10_000,
+              perMessageDeflate: true,
+              agent,
+            });
+            this.stats.connectionsCreated++;
+            this.openedAt = Date.now();
+            // An idle socket can fail when no request iterator is listening.
+            this.socket.on("error", () => {});
+            const socket = this.socket;
+            socket.on("close", () => {
+              if (this.socket === socket) {
+                this.socket = undefined;
+                this.previous = undefined;
+              }
+            });
+          } else this.stats.connectionsReused++;
+          const socket = this.socket;
+          iterator = socket.stream({ maxBufferedEvents: 4096 });
+          this.stats.websocketRequests++;
+          if (options.responsesWarmup) this.stats.warmupRequests++;
+          this.stats[parent ? "deltaRequests" : "fullContextRequests"]++;
+          this.stats.lastFullInputItems = payload.input.length;
+          this.stats.lastInputItems = parent
+            ? payload.input.length - (previous?.input.length ?? 0)
+            : payload.input.length;
+          report("request", "websocket");
           start();
           socket.sendRaw(
             JSON.stringify({
@@ -155,37 +257,30 @@ export class ResponsesSession {
               const detail = record.error.error;
               const body = detail && "error" in detail ? detail.error : detail;
               const code = body?.code;
-              if (parent && !progressed && code === "previous_response_not_found") {
-                this.previous = undefined;
-                parent = undefined;
-                restart = true;
-                break;
-              }
-              // SIWC also returns an uncoded 400 and closes the socket for an invalid parent.
-              // Let the transport fallback replay full input, rather than retrying that closing socket.
-              if (
+              // The server may close the socket with either coded or uncoded parent errors.
+              const invalidParent =
                 parent &&
-                !progressed &&
                 detail &&
                 "status" in detail &&
                 detail.status === 400 &&
                 /previous_response_id/i.test(body?.message ?? "") &&
-                /invalid|not found|does not exist/i.test(body?.message ?? "")
-              ) {
-                this.previous = undefined;
-                throw record.error;
-              }
+                /invalid|not found|does not exist/i.test(body?.message ?? "");
+              recoverable =
+                code === "websocket_connection_limit_reached"
+                  ? "connection_limit"
+                  : parent && code === "previous_response_not_found"
+                    ? "previous_response_not_found"
+                    : invalidParent
+                      ? "invalid_previous_response"
+                      : undefined;
+              const unsupported = [
+                "websocket_not_supported",
+                "websockets_not_supported",
+                "unsupported_transport",
+              ].includes(code ?? "");
+              failureReason = recoverable ?? (detail && !unsupported ? "request_error" : "transport");
               // Request/auth/usage errors belong to the caller, rather than a silent transport retry.
-              if (
-                detail &&
-                ![
-                  "websocket_not_supported",
-                  "websockets_not_supported",
-                  "unsupported_transport",
-                  "websocket_connection_limit_reached",
-                ].includes(code ?? "")
-              )
-                progressed = true;
+              if (!recoverable && detail && !unsupported) progressed = true;
               throw Object.assign(record.error, {
                 code,
                 status: detail && "status" in detail ? detail.status : undefined,
@@ -202,6 +297,7 @@ export class ResponsesSession {
                 );
               } catch (error) {
                 progressed = true;
+                failureReason = "observer_error";
                 throw error;
               }
               options.signal?.throwIfAborted();
@@ -229,22 +325,42 @@ export class ResponsesSession {
               // Transport metadata/heartbeats do not mean model output has started.
               progressed = true;
             }
+            if (completed) report("complete", "websocket");
             yield event;
             if (completed) return;
           }
+          throw new Error("Stream ended without response.completed");
+        } catch (error) {
+          if (!options.signal?.aborted && !this.disposed) this.stats.websocketFailures++;
+          if (recoverable && !retried && !progressed && !options.signal?.aborted && !this.disposed) {
+            this.disconnect();
+            parent = undefined;
+            retried = true;
+            this.stats.reconnects++;
+            report("reconnect", "websocket", recoverable);
+          } else throw error;
         } finally {
-          await iterator.return?.();
+          await iterator?.return?.();
         }
-        if (!restart) throw new Error("Stream ended without response.completed");
       }
     } catch (error) {
       this.disconnect();
       if (options.responsesWarmup && !this.disposed) this.httpUntil = Date.now() + 60_000;
-      if (options.signal?.aborted || this.disposed || progressed) throw error;
+      if (!usingSocket) throw error;
+      if (options.signal?.aborted || this.disposed || progressed) {
+        report(
+          "error",
+          "websocket",
+          options.signal?.aborted ? "aborted" : this.disposed ? "disposed" : failureReason,
+        );
+        throw error;
+      }
       // A blocked proxy/upgrade should cost one short attempt, not one attempt per tool call.
       this.httpUntil = Date.now() + 60_000;
+      this.stats.httpFallbacks++;
+      report("fallback", "http", failureReason);
       if (!options.responsesWarmup) {
-        yield* await http();
+        yield* httpEvents(this);
         completed = true;
       }
     } finally {
