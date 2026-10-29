@@ -51,6 +51,7 @@ test("conversation files and folders share ZCode menus; folders open in Finder a
     const absoluteFolder = await realpath(folder);
     const absoluteFile = await realpath(file);
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("中文 项目");
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill(`检查 [订单](<${file}>)`);
     await editor.press("Enter");
@@ -165,6 +166,7 @@ test("file references share icons and canonical text; chat files open reusable s
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("中文 项目");
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("@订单");
     await expect(page.getByRole("option").locator("img")).toHaveAttribute(
@@ -242,6 +244,7 @@ test("embedded file images retain their preview across theme changes and reload 
     const page = await app.firstWindow();
     await page.emulateMedia({ colorScheme: "light" });
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("预览图片");
     await editor.press("Enter");

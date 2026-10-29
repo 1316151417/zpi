@@ -66,8 +66,8 @@ export function acquireStorageLock(root: string, purpose: "runtime" | "migration
   const mutex = new DatabaseSync(join(root, ".storage-lock.sqlite"));
   const token = randomUUID();
   try {
-    // Serialize stale-owner inspection/removal too; two recoverers must never remove a new owner's lock.
-    mutex.exec("BEGIN EXCLUSIVE");
+    // A single writer serializes recovery; transient SQLite readers must not block the owner.
+    mutex.exec("BEGIN IMMEDIATE");
     try {
       mkdirSync(path);
     } catch (error) {

@@ -265,18 +265,23 @@ export function TaskDirectory({ sessionId, visible }: { sessionId: string; visib
   const agents = useStore((state) => state.views.get(sessionId)?.subagents ?? emptyAgents);
   const commands = useStore((state) => state.views.get(sessionId)?.backgroundTasks ?? emptyCommands);
   const [limit, setLimit] = useState(20);
-  const tasks = useMemo(() => [...agents, ...commands], [agents, commands]);
-  const now = useNow(visible && tasks.some((task) => task.status === "running"));
+  const groups = useMemo(() => {
+    const tasks = [...agents, ...commands];
+    return ([true, false] as const).map((running) => ({
+      running,
+      tasks: tasks
+        .filter((task) => (task.status === "running") === running)
+        .sort((a, b) =>
+          running ? a.startedAt - b.startedAt : (b.endedAt ?? b.startedAt) - (a.endedAt ?? a.startedAt),
+        ),
+    }));
+  }, [agents, commands]);
+  const now = useNow(visible && groups[0].tasks.length > 0);
   return (
     <section className="task-directory" aria-label="任务目录">
       <h2>任务目录</h2>
       <div>
-        {([true, false] as const).map((running) => {
-          const group = tasks
-            .filter((task) => (task.status === "running") === running)
-            .sort((a, b) =>
-              running ? a.startedAt - b.startedAt : (b.endedAt ?? b.startedAt) - (a.endedAt ?? a.startedAt),
-            );
+        {groups.map(({ running, tasks: group }) => {
           if (!group.length) return null;
           return (
             <section key={String(running)}>

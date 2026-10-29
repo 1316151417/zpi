@@ -1,15 +1,14 @@
 import { useState } from "react";
-import { ChatComposer, Conversation } from "zpi-ui";
+import { ChatComposer } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { ModelPerformance } from "./ModelPerformance.tsx";
-import { openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
-import { previewServices } from "./preview-services.ts";
+import { openFile, paneTask } from "./pane-store.ts";
+import { SessionConversation } from "./SessionConversation.tsx";
 import { SessionToolbar } from "./SessionToolbar.tsx";
-import { addConversationSelection, drafts, loadEarlier, queueActions, report, useStore } from "./store.ts";
+import { addConversationSelection, drafts, queueActions, report, useStore } from "./store.ts";
 import { UserQuestionCard } from "./UserQuestionCard.tsx";
 import { unwrap } from "./unwrap.ts";
-import { useWorkspace } from "./use-workspace.ts";
 
 export function SideChatPane({
   sessionId,
@@ -24,9 +23,6 @@ export function SideChatPane({
   const record = useStore((state) => state.sessions.get(sessionId));
   const settings = useStore((state) => state.settings);
   const suggestions = useStore((state) => state.suggestions.get(sessionId));
-  const cursor = useStore((state) => state.historyCursors.get(sessionId));
-  const loadingEarlier = useStore((state) => state.historyLoading.has(sessionId));
-  const workspace = useWorkspace(sessionId);
   const [modelOpen, setModelOpen] = useState(false);
   const running = view?.runs.find((run) => run.status === "running");
   const stop = () => {
@@ -40,31 +36,13 @@ export function SideChatPane({
     );
   return (
     <section className="side-chat-pane" aria-label="辅助对话" data-side-chat-session={sessionId}>
-      <Conversation
-        onRetryModel={(runId) => window.zpi.retryModelRequest({ sessionId, runId }).then(unwrap)}
+      <SessionConversation
         view={view}
         suggestions={suggestions ?? []}
-        workspace={workspace}
-        context={inputContext}
-        previewServices={previewServices}
-        onLink={(url, options) => paneTask(openWebLink(url, options, sessionId))}
-        onFile={(path, location, origin) => paneTask(openFile(sessionId, path, location, origin))}
-        onCopy={(text) => window.zpi.copyText(text).then(unwrap)}
         onAddSelection={
           view.question ? undefined : (reference) => addConversationSelection(reference, sessionId)
         }
         addSelectionLabel="添加到当前辅助对话"
-        onFileAction={(path, action, location) =>
-          window.zpi.fileAction(sessionId, path, action, location).then(unwrap)
-        }
-        onChanges={(runId, path, toolCallId) => openChanges(sessionId, runId, path, toolCallId)}
-        onLoadToolPatch={(runId, toolCallId) =>
-          window.zpi.readPatch(sessionId, runId, `operation:${toolCallId}`).then(unwrap)
-        }
-        historyCursor={cursor}
-        hasEarlier={cursor != null}
-        loadingEarlier={loadingEarlier}
-        onLoadEarlier={() => loadEarlier(sessionId)}
       />
       <div className="composer-container">
         {view.question && (

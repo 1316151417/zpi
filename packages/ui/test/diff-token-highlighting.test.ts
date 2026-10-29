@@ -1,7 +1,7 @@
 import type { BundledLanguage, ThemedToken } from "shiki";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { toolPatchLanguage } from "../src/code-language.ts";
-import { toolCodeLanguage, useToolTokens } from "../src/components/ToolDiff.tsx";
+import { toolCodeLanguage, toolPatchLanguage } from "../src/code-language.ts";
+import { useToolTokens } from "../src/components/ToolDiff.tsx";
 
 const mocks = vi.hoisted(() => ({
   state: undefined as unknown,
@@ -222,6 +222,9 @@ describe("lightweight diff language inference", () => {
     ["/folder.ts/script", "log"],
     ["/work/icon.svg", "xml"],
     ["/work/chart.mmd", "mermaid"],
+    ["/work/chart.mermaid", "mermaid"],
+    ["module.mjs", "javascript"],
+    ["types.h", "c"],
   ])("infers %s as %s", (path, language) => {
     expect(toolCodeLanguage(path)).toBe(language);
   });
@@ -235,11 +238,19 @@ describe("lightweight diff language inference", () => {
     expect(toolCodeLanguage("a.ts/")).toBe("typescript");
   });
 
+  it.each(["file.constructor", "file.__proto__"])("ignores inherited language keys in %s", (path) => {
+    expect(toolPatchLanguage(path)).toBe("diff");
+  });
+
   it("uses known extensions before shebang or diff content clues", () => {
     expect(toolCodeLanguage("notes.txt", "#!/usr/bin/python\nprint(123)")).toBe("log");
     expect(toolCodeLanguage("script", "#!/usr/bin/env python\nprint(123)")).toBe("python");
     expect(toolCodeLanguage("script", "#!/bin/sh\necho hi")).toBe("bash");
-    expect(toolCodeLanguage("output", "--- a/source\n+++ b/source")).toBe("diff");
+    expect(toolCodeLanguage("", "#!/bin/bash\necho hi")).toBe("bash");
+    expect(toolCodeLanguage("")).toBe("log");
+    for (const marker of ["diff --git a/a b/a", "--- a/a", "+++ b/a", "@@ -1 +1 @@"]) {
+      expect(toolCodeLanguage("output", `header\n${marker}`)).toBe("diff");
+    }
   });
 
   it("uses languages supported by the installed Shiki highlighter", async () => {

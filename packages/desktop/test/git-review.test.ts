@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { gitReview, gitReviewDiff, gitReviewPatch } from "../src/main/git-review.ts";
+import { gitReview, gitReviewDiff } from "../src/main/git-review.ts";
 import { runGit } from "../src/main/workspace-files.ts";
 import { reviewPatchStats } from "../src/shared/review.ts";
 
@@ -40,19 +40,19 @@ test("separates index from working copy and includes literal untracked names wit
     added: 2,
     removed: 0,
   });
-  expect(await gitReviewPatch(cwd, "staged", path)).toContain("-original\n+staged");
-  expect(await gitReviewPatch(cwd, "unstaged", path)).toContain("-staged\n+working");
   expect(await gitReviewDiff(cwd, "staged", path)).toMatchObject({
+    patch: expect.stringContaining("-original\n+staged"),
     beforeContent: "original\n",
     afterContent: "staged\n",
     availability: "patch",
   });
   expect(await gitReviewDiff(cwd, "unstaged", path)).toMatchObject({
+    patch: expect.stringContaining("-staged\n+working"),
     beforeContent: "staged\n",
     afterContent: "working\n",
     availability: "patch",
   });
-  expect(await gitReviewPatch(cwd, "unstaged", untracked)).toContain("+new\n+second");
+  expect((await gitReviewDiff(cwd, "unstaged", untracked)).patch).toContain("+new\n+second");
 });
 
 test("preserves renames, deleted files and binary fallbacks", async () => {
@@ -65,8 +65,8 @@ test("preserves renames, deleted files and binary fallbacks", async () => {
     oldPath: join(cwd, "file.txt"),
     status: "renamed",
   });
-  expect(await gitReviewPatch(cwd, "staged", renamed.path)).toContain("rename from file.txt");
   expect(await gitReviewDiff(cwd, "staged", renamed.path)).toMatchObject({
+    patch: expect.stringContaining("rename from file.txt"),
     beforeContent: "original\n",
     afterContent: "original\n",
   });
@@ -96,16 +96,20 @@ test("compares upstream merge base to HEAD and keeps subtree scope", async () =>
   expect((await gitReview(nested, "branch")).entries).toMatchObject([
     { path: join(nested, "inside.txt"), added: 1 },
   ]);
-  expect(await gitReviewPatch(nested, "branch", join(nested, "inside.txt"))).toContain("+committed");
-  expect(await gitReviewPatch(nested, "branch", join(nested, "inside.txt"))).not.toContain("uncommitted");
-  await expect(gitReviewPatch(nested, "branch", join(cwd, "outside.txt"))).rejects.toThrow("invalid_input");
+  const diff = await gitReviewDiff(nested, "branch", join(nested, "inside.txt"));
+  expect(diff.patch).toContain("+committed");
+  expect(diff.patch).not.toContain("uncommitted");
+  await expect(gitReviewDiff(nested, "branch", join(cwd, "outside.txt"))).rejects.toThrow("invalid_input");
   await runGit(cwd, ["branch", "--unset-upstream"]);
   expect((await gitReview(cwd, "branch")).entries).toEqual([]);
 });
 
-test("returns non-repository state and rejects disappeared changes", async () => {
+test("returns non-repository state and marks disappeared changes unavailable", async () => {
   const cwd = await repo();
-  await expect(gitReviewPatch(cwd, "unstaged", join(cwd, "file.txt"))).rejects.toThrow("not_found");
+  expect(await gitReviewDiff(cwd, "unstaged", join(cwd, "file.txt"))).toMatchObject({
+    availability: "unavailable",
+    patch: null,
+  });
   await rm(join(cwd, ".git"), { recursive: true });
   expect(await gitReview(cwd, "unstaged")).toEqual({ entries: [], isRepository: false });
 });

@@ -19,6 +19,7 @@ import {
   MermaidBlock,
   useAppearance,
 } from "zpi-ui";
+import { toolCodeLanguage } from "zpi-ui/code-language";
 import type { FileLocation, WebOpenOptions } from "zpi-ui/links";
 import type { FilePreview } from "../shared/bridge.ts";
 import { FileCommentEditor } from "./FileCommentEditor.tsx";
@@ -35,7 +36,6 @@ import { fileGutterCSS, observeFileGutterLabels } from "./file-gutter.ts";
 import { readMarkdownImage } from "./markdown-image.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, openSideChat, openWebLink, paneTask, useSideChatBlocked } from "./pane-store.ts";
-import { inferPreviewLanguage } from "./preview-language.ts";
 import { addConversationSelection, drafts, focusComposer, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
@@ -241,7 +241,7 @@ export function FilePane({
       lang:
         preview.kind === "text" && preview.text.length > 180000
           ? ("text" as const)
-          : inferPreviewLanguage(preview.path, preview.kind === "text" ? preview.text : undefined),
+          : toolCodeLanguage(preview.path, preview.kind === "text" ? preview.text : undefined),
     }),
     [preview],
   );

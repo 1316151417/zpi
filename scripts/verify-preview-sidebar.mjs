@@ -1,7 +1,7 @@
 // Component-level visual comparison against the untouched, checked-out ZCode sources.
 // Run: node scripts/verify-preview-sidebar.mjs [reference repository]
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -442,10 +442,5 @@ app.whenReady().then(()=>{
     await new Promise((r) => server.close(r));
   }
 }
-const evidenceDir = resolve("docs/evidence/preview-sidebar");
-await mkdir(evidenceDir, { recursive: true });
-for (const file of await readdir(output))
-  if (/-(?:comparison|overlay|ref|zpi)\.png$/.test(file) || file === "evidence.json")
-    await copyFile(join(output, file), join(evidenceDir, file));
-execFileSync(resolve("node_modules/.bin/biome"), ["format", "--write", join(evidenceDir, "evidence.json")]);
-console.log(evidenceDir);
+execFileSync(resolve("node_modules/.bin/biome"), ["format", "--write", join(output, "evidence.json")]);
+console.log(output);

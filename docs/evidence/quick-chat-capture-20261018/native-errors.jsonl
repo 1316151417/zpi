@@ -1,4 +1,0 @@
-{"time":"2026-10-18T06:54:33.323Z","source":"quick-chat.capture","version":"0.2.116","pid":16091,"message":"configuration: 请在系统设置 → 隐私与安全性 → 辅助功能中允许 ZPI 读取选中文字，再重试"}
-{"time":"2026-10-18T06:54:37.917Z","source":"quick-chat.capture","version":"0.2.116","pid":16091,"message":"invalid_input: 未读到选中文字，或当前应用未提供选区。请先复制，再使用剪贴板带入快捷键"}
-{"time":"2026-10-18T06:54:42.393Z","source":"quick-chat.capture","version":"0.2.116","pid":16091,"message":"invalid_input: 未读到选中文字，或当前应用未提供选区。请先复制，再使用剪贴板带入快捷键"}
-{"time":"2026-10-18T06:56:22.408Z","source":"quick-chat.capture","version":"0.2.116","pid":16091,"message":"Unexpected end of JSON input"}

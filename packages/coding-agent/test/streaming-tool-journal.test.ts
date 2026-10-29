@@ -307,7 +307,7 @@ it.each(["error", "length", "aborted"] as const)(
 );
 
 it("recovers only the unresolved declaration when a later turn reuses an ID", async () => {
-  const { recoverCanonicalToolCalls } = await import("../src/core/streaming-tool-journal.ts");
+  const { recoverCanonicalToolCallsAsync } = await import("../src/core/streaming-tool-journal.ts");
   const manager = SessionManager.inMemory();
   const assistant: AssistantMessage = {
     ...emptyAssistant(fakeModel("")),
@@ -324,7 +324,7 @@ it("recovers only the unresolved declaration when a later turn reuses an ID", as
   manager.appendMessage(assistant);
   manager.appendMessage(result);
   manager.appendMessage(assistant);
-  recoverCanonicalToolCalls(manager, manager.buildSessionContext().messages);
+  await recoverCanonicalToolCallsAsync(manager, manager.buildSessionContext().messages);
   expect(
     manager.buildSessionContext().messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([{ isError: false }, { isError: true }]);

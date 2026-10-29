@@ -10,7 +10,11 @@ import {
   type Model,
   type RetryPolicy,
 } from "zpi-ai";
-import type { CompactionOptions, CompactionSettings } from "./compaction.ts";
+import {
+  type CompactionOptions,
+  type CompactionSettings,
+  DEFAULT_COMPACTION_SETTINGS,
+} from "./compaction.ts";
 
 export interface ProviderRetrySettings {
   timeoutMs?: number;
@@ -81,18 +85,18 @@ export class SettingsManager {
     const override = key === undefined ? undefined : config?.modelOverrides?.[key];
     if (override !== undefined && !object(override))
       throw new Error(`Invalid compaction.modelOverrides["${key}"] setting`);
-    const resolve = (field: "reserveTokens" | "keepRecentTokens", fallback: number) => {
+    const resolve = (field: "reserveTokens" | "keepRecentTokens") => {
       for (const value of [config?.[field], override?.[field]])
         if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
           throw new Error(
             `Invalid compaction.${field} setting: ${String(value)}. Expected a non-negative safe integer.`,
           );
-      return override?.[field] ?? config?.[field] ?? fallback;
+      return override?.[field] ?? config?.[field] ?? DEFAULT_COMPACTION_SETTINGS[field];
     };
     return {
-      enabled: config?.enabled ?? true,
-      reserveTokens: resolve("reserveTokens", 16384),
-      keepRecentTokens: resolve("keepRecentTokens", 20000),
+      enabled: config?.enabled ?? DEFAULT_COMPACTION_SETTINGS.enabled,
+      reserveTokens: resolve("reserveTokens"),
+      keepRecentTokens: resolve("keepRecentTokens"),
     };
   }
   getMicrocompactSettings(): import("./microcompact.ts").MicrocompactConfig {

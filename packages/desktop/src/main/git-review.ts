@@ -156,17 +156,6 @@ export async function gitReview(
   };
 }
 
-export async function gitReviewPatch(cwd: string, source: ReviewSource, path: string): Promise<string> {
-  // 仅接受当前来源中存在的路径；参数经 -- 分隔，禁用用户配置的外部 diff/textconv。
-  const entry = (await gitReview(cwd, source, path)).entries.find((entry) => entry.path === path);
-  if (!entry) throw new Error("not_found: 此来源下的文件改动已不存在，请刷新");
-  if (entry.reason) return "";
-  const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"])).trim();
-  const refs = await comparison(cwd, source);
-  if (source === "branch" && !refs.length) throw new Error("not_found: 上游分支不可用");
-  return reviewPatch(root, refs, entry);
-}
-
 /** Reuse the entry already validated by this request; do not rescan the repository for each layer. */
 async function reviewPatch(root: string, refs: string[], entry: DiffItem): Promise<string> {
   const path = entry.path;

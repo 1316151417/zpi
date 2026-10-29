@@ -1,6 +1,0 @@
-{"bundle":"com.openai.codex","selectedStatus":0,"focusedStatus":0,"result":"success","role":"AXGroup","parentPid":25535,"targetPid":50756,"trusted":1}
-{"targetPid":27954,"bundle":"com.microsoft.VSCode","result":"unavailable","trusted":1,"focusedStatus":-25212,"parentPid":25535}
-{"bundle":"com.openai.codex","selectedStatus":0,"focusedStatus":0,"result":"success","role":"AXGroup","parentPid":25535,"targetPid":50756,"trusted":1}
-{"targetPid":27954,"bundle":"com.microsoft.VSCode","result":"unavailable","trusted":1,"focusedStatus":-25212,"parentPid":25535}
-{"bundle":"com.microsoft.VSCode","result":"unavailable","focusedStatus":-25212,"parentPid":25535,"targetPid":27954,"manualStatus":0,"retryFocusedStatus":-25212,"trusted":1}
-{"bundle":"com.microsoft.VSCode","selectedStatus":0,"focusedStatus":0,"result":"empty","role":"AXTextArea","parentPid":25535,"targetPid":27954,"trusted":1}

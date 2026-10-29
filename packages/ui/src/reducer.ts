@@ -398,23 +398,33 @@ export { resultText } from "./types.ts";
 function normalizeWebHistory(view: SessionView): SessionView {
   return {
     ...view,
-    runs: view.runs.map((run) => ({
-      ...run,
-      orderedBlocks: run.orderedBlocks.map((block) =>
-        block.type === "tool" && block.web !== undefined
-          ? { ...block, web: normalizeWebToolDetails(block.web, block.name) }
-          : block,
-      ),
-    })),
+    runs: view.runs.map((run) =>
+      run.orderedBlocks.some((block) => block.type === "tool" && block.web !== undefined)
+        ? {
+            ...run,
+            orderedBlocks: run.orderedBlocks.map((block) =>
+              block.type === "tool" && block.web !== undefined
+                ? { ...block, web: normalizeWebToolDetails(block.web, block.name) }
+                : block,
+            ),
+          }
+        : run,
+    ),
   };
 }
 
 export function mergeHistory(older: SessionView, newer: SessionView): SessionView {
   const runs = [...older.runs];
+  const indices = new Map<string, number>();
+  for (const [index, run] of runs.entries()) {
+    if (!indices.has(run.runId)) indices.set(run.runId, index);
+  }
   for (const run of newer.runs) {
-    const index = runs.findIndex((r) => r.runId === run.runId);
-    if (index < 0) runs.push(run);
-    else {
+    const index = indices.get(run.runId);
+    if (index === undefined) {
+      indices.set(run.runId, runs.length);
+      runs.push(run);
+    } else {
       const blocks = new Map(runs[index].orderedBlocks.map((b) => [b.id, b]));
       for (const block of run.orderedBlocks) blocks.set(block.id, block);
       const compactions = new Map(runs[index].compactions?.map((marker) => [marker.id, marker]));

@@ -1,6 +1,7 @@
 // ZCode read/execute/edit renderers, adapted to ZPI's four tools (Apache-2.0).
 import { Pencil, Search, SquareTerminal, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toolCodeLanguage } from "../code-language.ts";
 import type { FileOpenHandler, LinkContext, WebOpenOptions } from "../link-target.ts";
 import { userErrorMessage } from "../user-error.ts";
 import { AskQuestionToolBlock } from "./AskQuestionToolBlock.tsx";
@@ -10,7 +11,7 @@ import { FileIcon } from "./Reference.tsx";
 import { SubagentMessageToolBlock } from "./SubagentMessageToolBlock.tsx";
 import { SubagentTaskToolBlock } from "./SubagentTaskToolBlock.tsx";
 import { SubagentToolBlock } from "./SubagentToolBlock.tsx";
-import { ToolCode, ToolDiff, toolCodeLanguage } from "./ToolDiff.tsx";
+import { ToolCode, ToolDiff } from "./ToolDiff.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
 import { ToolOutput } from "./ToolOutput.tsx";

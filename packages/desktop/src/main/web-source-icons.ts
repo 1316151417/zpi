@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import { type RequestOptions, request } from "node:https";
 import { isIP } from "node:net";
+import { abortable } from "zpi-ai";
 import { publicWebUrl } from "./web-client.ts";
 import { decodeIconImage, iconImageFormat } from "./web-icon-image.ts";
 
@@ -31,24 +32,6 @@ type Job = {
   done: boolean;
   cancelled: boolean;
 };
-
-function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(new Error("Icon unavailable"));
-    if (signal.aborted) abort();
-    else signal.addEventListener("abort", abort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", abort);
-        resolve(value);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", abort);
-        reject(error);
-      },
-    );
-  });
-}
 
 /** Main-process only. Callers must authorize the DeepSeek source record before passing its site_icon. */
 export class WebSourceIcons {

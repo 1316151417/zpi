@@ -291,11 +291,6 @@ function canonicalRepairPlan(
   return { trailing: interrupted() };
 }
 
-export function recoverCanonicalToolCalls(manager: SessionManager, messages: Message[]): void {
-  const plan = canonicalRepairPlan(manager, messages);
-  if (plan.entries) manager.replaceEntries(plan.entries);
-  for (const message of plan.trailing) manager.appendMessage(message);
-}
 export async function recoverCanonicalToolCallsAsync(
   manager: SessionManager,
   messages: Message[],

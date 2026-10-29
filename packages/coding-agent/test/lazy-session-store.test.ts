@@ -465,7 +465,7 @@ it("replays indexed microcompact boundaries without reading completed journals o
 });
 
 it("repairs historical tool gaps in indexed context while retaining the compaction boundary", async () => {
-  const { recoverCanonicalToolCalls } = await import("../src/core/streaming-tool-journal.ts");
+  const { recoverCanonicalToolCallsAsync } = await import("../src/core/streaming-tool-journal.ts");
   const source = SessionManager.inMemory();
   source.appendMessage({ role: "user", content: "summarized", timestamp: 0 });
   const kept = source.appendMessage({
@@ -480,7 +480,7 @@ it("repairs historical tool gaps in indexed context while retaining the compacti
   source.appendCompaction("retained summary", kept);
   const index = indexed(source.getEntries());
   const manager = SessionManager.fromStore(index.store);
-  recoverCanonicalToolCalls(manager, manager.buildSessionContext().messages);
+  await recoverCanonicalToolCallsAsync(manager, manager.buildSessionContext().messages);
   const messages = manager.buildSessionContext().messages;
   expect(messages.map((message) => message.role)).toEqual([
     "system",
@@ -492,7 +492,7 @@ it("repairs historical tool gaps in indexed context while retaining the compacti
   expect(messages[1]).toMatchObject({ content: expect.stringContaining("retained summary") });
   expect(messages[3]).toMatchObject({ toolCallId: "orphan", isError: true });
   const before = [...manager.iterateEntries()];
-  recoverCanonicalToolCalls(manager, messages);
+  await recoverCanonicalToolCallsAsync(manager, messages);
   expect([...manager.iterateEntries()]).toEqual(before);
 });
 

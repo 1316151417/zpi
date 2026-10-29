@@ -29,7 +29,7 @@ const result = {
   allByteIdentical: true,
   manifestSha256: digest.digest("hex"),
 };
-const destination = "docs/evidence/preview-sidebar/assets.json";
-await mkdir("docs/evidence/preview-sidebar", { recursive: true });
+const destination = "release/preview-sidebar-parity/assets.json";
+await mkdir("release/preview-sidebar-parity", { recursive: true });
 await writeFile(destination, `${JSON.stringify(result, null, 2)}\n`);
 console.log(result);

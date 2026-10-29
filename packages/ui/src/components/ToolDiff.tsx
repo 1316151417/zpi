@@ -7,8 +7,6 @@ import { patchPreviewLines } from "./tool-presentation.ts";
 
 import { useSelectionStableValue } from "./use-selection-stable-value.ts";
 
-export { toolCodeLanguage } from "../code-language.ts";
-
 export function useToolTokens(code: string, language: BundledLanguage, streaming = false) {
   const { theme } = useAppearance();
   const [highlight, setHighlight] = useState<{

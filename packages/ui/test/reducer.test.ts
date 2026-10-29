@@ -1,8 +1,50 @@
 import { expect, it } from "vitest";
 import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
-import { emptySession, progressSummary, reduceSession } from "../src/reducer.ts";
-import type { DesktopEvent, SessionView } from "../src/types.ts";
+import { emptySession, mergeHistory, progressSummary, reduceSession } from "../src/reducer.ts";
+import type { DesktopEvent, RunView, SessionView } from "../src/types.ts";
+
+it("merges history in order without mutating pages or copying unchanged runs", () => {
+  const run = (runId: string, text: string): RunView => ({
+    runId,
+    status: "completed",
+    startedAt: 1,
+    userMessage: `input ${runId}`,
+    orderedBlocks: [{ type: "text", id: text, messageId: text, text, streaming: false }],
+    finalAnswerBlockIds: [text],
+  });
+  const first = run("first", "first answer");
+  const overlap = { ...run("overlap", "earlier answer"), fileReferences: ["file.ts"] };
+  const continuation = { ...run("overlap", "latest answer"), historyContinuation: true, userMessage: "" };
+  const last = run("last", "last answer");
+  const older = { ...emptySession("s"), runs: [first, overlap] };
+  const newer = { ...emptySession("s"), seq: 42, runs: [continuation, last] };
+  const original = structuredClone({ older, newer });
+
+  const merged = mergeHistory(older, newer);
+  expect(merged.seq).toBe(42);
+  expect(merged.runs.map((entry) => entry.runId)).toEqual(["first", "overlap", "last"]);
+  expect(merged.runs[0]).toBe(first);
+  expect(merged.runs[2]).toBe(last);
+  expect(merged.runs[1]).toMatchObject({
+    userMessage: overlap.userMessage,
+    fileReferences: overlap.fileReferences,
+    historyContinuation: undefined,
+    orderedBlocks: [...overlap.orderedBlocks, ...continuation.orderedBlocks],
+    finalAnswerBlockIds: continuation.finalAnswerBlockIds,
+  });
+  expect({ older, newer }).toEqual(original);
+  expect(mergeHistory(emptySession("s"), newer)).toEqual(newer);
+  expect(mergeHistory(older, emptySession("s")).runs).toEqual(older.runs);
+
+  // Repeated chunks for a newly encountered run must update the same slot.
+  const updated = { ...last, orderedBlocks: [{ ...last.orderedBlocks[0], text: "updated answer" }] };
+  expect(mergeHistory(older, { ...newer, runs: [last, updated] }).runs).toEqual([
+    first,
+    overlap,
+    { ...updated, compactions: [], historyContinuation: undefined },
+  ]);
+});
 
 it("retains a tool error completed during model streaming when the final assistant replaces its blocks", () => {
   let view = emptySession("s");

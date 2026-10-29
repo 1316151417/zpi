@@ -2,10 +2,11 @@ import { PatchDiff } from "@pierre/diffs/react";
 import { FileCode2 } from "lucide-react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppearance } from "../appearance.ts";
+import { toolCodeLanguage } from "../code-language.ts";
 import type { FindMatch, FindRequest, FindState, FindTarget } from "../find.ts";
 import { patchFindTargets } from "../patch-find.ts";
 import { userErrorMessage } from "../user-error.ts";
-import { toolCodeLanguage, useToolTokens } from "./ToolDiff.tsx";
+import { useToolTokens } from "./ToolDiff.tsx";
 import { findHighlightCSS, useTextFind } from "./use-text-find.ts";
 export interface DiffEntry {
   id: string;

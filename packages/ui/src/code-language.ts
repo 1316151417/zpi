@@ -50,5 +50,6 @@ export function toolCodeLanguage(path: string, content = ""): BundledLanguage {
 
 /** Preserve the standalone patch preview's extension-only diff fallback. */
 export function toolPatchLanguage(path: string): BundledLanguage {
-  return languages[path.split(".").at(-1)?.toLowerCase() ?? ""] ?? "diff";
+  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
+  return Object.hasOwn(languages, extension) ? languages[extension] : "diff";
 }

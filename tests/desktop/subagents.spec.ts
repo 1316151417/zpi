@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
+import { create } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
@@ -214,7 +215,7 @@ test("subagent capability manages profiles/models and opens complete read-only c
         return r.ok ? r.value.view.runs.length : 0;
       }, childId),
     ).toBe(1);
-    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await create(page);
     await expect(page.locator(".right-pane")).toBeHidden();
     expect(errors).toEqual([]);
   } finally {
@@ -366,7 +367,7 @@ test("background child updates live and keeps late findings for the next user in
       .click();
     await expect(page.locator(".task-activity-toggle")).toContainText("2 已结束");
     await expect(page.getByRole("button", { name: "关闭任务状态", exact: true })).toHaveCount(0);
-    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await create(page);
     await editor.fill("Start another background task");
     await editor.press("Enter");
     await expect(page.locator("main .answer")).toContainText("Coordinator report");

@@ -13,6 +13,8 @@ import {
 } from "./assistant-path-quotes.ts";
 import { joinFilePath, parseFileUrlPath as parseAssistantFileUrlPath } from "./path.ts";
 import {
+  type ConversationPreviewFileKind,
+  type ConversationPreviewFileReference,
   extractConversationPreviewFileReferences,
   getConversationPreviewFileType,
 } from "./preview-artifacts.ts";
@@ -20,25 +22,10 @@ import { type MarkdownFileLinkResolveOptions, resolveMarkdownFileLink } from "./
 
 export { parseAssistantFileUrlPath };
 
-export type AssistantPreviewFileKind =
-  | "markdown"
-  | "html"
-  | "docx"
-  | "xlsx"
-  | "pptx"
-  | "pdf"
-  | "video"
-  | "audio";
+export type AssistantPreviewFileKind = ConversationPreviewFileKind;
 
 export type AssistantPreviewFileSubtitleId =
-  | "chat.previewCards.markdown"
-  | "chat.previewCards.htmlWebsite"
-  | "chat.previewCards.docx"
-  | "chat.previewCards.xlsx"
-  | "chat.previewCards.pptx"
-  | "chat.previewCards.pdf"
-  | "chat.previewCards.video"
-  | "chat.previewCards.audio";
+  `chat.previewCards.${Exclude<AssistantPreviewFileKind, "html"> | "htmlWebsite"}`;
 
 interface AssistantPreviewFileTypeDefinition {
   extensions: readonly string[];
@@ -46,13 +33,7 @@ interface AssistantPreviewFileTypeDefinition {
   subtitleId: AssistantPreviewFileSubtitleId;
 }
 
-export interface AssistantFileReference {
-  end: number;
-  kind: AssistantPreviewFileKind;
-  path: string;
-  raw: string;
-  start: number;
-}
+export type AssistantFileReference = ConversationPreviewFileReference;
 
 export type AssistantFilePathResolveOptions = MarkdownFileLinkResolveOptions;
 const FILE_URL_RE = /\bfile:\/\/[^\s<>()\]`"'*“”‘’，。！？；：、]+/gi;

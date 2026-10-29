@@ -70,6 +70,22 @@ test("runtime and migration share an exclusive maintenance lock", () => {
   result.close();
 });
 
+test("allows mutex readers while excluding another storage owner", () => {
+  const dir = root();
+  const reader = new DatabaseSync(join(dir, ".storage-lock.sqlite"));
+  try {
+    reader.exec("BEGIN; SELECT count(*) FROM sqlite_master");
+    const release = acquireStorageLock(dir, "runtime");
+    try {
+      expect(() => acquireStorageLock(dir, "migration")).toThrow("存储已锁定");
+    } finally {
+      release();
+    }
+  } finally {
+    reader.close();
+  }
+});
+
 test("reopens the same generation after a lock owner exits without cleanup", () => {
   const dir = root();
   const first = openStorageGeneration(dir, initialize);
@@ -131,8 +147,11 @@ test("only one process can recover and hold an abandoned lock", async () => {
         "-e",
         `import { acquireStorageLock } from ${JSON.stringify(source)};
      process.once("message", () => {
-       try { acquireStorageLock(process.argv[1], "runtime"); process.send(true); }
-       catch { process.send(false); }
+       try { acquireStorageLock(process.argv[1], "runtime"); process.send({ acquired: true }); }
+       catch (error) {
+         process.send({ acquired: false, error: error.message,
+           cause: error.cause?.message, code: error.cause?.code, errcode: error.cause?.errcode });
+       }
      }); process.send("ready"); setInterval(() => {}, 1000);`,
         dir,
       ],
@@ -144,7 +163,8 @@ test("only one process can recover and hold an abandoned lock", async () => {
     await Promise.all(children.map((child) => once(child, "message")));
     const results = children.map((child) => once(child, "message"));
     for (const child of children) child.send("go");
-    expect((await Promise.all(results)).map(([result]) => result).sort()).toEqual([false, true]);
+    const outcomes = (await Promise.all(results)).map(([result]) => result);
+    expect(outcomes.map((result) => result.acquired).sort(), JSON.stringify(outcomes)).toEqual([false, true]);
     expect(() => acquireStorageLock(dir, "migration")).toThrow("存储已锁定");
   } finally {
     for (const child of children) child.kill("SIGKILL");

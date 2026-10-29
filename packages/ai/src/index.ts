@@ -25,6 +25,7 @@ export {
 export { streamSimple } from "./stream.ts";
 export type * from "./types.ts";
 export { anthropicMessagesCompatKeys, openAICompletionsCompatKeys } from "./types.ts";
+export { abortable } from "./utils/abort.ts";
 export { calculateContextTokens, estimateMessageTokens } from "./utils/estimate.ts";
 export { AssistantMessageEventStream, createAssistantMessageEventStream } from "./utils/event-stream.ts";
 export { guardModelStream } from "./utils/guard-model-stream.ts";
