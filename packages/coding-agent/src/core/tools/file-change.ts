@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createTwoFilesPatch, parsePatch } from "diff";
+import { readRegularFile } from "./pi/utils/read-file.ts";
 export interface FileChange {
   path: string;
   operation: "created" | "modified";
@@ -19,7 +20,7 @@ export interface FileChange {
 }
 export async function beforeFile(path: string): Promise<Buffer | null> {
   try {
-    return await readFile(path);
+    return await readRegularFile(path);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
@@ -33,7 +34,7 @@ export async function recordFileChange(
   outputDir?: string,
   failed = false,
 ): Promise<FileChange | undefined> {
-  const after = await readFile(path);
+  const after = await readRegularFile(path);
   if (before?.equals(after)) return undefined;
   const change: FileChange = {
     path,
@@ -66,7 +67,7 @@ export async function recordFileChange(
       afterText,
       "",
       "",
-      { context: 3, timeout: 1000 },
+      { context: 3, timeout: 50 },
     );
     if (patch === undefined) return { ...change, reason: "文件已修改，diff 计算超时，无法内联比较" };
     Object.assign(change, patchLineCounts(patch));

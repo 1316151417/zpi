@@ -317,6 +317,9 @@ export class QuickChatHost {
       if (last?.role === "assistant" && last.stopReason === "error") {
         status = "error";
         failure = last.errorMessage ?? "模型请求失败";
+      } else if (last?.role === "assistant" && last.stopReason === "length") {
+        status = "error";
+        failure = "模型输出达到长度上限，回复已截断。已保留部分输出，请继续提问。";
       } else if (last?.role === "assistant" && last.stopReason === "aborted") status = "aborted";
     } catch (error) {
       status = "error";

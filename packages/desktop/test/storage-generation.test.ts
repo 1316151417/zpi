@@ -1,3 +1,5 @@
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -66,6 +68,90 @@ test("runtime and migration share an exclusive maintenance lock", () => {
   release();
   const result = openStorageGeneration(dir, initialize);
   result.close();
+});
+
+test("reopens the same generation after a lock owner exits without cleanup", () => {
+  const dir = root();
+  const first = openStorageGeneration(dir, initialize);
+  first.close();
+  const source = new URL("../src/main/storage-generation.ts", import.meta.url).href;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { acquireStorageLock } from ${JSON.stringify(source)};
+     acquireStorageLock(process.argv[1], "runtime"); process.exit(0);`,
+      dir,
+    ],
+    { timeout: 5000, encoding: "utf8" },
+  );
+  expect(child.status, child.stderr).toBe(0);
+  expect(existsSync(join(dir, ".storage-lock", "owner.json"))).toBe(true);
+  const reopened = openStorageGeneration(dir, () => {
+    throw new Error("must preserve the generation");
+  });
+  expect(reopened.marker).toEqual(first.marker);
+  reopened.close();
+});
+
+test.each([undefined, {}, { pid: 0 }, { pid: "invalid" }, { pid: process.pid }])(
+  "does not reclaim an unverifiable or live legacy lock: %j",
+  (owner) => {
+    const dir = root();
+    mkdirSync(join(dir, ".storage-lock"));
+    const file = join(dir, ".storage-lock", "owner.json");
+    if (owner !== undefined) writeFileSync(file, JSON.stringify(owner));
+    expect(() => acquireStorageLock(dir, "runtime")).toThrow("存储已锁定");
+    expect(existsSync(join(dir, ".storage-lock"))).toBe(true);
+    if (owner !== undefined) expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(owner);
+  },
+);
+
+test("only one process can recover and hold an abandoned lock", async () => {
+  const dir = root();
+  const source = new URL("../src/main/storage-generation.ts", import.meta.url).href;
+  const abandoned = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { acquireStorageLock } from ${JSON.stringify(source)};
+     acquireStorageLock(process.argv[1], "runtime"); process.exit(0);`,
+      dir,
+    ],
+    { timeout: 5000, encoding: "utf8" },
+  );
+  expect(abandoned.status, abandoned.stderr).toBe(0);
+  const children = Array.from({ length: 2 }, () =>
+    spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { acquireStorageLock } from ${JSON.stringify(source)};
+     process.once("message", () => {
+       try { acquireStorageLock(process.argv[1], "runtime"); process.send(true); }
+       catch { process.send(false); }
+     }); process.send("ready"); setInterval(() => {}, 1000);`,
+        dir,
+      ],
+      { stdio: ["ignore", "ignore", "pipe", "ipc"] },
+    ),
+  );
+  const exited = children.map((child) => once(child, "exit"));
+  try {
+    await Promise.all(children.map((child) => once(child, "message")));
+    const results = children.map((child) => once(child, "message"));
+    for (const child of children) child.send("go");
+    expect((await Promise.all(results)).map(([result]) => result).sort()).toEqual([false, true]);
+    expect(() => acquireStorageLock(dir, "migration")).toThrow("存储已锁定");
+  } finally {
+    for (const child of children) child.kill("SIGKILL");
+    await Promise.all(exited);
+  }
+  const release = acquireStorageLock(dir, "migration");
+  release();
 });
 test("bad pointer and missing database fail closed rather than recreating user state", () => {
   const dir = root();

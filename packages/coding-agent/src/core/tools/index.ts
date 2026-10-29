@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { realpath, writeFile } from "node:fs/promises";
 import type { AgentTool, AgentToolResult } from "zpi-agent";
 import type { JsonValue, Model } from "zpi-ai";
 import type { ToolContext, ToolDefinition } from "../types.ts";
@@ -9,6 +9,7 @@ import { createEditToolDefinition, type EditToolOptions } from "./pi/edit.ts";
 import { FileReadState } from "./pi/file-read-state.ts";
 import { createReadToolDefinition, type ReadToolOptions } from "./pi/read.ts";
 import { wrapToolDefinition } from "./pi/tool-definition-wrapper.ts";
+import { readRegularFile } from "./pi/utils/read-file.ts";
 import { createWriteToolDefinition, type WriteToolOptions } from "./pi/write.ts";
 
 export { createBashToolDefinition, createLocalBashOperations } from "./pi/bash.ts";
@@ -105,7 +106,7 @@ function observeMutation(
               ...options,
               operations: {
                 writeFile: observeWrite,
-                readFile,
+                readFile: readRegularFile,
                 access: async (path) => {
                   const { access, constants } = await import("node:fs/promises");
                   await access(path, constants.R_OK | constants.W_OK);

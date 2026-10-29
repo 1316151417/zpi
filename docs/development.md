@@ -14,6 +14,8 @@
 
 本分支使用 SQLite 存储当前业务状态，JSONL v2 存储会话事实。应用数据根的 `active-generation.json` 指向 `storage/<generationId>/`；该目录包含 `state.sqlite`、派生历史索引 `history.sqlite`、`credentials.enc`、`agent/sessions` 和受控附件等文件。设置、项目、任务、草稿、队列与分组从 SQLite 读取，不再加载旧 `settings.json`、`projects.json` 或 `task-groups.json`。附件仍保留专用文件与 `index.json`，不是所有 JSON 都被删除。折叠状态和视图选择仍是 renderer 本地偏好。分组不修改工作目录，删除分组不删除会话。
 
+数据根的 `.storage-lock.sqlite` 通过独占事务协调运行时与迁移工具，进程退出后系统自动释放锁；该文件可保留，不以文件是否存在判断占用。兼容标记 `.storage-lock/owner.json` 在确认原进程已退出后自动清理；进程仍存活、无权检查或所有者信息损坏时保留标记并拒绝打开。
+
 发现旧数据但没有已激活的新 generation 时，启动会拒绝继续，并要求离线迁移；不会自动转换或回退读取。可用 `ZPI_DATA_DIR="/absolute/path/to/trial" npm run dev` 覆盖数据根进行隔离试用（只隔离数据，不隔离项目或权限）。个人智能体正文保留为 generation 内 `agents/*.md`，启用/选择状态在 SQLite 的 `subagentProfiles` 配置中。完整合同、隔离试用、迁移命令与回滚限制见 [SQLite 存储说明](specs/sqlite-storage.md)。
 
 macOS 数据目录：
@@ -182,6 +184,8 @@ macOS 构建通过 Xcode Command Line Tools 的 clang 编译 `packages/desktop/n
 本地文本 `read` 以流式扫描计算行数和内容哈希，仅保留当前输出范围的有界内容；超长单行也不整行缓存。为了精确的续读提示和内容复用判断，仍会扫描全文件，分页不等于只读取请求范围的磁盘字节。自定义 `ReadOperations` 保持原有接口，由实现方负责读取资源限制。
 
 `write`/`edit` 对同一文件的 ZPI 内部写入排队。`edit` 在写入前再次核对原始内容，发现编辑准备期间的外部变动就拒绝写入，要求重新读取；这不是跨进程原子锁，最后一次核对与实际写入之间仍有竞争窗口。`write` 保持明确的整文件覆盖语义。
+
+本地编辑和变更快照读取通过非阻塞打开及句柄类型检查拒绝 FIFO、设备和目录。编辑预览限制输入大小和 Diff 计算预算；超限省略预览，已成功写入的文件和符合原有大小限制的回退快照仍保留。文件回退提交失败时，仅恢复仍保持本次回退状态的路径；发生并发修改则保留当前内容、报告未回滚路径，并继续恢复其他文件。
 
 文件预览卡片只请求变更元数据。较大的差异按需读取，单文件预览只计算该文件；同步 diff 算法在串行的一次性工作线程中运行，完成、失败或会话宿主关闭时清理。这样避免阻塞主线程，不代表复杂 diff 的总耗时消失；元数据查询仍读取有界快照以保留一致性检查。
 

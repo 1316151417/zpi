@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { createEditTool, createWriteTool } from "../src/index.ts";
@@ -43,4 +43,23 @@ test("locked diffs record actual before/after for create, overwrite, no-op and c
   expect(await realpath(join(cwd, "f.txt"))).toBe(
     (two.details as { fileChange: { path: string } }).fileChange.path,
   );
+});
+test("bounded diff work preserves large edits and their rewind snapshots", async () => {
+  const cwd = await temp();
+  const path = join(cwd, "generated.txt");
+  const before = Array.from({ length: 8000 }, (_, i) => `old item ${i}`).join("\n");
+  const after = Array.from({ length: 8000 }, (_, i) => `new item ${i}`).join("\n");
+  await writeFile(path, before);
+  const started = performance.now();
+  const result = await createEditTool(cwd, join(cwd, "snapshots")).execute("large-edit", {
+    path,
+    edits: [{ oldText: before, newText: after }],
+  });
+  expect(performance.now() - started).toBeLessThan(2000);
+  expect(result.isError).not.toBe(true);
+  expect(result.details).toMatchObject({ diff: expect.stringContaining("omitted"), patch: "" });
+  const change = (result.details as { fileChange: { beforeFile: string; afterFile: string } }).fileChange;
+  expect(await readFile(path, "utf8")).toBe(after);
+  expect(await readFile(change.beforeFile, "utf8")).toBe(before);
+  expect(await readFile(change.afterFile, "utf8")).toBe(after);
 });

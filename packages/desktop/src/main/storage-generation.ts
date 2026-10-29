@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { validateStateDatabase } from "./state-store.ts";
 
 export interface StorageGeneration {
@@ -58,36 +59,65 @@ export function durableJson(path: string, value: unknown): void {
     rmSync(temporary, { force: true });
   }
 }
-/** Fail closed on abandoned locks: operators inspect the owner before explicitly removing one. */
+/** The OS releases the SQLite lock on exit. Keep owner.json for older runtimes and migration checks. */
 export function acquireStorageLock(root: string, purpose: "runtime" | "migration"): () => void {
   mkdirSync(root, { recursive: true });
   const path = join(root, ".storage-lock");
-  try {
-    mkdirSync(path);
-  } catch (cause) {
-    throw new Error("storage: 存储已锁定。请关闭 ZPI 和迁移工具；异常退出遗留的锁需确认进程结束后再清理。", {
-      cause,
-    });
-  }
+  const mutex = new DatabaseSync(join(root, ".storage-lock.sqlite"));
   const token = randomUUID();
   try {
-    durableJson(join(path, "owner.json"), {
-      token,
-      pid: process.pid,
-      purpose,
-      createdAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    rmSync(path, { recursive: true, force: true });
-    throw error;
+    // Serialize stale-owner inspection/removal too; two recoverers must never remove a new owner's lock.
+    mutex.exec("BEGIN EXCLUSIVE");
+    try {
+      mkdirSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8")) as { pid?: number };
+      if (!Number.isSafeInteger(owner?.pid) || !owner.pid || owner.pid < 1) throw error;
+      let exited = false;
+      try {
+        process.kill(owner.pid, 0);
+      } catch (probe) {
+        // EPERM and unreadable/missing owner records are not evidence that a process has exited.
+        if ((probe as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        exited = true;
+      }
+      // A live legacy owner does not hold the SQLite mutex.
+      if (!exited) throw error;
+      rmSync(path, { recursive: true });
+      mkdirSync(path);
+    }
+    try {
+      durableJson(join(path, "owner.json"), {
+        token,
+        pid: process.pid,
+        purpose,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      rmSync(path, { recursive: true, force: true });
+      throw error;
+    }
+  } catch (cause) {
+    mutex.close();
+    throw new Error(
+      "storage: 存储已锁定或锁所有者无法确认。请关闭 ZPI 和迁移工具；无法验证的遗留锁需人工检查。",
+      {
+        cause,
+      },
+    );
   }
   let released = false;
   return () => {
     if (released) return;
-    const owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8")) as { token?: string };
-    if (owner.token !== token) throw new Error("storage: 存储锁所有者已变化");
-    rmSync(path, { recursive: true });
-    released = true;
+    try {
+      const owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8")) as { token?: string };
+      if (owner.token !== token) throw new Error("storage: 存储锁所有者已变化");
+      rmSync(path, { recursive: true });
+    } finally {
+      mutex.close();
+      released = true;
+    }
   };
 }
 export function generationDirectory(root: string, id: string): string {

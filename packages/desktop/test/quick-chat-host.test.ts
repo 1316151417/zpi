@@ -104,6 +104,22 @@ async function run(host: QuickChatHost, text = "hello") {
   await host.waitForIdle();
 }
 
+test("reports an unrecovered output limit while retaining partial text and accepting the next prompt", async () => {
+  const f = await fixture((_body, index) =>
+    index === 0 ? sse({ content: "partial answer" }, "length") : sse({ content: "continued answer" }),
+  );
+  await run(f.host);
+  expect(f.host.getSnapshot().session.runs[0]).toMatchObject({
+    status: "error",
+    error: expect.stringContaining("回复已截断"),
+    orderedBlocks: [expect.objectContaining({ type: "text", text: "partial answer" })],
+  });
+  expect(f.requests).toHaveLength(1);
+  await run(f.host, "continue");
+  expect(f.host.getSnapshot().session.runs.at(-1)?.status).toBe("completed");
+  expect(f.requests).toHaveLength(2);
+});
+
 test("manual retry rejects stale quick-chat sessions and runs and never restarts a stopped request", async () => {
   const signals: AbortSignal[] = [];
   const f = await fixture((_body, index, signal) => {

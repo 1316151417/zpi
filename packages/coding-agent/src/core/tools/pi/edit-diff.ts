@@ -363,14 +363,22 @@ export function applyEditsToNormalizedContent(
   return { baseContent, newContent };
 }
 
-/** Generate a standard unified patch. */
+const diffBudget = { timeout: 50, maxEditLength: 1024 };
+const maxDiffInputBytes = 4 * 1024 * 1024;
+function withinDiffBudget(oldContent: string, newContent: string): boolean {
+  return Buffer.byteLength(oldContent) + Buffer.byteLength(newContent) <= maxDiffInputBytes;
+}
+
+/** Generate a standard unified patch, or omit it when the computation budget is exceeded. */
 export function generateUnifiedPatch(
   path: string,
   oldContent: string,
   newContent: string,
   contextLines = 4,
-): string {
+): string | undefined {
+  if (!withinDiffBudget(oldContent, newContent)) return undefined;
   return Diff.createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
+    ...diffBudget,
     context: contextLines,
     headerOptions: Diff.FILE_HEADERS_ONLY,
   });
@@ -384,8 +392,19 @@ export function generateDiffString(
   oldContent: string,
   newContent: string,
   contextLines = 4,
-): { diff: string; firstChangedLine: number | undefined } {
-  const parts = Diff.diffLines(oldContent, newContent);
+): { diff: string | undefined; firstChangedLine: number | undefined } {
+  const parts = withinDiffBudget(oldContent, newContent)
+    ? Diff.diffLines(oldContent, newContent, diffBudget)
+    : undefined;
+  if (!parts) {
+    // Keep navigation useful even when the optional preview exceeds its computation budget.
+    let line = 1;
+    for (let i = 0; i < Math.min(oldContent.length, newContent.length); i++) {
+      if (oldContent[i] !== newContent[i]) break;
+      if (newContent[i] === "\n") line++;
+    }
+    return { diff: undefined, firstChangedLine: line };
+  }
   const output: string[] = [];
 
   const oldLines = oldContent.split("\n");

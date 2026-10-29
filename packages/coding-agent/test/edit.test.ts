@@ -16,6 +16,24 @@ function editable(content: string) {
   };
 }
 
+it("omits expensive edit previews without delaying or failing the successful edit", async () => {
+  const before = Array.from({ length: 8000 }, (_, i) => `old item ${i}`).join("\n");
+  const after = Array.from({ length: 8000 }, (_, i) => `new item ${i}`).join("\n");
+  const file = editable(before);
+  const started = performance.now();
+  const result = await file.edit.execute("large-edit", {
+    path: "generated.txt",
+    edits: [{ oldText: before, newText: after }],
+  });
+  expect(performance.now() - started).toBeLessThan(2000);
+  expect(file.content()).toBe(after);
+  expect(result.details).toMatchObject({
+    diff: expect.stringContaining("omitted"),
+    patch: "",
+    firstChangedLine: 1,
+  });
+});
+
 it.each([
   ["ababa", "aba"],
   ["aaa", "aa"],

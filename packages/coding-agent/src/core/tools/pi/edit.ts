@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Mario Zechner. MIT license: THIRD_PARTY_NOTICES.md.
 
 import { constants } from "node:fs";
-import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { access as fsAccess, writeFile as fsWriteFile } from "node:fs/promises";
 import { type Static, Type } from "typebox";
 import type { ToolContext, ToolDefinition } from "../../types.ts";
 import {
@@ -15,10 +15,11 @@ import {
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import type { FileReadState } from "./file-read-state.ts";
 import { resolveToCwd } from "./path-utils.ts";
+import { readRegularFile } from "./utils/read-file.ts";
 import { splitBom } from "./utils/text.ts";
 
 const MAX_EDIT_DETAIL_BYTES = 64 * 1024;
-const OMITTED_EDIT_DIFF = "[Diff omitted: exceeds the inline display limit.]";
+const OMITTED_EDIT_DIFF = "[Diff omitted: exceeds the inline display or computation limit.]";
 
 const replaceEditSchema = Type.Object(
   {
@@ -93,7 +94,7 @@ export interface EditOperations {
 }
 
 const defaultEditOperations: EditOperations = {
-  readFile: (path) => fsReadFile(path),
+  readFile: readRegularFile,
   writeFile: (path, content) => fsWriteFile(path, content, "utf-8"),
   access: (path) => fsAccess(path, constants.R_OK | constants.W_OK),
 };
@@ -215,11 +216,13 @@ export function createEditToolDefinition(cwd: string, options?: EditToolOptions)
         options?.fileReadState?.recordEdit(absolutePath, rawContent, finalContent);
 
         const diffResult = generateDiffString(baseContent, newContent);
-        const patch = generateUnifiedPatch(path, baseContent, newContent);
+        const patch =
+          diffResult.diff === undefined ? undefined : generateUnifiedPatch(path, baseContent, newContent);
         // Long changed lines appear in both display formats. Bound only these
         // previews, not the independent fileChange snapshots used for rewind.
-        const diffTooLarge = Buffer.byteLength(diffResult.diff) > MAX_EDIT_DETAIL_BYTES;
-        const patchTooLarge = Buffer.byteLength(patch) > MAX_EDIT_DETAIL_BYTES;
+        const diffTooLarge =
+          diffResult.diff === undefined || Buffer.byteLength(diffResult.diff) > MAX_EDIT_DETAIL_BYTES;
+        const patchTooLarge = patch === undefined || Buffer.byteLength(patch) > MAX_EDIT_DETAIL_BYTES;
         return {
           content: [
             {
@@ -230,8 +233,8 @@ export function createEditToolDefinition(cwd: string, options?: EditToolOptions)
             },
           ],
           details: {
-            diff: diffTooLarge || patchTooLarge ? OMITTED_EDIT_DIFF : diffResult.diff,
-            patch: patchTooLarge ? "" : patch,
+            diff: diffTooLarge || patchTooLarge ? OMITTED_EDIT_DIFF : (diffResult.diff ?? OMITTED_EDIT_DIFF),
+            patch: patchTooLarge ? "" : (patch ?? ""),
             firstChangedLine: diffResult.firstChangedLine,
           },
         };

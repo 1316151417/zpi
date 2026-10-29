@@ -69,6 +69,14 @@ function replaceFile(path: string, content: Buffer, mode: number) {
     rmSync(temporary, { force: true });
   }
 }
+function matchesFile(path: string, expected: Buffer | null): boolean {
+  try {
+    return lstatSync(path).isFile() && expected !== null && readFileSync(path).equals(expected);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return expected === null;
+    throw error;
+  }
+}
 /** Keep workspace and transcript together; roll workspace back if the transcript cannot commit. */
 export async function applyFileRewind(
   plan: FileRewindPlan,
@@ -78,8 +86,7 @@ export async function applyFileRewind(
   const conflicts: FileRewindConflict[] = [];
   for (const file of plan.files) {
     try {
-      if (!lstatSync(file.path).isFile() || !readFileSync(file.path).equals(file.current))
-        throw new Error("当前文件已被外部修改");
+      if (!matchesFile(file.path, file.current)) throw new Error("当前文件已被外部修改");
     } catch (error) {
       conflicts.push({ path: file.path, reason: (error as Error).message });
     }
@@ -94,7 +101,24 @@ export async function applyFileRewind(
     }
     await commit();
   } catch (error) {
-    for (const file of applied.reverse()) replaceFile(file.path, file.current, file.mode);
+    const failures: Error[] = [];
+    for (const file of applied.reverse()) {
+      try {
+        // commit() yields to other tasks and external editors. Never roll back over their newer content.
+        if (!matchesFile(file.path, file.before)) throw new Error("文件已变化，已保留当前状态");
+        replaceFile(file.path, file.current, file.mode);
+      } catch (cause) {
+        failures.push(
+          new Error(`${file.path}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause }),
+        );
+      }
+    }
+    if (failures.length)
+      throw new AggregateError(
+        [error, ...failures],
+        `文件回退提交失败：${String(error)}；部分文件未回滚：${failures.map((failure) => failure.message).join("；")}`,
+        { cause: error },
+      );
     throw error;
   }
   return [];
