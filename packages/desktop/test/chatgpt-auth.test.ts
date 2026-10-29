@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { fetchProviderModels } from "zpi-ai";
 import { beginChatGPTLogin, type ChatGPTCredential, verifyChatGPTIdentity } from "zpi-ai/auth/openai-chatgpt";
 import { ChatGPTAuth } from "../src/main/chatgpt-auth.ts";
@@ -16,6 +16,7 @@ afterEach(async () => {
       .reverse()
       .map((fn) => fn()),
   );
+  vi.restoreAllMocks();
 });
 const codec = {
   isEncryptionAvailable: () => true,
@@ -219,6 +220,57 @@ it("serializes rotating refreshes and never resurrects a disconnected account", 
   await expect(pending).rejects.toThrow("状态已改变");
   expect(settings.get().providers[0].chatgptAccount?.connected).toBe(false);
 });
+
+it("saves rotated credentials without depending on an unchanged settings database write", async () => {
+  const { dir, settings } = await store();
+  add(settings);
+  settings.saveChatGPTCredential("chatgpt", { ...credential(), expires: 1 });
+  const publicState = settings.state.getSetting("app");
+  const writeSettings = vi.spyOn(settings.state, "setSetting").mockImplementation(() => {
+    throw new Error("Synthetic database failure");
+  });
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      access_token: "renewed-access",
+      refresh_token: "rotated-refresh",
+      expires_in: 3600,
+      scope: "chatgpt.tokens.use.direct",
+    }),
+  );
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).resolves.toBe("renewed-access");
+  expect(writeSettings).not.toHaveBeenCalled();
+  expect(settings.state.getSetting("app")).toEqual(publicState);
+  const reopened = new SettingsStore(dir, codec);
+  cleanup.push(() => reopened.close());
+  expect(reopened.getChatGPTCredential("chatgpt")?.refresh).toBe("rotated-refresh");
+  await expect(settings.getRequestApiKey("chatgpt", fetcher)).resolves.toBe("renewed-access");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it.each([429, 503])(
+  "preserves saved credentials after HTTP %s and allows the next refresh",
+  async (status) => {
+    const { settings } = await store();
+    add(settings);
+    const original = { ...credential(), expires: 1 };
+    settings.saveChatGPTCredential("chatgpt", original);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status }))
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "renewed-access",
+          refresh_token: "rotated-refresh",
+          expires_in: 3600,
+          scope: "chatgpt.tokens.use.direct",
+        }),
+      );
+    await expect(settings.getRequestApiKey("chatgpt", fetcher)).rejects.toThrow("稍后重试");
+    expect(settings.getChatGPTCredential("chatgpt")).toEqual(original);
+    await expect(settings.getRequestApiKey("chatgpt", fetcher)).resolves.toBe("renewed-access");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  },
+);
 
 it("does not fall back to a static catalog on account discovery failures; rejects API-key substitution", async () => {
   await expect(

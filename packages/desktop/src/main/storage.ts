@@ -666,8 +666,9 @@ export class SettingsStore {
     credentials?: Record<string, Credentials>,
     webApiKey = this.webApiKey,
   ): void {
+    // Credential-only updates reuse this.data; rotated tokens must not depend on an unchanged DB write.
     if (!credentials) {
-      this.state.setSetting("app", data);
+      if (data !== this.data) this.state.setSetting("app", data);
       return;
     }
     // Preserve the encrypted-file contract; restore its bytes if the database commit fails.
@@ -684,7 +685,7 @@ export class SettingsStore {
       writeFileSync(credsTemp, encrypted, { mode: 0o600 });
       renameSync(credsTemp, creds);
       replaced = true;
-      this.state.setSetting("app", data);
+      if (data !== this.data) this.state.setSetting("app", data);
     } catch (error) {
       if (replaced) {
         if (previous) {

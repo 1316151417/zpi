@@ -4,6 +4,7 @@ import { streamSimple as responses } from "./api/openai-responses.ts";
 import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "./types.ts";
 import { createAssistantMessageEventStream } from "./utils/event-stream.ts";
 import { guardModelStream } from "./utils/guard-model-stream.ts";
+import { modelFailure } from "./utils/model-retry.ts";
 import { emptyAssistant } from "./utils/transcript.ts";
 
 /** Provider and wire-protocol selection stays inside zpi-ai. Credentials resolve for every request. */
@@ -60,6 +61,7 @@ function streamRequest(
     const output = emptyAssistant(model);
     output.stopReason = options.signal?.aborted ? "aborted" : "error";
     output.errorMessage = error instanceof Error ? error.message : String(error);
+    output.errorDetails = modelFailure(error, options.signal);
     events.push({ type: "error", reason: output.stopReason, error: output });
   });
   return events;

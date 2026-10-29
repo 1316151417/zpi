@@ -8,6 +8,24 @@ const issuer = "https://auth.openai.com";
 const resource = "https://api.openai.com/v1";
 const tokenUrl = `${issuer}/api/accounts/oauth/token`;
 const directScope = "chatgpt.tokens.use.direct";
+const invalidTokenCodes = new Set([
+  "invalid_grant",
+  "invalid_refresh_token",
+  "token_expired",
+  "refresh_token_expired",
+  "refresh_token_invalidated",
+  "refresh_token_reused",
+]);
+const tokenErrorCodes = new Set([
+  ...invalidTokenCodes,
+  "invalid_client",
+  "unauthorized_client",
+  "invalid_request",
+  "invalid_scope",
+  "unsupported_grant_type",
+  "server_error",
+  "temporarily_unavailable",
+]);
 export interface ChatGPTCredential {
   access: string;
   refresh: string;
@@ -42,8 +60,26 @@ async function tokenRequest(body: URLSearchParams, fetcher: typeof fetch, signal
     redirect: "error",
   });
   if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error(`provider: ChatGPT 授权失败（HTTP ${response.status}），请重新登录。`);
+    const errorBody: unknown = await response.json().catch(() => undefined);
+    const detail = isJsonObject(errorBody) ? errorBody.error : undefined;
+    const rawCode = isJsonObject(detail) ? detail.code : detail;
+    // Only known codes may enter errors/logs; descriptions and arbitrary bodies can contain credentials.
+    const code = typeof rawCode === "string" && tokenErrorCodes.has(rawCode) ? rawCode : undefined;
+    const hint =
+      code && invalidTokenCodes.has(code)
+        ? "授权已失效，请重新登录。"
+        : code === "invalid_client" || code === "unauthorized_client"
+          ? "客户端授权无效，请检查客户端配置。"
+          : [408, 409, 429].includes(response.status) ||
+              response.status >= 500 ||
+              code === "server_error" ||
+              code === "temporarily_unavailable"
+            ? "授权服务暂时不可用，请稍后重试。"
+            : "请检查应用版本及授权配置。";
+    throw Object.assign(
+      new Error(`provider: ChatGPT 授权失败（HTTP ${response.status}${code ? `，${code}` : ""}），${hint}`),
+      { status: response.status, headers: response.headers, code },
+    );
   }
   const token: unknown = await response.json();
   if (
