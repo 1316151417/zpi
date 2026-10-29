@@ -28,6 +28,8 @@ function normalizeModel(
   const id = chatgpt ? (item.slug ?? item.id) : (item.id ?? item.slug);
   if (typeof id !== "string" || !id.trim() || id.length > 200) return;
   const known = catalog.get(id.toLowerCase());
+  // The API catalog also includes embeddings, audio and other non-agent models.
+  if (input.preset === "openai-api" && !known) return;
   const model: DiscoveredModel = known
     ? structuredClone(known)
     : {
@@ -56,6 +58,7 @@ function normalizeModel(
       ),
     ];
   }
+  if (input.preset === "openai-api") model.availability = "listed";
   if (usesChatGPTAuth(input.preset)) {
     model.availability = "listed";
     if (item.supports_image_inputs === true) model.input = ["text", "image"];
@@ -198,13 +201,16 @@ export async function fetchProviderModels(
         }),
       ).values(),
     ];
-    if (!models.length) throw new Error("未返回可用模型");
-    if (usesChatGPTAuth(input.preset)) {
-      // Only supplement models absent from the response, never ones explicitly hidden by the account.
+    if (!entries.length || (!models.length && input.preset !== "openai-api"))
+      throw new Error("未返回可用模型");
+    if (usesChatGPTAuth(input.preset) || input.preset === "openai-api") {
+      // ChatGPT may explicitly hide models; API entries have no visibility field.
       const returned = new Set(
-        entries.flatMap((item) =>
-          isJsonObject(item) && typeof (item.slug ?? item.id) === "string" ? [item.slug ?? item.id] : [],
-        ),
+        usesChatGPTAuth(input.preset)
+          ? entries.flatMap((item) =>
+              isJsonObject(item) && typeof (item.slug ?? item.id) === "string" ? [item.slug ?? item.id] : [],
+            )
+          : models.map((model) => model.id),
       );
       const supplemental = catalog.filter((model) => !returned.has(model.id));
       const order = new Map(catalog.map((model, index) => [model.id, index]));
@@ -215,7 +221,7 @@ export async function fetchProviderModels(
         source: "remote",
         ...(supplemental.length
           ? {
-              warning: `已获取账号模型目录；${supplemental.map((model) => model.name).join("、")} 为预置补充，账号可用性待验证。`,
+              warning: `已获取${input.preset === "openai-api" ? "API" : "账号"}模型目录；${supplemental.map((model) => model.name).join("、")} 为预置补充，账号可用性待验证。`,
             }
           : {}),
       };

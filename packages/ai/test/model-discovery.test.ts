@@ -154,6 +154,73 @@ it("never substitutes presets for failed or empty ChatGPT account discovery", as
     ).rejects.toThrow("无法获取模型");
 });
 
+it("discovers official API models with a bearer key, filters non-agent models and supplements missing presets", async () => {
+  const result = await fetchProviderModels(
+    { preset: "openai-api", api: "openai-responses", apiKey: "fake-api-key" },
+    async (url, options) => {
+      expect(String(url)).toBe("https://api.openai.com/v1/models");
+      expect(new Headers(options?.headers).get("authorization")).toBe("Bearer fake-api-key");
+      expect(options?.cache).toBe("no-store");
+      return Response.json({
+        data: [
+          { id: "gpt-6-astra" },
+          { id: "text-embedding-3-small" },
+          { id: "gpt-6.1-sol" },
+          { id: "gpt-image-1" },
+        ],
+      });
+    },
+  );
+  expect(result.source).toBe("remote");
+  expect(result.models.map((model) => model.id)).toEqual(
+    presetModels("openai-chatgpt").map((model) => model.id),
+  );
+  expect(result.models.map((model) => model.availability)).toEqual([
+    "unverified",
+    "listed",
+    "unverified",
+    "listed",
+  ]);
+  expect(result.models[1]).toMatchObject({ reasoning: true, input: ["text", "image"], maxTokens: 128000 });
+  expect(result.warning).toContain("账号可用性待验证");
+});
+
+it("uses all four API presets when discovery fails, is empty or lists no matching models", async () => {
+  for (const response of [
+    new Response("fake-secret", { status: 401 }),
+    Response.json({ data: [] }),
+    Response.json({ data: [{ id: "text-embedding-3-small" }] }),
+    Response.json({
+      data: [
+        ...Array.from({ length: 500 }, (_, index) => ({ id: `embedding-${index}` })),
+        { id: "gpt-6.1-sol" },
+      ],
+    }),
+  ]) {
+    const result = await fetchProviderModels(
+      { preset: "openai-api", apiKey: "fake-secret" },
+      async () => response,
+    );
+    expect(result.models).toEqual(presetModels("openai-chatgpt"));
+    expect(result.warning).toBeDefined();
+    expect(result.warning).not.toContain("fake-secret");
+  }
+});
+
+it("keeps all four API models listed without warnings when discovery returns the complete catalog", async () => {
+  const result = await fetchProviderModels({ preset: "openai-api", apiKey: "fake" }, async () =>
+    Response.json({
+      data: presetModels("openai-api")
+        .toReversed()
+        .map(({ id }) => ({ id })),
+    }),
+  );
+  expect(result.warning).toBeUndefined();
+  expect(result.models).toEqual(
+    presetModels("openai-chatgpt").map((model) => ({ ...model, availability: "listed" })),
+  );
+});
+
 it("Chinese catalogs offer only actual controls while keeping mapped levels usable", () => {
   const choices = (preset: string, id: string) => {
     const model = presetModels(preset).find((model) => model.id === id);

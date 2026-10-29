@@ -281,9 +281,15 @@ describe("Responses protocol and portable transcripts", () => {
       thinkingSignature: JSON.stringify(item),
     });
   });
-  it("sends each GPT effort through Responses without collapsing medium, xhigh or max", async () => {
-    for (const metadata of presetModels("openai-chatgpt")) {
-      const model: Model = { ...responsesModel(), ...metadata, input: ["text", "image"], reasoning: true };
+  it.each(["openai-chatgpt", "openai-api"])("sends each %s GPT effort through Responses", async (preset) => {
+    for (const metadata of presetModels(preset)) {
+      const model: Model = {
+        ...responsesModel(),
+        ...metadata,
+        auth: preset === "openai-chatgpt" ? "chatgpt" : undefined,
+        input: ["text", "image"],
+        reasoning: true,
+      };
       for (const effort of [
         undefined,
         ...(metadata.thinkingLevelMap?.off === "none" ? ["off" as const] : []),
@@ -304,6 +310,9 @@ describe("Responses protocol and portable transcripts", () => {
         }).result();
         expect(result.stopReason).toBe("stop");
         expect(request.reasoning).toMatchObject({ effort: effort === "off" ? "none" : (effort ?? "medium") });
+        expect(request.max_output_tokens).toBe(preset === "openai-api" ? model.maxTokens : undefined);
+        expect(request.max_tokens).toBeUndefined();
+        expect(request.max_completion_tokens).toBeUndefined();
       }
     }
   });

@@ -36,9 +36,11 @@ ZPI 不内置 MCP、专用 REPL 或 Agent 浏览器控制工具。需要浏览�
 
 ### 1. 多模型接入，同一任务自由切换
 
-预置 **OpenAI（ChatGPT）、DeepSeek、智谱、MiniMax、MiMo**，并区分适用的套餐与按量 API 配置。你也可以自定义提供商的地址、API Key、模型 ID 和能力参数，对接兼容接口的国产模型、其他服务或本地模型服务。
+预置 **OpenAI（ChatGPT）、OpenAI（API）、DeepSeek、智谱、MiniMax、MiMo**，并区分适用的套餐与按量 API 配置。你也可以自定义提供商的地址、API Key、模型 ID 和能力参数，对接兼容接口的国产模型、其他服务或本地模型服务。
 
 支持三种 API 格式：**OpenAI Chat Completions、OpenAI Responses、Anthropic Messages**。是否可用仍取决于服务端的协议和工具调用兼容性，不是任意模型都能无配置接入。
+
+OpenAI（API）只需填写 API Key，固定使用官方 Responses 接口。初始模型与 ChatGPT 预置一致：GPT-6.1 Terra、GPT-6.1 Sol、GPT-6 Luna、GPT-6 Astra。保存时自动查询 `/models`，也可手动刷新；目录缺少的模型或发现失败时仍保留预置，账号可用性待验证。自定义 Chat Completions 直连 OpenAI 官方地址时，输出上限默认使用 `max_completion_tokens`；其他兼容服务保留 `max_tokens`，可在模型的「请求参数」中手动指定。
 
 - 自动初始化预置提供商，手动获取或刷新模型列表。
 - 启用、禁用和排序提供商与模型，只显示你常用的选项。
@@ -65,6 +67,7 @@ ZPI 不内置 MCP、专用 REPL 或 Agent 浏览器控制工具。需要浏览�
 
 | 提供商 | 可识别的环境变量（同一行按顺序取首个有效值） |
 | --- | --- |
+| OpenAI API | `OPENAI_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | 智谱 Coding Plan | `ZHIPU_API_KEY` / `ZHIPU_CODING_API_KEY` / `ZAI_CODING_CN_API_KEY` |
 | 智谱 API | `ZHIPU_PAYGO_API_KEY` / `ZHIPU_STANDARD_API_KEY` |

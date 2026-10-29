@@ -123,6 +123,8 @@ export function userErrorMessage(error: unknown): string {
   )
     return "模型服务暂时不可用，请稍后重试或切换模型。";
   if (/\bAbortError\b|aborted|cancelled|canceled/i.test(signal)) return "操作已取消，请在需要时重试。";
+  if (/unsupported_parameter|unsupported parameter|not supported with this model/i.test(signal))
+    return "当前模型不支持所配置的请求参数，请在模型设置中检查 API 格式和请求参数。";
 
   switch (code) {
     case "configuration":

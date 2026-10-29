@@ -9,7 +9,7 @@ import { expect, test } from "../helpers/test.ts";
 test("preset connection protocol changes update endpoints, preserve keys and survive restarting", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-provider-protocol-ui-"));
   let app: Awaited<ReturnType<typeof launchDesktop>>;
-  const presets = providerPresets.filter((preset) => preset.id !== "openai-chatgpt");
+  const presets = providerPresets.filter((preset) => preset.family !== "openai");
   try {
     app = await launchDesktop({ dir, url: "" });
     let page = await app.firstWindow();

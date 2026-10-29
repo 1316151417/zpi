@@ -13,12 +13,14 @@ const codec = {
   decryptString: (value: Buffer) => value.toString(),
 };
 
-it("persists each preset's Anthropic and OpenAI connection without losing its credentials or models", async () => {
+it("persists each preset's supported connections without losing its credentials or models", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-protocols-"));
   try {
     let settings = new SettingsStore(dir, codec);
     for (const preset of providerPresets.filter((preset) => preset.id !== "openai-chatgpt")) {
-      expect(providerApi(preset.id)).toBe("anthropic-messages");
+      expect(providerApi(preset.id)).toBe(
+        preset.id === "openai-api" ? "openai-responses" : "anthropic-messages",
+      );
       for (const api of providerApis(preset.id)) {
         settings.saveProvider({
           id: preset.id,
@@ -37,6 +39,7 @@ it("persists each preset's Anthropic and OpenAI connection without losing its cr
         expect(model?.api).toBe(api);
         expect(model?.baseUrl).toBe(providerBaseUrl(preset.id, api));
         expect(model).toBeDefined();
+        expect(model?.auth).toBeUndefined();
         if (model) expect(availablePresets(model)).not.toHaveLength(0);
       }
     }
@@ -47,6 +50,30 @@ it("persists each preset's Anthropic and OpenAI connection without losing its cr
       settings.saveProvider({ ...settings.snapshot("mimo-api"), api: "anthropic-messages" }),
     ).toThrow("地址不匹配");
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("imports OpenAI API keys with Responses and the same four models as ChatGPT", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-openai-api-"));
+  const settings = new SettingsStore(dir, codec);
+  try {
+    expect(providerApis("openai-api")).toEqual(["openai-responses"]);
+    expect(settings.discoverEnvironment({ OPENAI_API_KEY: "fake-api-key" })).toEqual(["env-openai-api"]);
+    expect(settings.snapshot("env-openai-api")).toMatchObject({
+      preset: "openai-api",
+      api: "openai-responses",
+      apiKey: "fake-api-key",
+      baseUrl: "https://api.openai.com/v1",
+      models: presetModels("openai-chatgpt"),
+    });
+    expect(settings.discoverEnvironment({ OPENAI_API_KEY: "replacement" })).toEqual([]);
+    expect(settings.snapshot("env-openai-api").apiKey).toBe("fake-api-key");
+    expect(() =>
+      settings.saveProvider({ ...settings.snapshot("env-openai-api"), api: "openai-completions" }),
+    ).toThrow("不支持的 API 格式");
+  } finally {
+    settings.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

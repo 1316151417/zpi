@@ -91,6 +91,10 @@ describe("userErrorMessage", () => {
     ["insufficient_quota: private account details", "频繁或额度不足"],
     ["403 Forbidden: private account details", "账户权限"],
     ["model_not_found: model private is not found", "所选模型不可用"],
+    [
+      '400: {"message":"Unsupported parameter: max_tokens","code":"unsupported_parameter"}',
+      "当前模型不支持所配置的请求参数",
+    ],
     ["ECONNREFUSED 127.0.0.1:1234", "无法连接到服务"],
     ["TypeError: Failed to fetch", "无法连接到服务"],
     ["net::ERR_NAME_NOT_RESOLVED", "无法连接到服务"],

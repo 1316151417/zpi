@@ -32,6 +32,7 @@ import {
   type ProviderPresetId,
   presetModels,
   providerApi,
+  providerApis,
   providerBaseUrl,
   providerPresets,
   usesChatGPTAuth,
@@ -859,7 +860,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                 </label>
                               </>
                             )}
-                            {preset && !chatgpt && (
+                            {preset && !chatgpt && preset !== "openai-api" && (
                               <label>
                                 <span>Base URL</span>
                                 <input aria-label="Base URL" readOnly value={url} />
@@ -870,7 +871,9 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                               <ProviderApiFormatSelect
                                 value={api}
                                 preset={preset}
-                                disabled={chatgpt || saving || discovering || !keyReady}
+                                disabled={
+                                  providerApis(preset).length === 1 || saving || discovering || !keyReady
+                                }
                                 onChange={changeApi}
                               />
                             </div>

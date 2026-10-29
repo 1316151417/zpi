@@ -367,19 +367,23 @@ export function ModelConfigDialog({
                       ))}
                     </div>
                   )}
-                  {!chatgpt && api !== "anthropic-messages" && (
+                  {!chatgpt && api === "openai-completions" && (
                     <>
                       <label htmlFor="model-output-field">
                         输出上限字段
                         <SettingsSelect
                           id="model-output-field"
                           label="输出上限字段"
-                          value={model.compat?.maxTokensField ?? "max_tokens"}
+                          value={model.compat?.maxTokensField ?? "auto"}
                           options={[
+                            { value: "auto", label: "自动（按提供商）" },
                             { value: "max_tokens", label: "max_tokens" },
                             { value: "max_completion_tokens", label: "max_completion_tokens" },
                           ]}
-                          onChange={(value) => edit("compat", { ...model.compat, maxTokensField: value })}
+                          onChange={(value) => {
+                            const { maxTokensField: _, ...compat } = model.compat ?? {};
+                            edit("compat", value === "auto" ? compat : { ...compat, maxTokensField: value });
+                          }}
                         />
                       </label>
                       <div className="model-option-chips">

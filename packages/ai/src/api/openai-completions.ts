@@ -181,6 +181,12 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
       },
     });
     const tools = getCurrentTools(context.messages);
+    const hostname = new URL(model.baseUrl).hostname;
+    const maxTokensField =
+      model.compat?.maxTokensField ??
+      (hostname === "api.openai.com" || hostname.endsWith(".api.openai.com")
+        ? "max_completion_tokens"
+        : "max_tokens");
     let payload: unknown = {
       model: model.id,
       messages: serialize(context, model),
@@ -188,7 +194,7 @@ export function stream(model: Model, context: TranscriptContext, options: OpenAI
       ...(model.compat?.supportsUsageInStreaming !== false
         ? { stream_options: { include_usage: true } }
         : {}),
-      [model.compat?.maxTokensField ?? "max_tokens"]: options.maxTokens ?? model.maxTokens,
+      [maxTokensField]: options.maxTokens ?? model.maxTokens,
       ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(tools.length
         ? {
