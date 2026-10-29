@@ -116,6 +116,9 @@ export function presetModels(id: string, api: ProviderApi = "openai-completions"
 export function usesChatGPTAuth(preset?: string): boolean {
   return preset === "openai-chatgpt";
 }
+export function isLegacyOpenAIModel(id: string): boolean {
+  return ["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].includes(id);
+}
 const anthropicBaseUrls: Record<string, string> = {
   deepseek: "https://api.deepseek.com/anthropic",
   "zhipu-coding": "https://open.bigmodel.cn/api/anthropic",
@@ -126,16 +129,16 @@ const anthropicBaseUrls: Record<string, string> = {
   "mimo-api": "https://api.xiaomimimo.com/anthropic",
 };
 export function providerApis(preset?: string): readonly ProviderApi[] {
-  if (usesChatGPTAuth(preset)) return ["openai-responses"];
-  if (preset === "openai-api") return ["openai-responses", "openai-completions"];
-  return preset
-    ? ["anthropic-messages", "openai-completions"]
-    : ["anthropic-messages", "openai-completions", "openai-responses"];
+  return usesChatGPTAuth(preset) || preset === "openai-api"
+    ? ["openai-responses"]
+    : preset
+      ? ["anthropic-messages", "openai-completions"]
+      : ["anthropic-messages", "openai-completions", "openai-responses"];
 }
 export function providerApi(preset?: string, api?: ProviderApi): ProviderApi {
-  return usesChatGPTAuth(preset)
+  return usesChatGPTAuth(preset) || preset === "openai-api"
     ? "openai-responses"
-    : (api ?? (preset === "openai-api" ? "openai-responses" : "anthropic-messages"));
+    : (api ?? "anthropic-messages");
 }
 export function providerBaseUrl(preset: string, api = providerApi(preset)): string {
   const descriptor = getProviderPreset(preset);

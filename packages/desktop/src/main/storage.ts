@@ -9,6 +9,7 @@ import {
   discoverProviderCredentials,
   getProviderPreset,
   isJsonObject,
+  isLegacyOpenAIModel,
   openAICompletionsCompatKeys,
   presetModels,
   providerApi,
@@ -175,6 +176,34 @@ export class SettingsStore {
         if (raw.quickChat === undefined) {
           raw.quickChat = { defaultSelection: null };
           migrated = true;
+        }
+        if (Array.isArray(raw.providers)) {
+          for (const provider of raw.providers) {
+            if (!isJsonObject(provider) || !["openai-chatgpt", "openai-api"].includes(provider.preset ?? ""))
+              continue;
+            if (provider.preset === "openai-api" && provider.api === "openai-completions") {
+              provider.api = "openai-responses";
+              migrated = true;
+            }
+            if (!Array.isArray(provider.models)) continue;
+            const defaults = new Map(presetModels(provider.preset ?? "").map((model) => [model.id, model]));
+            provider.models = provider.models.flatMap((model) => {
+              if (!isJsonObject(model)) return [model];
+              if (isLegacyOpenAIModel(model.id)) {
+                migrated = true;
+                return [];
+              }
+              const known = defaults.get(model.id);
+              if (!known) return [model];
+              const contextWindow =
+                model.useRecommendedConfig !== false || [272000, 1050000].includes(model.contextWindow ?? 0)
+                  ? known.contextWindow
+                  : model.contextWindow;
+              if (model.name === known.name && model.contextWindow === contextWindow) return [model];
+              migrated = true;
+              return [{ ...model, name: known.name, contextWindow }];
+            });
+          }
         }
         this.validateData(raw);
         this.data = raw;

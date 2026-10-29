@@ -56,6 +56,60 @@ it("uses SQLite exclusively and never imports or rewrites legacy settings", asyn
   expect(f.open().get().interface.theme).toBe("dark");
   expect(await readFile(file, "utf8")).toBe("{broken old settings");
 });
+it("normalizes saved OpenAI defaults and removes superseded models without changing credentials or custom providers", async () => {
+  const f = await fixture();
+  const store = f.open();
+  store.saveProvider({ ...provider, models: [{ id: "gpt-6-sol", name: "Custom", contextWindow: 272000 }] });
+  for (const preset of ["openai-chatgpt", "openai-api"] as const) {
+    store.saveProvider({
+      id: preset,
+      preset,
+      name: preset,
+      baseUrl: "https://api.openai.com/v1",
+      api: "openai-responses",
+      ...(preset === "openai-api" ? { apiKey: "openai-secret" } : {}),
+      models: [
+        { id: "gpt-6.1-terra", name: "GPT-6.1-Terra", contextWindow: 1050000 },
+        { id: "gpt-6.1-sol", name: "GPT-6.1-Sol", contextWindow: 272000, useRecommendedConfig: false },
+        { id: "gpt-6-luna", name: "GPT-6-Luna", contextWindow: 272000, enabled: false },
+        { id: "gpt-6-astra", name: "GPT-6-Astra", contextWindow: 400000, useRecommendedConfig: false },
+        ...["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].map((id) => ({
+          id,
+          enabled: false,
+          useRecommendedConfig: false,
+        })),
+        { id: "manual-model", name: "Manual", contextWindow: 160000, useRecommendedConfig: false },
+      ],
+    });
+  }
+  const credentials = await readFile(join(f.dir, "credentials.enc"));
+  const raw = f.state.getSetting<{ providers: { preset?: string; api?: string }[] }>("app");
+  if (!raw) throw new Error("Missing settings");
+  for (const saved of raw.providers) if (saved.preset === "openai-api") saved.api = "openai-completions";
+  f.state.setSetting("app", raw);
+  const restored = f.open();
+  for (const preset of ["openai-chatgpt", "openai-api"]) {
+    const saved = restored.snapshot(preset);
+    expect(saved.api).toBe("openai-responses");
+    expect(saved.models.map((model) => model.name)).toEqual([
+      "GPT-6.1 Terra",
+      "GPT-6.1 Sol",
+      "GPT-6 Luna",
+      "GPT-6 Astra",
+      "Manual",
+    ]);
+    expect(saved.models.map((model) => model.contextWindow)).toEqual([
+      500000, 500000, 500000, 400000, 160000,
+    ]);
+    expect(saved.models[2].enabled).toBe(false);
+  }
+  expect(restored.snapshot("saved").models).toEqual(store.snapshot("saved").models);
+  expect(restored.snapshot("openai-api").apiKey).toBe("openai-secret");
+  expect(await readFile(join(f.dir, "credentials.enc"))).toEqual(credentials);
+  const normalized = f.state.getSetting("app");
+  expect(f.open().get()).toEqual(restored.get());
+  expect(f.state.getSetting("app")).toEqual(normalized);
+});
 it("locked credential discovery preserves public state and encrypted bytes", async () => {
   const f = await fixture();
   f.open().saveProvider(provider);

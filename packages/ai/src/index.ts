@@ -9,6 +9,7 @@ export type { DiscoveredModel, ProviderPresetId } from "./providers/registry.ts"
 export {
   discoverProviderCredentials,
   getProviderPreset,
+  isLegacyOpenAIModel,
   presetModels,
   providerApi,
   providerApis,

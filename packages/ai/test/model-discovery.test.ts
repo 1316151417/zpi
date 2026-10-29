@@ -75,7 +75,7 @@ it("reads the account catalog without cache, uses slugs, and keeps new models di
     "gpt-6-astra",
     "new-account-model",
   ]);
-  expect(result.models[2]).toMatchObject({ availability: "listed", contextWindow: 300000 });
+  expect(result.models[2]).toMatchObject({ availability: "listed", contextWindow: 500000 });
   expect(result.models[1]).toMatchObject({ availability: "unverified", defaultThinkingLevel: "medium" });
   expect(result.warning).toContain("账号可用性待验证");
   expect(thinkingChoices(result.models[3] as Parameters<typeof thinkingChoices>[0])).toEqual([
@@ -97,7 +97,7 @@ it("orders GPT presets Terra, Sol, Luna, Astra and provides Terra's default capa
   expect(models[0]).toMatchObject({
     name: "GPT-6.1 Terra",
     input: ["text", "image"],
-    contextWindow: 1_050_000,
+    contextWindow: 500_000,
     maxTokens: 128_000,
     defaultThinkingLevel: "medium",
   });
@@ -110,6 +110,43 @@ it("orders GPT presets Terra, Sol, Luna, Astra and provides Terra's default capa
     "max",
   ]);
 });
+
+it.each(["openai-chatgpt", "openai-api"] as const)(
+  "keeps canonical names and 500K defaults for %s while excluding superseded models",
+  async (preset) => {
+    const models = presetModels(preset);
+    expect(models.map((model) => model.name)).toEqual([
+      "GPT-6.1 Terra",
+      "GPT-6.1 Sol",
+      "GPT-6 Luna",
+      "GPT-6 Astra",
+    ]);
+    const entries = [
+      ...models.map((model, index) => ({
+        id: model.id,
+        slug: model.id,
+        visibility: "list",
+        display_name: model.id.toUpperCase(),
+        context_window: index % 2 ? 272000 : 1050000,
+        max_output_tokens: 128000,
+        input_modalities: ["text", "image"],
+      })),
+      ...["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].map((id) => ({
+        id,
+        slug: id,
+        visibility: "list",
+      })),
+    ];
+    const result = await fetchProviderModels({ preset, apiKey: "fake" }, async () =>
+      Response.json({ models: entries, data: entries }),
+    );
+    expect(result.models.map((model) => model.id)).toEqual(models.map((model) => model.id));
+    expect(result.models.map((model) => model.name)).toEqual(models.map((model) => model.name));
+    expect(result.models.map((model) => model.contextWindow)).toEqual([500000, 500000, 500000, 500000]);
+    expect(result.models.every((model) => model.metadataSource === "catalog")).toBe(true);
+    expect(models.every((model) => model.contextWindow === 500000)).toBe(true);
+  },
+);
 
 it("discovers newly returned GPT models with their complete efforts and account defaults", async () => {
   const result = await fetchProviderModels({ preset: "openai-chatgpt", apiKey: "fake" }, (async () =>
@@ -207,22 +244,19 @@ it("uses all four API presets when discovery fails, is empty or lists no matchin
   }
 });
 
-it.each(["openai-responses", "openai-completions"] as const)(
-  "discovers all four API models with %s",
-  async (api) => {
-    const result = await fetchProviderModels({ preset: "openai-api", api, apiKey: "fake" }, async () =>
-      Response.json({
-        data: presetModels("openai-api")
-          .toReversed()
-          .map(({ id }) => ({ id })),
-      }),
-    );
-    expect(result.warning).toBeUndefined();
-    expect(result.models).toEqual(
-      presetModels("openai-chatgpt").map((model) => ({ ...model, availability: "listed" })),
-    );
-  },
-);
+it("keeps all four API models listed without warnings when discovery returns the complete catalog", async () => {
+  const result = await fetchProviderModels({ preset: "openai-api", apiKey: "fake" }, async () =>
+    Response.json({
+      data: presetModels("openai-api")
+        .toReversed()
+        .map(({ id }) => ({ id })),
+    }),
+  );
+  expect(result.warning).toBeUndefined();
+  expect(result.models).toEqual(
+    presetModels("openai-chatgpt").map((model) => ({ ...model, availability: "listed" })),
+  );
+});
 
 it("Chinese catalogs offer only actual controls while keeping mapped levels usable", () => {
   const choices = (preset: string, id: string) => {

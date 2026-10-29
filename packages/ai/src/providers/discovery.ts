@@ -1,7 +1,13 @@
 import type { ProviderApi } from "../types.ts";
 import { isJsonObject } from "../utils/transcript.ts";
 import type { DiscoveredModel, ProviderPresetId } from "./registry.ts";
-import { getProviderPreset, presetModels, providerApis, usesChatGPTAuth } from "./registry.ts";
+import {
+  getProviderPreset,
+  isLegacyOpenAIModel,
+  presetModels,
+  providerApis,
+  usesChatGPTAuth,
+} from "./registry.ts";
 
 export interface ModelDiscoveryInput {
   preset?: ProviderPresetId;
@@ -25,8 +31,10 @@ function normalizeModel(
   if (!isJsonObject(item)) return;
   if (usesChatGPTAuth(input.preset) && item.visibility !== "list") return;
   const chatgpt = usesChatGPTAuth(input.preset);
+  const openai = chatgpt || input.preset === "openai-api";
   const id = chatgpt ? (item.slug ?? item.id) : (item.id ?? item.slug);
   if (typeof id !== "string" || !id.trim() || id.length > 200) return;
+  if (openai && isLegacyOpenAIModel(id)) return;
   const known = catalog.get(id.toLowerCase());
   // The API catalog also includes embeddings, audio and other non-agent models.
   if (input.preset === "openai-api" && !known) return;
@@ -42,10 +50,11 @@ function normalizeModel(
       };
   model.id = id;
   const name = item.display_name ?? item.name;
-  if (typeof name === "string" && name.trim()) model.name = name.slice(0, 200);
+  if (!(openai && known) && typeof name === "string" && name.trim()) model.name = name.slice(0, 200);
   const contextWindow = positive(item.context_window ?? item.contextWindow ?? item.context_length);
   const maxTokens = positive(item.max_output_tokens ?? item.maxTokens ?? item.max_tokens);
-  if (contextWindow) model.contextWindow = contextWindow;
+  // OpenAI presets use the client's chosen default, not the account's advertised maximum.
+  if (contextWindow && !(openai && known)) model.contextWindow = contextWindow;
   if (maxTokens && maxTokens <= (model.contextWindow ?? 32768)) model.maxTokens = maxTokens;
   if ((model.maxTokens ?? 0) > (model.contextWindow ?? 0))
     model.maxTokens = Math.min(4096, model.contextWindow ?? 32768);
@@ -113,7 +122,13 @@ function normalizeModel(
     );
   }
   model.metadataSource =
-    contextWindow && maxTokens && Array.isArray(modalities) ? "remote" : known ? "catalog" : "defaults";
+    openai && known
+      ? "catalog"
+      : contextWindow && maxTokens && Array.isArray(modalities)
+        ? "remote"
+        : known
+          ? "catalog"
+          : "defaults";
   return model;
 }
 export async function fetchProviderModels(

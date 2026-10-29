@@ -27,28 +27,6 @@ const button = (text: string) => {
 const click = async (element: HTMLElement) => {
   await act(async () => element.click());
 };
-async function chooseApi(label: string) {
-  await act(async () => {
-    query<HTMLElement>('[aria-label="API 格式"]').dispatchEvent(
-      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
-    );
-  });
-  const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
-  expect(options.map((option) => option.textContent)).toEqual([
-    "OpenAI Responses (/responses)",
-    "OpenAI Chat Completions (/chat/completions)",
-  ]);
-  const option = options.find((option) => option.textContent === label);
-  if (!option) throw new Error(`Missing API option ${label}`);
-  await click(option);
-}
-async function fillApiKey() {
-  await act(async () => {
-    const key = query<HTMLInputElement>("#model-provider-api-key");
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(key, "fake-api-key");
-    key.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
 
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -115,7 +93,7 @@ test.each([true, false])(
     await click(button("OpenAI（API）"));
     expect(container.querySelector('input[aria-label="Base URL"]')).toBeNull();
     expect(container.querySelector('input[aria-label="提供商名称"]')).toBeNull();
-    expect(query<HTMLButtonElement>('[aria-label="API 格式"]').disabled).toBe(false);
+    expect(query<HTMLButtonElement>('[aria-label="API 格式"]').disabled).toBe(true);
     expect(query('[aria-label="API 格式"]').textContent).toContain("OpenAI Responses");
     expect(container.querySelectorAll(".provider-connection-fields input")).toHaveLength(1);
     const ids = presetModels("openai-chatgpt").map((model) => model.id);
@@ -123,7 +101,11 @@ test.each([true, false])(
       [...container.querySelectorAll("[data-model-id]")].map((row) => row.getAttribute("data-model-id")),
     ).toEqual(ids);
     expect(button("保存提供商").disabled).toBe(true);
-    await fillApiKey();
+    await act(async () => {
+      const key = query<HTMLInputElement>("#model-provider-api-key");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(key, "fake-api-key");
+      key.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     await click(button("保存提供商"));
     expect(discoverModels).toHaveBeenCalledExactlyOnceWith({
       preset: "openai-api",
@@ -151,41 +133,3 @@ test.each([true, false])(
     });
   },
 );
-
-test("switches OpenAI API protocols in both directions and restores the saved choice with its key and models", async () => {
-  discoverModels.mockResolvedValue({
-    ok: true,
-    value: { models: presetModels("openai-api"), source: "remote" },
-  });
-  await click(button("OpenAI（API）"));
-  await fillApiKey();
-  const formats = [
-    ["OpenAI Chat Completions (/chat/completions)", "openai-completions"],
-    ["OpenAI Responses (/responses)", "openai-responses"],
-  ] as const;
-  for (const [label, api] of formats) {
-    await chooseApi(label);
-    expect(query<HTMLInputElement>("#model-provider-api-key").value).toBe("fake-api-key");
-    await click(button("保存提供商"));
-    expect(saveProvider.mock.calls.at(-1)?.[0]).toMatchObject({
-      api,
-      baseUrl: "https://api.openai.com/v1",
-      apiKey: "fake-api-key",
-    });
-    expect(settings.providers[0].models.map((model) => model.id)).toEqual(
-      presetModels("openai-api").map((model) => model.id),
-    );
-    await act(async () => {
-      root.unmount();
-      root = createRoot(container);
-      root.render(createElement(SettingsPage, { onClose: vi.fn() }));
-    });
-    await click(query('button[aria-label="模型"]'));
-    expect(query('[aria-label="API 格式"]').textContent).toBe(label);
-    expect(query<HTMLInputElement>("#model-provider-api-key").value).toBe("fake-api-key");
-  }
-  await act(async () => query<HTMLButtonElement>('[aria-label="API 格式说明"]').focus());
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
-    "部分模型的工具调用仅支持 Responses",
-  );
-});
