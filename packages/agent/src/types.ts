@@ -103,8 +103,8 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
   ) => Promise<AfterToolCallResult | undefined>;
   toolExecution?: ToolExecutionMode;
   streamingToolExecution?: "off" | "readOnly";
-  /** Queue-only input: consume at request start, completed reasoning/commentary, or after tools.
-   * A final answer never consumes this queue or starts a follow-up. */
+  /** Queue-only input: consume at request start or after a successful response and its tools.
+   * Never interrupts generation; queued input continues the active run even after text-only output. */
   getPendingMessages?: () => AgentMessage[];
   /** Inputs consumed once at a completed model/tool boundary, never during a tool call. */
   getSteeringMessages?: () => AgentMessage[];

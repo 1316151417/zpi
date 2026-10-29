@@ -1,12 +1,13 @@
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, connect } from "node:net";
+import { setImmediate } from "node:timers/promises";
 import type { ResponsesWS } from "openai/resources/responses/ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { createAssistantMessageEventStream, emptyAssistant, normalizeContext, streamSimple } from "zpi-ai";
 import { ResponsesSession } from "zpi-ai/api/responses-session";
 import { AgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
-import { fakeModel } from "../../../tests/fake-server.ts";
+import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 import type { ResponsesSessionDiagnostic } from "../src/api/responses-session.ts";
 import type { Message, Model, SimpleStreamOptions } from "../src/types.ts";
 
@@ -639,6 +640,56 @@ function agentSession(f: Awaited<ReturnType<typeof fixture>>) {
   cleanups.push(() => session.dispose());
   return session;
 }
+
+it("queues mail through reasoning completion and reuses the socket for a text-only follow-up", async () => {
+  const reason = { type: "reasoning", id: "rs", summary: [], encrypted_content: "local-encrypted" };
+  let generations = 0;
+  const f = await fixture(({ socket, body }) => {
+    if (body.generate === false) {
+      socket.send(JSON.stringify(completed("warmup", [])));
+    } else if (++generations === 1) {
+      socket.send(JSON.stringify({ type: "response.created", response: { id: "first", model: "fake" } }));
+      socket.send(JSON.stringify({ type: "response.output_item.added", output_index: 0, item: reason }));
+      socket.send(JSON.stringify({ type: "response.output_item.done", output_index: 0, item: reason }));
+    } else socket.send(JSON.stringify(completed("follow-up")));
+  });
+  const session = agentSession(f);
+  const queued = deferred();
+  let delivered = false;
+  session.subscribe((event) => {
+    if (
+      !delivered &&
+      event.type === "message_update" &&
+      event.assistantMessageEvent.type === "thinking_end"
+    ) {
+      delivered = true;
+      expect(session.steer("Worker progress", { queueOnly: true })).toBe(true);
+      expect(session.steer("Worker result", { queueOnly: true })).toBe(true);
+      queued.resolve();
+    }
+  });
+  const running = session.prompt("Research");
+  await queued.promise;
+  await setImmediate();
+  const requests = () => f.requests.filter((request) => request.body.generate !== false);
+  expect(requests()).toHaveLength(1);
+  const first = requests()[0];
+  expect(first.socket.readyState).toBe(WebSocket.OPEN);
+  first.socket.send(JSON.stringify(completed("first", [reason, text("Original answer")])));
+  await running;
+  expect(requests()).toHaveLength(2);
+  expect(requests()[1].socket).toBe(first.socket);
+  expect(requests()[1].body).toMatchObject({
+    previous_response_id: "first",
+    input: [
+      { role: "user", content: "Worker progress" },
+      { role: "user", content: "Worker result" },
+    ],
+  });
+  expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
+  expect(session.modelPerformance.steps).toBe(2);
+  expect(f.httpCalls()).toBe(0);
+});
 
 it("captures final reasoning when a caller sets it immediately after changing models", async () => {
   const f = await fixture();

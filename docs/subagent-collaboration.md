@@ -2,11 +2,11 @@
 
 本次核对的本地参考版本：Codex `2839ed763bd3f404398e1f0c95bf4e2d172213c0`，ZCode `3c5b227649371507ddc4eb46ac5133afe6db1cab`。测试固定保存 ZCode 的原始文案，不在测试时读取开发者机器上的参考仓库。
 
-Codex 的 `agent/control/completion.rs` 用 `trigger_turn=false` 投递完成消息。`session/turn_input.rs` 把入队和空闲唤醒分开，`features/src/lib.rs` 中 `wake_on_agent_messages` 默认关闭；`scenarios.rs` 的完成后唤醒场景显式启用了该开关。`session/input_queue.rs` 在最终答复后推迟 queue-only 邮件，工具调用则重新接受本轮邮件。`session/turn.rs` 在完整 reasoning、commentary、partial_answer 输出项后检查邮箱，提前结束采样并继续本轮，final_answer 不触发切换。`scenarios_mailbox_preemption_tests.rs` 同时覆盖这些边界以及流断开、保留已完成调用等情况。
+Codex 的 `agent/control/completion.rs` 用 `trigger_turn=false` 投递完成消息。`session/turn_input.rs` 把入队和空闲唤醒分开，`features/src/lib.rs` 中 `wake_on_agent_messages` 默认关闭；`scenarios.rs` 的完成后唤醒场景显式启用了该开关。`session/turn.rs` 默认在完整 reasoning、commentary、partial_answer 输出项后检查邮箱，提前结束采样并继续本轮，final_answer 不触发切换。它也提供默认关闭的 `defer_mailbox_preemption`，把邮件延后到正常请求边界；Responses Lite 路径支持协议级中断并接收终态，保留连接和 response ID。`scenarios_mailbox_preemption_tests.rs` 覆盖延后消费、增量续接及断连恢复。
 
-ZPI 的 `SessionHost` 持久保存收件箱；运行中的 SDK 通过通用 `steer(text, { queueOnly: true })` 接收消息。核心 `getPendingMessages` 只在请求开始、完整思考/中间回复结束或工具批次结束时消费消息。提前切换只取消当前模型请求，工具仍由原协调器完成并写入一次结果。最终答复后不读取 queue-only 输入；下次用户输入时先送入模型。消息落入会话记录后才确认收件箱消费；恢复时根据内部 inputId 去重（兼容旧版文本标记）。没有增加等待所有子任务的结束屏障。
+ZPI 的 `SessionHost` 持久保存收件箱；运行中的 SDK 通过通用 `steer(text, { queueOnly: true })` 接收消息。核心 `getPendingMessages` 只在请求开始，或当前模型响应及其工具批次成功完成后消费消息。思考、commentary 和正文片段结束都不取消生成，避免关闭 WebSocket、丢失 response ID 并全量重发上下文。工具仍由原协调器完成并写入一次结果。纯文本响应（包括 final_answer）结束时，已排队的消息也会接入同一运行的下一次请求；不会因没有工具调用而滞留。停止、失败和输出截断时不消费待处理消息。消息落入会话记录后才确认收件箱消费；恢复时根据内部 inputId 去重（兼容旧版文本标记）。没有增加等待所有子任务的结束屏障；父会话已结束后才收到的结果仍留待下次用户输入。
 
-Responses 的 summary/text done 只是子片段结束，输出项还可能补充 phase、完整正文或 reasoning 签名。因此等到 output_item.done 再发送结束事件。没有 phase 的正文按最终答复处理，避免把普通答复误当中间回复。普通 `steer(text)` 的显式指导仍允许结束后的续轮；只有子结果及协调器回复使用 queue-only。用户停止仍会停止所属子任务；这与自然结束后保留后台子任务是两个行为。
+Responses 的 summary/text done 只是子片段结束，输出项还可能补充 phase、完整正文或 reasoning 签名。因此等到 output_item.done 再发送结束事件，但消息投递还要等整个响应及工具批次完成。普通 `steer(text)` 和 queue-only 都不会打断当前生成；子结果及协调器回复继续使用 queue-only 入口，由桌面收件箱负责未消费消息的持久化。用户停止仍会停止所属子任务；这与自然结束后保留后台子任务是两个行为。
 
 ## ZCode 对齐范围与必要差异
 
@@ -33,7 +33,7 @@ Responses 的 summary/text done 只是子片段结束，输出项还可能补充
 
 ZCode `context/dynamic-sections.ts` 中额外 Agent 指导段已注释，不会发给模型，本次也没有复活这些规则。`RespondToCoordinator` 的 modelInstructions 则确实由 registry 合入 provider 工具描述，必须保留。
 
-验证覆盖同轮提前消费、保留/排空已开始的工具、最终答复不补充、迟到结果及重启恢复、手动压缩、用户停止和 provider 异常。工具文案测试核对实际模型请求中的描述、子 agent 系统提示词、Notes 和列表说明，而非只检查模板常量。
+验证覆盖响应完成后批量消费、保留/排空已开始的工具、纯文本结束后续轮、WebSocket 与 response ID 复用、迟到结果及重启恢复、手动压缩、用户停止和 provider 异常。工具文案测试核对实际模型请求中的描述、子 agent 系统提示词、Notes 和列表说明，而非只检查模板常量。
 
 返回值测试夹具通过实际执行当前 ZCode 的 formatter、runner 成功结果构造器、incoming-message 投影及 contracts schema 转换获得；覆盖正常、空白、失败、停止、转义、截断、usage 缺失和零值。运行层测试另行调用真实工具，确认不是只有模板字符串一致。
 

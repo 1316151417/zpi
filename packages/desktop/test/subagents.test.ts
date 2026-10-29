@@ -342,7 +342,7 @@ test("late background findings stay queued without waking the parent and survive
   ).toHaveLength(1);
 });
 
-test("a background result arriving during the final answer waits for the next user input", async () => {
+test("a background result arriving during the final answer continues after that response completes", async () => {
   const answering = deferred();
   let childResponse: ServerResponse | undefined;
   let parentResponse: ServerResponse | undefined;
@@ -384,12 +384,19 @@ test("a background result arriving during the final answer waits for the next us
   expect(runs[0].subagentNotification).toBeUndefined();
   expect(runs[0].orderedBlocks.flatMap((block) => (block.type === "text" ? [block.text] : []))).toEqual([
     "Complete main answer",
+    "Supplement only",
   ]);
   expect(runs[0].finalAnswerBlockIds).toHaveLength(1);
-  expect(JSON.stringify(f.server.requests.at(-1))).not.toContain("Late findings");
-  await run(f, "Continue with late findings");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("Late findings");
-  expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(2);
+  expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toEqual([]);
+  expect(
+    f.host.sessions
+      .get(f.session.id)
+      ?.messages.filter(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("<task-notification>"),
+      ),
+  ).toHaveLength(1);
 });
 
 test("SendMessage resumes a completed child with its own history and automatically returns follow-up results", async () => {
@@ -1065,14 +1072,13 @@ test.each(["continue", "stop", "error"])(
       .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
       .toHaveLength(1);
     if (action === "continue") {
-      // Closing reasoning starts another request before the original HTTP response finishes.
-      send(parentResponse, chunk({ content: "Stale planned answer" }));
+      // Retain the response tail; queued mail only reaches the next request after completion.
+      send(parentResponse, chunk({ content: "Independent findings" }));
+      done(parentResponse);
       await active.done;
       expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
       expect(JSON.stringify(f.server.requests.at(-1))).toContain("EARLY CHILD FINDINGS");
-      expect(JSON.stringify(f.host.sessions.get(f.session.id)?.messages)).not.toContain(
-        "Stale planned answer",
-      );
+      expect(JSON.stringify(f.host.sessions.get(f.session.id)?.messages)).toContain("Independent findings");
       expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toEqual([]);
     } else {
       if (action === "stop") await f.host.abortRun({ sessionId: f.session.id, runId: active.runId });

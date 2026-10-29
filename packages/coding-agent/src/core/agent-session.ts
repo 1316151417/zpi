@@ -834,7 +834,7 @@ export class AgentSession {
       });
     return this.running;
   }
-  /** Queue-only input can preempt completed reasoning/commentary, but never a final answer. */
+  /** Queue input for the next completed model/tool boundary without interrupting generation. */
   steer(text: string, options: { queueOnly?: boolean; inputId?: string } = {}): boolean {
     if (!text.trim() || (!options.queueOnly && text.length > 100000))
       throw new Error("Invalid steering input");
