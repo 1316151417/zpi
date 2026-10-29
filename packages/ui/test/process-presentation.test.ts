@@ -104,3 +104,22 @@ it("omits empty reasoning without hiding the final prose or creating an empty wo
     defaultOpen: false,
   });
 });
+
+it.each(["", " \n\t"])("omits empty prose (%j) after the final answer", (value) => {
+  const answer = text("answer", "text");
+  const blocks = [tool, answer, text("empty-thought", "thinking", ""), text("empty", "text", value)];
+  expect(runPresentation(run(blocks, { finalAnswerBlockIds: [answer.id] }))).toEqual({
+    process: [tool],
+    answer,
+    defaultOpen: false,
+  });
+});
+
+it("keeps work open when the only final prose is empty", () => {
+  const blocks = [text("intro", "text"), tool, text("empty", "text", "")];
+  expect(runPresentation(run(blocks, { finalAnswerBlockIds: ["empty"] }))).toEqual({
+    process: blocks.slice(0, -1),
+    answer: undefined,
+    defaultOpen: true,
+  });
+});

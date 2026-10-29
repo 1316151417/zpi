@@ -343,10 +343,18 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
             text: c.type === "text" ? c.text : c.thinking,
             streaming: false,
           });
-          if (c.type === "text") finalIds.push(id);
+          if (c.type === "text" && c.text.trim()) finalIds.push(id);
         }
       }
-      run.finalAnswerBlockIds = hasTools ? [] : finalIds;
+      if (hasTools || finalIds.length) run.finalAnswerBlockIds = hasTools ? [] : finalIds;
+      else {
+        // Empty follow-ups must not replace an earlier answer. Drop this message's
+        // speculative streamed IDs; its completed content is authoritative.
+        run.finalAnswerBlockIds = run.finalAnswerBlockIds.filter((id) => {
+          const previous = oldBlocks.get(id);
+          return previous?.type === "text" && previous.messageId !== event.messageId && previous.text.trim();
+        });
+      }
       run.error = m.errorMessage;
       run.failedMessageId = m.stopReason === "error" ? event.messageId : undefined;
     }
