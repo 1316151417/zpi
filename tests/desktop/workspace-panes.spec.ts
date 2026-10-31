@@ -41,11 +41,14 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "终端", exact: true }).click();
     const input = page.locator(".right-pane .xterm-helper-textarea");
     await expect(input).toBeAttached();
+    const terminalTitle = await page.getByRole("tab", { selected: true }).getAttribute("aria-label");
+    if (!terminalTitle) throw Error("Missing terminal tab title");
     await input.pressSequentially("printf 'ZPI_TERMINAL_%s\\n' 'OK'; pwd; stty size", { delay: 2 });
     await input.press("Enter");
     await expect(page.locator(".xterm-rows")).toContainText("ZPI_TERMINAL_OK");
     await expect(page.locator(".xterm-rows")).toContainText("workspace");
     const terminalColor = () => page.locator(".xterm-rows").evaluate((el) => getComputedStyle(el).color);
+    const terminalFont = await page.locator(".xterm-rows").evaluate((el) => getComputedStyle(el).fontSize);
     await page.emulateMedia({ colorScheme: "light" });
     const lightTerminal = await terminalColor();
     await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -58,7 +61,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await expect.poll(terminalColor).not.toBe(lightTerminal);
     await expect
       .poll(() => page.locator(".xterm-rows").evaluate((el) => getComputedStyle(el).fontSize))
-      .toBe("14px");
+      .toBe(terminalFont);
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await appearance.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page.getByRole("option", { name: "浅色", exact: true }).click();
@@ -72,20 +75,26 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await page.locator(".answer").getByRole("button", { name: "本地预览", exact: true }).click();
     await expect(page.getByLabel("浏览器地址")).toHaveValue(`${url}/`);
     await expect(page.getByRole("tab", { name: "本地预览", exact: true })).toBeVisible();
-    const inspect = () =>
-      app?.evaluate(async ({ webContents, BrowserWindow, WebContentsView }, url) => {
-        const guest = webContents.getAllWebContents().find((contents) => contents.getURL().startsWith(url));
-        if (!guest) return null;
-        return {
-          url: guest.getURL(),
-          bounds: BrowserWindow.getAllWindows()[0]
-            ?.contentView.children.filter(
-              (child) => child instanceof WebContentsView && child.webContents.id === guest.id,
-            )
-            .map((child) => child.getBounds()),
-          isolated: await guest.executeJavaScript("[typeof window.zpi, typeof require, typeof process]"),
-        };
-      }, url);
+    const inspect = async () => {
+      const bounds = await page.locator(".browser-webview:visible").evaluateAll((views) =>
+        views.map((view) => {
+          const rect = view.getBoundingClientRect();
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }),
+      );
+      return app?.evaluate(
+        async ({ webContents }, { url, bounds }) => {
+          const guest = webContents.getAllWebContents().find((contents) => contents.getURL().startsWith(url));
+          if (!guest) return null;
+          return {
+            url: guest.getURL(),
+            bounds,
+            isolated: await guest.executeJavaScript("[typeof window.zpi, typeof require, typeof process]"),
+          };
+        },
+        { url, bounds },
+      );
+    };
     await expect
       .poll(async () => (await inspect())?.isolated)
       .toEqual(["undefined", "undefined", "undefined"]);
@@ -143,7 +152,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await page.getByRole("menuitem", { name: "关闭", exact: true }).click();
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
-    // A menu over the native surface must still remain accessible, including after repositioning.
+    // DOM 菜单覆盖 webview 时保留网页画面，移动菜单也不改变 guest 的可见性。
     await page.evaluate(() => {
       const surface = document.querySelector('[data-testid="browser-surface"]')?.getBoundingClientRect();
       if (!surface) throw Error("Missing browser surface");
@@ -159,7 +168,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
       });
       document.body.append(menu);
     });
-    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(0);
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
     await page.evaluate(() => {
       const menu = document.getElementById("overlapping-menu");
       if (menu) menu.style.left = "0px";
@@ -167,10 +176,10 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
     await page.evaluate(() => document.getElementById("overlapping-menu")?.remove());
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(0);
+    await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
     await page.getByRole("region", { name: "设置", exact: true }).getByLabel("关闭设置").click();
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(1);
-    // Native views do not obey CSS overflow: reopening must clip them to the moving frame.
+    // webview 沿用 DOM 裁剪：展开动画不再需要手动上报原生视图 bounds。
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.getByLabel("收起右侧栏", { exact: true }).click();
     await expect(page.locator(".right-pane")).toBeHidden();
@@ -195,10 +204,7 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
     });
     expect(movingBrowser).toBeDefined();
     expect(movingBrowser?.x).toBeGreaterThanOrEqual(Math.floor(movingFrame.left));
-    expect((movingBrowser?.x ?? 0) + (movingBrowser?.width ?? 0)).toBeLessThanOrEqual(
-      Math.ceil(movingFrame.right),
-    );
-    expect(movingBrowser?.width).toBeLessThanOrEqual(movingFrame.width);
+    await expect(page.locator(".right-pane-frame")).toHaveCSS("overflow", "hidden");
     await expect(page.locator(".right-pane")).not.toHaveAttribute("data-animating", "true");
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 640));
     await expect
@@ -215,27 +221,27 @@ test("native terminal shell, browser link/navigation isolation, tabs and respons
       })
       .toBe(true);
     await page.screenshot({ path: "test-results/desktop-browser-narrow.png" });
-    // Renderer screenshots omit native child views; capture their real pixels separately.
+    // 同时保留独立 guest 截图，检查网页内容与宿主合成画面。
     const browserPixels = await app.evaluate(async ({ webContents }, url) => {
       const guest = webContents.getAllWebContents().find((contents) => contents.getURL().startsWith(url));
       if (!guest) throw Error("Missing native browser page");
       return (await guest.capturePage()).toPNG().toString("base64");
     }, url);
     await writeFile("test-results/desktop-browser-page.png", Buffer.from(browserPixels, "base64"));
-    await page.getByRole("tab", { name: "zsh", exact: true }).click();
+    await page.getByRole("tab", { name: terminalTitle, exact: true }).click();
     await expect(page.locator(".xterm-rows")).toContainText("ZPI_TERMINAL_OK");
     await page.getByLabel("收起右侧栏", { exact: true }).last().click();
     await expect(page.locator(".right-pane")).toBeHidden();
     await expect.poll(async () => (await inspect())?.bounds?.length).toBe(0);
     await page.getByLabel("展开右侧栏", { exact: true }).click();
-    await page.getByLabel("关闭标签 zsh", { exact: true }).click();
-    await expect(page.getByRole("tab", { name: "zsh", exact: true })).toHaveCount(0);
+    await page.getByLabel(`关闭标签 ${terminalTitle}`, { exact: true }).click();
+    await expect(page.getByRole("tab", { name: terminalTitle, exact: true })).toHaveCount(0);
   } finally {
     await runCleanup([
+      () => app?.close(),
       () => rm(dir, { recursive: true, force: true }),
       () => new Promise<void>((resolve) => site.close(() => resolve())),
       () => model.close(),
-      () => app?.close(),
     ]);
   }
 });
@@ -348,14 +354,7 @@ test("reasoning submenu keeps the native browser visible with long model names a
     await page.getByLabel("浏览器地址").fill(url);
     await page.getByLabel("浏览器地址").press("Enter");
     await expect(page.getByRole("tab", { name: "菜单预览", exact: true })).toBeVisible();
-    const attached = () =>
-      app.evaluate(
-        ({ BrowserWindow, WebContentsView }, url) =>
-          BrowserWindow.getAllWindows()[0]?.contentView.children.filter(
-            (child) => child instanceof WebContentsView && child.webContents.getURL() === url,
-          ).length,
-        url,
-      );
+    const attached = () => page.locator(".browser-webview:visible").count();
     for (let i = 0; i < 9; i++) await page.getByLabel("右侧栏宽度", { exact: true }).press("ArrowLeft");
     for (const width of [1200, 1100]) {
       await app.evaluate(

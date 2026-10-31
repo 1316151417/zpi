@@ -275,6 +275,7 @@ async function launch(): Promise<void> {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      webviewTag: true,
     },
   });
   window.webContents.on("console-message", (details) => {
@@ -480,6 +481,9 @@ async function launch(): Promise<void> {
     },
     shortcutModifier,
   );
+  window.webContents.on("will-attach-webview", (event, preferences, params) => {
+    if (!panes.prepareBrowserGuest(preferences, params)) event.preventDefault();
+  });
   window.webContents.on("did-start-navigation", (details) => {
     if (details.isMainFrame && !details.isSameDocument) panes.reset();
   });
@@ -611,7 +615,7 @@ async function launch(): Promise<void> {
         closeTerminal: 1,
         createBrowser: 1,
         browserAction: 3,
-        browserBounds: 2,
+        browserGuest: 3,
         closeBrowser: 1,
         getDraft: 1,
         saveDraft: 2,
@@ -819,18 +823,8 @@ async function launch(): Promise<void> {
         case "browserAction":
           panes.action(string(0), string(1), args[2] === undefined ? undefined : string(2));
           break;
-        case "browserBounds":
-          panes.bounds(
-            string(0),
-            args[1] === null
-              ? null
-              : (object(1, [
-                  "x",
-                  "y",
-                  "width",
-                  "height",
-                ]) as unknown as import("../shared/bridge.ts").PaneBounds),
-          );
+        case "browserGuest":
+          panes.attachBrowserGuest(string(0), args[1] as number, args[2] as boolean);
           break;
         case "closeBrowser":
           panes.closeBrowser(string(0));

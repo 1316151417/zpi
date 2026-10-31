@@ -291,12 +291,6 @@ export interface BrowserState {
 export type PaneEvent =
   | { type: "terminal"; id: string; data: string; exited?: boolean }
   | { type: "browser"; state: BrowserState };
-export interface PaneBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 export interface DesktopBridge {
   openQuickChat(): Promise<Result<void>>;
   setSessionUnread(id: string): Promise<Result<void>>;
@@ -351,7 +345,7 @@ export interface DesktopBridge {
     action: "navigate" | "back" | "forward" | "reload" | "stop",
     url?: string,
   ): Promise<Result<void>>;
-  browserBounds(id: string, bounds: PaneBounds | null): Promise<Result<void>>;
+  browserGuest(id: string, webContentsId: number, visible: boolean): Promise<Result<void>>;
   closeBrowser(id: string): Promise<Result<void>>;
   onPaneEvent(listener: (event: PaneEvent) => void): () => void;
   getDraft(id: string): Promise<Result<TextDraft & { warnings: string[] }>>;
@@ -573,7 +567,7 @@ export const methods = [
   "closeTerminal",
   "createBrowser",
   "browserAction",
-  "browserBounds",
+  "browserGuest",
   "closeBrowser",
   "getDraft",
   "saveDraft",

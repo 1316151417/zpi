@@ -34,9 +34,12 @@ test("task switching isolates files, terminals and browser guests and restores a
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    // 等项目选择完成后再发送，避免添加项目的迟到结果把新任务切回草稿。
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toContainText("project");
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("task A");
     await editor.press("Enter");
+    await page.locator(".session-name").filter({ hasText: "task A" }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await page.locator(".answer").getByRole("button", { name: "shared.txt", exact: true }).click();
     await page.getByRole("button", { name: "文件预览菜单", exact: true }).click();
@@ -57,12 +60,10 @@ test("task switching isolates files, terminals and browser guests and restores a
       .click();
     await page.locator(".answer").getByRole("button", { name: "Task browser", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Task browser", exact: true })).toBeVisible();
-    const native = async () =>
-      app?.evaluate(({ BrowserWindow, WebContentsView }) =>
-        BrowserWindow.getAllWindows()[0]
-          .contentView.children.filter((view) => view instanceof WebContentsView)
-          .map((view) => view.webContents.id),
-      );
+    const native = () =>
+      page
+        .locator(".browser-webview:visible")
+        .evaluateAll((views) => views.map((view) => (view as Electron.WebviewTag).getWebContentsId()));
     await expect.poll(native).toHaveLength(1);
     const guestId = (await native())?.[0];
     await app.evaluate(async ({ webContents }, id) => {
@@ -71,9 +72,13 @@ test("task switching isolates files, terminals and browser guests and restores a
         ?.executeJavaScript("document.querySelector('#draft').value = 'A browser draft'");
     }, guestId);
     await page.getByLabel("收起右侧栏", { exact: true }).click();
+    const taskA = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
     await page.getByLabel("新建任务", { exact: true }).first().click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).not.toBe(taskA);
+    await expect(page.locator(".draft-greeting")).toBeVisible();
     await editor.fill("task B");
     await editor.press("Enter");
+    await page.locator(".session-name").filter({ hasText: "task B" }).click();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await expect(page.locator(".right-pane")).toBeHidden();
     await expect.poll(native).toEqual([]);

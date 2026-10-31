@@ -3,35 +3,48 @@ import { describe, expect, it, vi } from "vitest";
 import { PaneServices } from "../src/main/pane-services.ts";
 import { ShortcutModifier } from "../src/main/shortcut-modifier.ts";
 
-const fake = vi.hoisted(() => ({ contents: [] as EventEmitter[] }));
-vi.mock("electron", () => ({
-  session: {
-    fromPartition: () => ({ setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() }),
-  },
-  WebContentsView: class {
-    webContents = Object.assign(new EventEmitter(), {
-      setWindowOpenHandler: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      isFocused: vi.fn(() => false),
-      close: vi.fn(),
-      getURL: () => "",
-      getTitle: () => "",
-      isLoading: () => false,
-      navigationHistory: { getActiveIndex: () => 0, getAllEntries: () => [] },
-    });
-    setBounds = vi.fn();
-    constructor() {
-      fake.contents.push(this.webContents);
-    }
-  },
+const fake = vi.hoisted(() => ({
+  contents: [] as { id: number }[],
+  isolated: { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() },
 }));
+vi.mock("electron", () => ({
+  session: { fromPartition: () => fake.isolated },
+  webContents: { fromId: (id: number) => fake.contents.find((content) => content.id === id) },
+}));
+
+function guest(hostWebContents: unknown) {
+  const content = Object.assign(new EventEmitter(), {
+    id: fake.contents.length + 1,
+    hostWebContents,
+    session: fake.isolated,
+    getType: (): string => "webview",
+    setWindowOpenHandler: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+    isFocused: vi.fn(() => false),
+    close: vi.fn(),
+    loadURL: vi.fn().mockResolvedValue(undefined),
+    getURL: () => "about:blank",
+    getTitle: () => "",
+    isLoading: () => false,
+    navigationHistory: { getActiveIndex: () => 0, getAllEntries: () => [] },
+  });
+  fake.contents.push(content);
+  return content;
+}
+function setup(shortcut = vi.fn(() => false), modifier?: ShortcutModifier) {
+  const window = { webContents: {} };
+  const services = new PaneServices(window as never, vi.fn(), shortcut, modifier);
+  const { id } = services.createBrowser("");
+  const content = guest(window.webContents);
+  const show = (visible = true) => services.attachBrowserGuest(id, content.id, visible);
+  show();
+  return { window, services, id, content, show };
+}
 
 describe("native browser keyboard boundary", () => {
   it("forwards only keydown events as DOM-like input and consumes handled shortcuts", () => {
     const shortcut = vi.fn(() => true);
-    const services = new PaneServices({} as never, vi.fn(), shortcut);
-    services.createBrowser("");
-    const content = fake.contents.at(-1);
+    const { content } = setup(shortcut);
     const event = { preventDefault: vi.fn() };
     const input = {
       type: "keyDown",
@@ -62,10 +75,8 @@ describe("native browser keyboard boundary", () => {
   });
   it("preserves unhandled native input and exposes composition/repeat state to the dispatcher", () => {
     const shortcut = vi.fn(() => false);
-    const services = new PaneServices({} as never, vi.fn(), shortcut);
-    services.createBrowser("");
+    const { content } = setup(shortcut);
     const event = { preventDefault: vi.fn() };
-    const content = fake.contents.at(-1);
     content?.emit("before-input-event", event, {
       type: "keyDown",
       key: "Process",
@@ -83,23 +94,6 @@ describe("native browser keyboard boundary", () => {
 });
 
 describe("native browser focus retention", () => {
-  function setup() {
-    const window = {
-      isDestroyed: () => false,
-      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
-      getContentBounds: () => ({ width: 800, height: 600 }),
-      webContents: { getZoomFactor: () => 1 },
-    };
-    const services = new PaneServices(window as never, vi.fn());
-    const { id } = services.createBrowser("");
-    const content = fake.contents.at(-1) as EventEmitter & {
-      isFocused: ReturnType<typeof vi.fn>;
-      isDestroyed: ReturnType<typeof vi.fn>;
-    };
-    const show = () => services.bounds(id, { x: 300, y: 0, width: 500, height: 600 });
-    return { services, id, content, show };
-  }
-
   it("preserves a visible live guest's existing focus without moving host or guest focus", () => {
     const f = setup();
     f.show();
@@ -113,7 +107,7 @@ describe("native browser focus retention", () => {
     const f = setup();
     f.show();
     f.content.isFocused.mockReturnValue(true);
-    if (mode === "hidden") f.services.bounds(f.id, null);
+    if (mode === "hidden") f.show(false);
     if (mode === "closed") f.services.closeBrowser(f.id);
     if (mode === "destroyed") f.content.isDestroyed.mockReturnValue(true);
     if (mode === "unfocused") f.content.isFocused.mockReturnValue(false);
@@ -126,15 +120,7 @@ describe("guest modifier hint wiring", () => {
     const send = vi.fn();
     const modifier = new ShortcutModifier("darwin", () => true, send);
     const shortcut = vi.fn(() => false);
-    const window = {
-      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
-      getContentBounds: () => ({ width: 800, height: 600 }),
-      webContents: { getZoomFactor: () => 1 },
-    };
-    const services = new PaneServices(window as never, vi.fn(), shortcut, modifier);
-    const { id } = services.createBrowser("");
-    services.bounds(id, { x: 0, y: 0, width: 500, height: 600 });
-    const content = fake.contents.at(-1);
+    const { services, id, content } = setup(shortcut, modifier);
     const event = { preventDefault: vi.fn() };
     const input = {
       type: "keyDown",
@@ -156,8 +142,84 @@ describe("guest modifier hint wiring", () => {
     expect(shortcut).toHaveBeenCalledTimes(1);
     expect(event.preventDefault).not.toHaveBeenCalled();
     content?.emit("before-input-event", event, input);
-    services.bounds(id, null);
+    services.attachBrowserGuest(id, content.id, false);
     expect(send).toHaveBeenLastCalledWith(false);
     modifier.dispose();
+  });
+});
+
+describe("browser guest ownership and lifetime", () => {
+  it("hardens guests before attach and rejects unrecognized sources or partitions", () => {
+    const { services } = setup();
+    const preferences: Electron.WebPreferences = {
+      preload: "/untrusted-preload.js",
+      nodeIntegration: true,
+      nodeIntegrationInSubFrames: true,
+      nodeIntegrationInWorker: true,
+      webviewTag: true,
+      webSecurity: false,
+      sandbox: false,
+    };
+    const params = {
+      src: "about:blank",
+      partition: "persist:zpi-browser",
+      preload: "/untrusted-preload.js",
+      nodeintegration: "true",
+      nodeintegrationinsubframes: "true",
+      disablewebsecurity: "true",
+    };
+    expect(services.prepareBrowserGuest(preferences, params)).toBe(true);
+    expect(preferences).toMatchObject({
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      session: fake.isolated,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+    });
+    expect(preferences).not.toHaveProperty("preload");
+    expect(params).toEqual({ src: "about:blank", partition: "persist:zpi-browser" });
+    expect(services.prepareBrowserGuest({}, { ...params, src: "https://example.test/" })).toBe(false);
+    expect(services.prepareBrowserGuest({}, { ...params, partition: "default" })).toBe(false);
+    services.close();
+    expect(services.prepareBrowserGuest({}, params)).toBe(false);
+  });
+
+  it("rejects foreign windows, non-webview contents, duplicate ownership and invalid arguments", () => {
+    const f = setup();
+    const foreign = guest({});
+    const other = f.services.createBrowser("");
+    expect(() => f.services.attachBrowserGuest(f.id, foreign.id, true)).toThrow("不属于此标签或窗口");
+    expect(() => f.services.attachBrowserGuest(other.id, f.content.id, true)).toThrow("不属于此标签或窗口");
+    const host = guest(f.window.webContents);
+    host.getType = () => "window";
+    expect(() => f.services.attachBrowserGuest(other.id, host.id, true)).toThrow("不属于此标签或窗口");
+    expect(() => f.services.attachBrowserGuest(f.id, NaN, true)).toThrow("guest 无效");
+    expect(() => f.services.attachBrowserGuest(f.id, f.content.id, null as never)).toThrow("guest 无效");
+  });
+
+  it("queues initial navigation until attach and never reloads on repeated attach or visibility changes", () => {
+    const window = { webContents: {} };
+    const emit = vi.fn();
+    const services = new PaneServices(window as never, emit);
+    const { id } = services.createBrowser("");
+    services.action(id, "navigate", "https://example.test/");
+    expect(emit).toHaveBeenLastCalledWith({
+      type: "browser",
+      state: expect.objectContaining({ url: "https://example.test/" }),
+    });
+    const content = guest(window.webContents);
+    services.attachBrowserGuest(id, content.id, true);
+    services.attachBrowserGuest(id, content.id, false);
+    services.attachBrowserGuest(id, content.id, true);
+    expect(content.loadURL).toHaveBeenCalledExactlyOnceWith("https://example.test/");
+    services.closeBrowser(id);
+    expect(content.close).toHaveBeenCalledOnce();
+    expect(() => services.attachBrowserGuest(id, content.id, true)).toThrow("not_found");
+    services.close();
+    expect(() => services.createBrowser("")).toThrow("窗口已关闭");
   });
 });

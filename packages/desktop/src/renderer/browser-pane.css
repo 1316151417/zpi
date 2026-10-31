@@ -58,9 +58,18 @@
   text-align: left;
 }
 .browser-surface {
+  display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   background: inherit;
+}
+.browser-webview {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .browser-refresh-spinning {

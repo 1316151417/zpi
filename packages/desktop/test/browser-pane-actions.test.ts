@@ -8,6 +8,7 @@ vi.mock("react", async () => ({
   useState: (value: unknown) => [value, vi.fn()],
   useRef: (value: unknown) => ({ current: value }),
   useEffect: vi.fn(),
+  useCallback: (callback: unknown) => callback,
 }));
 
 type Element = ReactElement<Record<string, unknown>>;

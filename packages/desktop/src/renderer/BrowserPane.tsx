@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
 import { ActionHint } from "zpi-ui";
 import type { BrowserState } from "../shared/bridge.ts";
 import { browserAddressAfterNavigation } from "./browser-address.ts";
@@ -8,8 +8,15 @@ import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 import "./browser-pane.css";
 export function BrowserPane({ state, visible }: { state: BrowserState; visible: boolean }) {
-  const root = useRef<HTMLDivElement>(null),
-    [address, setAddress] = useState(state.url);
+  const [address, setAddress] = useState(state.url);
+  const [guestId, setGuestId] = useState(0);
+  const webviewRef = useCallback((element: Electron.WebviewTag | null) => {
+    if (!element) return;
+    const ready = () => setGuestId(element.getWebContentsId());
+    // 在 ref 提交时监听，避免快速加载的 about:blank 在 effect 执行前发出 dom-ready。
+    element.addEventListener("dom-ready", ready);
+    return () => element.removeEventListener("dom-ready", ready);
+  }, []);
   const submittedAddress = useRef<string | null>(null);
   const previousUrl = useRef(state.url);
   const editingAddress = useRef(false);
@@ -32,73 +39,10 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
     setAddress((current) => browserAddressAfterNavigation(current, state.url, submitted));
   }, [state]);
   useEffect(() => {
-    const element = root.current;
-    if (!element || !visible || !hasUrl) return;
-    const panel = element.closest(".right-pane-frame");
-    let frame = 0,
-      last = "",
-      disposed = false;
-    const update = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (disposed) return;
-        const rect = element.getBoundingClientRect();
-        const clip = panel?.getBoundingClientRect();
-        const left = Math.max(0, rect.left, clip ? clip.left + 1 : 0);
-        const top = Math.max(0, rect.top, clip ? clip.top + 1 : 0);
-        const right = Math.min(window.innerWidth, rect.right, clip ? clip.right - 1 : window.innerWidth);
-        const bottom = Math.min(window.innerHeight, rect.bottom, clip ? clip.bottom - 1 : window.innerHeight);
-        // Native child views cover DOM overlays, but unrelated menus need not hide the page.
-        const hidden =
-          document.querySelector('[role="dialog"], dialog[open], .settings-screen') !== null ||
-          Array.from(document.querySelectorAll('[role="menu"], [role="listbox"]')).some((menu) => {
-            const overlay = menu.getBoundingClientRect();
-            return (
-              overlay.width > 0 &&
-              overlay.height > 0 &&
-              overlay.left < rect.right &&
-              overlay.right > rect.left &&
-              overlay.top < rect.bottom &&
-              overlay.bottom > rect.top
-            );
-          });
-        const bounds =
-          hidden || right - left < 1 || bottom - top < 1
-            ? null
-            : {
-                x: left,
-                y: top,
-                width: right - left,
-                height: bottom - top,
-              };
-        const serialized = JSON.stringify(bounds);
-        if (serialized !== last) {
-          last = serialized;
-          paneTask(window.zpi.browserBounds(state.id, bounds).then(unwrap));
-        }
-      });
-    };
-    const resize = new ResizeObserver(update);
-    resize.observe(element);
-    if (panel) resize.observe(panel);
-    const overlay = new MutationObserver(update);
-    overlay.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["style", "class", "hidden", "data-state"],
-    });
-    window.addEventListener("resize", update);
-    update();
-    return () => {
-      disposed = true;
-      resize.disconnect();
-      overlay.disconnect();
-      window.removeEventListener("resize", update);
-      cancelAnimationFrame(frame);
-      paneTask(window.zpi.browserBounds(state.id, null).then(unwrap));
-    };
-  }, [state.id, hasUrl, visible]);
+    if (!guestId) return;
+    // 切换标签只更新可见状态；保留同一个 webview 和固定 src，避免重建或重复加载。
+    paneTask(window.zpi.browserGuest(state.id, guestId, visible).then(unwrap));
+  }, [state.id, guestId, visible]);
   const action = (name: "back" | "forward" | "reload") =>
     paneTask(window.zpi.browserAction(state.id, name).then(unwrap));
   return (
@@ -171,7 +115,16 @@ export function BrowserPane({ state, visible }: { state: BrowserState; visible: 
           {userErrorMessage(state.error)}
         </p>
       )}
-      <div ref={root} className="browser-surface" data-testid="browser-surface" />
+      <div className="browser-surface" data-testid="browser-surface">
+        {hasUrl &&
+          createElement("webview", {
+            ref: webviewRef,
+            src: "about:blank",
+            partition: "persist:zpi-browser",
+            allowpopups: "",
+            className: "browser-webview",
+          })}
+      </div>
     </div>
   );
 }

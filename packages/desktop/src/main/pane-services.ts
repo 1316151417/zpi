@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import { type BrowserWindow, session, WebContentsView } from "electron";
+import { type BrowserWindow, session, type WebContents, type WebPreferences, webContents } from "electron";
 import type { IPty } from "node-pty";
-import type { BrowserState, PaneBounds, PaneEvent } from "../shared/bridge.ts";
+import type { BrowserState, PaneEvent } from "../shared/bridge.ts";
 import type { ShortcutKeyEvent } from "../shared/shortcuts.ts";
 import { browserUrl } from "./browser-url.ts";
 import type { ShortcutModifier } from "./shortcut-modifier.ts";
@@ -12,8 +12,10 @@ export class PaneServices {
   private disposed = false;
   private epoch = 0;
   private terminals = new Map<string, IPty>();
-  private browsers = new Map<string, { view: WebContentsView; error?: string }>();
-  private shown?: string;
+  private browsers = new Map<
+    string,
+    { content?: WebContents; url: string; visible: boolean; error?: string }
+  >();
   private window: BrowserWindow;
   private emit: (event: PaneEvent) => void;
   private shortcut: (event: ShortcutKeyEvent) => boolean;
@@ -84,27 +86,67 @@ export class PaneServices {
     pty?.kill();
   }
   createBrowser(input: string): BrowserState {
+    if (this.disposed) throw new Error("not_found: 窗口已关闭");
     const url = input === "" ? "" : browserUrl(input);
     if (this.browsers.size >= 12) throw new Error("busy: 请先关闭部分浏览器标签");
     const id = randomUUID();
+    this.browsers.set(id, { url, visible: false });
+    return this.browserState(id);
+  }
+  prepareBrowserGuest(preferences: WebPreferences, params: Record<string, string>): boolean {
+    if (this.disposed || params.src !== "about:blank" || params.partition !== "persist:zpi-browser")
+      return false;
     const isolated = session.fromPartition("persist:zpi-browser");
     isolated.setPermissionRequestHandler((_, __, callback) => callback(false));
     isolated.setPermissionCheckHandler(() => false);
-    const view = new WebContentsView({
-      webPreferences: {
-        session: isolated,
-        ...(process.env.ZPI_TEST_MODE === "1"
-          ? { devTools: false, disableDialogs: true, disableHtmlFullscreenWindowResize: true }
-          : {}),
-        contextIsolation: true,
-        sandbox: true,
-        nodeIntegration: false,
-        webSecurity: true,
-        navigateOnDragDrop: false,
-      },
+    // webview 参与 DOM 合成，菜单不再需要移除整页；guest 仍不能继承宿主的特权配置。
+    delete preferences.preload;
+    delete params.preload;
+    delete params.nodeintegration;
+    delete params.nodeintegrationinsubframes;
+    delete params.disablewebsecurity;
+    Object.assign(preferences, {
+      session: isolated,
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      navigateOnDragDrop: false,
+      ...(process.env.ZPI_TEST_MODE === "1"
+        ? {
+            devTools: false,
+            disableDialogs: true,
+            disableHtmlFullscreenWindowResize: true,
+            backgroundThrottling: false,
+          }
+        : {}),
     });
-    this.browsers.set(id, { view });
-    const content = view.webContents;
+    return true;
+  }
+  attachBrowserGuest(id: string, webContentsId: number, visible: boolean) {
+    const entry = this.browser(id);
+    if (!Number.isSafeInteger(webContentsId) || typeof visible !== "boolean")
+      throw new Error("invalid_input: 浏览器 guest 无效");
+    const content = webContents.fromId(webContentsId);
+    if (
+      !content ||
+      content.isDestroyed() ||
+      content.getType() !== "webview" ||
+      content.hostWebContents !== this.window.webContents ||
+      content.session !== session.fromPartition("persist:zpi-browser") ||
+      (entry.content && entry.content !== content) ||
+      [...this.browsers.values()].some((other) => other !== entry && other.content === content)
+    )
+      throw new Error("invalid_input: 浏览器 guest 不属于此标签或窗口");
+    entry.visible = visible;
+    if (!visible) this.modifier?.resetFor(content);
+    // dom-ready 会随导航重复发生，只绑定一次，不能重复导航或丢失网页状态。
+    if (entry.content === content) return;
+    entry.content = content;
     this.modifier?.observe(content);
     content.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown") return;
@@ -172,25 +214,26 @@ export class PaneServices {
         update();
       }
     });
-    if (url) void this.navigate(id, url);
-    return { ...this.browserState(id), url };
+    if (entry.url) void this.navigate(id, entry.url);
   }
   private browser(id: string) {
     const entry = this.browsers.get(id);
-    if (!entry || entry.view.webContents.isDestroyed()) throw new Error("not_found: 浏览器标签已关闭");
+    if (!entry) throw new Error("not_found: 浏览器标签已关闭");
     return entry;
   }
   private browserState(id: string): BrowserState {
-    const { view, error } = this.browser(id),
-      content = view.webContents;
+    const { content, url, error } = this.browser(id);
+    const live = content && !content.isDestroyed() ? content : undefined;
+    const currentUrl = live?.getURL();
     return {
       id,
-      url: content.getURL(),
-      title: content.getTitle(),
-      loading: content.isLoading(),
-      back: content.navigationHistory.getActiveIndex() > 0,
-      forward:
-        content.navigationHistory.getActiveIndex() + 1 < content.navigationHistory.getAllEntries().length,
+      url: currentUrl && currentUrl !== "about:blank" ? currentUrl : url,
+      title: live?.getTitle() ?? "",
+      loading: live?.isLoading() ?? false,
+      back: (live?.navigationHistory.getActiveIndex() ?? 0) > 0,
+      forward: live
+        ? live.navigationHistory.getActiveIndex() + 1 < live.navigationHistory.getAllEntries().length
+        : false,
       error,
     };
   }
@@ -198,23 +241,36 @@ export class PaneServices {
     const target = browserUrl(url),
       entry = this.browser(id);
     entry.error = undefined;
+    entry.url = target;
+    if (!entry.content) {
+      this.emit({ type: "browser", state: this.browserState(id) });
+      return;
+    }
     try {
-      await entry.view.webContents.loadURL(target);
+      await entry.content.loadURL(target);
     } catch (error) {
       if (String(error).includes("ERR_ABORTED")) return;
-      if (this.browsers.has(id) && !entry.view.webContents.isDestroyed()) {
+      if (this.browsers.has(id) && !entry.content.isDestroyed()) {
         entry.error = String(error);
         this.emit({ type: "browser", state: this.browserState(id) });
       }
     }
   }
   action(id: string, action: string, url?: string) {
-    const content = this.browser(id).view.webContents;
+    const entry = this.browser(id);
+    if (
+      !["navigate", "back", "forward", "reload", "stop"].includes(action) ||
+      (action === "navigate" && typeof url !== "string")
+    )
+      throw new Error("invalid_input: 浏览器操作无效");
     if (action === "navigate" && typeof url === "string") {
       const target = browserUrl(url);
       void this.navigate(id, target);
       return;
     }
+    const content = entry.content;
+    if (!content) return;
+    if (content.isDestroyed()) throw new Error("not_found: 浏览器标签已关闭");
     if (action === "back" && content.navigationHistory.getActiveIndex() > 0)
       content.navigationHistory.goToIndex(content.navigationHistory.getActiveIndex() - 1);
     else if (
@@ -226,58 +282,19 @@ export class PaneServices {
     else if (action === "stop") content.stop();
     else if (!["back", "forward"].includes(action)) throw new Error("invalid_input: 浏览器操作无效");
   }
-  bounds(id: string, bounds: PaneBounds | null) {
-    if (bounds === null && !this.browsers.has(id)) return;
-    const { view } = this.browser(id);
-    if (bounds === null) {
-      if (this.shown === id) {
-        this.modifier?.resetFor(view.webContents);
-        this.window.contentView.removeChildView(view);
-        this.shown = undefined;
-      }
-      return;
-    }
-    const { width, height } = this.window.getContentBounds();
-    if (
-      !bounds ||
-      Object.keys(bounds).some((k) => !["x", "y", "width", "height"].includes(k)) ||
-      [bounds.x, bounds.y, bounds.width, bounds.height].some((n) => !Number.isFinite(n)) ||
-      bounds.x < 0 ||
-      bounds.y < 0 ||
-      bounds.width < 0 ||
-      bounds.height < 0
-    )
-      throw new Error("invalid_input: 浏览器视口无效");
-    if (this.shown && this.shown !== id) {
-      this.modifier?.resetFor(this.browser(this.shown).view.webContents);
-      this.window.contentView.removeChildView(this.browser(this.shown).view);
-    }
-    if (this.shown !== id) this.window.contentView.addChildView(view);
-    this.shown = id;
-    const zoom = this.window.webContents.getZoomFactor();
-    const x = Math.min(width, Math.round(bounds.x * zoom)),
-      y = Math.min(height, Math.round(bounds.y * zoom));
-    view.setBounds({
-      x,
-      y,
-      width: Math.max(0, Math.min(width - x, Math.floor(bounds.width * zoom))),
-      height: Math.max(0, Math.min(height - y, Math.floor(bounds.height * zoom))),
-    });
-  }
   hasFocusedBrowser(): boolean {
-    const content = this.shown ? this.browsers.get(this.shown)?.view.webContents : undefined;
-    return Boolean(content && !content.isDestroyed() && content.isFocused());
+    return [...this.browsers.values()].some(
+      ({ content, visible }) => visible && content && !content.isDestroyed() && content.isFocused(),
+    );
   }
   closeBrowser(id: string) {
     const entry = this.browsers.get(id);
     if (!entry) return;
-    if (this.shown === id) {
-      this.modifier?.resetFor(entry.view.webContents);
-      if (!this.window.isDestroyed()) this.window.contentView.removeChildView(entry.view);
-      this.shown = undefined;
-    }
     this.browsers.delete(id);
-    if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close({ waitForBeforeUnload: false });
+    if (entry.content && !entry.content.isDestroyed()) {
+      this.modifier?.resetFor(entry.content);
+      entry.content.close({ waitForBeforeUnload: false });
+    }
   }
   reset() {
     this.epoch++;

@@ -14,12 +14,13 @@
   background: var(--color-fill-hover);
 }
 .pane-tab-overview {
-  z-index: var(--layer-popover);
+  /* 窄窗口的右栏为 z-index:20，portal 必须在其上，才能覆盖网页并接收点击。 */
+  z-index: 60;
   width: 288px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--preview-menu);
+  background: var(--color-popover);
   color: var(--color-foreground);
   box-shadow:
     0 4px 6px -1px #0000001a,

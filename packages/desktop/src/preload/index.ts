@@ -87,7 +87,7 @@ const bridge: DesktopBridge = {
   closeTerminal: (id) => call("closeTerminal", id),
   createBrowser: (url) => call("createBrowser", url),
   browserAction: (id, action, url) => call("browserAction", id, action, url),
-  browserBounds: (id, bounds) => call("browserBounds", id, bounds),
+  browserGuest: (id, webContentsId, visible) => call("browserGuest", id, webContentsId, visible),
   closeBrowser: (id) => call("closeBrowser", id),
   onPaneEvent(listener) {
     const handler = (_: Electron.IpcRendererEvent, event: PaneEvent) => listener(event);

@@ -6,7 +6,7 @@
 
 main/index.ts 负责应用生命周期、窗口、单实例/存储初始化、服务装配和 IPC 注册。preload 暴露受控 bridge；renderer 通过 bridge 读取快照、订阅事件和请求操作。共享类型在 desktop/shared 中维护，UI 组件不直接操作 fs、凭据或子进程。
 
-主窗口与快速对话有各自 preload、入口 HTML 和桥接能力。用户浏览器面板是独立 WebContentsView，不能获得主界面的 preload 权限。不要把预览页面当作受信任设置界面。
+主窗口与快速对话有各自 preload、入口 HTML 和桥接能力。用户浏览器面板使用独立沙箱 `<webview>`，挂载前移除 preload，不能获得主界面的 bridge 权限。不要把预览页面当作受信任设置界面。
 
 ## 服务 owner
 

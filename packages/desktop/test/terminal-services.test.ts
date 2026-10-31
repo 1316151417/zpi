@@ -4,7 +4,7 @@ import { PaneServices } from "../src/main/pane-services.ts";
 import { readTerminalProfile } from "../src/main/terminal-profile.ts";
 import type { TerminalProfile } from "../src/shared/bridge.ts";
 
-vi.mock("electron", () => ({ session: {}, WebContentsView: vi.fn() }));
+vi.mock("electron", () => ({ session: {}, webContents: {} }));
 vi.mock("node-pty", () => ({ spawn: vi.fn() }));
 vi.mock("../src/main/terminal-profile.ts", () => ({ readTerminalProfile: vi.fn() }));
 vi.mock("../src/main/terminal-shell.ts", () => ({

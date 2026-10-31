@@ -111,9 +111,10 @@ test("workspace shortcuts use pinned order, ignore repeats and IME, and forward 
     const site = join(dir, "page.html");
     await writeFile(site, "<!doctype html><title>Shortcut fixture</title><input autofocus>");
     const url = pathToFileURL(site).href;
-    const browser = await page.evaluate((url) => window.zpi.createBrowser(url), url);
-    expect(browser.ok).toBe(true);
-    // Browser creation starts navigation asynchronously; wait for the guest URL before inspecting it.
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator(".pane-empty-launcher").getByRole("button", { name: "浏览器", exact: true }).click();
+    await page.getByLabel("浏览器地址").fill(url);
+    await page.getByLabel("浏览器地址").press("Enter");
     await expect
       .poll(() =>
         app?.evaluate(
