@@ -1,10 +1,32 @@
 // Adapted from ZCode lib/workDuration.ts, ai-elements/reasoning.tsx and
 // v4/conversationTurnWorkSegments.ts (Apache-2.0).
 // See licenses/third-party-notices.txt for provenance.
-import type { RunView } from "../types.ts";
+import type { RunView, ViewBlock } from "../types.ts";
 
 export function runPresentation(run: RunView) {
-  const visible = run.orderedBlocks.filter((block) => block.type === "tool" || block.text.trim());
+  const merged: (ViewBlock & { lastBlockId?: string })[] = [];
+  const boundaries = new Set(run.compactions?.map((marker) => marker.afterBlockId));
+  for (const block of run.orderedBlocks) {
+    const previous = merged.at(-1);
+    if (
+      block.type === "thinking" &&
+      previous?.type === "thinking" &&
+      previous.messageId === block.messageId &&
+      !boundaries.has(previous.lastBlockId ?? previous.id)
+    ) {
+      // 只合并展示副本，保留首项身份和整段耗时；原始条目仍参与存储和协议回放。
+      const streaming = Boolean(previous.streaming || block.streaming);
+      merged[merged.length - 1] = {
+        ...previous,
+        text: [previous.text, block.text].filter((text) => text.trim()).join("\n\n"),
+        streaming,
+        interrupted: Boolean(previous.interrupted || block.interrupted),
+        endedAt: streaming ? undefined : block.endedAt,
+        lastBlockId: block.id,
+      };
+    } else merged.push(block);
+  }
+  const visible = merged.filter((block) => block.type === "tool" || block.text.trim());
   // 后续通知可能只生成思考；它仍属于工作过程，不能挡住已有的最终正文。
   const tail = visible.findLast((block) => block.type !== "thinking");
   // ZCode 运行中把正文和思考、工具按原序放在工作区；终态只把末段正文移到折叠区外。

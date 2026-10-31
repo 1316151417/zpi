@@ -476,7 +476,11 @@ export const RunGroup = memo(function RunGroup({
   const items: (ProcessItem | { kind: "compaction"; id: string; marker: CompactionView })[] = [];
   let offset = 0;
   for (const marker of markers) {
-    const index = marker.afterBlockId ? process.findIndex((block) => block.id === marker.afterBlockId) : -1;
+    const index = marker.afterBlockId
+      ? process.findIndex(
+          (block) => block.id === marker.afterBlockId || block.lastBlockId === marker.afterBlockId,
+        )
+      : -1;
     const boundary = Math.max(offset, index + 1);
     items.push(...processItems(process.slice(offset, boundary), false));
     items.push({ kind: "compaction", id: marker.id, marker });
@@ -876,7 +880,7 @@ export function Conversation({
       const wasRunning = lifecycle.current.get(key);
       if (wasRunning && run.status !== "running") runUpdates[run.runId] = false;
       lifecycle.current.set(key, run.status === "running");
-      for (const block of run.orderedBlocks) {
+      for (const block of runPresentation(run).process) {
         if (block.type !== "thinking" || processedBlocks.current.has(block)) continue;
         processedBlocks.current.add(block);
         const key = `block:${view.sessionId}:${run.runId}:${block.id}`;

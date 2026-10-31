@@ -5,6 +5,7 @@ import { SessionManager } from "zpi-coding-agent";
 import type { DesktopEvent } from "zpi-ui";
 import { emptySession, reduceSession } from "zpi-ui/projection";
 import { fakeModel } from "../../../tests/fake-server.ts";
+import { runPresentation } from "../../ui/src/components/process-presentation.ts";
 import { projectEvent, restoreView } from "../src/main/projection.ts";
 
 const model: Model = { ...fakeModel("https://local.example/v1"), api: "openai-responses" };
@@ -136,3 +137,78 @@ it.each(["malformed", "mismatched", "separate-item", "other-api"])(
     );
   },
 );
+
+it("displays consecutive response items as one card while preserving streamed and stored reasoning", async () => {
+  const items = [0, 1, 2].map((index) => ({
+    ...reasoning,
+    id: `rs_${index}`,
+    summary: [0, 1].map((part) => ({ type: "summary_text", text: `item ${index} summary ${part}` })),
+    encrypted_content: `encrypted-${index}`,
+  }));
+  const call = { type: "function_call", id: "fc_test", call_id: "call_test", name: "bash", arguments: "{}" };
+  const wire = [
+    ...items.flatMap((item) => [
+      { type: "response.output_item.added", item: { ...item, summary: [] } },
+      ...item.summary.map((part, summary_index) => ({
+        type: "response.reasoning_summary_text.delta",
+        item_id: item.id,
+        summary_index,
+        delta: part.text,
+      })),
+      { type: "response.output_item.done", item },
+    ]),
+    { type: "response.output_item.done", item: call },
+    {
+      type: "response.completed",
+      response: { id: "resp_test", status: "completed", output: [...items, call] },
+    },
+  ];
+  let view = emptySession("s");
+  let seq = 0;
+  const apply = (event: DesktopEvent) => {
+    view = reduceSession(view, { sessionId: "s", runId: "r", seq: ++seq, event });
+  };
+  apply({ type: "started", text: "check", startedAt: 1, modelLabel: "fake" });
+  const stream = streamSimple(model, normalizeContext({ messages: [] }), {
+    apiKey: "fake",
+    fetch: (async () =>
+      new Response(wire.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+        headers: { "content-type": "text/event-stream" },
+      })) as typeof fetch,
+  });
+  for await (const event of stream) {
+    if (event.type === "start" || event.type === "done" || event.type === "error") continue;
+    const projected = projectEvent(
+      { type: "message_update", message: event.partial, assistantMessageEvent: event },
+      "m",
+    );
+    if (projected) apply(projected);
+    if (event.type === "thinking_delta") {
+      const cards = runPresentation(view.runs[0]).process;
+      expect(cards).toMatchObject([{ id: "m:0", type: "thinking", streaming: true }]);
+      expect(cards[0].type !== "tool" && cards[0].text).toContain(event.delta);
+    }
+  }
+  const message = await stream.result();
+  const before = structuredClone(message);
+  const final = projectEvent({ type: "message_end", message }, "m");
+  if (final) apply(final);
+  const expected = items.flatMap((item) => item.summary.map((part) => part.text)).join("\n\n");
+  expect(runPresentation(view.runs[0]).process).toMatchObject([
+    { id: "m:0", type: "thinking", text: expected, streaming: false },
+    { type: "tool", toolCallId: tool.id },
+  ]);
+  const restored = restore(message);
+  expect(restored).toHaveLength(4);
+  expect(runPresentation({ ...view.runs[0], orderedBlocks: restored }).process).toMatchObject([
+    { type: "thinking", text: expected },
+    { type: "tool", toolCallId: tool.id },
+  ]);
+  expect(
+    message.content
+      .filter((block) => block.type === "thinking")
+      .map((block) => JSON.parse(block.thinkingSignature ?? "{}")),
+  ).toEqual(items);
+  expect(view.runs[0].orderedBlocks).toHaveLength(4);
+  expect(message).toEqual(before);
+});
