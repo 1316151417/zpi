@@ -2,12 +2,15 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { emptyAssistant, type ToolCall } from "zpi-ai";
-import { piTemplate, SessionManager } from "zpi-coding-agent";
-import { defaultCapabilities } from "../../packages/desktop/src/shared/config.ts";
+import { SessionManager } from "zpi-coding-agent";
+import { HistoryIndex } from "../../packages/desktop/src/main/history-index.ts";
+import { StateStore } from "../../packages/desktop/src/main/state-store.ts";
 import { fakeModel } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { testStorageDirectory } from "../helpers/storage.ts";
 import { expect, test } from "../helpers/test.ts";
+import { seedHistory } from "../history-fixture.ts";
 
 test("process summaries retain ZCode typography and single-line geometry when the right pane opens", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-process-summary-layout-"));
@@ -17,16 +20,12 @@ test("process summaries retain ZCode typography and single-line geometry when th
   const command = 'lsof -nP -iTCP:8080 -sTCP:LISTEN 2>/dev/null || echo "port 8080 free"';
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
-  const manager = SessionManager.create(cwd, join(dir, "agent", "sessions", "_unassigned"));
-  manager.appendSessionInfo("过程摘要布局");
-  manager.appendCustomEntry("zpi.configuration", {
-    template: { ...piTemplate },
-    disabledSkillPaths: [],
-    ...defaultCapabilities,
-  });
-  manager.appendCustomEntry("zpi.session_meta", { projectId: null, pinnedAt: null });
-  manager.appendCustomEntry("zpi.title", { state: "legacy" });
-  manager.appendModelChange("custom", "fake");
+  // 旧夹具直接创建根目录 JSONL，会被当前存储拒绝；使用桌面实际读取的 generation 与索引。
+  const { file } = seedHistory(dir, cwd, 0);
+  const state = new StateStore(join(testStorageDirectory(dir), "state.sqlite"));
+  const index = new HistoryIndex(file, state.db);
+  await index.load();
+  const manager = SessionManager.fromStore(index);
   manager.appendCustomEntry("zpi.run", {
     phase: "start",
     runId: "layout",
@@ -79,6 +78,7 @@ test("process summaries retain ZCode typography and single-line geometry when th
     status: "completed",
     endedAt: Date.now(),
   });
+  state.close();
   let app: Awaited<ReturnType<typeof launchDesktop>>;
   try {
     app = await launchDesktop({ dir, url: "http://127.0.0.1:1/v1" });

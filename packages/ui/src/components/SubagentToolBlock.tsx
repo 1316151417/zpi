@@ -1,13 +1,17 @@
 // ZCode Agent summary: a single row opens the complete child timeline in the side pane.
 import { Bot } from "lucide-react";
 import { createContext, useContext } from "react";
-import type { SubagentTask } from "../types.ts";
+import type { BackgroundTask, SubagentTask } from "../types.ts";
 import type { ToolBlockProps } from "./ToolBlock.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
 import { toolInput, toolLabel } from "./tool-presentation.ts";
 
-export const SubagentContext = createContext<{ tasks: SubagentTask[]; open?: (task: SubagentTask) => void }>({
+export const SubagentContext = createContext<{
+  tasks: SubagentTask[];
+  backgroundTasks?: BackgroundTask[];
+  open?: (task: SubagentTask) => void;
+}>({
   tasks: [],
 });
 export const subagentStatusLabels: Record<SubagentTask["status"], string> = {

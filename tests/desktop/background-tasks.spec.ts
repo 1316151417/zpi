@@ -7,6 +7,87 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+for (const description of ["Dev server", ""]) {
+  test(`background output and stop summaries retain ${description ? "the task description" : "the command fallback"} after reload`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-background-summary-"));
+    const command = "echo 'Server ready'; sleep 30";
+    const taskName = description || command;
+    const server = await fakeServer((body, response) => {
+      const rows = body.messages as { role: string; content: string }[];
+      const lastTool = rows.filter((row) => row.role === "tool").at(-1);
+      const taskId = lastTool?.content.match(/ID: (exec_[\da-f-]+)/)?.[1];
+      const outputTaskId = lastTool?.content.match(/<task_id>(exec_[^<]+)<\/task_id>/)?.[1];
+      const name = !lastTool ? "bash" : taskId ? "TaskOutput" : outputTaskId ? "TaskStop" : undefined;
+      if (name) {
+        send(
+          response,
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: name,
+                type: "function",
+                function: {
+                  name,
+                  arguments: JSON.stringify(
+                    name === "bash"
+                      ? { command, description, run_in_background: true }
+                      : {
+                          task_id: taskId ?? outputTaskId,
+                          ...(name === "TaskOutput" ? { block: false, timeout: 0 } : {}),
+                        },
+                  ),
+                },
+              },
+            ],
+          }),
+        );
+        done(response, "tool_calls");
+      } else {
+        send(response, chunk({ content: "Background task stopped" }));
+        done(response);
+      }
+    });
+    let app: ElectronApplication | undefined;
+    try {
+      app = await launchDesktop({ dir, url: server.url });
+      const page = await app.firstWindow();
+      const editor = page.getByLabel("消息", { exact: true });
+      await editor.fill("Start, read and stop the server");
+      await editor.press("Enter");
+      const main = page.locator("main");
+      await expect(main.locator(".answer")).toContainText("Background task stopped");
+      for (const theme of ["light", "dark"] as const) {
+        await page.evaluate((theme) => window.zpi.updatePreferences({ theme }), theme);
+        await page.reload();
+        await main.getByTestId("progress").first().click();
+        for (const name of ["TaskOutput", "TaskStop"]) {
+          const card = main.locator(`[data-tool-name="${name}"]`);
+          await expect(card.locator(".tool-summary-text")).toHaveText(taskName);
+          const title = await card.getByTestId("tool-summary").getAttribute("title");
+          expect(title?.startsWith(`${taskName}\nexec_`)).toBe(true);
+          await expect(card.locator(".tool-summary-status")).toHaveText(
+            name === "TaskOutput" ? "运行中" : "已停止",
+          );
+        }
+        const stop = main.locator('[data-tool-name="TaskStop"]');
+        await stop.getByTestId("tool-summary").click();
+        await expect(stop.locator(".subagent-task-output")).toContainText(command);
+        await page.screenshot({
+          path: test.info().outputPath(`background-summary-${theme}.png`),
+          animations: "disabled",
+        });
+      }
+    } finally {
+      await runCleanup([
+        () => rm(dir, { recursive: true, force: true }),
+        () => server.close(),
+        () => app?.close(),
+      ]);
+    }
+  });
+}
+
 async function checkTaskMenuLayer(page: Page, panel: Locator, theme: string) {
   await panel.getByRole("button", { name: "状态面板展开策略", exact: true }).click();
   const menu = page.getByRole("menuitemradio", { name: "自动展开", exact: true });

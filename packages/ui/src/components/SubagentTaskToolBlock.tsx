@@ -1,5 +1,7 @@
 // Adapted from ZCode's task-output and task-stop renderers (Apache-2.0).
 import { CircleStop, FileOutput } from "lucide-react";
+import { useContext } from "react";
+import { SubagentContext } from "./SubagentToolBlock.tsx";
 import type { ToolBlockProps } from "./ToolBlock.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
@@ -9,7 +11,14 @@ export function SubagentTaskToolBlock({ block, expanded, toggle, onCopy, showIco
   const input = toolInput(block);
   const stop = block.name === "TaskStop";
   const running = block.status === "preparing" || block.status === "running";
-  const taskId = typeof input.task_id === "string" ? input.task_id : block.name;
+  const id = input.task_id ?? (stop ? input.shell_id : undefined);
+  const taskId = typeof id === "string" ? id : block.name;
+  const { tasks, backgroundTasks } = useContext(SubagentContext);
+  // 读取与停止卡片原先只展示 ID；关联会话快照，才能与启动时的任务描述对应。
+  const agent = tasks.find((task) => task.agentId === taskId);
+  const command = backgroundTasks?.find((task) => task.taskId === taskId);
+  const description = agent?.description.trim() || command?.description.trim();
+  const taskName = description || command?.command.trim();
   // Match the envelope once; XML-like text inside a result is ordinary task output.
   const envelope =
     /^<retrieval_status>(\w+)<\/retrieval_status>\n\n<task_id>[^\n]+<\/task_id>\n\n<task_type>(?:local_agent|local_bash)<\/task_type>\n\n<status>(\w+)<\/status>(?:\n\n<exit_code>-?\d+<\/exit_code>)?(?:\n\n<output>\n([\s\S]*)\n<\/output>)?(?:\n\n<error>([\s\S]*)<\/error>)?$/.exec(
@@ -53,7 +62,15 @@ export function SubagentTaskToolBlock({ block, expanded, toggle, onCopy, showIco
         running={running}
         expanded={!!output && expanded}
         toggle={output ? toggle : undefined}
-        primary={<code className="tool-summary-text">{taskId}</code>}
+        title={taskName ? `${taskName}\n${taskId}` : taskId}
+        separator="·"
+        primary={
+          taskName ? (
+            <span className="tool-summary-text">{taskName}</span>
+          ) : (
+            <code className="tool-summary-text">{taskId}</code>
+          )
+        }
         trailing={!failure && outcome ? <span className="tool-summary-status">{outcome}</span> : undefined}
         failure={failure ? <ToolFailure text={failure} onCopy={onCopy} /> : undefined}
         content={

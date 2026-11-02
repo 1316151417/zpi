@@ -440,6 +440,8 @@ test("TaskOutput waits for the child and shows a clean result without duplicate 
     await editor.press("Enter");
     const output = page.locator('main [data-tool-name="TaskOutput"]');
     await expect(output).toContainText("正在读取输出");
+    await expect(output.locator(".tool-summary-text")).toHaveText("Read entry");
+    await expect(output.getByTestId("tool-summary")).toHaveAttribute("title", /^Read entry\nagent_/);
     await expect.poll(() => !!childResponse).toBe(true);
     send(
       childResponse as import("node:http").ServerResponse,
@@ -450,10 +452,14 @@ test("TaskOutput waits for the child and shows a clean result without duplicate 
     await expect(page.locator("main .answer")).toHaveCount(1);
     await page.locator("main").getByTestId("progress").first().click();
     await expect(output).toContainText("已读取");
+    await expect(output.locator(".tool-summary-text")).toHaveText("Read entry");
     await output.getByTestId("tool-summary").click();
     await expect(output).toContainText("Entry point is src/main.ts");
     await expect(output).not.toContainText("retrieval_status");
     await expect(page.locator("main .user-message")).toHaveCount(1);
+    await page.reload();
+    await page.locator("main").getByTestId("progress").first().click();
+    await expect(output.locator(".tool-summary-text")).toHaveText("Read entry");
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

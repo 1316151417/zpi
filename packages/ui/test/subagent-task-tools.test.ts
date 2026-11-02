@@ -1,11 +1,11 @@
-import { createElement } from "react";
+import { type ContextType, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { SubagentTaskToolBlock } from "../src/components/SubagentTaskToolBlock.tsx";
 import { SubagentContext, SubagentToolBlock } from "../src/components/SubagentToolBlock.tsx";
 import type { ToolView } from "../src/components/tool-presentation.ts";
 import { emptySession, reduceSession } from "../src/reducer.ts";
-import type { SubagentTask } from "../src/types.ts";
+import type { BackgroundTask, SubagentTask } from "../src/types.ts";
 
 const block: ToolView = {
   id: "b",
@@ -17,14 +17,95 @@ const block: ToolView = {
   status: "completed",
   output: "",
 };
-const render = (fields: Partial<ToolView>) =>
+const render = (fields: Partial<ToolView>, context: ContextType<typeof SubagentContext> = { tasks: [] }) =>
   renderToStaticMarkup(
-    createElement(SubagentTaskToolBlock, {
-      block: { ...block, ...fields },
-      expanded: true,
-      toggle: () => {},
-    }),
+    createElement(
+      SubagentContext.Provider,
+      { value: context },
+      createElement(SubagentTaskToolBlock, {
+        block: { ...block, ...fields },
+        expanded: true,
+        toggle: () => {},
+      }),
+    ),
   );
+
+const agent: SubagentTask = {
+  agentId: "agent_1",
+  childSessionId: "child",
+  parentSessionId: "parent",
+  parentToolCallId: "spawn",
+  agentType: "general-purpose",
+  description: "Inspect source",
+  color: "blue",
+  background: true,
+  status: "running",
+  startedAt: 1,
+  modelLabel: "test",
+  totalTokens: 0,
+  totalToolUseCount: 0,
+};
+const background: BackgroundTask = {
+  taskId: "exec_1",
+  sessionId: "parent",
+  toolCallId: "bash",
+  command: "pnpm test",
+  description: "Run tests",
+  status: "running",
+  startedAt: 1,
+  outputPath: "/tmp/test-output",
+};
+
+test.each(["TaskOutput", "TaskStop"])(
+  "%s resolves the matching task name and retains its full ID in the tooltip",
+  (name) => {
+    const context = {
+      tasks: [{ ...agent, agentId: "agent_other", description: "Other agent" }, agent],
+      backgroundTasks: [{ ...background, taskId: "exec_other", description: "Other command" }, background],
+    };
+    for (const status of ["preparing", "running", "completed", "error"] as const) {
+      for (const [taskId, taskName] of [
+        [agent.agentId, agent.description],
+        [background.taskId, background.description],
+      ]) {
+        const markup = render({ name, status, argsText: JSON.stringify({ task_id: taskId }) }, context);
+        expect(markup).toContain(`<span class="tool-summary-text">${taskName}</span>`);
+        expect(markup).toContain(`title="${taskName}\n${taskId}"`);
+        expect(markup).not.toContain("Other agent");
+        expect(markup).not.toContain("Other command");
+        expect(markup).not.toContain(`<code class="tool-summary-text">${taskId}</code>`);
+      }
+    }
+  },
+);
+
+test.each(["TaskOutput", "TaskStop"])(
+  "%s falls back from a blank background description to the command, then ID",
+  (name) => {
+    const fields = { name, argsText: '{"task_id":"exec_1"}' };
+    const markup = render(fields, { tasks: [], backgroundTasks: [{ ...background, description: "  " }] });
+    expect(markup).toContain('<span class="tool-summary-text">pnpm test</span>');
+    expect(markup).toContain('title="pnpm test\nexec_1"');
+    for (const backgroundTasks of [[], [{ ...background, description: " ", command: " " }]]) {
+      expect(render(fields, { tasks: [], backgroundTasks })).toContain(
+        '<code class="tool-summary-text">exec_1</code>',
+      );
+    }
+    expect(render({ name })).toContain('<code class="tool-summary-text">agent_1</code>');
+    expect(render({ name }, { tasks: [{ ...agent, description: " " }] })).toContain(
+      '<code class="tool-summary-text">agent_1</code>',
+    );
+  },
+);
+
+test("TaskStop resolves the supported legacy shell_id parameter", () => {
+  const markup = render(
+    { name: "TaskStop", argsText: '{"shell_id":"exec_1"}' },
+    { tasks: [], backgroundTasks: [background] },
+  );
+  expect(markup).toContain('<span class="tool-summary-text">Run tests</span>');
+  expect(markup).toContain('title="Run tests\nexec_1"');
+});
 
 test("Agent summaries localize the label without changing protocol or agent names", () => {
   for (const status of ["preparing", "running", "completed", "error"] as const) {

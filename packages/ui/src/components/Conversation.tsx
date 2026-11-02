@@ -855,8 +855,8 @@ export function Conversation({
   const { sessionId, forkOrigin } = view;
   const previewAutoOpen = usePreviewAutoOpen(view);
   const subagentContext = useMemo(
-    () => ({ tasks: view.subagents ?? [], open: onOpenSubagent }),
-    [view.subagents, onOpenSubagent],
+    () => ({ tasks: view.subagents ?? [], backgroundTasks: view.backgroundTasks, open: onOpenSubagent }),
+    [view.subagents, view.backgroundTasks, onOpenSubagent],
   );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [blocks, setBlocks] = useState<Record<string, boolean>>({});
