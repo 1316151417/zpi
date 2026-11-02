@@ -373,7 +373,9 @@ export class SubagentPlugin {
     const previous = this.jobs.get(task.agentId);
     const generation = this.cancellations.get(task.agentId) ?? 0;
     if (resume) {
+      // 旧文件可能已被历史消息引用；发布 running 前切换路径，避免并发读取混入上一轮结果。
       this.update(task.agentId, {
+        ...this.artifacts.paths(task.parentSessionId, task.agentId, randomUUID()),
         background: true,
         status: "running",
         startedAt: Date.now(),
@@ -574,7 +576,7 @@ export class SubagentPlugin {
           };
           if (signal?.aborted || this.closing || this.stopping.has(params.to))
             return failure(`SendMessage was aborted for ${params.to}.`);
-          const task = this.tasks.get(params.to);
+          let task = this.tasks.get(params.to);
           if (!task || task.parentSessionId !== parentId)
             return failure(`No active local_agent task found for target ${params.to}.`);
           const prompt = params.summary?.trim()
@@ -593,6 +595,7 @@ export class SubagentPlugin {
               const profile = this.profile(parentId, task.agentType);
               const selection = profile.modelSelection ?? this.port.selection(parentId);
               void this.begin(task, formatCoordinatorSteer(prompt), { profile, selection }).catch(() => {});
+              task = this.owned(parentId, params.to);
             }
             delivery = steered ? "steered" : "queued";
             message = steered
@@ -616,6 +619,7 @@ export class SubagentPlugin {
               parentToolCallId: _id,
             });
             void this.begin(task, params.message, { profile, selection }).catch(() => {});
+            task = this.owned(parentId, params.to);
             delivery = "resumed_background";
             message = `Agent "${task.agentId}" was stopped (${status}); resumed it in the background with your message. You'll be notified when it finishes. Output: ${task.outputFile}`;
           }

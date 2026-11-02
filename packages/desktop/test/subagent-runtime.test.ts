@@ -181,6 +181,70 @@ test("finishing an earlier notification does not suppress the resumed turn's res
   await f.plugin.close();
 });
 
+test("resumed tasks isolate prior output before running and persist only the new result", async () => {
+  const f = fixture();
+  const task = await f.launch();
+  try {
+    f.turns.get(task.childSessionId)?.resolve();
+    await vi.waitFor(() => expect(f.port.notify).toHaveBeenCalledTimes(1));
+    expect(await readFile(task.outputFile as string, "utf8")).toBe("findings");
+    vi.mocked(f.port.run).mockImplementationOnce(async (id) => {
+      const turn = deferred();
+      f.turns.set(id, turn);
+      await turn.promise;
+      if (f.plugin.taskForChild(id)?.status !== "aborted")
+        f.plugin.update(task.agentId, {
+          status: "completed",
+          result: "new findings",
+          endedAt: Date.now(),
+        });
+    });
+    const sending = f.invoke("SendMessage", {
+      to: task.agentId,
+      summary: "Follow up",
+      message: "New work",
+    });
+    // 读取可以与恢复并发，不能等异步清空文件后才隔离上一轮结果。
+    const blocks = [false, true];
+    const outputs = await Promise.all(
+      blocks.map((block) => f.invoke("TaskOutput", { task_id: task.agentId, block, timeout: 0 })),
+    );
+    const sent = await sending;
+    await vi.waitFor(() => expect(f.port.run).toHaveBeenCalledTimes(2));
+    for (const [index, output] of outputs.entries()) {
+      expect(output.details).toMatchObject({
+        retrieval_status: blocks[index] ? "timeout" : "not_ready",
+        task: { status: "running", prompt: "New work", output: "" },
+      });
+      expect(JSON.stringify(output.content)).not.toContain("findings");
+      expect((output.details as { task: { result?: string } }).task.result).toBeUndefined();
+    }
+    const resumed = f.plugin.list("parent")[0];
+    expect(resumed.outputFile).not.toBe(task.outputFile);
+    expect(resumed.taskOutputFile).not.toBe(task.taskOutputFile);
+    expect(sent.details).toMatchObject({ outputFile: resumed.outputFile });
+    expect(sent.content).toEqual([
+      { type: "text", text: expect.stringContaining(`Output: ${resumed.outputFile}`) },
+    ]);
+    expect(JSON.parse(await readFile(resumed.metadataFile as string, "utf8"))).toMatchObject({
+      outputFile: resumed.outputFile,
+      taskOutputFile: resumed.taskOutputFile,
+      prompt: "New work",
+    });
+    f.turns.get(task.childSessionId)?.resolve();
+    await vi.waitFor(() => expect(f.port.notify).toHaveBeenCalledTimes(2));
+    expect((await f.invoke("TaskOutput", { task_id: task.agentId })).details).toMatchObject({
+      retrieval_status: "success",
+      task: { status: "completed", output: "new findings", result: "new findings" },
+    });
+    for (const path of [resumed.outputFile, resumed.taskOutputFile])
+      expect(await readFile(path as string, "utf8")).toBe("new findings");
+    expect(await readFile(task.outputFile as string, "utf8")).toBe("findings");
+  } finally {
+    await f.plugin.close();
+  }
+});
+
 test("queued follow-ups stay running and stoppable without exposing an earlier turn's result", async () => {
   const f = fixture();
   const delivery = deferred();
@@ -212,7 +276,7 @@ test("queued follow-ups stay running and stoppable without exposing an earlier t
     expect(received).not.toHaveBeenCalled();
     expect((await f.invoke("TaskOutput", { task_id: task.agentId, block: false })).details).toMatchObject({
       retrieval_status: "not_ready",
-      task: { status: "running", output: "findings" },
+      task: { status: "running", output: "" },
     });
     await f.invoke("TaskStop", { task_id: task.agentId });
     expect(f.port.stop).toHaveBeenCalledWith(task.childSessionId);
@@ -412,10 +476,11 @@ test("SendMessage uses the runner's active, queued, resumed and failure results"
     summary: "Follow up",
     message: "Only this prompt",
   });
+  const resumedTask = f.plugin.list("parent")[0];
   expect(resumed.content).toEqual([
     {
       type: "text",
-      text: `Agent "${task.agentId}" was stopped (completed); resumed it in the background with your message. You'll be notified when it finishes. Output: ${task.outputFile}`,
+      text: `Agent "${task.agentId}" was stopped (completed); resumed it in the background with your message. You'll be notified when it finishes. Output: ${resumedTask.outputFile}`,
     },
   ]);
   await vi.waitFor(() => expect(f.port.run).toHaveBeenCalledTimes(2));

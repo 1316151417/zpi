@@ -23,11 +23,12 @@ export class SubagentArtifacts {
   constructor(root: string) {
     this.root = root;
   }
-  paths(parentId: string, agentId: string) {
+  paths(parentId: string, agentId: string, runId?: string) {
     const dir = join(this.root, parentId, agentId);
+    const outputDir = runId ? join(dir, "runs", runId) : dir;
     return {
-      outputFile: join(dir, "output.txt"),
-      taskOutputFile: join(dir, "task.output"),
+      outputFile: join(outputDir, "output.txt"),
+      taskOutputFile: join(outputDir, "task.output"),
       metadataFile: join(dir, "metadata.json"),
     };
   }
