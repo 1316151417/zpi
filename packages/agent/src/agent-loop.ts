@@ -197,9 +197,20 @@ async function run(
       await emit({ type: "turn_end", message: assistant, toolResults: results });
       if (listenerError) throw listenerError;
       if (signal?.aborted || ["error", "aborted", "length"].includes(assistant.stopReason)) break;
-      // Finish the response and its tools before consuming mail: cancelling at an item
-      // boundary discards provider continuation state. Text-only responses also drain mail.
-      const steering = [...(config.getPendingMessages?.() ?? []), ...(config.getSteeringMessages?.() ?? [])];
+      // Finish the response and its tools without interrupting provider continuation.
+      // Final text (including text without a phase) leaves queue-only mail for the next request.
+      const acceptsPending =
+        calls.length > 0 ||
+        (assistant.content.length > 0 &&
+          assistant.content.every(
+            (part) =>
+              part.type === "thinking" ||
+              (part.type === "text" && (part.phase === "commentary" || part.phase === "partial_answer")),
+          ));
+      const steering = [
+        ...(acceptsPending ? (config.getPendingMessages?.() ?? []) : []),
+        ...(config.getSteeringMessages?.() ?? []),
+      ];
       for (const message of steering) await add(message);
       if (!calls.length && !steering.length) break;
       const next = await config.prepareNextTurnWithContext?.(

@@ -8,7 +8,7 @@ import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 const model = fakeModel("");
 const mail = (content = "Worker findings"): AgentMessage => ({ role: "user", content, timestamp: 1 });
 
-it.each(["thinking", "commentary", "partial_answer", "final_answer", undefined] as const)(
+it.each(["thinking", "commentary", "partial_answer"] as const)(
   "batches mail after the complete response, not at a %s item boundary",
   async (kind) => {
     const inbox: AgentMessage[] = [];
@@ -59,7 +59,7 @@ it.each(["thinking", "commentary", "partial_answer", "final_answer", undefined] 
     expect(signals[0].aborted).toBe(false);
     expect(inputs).toHaveLength(1);
     expect(inbox).toEqual(queued);
-    firstMessage.content.push({ type: "text", text: "Completed response tail" });
+    firstMessage.content.push({ type: "text", text: "Completed response tail", phase: "commentary" });
     first.end(firstMessage);
     await running;
     expect(runs).toBe(1);
@@ -73,67 +73,128 @@ it.each(["thinking", "commentary", "partial_answer", "final_answer", undefined] 
   },
 );
 
-it("preserves completed tool results and drains a live tool without cancelling or repeating it", async () => {
+it.each([
+  { phase: "final_answer" as const, trailingReasoning: false },
+  { phase: undefined, trailingReasoning: false },
+  { phase: "final_answer" as const, trailingReasoning: true },
+  { phase: undefined, trailingReasoning: true },
+])("defers mail until the next user request after final text: %j", async ({ phase, trailingReasoning }) => {
   const inbox: AgentMessage[] = [];
-  const boundary = deferred();
-  const releaseTool = deferred();
   const inputs: Message[][] = [];
-  let toolAborted = false;
-  const execute = vi.fn(async (_id, _args, signal) => {
-    signal?.addEventListener("abort", () => {
-      toolAborted = true;
-    });
-    await releaseTool.promise;
-    return { content: [{ type: "text" as const, text: "Tool findings" }], details: undefined };
-  });
-  const tool: AgentTool = {
-    name: "search",
-    label: "Search",
-    description: "Search",
-    parameters: Type.Object({}),
-    metadata: { readOnly: true, concurrentSafe: true, sideEffectScope: "none" },
-    execute,
-  };
-  const streamFn: StreamFn = (_, context) => {
+  const signals: AbortSignal[] = [];
+  const boundary = deferred();
+  const first = createAssistantMessageEventStream();
+  const message = emptyAssistant(model);
+  message.content = [{ type: "text", text: "Complete final answer", ...(phase ? { phase } : {}) }];
+  const queued = [mail(), mail("Worker verification")];
+  const streamFn: StreamFn = (_, context, options) => {
     inputs.push(structuredClone(context.messages));
-    const events = createAssistantMessageEventStream();
-    const message = emptyAssistant(model);
+    signals.push(options?.signal as AbortSignal);
     if (inputs.length === 1) {
-      const call = { type: "toolCall" as const, id: "once", name: "search", arguments: {} };
-      message.content = [call, { type: "text", text: "Working", phase: "commentary" }];
-      events.push({ type: "start", partial: message });
-      events.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
-      events.push({ type: "text_end", contentIndex: 1, content: "Working", partial: message });
-      message.stopReason = "toolUse";
-      events.end(message);
-    } else {
-      message.content = [{ type: "text", text: "Final" }];
-      events.end(message);
+      first.push({ type: "start", partial: message });
+      first.push({ type: "text_end", contentIndex: 0, content: "Complete final answer", partial: message });
+      return first;
     }
-    return events;
+    const stream = createAssistantMessageEventStream();
+    const next = emptyAssistant(model);
+    next.content = [{ type: "text", text: "Answer using worker findings" }];
+    stream.end(next);
+    return stream;
   };
-  const agent = new Agent({
-    initialState: { model, tools: [tool] },
-    streamFn,
-    getPendingMessages: () => inbox.splice(0),
-  });
+  const agent = new Agent({ initialState: { model }, streamFn, getPendingMessages: () => inbox.splice(0) });
   agent.subscribe((event) => {
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_end") {
-      inbox.push(mail());
+      inbox.push(...queued);
       boundary.resolve();
     }
   });
-  const running = agent.prompt("Work");
+  const running = agent.prompt("Finish");
   await boundary.promise;
+  await setImmediate();
   expect(inputs).toHaveLength(1);
-  releaseTool.resolve();
+  expect(signals[0].aborted).toBe(false);
+  expect(inbox).toEqual(queued);
+  if (trailingReasoning) {
+    message.content.push({ type: "thinking", thinking: "Trailing reasoning" });
+    first.push({ type: "thinking_end", contentIndex: 1, content: "Trailing reasoning", partial: message });
+  }
+  first.end(message);
   await running;
-  expect(toolAborted).toBe(false);
-  expect(execute).toHaveBeenCalledTimes(1);
-  expect(inputs[1].filter((message) => message.role === "toolResult")).toHaveLength(1);
-  expect(inputs[1]).toContainEqual(mail());
-  expect(inputs[1].at(-1)).toEqual(mail());
+  expect(inputs).toHaveLength(1);
+  expect(signals[0].aborted).toBe(false);
+  expect(inbox).toEqual(queued);
+  expect(agent.state.messages.at(-1)).toEqual(message);
+  await agent.prompt("Use the worker findings");
+  expect(inputs).toHaveLength(2);
+  expect(inputs[1].slice(-2)).toEqual(queued);
+  for (const item of queued) expect(inputs[1].filter((row) => row.content === item.content)).toHaveLength(1);
+  expect(inbox).toEqual([]);
 });
+
+it.each(["commentary", "final_answer"] as const)(
+  "preserves tool results and consumes mail after tools even with %s text, without interruption",
+  async (phase) => {
+    const inbox: AgentMessage[] = [];
+    const boundary = deferred();
+    const releaseTool = deferred();
+    const inputs: Message[][] = [];
+    let toolAborted = false;
+    const execute = vi.fn(async (_id, _args, signal) => {
+      signal?.addEventListener("abort", () => {
+        toolAborted = true;
+      });
+      await releaseTool.promise;
+      return { content: [{ type: "text" as const, text: "Tool findings" }], details: undefined };
+    });
+    const tool: AgentTool = {
+      name: "search",
+      label: "Search",
+      description: "Search",
+      parameters: Type.Object({}),
+      metadata: { readOnly: true, concurrentSafe: true, sideEffectScope: "none" },
+      execute,
+    };
+    const streamFn: StreamFn = (_, context) => {
+      inputs.push(structuredClone(context.messages));
+      const events = createAssistantMessageEventStream();
+      const message = emptyAssistant(model);
+      if (inputs.length === 1) {
+        const call = { type: "toolCall" as const, id: "once", name: "search", arguments: {} };
+        message.content = [call, { type: "text", text: "Working", phase }];
+        events.push({ type: "start", partial: message });
+        events.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
+        events.push({ type: "text_end", contentIndex: 1, content: "Working", partial: message });
+        message.stopReason = "toolUse";
+        events.end(message);
+      } else {
+        message.content = [{ type: "text", text: "Final" }];
+        events.end(message);
+      }
+      return events;
+    };
+    const agent = new Agent({
+      initialState: { model, tools: [tool] },
+      streamFn,
+      getPendingMessages: () => inbox.splice(0),
+    });
+    agent.subscribe((event) => {
+      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_end") {
+        inbox.push(mail());
+        boundary.resolve();
+      }
+    });
+    const running = agent.prompt("Work");
+    await boundary.promise;
+    expect(inputs).toHaveLength(1);
+    releaseTool.resolve();
+    await running;
+    expect(toolAborted).toBe(false);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(inputs[1].filter((message) => message.role === "toolResult")).toHaveLength(1);
+    expect(inputs[1]).toContainEqual(mail());
+    expect(inputs[1].at(-1)).toEqual(mail());
+  },
+);
 
 it.each(["error", "aborted", "length"] as const)(
   "does not consume pending mail on %s",
@@ -152,34 +213,6 @@ it.each(["error", "aborted", "length"] as const)(
     expect(inbox).toEqual([mail()]);
   },
 );
-
-it("includes mail after a final answer followed by trailing reasoning completes", async () => {
-  const inbox: AgentMessage[] = [];
-  const streamFn = vi.fn<StreamFn>(() => {
-    const stream = createAssistantMessageEventStream();
-    const message = emptyAssistant(model);
-    message.content = [
-      { type: "text", text: "Final answer", phase: "final_answer" },
-      { type: "thinking", thinking: "Trailing reasoning" },
-    ];
-    if (streamFn.mock.calls.length === 1) {
-      stream.push({ type: "start", partial: message });
-      stream.push({ type: "text_end", contentIndex: 0, content: "Final answer", partial: message });
-      stream.push({ type: "thinking_end", contentIndex: 1, content: "Trailing reasoning", partial: message });
-    }
-    stream.end(message);
-    return stream;
-  });
-  const agent = new Agent({ initialState: { model }, streamFn, getPendingMessages: () => inbox.splice(0) });
-  agent.subscribe((event) => {
-    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_end")
-      inbox.push(mail());
-  });
-  await agent.prompt("Finish");
-  expect(streamFn).toHaveBeenCalledTimes(2);
-  expect(inbox).toEqual([]);
-  expect(streamFn.mock.calls[1][1].messages.at(-1)).toEqual(mail());
-});
 
 it("user cancellation still aborts an active response and retains pending mail", async () => {
   const inbox: AgentMessage[] = [];

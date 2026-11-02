@@ -641,55 +641,69 @@ function agentSession(f: Awaited<ReturnType<typeof fixture>>) {
   return session;
 }
 
-it("queues mail through reasoning completion and reuses the socket for a text-only follow-up", async () => {
-  const reason = { type: "reasoning", id: "rs", summary: [], encrypted_content: "local-encrypted" };
-  let generations = 0;
-  const f = await fixture(({ socket, body }) => {
-    if (body.generate === false) {
-      socket.send(JSON.stringify(completed("warmup", [])));
-    } else if (++generations === 1) {
-      socket.send(JSON.stringify({ type: "response.created", response: { id: "first", model: "fake" } }));
-      socket.send(JSON.stringify({ type: "response.output_item.added", output_index: 0, item: reason }));
-      socket.send(JSON.stringify({ type: "response.output_item.done", output_index: 0, item: reason }));
-    } else socket.send(JSON.stringify(completed("follow-up")));
-  });
-  const session = agentSession(f);
-  const queued = deferred();
-  let delivered = false;
-  session.subscribe((event) => {
-    if (
-      !delivered &&
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "thinking_end"
-    ) {
-      delivered = true;
-      expect(session.steer("Worker progress", { queueOnly: true })).toBe(true);
-      expect(session.steer("Worker result", { queueOnly: true })).toBe(true);
-      queued.resolve();
+it.each(["commentary", "final_answer"] as const)(
+  "queues mail without interrupting a response ending in %s and reuses its socket",
+  async (phase) => {
+    const reason = { type: "reasoning", id: "rs", summary: [], encrypted_content: "local-encrypted" };
+    let generations = 0;
+    const f = await fixture(({ socket, body }) => {
+      if (body.generate === false) {
+        socket.send(JSON.stringify(completed("warmup", [])));
+      } else if (++generations === 1) {
+        socket.send(JSON.stringify({ type: "response.created", response: { id: "first", model: "fake" } }));
+        socket.send(JSON.stringify({ type: "response.output_item.added", output_index: 0, item: reason }));
+        socket.send(JSON.stringify({ type: "response.output_item.done", output_index: 0, item: reason }));
+      } else socket.send(JSON.stringify(completed("follow-up")));
+    });
+    const session = agentSession(f);
+    const queued = deferred();
+    let delivered = false;
+    session.subscribe((event) => {
+      if (
+        !delivered &&
+        event.type === "message_update" &&
+        event.assistantMessageEvent.type === "thinking_end"
+      ) {
+        delivered = true;
+        expect(session.steer("Worker progress", { queueOnly: true })).toBe(true);
+        expect(session.steer("Worker result", { queueOnly: true })).toBe(true);
+        queued.resolve();
+      }
+    });
+    const running = session.prompt("Research");
+    await queued.promise;
+    await setImmediate();
+    const requests = () => f.requests.filter((request) => request.body.generate !== false);
+    expect(requests()).toHaveLength(1);
+    const first = requests()[0];
+    expect(first.socket.readyState).toBe(WebSocket.OPEN);
+    first.socket.send(JSON.stringify(completed("first", [reason, { ...text("Original answer"), phase }])));
+    await running;
+    expect(session.messages.find((message) => message.role === "assistant")?.content).toContainEqual(
+      expect.objectContaining({ type: "text", text: "Original answer", phase }),
+    );
+    if (phase === "final_answer") {
+      expect(requests()).toHaveLength(1);
+      expect(session.modelPerformance.steps).toBe(1);
+      await session.prompt("Continue");
     }
-  });
-  const running = session.prompt("Research");
-  await queued.promise;
-  await setImmediate();
-  const requests = () => f.requests.filter((request) => request.body.generate !== false);
-  expect(requests()).toHaveLength(1);
-  const first = requests()[0];
-  expect(first.socket.readyState).toBe(WebSocket.OPEN);
-  first.socket.send(JSON.stringify(completed("first", [reason, text("Original answer")])));
-  await running;
-  expect(requests()).toHaveLength(2);
-  expect(requests()[1].socket).toBe(first.socket);
-  expect(requests()[1].body).toMatchObject({
-    previous_response_id: "first",
-    input: [
-      { role: "user", content: "Worker progress" },
-      { role: "user", content: "Worker result" },
-    ],
-  });
-  expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
-  expect(session.modelPerformance.steps).toBe(2);
-  expect(f.httpCalls()).toBe(0);
-});
+    expect(requests()).toHaveLength(2);
+    expect(requests()[1].socket).toBe(first.socket);
+    expect(requests()[1].body).toMatchObject({
+      previous_response_id: "first",
+      input:
+        phase === "final_answer"
+          ? [{ role: "user", content: "Continue" }]
+          : [
+              { role: "user", content: "Worker progress" },
+              { role: "user", content: "Worker result" },
+            ],
+    });
+    expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
+    expect(session.modelPerformance.steps).toBe(2);
+    expect(f.httpCalls()).toBe(0);
+  },
+);
 
 it("captures final reasoning when a caller sets it immediately after changing models", async () => {
   const f = await fixture();

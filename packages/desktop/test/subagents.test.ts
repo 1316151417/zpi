@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { AgentSession, SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
+import { runPresentation } from "../../ui/src/components/process-presentation.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
@@ -342,7 +343,7 @@ test("late background findings stay queued without waking the parent and survive
   ).toHaveLength(1);
 });
 
-test("a background result arriving during the final answer continues after that response completes", async () => {
+test("a background result arriving during the final answer waits for the next user input", async () => {
   const answering = deferred();
   let childResponse: ServerResponse | undefined;
   let parentResponse: ServerResponse | undefined;
@@ -376,6 +377,8 @@ test("a background result arriving during the final answer continues after that 
     .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
     .toHaveLength(1);
   assert(parentResponse);
+  const requests = f.server.requests.length;
+  send(parentResponse, chunk({ content: " with its complete tail" }));
   done(parentResponse);
   await expect.poll(() => f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.status).toBe("completed");
   expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
@@ -383,10 +386,16 @@ test("a background result arriving during the final answer continues after that 
   const runs = f.host.getSessionSnapshot(f.session.id).view.runs;
   expect(runs[0].subagentNotification).toBeUndefined();
   expect(runs[0].orderedBlocks.flatMap((block) => (block.type === "text" ? [block.text] : []))).toEqual([
-    "Complete main answer",
-    "Supplement only",
+    "Complete main answer with its complete tail",
   ]);
   expect(runs[0].finalAnswerBlockIds).toHaveLength(1);
+  expect(runPresentation(runs[0]).answer?.text).toBe("Complete main answer with its complete tail");
+  expect(f.server.requests).toHaveLength(requests);
+  expect(JSON.stringify(f.server.requests.at(-1))).not.toContain("Late findings");
+  expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toHaveLength(1);
+  await run(f, "Continue with late findings");
+  expect(f.server.requests).toHaveLength(requests + 1);
+  expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(2);
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("Late findings");
   expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toEqual([]);
   expect(
@@ -1072,8 +1081,8 @@ test.each(["continue", "stop", "error"])(
       .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
       .toHaveLength(1);
     if (action === "continue") {
-      // Retain the response tail; queued mail only reaches the next request after completion.
-      send(parentResponse, chunk({ content: "Independent findings" }));
+      // Complete all reasoning before consuming mail; no final text has been emitted.
+      send(parentResponse, chunk({ reasoning_content: "Independent findings" }));
       done(parentResponse);
       await active.done;
       expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);

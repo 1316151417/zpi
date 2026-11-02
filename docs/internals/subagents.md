@@ -14,7 +14,7 @@ Agent 接收工作描述和 prompt，创建 child session、agent ID、任务 ID
 
 SendMessage 定位本地可访问子任务。交付状态明确区分 queued、steered 和 resumed_background；消息送达不等于子任务已经回答。RespondToCoordinator 将回复排入父邮箱，返回后子任务仍继续原工作，除非协调者改变任务。
 
-父会话在一个完整模型响应及工具批次结束后消费邮箱，文本回答也检查邮箱。不会在某个 reasoning/commentary item 结束时抢占连接。父 run 已自然结束后才收到的结果等待后续用户输入，不自动唤醒父任务。
+父会话在完整工具批次或仅含思考、commentary、partial_answer 的模型响应成功结束后消费邮箱。不会在某个 reasoning/commentary item 结束时抢占连接。最终答复（含未标 phase 的正文）结束后不消费 queue-only 消息，期间收到的子任务结果保留到下次用户输入；父 run 已自然结束后收到的结果也不自动唤醒父任务。
 
 ## 输出预算
 
