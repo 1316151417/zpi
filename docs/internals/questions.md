@@ -10,11 +10,11 @@ schema 要求 multiSelect；为兼容模型，prepareArguments 给遗漏值补 f
 
 ## 状态机
 
-每个会话最多一个 pending request，以 tool call ID 标识。工具是 sequential 且 requiresUserInteraction，不能在流式参数尚未结束时提前执行。
+每个会话的提问以 tool call ID 标识并按进入顺序排队，只发布队首 pending request。工具是 parallel 且 requiresUserInteraction：完整调用产生后可与同批独立工具并行，但不能在流式参数尚未结束时提前执行。多个提问仅在交互队列内互相等待，不把整批工具改为串行。
 
-开始后前 60 秒为 hiddenGrace（自动结束提示的宽限阶段，问题本身仍可显示），随后进入 visibleCountdown。默认 5 分钟无答案时自动返回空 answers，说明应按最佳判断继续，不能虚构用户偏好或当成拒绝。snooze 清除计时器并标记 snoozed，不会把默认选项作为已提交答案。
+到达队首后才开始计时，排队时间不占用回答窗口。开始后前 60 秒为 hiddenGrace（自动结束提示的宽限阶段，问题本身仍可显示），随后进入 visibleCountdown。默认 5 分钟无答案时自动返回空 answers，说明应按最佳判断继续，不能虚构用户偏好或当成拒绝。snooze 清除计时器并标记 snoozed，不会把默认选项作为已提交答案。
 
-响应必须匹配当前 request ID，过期提交报“提问已结束”。停止通过 AbortSignal 拒绝等待；finally 清除计时器、取消监听、删除 pending 并发布 null。切换任务只改变显示位置，不改变问题所属会话。
+响应必须匹配当前 request ID，过期提交报“提问已结束”。停止通过 AbortSignal 拒绝等待；finally 清除计时器、取消监听、移除自身队列项；队首结束后发布下一题并开始其计时，队列为空时发布 null。切换任务只改变显示位置，不改变问题所属会话。
 
 ## 维护时注意
 

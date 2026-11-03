@@ -37,18 +37,20 @@ interface PendingQuestion {
   request: UserQuestionRequest;
   resolve: (response: UserQuestionResponse) => void;
   timers: ReturnType<typeof setTimeout>[];
+  start: () => void;
+  signal?: AbortSignal;
 }
 export class UserQuestions {
-  private pending = new Map<string, PendingQuestion>();
+  private pending = new Map<string, PendingQuestion[]>();
   private publish: (sessionId: string, request: UserQuestionRequest | null) => void;
   constructor(publish: (sessionId: string, request: UserQuestionRequest | null) => void) {
     this.publish = publish;
   }
   get(sessionId: string) {
-    return this.pending.get(sessionId)?.request ?? null;
+    return this.pending.get(sessionId)?.[0]?.request ?? null;
   }
   snooze(sessionId: string, requestId: string) {
-    const pending = this.pending.get(sessionId);
+    const pending = this.pending.get(sessionId)?.[0];
     const state = pending?.request.autoResolution;
     if (!pending || pending.request.id !== requestId || !state || state.phase === "snoozed") return;
     for (const timer of pending.timers) clearTimeout(timer);
@@ -60,7 +62,7 @@ export class UserQuestions {
     this.publish(sessionId, pending.request);
   }
   respond(sessionId: string, requestId: string, response: UserQuestionResponse) {
-    const pending = this.pending.get(sessionId);
+    const pending = this.pending.get(sessionId)?.[0];
     if (!pending || pending.request.id !== requestId) throw new Error("not_found: 提问已结束");
     if (!response?.answers || typeof response.answers !== "object" || Array.isArray(response.answers))
       throw new Error("invalid_input: 无效回答");
@@ -102,7 +104,7 @@ export class UserQuestions {
         "The tool waits for user answers. Skipped questions have no answer; continue using best judgment without inventing preferences.",
       ].join("\n"),
       parameters,
-      executionMode: "sequential",
+      executionMode: "parallel",
       requiresUserInteraction: true,
       prepareArguments: (args) => {
         const value = structuredClone(args) as { questions?: { multiSelect?: boolean }[] };
@@ -124,44 +126,57 @@ export class UserQuestions {
       },
       execute: async (id, params, signal) => {
         if (signal?.aborted) throw new Error("AskUserQuestion cancelled");
-        if (this.pending.has(sessionId)) throw new Error("A question is already pending");
-        const startedAt = Date.now();
+
         const request: UserQuestionRequest = {
           id,
           questions: params.questions,
-          autoResolution: {
-            phase: "hiddenGrace",
-            startedAt,
-            visibleAt: startedAt + 60_000,
-            deadlineAt: startedAt + 300_000,
-          },
         };
         let cancel = () => {};
         let autoResolved = false;
+        let pending: PendingQuestion | undefined;
         try {
           const response = await new Promise<UserQuestionResponse>((resolve, reject) => {
             cancel = () => reject(new Error("AskUserQuestion cancelled"));
-            const pending: PendingQuestion = { request, resolve, timers: [] };
-            this.pending.set(sessionId, pending);
-            pending.timers.push(
-              setTimeout(() => {
-                const state = pending.request.autoResolution;
-                if (!state || state.phase === "snoozed") return;
-                pending.request = {
-                  ...pending.request,
-                  autoResolution: { ...state, phase: "visibleCountdown" },
+            const entry: PendingQuestion = {
+              request,
+              resolve,
+              timers: [],
+              signal,
+              start: () => {
+                const startedAt = Date.now();
+                entry.request = {
+                  ...entry.request,
+                  autoResolution: {
+                    phase: "hiddenGrace",
+                    startedAt,
+                    visibleAt: startedAt + 60_000,
+                    deadlineAt: startedAt + 300_000,
+                  },
                 };
-                this.publish(sessionId, pending.request);
-              }, 60_000),
-            );
-            pending.timers.push(
-              setTimeout(() => {
-                autoResolved = true;
-                pending.resolve({ answers: {} });
-              }, 300_000),
-            );
+                entry.timers.push(
+                  setTimeout(() => {
+                    const state = entry.request.autoResolution;
+                    if (!state || state.phase === "snoozed") return;
+                    entry.request = {
+                      ...entry.request,
+                      autoResolution: { ...state, phase: "visibleCountdown" },
+                    };
+                    this.publish(sessionId, entry.request);
+                  }, 60_000),
+                  setTimeout(() => {
+                    autoResolved = true;
+                    entry.resolve({ answers: {} });
+                  }, 300_000),
+                );
+                this.publish(sessionId, entry.request);
+              },
+            };
+            pending = entry;
+            const queue = this.pending.get(sessionId) ?? [];
+            queue.push(entry);
+            this.pending.set(sessionId, queue);
             signal?.addEventListener("abort", cancel, { once: true });
-            this.publish(sessionId, request);
+            if (queue.length === 1) entry.start();
           });
           const count = Object.keys(response.answers).length;
           const text = count
@@ -179,9 +194,18 @@ export class UserQuestions {
           };
         } finally {
           signal?.removeEventListener("abort", cancel);
-          for (const timer of this.pending.get(sessionId)?.timers ?? []) clearTimeout(timer);
-          this.pending.delete(sessionId);
-          this.publish(sessionId, null);
+          for (const timer of pending?.timers ?? []) clearTimeout(timer);
+          const queue = this.pending.get(sessionId);
+          const index = pending && queue ? queue.indexOf(pending) : -1;
+          if (queue && index >= 0) {
+            queue.splice(index, 1);
+            if (!queue.length) {
+              this.pending.delete(sessionId);
+              this.publish(sessionId, null);
+            } else if (index === 0 && !queue[0].signal?.aborted) {
+              queue[0].start();
+            }
+          }
         }
       },
     };

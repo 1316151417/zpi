@@ -1,5 +1,8 @@
+import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
-import { chunk, done, send } from "../../../tests/fake-server.ts";
+import { Agent, type AgentTool } from "zpi-agent";
+import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
+import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { projectEvent } from "../src/main/projection.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { UserQuestions } from "../src/main/user-questions.ts";
@@ -222,4 +225,154 @@ it("snapshots the plugin for new sessions, resumes with answers, and restores th
   await restored.startRun({ sessionId: session.id, text: "continue" });
   await restored.activeRuns.get(session.id)?.done;
   expect(JSON.stringify(f.server.requests.at(-1)?.tools)).toContain("AskUserQuestion");
+});
+
+it("shows a same-batch question while an earlier long-running tool is still executing", async () => {
+  const broker = new UserQuestions(() => {});
+  const started = deferred();
+  const release = deferred();
+  const model = fakeModel("http://localhost");
+  let requests = 0;
+  const agent = new Agent({
+    initialState: {
+      model,
+      tools: [
+        {
+          name: "longTask",
+          label: "longTask",
+          description: "longTask",
+          parameters: Type.Object({}),
+          execute: async () => {
+            started.resolve();
+            await release.promise;
+            return { content: [{ type: "text", text: "done" }], details: undefined };
+          },
+        },
+        broker.tool("s") as unknown as AgentTool,
+      ],
+    },
+    streamFn: () => {
+      const stream = createAssistantMessageEventStream();
+      const message = emptyAssistant(model);
+      message.content =
+        requests++ === 0
+          ? [
+              { type: "toolCall", id: "long", name: "longTask", arguments: {} },
+              { type: "toolCall", id: "q", name: "AskUserQuestion", arguments: params },
+            ]
+          : [{ type: "text", text: "finished" }];
+      message.stopReason = requests === 1 ? "toolUse" : "stop";
+      stream.push({ type: "start", partial: message });
+      stream.end(message);
+      return stream;
+    },
+  });
+  const run = agent.prompt("choose while working");
+  try {
+    await started.promise;
+    await expect.poll(() => broker.get("s")?.id).toBe("q");
+    broker.respond("s", "q", { answers: { "使用哪种方案？": "A" } });
+    release.resolve();
+    await run;
+    expect(requests).toBe(2);
+  } finally {
+    release.resolve();
+    agent.abort();
+    await run;
+  }
+});
+
+it("queues simultaneous questions and gives each head a full answer window", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  try {
+    const changes: (string | null)[] = [];
+    const broker = new UserQuestions((_, request) => changes.push(request?.id ?? null));
+    const execute = broker.tool("s").execute as (...args: unknown[]) => Promise<unknown>;
+    const first = execute("first", params, undefined);
+    const second = execute("second", params, undefined);
+    expect(changes).toEqual(["first"]);
+    expect(() => broker.respond("s", "second", { answers: {} })).toThrow("提问已结束");
+    await vi.advanceTimersByTimeAsync(300_000);
+    await first;
+    expect(broker.get("s")).toMatchObject({
+      id: "second",
+      autoResolution: { startedAt: 300_000, deadlineAt: 600_000 },
+    });
+    expect(changes).toEqual(["first", "first", "second"]);
+    await vi.advanceTimersByTimeAsync(299_999);
+    expect(broker.get("s")?.id).toBe("second");
+    broker.respond("s", "second", { answers: {} });
+    await second;
+    expect(broker.get("s")).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("removes cancelled queued questions without disturbing the visible question", async () => {
+  const changes: (string | null)[] = [];
+  const broker = new UserQuestions((_, request) => changes.push(request?.id ?? null));
+  const execute = broker.tool("s").execute as (...args: unknown[]) => Promise<unknown>;
+  const controller = new AbortController();
+  const first = execute("first", params, undefined);
+  const second = execute("second", params, controller.signal);
+  const third = execute("third", params, undefined);
+  controller.abort();
+  await expect(second).rejects.toThrow("cancelled");
+  expect(broker.get("s")?.id).toBe("first");
+  expect(changes).toEqual(["first"]);
+  broker.respond("s", "first", { answers: {} });
+  await first;
+  expect(broker.get("s")?.id).toBe("third");
+  expect(() => broker.respond("s", "first", { answers: {} })).toThrow("提问已结束");
+  broker.respond("s", "third", { answers: {} });
+  await third;
+  expect(changes).toEqual(["first", "third", null]);
+});
+
+it("cancels a run's entire question queue without displaying already-aborted questions", async () => {
+  const changes: (string | null)[] = [];
+  const broker = new UserQuestions((_, request) => changes.push(request?.id ?? null));
+  const execute = broker.tool("s").execute as (...args: unknown[]) => Promise<unknown>;
+  const controller = new AbortController();
+  const results = Promise.allSettled([
+    execute("first", params, controller.signal),
+    execute("second", params, controller.signal),
+    execute("third", params, controller.signal),
+  ]);
+  controller.abort();
+  expect((await results).every((result) => result.status === "rejected")).toBe(true);
+  expect(changes).toEqual(["first", null]);
+  expect(broker.get("s")).toBeNull();
+});
+
+it("advances after cancelling the head and keeps snooze scoped to the active question", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  try {
+    const broker = new UserQuestions(() => {});
+    const execute = broker.tool("s").execute as (...args: unknown[]) => Promise<unknown>;
+    const controller = new AbortController();
+    const first = execute("first", params, controller.signal);
+    const second = execute("second", params, undefined);
+    broker.snooze("s", "second");
+    expect(broker.get("s")?.autoResolution?.phase).toBe("hiddenGrace");
+    broker.snooze("s", "first");
+    await vi.advanceTimersByTimeAsync(400_000);
+    expect(broker.get("s")?.id).toBe("first");
+    controller.abort();
+    await expect(first).rejects.toThrow("cancelled");
+    expect(broker.get("s")).toMatchObject({
+      id: "second",
+      autoResolution: { phase: "hiddenGrace", startedAt: 400_000, deadlineAt: 700_000 },
+    });
+    await vi.advanceTimersByTimeAsync(300_000);
+    await second;
+    expect(broker.get("s")).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });
