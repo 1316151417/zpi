@@ -102,7 +102,8 @@ test("shows Pi agent reconnect status, survives reload, recovers, stops waits an
     await submit("quota");
     await expect(run()).toHaveAttribute("data-status", "error");
     await expect(run().locator(".notice-turn")).toContainText("服务请求过于频繁或额度不足");
-    expect(counts.get("quota")).toBe(3);
+    // insufficient_quota 属于不可恢复的额度错误，不应消耗 SDK 或会话重试次数。
+    expect(counts.get("quota")).toBe(1);
     await writeFile(join(project, ".zpi/settings.json"), JSON.stringify({ retry: { baseDelayMs: 0 } }));
     await page.getByLabel("新建任务", { exact: true }).first().click();
     await expect(page.locator(".draft-composer-header")).toBeVisible();

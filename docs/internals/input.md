@@ -12,7 +12,7 @@ renderer 保存编辑状态和附件引用，通过 preload 提交 RunInput。�
 
 `SessionInputQueue` 为每个 session 建立 Promise 链，防止发送、删除、排序、立即发送同时修改队列。commit 顺序为 save → 内存状态 → publish；保存失败时不能先显示已成功。
 
-排队项状态为 queued 或 dispatching，含文本、引用和已保留附件。附件不能同时属于两个队列项；retain 成功后才保存队列，保存失败就解除保留。移除项释放资源，取回编辑则把资源交回草稿。
+排队项状态为 queued 或 dispatching（实际提交中），含文本、引用和已保留附件。附件不能同时属于两个队列项；retain 成功后才保存队列，保存失败就解除保留。移除项释放资源，取回编辑则把资源交回草稿；草稿保存和队列删除在同一 SQLite 事务提交，失败时均保留原状态。
 
 ## 派发与去重
 
@@ -22,9 +22,11 @@ renderer 保存编辑状态和附件引用，通过 preload 提交 RunInput。�
 
 ## 立即发送与归档
 
-运行中的立即发送先校验、retain 附件并持久化队列项，标记 delivery=guide，再交给 AgentSession.steer。运行时在模型/工具边界消费，UserMessage 保存 inputId 与仅含用户可见输入的 userGuide；模型准备上下文和内部通知不进入用户消息投影。消息 append 收到 durable ack 后才发布 message_end，SessionHost 此时确认队列项；因此只有内存 offer 不会使队列消息消失。
+“立即”和 Command/Ctrl+Enter 对齐 ZCode 的 startNow：草稿先校验，队列项先持久化为 dispatching，再停止当前轮并等待模型请求、工具及子智能体结束，最后由宿主 start 启动新轮。停止当前轮期间抑制其队列 settled 回调，防止旧轮将保留队列暂停或抢先派发。内部 AgentSession.steer 与此入口分离，不用于用户的立即发送。
 
-运行结束时未消费的 dispatching 引导恢复为 queued；正常完成后优先转到下一轮，停止/错误则暂停并保留。启动时仅针对残余 guide ID 扫描 durable userGuide 消息，与 accepted input IDs 合并去重，处理消息已落盘但队列删除未落盘的崩溃窗口。队列保存成功后，投影发布失败不撤销已接受回执；确认保存失败时内存也不重新派发已消费 ID。此处保证本地已接受输入的交付去重，不承诺外部模型请求的执行具有事务语义。
+停止或启动失败时，未接受项恢复为 queued 并暂停，允许重试、编辑和移除。若宿主已经持久化接受记录，即使启动回执或后续队列保存失败，也必须移除该项，防止重发。队列投影发布失败不会撤销已接受回执。
+
+兼容旧版 delivery=guide 队列：启动时仅针对这些残余 ID 扫描 durable userGuide 消息，与 accepted input IDs 合并去重；未消费项去掉 delivery 标记，恢复为普通暂停队列。已保存的 userGuide 正文、附件、导航和分支数据继续可读。内部 steering 在模型请求失败后的重试前消费待引导消息，避免重试沿用旧上下文。此处保证本地已接受输入的交付去重，不承诺外部模型请求的执行具有事务语义。
 
 控制命令、自定义命令与子智能体命令保留下一轮准备路径。用户选择清空旧队列时也先确保新输入有效，防止一次无效发送删掉已接受消息。
 
@@ -34,3 +36,4 @@ renderer 保存编辑状态和附件引用，通过 preload 提交 RunInput。�
 
 - [队列](../../packages/desktop/src/main/input-queue.ts)、[附件](../../packages/desktop/src/main/attachments.ts)、[会话引用](../../packages/desktop/src/main/session-references.ts)、[草稿](../../packages/desktop/src/main/draft-store.ts)、[引用解析](../../packages/coding-agent/src/core/mentions.ts)。
 - [队列测试](../../packages/desktop/test/input-queue.test.ts)、[归档测试](../../packages/desktop/test/input-queue-archive.test.ts)、[引用测试](../../packages/desktop/test/input-references.test.ts)、[附件测试](../../packages/desktop/test/attachments.test.ts)。
+- [主辅对话立即发送回归](../../tests/desktop/immediate-send.spec.ts)、[快捷键回归](../../tests/desktop/composer-shortcuts.spec.ts)。

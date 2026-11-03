@@ -72,6 +72,12 @@ it("recovers stalled streams with a fixed window from the last committed tool re
   try {
     await vi.waitFor(() => expect(contexts).toHaveLength(2), { interval: 1 });
     await started[0].promise;
+    expect(
+      session.steer("revised requirement after timeout", {
+        inputId: "timeout-guide",
+        userGuide: { text: "revised requirement after timeout", attachments: [], fileReferences: [] },
+      }),
+    ).toBe(true);
     await vi.advanceTimersByTimeAsync(1_101);
     await vi.waitFor(() => expect(contexts).toHaveLength(3), { interval: 1 });
     await started[1].promise;
@@ -88,7 +94,13 @@ it("recovers stalled streams with a fixed window from the last committed tool re
     for (const context of contexts.slice(2)) {
       expect(JSON.stringify(context)).not.toContain("discarded stalled tail");
       expect(context.messages.filter((m) => m.role === "toolResult")).toHaveLength(1);
+      expect(context.messages.filter((m) => m.role === "user").at(-1)).toMatchObject({
+        inputId: "timeout-guide",
+      });
     }
+    expect(session.messages.filter((m) => m.role === "user" && m.inputId === "timeout-guide")).toHaveLength(
+      1,
+    );
     expect(retry.filter(Boolean).map((s) => s?.attempt)).toEqual([1, 2]);
     expect(retry.at(-1)).toBeNull();
     expect(session.messages.at(-1)).toMatchObject({ content: [{ text: "recovered" }] });

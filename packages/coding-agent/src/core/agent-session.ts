@@ -802,7 +802,9 @@ export class AgentSession {
         while (!signal?.aborted) {
           const last = this.messages.findLast((message) => message.role === "assistant");
           if (last?.role === "assistant" && (await this.waitForRetry(last, signal))) {
-            await this.agent.continue();
+            // 失败请求已结束，重试必须先接入待引导输入，不能一直用旧上下文重试。
+            if (this.steering.length) await this.agent.prompt(this.steering.splice(0));
+            else await this.agent.continue();
             continue;
           }
           if (this.steering.length) {

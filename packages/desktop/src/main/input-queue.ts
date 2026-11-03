@@ -8,10 +8,10 @@ interface QueueRuntime {
   prepare(input: RunInput): Promise<Omit<QueuedInput, "id" | "state">>;
   retain(id: string, item: QueuedInput, retained: boolean): Promise<void>;
   discard(id: string, item: QueuedInput): Promise<void>;
-  withdraw(id: string, item: QueuedInput): Promise<void>;
   start(input: RunInput, item?: QueuedInput): Promise<{ runId: string }>;
-  guide?(id: string, item: QueuedInput): Promise<boolean>;
-  save(id: string, queue: InputQueue): void;
+  stop(id: string): Promise<void>;
+  accepted?(id: string, inputId: string): boolean;
+  save(id: string, queue: InputQueue, edited?: QueuedInput): void;
   publish(id: string, queue: InputQueue): void;
   report?(id: string, error: unknown): void;
 }
@@ -19,7 +19,7 @@ interface QueueRuntime {
 export class SessionInputQueue {
   private states = new Map<string, InputQueue>();
   private operations = new Map<string, Promise<unknown>>();
-  private consumed = new Map<string, Set<string>>();
+  private preempting = new Set<string>();
   private closing = false;
   private runtime: QueueRuntime;
   constructor(runtime: QueueRuntime) {
@@ -31,7 +31,12 @@ export class SessionInputQueue {
   restore(id: string, state: InputQueue, acceptedIds: ReadonlySet<string> = new Set()): void {
     const items = state.items
       .filter((item) => !acceptedIds.has(item.id))
-      .map((item) => ({ ...item, state: "queued" as const }));
+      .map((item) => {
+        const restored = { ...item, state: "queued" as const };
+        // 旧版误把“立即”存成 guide；未消费的项恢复为普通暂停队列，不能再次偷偷引导。
+        delete restored.delivery;
+        return restored;
+      });
     this.states.set(id, {
       ...state,
       items,
@@ -39,8 +44,8 @@ export class SessionInputQueue {
       ...(items.length ? { pauseReason: state.pauseReason ?? "restart" } : {}),
     });
   }
-  private commit(id: string, queue: InputQueue): void {
-    this.runtime.save(id, queue);
+  private commit(id: string, queue: InputQueue, edited?: QueuedInput): void {
+    this.runtime.save(id, queue, edited);
     this.states.set(id, queue);
     this.publish(id, queue);
   }
@@ -92,13 +97,24 @@ export class SessionInputQueue {
       .catch(() => {});
     return result;
   }
+  private async stopForImmediate(id: string): Promise<void> {
+    this.preempting.add(id);
+    try {
+      await this.runtime.stop(id);
+    } finally {
+      this.preempting.delete(id);
+    }
+  }
   async submit(input: RunInput, disposition?: "keep" | "clear", immediate = false) {
     return this.serial(input.sessionId, async () => {
       if (this.closing) throw new Error("busy: 应用正在关闭");
       const id = input.sessionId,
         queue = this.get(id);
-      if (immediate && !this.runtime.running(id)) {
+      if (immediate) {
         await this.runtime.prepare(input);
+        // “立即”对齐 ZCode startNow：校验后停止当前轮，等待释放执行权，再启动新轮。
+        await this.stopForImmediate(id);
+        if (this.closing) throw new Error("busy: 应用正在关闭");
         const result = await this.runtime.start(input);
         if (queue.items.length)
           this.updateAfterAcceptance(id, { items: this.get(id).items, autoDrain: true });
@@ -132,7 +148,6 @@ export class SessionInputQueue {
         ...prepared,
         id: randomUUID(),
         state: "queued",
-        ...(immediate ? { delivery: "guide" as const } : {}),
       };
       await this.runtime.retain(id, item, true);
       try {
@@ -141,25 +156,6 @@ export class SessionInputQueue {
       } catch (error) {
         await this.runtime.retain(id, item, false);
         throw error;
-      }
-      if (immediate) {
-        try {
-          await this.offerGuide(id, item);
-        } catch (error) {
-          // Acceptance has already committed: acknowledge the durable queue receipt so
-          // the composer cannot resend the same draft after a delivery/save failure.
-          const current = this.get(id);
-          const paused: InputQueue = {
-            ...current,
-            autoDrain: false,
-            pauseReason: "error",
-            error: error instanceof Error ? error.message : String(error),
-            items: current.items.map((value) =>
-              value.id === item.id ? { ...value, state: "queued" } : value,
-            ),
-          };
-          this.commitWithFallback(id, paused);
-        }
       }
       if (!this.runtime.running(id) && this.get(id).autoDrain) void this.resume(id).catch(() => {});
       return { queueItemId: item.id };
@@ -175,8 +171,11 @@ export class SessionInputQueue {
     return this.serial(id, async () => {
       const item = this.item(id, itemId),
         queue = this.get(id);
-      if (edit) await this.runtime.withdraw(id, item);
-      this.commit(id, { ...queue, items: queue.items.filter((item) => item.id !== itemId) });
+      this.commit(
+        id,
+        { ...queue, items: queue.items.filter((item) => item.id !== itemId) },
+        edit ? item : undefined,
+      );
       if (edit) await this.runtime.retain(id, item, false);
       else await this.runtime.discard(id, item).catch(() => {});
       return item;
@@ -194,7 +193,7 @@ export class SessionInputQueue {
       this.commit(id, { ...queue, items });
     });
   }
-  private async dispatch(id: string, item: QueuedInput): Promise<void> {
+  private async dispatch(id: string, item: QueuedInput, immediate = false): Promise<void> {
     const queue = this.get(id);
     let accepted = false;
     this.commit(id, {
@@ -202,6 +201,7 @@ export class SessionInputQueue {
       autoDrain: true,
     });
     try {
+      if (immediate) await this.stopForImmediate(id);
       if (this.closing) throw new Error("busy: 应用正在关闭");
       await this.runtime.start(
         {
@@ -216,6 +216,7 @@ export class SessionInputQueue {
       accepted = true;
       this.commit(id, { items: this.get(id).items.filter((value) => value.id !== item.id), autoDrain: true });
     } catch (error) {
+      accepted ||= this.runtime.accepted?.(id, item.id) ?? false;
       const paused: InputQueue = {
         // A run already accepted by the host must never be delivered again after a queue-save error.
         items: this.get(id)
@@ -229,65 +230,9 @@ export class SessionInputQueue {
       throw error;
     }
   }
-  private async offerGuide(id: string, item: QueuedInput): Promise<void> {
-    if (!this.runtime.running(id)) {
-      await this.dispatch(id, item);
-      return;
-    }
-    this.commit(id, {
-      ...this.get(id),
-      items: this.get(id).items.map((value) =>
-        value.id === item.id ? { ...value, delivery: "guide", state: "dispatching" } : value,
-      ),
-    });
-    try {
-      const offered = await this.runtime.guide?.(id, item);
-      if (offered) return;
-    } catch (error) {
-      // The durable item remains visible and retryable even if preparation fails.
-      this.commit(id, {
-        ...this.get(id),
-        autoDrain: false,
-        pauseReason: "error",
-        error: error instanceof Error ? error.message : String(error),
-        items: this.get(id).items.map((value) =>
-          value.id === item.id ? { ...value, state: "queued" } : value,
-        ),
-      });
-      return;
-    }
-    this.commit(id, {
-      ...this.get(id),
-      items: this.get(id).items.map((value) =>
-        value.id === item.id ? { ...value, state: "queued" } : value,
-      ),
-    });
-    if (!this.runtime.running(id)) await this.dispatch(id, this.item(id, item.id));
-  }
-  /** Called only after the message has been appended to the authoritative transcript. */
-  acknowledgeGuide(id: string, inputId: string): void {
-    const accepted = this.consumed.get(id) ?? new Set<string>();
-    accepted.add(inputId);
-    this.consumed.set(id, accepted);
-    const queue = this.get(id);
-    const next = { ...queue, items: queue.items.filter((item) => item.id !== inputId) };
-    try {
-      this.commit(id, next);
-    } catch (error) {
-      this.states.set(id, next);
-      this.publish(id, next);
-      throw error;
-    }
-  }
-  offerGuides(id: string): Promise<void> {
-    return this.serial(id, async () => {
-      for (const item of this.get(id).items)
-        if (item.delivery === "guide" && item.state === "queued") await this.offerGuide(id, item);
-    });
-  }
   sendNow(id: string, itemId: string): Promise<void> {
     return this.serial(id, async () => {
-      await this.offerGuide(id, this.item(id, itemId));
+      await this.dispatch(id, this.item(id, itemId), true);
     });
   }
   resume(id: string): Promise<void> {
@@ -295,27 +240,14 @@ export class SessionInputQueue {
       if (this.closing) return;
       const queue = this.get(id);
       this.commit(id, { items: queue.items, autoDrain: true });
-      if (!this.runtime.running(id) && queue.items[0])
-        await this.dispatch(id, queue.items.find((item) => item.delivery === "guide") ?? queue.items[0]);
+      if (!this.runtime.running(id) && queue.items[0]) await this.dispatch(id, queue.items[0]);
     });
   }
   settled(id: string, status: Exclude<RunStatus, "running">): void {
-    if (this.closing) return;
+    if (this.preempting.has(id) || this.closing) return;
     void this.serial(id, async () => {
       if (this.closing) return;
-      const current = this.get(id);
-      if (!current.items.length) {
-        this.consumed.delete(id);
-        return;
-      }
-      const queue = {
-        ...current,
-        items: current.items
-          .filter((item) => !this.consumed.get(id)?.has(item.id))
-          .map((item) => ({ ...item, state: "queued" as const })),
-      };
-      this.commit(id, queue);
-      this.consumed.delete(id);
+      const queue = this.get(id);
       if (!queue.items.length) return;
       if (status !== "completed")
         this.commit(id, {
@@ -323,14 +255,12 @@ export class SessionInputQueue {
           autoDrain: false,
           pauseReason: status === "error" ? "error" : "stopped",
         });
-      else if (queue.autoDrain && !this.runtime.running(id))
-        await this.dispatch(id, queue.items.find((item) => item.delivery === "guide") ?? queue.items[0]);
+      else if (queue.autoDrain && !this.runtime.running(id)) await this.dispatch(id, queue.items[0]);
     }).catch(() => {});
   }
   async delete(id: string): Promise<void> {
     await this.operations.get(id)?.catch(() => {});
     this.states.delete(id);
-    this.consumed.delete(id);
   }
   archive(id: string, persist: () => void | Promise<void>): Promise<void> {
     return this.serial(id, async () => {

@@ -32,7 +32,6 @@ import type {
   DesktopEvent,
   DesktopEventEnvelope,
   InputQueue,
-  QueuedInput,
   RunStatus,
   SessionMentionSuggestion,
   SessionView,
@@ -321,30 +320,38 @@ export class SessionHost {
         );
         for (const image of item.attachments) await this.attachments.remove(id, image.id);
       },
-      withdraw: async (id, item) => {
-        const draft = this.drafts.get(id);
-        if (draft.text.trim() || draft.fileReferences.length || draft.selections?.length)
-          throw new Error("invalid_input: 请先发送或清空当前草稿，再编辑队列消息。");
-        const parsed = parseSelectionPrompt(item.text);
-        if (!validSelections(parsed.selections)) {
-          parsed.text = item.text;
-          parsed.selections = [];
-        }
-        this.drafts.save(id, {
-          text: parsed.text,
-          selections: parsed.selections,
-          fileReferences: item.fileReferences,
-          selection: [parsed.text.length, parsed.text.length],
-          revision: draft.revision + 1,
-        });
-      },
       start: async (input, item) => {
         if (item) await this.setSessionSelection(input.sessionId, item.selection);
         return this.startRun(input, item?.id);
       },
-      guide: (id, item) => this.offerUserGuide(id, item),
+      stop: async (id) => {
+        const run = this.activeRuns.get(id);
+        if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+      },
+      accepted: (id, inputId) => this.settings.state.acceptedInputIds(id).has(inputId),
       report: (id, error) => this.errors.write("queue.publish", error, { sessionId: id }),
-      save: (id, queue) => this.settings.state.setQueue(id, queue),
+      save: (id, queue, edited) => {
+        if (!edited) return this.settings.state.setQueue(id, queue);
+        // 取回草稿和移出队列必须同时提交，否则失败重试会复制同一条用户输入。
+        this.settings.state.transaction("queue.withdraw", id, () => {
+          const draft = this.drafts.get(id);
+          if (draft.text.trim() || draft.fileReferences.length || draft.selections?.length)
+            throw new Error("invalid_input: 请先发送或清空当前草稿，再编辑队列消息。");
+          const parsed = parseSelectionPrompt(edited.text);
+          if (!validSelections(parsed.selections)) {
+            parsed.text = edited.text;
+            parsed.selections = [];
+          }
+          this.drafts.save(id, {
+            text: parsed.text,
+            selections: parsed.selections,
+            fileReferences: edited.fileReferences,
+            selection: [parsed.text.length, parsed.text.length],
+            revision: draft.revision + 1,
+          });
+          this.settings.state.setQueue(id, queue);
+        });
+      },
       publish: (id, queue) => {
         this.getSessionSnapshot(id);
         this.emit(id, "queue", { type: "queue_changed", queue });
@@ -1061,37 +1068,6 @@ export class SessionHost {
     record.newWorktree = enabled;
     record.worktreeBaseRef = worktreeBaseRef;
     return structuredClone(record);
-  }
-
-  private async offerUserGuide(id: string, item: QueuedInput): Promise<boolean> {
-    const run = this.activeRuns.get(id);
-    if (!run?.session || run.aborted || this.closing || item.subagentNotification) return false;
-    // Control/custom commands keep their normal execution path on the next run.
-    if (
-      parseInput(item.text).kind !== "prompt" ||
-      parseCustomCommandInvocation(item.text) ||
-      /^\s*@/.test(item.text)
-    )
-      return false;
-    const input = {
-      sessionId: id,
-      text: item.text,
-      fileReferences: item.fileReferences,
-      attachments: item.attachments.map((image) => image.id),
-    };
-    const { inputReferences, loaded } = await this.loadInput(input);
-    let text = item.text;
-    if (loaded.fileContext)
-      text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
-    const reminder = await this.referencedSessionContext(id, item.text);
-    if (reminder) text += `\n\nReferenced session context:\n${reminder}`;
-    if (this.activeRuns.get(id) !== run || run.aborted || this.closing) return false;
-    return run.session.steer(text, {
-      inputId: item.id,
-      images: loaded.images,
-      fileReferences: inputReferences,
-      userGuide: { text: item.text, fileReferences: item.fileReferences, attachments: loaded.metadata },
-    });
   }
 
   private parentInstructions = new Map<string, string[]>();
@@ -3305,11 +3281,6 @@ export class SessionHost {
           if (e.type === "message_end" && e.message.role === "user") {
             this.acknowledgeSubagentMessage(id, e.message.content, e.message.inputId);
             if (e.message.inputId && e.message.userGuide) {
-              try {
-                this.inputQueue.acknowledgeGuide(id, e.message.inputId);
-              } catch (error) {
-                this.errors.write("guide.acknowledge", error, { sessionId: id });
-              }
               const attachmentIds = e.message.userGuide.attachments.map((image) => image.id);
               // Clear queue retention only when durable consumption is marked used.
               void this.attachments
@@ -3373,9 +3344,6 @@ export class SessionHost {
         });
         const execution = session.executeInput(prepared, inputContext);
         this.offerSubagentMessages(id, run);
-        void this.inputQueue
-          .offerGuides(id)
-          .catch((error) => this.errors.write("guide.offer", error, { sessionId: id }));
         void execution
           .then(
             () => this.settle(id, run),

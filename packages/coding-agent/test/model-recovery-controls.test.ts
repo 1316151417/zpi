@@ -19,7 +19,7 @@ import { directory } from "./helpers/session-fixture.ts";
 
 afterEach(() => vi.useRealTimers());
 
-it("retries only the stalled model request without replaying a completed write", async () => {
+it("includes a pending guide when retrying a stalled model request without replaying a completed write", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();
   const contexts: TranscriptContext[] = [];
@@ -37,7 +37,7 @@ it("retries only the stalled model request without replaying a completed write",
         ];
         output.stopReason = "toolUse";
         events.end(output);
-      } else if (contexts.length === 3) {
+      } else if (contexts.length >= 3) {
         output.content = [{ type: "text", text: "recovered" }];
         events.end(output);
       }
@@ -61,6 +61,12 @@ it("retries only the stalled model request without replaying a completed write",
   const running = session.prompt("write once");
   try {
     await vi.waitFor(() => expect(contexts).toHaveLength(2), { interval: 1 });
+    expect(
+      session.steer("use this revised requirement", {
+        inputId: "retry-guide",
+        userGuide: { text: "use this revised requirement", attachments: [], fileReferences: [] },
+      }),
+    ).toBe(true);
     expect(session.retryModelRequest()).toBe(true);
     expect(session.retryModelRequest()).toBe(false);
     expect(retries.at(-1)?.origin).toBe("manual");
@@ -69,6 +75,11 @@ it("retries only the stalled model request without replaying a completed write",
     expect(writes).toBe(1);
     expect(await readFile(join(cwd, "once.txt"), "utf8")).toBe("once");
     expect(contexts[2].messages.filter((message) => message.role === "toolResult")).toHaveLength(1);
+    expect(contexts).toHaveLength(3);
+    expect(contexts[2].messages.filter((message) => message.role === "user").at(-1)).toMatchObject({
+      content: "use this revised requirement",
+      inputId: "retry-guide",
+    });
     expect(signals[1].reason).toMatchObject({ code: "MODEL_REQUEST_RETRY" });
     expect(retries.every((status) => status.origin === "manual")).toBe(true);
     expect(session.messages.at(-1)).toMatchObject({ content: [{ text: "recovered" }] });

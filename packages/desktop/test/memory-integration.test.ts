@@ -353,7 +353,8 @@ test("the main agent appends separate notes and the real consolidation runner re
   expect(before).not.toContain("SHORT_MEMORY_MUST_STAY_OUT");
   await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
   await f.host.checkMemoryNow(f.session.id);
-  await vi.waitFor(() => expect(f.host.longMemory.status().status).toBe("success"));
+  // Consolidation performs six model/tool steps; allow the same budget as the test above under suite load.
+  await vi.waitFor(() => expect(f.host.longMemory.status().status).toBe("success"), { timeout: 5000 });
   expect(await readFile(join(library, "memory_summary.md"), "utf8")).toBe(summary);
   expect(await readFile(notePath("remember.md"), "utf8")).toBe(noteA);
   expect(await readFile(notePath("correct.md"), "utf8")).toBe(noteB);

@@ -201,6 +201,7 @@ export interface QueuedInput {
   attachments: Attachment[];
   selection: NonNullable<SessionControls["selection"]>;
   state: "queued" | "dispatching";
+  /** Legacy marker from 0.2.232–0.2.233, read only for recovery deduplication. */
   delivery?: "guide";
 }
 export interface InputQueue {

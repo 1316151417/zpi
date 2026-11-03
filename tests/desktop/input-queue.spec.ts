@@ -141,12 +141,10 @@ test("queued messages reorder, edit, delete, send immediately and persist throug
     await rows.filter({ hasText: "待发送二" }).getByLabel("移除待发送消息", { exact: true }).click();
     await expect(rows).toHaveCount(2);
     await rows.first().getByRole("button", { name: "立即", exact: true }).click();
-    await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "running");
-    releaseFirst.resolve();
     await expect(rows).toHaveCount(0);
-    await expect(page.getByTestId("run")).toHaveCount(3);
-    await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "completed");
-    await expect(page.getByTestId("run").nth(1).locator(".guide-message")).toContainText("待发送三");
+    await expect(page.getByTestId("run")).toHaveCount(4);
+    await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "aborted");
+    await expect(page.getByTestId("run").nth(1).getByTestId("progress")).toContainText("已停止");
     await expect(page.getByTestId("run").nth(1).locator(".answer")).toHaveText("reply");
     await expect(page.getByTestId("run").nth(1).locator(".run-notice")).toHaveCount(0);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
