@@ -19,6 +19,8 @@ test("switching sidebar tasks restores full-view geometry without pane opening t
     await page.emulateMedia({ reducedMotion: "no-preference" });
     for (const title of ["Full view task", "Other task"]) {
       await page.getByLabel("新建任务", { exact: true }).first().click();
+      // newSession 在导航准备完成后才聚焦输入框，避免发送与迟到的草稿快照竞争。
+      await expect(page.getByLabel("消息", { exact: true })).toBeFocused();
       await page.getByLabel("消息", { exact: true }).fill(title);
       await page.getByLabel("消息", { exact: true }).press("Enter");
       await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");

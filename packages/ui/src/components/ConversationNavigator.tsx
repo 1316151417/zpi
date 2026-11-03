@@ -43,12 +43,14 @@ const rowHeight = 10;
 const overscan = 6;
 
 export function ConversationNavigator({
+  enabled = true,
   history,
   tail = [],
   scrollRoot,
   onJump,
   busy,
 }: {
+  enabled?: boolean;
   history: readonly ConversationQuery[];
   tail?: readonly ConversationQuery[];
   scrollRoot: RefObject<HTMLDivElement | null>;
@@ -68,7 +70,7 @@ export function ConversationNavigator({
   const itemIndexes = useMemo(() => new Map(itemIds.map((id, index) => [id, index])), [itemIds]);
   useLayoutEffect(() => {
     const root = scrollRoot.current;
-    if (!root || itemIds.length < 2) return;
+    if (!enabled || !root || itemIds.length < 2) return;
     const ids = new Set(itemIds);
     const update = () => {
       const nodes = Array.from(root.querySelectorAll<HTMLElement>("[data-query-key]")).filter(
@@ -93,17 +95,17 @@ export function ConversationNavigator({
       root.removeEventListener("scroll", update);
       root.removeEventListener("zpi-history-window", update);
     };
-  }, [scrollRoot, itemIds]);
+  }, [enabled, scrollRoot, itemIds]);
   const active = activeId === undefined ? -1 : (itemIndexes.get(activeId) ?? -1);
   useEffect(() => {
-    if (active < 0) return;
+    if (!enabled || active < 0) return;
     const element = rail.current;
     if (!element) return;
     const top = active * rowHeight;
     if (top < element.scrollTop) element.scrollTop = top;
     else if (top + rowHeight > element.scrollTop + element.clientHeight)
       element.scrollTop = top + rowHeight - element.clientHeight;
-  }, [active]);
+  }, [active, enabled]);
   useEffect(() => {
     const element = rail.current;
     if (!element) return;
@@ -117,7 +119,14 @@ export function ConversationNavigator({
   const start = Math.max(0, Math.floor(windowRange.top / rowHeight) - overscan);
   const end = Math.min(count, Math.ceil((windowRange.top + windowRange.height) / rowHeight) + overscan);
   return (
-    <nav className="conversation-navigator" aria-label="对话问题导航" aria-busy={busy}>
+    <nav
+      className="conversation-navigator"
+      aria-label="对话问题导航"
+      aria-busy={busy}
+      aria-hidden={!enabled}
+      data-visible={enabled}
+      inert={!enabled}
+    >
       <div
         className="conversation-navigator-rail"
         ref={rail}
@@ -153,6 +162,7 @@ export function ConversationNavigator({
                 scale={scale}
                 opacity={opacity}
                 focused={distance === 0}
+                enabled={enabled}
                 onFocus={setFocus}
                 onJump={onJump}
                 setActiveId={setActiveId}
@@ -172,6 +182,7 @@ const NavigatorItem = memo(function NavigatorItem({
   scale,
   opacity,
   focused,
+  enabled,
   onFocus,
   onJump,
   setActiveId,
@@ -182,6 +193,7 @@ const NavigatorItem = memo(function NavigatorItem({
   scale: number;
   opacity: number;
   focused: boolean;
+  enabled: boolean;
   onFocus: (index: number | undefined) => void;
   onJump: (id: string, queryKey: string) => void;
   setActiveId: (id: string) => void;
@@ -217,6 +229,7 @@ const NavigatorItem = memo(function NavigatorItem({
       </HoverCard.Trigger>
       <HoverCard.Portal>
         <HoverCard.Content
+          hidden={!enabled}
           className="conversation-navigator-tooltip"
           side="right"
           align="start"

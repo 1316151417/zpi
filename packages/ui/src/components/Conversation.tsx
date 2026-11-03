@@ -1707,15 +1707,14 @@ export function Conversation({
             )}
           </div>
         </div>
-        {navigatorWide && (
-          <ConversationNavigator
-            history={navigationHistory}
-            tail={navigationTail}
-            scrollRoot={ref}
-            onJump={jumpNavigator}
-            busy={hasEarlier || loadingEarlier}
-          />
-        )}
+        <ConversationNavigator
+          enabled={navigatorWide}
+          history={navigationHistory}
+          tail={navigationTail}
+          scrollRoot={ref}
+          onJump={jumpNavigator}
+          busy={hasEarlier || loadingEarlier}
+        />
         <ConversationSelectionMenu
           rootRef={ref}
           scopeKey={view.sessionId}
