@@ -5,7 +5,9 @@ import {
   ComposerDraftStore,
   type ConversationSelection,
   emptySession,
+  isNavigableRun,
   mergeHistory,
+  mergeHistoryPages,
   reduceSession,
   sessionViewBytes,
 } from "zpi-ui";
@@ -175,6 +177,17 @@ function trimViews(keep?: string): void {
 }
 const loadedSessions = new Set<string>();
 const historyGenerations = new Map<string, number>();
+const historyRequests = new Map<string, object>();
+function finishHistoryRequest(id: string, request: object): void {
+  if (historyRequests.get(id) !== request) return;
+  historyRequests.delete(id);
+  const loading = new Set(useStore.getState().historyLoading);
+  loading.delete(id);
+  useStore.setState({ historyLoading: loading });
+}
+export function historyRevision(id: string): number {
+  return historyGenerations.get(id) ?? 0;
+}
 const snapshotRequests = new Map<string, Promise<void>>();
 const pendingSnapshots = new Map<string, DesktopEventEnvelope[]>();
 export async function closeSideChat(id: string): Promise<void> {
@@ -188,6 +201,8 @@ export async function closeSideChat(id: string): Promise<void> {
     draftLoaded.add(id);
     unwrap(result);
   }
+  historyGenerations.set(id, (historyGenerations.get(id) ?? 0) + 1);
+  historyRequests.delete(id);
   drafts.delete(id);
   draftRevisions.delete(id);
   retainedSessionViews.delete(id);
@@ -571,6 +586,8 @@ export async function loadEarlier(id: string): Promise<void> {
     cursor = state.historyCursors.get(id);
   if (cursor == null || state.historyLoading.has(id)) return;
   const generation = historyGenerations.get(id) ?? 0;
+  const request = {};
+  historyRequests.set(id, request);
   useStore.setState({ historyLoading: new Set(state.historyLoading).add(id) });
   try {
     const page = unwrap(await window.zpi.getHistoryPage(id, cursor));
@@ -578,16 +595,70 @@ export async function loadEarlier(id: string): Promise<void> {
       view = current.views.get(id);
     // 编辑/重试会替换历史；旧分页响应不能把已移除的内容重新合并回来。
     // 流式事件只增加 seq，不改变历史代次，因此仍可正常合并分页。
-    if (!view || (historyGenerations.get(id) ?? 0) !== generation) return;
+    if (
+      !view ||
+      (historyGenerations.get(id) ?? 0) !== generation ||
+      historyRequests.get(id) !== request ||
+      current.historyCursors.get(id) !== cursor
+    )
+      return;
     const views = new Map(current.views),
       cursors = new Map(current.historyCursors);
     views.set(id, mergeHistory(page.view, view));
     cursors.set(id, page.cursor);
     useStore.setState({ views, historyCursors: cursors });
   } finally {
-    const loading = new Set(useStore.getState().historyLoading);
-    loading.delete(id);
-    useStore.setState({ historyLoading: loading });
+    finishHistoryRequest(id, request);
+  }
+}
+/** Load a complete navigation directory without publishing partial pages. */
+export async function loadAllEarlier(id: string): Promise<"loaded" | "stale" | "not-enough"> {
+  const initial = useStore.getState();
+  const initialCursor = initial.historyCursors.get(id);
+  if (initialCursor == null || initial.historyLoading.has(id) || !initial.views.has(id)) return "stale";
+  const generation = historyGenerations.get(id) ?? 0;
+  const request = {};
+  historyRequests.set(id, request);
+  const stillCurrent = () => {
+    const state = useStore.getState();
+    return (
+      state.views.has(id) &&
+      historyRequests.get(id) === request &&
+      (historyGenerations.get(id) ?? 0) === generation &&
+      state.historyCursors.get(id) === initialCursor
+    );
+  };
+  useStore.setState({ historyLoading: new Set(initial.historyLoading).add(id) });
+  try {
+    const pages: SessionView[] = [];
+    let cursor: number | null = initialCursor;
+    while (cursor !== null) {
+      const before: number = cursor;
+      const page = unwrap(await window.zpi.getHistoryPage(id, before));
+      if (!stillCurrent()) return "stale";
+      if (page.cursor !== null && page.cursor >= before) throw new Error("历史分页游标未推进");
+      pages.push(page.view);
+      cursor = page.cursor;
+    }
+    if (!stillCurrent()) return "stale";
+    const state = useStore.getState();
+    const current = state.views.get(id);
+    if (!current) return "stale";
+    const view = mergeHistoryPages([...pages.reverse(), current]);
+    const count = view.runs.reduce(
+      (count, run) => count + Number(isNavigableRun(run)) + (run.guides?.length ?? 0),
+      0,
+    );
+    // A partial leading run needs its earlier pages even if the rail will remain hidden.
+    if (count < 2 && !current.runs[0]?.historyContinuation) return "not-enough";
+    const views = new Map(state.views);
+    const cursors = new Map(state.historyCursors);
+    views.set(id, view);
+    cursors.set(id, null);
+    useStore.setState({ views, historyCursors: cursors });
+    return "loaded";
+  } finally {
+    finishHistoryRequest(id, request);
   }
 }
 const openingDrafts = new Map<string, Promise<SessionRecord>>();

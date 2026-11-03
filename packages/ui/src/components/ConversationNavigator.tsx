@@ -1,36 +1,79 @@
 // Query rail adapted from ZCode's ConversationTurnNavigator (Apache-2.0).
 import * as HoverCard from "@radix-ui/react-hover-card";
 import { memo, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ConversationQuery } from "../conversation-run-partition.ts";
 import { parseSelectionPrompt } from "../conversation-selections.ts";
 import type { RunView } from "../types.ts";
+
+// Keep previews bounded even when a run contains a very long assistant response.
+function previewText(blocks: RunView["orderedBlocks"]): string {
+  let preview = "";
+  let paragraphs = 1;
+  let whitespace = false;
+  let newlines = 0;
+  for (const block of blocks) {
+    if (block.type !== "text") continue;
+    if (preview) {
+      whitespace = true;
+      newlines = 2;
+    }
+    for (const character of block.text) {
+      if (/\s/u.test(character)) {
+        whitespace = true;
+        if (character === "\n") newlines++;
+        continue;
+      }
+      if (whitespace && preview) {
+        if (newlines >= 2) {
+          if (paragraphs >= 2) return preview;
+          paragraphs++;
+          preview += "\n";
+        } else preview += " ";
+      }
+      preview += character;
+      whitespace = false;
+      newlines = 0;
+      if (preview.length > 220) return `${preview.slice(0, 217).trimEnd()}...`;
+    }
+  }
+  return preview;
+}
 
 const rowHeight = 10;
 const overscan = 6;
 
 export function ConversationNavigator({
-  runs,
+  history,
+  tail = [],
   scrollRoot,
   onJump,
   busy,
 }: {
-  runs: RunView[];
+  history: readonly ConversationQuery[];
+  tail?: readonly ConversationQuery[];
   scrollRoot: RefObject<HTMLDivElement | null>;
-  onJump: (id: string) => void;
+  onJump: (id: string, queryKey: string) => void;
   busy: boolean;
 }) {
   const [focus, setFocus] = useState<number>();
   const [activeId, setActiveId] = useState<string>();
   const rail = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ top: 0, height: 600 });
-  const items = runs;
+  const count = history.length + tail.length;
+  const tailIds = tail.map((item) => item.key).join("\n");
+  const itemIds = useMemo(
+    () => [...history.map((item) => item.key), ...tail.map((item) => item.key)],
+    [history, tailIds],
+  );
+  const itemIndexes = useMemo(() => new Map(itemIds.map((id, index) => [id, index])), [itemIds]);
   useLayoutEffect(() => {
     const root = scrollRoot.current;
-    if (!root || items.length < 2) return;
-    const ids = new Set(items.map((run) => run.runId));
-    const nodes = Array.from(root.querySelectorAll<HTMLElement>("[data-history-run]")).filter(
-      (node) => node.dataset.historyRun && ids.has(node.dataset.historyRun),
-    );
+    if (!root || itemIds.length < 2) return;
+    const ids = new Set(itemIds);
     const update = () => {
+      const nodes = Array.from(root.querySelectorAll<HTMLElement>("[data-query-key]")).filter(
+        (node) => node.dataset.queryKey && ids.has(node.dataset.queryKey),
+      );
       if (!nodes.length) return;
       const top = root.getBoundingClientRect().top + 1;
       let low = 0;
@@ -41,13 +84,17 @@ export function ConversationNavigator({
         if (node && node.getBoundingClientRect().top <= top) low = mid + 1;
         else high = mid;
       }
-      setActiveId(nodes[Math.max(0, low - 1)]?.dataset.historyRun);
+      setActiveId(nodes[Math.max(0, low - 1)]?.dataset.queryKey);
     };
     update();
     root.addEventListener("scroll", update, { passive: true });
-    return () => root.removeEventListener("scroll", update);
-  }, [scrollRoot, items]);
-  const active = items.findIndex((item) => item.runId === activeId);
+    root.addEventListener("zpi-history-window", update);
+    return () => {
+      root.removeEventListener("scroll", update);
+      root.removeEventListener("zpi-history-window", update);
+    };
+  }, [scrollRoot, itemIds]);
+  const active = activeId === undefined ? -1 : (itemIndexes.get(activeId) ?? -1);
   useEffect(() => {
     if (active < 0) return;
     const element = rail.current;
@@ -65,13 +112,10 @@ export function ConversationNavigator({
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [items.length >= 2]);
-  if (items.length < 2) return null;
+  }, [count >= 2]);
+  if (count < 2) return null;
   const start = Math.max(0, Math.floor(windowRange.top / rowHeight) - overscan);
-  const end = Math.min(
-    items.length,
-    Math.ceil((windowRange.top + windowRange.height) / rowHeight) + overscan,
-  );
+  const end = Math.min(count, Math.ceil((windowRange.top + windowRange.height) / rowHeight) + overscan);
   return (
     <nav className="conversation-navigator" aria-label="对话问题导航" aria-busy={busy}>
       <div
@@ -83,9 +127,11 @@ export function ConversationNavigator({
           setWindowRange({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight });
         }}
       >
-        <div style={{ height: items.length * rowHeight, position: "relative" }}>
-          {items.slice(start, end).map((run, offset) => {
+        <div style={{ height: count * rowHeight, position: "relative" }}>
+          {Array.from({ length: end - start }, (_, offset) => {
             const index = start + offset;
+            const item = index < history.length ? history[index] : tail[index - history.length];
+            if (!item) return null;
             const distance = focus === undefined ? 3 : Math.abs(index - focus);
             const scale = distance === 0 ? 2.6 : distance === 1 ? 1.7 : distance === 2 ? 1.25 : 1;
             const opacity =
@@ -100,8 +146,8 @@ export function ConversationNavigator({
                       : 0.58;
             return (
               <NavigatorItem
-                key={run.runId}
-                run={run}
+                key={item.key}
+                item={item}
                 index={index}
                 active={index === active}
                 scale={scale}
@@ -120,7 +166,7 @@ export function ConversationNavigator({
 }
 
 const NavigatorItem = memo(function NavigatorItem({
-  run,
+  item,
   index,
   active,
   scale,
@@ -130,26 +176,24 @@ const NavigatorItem = memo(function NavigatorItem({
   onJump,
   setActiveId,
 }: {
-  run: RunView;
+  item: ConversationQuery;
   index: number;
   active: boolean;
   scale: number;
   opacity: number;
   focused: boolean;
   onFocus: (index: number | undefined) => void;
-  onJump: (id: string) => void;
+  onJump: (id: string, queryKey: string) => void;
   setActiveId: (id: string) => void;
 }) {
+  const { run } = item;
   const { user, assistant } = useMemo(
     () => ({
-      user: parseSelectionPrompt(run.userMessage).text.trim() || "用户输入",
+      user: parseSelectionPrompt(item.text).text.trim() || "用户输入",
       assistant:
-        run.orderedBlocks
-          .flatMap((block) => (block.type === "text" ? [block.text.trim()] : []))
-          .filter(Boolean)
-          .join("\n\n") || (run.status === "running" ? "助手仍在工作" : "暂无助手正文"),
+        previewText(run.orderedBlocks) || (run.status === "running" ? "助手仍在工作" : "暂无助手正文"),
     }),
-    [run],
+    [run, item.text],
   );
   return (
     <HoverCard.Root openDelay={120} closeDelay={80}>
@@ -164,8 +208,8 @@ const NavigatorItem = memo(function NavigatorItem({
           onFocus={() => onFocus(index)}
           onBlur={() => onFocus(undefined)}
           onClick={() => {
-            setActiveId(run.runId);
-            onJump(run.runId);
+            setActiveId(item.key);
+            onJump(run.runId, item.key);
           }}
         >
           <span style={{ transform: `scaleX(${scale})`, opacity }} data-highlighted={focused || active} />

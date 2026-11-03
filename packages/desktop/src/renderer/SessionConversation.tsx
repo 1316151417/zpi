@@ -3,7 +3,7 @@ import { Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
-import { loadEarlier, useStore } from "./store.ts";
+import { historyRevision, loadAllEarlier, loadEarlier, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
@@ -36,10 +36,12 @@ export function SessionConversation({
       onLoadToolPatch={(runId, toolCallId) =>
         window.zpi.readPatch(sessionId, runId, `operation:${toolCallId}`).then(unwrap)
       }
+      historyRevision={historyRevision(sessionId)}
       historyCursor={cursor}
       hasEarlier={cursor != null}
       loadingEarlier={loadingEarlier}
       onLoadEarlier={() => loadEarlier(sessionId)}
+      onLoadAllEarlier={() => loadAllEarlier(sessionId)}
     />
   );
 }

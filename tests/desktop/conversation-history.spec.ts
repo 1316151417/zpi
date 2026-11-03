@@ -118,7 +118,7 @@ test("windows long history while preserving streaming, find, selection and readi
       )
       .toBeLessThan(4);
     await expect.poll(() => page.getByTestId("run").count()).toBeLessThanOrEqual(40);
-    await expect(page.locator('[data-history-run="run-0"]')).toHaveCount(0);
+    await expect(page.locator('[data-history-run="run-0"]')).toHaveAttribute("data-history-mounted", "false");
   } finally {
     release.resolve();
     await runCleanup([server.close, () => rm(dir, { recursive: true, force: true }), () => app?.close()]);
@@ -134,6 +134,7 @@ test("prepending history preserves its anchor when the windowing threshold is cr
   try {
     app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
+    await page.setViewportSize({ width: 700, height: 800 });
     await expect(page.locator("[data-history-run]")).toHaveCount(10);
     for (let loaded = 10; loaded < 60; loaded += 10) {
       const anchorId = `run-${60 - loaded + 1}`;

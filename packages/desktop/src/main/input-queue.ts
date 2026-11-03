@@ -10,15 +10,16 @@ interface QueueRuntime {
   discard(id: string, item: QueuedInput): Promise<void>;
   withdraw(id: string, item: QueuedInput): Promise<void>;
   start(input: RunInput, item?: QueuedInput): Promise<{ runId: string }>;
-  stop(id: string): Promise<void>;
+  guide?(id: string, item: QueuedInput): Promise<boolean>;
   save(id: string, queue: InputQueue): void;
   publish(id: string, queue: InputQueue): void;
+  report?(id: string, error: unknown): void;
 }
 /** Desktop input delivery only. Agent prompts, tools and history remain owned by SessionHost. */
 export class SessionInputQueue {
   private states = new Map<string, InputQueue>();
   private operations = new Map<string, Promise<unknown>>();
-  private preempting = new Set<string>();
+  private consumed = new Map<string, Set<string>>();
   private closing = false;
   private runtime: QueueRuntime;
   constructor(runtime: QueueRuntime) {
@@ -41,7 +42,39 @@ export class SessionInputQueue {
   private commit(id: string, queue: InputQueue): void {
     this.runtime.save(id, queue);
     this.states.set(id, queue);
-    this.runtime.publish(id, queue);
+    this.publish(id, queue);
+  }
+  private commitWithFallback(id: string, queue: InputQueue): void {
+    try {
+      this.commit(id, queue);
+    } catch {
+      this.states.set(id, queue);
+      this.publish(id, queue);
+    }
+  }
+  private publish(id: string, queue: InputQueue): void {
+    try {
+      this.runtime.publish(id, queue);
+    } catch (error) {
+      this.runtime.report?.(id, error);
+    }
+  }
+  private updateAfterAcceptance(id: string, queue: InputQueue): boolean {
+    try {
+      this.commit(id, queue);
+      return true;
+    } catch (error) {
+      // The run is already durable. Queue housekeeping must not turn its receipt
+      // into a rejected draft that the user can accidentally submit a second time.
+      const paused: InputQueue = {
+        ...this.get(id),
+        autoDrain: false,
+        pauseReason: "error",
+        error: error instanceof Error ? error.message : String(error),
+      };
+      this.commitWithFallback(id, paused);
+      return false;
+    }
   }
   private serial<T>(id: string, work: () => Promise<T>): Promise<T> {
     const result = (this.operations.get(id) ?? Promise.resolve())
@@ -64,28 +97,23 @@ export class SessionInputQueue {
       if (this.closing) throw new Error("busy: 应用正在关闭");
       const id = input.sessionId,
         queue = this.get(id);
-      if (immediate) {
-        // Validate the draft before interrupting the current reply. Keep queued
-        // inputs intact and suppress the interrupted run's queue settlement.
+      if (immediate && !this.runtime.running(id)) {
         await this.runtime.prepare(input);
-        this.preempting.add(id);
-        try {
-          await this.runtime.stop(id);
-          this.preempting.delete(id);
-          const result = await this.runtime.start(input);
-          if (queue.items.length) this.commit(id, { items: this.get(id).items, autoDrain: true });
-          return result;
-        } finally {
-          this.preempting.delete(id);
-        }
+        const result = await this.runtime.start(input);
+        if (queue.items.length)
+          this.updateAfterAcceptance(id, { items: this.get(id).items, autoDrain: true });
+        return result;
       }
       if (!this.runtime.running(id) && (!queue.items.length || (!queue.autoDrain && disposition))) {
         // Validate before clearing a held queue, so a failed send cannot erase accepted inputs.
         if (queue.items.length) await this.runtime.prepare(input);
         const result = await this.runtime.start(input);
         if (queue.items.length) {
-          this.commit(id, { items: disposition === "clear" ? [] : queue.items, autoDrain: true });
-          if (disposition === "clear")
+          const updated = this.updateAfterAcceptance(id, {
+            items: disposition === "clear" ? [] : queue.items,
+            autoDrain: true,
+          });
+          if (updated && disposition === "clear")
             for (const item of queue.items) await this.runtime.discard(id, item).catch(() => {});
         }
         return result;
@@ -100,7 +128,12 @@ export class SessionInputQueue {
         )
       )
         throw new Error("invalid_input: 附件已属于待发送消息");
-      const item: QueuedInput = { ...prepared, id: randomUUID(), state: "queued" };
+      const item: QueuedInput = {
+        ...prepared,
+        id: randomUUID(),
+        state: "queued",
+        ...(immediate ? { delivery: "guide" as const } : {}),
+      };
       await this.runtime.retain(id, item, true);
       try {
         const current = this.get(id);
@@ -108,6 +141,25 @@ export class SessionInputQueue {
       } catch (error) {
         await this.runtime.retain(id, item, false);
         throw error;
+      }
+      if (immediate) {
+        try {
+          await this.offerGuide(id, item);
+        } catch (error) {
+          // Acceptance has already committed: acknowledge the durable queue receipt so
+          // the composer cannot resend the same draft after a delivery/save failure.
+          const current = this.get(id);
+          const paused: InputQueue = {
+            ...current,
+            autoDrain: false,
+            pauseReason: "error",
+            error: error instanceof Error ? error.message : String(error),
+            items: current.items.map((value) =>
+              value.id === item.id ? { ...value, state: "queued" } : value,
+            ),
+          };
+          this.commitWithFallback(id, paused);
+        }
       }
       if (!this.runtime.running(id) && this.get(id).autoDrain) void this.resume(id).catch(() => {});
       return { queueItemId: item.id };
@@ -173,26 +225,69 @@ export class SessionInputQueue {
         pauseReason: "error",
         error: error instanceof Error ? error.message : String(error),
       };
-      try {
-        this.commit(id, paused);
-      } catch {
-        this.states.set(id, paused);
-        this.runtime.publish(id, paused);
-      }
+      this.commitWithFallback(id, paused);
       throw error;
     }
   }
+  private async offerGuide(id: string, item: QueuedInput): Promise<void> {
+    if (!this.runtime.running(id)) {
+      await this.dispatch(id, item);
+      return;
+    }
+    this.commit(id, {
+      ...this.get(id),
+      items: this.get(id).items.map((value) =>
+        value.id === item.id ? { ...value, delivery: "guide", state: "dispatching" } : value,
+      ),
+    });
+    try {
+      const offered = await this.runtime.guide?.(id, item);
+      if (offered) return;
+    } catch (error) {
+      // The durable item remains visible and retryable even if preparation fails.
+      this.commit(id, {
+        ...this.get(id),
+        autoDrain: false,
+        pauseReason: "error",
+        error: error instanceof Error ? error.message : String(error),
+        items: this.get(id).items.map((value) =>
+          value.id === item.id ? { ...value, state: "queued" } : value,
+        ),
+      });
+      return;
+    }
+    this.commit(id, {
+      ...this.get(id),
+      items: this.get(id).items.map((value) =>
+        value.id === item.id ? { ...value, state: "queued" } : value,
+      ),
+    });
+    if (!this.runtime.running(id)) await this.dispatch(id, this.item(id, item.id));
+  }
+  /** Called only after the message has been appended to the authoritative transcript. */
+  acknowledgeGuide(id: string, inputId: string): void {
+    const accepted = this.consumed.get(id) ?? new Set<string>();
+    accepted.add(inputId);
+    this.consumed.set(id, accepted);
+    const queue = this.get(id);
+    const next = { ...queue, items: queue.items.filter((item) => item.id !== inputId) };
+    try {
+      this.commit(id, next);
+    } catch (error) {
+      this.states.set(id, next);
+      this.publish(id, next);
+      throw error;
+    }
+  }
+  offerGuides(id: string): Promise<void> {
+    return this.serial(id, async () => {
+      for (const item of this.get(id).items)
+        if (item.delivery === "guide" && item.state === "queued") await this.offerGuide(id, item);
+    });
+  }
   sendNow(id: string, itemId: string): Promise<void> {
     return this.serial(id, async () => {
-      const item = this.item(id, itemId);
-      this.preempting.add(id);
-      try {
-        await this.runtime.stop(id);
-        this.preempting.delete(id);
-        await this.dispatch(id, item);
-      } finally {
-        this.preempting.delete(id);
-      }
+      await this.offerGuide(id, this.item(id, itemId));
     });
   }
   resume(id: string): Promise<void> {
@@ -200,14 +295,27 @@ export class SessionInputQueue {
       if (this.closing) return;
       const queue = this.get(id);
       this.commit(id, { items: queue.items, autoDrain: true });
-      if (!this.runtime.running(id) && queue.items[0]) await this.dispatch(id, queue.items[0]);
+      if (!this.runtime.running(id) && queue.items[0])
+        await this.dispatch(id, queue.items.find((item) => item.delivery === "guide") ?? queue.items[0]);
     });
   }
   settled(id: string, status: Exclude<RunStatus, "running">): void {
-    if (this.preempting.has(id) || this.closing) return;
+    if (this.closing) return;
     void this.serial(id, async () => {
       if (this.closing) return;
-      const queue = this.get(id);
+      const current = this.get(id);
+      if (!current.items.length) {
+        this.consumed.delete(id);
+        return;
+      }
+      const queue = {
+        ...current,
+        items: current.items
+          .filter((item) => !this.consumed.get(id)?.has(item.id))
+          .map((item) => ({ ...item, state: "queued" as const })),
+      };
+      this.commit(id, queue);
+      this.consumed.delete(id);
       if (!queue.items.length) return;
       if (status !== "completed")
         this.commit(id, {
@@ -215,12 +323,14 @@ export class SessionInputQueue {
           autoDrain: false,
           pauseReason: status === "error" ? "error" : "stopped",
         });
-      else if (queue.autoDrain && !this.runtime.running(id)) await this.dispatch(id, queue.items[0]);
+      else if (queue.autoDrain && !this.runtime.running(id))
+        await this.dispatch(id, queue.items.find((item) => item.delivery === "guide") ?? queue.items[0]);
     }).catch(() => {});
   }
   async delete(id: string): Promise<void> {
     await this.operations.get(id)?.catch(() => {});
     this.states.delete(id);
+    this.consumed.delete(id);
   }
   archive(id: string, persist: () => void | Promise<void>): Promise<void> {
     return this.serial(id, async () => {

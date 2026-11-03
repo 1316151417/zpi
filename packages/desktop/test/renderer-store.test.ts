@@ -1323,3 +1323,230 @@ it("flushes pending and incoming events while hidden without animation frames", 
   expect(f.store.useStore.getState().sessions.get(f.session.id)?.title).toBe("hidden update");
   f.unsubscribe();
 });
+
+it("loads all navigator pages atomically while retaining live updates", async () => {
+  const f = await setup();
+  const run = (id: string) => ({
+    runId: id,
+    status: "completed" as const,
+    userMessage: id,
+    orderedBlocks: [],
+    finalAnswerBlockIds: [],
+    startedAt: 1,
+  });
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, { ...f.snapshot.view, runs: [run("new")] }]]),
+    historyCursors: new Map([[f.session.id, 20]]),
+  });
+  const gate = deferred();
+  const getHistoryPage = vi.fn(async (_id: string, before: number) => {
+    if (before === 10) await gate.promise;
+    return {
+      ok: true as const,
+      value: {
+        view: { ...f.snapshot.view, runs: [run(before === 20 ? "middle" : "old")] },
+        cursor: before === 20 ? 10 : null,
+        calls: 1,
+      },
+    };
+  });
+  Object.assign(f.bridge, { getHistoryPage });
+  const request = f.store.loadAllEarlier(f.session.id);
+  await vi.waitFor(() => expect(getHistoryPage).toHaveBeenCalledTimes(2));
+  expect(
+    f.store.useStore
+      .getState()
+      .views.get(f.session.id)
+      ?.runs.map((r) => r.runId),
+  ).toEqual(["new"]);
+  await f.store.loadEarlier(f.session.id);
+  expect(getHistoryPage).toHaveBeenCalledTimes(2);
+  f.emit({
+    sessionId: f.session.id,
+    runId: "live",
+    seq: 1,
+    event: { type: "started", text: "live", startedAt: 2, modelLabel: "model" },
+  });
+  f.frame();
+  gate.resolve();
+  expect(await request).toBe("loaded");
+  expect(
+    f.store.useStore
+      .getState()
+      .views.get(f.session.id)
+      ?.runs.map((r) => r.runId),
+  ).toEqual(["old", "middle", "new", "live"]);
+  expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBeNull();
+  f.unsubscribe();
+});
+
+it("discards a whole navigator batch when its cursor becomes stale", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, f.snapshot.view]]),
+    historyCursors: new Map([[f.session.id, 20]]),
+  });
+  const gate = deferred();
+  Object.assign(f.bridge, {
+    getHistoryPage: vi.fn(async () => {
+      await gate.promise;
+      return { ok: true, value: { view: f.snapshot.view, cursor: null, calls: 1 } };
+    }),
+  });
+  const request = f.store.loadAllEarlier(f.session.id);
+  f.store.useStore.setState({ historyCursors: new Map([[f.session.id, 10]]) });
+  gate.resolve();
+  expect(await request).toBe("stale");
+  expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBe(10);
+  expect(f.store.useStore.getState().historyLoading.has(f.session.id)).toBe(false);
+  f.unsubscribe();
+});
+
+it("does not publish a partial navigator batch when a page fails or fails to advance", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, f.snapshot.view]]),
+    historyCursors: new Map([[f.session.id, 20]]),
+  });
+  Object.assign(f.bridge, {
+    getHistoryPage: vi.fn(async () => ({ ok: true, value: { view: f.snapshot.view, cursor: 20, calls: 1 } })),
+  });
+  await expect(f.store.loadAllEarlier(f.session.id)).rejects.toThrow("游标未推进");
+  expect(f.store.useStore.getState().views.get(f.session.id)).toBe(f.snapshot.view);
+  expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBe(20);
+  expect(f.store.useStore.getState().historyLoading.has(f.session.id)).toBe(false);
+  f.unsubscribe();
+});
+
+it("discards navigator pages after a history reset and preserves the replacement", async () => {
+  const f = await setup();
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, f.snapshot.view]]),
+    historyCursors: new Map([[f.session.id, 20]]),
+  });
+  const gate = deferred();
+  Object.assign(f.bridge, {
+    getHistoryPage: vi.fn(async () => {
+      await gate.promise;
+      return { ok: true, value: { view: f.snapshot.view, cursor: null, calls: 1 } };
+    }),
+  });
+  const request = f.store.loadAllEarlier(f.session.id);
+  const replacement = { ...f.snapshot.view, seq: 3 };
+  f.emit({
+    sessionId: f.session.id,
+    runId: "reset",
+    seq: 3,
+    event: { type: "history_reset", view: replacement },
+  });
+  f.frame();
+  gate.resolve();
+  expect(await request).toBe("stale");
+  expect(f.store.useStore.getState().views.get(f.session.id)?.seq).toBe(3);
+  f.unsubscribe();
+});
+
+it("does not retain a complete scan when fewer than two questions exist", async () => {
+  const f = await setup();
+  const current = {
+    ...f.snapshot.view,
+    runs: [
+      {
+        runId: "only",
+        status: "completed" as const,
+        userMessage: "question",
+        startedAt: 1,
+        orderedBlocks: [],
+        finalAnswerBlockIds: [],
+      },
+    ],
+  };
+  f.store.useStore.setState({
+    views: new Map([[f.session.id, current]]),
+    historyCursors: new Map([[f.session.id, 20]]),
+  });
+  Object.assign(f.bridge, {
+    getHistoryPage: vi.fn(async () => ({
+      ok: true,
+      value: { view: f.snapshot.view, cursor: null, calls: 1 },
+    })),
+  });
+  expect(await f.store.loadAllEarlier(f.session.id)).toBe("not-enough");
+  expect(f.store.useStore.getState().views.get(f.session.id)).toBe(current);
+  expect(f.store.useStore.getState().historyCursors.get(f.session.id)).toBe(20);
+  f.unsubscribe();
+});
+
+it.each(["page", "directory"])(
+  "an old %s request cannot overwrite or unlock a reopened conversation",
+  async (kind) => {
+    const f = await setup();
+    const run = (runId: string) => ({
+      runId,
+      status: "completed" as const,
+      userMessage: runId,
+      orderedBlocks: [],
+      finalAnswerBlockIds: [],
+      startedAt: 1,
+    });
+    f.store.useStore.setState({
+      views: new Map([[f.session.id, { ...f.snapshot.view, runs: [run("old-current")] }]]),
+      historyCursors: new Map([[f.session.id, 20]]),
+    });
+    const oldGate = deferred(),
+      newGate = deferred();
+    let calls = 0;
+    Object.assign(f.bridge, {
+      getHistoryPage: vi.fn(async () => {
+        const old = calls++ === 0;
+        await (old ? oldGate.promise : newGate.promise);
+        return {
+          ok: true,
+          value: {
+            view: { ...f.snapshot.view, runs: [run(old ? "stale" : "valid-older")] },
+            cursor: null,
+            calls: 1,
+          },
+        };
+      }),
+    });
+    const first = kind === "page" ? f.store.loadEarlier(f.session.id) : f.store.loadAllEarlier(f.session.id);
+    await f.store.closeSideChat(f.session.id);
+    f.store.accept({
+      ...f.snapshot,
+      historyCursor: 20,
+      controls: {
+        selection: null,
+        presets: [],
+        selectionValid: false,
+        model: null,
+        thinkingLevel: "off",
+        lastThinkingLevel: "off",
+        thinkingLevels: [],
+        diagnostics: [],
+        usage: { contextWindow: 0, inputTokens: null, percent: null, timestamp: null, source: "unknown" },
+      },
+      view: { ...f.snapshot.view, runs: [run("reopened")] },
+    });
+    const second = f.store.loadAllEarlier(f.session.id);
+    oldGate.resolve();
+    await first;
+    expect(f.store.useStore.getState().historyLoading.has(f.session.id)).toBe(true);
+    expect(
+      f.store.useStore
+        .getState()
+        .views.get(f.session.id)
+        ?.runs.map((item) => item.runId),
+    ).toEqual(["reopened"]);
+    newGate.resolve();
+    expect(await second).toBe("loaded");
+    expect(
+      f.store.useStore
+        .getState()
+        .views.get(f.session.id)
+        ?.runs.map((item) => item.runId),
+    ).toEqual(["valid-older", "reopened"]);
+    expect(f.store.useStore.getState().historyLoading.has(f.session.id)).toBe(false);
+    f.unsubscribe();
+  },
+);

@@ -9,6 +9,7 @@ import type {
   ModelWaitStatus,
   SimpleStreamOptions,
   TranscriptContext,
+  UserGuide,
 } from "zpi-ai";
 import {
   assertSupportedOptions,
@@ -835,15 +836,28 @@ export class AgentSession {
     return this.running;
   }
   /** Queue input for the next completed model/tool boundary without interrupting generation. */
-  steer(text: string, options: { queueOnly?: boolean; inputId?: string } = {}): boolean {
-    if (!text.trim() || (!options.queueOnly && text.length > 100000))
+  steer(
+    text: string,
+    options: {
+      queueOnly?: boolean;
+      inputId?: string;
+      userGuide?: UserGuide;
+      images?: ImageContent[];
+      fileReferences?: string[];
+    } = {},
+  ): boolean {
+    this.validateImages(options.images);
+    if ((!text.trim() && !options.images?.length) || (!options.queueOnly && text.length > 100000))
       throw new Error("Invalid steering input");
     if (this.active !== "prompt" || this.disposed || this.abortRequested) return false;
     (options.queueOnly ? this.pendingMessages : this.steering).push({
       role: "user",
-      content: text,
+      content: options.images?.length
+        ? [{ type: "text", text: withReferences(text, options.fileReferences) }, ...options.images]
+        : withReferences(text, options.fileReferences),
       timestamp: Date.now(),
       ...(options.inputId ? { inputId: options.inputId } : {}),
+      ...(options.userGuide ? { userGuide: options.userGuide } : {}),
     });
     return true;
   }

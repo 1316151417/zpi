@@ -12,7 +12,6 @@ it("a failed archive never persists an empty queue or discards accepted input", 
     discard: vi.fn(),
     withdraw: vi.fn(),
     start: vi.fn(),
-    stop: vi.fn(),
     save: vi.fn(),
     publish: vi.fn(),
   };
@@ -63,7 +62,6 @@ it("archive waits for process cleanup and prevents queued submissions from resta
     discard: vi.fn(),
     withdraw: vi.fn(),
     start: vi.fn(),
-    stop: vi.fn(),
     save: vi.fn(),
     publish: vi.fn(),
   };
@@ -92,7 +90,6 @@ it("restart removes only durably accepted IDs and retains unexecuted inputs paus
     discard: vi.fn(),
     withdraw: vi.fn(),
     start: vi.fn(),
-    stop: vi.fn(),
     save: vi.fn(),
     publish: vi.fn(),
   };

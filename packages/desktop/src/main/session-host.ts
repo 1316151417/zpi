@@ -32,6 +32,7 @@ import type {
   DesktopEvent,
   DesktopEventEnvelope,
   InputQueue,
+  QueuedInput,
   RunStatus,
   SessionMentionSuggestion,
   SessionView,
@@ -341,10 +342,8 @@ export class SessionHost {
         if (item) await this.setSessionSelection(input.sessionId, item.selection);
         return this.startRun(input, item?.id);
       },
-      stop: async (id) => {
-        const run = this.activeRuns.get(id);
-        if (run) await this.abortRun({ sessionId: id, runId: run.runId });
-      },
+      guide: (id, item) => this.offerUserGuide(id, item),
+      report: (id, error) => this.errors.write("queue.publish", error, { sessionId: id }),
       save: (id, queue) => this.settings.state.setQueue(id, queue),
       publish: (id, queue) => {
         this.getSessionSnapshot(id);
@@ -519,8 +518,15 @@ export class SessionHost {
           // Only unmarked cache requires recovery; read run headers, never message bodies.
           // An unreadable owned transcript needs explicit repair, not payload deletion.
           if (!index) return this.records.has(sessionId) ? candidates : [];
-          const pending = new Set(candidates);
+          const ordinaryQueued = new Set(
+            this.inputQueue
+              .get(sessionId)
+              .items.filter((item) => item.delivery !== "guide")
+              .flatMap((item) => item.attachments.map((attachment) => attachment.id)),
+          );
+          const pending = new Set(candidates.filter((id) => !ordinaryQueued.has(id)));
           const retained: string[] = [];
+          if (!pending.size) return retained;
           for (const run of index.listRuns()) {
             if (!index.findAcceptedRun(run.runId)) continue;
             const start = index.read(run.start)[0];
@@ -534,6 +540,21 @@ export class SessionHost {
               if (isJsonObject(item) && typeof item.id === "string" && pending.delete(item.id))
                 retained.push(item.id);
             if (!pending.size) break;
+          }
+          if (pending.size) {
+            const snapshot = index.snapshot();
+            for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot, ["message"])) {
+              if (
+                entry.type === "message" &&
+                entry.message.role === "user" &&
+                !entry.message.synthetic &&
+                entry.message.inputId &&
+                entry.message.userGuide
+              )
+                for (const attachment of entry.message.userGuide.attachments)
+                  if (pending.delete(attachment.id)) retained.push(attachment.id);
+              if (!pending.size) break;
+            }
           }
           return retained;
         },
@@ -580,11 +601,28 @@ export class SessionHost {
       }
     }
     for (const task of this.records.values()) {
-      this.inputQueue.restore(
-        task.id,
-        this.settings.state.getQueue(task.id) ?? { items: [], autoDrain: true },
-        this.settings.state.acceptedInputIds(task.id),
+      const savedQueue = this.settings.state.getQueue(task.id) ?? { items: [], autoDrain: true };
+      const accepted = this.settings.state.acceptedInputIds(task.id);
+      const pendingGuideIds = new Set(
+        savedQueue.items.filter((item) => item.delivery === "guide").map((item) => item.id),
       );
+      const index = this.indexes.get(task.id);
+      if (index && pendingGuideIds.size) {
+        const snapshot = index.snapshot();
+        for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot, ["message"])) {
+          if (
+            entry.type === "message" &&
+            entry.message.role === "user" &&
+            !entry.message.synthetic &&
+            entry.message.userGuide &&
+            entry.message.inputId &&
+            pendingGuideIds.delete(entry.message.inputId)
+          )
+            accepted.add(entry.message.inputId);
+          if (!pendingGuideIds.size) break;
+        }
+      }
+      this.inputQueue.restore(task.id, savedQueue, accepted);
       for (const runtime of this.settings.state.getRuntime(task.id)) {
         if (runtime.kind === "background") {
           const value = runtime.data as BackgroundTask;
@@ -1023,6 +1061,37 @@ export class SessionHost {
     record.newWorktree = enabled;
     record.worktreeBaseRef = worktreeBaseRef;
     return structuredClone(record);
+  }
+
+  private async offerUserGuide(id: string, item: QueuedInput): Promise<boolean> {
+    const run = this.activeRuns.get(id);
+    if (!run?.session || run.aborted || this.closing || item.subagentNotification) return false;
+    // Control/custom commands keep their normal execution path on the next run.
+    if (
+      parseInput(item.text).kind !== "prompt" ||
+      parseCustomCommandInvocation(item.text) ||
+      /^\s*@/.test(item.text)
+    )
+      return false;
+    const input = {
+      sessionId: id,
+      text: item.text,
+      fileReferences: item.fileReferences,
+      attachments: item.attachments.map((image) => image.id),
+    };
+    const { inputReferences, loaded } = await this.loadInput(input);
+    let text = item.text;
+    if (loaded.fileContext)
+      text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
+    const reminder = await this.referencedSessionContext(id, item.text);
+    if (reminder) text += `\n\nReferenced session context:\n${reminder}`;
+    if (this.activeRuns.get(id) !== run || run.aborted || this.closing) return false;
+    return run.session.steer(text, {
+      inputId: item.id,
+      images: loaded.images,
+      fileReferences: inputReferences,
+      userGuide: { text: item.text, fileReferences: item.fileReferences, attachments: loaded.metadata },
+    });
   }
 
   private parentInstructions = new Map<string, string[]>();
@@ -2665,6 +2734,16 @@ export class SessionHost {
             if (isJsonObject(image) && typeof image.path === "string")
               image.path = paths.get(image.path) ?? image.path;
         }
+        if (copied.type === "message" && copied.message.role === "user" && copied.message.userGuide) {
+          const metadata = copied.message.userGuide.attachments;
+          const paths = await this.attachments.copyTo(
+            id,
+            child.id,
+            metadata.map((image) => image.id),
+          );
+          for (const [from, to] of paths) relocated.set(from, to);
+          for (const image of metadata) if ("path" in image) image.path = paths.get(image.path) ?? image.path;
+        }
         return copied;
       });
       const manager = this.manager(child.id);
@@ -3223,8 +3302,21 @@ export class SessionHost {
           }
           if (e.type === "turn_end" && e.message.role === "assistant" && e.message.stopReason === "toolUse")
             this.offerSubagentMessages(id, run, true);
-          if (e.type === "message_end" && e.message.role === "user")
+          if (e.type === "message_end" && e.message.role === "user") {
             this.acknowledgeSubagentMessage(id, e.message.content, e.message.inputId);
+            if (e.message.inputId && e.message.userGuide) {
+              try {
+                this.inputQueue.acknowledgeGuide(id, e.message.inputId);
+              } catch (error) {
+                this.errors.write("guide.acknowledge", error, { sessionId: id });
+              }
+              const attachmentIds = e.message.userGuide.attachments.map((image) => image.id);
+              // Clear queue retention only when durable consumption is marked used.
+              void this.attachments
+                .markConsumed(id, attachmentIds)
+                .catch((error) => this.errors.write("guide.attachments", error, { sessionId: id }));
+            }
+          }
           if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
             void manager
@@ -3281,6 +3373,9 @@ export class SessionHost {
         });
         const execution = session.executeInput(prepared, inputContext);
         this.offerSubagentMessages(id, run);
+        void this.inputQueue
+          .offerGuides(id)
+          .catch((error) => this.errors.write("guide.offer", error, { sessionId: id }));
         void execution
           .then(
             () => this.settle(id, run),

@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { ConversationNavigator } from "../src/components/ConversationNavigator.tsx";
+import { conversationQueries } from "../src/conversation-run-partition.ts";
 import type { RunView } from "../src/types.ts";
 
 const run = (id: string): RunView => ({
@@ -34,16 +35,21 @@ it("jumps to the selected run and windows a long rail", async () => {
   const runs = Array.from({ length: 200 }, (_, index) => run(String(index)));
   const scroll = document.createElement("div");
   const first = document.createElement("div");
-  first.dataset.historyRun = "0";
+  first.dataset.queryKey = "0:user";
   const second = document.createElement("div");
-  second.dataset.historyRun = "1";
+  second.dataset.queryKey = "1:user";
   let secondTop = 100;
   vi.spyOn(first, "getBoundingClientRect").mockReturnValue({ top: -10 } as DOMRect);
   vi.spyOn(second, "getBoundingClientRect").mockImplementation(() => ({ top: secondTop }) as DOMRect);
   scroll.append(first, second);
   await act(async () =>
     root.render(
-      createElement(ConversationNavigator, { runs, onJump, busy: false, scrollRoot: { current: scroll } }),
+      createElement(ConversationNavigator, {
+        history: runs.flatMap(conversationQueries),
+        onJump,
+        busy: false,
+        scrollRoot: { current: scroll },
+      }),
     ),
   );
   const buttons = container.querySelectorAll<HTMLButtonElement>("button");
@@ -55,5 +61,5 @@ it("jumps to the selected run and windows a long rail", async () => {
   await act(async () => scroll.dispatchEvent(new Event("scroll")));
   expect(buttons[1]?.getAttribute("aria-current")).toBe("location");
   await act(async () => buttons[1]?.click());
-  expect(onJump).toHaveBeenCalledWith("1");
+  expect(onJump).toHaveBeenCalledWith("1", "1:user");
 });

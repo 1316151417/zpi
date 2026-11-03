@@ -16,6 +16,17 @@ export function createConversationFindIndex(
 ) {
   let markdown: ReturnType<typeof createMarkdownFindText> | undefined;
   const cache = new WeakMap<RunView, readonly FindTarget[]>();
+  const userMessageText = (message: string, paths?: readonly string[]): string => {
+    const user = parseSelectionPrompt(message).text;
+    const references = messageReferences(user, paths, commandNames, agentNames);
+    let text = "",
+      from = 0;
+    for (const mention of references.inline) {
+      text += user.slice(from, mention.start) + mention.label;
+      from = mention.end;
+    }
+    return text + user.slice(from) + references.trailing.map((reference) => reference.label).join("");
+  };
   const read = (run: RunView): readonly FindTarget[] => {
     const cached = cache.get(run);
     if (cached) return cached;
@@ -28,17 +39,16 @@ export function createConversationFindIndex(
           runId: run.runId,
         });
       if (!run.subagentNotification) {
-        const user = parseSelectionPrompt(run.userMessage).text;
-        let text = "",
-          from = 0;
-        const references = messageReferences(user, run.fileReferences, commandNames, agentNames);
-        for (const mention of references.inline) {
-          text += user.slice(from, mention.start) + mention.label;
-          from = mention.end;
-        }
         targets.push({
           key: `${run.runId}:user`,
-          text: text + user.slice(from) + references.trailing.map((reference) => reference.label).join(""),
+          text: userMessageText(run.userMessage, run.fileReferences),
+          runId: run.runId,
+        });
+      }
+      for (const guide of run.guides ?? []) {
+        targets.push({
+          key: `${run.runId}:guide:${guide.id}`,
+          text: userMessageText(guide.text, guide.fileReferences),
           runId: run.runId,
         });
       }

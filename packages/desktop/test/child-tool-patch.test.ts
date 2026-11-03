@@ -26,6 +26,8 @@ vi.mock("../src/renderer/store.ts", () => ({
   useStore: (select: (state: typeof f.state) => unknown) => select(f.state),
   drafts: {},
   loadEarlier: vi.fn(),
+  loadAllEarlier: vi.fn(),
+  historyRevision: () => 0,
   queueActions: () => ({}),
   report: vi.fn(),
   addConversationSelection: vi.fn(),

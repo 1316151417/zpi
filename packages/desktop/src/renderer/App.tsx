@@ -85,7 +85,9 @@ import {
   changeTaskGroups,
   drafts,
   focusComposer,
+  historyRevision,
   initialize,
+  loadAllEarlier,
   loadEarlier,
   markSessionRead,
   newSession,
@@ -429,6 +431,10 @@ export function App() {
     [selected],
   );
   const earlier = useCallback(() => (selected ? loadEarlier(selected) : Promise.resolve()), [selected]);
+  const allEarlier = useCallback(
+    () => (selected ? loadAllEarlier(selected) : Promise.resolve("stale" as const)),
+    [selected],
+  );
   const editMessage = useCallback(
     async (runId: string, input: EditUserInput) => {
       if (!selected) throw new Error("任务未选中");
@@ -1124,10 +1130,12 @@ export function App() {
                 sideChatDisabled={sideChatBlocked}
                 onEdit={editMessage}
                 onFork={forkMessage}
+                historyRevision={historyRevision(view.sessionId)}
                 historyCursor={state.historyCursor}
                 hasEarlier={state.historyCursor != null}
                 loadingEarlier={state.loadingEarlier}
                 onLoadEarlier={earlier}
+                onLoadAllEarlier={allEarlier}
                 onLink={openLink}
                 context={inputContext}
                 onChanges={openChanges}

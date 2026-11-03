@@ -19,6 +19,8 @@ vi.mock("../src/renderer/store.ts", () => ({
   questionDrafts: new Map(),
   report: vi.fn(),
   loadEarlier: vi.fn(),
+  loadAllEarlier: vi.fn(),
+  historyRevision: () => 0,
 }));
 vi.mock("../src/renderer/pane-store.ts", () => ({
   paneTask: vi.fn(),

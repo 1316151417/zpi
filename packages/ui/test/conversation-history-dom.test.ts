@@ -1,7 +1,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ConversationHistory } from "../src/components/ConversationHistory.tsx";
+import { ConversationHistory, historyChunkForRun } from "../src/components/ConversationHistory.tsx";
 import type { RunView } from "../src/types.ts";
 
 let container: HTMLDivElement, scroll: HTMLDivElement, reactRoot: Root;
@@ -242,4 +242,177 @@ it("restores details and nested scroll positions after virtual unmount", async (
   await intersect(10, true);
   expect(row(10).querySelector("details")?.open).toBe(true);
   expect(row(10).querySelector<HTMLElement>("[data-inner-scroll]")?.scrollLeft).toBe(91);
+});
+
+it("bounds placeholder nodes in long histories and restores details across chunk unmounts", async () => {
+  const longRuns: RunView[] = Array.from({ length: 1000 }, (_, i) => ({ ...runs[0], runId: `long-${i}` }));
+  const draw = (run: RunView) => createElement("details", {}, createElement("summary", {}, run.runId));
+  const renderWith = (id: string) =>
+    reactRoot.render(
+      createElement(ConversationHistory, {
+        runs: longRuns,
+        root: roots,
+        windowed: true,
+        pinnedRunIds: new Set([id]),
+        renderRun: draw,
+      }),
+    );
+  await act(async () => renderWith("long-0"));
+  expect(container.querySelectorAll("[data-history-chunk]")).toHaveLength(16);
+  expect(container.querySelectorAll("[data-history-run]").length).toBeLessThan(160);
+  const details = container.querySelector<HTMLDetailsElement>('[data-history-run="long-0"] details');
+  if (!details) throw new Error("missing pinned run");
+  await act(async () => {
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+  });
+  await act(async () => renderWith("long-300"));
+  expect(container.querySelector('[data-history-run="long-0"]')).toBeNull();
+  await act(async () => renderWith("long-0"));
+  expect(container.querySelector<HTMLDetailsElement>('[data-history-run="long-0"] details')?.open).toBe(true);
+});
+
+it("keeps the same tail DOM when a new run is appended", async () => {
+  const draw = (run: RunView) => createElement("details", {}, createElement("summary", {}, run.runId));
+  const renderItems = (items: RunView[]) =>
+    reactRoot.render(
+      createElement(ConversationHistory, { runs: items, root: roots, windowed: false, renderRun: draw }),
+    );
+  await act(async () => renderItems(runs.slice(0, 1)));
+  const original = row(0);
+  const details = original.querySelector("details");
+  if (!details) throw new Error("missing tail");
+  details.open = true;
+  await act(async () => renderItems(runs.slice(0, 2)));
+  expect(row(0)).toBe(original);
+  expect(row(0).querySelector("details")?.open).toBe(true);
+});
+
+it("retains details when prepending history moves a run into a different chunk", async () => {
+  const items: RunView[] = Array.from({ length: 300 }, (_, index) => ({
+    ...runs[0],
+    runId: `chunk-${index}`,
+  }));
+  const draw = (run: RunView) => createElement("details", {}, createElement("summary", {}, run.runId));
+  const renderItems = (values: RunView[]) =>
+    reactRoot.render(
+      createElement(ConversationHistory, {
+        runs: values,
+        root: roots,
+        windowed: true,
+        pinnedRunIds: new Set(["chunk-100"]),
+        renderRun: draw,
+      }),
+    );
+  await act(async () => renderItems(items));
+  const details = container.querySelector<HTMLDetailsElement>('[data-history-run="chunk-100"] details');
+  if (!details) throw new Error("missing pinned run");
+  await act(async () => {
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+  });
+  await act(async () => renderItems([{ ...runs[0], runId: "prepend" }, ...items]));
+  expect(container.querySelector<HTMLDetailsElement>('[data-history-run="chunk-100"] details')?.open).toBe(
+    true,
+  );
+});
+
+it("preserves selected and focused DOM when pages prepend and new turns append to chunked history", async () => {
+  const items: RunView[] = Array.from({ length: 500 }, (_, index) => ({
+    ...runs[0],
+    runId: `stable-${index}`,
+    userMessage: `Stable question ${index}`,
+  }));
+  const renderItems = (values: RunView[]) =>
+    reactRoot.render(
+      createElement(ConversationHistory, {
+        runs: values,
+        root: roots,
+        windowed: true,
+        pinnedRunIds: new Set(["stable-100"]),
+        renderRun,
+      }),
+    );
+  await act(async () => renderItems(items.slice(20, 400)));
+  const button = container.querySelector<HTMLButtonElement>('[data-history-run="stable-100"] button');
+  if (!button) throw new Error("missing selected message");
+  const range = document.createRange();
+  range.selectNodeContents(button);
+  await act(async () => {
+    button.focus();
+    document.getSelection()?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  const selected = document.getSelection()?.toString();
+  for (const values of [items.slice(10, 400), items.slice(0, 400), items]) {
+    await act(async () => renderItems(values));
+    expect(container.querySelector('[data-history-run="stable-100"] button')).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(document.getSelection()?.toString()).toBe(selected);
+    expect(
+      historyChunkForRun(
+        scroll,
+        values.findIndex((run) => run.runId === "stable-100"),
+      )?.contains(button),
+    ).toBe(true);
+  }
+  const leading = historyChunkForRun(scroll, 10);
+  expect(leading?.dataset.historyStart).toBe("0");
+  expect(leading?.dataset.historyEnd).toBe("20");
+  expect(leading?.style.height).toBe(`${20 * 320}px`);
+});
+
+it("defers switching to chunk layout while history contains a selection", async () => {
+  const items: RunView[] = Array.from({ length: 256 }, (_, index) => ({
+    ...runs[0],
+    runId: `threshold-${index}`,
+  }));
+  const renderItems = (values: RunView[]) =>
+    reactRoot.render(
+      createElement(ConversationHistory, { runs: values, root: roots, windowed: true, renderRun }),
+    );
+  await act(async () => renderItems(items.slice(0, 255)));
+  const tail = container.querySelector<HTMLElement>('[data-history-run="threshold-254"] article');
+  if (!tail) throw new Error("missing selected tail");
+  const range = document.createRange();
+  range.selectNodeContents(tail);
+  await act(async () => {
+    document.getSelection()?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  const selected = document.getSelection()?.toString();
+  await act(async () => renderItems(items));
+  expect(container.querySelectorAll("[data-history-chunk]")).toHaveLength(0);
+  expect(document.getSelection()?.toString()).toBe(selected);
+  await act(async () => {
+    document.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  expect(container.querySelectorAll("[data-history-chunk]")).toHaveLength(4);
+});
+
+it("preserves a reading anchor when switching to chunk layout", async () => {
+  const items: RunView[] = Array.from({ length: 256 }, (_, index) => ({
+    ...runs[0],
+    runId: `anchor-${index}`,
+  }));
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const y =
+      this === scroll
+        ? 0
+        : this.hasAttribute("data-history-run")
+          ? container.querySelector("[data-history-chunk]")
+            ? 120
+            : 80
+          : 0;
+    return { x: 0, y, top: y, bottom: y + 420, left: 0, right: 600, height: 420, width: 600, toJSON() {} };
+  });
+  const draw = (values: RunView[]) =>
+    reactRoot.render(
+      createElement(ConversationHistory, { runs: values, root: roots, windowed: true, renderRun }),
+    );
+  await act(async () => draw(items.slice(0, 255)));
+  scroll.scrollTop = 1000;
+  await act(async () => draw(items));
+  expect(scroll.scrollTop).toBe(1040);
 });

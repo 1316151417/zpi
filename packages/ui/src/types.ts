@@ -110,6 +110,7 @@ export interface SubagentNotification {
 export interface RunView {
   /** This page starts inside a run; its original input is on an older page. */
   historyContinuation?: boolean;
+  guides?: ({ id: string; afterBlockId?: string } & import("zpi-ai").UserGuide)[];
   subagentNotification?: SubagentNotification;
   runId: string;
   status: RunStatus;
@@ -200,6 +201,7 @@ export interface QueuedInput {
   attachments: Attachment[];
   selection: NonNullable<SessionControls["selection"]>;
   state: "queued" | "dispatching";
+  delivery?: "guide";
 }
 export interface InputQueue {
   items: QueuedInput[];

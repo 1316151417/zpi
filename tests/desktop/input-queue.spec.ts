@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import { buildSelectionPrompt } from "zpi-ui/selections";
-import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { clipboardText, select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
@@ -69,13 +69,17 @@ test("editing a queued quoted message preserves its reference cards and resubmit
 
 test("queued messages reorder, edit, delete, send immediately and persist through stop/restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-queue-ui-"));
-  const server = await fakeServer((body, res) => {
+  const releaseFirst = deferred();
+  const server = await fakeServer(async (body, res) => {
     const user =
       (body.messages as unknown as { role: string; content: string }[])
         .filter((m) => m.role === "user")
         .at(-1)?.content ?? "";
     send(res, chunk({ content: "reply" }));
-    if (!user.startsWith("阻塞")) done(res);
+    if (user === "阻塞一") {
+      await releaseFirst.promise;
+      if (!res.destroyed) done(res);
+    } else if (!user.startsWith("阻塞")) done(res);
   });
   let app: ElectronApplication | undefined;
   try {
@@ -137,10 +141,12 @@ test("queued messages reorder, edit, delete, send immediately and persist throug
     await rows.filter({ hasText: "待发送二" }).getByLabel("移除待发送消息", { exact: true }).click();
     await expect(rows).toHaveCount(2);
     await rows.first().getByRole("button", { name: "立即", exact: true }).click();
+    await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "running");
+    releaseFirst.resolve();
     await expect(rows).toHaveCount(0);
-    await expect(page.getByTestId("run")).toHaveCount(4);
-    await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "aborted");
-    await expect(page.getByTestId("run").nth(1).getByTestId("progress")).toContainText("已停止");
+    await expect(page.getByTestId("run")).toHaveCount(3);
+    await expect(page.getByTestId("run").nth(1)).toHaveAttribute("data-status", "completed");
+    await expect(page.getByTestId("run").nth(1).locator(".guide-message")).toContainText("待发送三");
     await expect(page.getByTestId("run").nth(1).locator(".answer")).toHaveText("reply");
     await expect(page.getByTestId("run").nth(1).locator(".run-notice")).toHaveCount(0);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");

@@ -143,13 +143,16 @@ export class AttachmentStore {
     for (const dir of await readdir(this.root, { withFileTypes: true })) {
       if (!dir.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(dir.name)) continue;
       try {
-        const candidates = (await this.list(dir.name))
-          .filter((item) => !item.used && !item.queued)
-          .map((item) => item.id);
+        const candidates = (await this.list(dir.name)).filter((item) => !item.used).map((item) => item.id);
         if (candidates.length && recoverUsed)
-          await this.markUsed(dir.name, recoverUsed(dir.name, candidates));
-        for (const item of await this.list(dir.name))
-          if (!item.used && !item.queued) await this.remove(dir.name, item.id);
+          await this.markConsumed(dir.name, recoverUsed(dir.name, candidates));
+        const recovered = await this.list(dir.name);
+        await this.markQueued(
+          dir.name,
+          recovered.filter((item) => item.used && item.queued).map((item) => item.id),
+          false,
+        );
+        for (const item of recovered) if (!item.used && !item.queued) await this.remove(dir.name, item.id);
         const keep = new Set(
           (await this.list(dir.name)).map((item) =>
             basename(
@@ -315,25 +318,25 @@ export class AttachmentStore {
       fileContext: files.join("\n\n"),
     };
   }
-  async markUsed(sessionId: string, ids: string[]) {
+  private async mark(sessionId: string, ids: string[], flags: Partial<Pick<Saved, "used" | "queued">>) {
     if (!ids.length) return;
+    const selected = new Set(ids);
     await this.serial(sessionId, async () => {
       const entries = await this.list(sessionId);
       atomicJson(
         join(this.directory(sessionId), "index.json"),
-        entries.map((e) => (ids.includes(e.id) ? { ...e, used: true } : e)),
+        entries.map((item) => (selected.has(item.id) ? { ...item, ...flags } : item)),
       );
     });
   }
-  async markQueued(sessionId: string, ids: string[], queued: boolean) {
-    if (!ids.length) return;
-    await this.serial(sessionId, async () => {
-      const entries = await this.list(sessionId);
-      atomicJson(
-        join(this.directory(sessionId), "index.json"),
-        entries.map((item) => (ids.includes(item.id) ? { ...item, queued } : item)),
-      );
-    });
+  markUsed(sessionId: string, ids: string[]) {
+    return this.mark(sessionId, ids, { used: true });
+  }
+  markQueued(sessionId: string, ids: string[], queued: boolean) {
+    return this.mark(sessionId, ids, { queued });
+  }
+  markConsumed(sessionId: string, ids: string[]) {
+    return this.mark(sessionId, ids, { used: true, queued: false });
   }
   async remove(sessionId: string, id: string) {
     this.imagePath(sessionId, id);

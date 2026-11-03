@@ -30,6 +30,7 @@ import {
   useState,
 } from "react";
 import { buildMentionMarkdown, imageLimits, parseMentions } from "zpi-coding-agent/input";
+import { conversationQueries, conversationRunPartition } from "../conversation-run-partition.ts";
 import {
   buildSelectionPrompt,
   type ConversationSelection,
@@ -70,7 +71,7 @@ import { AssistantTurnPreviews, usePreviewAutoOpen } from "./AssistantPreviewCar
 import { collectAnswerSources } from "./answer-sources.ts";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CompactionDivider } from "./CompactionDivider.tsx";
-import { ConversationHistory, historyWindowThreshold } from "./ConversationHistory.tsx";
+import { ConversationHistory, historyChunkForRun, historyWindowThreshold } from "./ConversationHistory.tsx";
 import { ConversationNavigator } from "./ConversationNavigator.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
@@ -384,6 +385,108 @@ const WorkProgress = memo(function WorkProgress({
     </div>
   );
 });
+function MessageReferences({
+  text,
+  fileReferences,
+  commandNames = [],
+  agentNames = [],
+  onFile,
+  onFileAction,
+}: {
+  text: string;
+  fileReferences?: readonly string[];
+  commandNames?: readonly string[];
+  agentNames?: readonly string[];
+  onFile?: FileOpenHandler;
+  onFileAction?: FileActionHandler;
+}) {
+  const references = messageReferences(text, fileReferences, commandNames, agentNames);
+  const content: ReactNode[] = [];
+  let offset = 0;
+  for (const mention of references.inline) {
+    content.push(text.slice(offset, mention.start));
+    const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
+    content.push(
+      <Reference
+        key={mention.start}
+        kind={mention.kind}
+        path={file?.path ?? mention.path}
+        location={file?.location}
+        label={mention.label}
+        onOpen={onFile}
+        onAction={onFileAction}
+      />,
+    );
+    offset = mention.end;
+  }
+  content.push(text.slice(offset));
+  for (const { path, label } of references.trailing) {
+    const file = splitFileLocation(path);
+    content.push(
+      <Reference
+        key={path}
+        kind="file"
+        path={file?.path ?? path}
+        location={file?.location}
+        label={label}
+        onOpen={onFile}
+        onAction={onFileAction}
+      />,
+    );
+  }
+  return content;
+}
+function GuideMessage({
+  guide,
+  runId,
+  sessionId,
+  context,
+  onFile,
+  onFileAction,
+}: {
+  guide: NonNullable<RunView["guides"]>[number];
+  runId: string;
+  sessionId?: string;
+  context?: ComposerContext;
+  onFile?: FileOpenHandler;
+  onFileAction?: FileActionHandler;
+}) {
+  const parsed = parseSelectionPrompt(guide.text);
+  const key = `${runId}:guide:${guide.id}`;
+  return (
+    <div className="user-message-row guide-message" data-guide-id={guide.id} data-query-key={key}>
+      <SelectionReferenceChip references={parsed.selections} onFile={onFile} />
+      {context &&
+        sessionId &&
+        guide.attachments.map((attachment) => (
+          <AttachmentPreview
+            key={attachment.id}
+            sessionId={sessionId}
+            image={attachment}
+            read={context.readAttachment}
+          />
+        ))}
+      <div className="user-message">
+        <UserMessageBody text={guide.text}>
+          <div
+            className="user-message-text"
+            data-find-key={key}
+            data-conversation-selectable="user"
+            data-selection-key={`${sessionId}:${key}`}
+          >
+            <MessageReferences
+              text={parsed.text}
+              fileReferences={guide.fileReferences}
+              onFile={onFile}
+              onFileAction={onFileAction}
+            />
+          </div>
+        </UserMessageBody>
+      </div>
+    </div>
+  );
+}
+
 export const RunGroup = memo(function RunGroup({
   run,
   previewServices,
@@ -474,17 +577,28 @@ export const RunGroup = memo(function RunGroup({
   const markers = run.compactions ?? [];
   const compacting = markers.some((marker) => marker.status === "running");
   const modelWaiting = !run.preparation && Boolean(run.modelWait || run.apiRetry?.attempt);
-  const items: (ProcessItem | { kind: "compaction"; id: string; marker: CompactionView })[] = [];
+  type Boundary =
+    | { kind: "compaction"; id: string; marker: CompactionView }
+    | { kind: "guide"; id: string; guide: NonNullable<RunView["guides"]>[number] };
+  const items: (ProcessItem | Boundary)[] = [];
+  const boundaries: Boundary[] = [
+    ...markers.map((marker) => ({ kind: "compaction" as const, id: marker.id, marker })),
+    ...(run.guides ?? []).map((guide) => ({ kind: "guide" as const, id: guide.id, guide })),
+  ];
+  const positions = new Map<string, number>();
+  if (boundaries.length)
+    for (const [index, block] of process.entries())
+      for (const id of [block.id, block.lastBlockId])
+        if (id !== undefined && !positions.has(id)) positions.set(id, index + 1);
+  const positioned = boundaries.map((item) => {
+    const after = item.kind === "guide" ? item.guide.afterBlockId : item.marker.afterBlockId;
+    return { item, position: after ? (positions.get(after) ?? 0) : 0 };
+  });
+  positioned.sort((left, right) => left.position - right.position);
   let offset = 0;
-  for (const marker of markers) {
-    const index = marker.afterBlockId
-      ? process.findIndex(
-          (block) => block.id === marker.afterBlockId || block.lastBlockId === marker.afterBlockId,
-        )
-      : -1;
-    const boundary = Math.max(offset, index + 1);
-    items.push(...processItems(process.slice(offset, boundary), false));
-    items.push({ kind: "compaction", id: marker.id, marker });
+  for (const { item, position } of positioned) {
+    const boundary = Math.max(offset, position);
+    items.push(...processItems(process.slice(offset, boundary), false), item);
     offset = boundary;
   }
   items.push(...processItems(process.slice(offset), run.status === "running" && !compacting));
@@ -544,51 +658,18 @@ export const RunGroup = memo(function RunGroup({
                     <div
                       className="user-message-text"
                       data-find-key={`${run.runId}:user`}
+                      data-query-key={`${run.runId}:user`}
                       data-conversation-selectable="user"
                       data-selection-key={`${sessionId}:${run.runId}:user`}
                     >
-                      {(() => {
-                        const parts: ReactNode[] = [];
-                        let previous = 0;
-                        const { inline: mentions, trailing } = messageReferences(
-                          parsedUser.text,
-                          run.fileReferences,
-                          commandNames,
-                          agentNames,
-                        );
-                        for (const mention of mentions) {
-                          const file = mention.kind === "file" ? splitFileLocation(mention.path) : null;
-                          parts.push(parsedUser.text.slice(previous, mention.start));
-                          parts.push(
-                            <Reference
-                              key={mention.start}
-                              kind={mention.kind}
-                              path={file?.path ?? mention.path}
-                              location={file?.location}
-                              label={mention.label}
-                              onOpen={onFile}
-                              onAction={onFileAction}
-                            />,
-                          );
-                          previous = mention.end;
-                        }
-                        parts.push(parsedUser.text.slice(previous));
-                        for (const { path, label } of trailing) {
-                          const file = splitFileLocation(path);
-                          parts.push(
-                            <Reference
-                              key={path}
-                              kind="file"
-                              path={file?.path ?? path}
-                              location={file?.location}
-                              label={label}
-                              onOpen={onFile}
-                              onAction={onFileAction}
-                            />,
-                          );
-                        }
-                        return parts;
-                      })()}
+                      <MessageReferences
+                        text={parsedUser.text}
+                        fileReferences={run.fileReferences}
+                        commandNames={commandNames}
+                        agentNames={agentNames}
+                        onFile={onFile}
+                        onFileAction={onFileAction}
+                      />
                     </div>
                   </UserMessageBody>
                 </div>
@@ -619,6 +700,16 @@ export const RunGroup = memo(function RunGroup({
             {items.map((item) =>
               item.kind === "compaction" ? (
                 <CompactionDivider key={item.id} marker={item.marker} />
+              ) : item.kind === "guide" ? (
+                <GuideMessage
+                  key={item.id}
+                  guide={item.guide}
+                  runId={run.runId}
+                  sessionId={sessionId}
+                  context={context}
+                  onFile={onFile}
+                  onFileAction={onFileAction}
+                />
               ) : item.kind !== "block" ? (
                 <StreamEntrance
                   key={item.id}
@@ -687,6 +778,18 @@ export const RunGroup = memo(function RunGroup({
           </div>
         )}
         {!open && markers.map((marker) => <CompactionDivider key={marker.id} marker={marker} />)}
+        {!open &&
+          run.guides?.map((guide) => (
+            <GuideMessage
+              key={guide.id}
+              guide={guide}
+              runId={run.runId}
+              sessionId={sessionId}
+              context={context}
+              onFile={onFile}
+              onFileAction={onFileAction}
+            />
+          ))}
         {run.notice && (
           <div className="run-notice" role="status">
             {run.notice}
@@ -792,6 +895,23 @@ export const RunGroup = memo(function RunGroup({
     </article>
   );
 });
+function historyViewportAnchor(root: HTMLElement): { id: string; top: number } | undefined {
+  const viewportTop = root.getBoundingClientRect().top;
+  const viewportBottom = viewportTop + root.clientHeight;
+  let overlapping: { id: string; top: number } | undefined;
+  for (const node of root.querySelectorAll<HTMLElement>("[data-history-run]")) {
+    const bounds = node.getBoundingClientRect();
+    if (!node.dataset.historyRun) continue;
+    // Filling the prefix of a partial first run can grow inside that run. Anchor
+    // the next fully visible run when available, rather than its unchanged wrapper top.
+    if (bounds.top >= viewportTop && bounds.top < viewportBottom)
+      return { id: node.dataset.historyRun, top: bounds.top };
+    if (!overlapping && bounds.top < viewportBottom && bounds.bottom > viewportTop)
+      overlapping = { id: node.dataset.historyRun, top: bounds.top };
+  }
+  return overlapping;
+}
+
 export function Conversation({
   view,
   onOpenSubagent,
@@ -808,6 +928,8 @@ export function Conversation({
   hasEarlier = false,
   loadingEarlier = false,
   onLoadEarlier,
+  onLoadAllEarlier,
+  historyRevision = 0,
   historyCursor,
   onEdit,
   onFork,
@@ -840,7 +962,9 @@ export function Conversation({
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
   onLoadEarlier?: () => Promise<void>;
+  onLoadAllEarlier?: () => Promise<"loaded" | "stale" | "not-enough">;
   historyCursor?: number | null;
+  historyRevision?: number;
   view: SessionView;
   previewServices?: PreviewServices;
   workspace?: LinkContext;
@@ -936,8 +1060,11 @@ export function Conversation({
             setBlocks((current) => (current[match.key] ? current : { ...current, [match.key]: true }));
           }
           const row = root.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(runId)}"]`);
-          if (row && !target)
-            root.scrollTop += row.getBoundingClientRect().top - root.getBoundingClientRect().top;
+          const index = view.runs.findIndex((run) => run.runId === runId);
+          const chunk = index < 0 ? undefined : historyChunkForRun(root, index);
+          const location = row ?? chunk;
+          if (location && !target)
+            root.scrollTop += location.getBoundingClientRect().top - root.getBoundingClientRect().top;
         }
         return;
       }
@@ -964,7 +1091,7 @@ export function Conversation({
         requestAnimationFrame(scroll);
       } else scroll();
     },
-    [sessionId, findQuery],
+    [sessionId, findQuery, view.runs],
   );
   const commandNames = useMemo(() => customCommandNames(suggestions ?? []), [suggestions]);
   const agentNames = useMemo(() => subagentNames(suggestions ?? []), [suggestions]);
@@ -1029,29 +1156,71 @@ export function Conversation({
     observer.observe(element);
     return () => observer.disconnect();
   }, [sessionId]);
-  const navigableRuns = useMemo(
-    () =>
-      view.runs.filter(
-        (run) =>
-          !run.historyContinuation &&
-          !run.subagentNotification &&
-          run.kind !== "compact" &&
-          (run.userMessage.trim() || run.attachments?.length),
-      ),
-    [view.runs],
+  const runPartition = conversationRunPartition(view.runs);
+  const navigationHistory = useMemo(
+    () => runPartition.history.flatMap(conversationQueries),
+    [runPartition.history],
   );
-  const jumpNavigator = useCallback((id: string) => {
+  const navigationTail = useMemo(
+    () => (runPartition.tail ? conversationQueries(runPartition.tail) : []),
+    [runPartition.tail],
+  );
+  const navigatorCount = navigationHistory.length + navigationTail.length;
+  const navigatorRuns = useRef(view.runs);
+  navigatorRuns.current = view.runs;
+  const navigatorJumpFrame = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (navigatorJumpFrame.current !== undefined) cancelAnimationFrame(navigatorJumpFrame.current);
+    },
+    [sessionId],
+  );
+  const jumpNavigator = useCallback((id: string, queryKey = `${id}:user`) => {
     const root = ref.current;
-    const target = root?.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(id)}"]`);
-    if (!root || !target) return;
-    scrollNavigation.current++;
+    if (!root) return;
+    const target = root.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(id)}"]`);
+    const index = navigatorRuns.current.findIndex((run) => run.runId === id);
+    const chunk = index < 0 ? undefined : historyChunkForRun(root, index);
+    if (!target && !chunk) return;
+    if (navigatorJumpFrame.current !== undefined) cancelAnimationFrame(navigatorJumpFrame.current);
+    const navigation = ++scrollNavigation.current;
     readingReady.current = true;
     following.current = false;
     setNavigatorTarget(id);
-    root.scrollTo({
-      top: root.scrollTop + target.getBoundingClientRect().top - root.getBoundingClientRect().top,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    });
+    // Bring the placeholder into view first so its actual message can mount and be measured.
+    root.scrollTop +=
+      ((target ?? chunk)?.getBoundingClientRect().top ?? 0) - root.getBoundingClientRect().top;
+    let attempts = 120;
+    let commandedTop: number | undefined;
+    let stableFrames = 0;
+    const align = () => {
+      navigatorJumpFrame.current = undefined;
+      if (ref.current !== root || navigation !== scrollNavigation.current) return;
+      const message =
+        root.querySelector<HTMLElement>(`[data-query-key="${CSS.escape(queryKey)}"]`) ??
+        root.querySelector<HTMLElement>(`[data-find-key="${CSS.escape(queryKey)}"]`);
+      if (message) {
+        const top = root.scrollTop + message.getBoundingClientRect().top - root.getBoundingClientRect().top;
+        if (commandedTop === undefined || Math.abs(top - commandedTop) > 1) {
+          root.scrollTo({
+            top,
+            // Nearby rows can mount and resize during the initial smooth scroll.
+            // Correct a changed destination immediately, then wait for layout to settle.
+            behavior:
+              commandedTop !== undefined || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                ? "auto"
+                : "smooth",
+          });
+          commandedTop = top;
+          stableFrames = 0;
+        }
+        const destination = Math.max(0, Math.min(top, root.scrollHeight - root.clientHeight));
+        stableFrames = Math.abs(root.scrollTop - destination) <= 1 ? stableFrames + 1 : 0;
+        if (stableFrames >= 3) return;
+      }
+      if (--attempts > 0) navigatorJumpFrame.current = requestAnimationFrame(align);
+    };
+    navigatorJumpFrame.current = requestAnimationFrame(align);
   }, []);
   useEffect(() => {
     const navigate = (event: Event) => {
@@ -1059,7 +1228,10 @@ export function Conversation({
       const root = ref.current;
       if (!root || detail.sessionId !== view.sessionId) return;
       const target = root.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(detail.runId)}"]`);
-      if (!target) return;
+      if (!target) {
+        jumpNavigator(detail.runId);
+        return;
+      }
       scrollNavigation.current++;
       readingReady.current = true;
       following.current = false;
@@ -1069,7 +1241,7 @@ export function Conversation({
     };
     window.addEventListener("zpi:scroll-to-run", navigate);
     return () => window.removeEventListener("zpi:scroll-to-run", navigate);
-  }, [view.sessionId]);
+  }, [view.sessionId, jumpNavigator]);
 
   // An upward wheel gesture is reading intent; disabling following here wins the race
   // against the next stream chunk's stick-to-bottom snap reverting the user's scroll.
@@ -1077,6 +1249,10 @@ export function Conversation({
     const root = ref.current;
     if (!root) return;
     const wheel = (event: WheelEvent) => {
+      if (navigatorJumpFrame.current !== undefined) {
+        cancelAnimationFrame(navigatorJumpFrame.current);
+        navigatorJumpFrame.current = undefined;
+      }
       readingReady.current = true;
       // At the top of the conversation an upward gesture has nothing to reveal.
       if (event.deltaY >= 0 || root.scrollTop <= 0) return;
@@ -1112,7 +1288,8 @@ export function Conversation({
   const loadHistory = useCallback(
     (background = false) => {
       const el = ref.current;
-      if (!el || !hasEarlier || loadingEarlier || !onLoadEarlier || historyRequest.current) return;
+      const load = background ? onLoadAllEarlier : onLoadEarlier;
+      if (!el || !hasEarlier || loadingEarlier || !load || historyRequest.current) return;
       const request = {};
       historyRequest.current = request;
       setHistoryPending(true);
@@ -1123,20 +1300,18 @@ export function Conversation({
         top: el.scrollTop,
         navigation: scrollNavigation.current,
       };
-      const viewportTop = el.getBoundingClientRect().top;
-      for (const node of el.querySelectorAll<HTMLElement>("[data-history-run]")) {
-        const top = node.getBoundingClientRect().top;
-        if (top >= viewportTop) {
-          prepend.current.anchor = { id: node.dataset.historyRun ?? "", top };
-          break;
-        }
-      }
-      setHistoryError("");
-      void onLoadEarlier()
+      prepend.current.anchor = historyViewportAnchor(el);
+      if (!background) setHistoryError("");
+      return load()
+        .then((result) => {
+          if (background && result !== "loaded" && historyRequest.current === request) prepend.current = null;
+          return result;
+        })
         .catch((error) => {
           if (historyRequest.current !== request) return;
           prepend.current = null;
-          setHistoryError(userErrorMessage(error));
+          if (!background) setHistoryError(userErrorMessage(error));
+          return "failure" as const;
         })
         .finally(() => {
           if (historyRequest.current === request) {
@@ -1145,24 +1320,64 @@ export function Conversation({
           }
         });
     },
-    [hasEarlier, loadingEarlier, onLoadEarlier, historyCursor],
+    [hasEarlier, loadingEarlier, onLoadEarlier, onLoadAllEarlier, historyCursor],
   );
-  const navigatorLoadAttempt = useRef("");
+  const navigatorAttempt = useRef({
+    key: "",
+    status: "idle" as "idle" | "loading" | "waiting" | "done",
+    failures: 0,
+    timer: 0,
+  });
+  const [navigatorRetry, setNavigatorRetry] = useState(0);
+  useEffect(
+    () => () => {
+      window.clearTimeout(navigatorAttempt.current.timer);
+      navigatorAttempt.current.key = "";
+    },
+    [sessionId],
+  );
   useEffect(() => {
-    if (!navigatorWide || !hasEarlier || loadingEarlier || historyPending || !onLoadEarlier) return;
-    const attempt = `${sessionId}:${historyCursor}`;
-    if (navigatorLoadAttempt.current === attempt) return;
-    navigatorLoadAttempt.current = attempt;
-    loadHistory(true);
+    if (!navigatorWide || !hasEarlier || loadingEarlier || historyPending || !onLoadAllEarlier) return;
+    const attempt = navigatorAttempt.current;
+    const key = `${sessionId}:${historyRevision}:${historyCursor}:${navigatorCount}`;
+    if (attempt.key !== key) {
+      window.clearTimeout(attempt.timer);
+      Object.assign(attempt, { key, status: "idle", failures: 0, timer: 0 });
+    }
+    if (attempt.status !== "idle") return;
+    const request = loadHistory(true);
+    if (!request) return;
+    attempt.status = "loading";
+    void request.then((result) => {
+      if (attempt.key !== key) return;
+      if (result === "failure") {
+        const delay = [250, 1000][attempt.failures++];
+        if (delay === undefined) {
+          attempt.status = "done";
+          return;
+        }
+        attempt.status = "waiting";
+        attempt.timer = window.setTimeout(() => {
+          attempt.status = "idle";
+          setNavigatorRetry((value) => value + 1);
+        }, delay);
+      } else if (result === "stale") {
+        attempt.status = "idle";
+        setNavigatorRetry((value) => value + 1);
+      } else attempt.status = "done";
+    });
   }, [
     navigatorWide,
     hasEarlier,
     loadingEarlier,
     historyPending,
-    onLoadEarlier,
+    onLoadAllEarlier,
     sessionId,
     historyCursor,
+    historyRevision,
     loadHistory,
+    navigatorRetry,
+    navigatorCount,
   ]);
   const findLoadAttempt = useRef("");
   useEffect(() => {
@@ -1443,6 +1658,13 @@ export function Conversation({
           onScroll={() => {
             const el = ref.current;
             if (el) {
+              // A reader can keep scrolling while an asynchronous page is loading.
+              // Keep its baseline current instead of restoring the request's old viewport.
+              if (prepend.current && prepend.current.cursor === historyCursor) {
+                prepend.current.top = el.scrollTop;
+                prepend.current.height = el.scrollHeight;
+                prepend.current.anchor = historyViewportAnchor(el);
+              }
               // Layout growth and delayed diagram rendering must not disable following.
               // Only movement towards older content changes the reading mode.
               const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -1487,7 +1709,8 @@ export function Conversation({
         </div>
         {navigatorWide && (
           <ConversationNavigator
-            runs={navigableRuns}
+            history={navigationHistory}
+            tail={navigationTail}
             scrollRoot={ref}
             onJump={jumpNavigator}
             busy={hasEarlier || loadingEarlier}

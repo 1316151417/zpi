@@ -1,5 +1,6 @@
 import { workDuration } from "./components/process-presentation.ts";
 import { cancelledWebTool, normalizeWebToolDetails } from "./components/web-tool-data.ts";
+import { advanceConversationRunPartition } from "./conversation-run-partition.ts";
 import type { DesktopEventEnvelope, RunView, SessionView, ViewBlock } from "./types.ts";
 import { resultText } from "./types.ts";
 export function emptySession(sessionId: string, title = "新对话"): SessionView {
@@ -14,6 +15,7 @@ export function sessionViewBytes(view: SessionView): number {
       (run.error?.length ?? 0) +
       (run.notice?.length ?? 0) +
       (run.preparation?.length ?? 0);
+    for (const guide of run.guides ?? []) chars += guide.text.length + guide.fileReferences.join("").length;
     for (const marker of run.compactions ?? [])
       chars += marker.id.length + (marker.afterBlockId?.length ?? 0) + (marker.error?.length ?? 0);
     for (const block of run.orderedBlocks) {
@@ -68,7 +70,8 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   if (event.type === "queue_changed") return { ...view, seq, queue: event.queue };
   if (event.type === "question_changed") return { ...view, seq, question: event.question };
   if (event.type === "environment_changed") return { ...view, seq };
-  let index = view.runs.findIndex((r) => r.runId === runId);
+  let index =
+    view.runs.at(-1)?.runId === runId ? view.runs.length - 1 : view.runs.findIndex((r) => r.runId === runId);
   if (index < 0 && event.type !== "started") return { ...view, seq };
   const runs = [...view.runs];
   if (index < 0) {
@@ -298,6 +301,16 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
       });
   } else if (event.type === "message_end") {
     const m = event.message;
+    if (m.role === "user" && m.inputId && m.userGuide) {
+      const guides = run.guides ?? [];
+      if (!guides.some((guide) => guide.id === m.inputId)) {
+        run.guides = [
+          ...guides,
+          { ...m.userGuide, id: m.inputId, afterBlockId: run.orderedBlocks.at(-1)?.id },
+        ];
+        run.finalAnswerBlockIds = [];
+      }
+    }
     if (m.role === "assistant") {
       // History has message facts rather than live retry events. Close the failed
       // attempt before projecting its replacement, just as the live retry does.
@@ -387,6 +400,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
         });
     }
   }
+  advanceConversationRunPartition(view.runs, runs, index);
   return { ...view, seq, runs };
 }
 export function progressSummary(run: RunView, now = Date.now()): string {
@@ -422,34 +436,45 @@ function normalizeWebHistory(view: SessionView): SessionView {
 }
 
 export function mergeHistory(older: SessionView, newer: SessionView): SessionView {
-  const runs = [...older.runs];
+  return mergeHistoryPages([older, newer]);
+}
+
+/** Merge oldest to newest in one pass, including runs split across page boundaries. */
+export function mergeHistoryPages(pages: readonly SessionView[]): SessionView {
+  const newest = pages.at(-1);
+  if (!newest) throw new Error("Cannot merge an empty history");
+  const runs: RunView[] = [];
   const indices = new Map<string, number>();
-  for (const [index, run] of runs.entries()) {
-    if (!indices.has(run.runId)) indices.set(run.runId, index);
-  }
-  for (const run of newer.runs) {
-    const index = indices.get(run.runId);
-    if (index === undefined) {
-      indices.set(run.runId, runs.length);
-      runs.push(run);
-    } else {
-      const blocks = new Map(runs[index].orderedBlocks.map((b) => [b.id, b]));
-      for (const block of run.orderedBlocks) blocks.set(block.id, block);
-      const compactions = new Map(runs[index].compactions?.map((marker) => [marker.id, marker]));
-      for (const marker of run.compactions ?? []) compactions.set(marker.id, marker);
-      const input = run.historyContinuation && !runs[index].historyContinuation ? runs[index] : run;
-      runs[index] = {
-        ...run,
-        historyContinuation: input.historyContinuation,
-        userMessage: input.userMessage,
-        fileReferences: input.fileReferences,
-        attachments: input.attachments,
-        subagentNotification: input.subagentNotification,
-        kind: input.kind,
-        orderedBlocks: [...blocks.values()],
-        compactions: [...compactions.values()],
-      };
+  for (const page of pages)
+    for (const run of page.runs) {
+      const index = indices.get(run.runId);
+      if (index === undefined) {
+        indices.set(run.runId, runs.length);
+        runs.push(run);
+      } else {
+        const blocks = new Map(runs[index].orderedBlocks.map((b) => [b.id, b]));
+        for (const block of run.orderedBlocks) blocks.set(block.id, block);
+        const compactions = new Map(runs[index].compactions?.map((marker) => [marker.id, marker]));
+        for (const marker of run.compactions ?? []) compactions.set(marker.id, marker);
+        const guides = new Map(runs[index].guides?.map((guide) => [guide.id, guide]));
+        for (const guide of run.guides ?? []) {
+          const previous = guides.get(guide.id);
+          guides.set(guide.id, previous?.afterBlockId && !guide.afterBlockId ? previous : guide);
+        }
+        const input = run.historyContinuation && !runs[index].historyContinuation ? runs[index] : run;
+        runs[index] = {
+          ...run,
+          historyContinuation: input.historyContinuation,
+          userMessage: input.userMessage,
+          fileReferences: input.fileReferences,
+          attachments: input.attachments,
+          subagentNotification: input.subagentNotification,
+          kind: input.kind,
+          orderedBlocks: [...blocks.values()],
+          compactions: [...compactions.values()],
+          ...(guides.size ? { guides: [...guides.values()] } : {}),
+        };
+      }
     }
-  }
-  return normalizeWebHistory({ ...newer, runs });
+  return normalizeWebHistory({ ...newest, runs });
 }

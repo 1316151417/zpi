@@ -19,23 +19,10 @@ export const imageLimits = {
   pixels: 40_000_000,
   messagePixels: 80_000_000,
 } as const;
-export interface ImageAttachment {
-  id: string;
-  name: string;
-  mimeType: string;
-  width: number;
-  height: number;
-  size: number;
-  warning?: string;
-}
-export interface FileAttachment {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  path: string;
-}
-export type Attachment = ImageAttachment | FileAttachment;
+
+import type { Attachment, ImageAttachment } from "zpi-ai";
+
+export type { Attachment, FileAttachment, ImageAttachment } from "zpi-ai";
 export function isImageAttachment(attachment: Attachment): attachment is ImageAttachment {
   return "width" in attachment;
 }

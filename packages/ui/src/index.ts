@@ -22,6 +22,7 @@ export { ToolFilePreview } from "./components/ToolBlock.tsx";
 export { toolFile } from "./components/tool-presentation.ts";
 export { useSelectionStableValue } from "./components/use-selection-stable-value.ts";
 export { useTextFind } from "./components/use-text-find.ts";
+export { isNavigableRun } from "./conversation-run-partition.ts";
 export type { ConversationSelection } from "./conversation-selections.ts";
 export {
   appendSelection,
@@ -43,7 +44,14 @@ export type {
 export { resolveLinkTarget, webOpenTarget } from "./link-target.ts";
 export type { PreviewServices } from "./preview/preview-lifecycle.ts";
 export { createPreviewLoader } from "./preview/preview-lifecycle.ts";
-export { emptySession, mergeHistory, progressSummary, reduceSession, sessionViewBytes } from "./reducer.ts";
+export {
+  emptySession,
+  mergeHistory,
+  mergeHistoryPages,
+  progressSummary,
+  reduceSession,
+  sessionViewBytes,
+} from "./reducer.ts";
 export type { ReviewDiffData } from "./review-diff.ts";
 export { reviewFindTargets } from "./review-find.ts";
 export type * from "./types.ts";

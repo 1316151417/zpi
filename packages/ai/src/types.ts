@@ -201,9 +201,33 @@ export interface SystemMessage {
   toolsAdded?: Tool[];
   toolsRemoved?: { name: string }[];
 }
+export interface ImageAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  size: number;
+  warning?: string;
+}
+export interface FileAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  path: string;
+}
+export type Attachment = ImageAttachment | FileAttachment;
+export interface UserGuide {
+  text: string;
+  fileReferences: string[];
+  attachments: Attachment[];
+}
 export interface UserMessage {
   /** Stable identity for queued input; never sent as provider message content. */
   inputId?: string;
+  /** Display-only provenance for a real user input accepted inside an existing run. */
+  userGuide?: UserGuide;
   cacheControl?: CacheControl;
   synthetic?: boolean;
   role: "user";

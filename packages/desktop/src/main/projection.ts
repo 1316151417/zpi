@@ -263,7 +263,15 @@ function mergeLegacyReasoningSummaries(message: Message): Message {
 }
 
 function visibleMessage(message: Message): Message {
-  if (message.role === "user") return { role: "user", content: "", timestamp: message.timestamp };
+  if (message.role === "user")
+    return {
+      role: "user",
+      content: "",
+      timestamp: message.timestamp,
+      ...(!message.synthetic && message.inputId && message.userGuide
+        ? { inputId: message.inputId, userGuide: message.userGuide }
+        : {}),
+    };
   if (message.role === "system") return { role: "system", content: "", timestamp: message.timestamp };
   if (message.role === "toolResult") {
     const fileChange = fileChangeSummary(message.details);

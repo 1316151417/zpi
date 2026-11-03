@@ -16,6 +16,7 @@ test("scrolling near older messages loads one page, preserves the anchor and can
   try {
     app = await launchDesktop({ dir, url: "" });
     let page = await app.firstWindow();
+    await page.setViewportSize({ width: 700, height: 800 });
     await expect(page.getByTestId("run")).toHaveCount(10);
     await expect(page.getByRole("button", { name: "回到最新" })).toBeHidden();
     // The first run may be a continuation whose user header arrives in the next page.
@@ -38,6 +39,7 @@ test("scrolling near older messages loads one page, preserves the anchor and can
     await app.close();
     app = await launchDesktop({ dir, url: "" });
     page = await app.firstWindow();
+    await page.setViewportSize({ width: 700, height: 800 });
     await expect(page.locator(`.session-row[data-session-id="${seed.id}"]`)).toBeVisible();
     await expect(page.getByTestId("run")).toHaveCount(20);
     await expect
@@ -66,6 +68,7 @@ test("automatic history failure reports an error without looping, and explicit r
   try {
     app = await launchDesktop({ dir, url: "" });
     const page = await app.firstWindow();
+    await page.setViewportSize({ width: 700, height: 800 });
     await expect(page.getByTestId("run")).toHaveCount(10);
     await app.evaluate(({ ipcMain }) => {
       const bus = ipcMain as typeof ipcMain & {
@@ -96,6 +99,39 @@ test("automatic history failure reports an error without looping, and explicit r
     await expect(page.getByTestId("run")).toHaveCount(20);
     await expect(page.locator(".conversation").getByRole("alert")).toHaveCount(0);
     expect(await calls()).toBe(2);
+  } finally {
+    await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
+  }
+});
+
+test("wide navigator loads the full directory and jumps to an unmounted older message", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-history-navigator-"));
+  const cwd = join(dir, "workspace");
+  await mkdir(cwd);
+  seedHistory(dir, cwd, 100);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: "" });
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const rail = page.getByRole("navigation", { name: "对话问题导航" });
+    await expect(rail).toBeVisible();
+    await expect(rail).toHaveAttribute("aria-busy", "false", { timeout: 15000 });
+    await rail.locator(".conversation-navigator-rail").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    const first = rail.getByRole("button", { name: "跳转到第 1 条问题" });
+    await expect(first).toBeVisible();
+    await first.click();
+    const message = page.locator('[data-find-key="run-0:user"]');
+    await expect(message).toBeVisible();
+    await expect
+      .poll(async () => {
+        const bounds = await message.boundingBox();
+        const viewport = await page.locator(".conversation").boundingBox();
+        return Math.abs((bounds?.y ?? 0) - (viewport?.y ?? 0));
+      })
+      .toBeLessThan(12);
   } finally {
     await runCleanup([() => rm(dir, { recursive: true, force: true }), () => app?.close()]);
   }

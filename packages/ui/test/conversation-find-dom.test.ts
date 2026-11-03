@@ -406,3 +406,203 @@ it.each([1, 60])("keeps a clamped pixel bookmark until content can restore it (%
     vi.useRealTimers();
   }
 });
+
+it("retries background directory hydration without showing a history error", async () => {
+  vi.stubGlobal("CSS", { highlights: new Map(), escape: (value: string) => value });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(900);
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const loadAll = vi.fn().mockRejectedValueOnce(new Error("temporary")).mockResolvedValue("not-enough");
+  const run: RunView = {
+    runId: "run",
+    status: "completed",
+    startedAt: 1,
+    userMessage: "Question",
+    orderedBlocks: [],
+    finalAnswerBlockIds: [],
+  };
+  await act(async () =>
+    root.render(
+      createElement(Conversation, {
+        view: { sessionId: "retry-directory", seq: 0, title: "test", runs: [run] },
+        onLink: vi.fn(),
+        hasEarlier: true,
+        historyCursor: 10,
+        onLoadEarlier: vi.fn(),
+        onLoadAllEarlier: loadAll,
+        persistReading: false,
+      }),
+    ),
+  );
+  await vi.waitFor(() => expect(loadAll).toHaveBeenCalledTimes(2));
+  expect(container.textContent).not.toContain("temporary");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("aligns a navigator jump and corrects its destination when virtual rows change height", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(900);
+  vi.stubGlobal("CSS", { highlights: new Map(), escape: (value: string) => value });
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  const scrollTo = vi.spyOn(HTMLElement.prototype, "scrollTo").mockImplementation(() => {});
+  let messageTop = 120;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const top =
+      this.dataset.findKey === "second:user" ? messageTop : this.dataset.historyRun === "second" ? 80 : 0;
+    return { top, bottom: top + 10, height: 10, left: 0, right: 10, width: 10, x: 0, y: top, toJSON() {} };
+  });
+  const runs: RunView[] = ["first", "second"].map((runId) => ({
+    runId,
+    status: "completed",
+    startedAt: 1,
+    userMessage: runId,
+    orderedBlocks: [],
+    finalAnswerBlockIds: [],
+  }));
+  await act(async () =>
+    root.render(
+      createElement(Conversation, {
+        view: { sessionId: "jump", seq: 0, title: "test", runs },
+        onLink: vi.fn(),
+        persistReading: false,
+      }),
+    ),
+  );
+  const button = container.querySelector<HTMLButtonElement>('[aria-label="跳转到第 2 条问题"]');
+  expect(button).not.toBeNull();
+  await act(async () => button?.click());
+  await act(async () => {
+    for (const frame of frames.splice(0)) frame(0);
+  });
+  expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 200, behavior: "auto" }));
+  messageTop = 160;
+  await act(async () => {
+    for (const frame of frames.splice(0)) frame(16);
+  });
+  expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 240, behavior: "auto" }));
+});
+
+it("rescans a previously incomplete directory after its history revision changes", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(900);
+  vi.stubGlobal("CSS", { highlights: new Map(), escape: (value: string) => value });
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const loadAll = vi.fn().mockResolvedValue("not-enough");
+  const run: RunView = {
+    runId: "run",
+    status: "completed",
+    startedAt: 1,
+    userMessage: "Question",
+    orderedBlocks: [],
+    finalAnswerBlockIds: [],
+  };
+  const render = (historyRevision: number) =>
+    root.render(
+      createElement(Conversation, {
+        view: { sessionId: "revision-directory", seq: 0, title: "test", runs: [run] },
+        onLink: vi.fn(),
+        hasEarlier: true,
+        historyCursor: 10,
+        historyRevision,
+        onLoadEarlier: vi.fn(),
+        onLoadAllEarlier: loadAll,
+        persistReading: false,
+      }),
+    );
+  await act(async () => render(1));
+  expect(loadAll).toHaveBeenCalledTimes(1);
+  await act(async () => render(1));
+  expect(loadAll).toHaveBeenCalledTimes(1);
+  await act(async () => render(2));
+  expect(loadAll).toHaveBeenCalledTimes(2);
+});
+
+it("preserves the latest reading position when the user scrolls during a pending history page", async () => {
+  vi.stubGlobal("CSS", { highlights: new Map(), escape: (value: string) => value });
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
+  let offset = 500;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const scroll = container.querySelector<HTMLElement>(".conversation");
+    const y =
+      this.dataset.historyRun === "anchor"
+        ? offset - (scroll?.scrollTop ?? 0)
+        : this.dataset.historyRun === "tail"
+          ? offset + 100 - (scroll?.scrollTop ?? 0)
+          : 0;
+    return { top: y, bottom: y + 100, height: 100, left: 0, right: 600, width: 600, x: 0, y, toJSON() {} };
+  });
+  const run = (runId: string): RunView => ({
+    runId,
+    userMessage: runId,
+    status: "completed",
+    orderedBlocks: [],
+    finalAnswerBlockIds: [],
+    startedAt: 1,
+  });
+  const runs = [run("anchor"), run("tail")];
+  let finish!: () => void;
+  const load = () =>
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+  const render = (cursor: number) =>
+    root.render(
+      createElement(Conversation, {
+        view: { sessionId: "scroll-pending", seq: 1, title: "test", runs },
+        onLink: vi.fn(),
+        historyCursor: cursor,
+        hasEarlier: true,
+        onLoadEarlier: load,
+        persistReading: false,
+      }),
+    );
+  await act(async () => render(20));
+  const scroll = container.querySelector<HTMLElement>(".conversation");
+  if (!scroll) throw new Error("missing conversation");
+  scroll.scrollTop = 200;
+  await act(async () => container.querySelector<HTMLButtonElement>(".load-history")?.click());
+  await act(async () => {
+    scroll.scrollTop = 400;
+    scroll.dispatchEvent(new Event("scroll"));
+  });
+  offset = 700;
+  await act(async () => {
+    render(10);
+    finish();
+  });
+  expect(scroll.scrollTop).toBe(600);
+});
