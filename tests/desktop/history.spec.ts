@@ -22,6 +22,8 @@ test("packaged ten complete Agent calls, upward paging, reading position and res
   try {
     app = await launchDesktop({ dir, url: server.url, packaged: true });
     let page = await app.firstWindow();
+    // Wide conversations preload the navigator directory; verify incremental paging in a narrow pane.
+    await page.setViewportSize({ width: 700, height: 800 });
     await expect(page.getByTestId("run")).toHaveCount(10);
     const first = page.getByTestId("run").filter({ hasText: "用户上下文 20" });
     const before = await page.locator(".conversation").evaluate((el) => {
@@ -42,6 +44,7 @@ test("packaged ten complete Agent calls, upward paging, reading position and res
     await app.close();
     app = await launchDesktop({ dir, url: server.url, packaged: true });
     page = await app.firstWindow();
+    await page.setViewportSize({ width: 700, height: 800 });
     await expect(page.getByTestId("run")).toHaveCount(20);
     await expect
       .poll(() => page.locator(".conversation").evaluate((el) => el.scrollTop))
@@ -66,9 +69,17 @@ test("packaged ten complete Agent calls, upward paging, reading position and res
     );
     await expect(page.locator(".topbar-title")).toHaveText(title);
     await expect(page.locator(".topbar-title")).toHaveAttribute("title", title);
-    await expect(
-      page.locator(`.recent-sessions .session-row[data-session-id="${seed.id}"] .session-name`),
-    ).toHaveAttribute("title", title);
+    const name = page.locator(`.recent-sessions .session-row[data-session-id="${seed.id}"] .session-name`);
+    await expect(name.locator('[data-task-title-copy="original"]')).toHaveText(title);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await name.hover();
+    await expect
+      .poll(() =>
+        name
+          .locator("[data-task-title-marquee-track]")
+          .evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running")),
+      )
+      .toBe(true);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
