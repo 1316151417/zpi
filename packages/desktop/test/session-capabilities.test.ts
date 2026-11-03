@@ -123,12 +123,13 @@ test("snapshots custom instructions on first send and keeps them when global set
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults web search off and other capabilities on, preserving saved choices in SQLite", async () => {
+test("defaults web search and Codex subagent prompts off, preserving other capabilities, preserving saved choices in SQLite", async () => {
   const f = await fixture();
   expect(f.settings.get().capabilities).toEqual({
     webSearch: false,
     communicationStyle: true,
     subagents: true,
+    codexSubagentPrompt: false,
     askUserQuestion: true,
     toolBatching: true,
     fileLinks: true,
@@ -142,6 +143,7 @@ test("defaults web search off and other capabilities on, preserving saved choice
     webSearch: false,
     communicationStyle: true,
     subagents: true,
+    codexSubagentPrompt: false,
     askUserQuestion: false,
     toolBatching: true,
     fileLinks: true,

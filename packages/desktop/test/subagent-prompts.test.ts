@@ -3,7 +3,9 @@ import { expect, test } from "vitest";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { prepareTaskOutputArguments } from "../src/main/plugins/subagents/runtime.ts";
-import { fixture, run } from "./helpers/context-fixture.ts";
+import { SessionHost } from "../src/main/session-host.ts";
+import { SettingsStore } from "../src/main/storage.ts";
+import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
 // Captured from the checked-out ZCode provider descriptions and subagent prompt builders.
 const reference = JSON.parse(
@@ -21,9 +23,9 @@ const adapt = (text: string) =>
     .replaceAll("Use Bash ONLY", "Use bash ONLY")
     .replaceAll("Write report/", "write report/");
 
-test.each(["general-purpose", "Explore"])(
-  "sends the complete ZCode %s prompt and tool descriptions to the model",
-  async (name) => {
+test.each(["general-purpose", "Explore"].flatMap((name) => [false, true].map((codex) => ({ name, codex }))))(
+  "sends the $name child prompt with Codex guidance=$codex to the model",
+  async ({ name, codex }) => {
     const f = await fixture((body, response) => {
       const tools = body.tools as { function: { name: string } }[];
       const rows = body.messages as { role: string; content: string }[];
@@ -54,7 +56,8 @@ test.each(["general-purpose", "Explore"])(
         done(response);
       }
     });
-    await run(f, "Research");
+    f.settings.setCapabilityEnabled("codexSubagentPrompt", codex);
+    await run(f, "Use a subagent to research");
     const parent = f.server.requests[0];
     const parentInstructions = (parent.messages as { role: string; content: string }[])
       .filter((row) => ["system", "developer"].includes(row.role))
@@ -79,8 +82,37 @@ test.each(["general-purpose", "Explore"])(
         function: { name: string; description: string; parameters: Record<string, unknown> };
       }[]
     ).map((entry) => entry.function);
+    const description = parentTools.find((entry) => entry.name === "Agent")?.description ?? "";
+    if (codex) {
+      expect(description).toContain(
+        "Do not launch subagents unless the user or applicable AGENTS.md/skill instructions explicitly ask",
+      );
+      expect(description).toContain(
+        "Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission",
+      );
+      expect(description).toContain("Do not delegate urgent blocking work");
+      expect(description).toContain("Do not duplicate work");
+      expect(description).toContain("do meaningful non-overlapping work immediately");
+      for (const capability of [
+        "<system-reminder>",
+        "run_in_background: true",
+        "subagent_type",
+        ".zpi/agents/*.md",
+        "SendMessage",
+        "TaskOutput",
+        "agents share the workspace",
+      ])
+        expect(description).toContain(capability);
+      expect(description).not.toContain("forked workspace");
+      expect(parentInstructions).toContain("Handles self-contained implementation, debugging, and research");
+      expect(parentInstructions).toContain("Read-only codebase exploration for a bounded question");
+      expect(parentInstructions).not.toContain("not confident that you will find the right match");
+    } else {
+      expect(description).toBe(adapt(reference.agent));
+      expect(parentInstructions).toContain("not confident that you will find the right match");
+      expect(parentInstructions).toContain("when answering means sweeping many files");
+    }
     for (const [tool, key] of [
-      ["Agent", "agent"],
       ["SendMessage", "sendMessage"],
       ["TaskStop", "taskStop"],
       ["TaskOutput", "taskOutput"],
@@ -148,4 +180,67 @@ test("TaskOutput applies ZCode runtime defaults and semantic booleans without ac
     timeout: 0,
   });
   expect(prepareTaskOutputArguments({ task_id: "id", timeout: null })).toMatchObject({ timeout: null });
+});
+
+test("persists Codex guidance and snapshots its mode on first send, including legacy sessions", async () => {
+  const f = await fixture();
+  const description = () => {
+    const tools = f.server.requests.at(-1)?.tools as { function: { name: string; description: string } }[];
+    return tools.find((tool) => tool.function.name === "Agent")?.function.description ?? "";
+  };
+  const codexRule = "Do not launch subagents unless";
+  expect(f.settings.get().capabilities.codexSubagentPrompt).toBe(false);
+  await run(f, "original chat");
+  expect(description()).toBe(adapt(reference.agent));
+  const draft = await f.host.createSession(null);
+  f.settings.setCapabilityEnabled("codexSubagentPrompt", true);
+  expect(f.host.listTools().find((tool) => tool.name === "Agent")?.description).toContain(codexRule);
+  expect((await f.host.previewPrompt()).prompt).toContain(
+    "Read-only codebase exploration for a bounded question",
+  );
+  await f.host.startRun({ sessionId: draft.id, text: "first send after enabling" });
+  await f.host.activeRuns.get(draft.id)?.done;
+  expect(description()).toContain(codexRule);
+  f.settings.setCapabilityEnabled("codexSubagentPrompt", false);
+  await f.host.startRun({ sessionId: draft.id, text: "keep Codex guidance" });
+  await f.host.activeRuns.get(draft.id)?.done;
+  expect(description()).toContain(codexRule);
+  await f.host.close();
+  const task = f.settings.state.getTask(f.session.id);
+  if (!task) throw new Error("Missing task fixture");
+  const configuration = { ...(task.frozenConfiguration as Record<string, unknown>) };
+  delete configuration.codexSubagentPrompt;
+  f.settings.state.upsertTask({ ...task, frozenConfiguration: configuration });
+  const settings = new SettingsStore(f.dir, codec);
+  expect(settings.get().capabilities.codexSubagentPrompt).toBe(false);
+  settings.setCapabilityEnabled("codexSubagentPrompt", true);
+  const host = new SessionHost(f.dir, settings, f.resources, f.workspace, undefined);
+  await host.init();
+  cleanup.push(() => host.close());
+  for (const [sessionId, codex] of [
+    [f.session.id, false],
+    [draft.id, true],
+  ] as const) {
+    await host.startRun({ sessionId, text: "continue after restart" });
+    await host.activeRuns.get(sessionId)?.done;
+    expect(description().includes(codexRule)).toBe(codex);
+    const messages = JSON.stringify(f.server.requests.at(-1)?.messages);
+    expect(messages.includes("not confident that you will find the right match")).toBe(!codex);
+  }
+});
+
+test("migrates missing Codex guidance settings to off and rejects invalid saved values", async () => {
+  const f = await fixture();
+  const app = f.settings.state.getSetting<Record<string, unknown>>("app");
+  const capabilities = { ...f.settings.get().capabilities } as Record<string, unknown>;
+  delete capabilities.codexSubagentPrompt;
+  f.settings.state.setSetting("app", { ...app, capabilities });
+  const restored = new SettingsStore(f.dir, codec);
+  expect(restored.get().capabilities.codexSubagentPrompt).toBe(false);
+  expect(restored.state.getSetting("app")).toMatchObject({ capabilities: { codexSubagentPrompt: false } });
+  f.settings.state.setSetting("app", {
+    ...app,
+    capabilities: { ...capabilities, codexSubagentPrompt: "on" },
+  });
+  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid session capabilities");
 });

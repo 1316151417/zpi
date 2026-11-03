@@ -6,6 +6,7 @@ export const defaultCapabilities: SessionCapabilities = {
   webSearch: false,
   communicationStyle: true,
   subagents: true,
+  codexSubagentPrompt: false,
   askUserQuestion: true,
   toolBatching: true,
   fileLinks: true,

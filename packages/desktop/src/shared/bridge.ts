@@ -144,6 +144,7 @@ export interface SessionCapabilities {
   webSearch: boolean;
   communicationStyle: boolean;
   subagents: boolean;
+  codexSubagentPrompt: boolean;
   askUserQuestion: boolean;
   toolBatching: boolean;
   fileLinks: boolean;

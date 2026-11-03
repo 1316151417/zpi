@@ -7,12 +7,14 @@ import type { SubagentCatalog } from "../src/shared/subagents.ts";
 
 const state = vi.hoisted(() => ({
   selected: "session",
-  settings: { providers: [] },
+  settings: { providers: [], capabilities: { subagents: true, codexSubagentPrompt: false } },
   projects: [{ id: "project", name: "Project" }],
   sessions: new Map([["session", { projectId: "project" }]]),
 }));
 vi.mock("../src/renderer/store.ts", () => ({
-  useStore: (select: (value: typeof state) => unknown) => select(state),
+  useStore: Object.assign((select: (value: typeof state) => unknown) => select(state), {
+    setState: (update: Partial<typeof state>) => Object.assign(state, update),
+  }),
 }));
 
 import { SubagentSettings } from "../src/renderer/SubagentSettings.tsx";
@@ -20,6 +22,7 @@ import { SubagentSettings } from "../src/renderer/SubagentSettings.tsx";
 const catalog: SubagentCatalog = { agents: [], diagnostics: [] };
 const listSubagents = vi.fn<() => Promise<Result<SubagentCatalog>>>();
 const saveSubagent = vi.fn();
+const setCapabilityEnabled = vi.fn();
 let root: Root;
 let container: HTMLDivElement;
 let style: HTMLStyleElement;
@@ -48,9 +51,14 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   listSubagents.mockReset().mockResolvedValue({ ok: true, value: catalog });
   saveSubagent.mockReset();
+  state.settings.capabilities = { subagents: true, codexSubagentPrompt: false };
+  setCapabilityEnabled.mockReset().mockImplementation(async (name: string, enabled: boolean) => ({
+    ok: true,
+    value: { ...state.settings, capabilities: { ...state.settings.capabilities, [name]: enabled } },
+  }));
   Object.defineProperty(window, "zpi", {
     configurable: true,
-    value: { listSubagents, saveSubagent },
+    value: { listSubagents, saveSubagent, setCapabilityEnabled },
   });
   style = document.createElement("style");
   // This checks the cascade in DOM, not text layout, browser hover, or rendered pixels.
@@ -176,4 +184,35 @@ test("workspace empty-state creation keeps the selected scope", async () => {
   await click(button("取消"));
   expect(query('[aria-label="子智能体列表作用域"]').textContent).toBe("Project");
   expect(saveSubagent).not.toHaveBeenCalled();
+});
+
+test("Codex prompts default off, save independently, and retain their choice while subagents are disabled", async () => {
+  await render();
+  const toggle = () => query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]');
+  expect(toggle().checked).toBe(false);
+  expect(toggle().disabled).toBe(false);
+  await click(toggle());
+  expect(setCapabilityEnabled).toHaveBeenCalledWith("codexSubagentPrompt", true);
+  await render();
+  expect(toggle().checked).toBe(true);
+  await click(query('[aria-label="启用子智能体"]'));
+  expect(setCapabilityEnabled).toHaveBeenLastCalledWith("subagents", false);
+  await render();
+  expect(toggle().disabled).toBe(true);
+  expect(toggle().checked).toBe(true);
+  await click(toggle());
+  expect(setCapabilityEnabled).toHaveBeenCalledTimes(2);
+  await click(query('[aria-label="启用子智能体"]'));
+  await render();
+  expect(toggle().disabled).toBe(false);
+  expect(toggle().checked).toBe(true);
+});
+
+test("failed Codex prompt saves preserve the previous choice and show the error", async () => {
+  await render();
+  setCapabilityEnabled.mockRejectedValueOnce(new Error("save failed"));
+  await click(query('[aria-label="Codex 子智能体提示"]'));
+  expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').checked).toBe(false);
+  expect(query('[role="alert"]').textContent).toContain("操作失败");
+  expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').disabled).toBe(false);
 });

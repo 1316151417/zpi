@@ -12,6 +12,7 @@ import { SubagentArtifacts, textResult } from "./artifacts.ts";
 import type { SubagentProfiles } from "./profiles.ts";
 import {
   agentDescription,
+  codexAgentDescription,
   respondToCoordinatorDescription,
   sendMessageDescription,
   taskOutputDescription,
@@ -148,8 +149,10 @@ export class SubagentPlugin {
     this.profiles = profiles;
     this.port = port;
   }
-  prepare(parentId: string) {
-    const agents = this.profiles.list(this.port.cwd(parentId)).agents.filter((agent) => agent.enabled);
+  prepare(parentId: string, codexSubagentPrompt = false) {
+    const agents = this.profiles
+      .list(this.port.cwd(parentId), codexSubagentPrompt)
+      .agents.filter((agent) => agent.enabled);
     this.definitions.set(
       parentId,
       structuredClone([...new Map(agents.map((agent) => [agent.name, agent])).values()]),
@@ -463,13 +466,13 @@ export class SubagentPlugin {
       signal?.addEventListener("abort", abort, { once: true });
     });
   }
-  tools(parentId: string): ToolDefinition[] {
+  tools(parentId: string, codexSubagentPrompt = false): ToolDefinition[] {
     const tools: ToolDefinition[] = [
       {
         name: "Agent",
         label: "子智能体",
         parameters: launchParameters,
-        description: agentDescription,
+        description: codexSubagentPrompt ? codexAgentDescription : agentDescription,
         execute: async (_callId, params, signal, onUpdate, context) => {
           assertToolArguments("Agent", launchParameters, params);
           signal?.throwIfAborted();

@@ -214,6 +214,7 @@ export function SubagentSettings() {
   const [catalog, setCatalog] = useState<SubagentCatalog>({ agents: [], diagnostics: [] });
   const providers = useStore((state) => state.settings?.providers ?? []);
   const enabled = useStore((state) => state.settings?.capabilities?.subagents ?? true);
+  const codexSubagentPrompt = useStore((state) => state.settings?.capabilities?.codexSubagentPrompt ?? false);
   const [deleteTarget, setDeleteTarget] = useState<SubagentProfile>();
   const [listScope, setListScope] = useState<SaveSubagentInput["scope"]>("user");
   const [search, setSearch] = useState("");
@@ -256,11 +257,11 @@ export function SubagentSettings() {
       setBusy(false);
     }
   };
-  const setEnabled = async (enabled: boolean) => {
+  const setEnabled = async (name: "subagents" | "codexSubagentPrompt", enabled: boolean) => {
     setBusy(true);
     setError("");
     try {
-      useStore.setState({ settings: unwrap(await window.zpi.setCapabilityEnabled("subagents", enabled)) });
+      useStore.setState({ settings: unwrap(await window.zpi.setCapabilityEnabled(name, enabled)) });
     } catch (error) {
       setError(userErrorMessage(error));
     } finally {
@@ -323,12 +324,35 @@ export function SubagentSettings() {
               aria-checked={enabled}
               checked={enabled}
               disabled={busy}
-              onChange={(event) => void setEnabled(event.target.checked)}
+              onChange={(event) => void setEnabled("subagents", event.target.checked)}
             />
             <span aria-hidden="true" />
           </span>
         </label>
       </header>
+      <div className="settings-group">
+        <div className="settings-row">
+          <span className="settings-row-copy">
+            <strong>Codex 子智能体提示</strong>
+            <small id="codex-subagent-prompt-description">
+              采用 Codex 的委派策略：仅在你或适用指令明确要求时使用子智能体。新对话首次发送时生效。
+            </small>
+          </span>
+          <span className="settings-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="Codex 子智能体提示"
+              aria-checked={codexSubagentPrompt}
+              aria-describedby="codex-subagent-prompt-description"
+              checked={codexSubagentPrompt}
+              disabled={busy || !enabled}
+              onChange={(event) => void setEnabled("codexSubagentPrompt", event.target.checked)}
+            />
+            <span aria-hidden="true" />
+          </span>
+        </div>
+      </div>
       <header className={`subagent-settings-heading${editing ? " editing" : ""}`}>
         <div>
           {editing ? (

@@ -10,6 +10,10 @@
 
 ## 委派与返回
 
+“Codex 子智能体提示”默认关闭，配置字段为 `codexSubagentPrompt`。关闭时保留原始 ZPI（ZCode 风格）的 Agent 描述和内置类型说明；开启时改用适配 ZPI 能力的 Codex 提示，仅在用户或适用 AGENTS.md/skill 明确要求委派时启动，保留关键路径工作、后台并行、避免重复委派和按文件划分修改范围等指导。类型说明在开启时只描述能力，用户自定义 profile 保留原文。子智能体工具参数、权限及调度实现不受此开关影响。
+
+设置随新对话首次发送保存到能力快照；工具描述、模型可见类型列表和提示预览使用同一模式。旧设置缺失字段时迁移为关闭，旧会话缺失字段时也按关闭处理。关闭子智能体总开关时此项置灰并保留选择。
+
 Agent 接收工作描述和 prompt，创建 child session、agent ID、任务 ID 与输出文件关联。同步完成返回结果正文、agentId、工具次数、耗时及已知 tokens；异步启动返回 async_launched 和任务定位信息。
 
 SendMessage 定位本地可访问子任务。交付状态明确区分 queued、steered 和 resumed_background；消息送达不等于子任务已经回答。RespondToCoordinator 将回复排入父邮箱，返回后子任务仍继续原工作，除非协调者改变任务。

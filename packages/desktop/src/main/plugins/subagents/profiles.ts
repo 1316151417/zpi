@@ -136,7 +136,7 @@ export class SubagentProfiles {
     if (scope === "workspace" && !cwd) throw new Error("invalid_input: 请先选择项目");
     return scope === "workspace" ? join(cwd as string, ".zpi", "agents") : join(this.root, "agents");
   }
-  list(cwd?: string): SubagentCatalog {
+  list(cwd?: string, codexSubagentPrompt = false): SubagentCatalog {
     this.reloadState();
     const agents: SubagentProfile[] = (
       [
@@ -148,8 +148,9 @@ export class SubagentProfiles {
           color: "blue",
           injectAgentsMd: true,
           tools: ["*"],
-          description:
-            "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.",
+          description: codexSubagentPrompt
+            ? "Handles self-contained implementation, debugging, and research subtasks with read and write tools."
+            : "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.",
           systemPrompt: buildGeneralPurposeSystemPrompt(),
         },
         {
@@ -160,8 +161,9 @@ export class SubagentProfiles {
           color: "cyan",
           injectAgentsMd: false,
           tools: ["read", "bash"],
-          description:
-            'Read-only search agent for broad fan-out searches - when answering means sweeping many files, directories, or naming conventions and you only need the conclusion, not the file dumps. It reads excerpts rather than whole files, so it locates code; it doesn\'t review or audit it. Specify search breadth: "medium" for moderate exploration, "very thorough" for multiple locations and naming conventions.',
+          description: codexSubagentPrompt
+            ? "Read-only codebase exploration for a bounded question. Returns relevant paths, symbols, and concise findings. Has read and bash tools; cannot edit files. Specify the search scope and depth in the task."
+            : 'Read-only search agent for broad fan-out searches - when answering means sweeping many files, directories, or naming conventions and you only need the conclusion, not the file dumps. It reads excerpts rather than whole files, so it locates code; it doesn\'t review or audit it. Specify search breadth: "medium" for moderate exploration, "very thorough" for multiple locations and naming conventions.',
           systemPrompt: buildExploreAgentPrompt(),
         },
       ] satisfies SubagentProfile[]

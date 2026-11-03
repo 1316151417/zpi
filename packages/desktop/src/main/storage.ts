@@ -174,6 +174,10 @@ export class SettingsStore {
           raw.capabilities.webSearch = defaultCapabilities.webSearch;
           migrated = true;
         }
+        if (isJsonObject(raw.capabilities) && raw.capabilities.codexSubagentPrompt === undefined) {
+          raw.capabilities.codexSubagentPrompt = defaultCapabilities.codexSubagentPrompt;
+          migrated = true;
+        }
         if (raw.quickChat === undefined) {
           raw.quickChat = { defaultSelection: null };
           migrated = true;

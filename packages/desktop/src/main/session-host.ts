@@ -732,6 +732,8 @@ export class SessionHost {
       throw new Error("Invalid web search capability");
     if (config.subagents !== undefined && typeof config.subagents !== "boolean")
       throw new Error("Invalid subagent capability");
+    if (config.codexSubagentPrompt !== undefined && typeof config.codexSubagentPrompt !== "boolean")
+      throw new Error("Invalid Codex subagent prompt capability");
     if (config.fileContextReuse !== undefined && typeof config.fileContextReuse !== "boolean")
       throw new Error("Invalid file context reuse capability");
     if (config.proactiveExecution !== undefined && typeof config.proactiveExecution !== "boolean")
@@ -752,6 +754,7 @@ export class SessionHost {
         : {}),
       communicationStyle: config.communicationStyle ?? false,
       subagents: config.subagents ?? false,
+      codexSubagentPrompt: config.codexSubagentPrompt ?? false,
       webSearch: config.webSearch ?? false,
       fileContextReuse: config.fileContextReuse ?? false,
       proactiveExecution: config.proactiveExecution ?? false,
@@ -1189,9 +1192,9 @@ export class SessionHost {
     if (active) this.offerSubagentMessages(parentId, active);
   }
 
-  taskTools(id: string, agents: boolean): ToolDefinition[] {
+  taskTools(id: string, agents: boolean, codexSubagentPrompt = false): ToolDefinition[] {
     return this.subagents
-      .tools(id)
+      .tools(id, codexSubagentPrompt)
       .filter((tool) => agents || tool.name === "TaskOutput" || tool.name === "TaskStop")
       .map((tool) => {
         if (tool.name !== "TaskOutput" && tool.name !== "TaskStop") return tool;
@@ -1408,7 +1411,8 @@ export class SessionHost {
             "<system-reminder>\nAvailable agent types for the Agent tool:\n" +
               (id
                 ? this.subagents.listing(id)
-                : this.listSubagents(null)
+                : this.subagents.profiles
+                    .list(undefined, config.codexSubagentPrompt)
                     .agents.filter((agent) => agent.enabled)
                     .map((agent) => `- ${agent.name}: ${agent.description}`)
                     .join("\n")) +
@@ -2238,7 +2242,7 @@ export class SessionHost {
           tool.name === "bash" ? this.backgroundTasks.tool("preview", info.cwd) : tool,
         ),
         ...(capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
-        ...this.taskTools("preview", capabilities.subagents),
+        ...this.taskTools("preview", capabilities.subagents, capabilities.codexSubagentPrompt),
         ...(capabilities.webSearch ? this.webTools.tools() : []),
       ],
     };
@@ -2259,7 +2263,11 @@ export class SessionHost {
         tool.name === "bash" ? this.backgroundTasks.tool("preview", this.defaultWorkspace) : tool,
       ),
       ...(this.settings.get().capabilities.askUserQuestion ? [this.questions.tool("preview")] : []),
-      ...this.taskTools("preview", this.settings.get().capabilities.subagents),
+      ...this.taskTools(
+        "preview",
+        this.settings.get().capabilities.subagents,
+        this.settings.get().capabilities.codexSubagentPrompt,
+      ),
       ...(this.webSearchAvailable() ? this.webTools.tools() : []),
     ].map((t) => ({
       name: t.name,
@@ -2991,7 +2999,7 @@ export class SessionHost {
       if (record.draft) this.configurations.set(id, this.defaultConfiguration());
       const configuration = this.configuration(id);
       if (configuration.subagents && !input.subagentNotification && parsed.kind !== "compact")
-        this.subagents.prepare(id);
+        this.subagents.prepare(id, configuration.codexSubagentPrompt);
       const accept = async (model: import("zpi-ai").Model) => {
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         // Cache retention must be durable before accepted facts can survive a crash.
@@ -3134,7 +3142,7 @@ export class SessionHost {
               ],
               customTools: [
                 ...(configuration.askUserQuestion ? [this.sessionQuestionTool(id)] : []),
-                ...this.taskTools(id, configuration.subagents),
+                ...this.taskTools(id, configuration.subagents, configuration.codexSubagentPrompt),
                 ...(configuration.webSearch ? this.webTools.tools() : []),
                 ...(configuration.subagentProfile ? this.subagents.childTools(id) : []),
               ],
