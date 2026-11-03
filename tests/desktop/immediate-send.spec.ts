@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ElectronApplication } from "@playwright/test";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
@@ -10,6 +10,22 @@ import { expect, test } from "../helpers/test.ts";
 import { seedHistory } from "../history-fixture.ts";
 
 const packaged = Boolean(process.env.ZPI_TEST_PACKAGED_APP);
+
+async function conversationScope(page: Page, side: boolean) {
+  if (side) {
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
+  }
+  return page.locator(side ? ".side-chat-pane" : "main");
+}
+
+async function runningRun(scope: Locator) {
+  const current = scope.getByTestId("run").last();
+  await expect(current).toHaveAttribute("data-status", "running");
+  const runId = await current.getAttribute("data-run-id");
+  if (!runId) throw new Error("Missing run ID");
+  return { runId, run: scope.locator(`[data-run-id="${runId}"]`) };
+}
 
 for (const side of [false, true]) {
   for (const action of ["queue-now", "modified-enter"] as const) {
@@ -37,24 +53,14 @@ for (const side of [false, true]) {
       try {
         app = await launchDesktop({ dir, url: server.url, packaged });
         const page = await app.firstWindow();
-        if (side) {
-          await page.getByLabel("展开右侧栏", { exact: true }).click();
-          await page
-            .locator(".pane-empty-launcher")
-            .getByRole("button", { name: "辅助对话", exact: true })
-            .click();
-        }
-        const scope = page.locator(side ? ".side-chat-pane" : "main");
+        const scope = await conversationScope(page, side);
         const sessionId = side ? await scope.getAttribute("data-side-chat-session") : mainId;
         if (!sessionId) throw new Error("Missing session ID");
         const editor = scope.getByLabel("消息", { exact: true });
         await editor.fill("hold waiting");
         await editor.press("Enter");
         await expect.poll(() => server.requests.length).toBe(1);
-        await expect(scope.getByTestId("run").last()).toHaveAttribute("data-status", "running");
-        const runId = await scope.getByTestId("run").last().getAttribute("data-run-id");
-        expect(runId).toBeTruthy();
-        const original = scope.locator(`[data-run-id="${runId}"]`);
+        const { runId, run: original } = await runningRun(scope);
         if (action === "modified-enter")
           await expect(original.locator(".answer")).toHaveText("Original partial remains.");
         for (const text of action === "queue-now"
@@ -138,21 +144,12 @@ for (const side of [false, true]) {
     try {
       app = await launchDesktop({ dir, url: server.url, packaged });
       const page = await app.firstWindow();
-      if (side) {
-        await page.getByLabel("展开右侧栏", { exact: true }).click();
-        await page
-          .locator(".pane-empty-launcher")
-          .getByRole("button", { name: "辅助对话", exact: true })
-          .click();
-      }
-      const scope = page.locator(side ? ".side-chat-pane" : "main");
+      const scope = await conversationScope(page, side);
       const editor = scope.getByLabel("消息", { exact: true });
       await editor.fill("hold");
       await editor.press("Enter");
       await expect.poll(() => server.requests.length).toBe(1);
-      await expect(scope.getByTestId("run").last()).toHaveAttribute("data-status", "running");
-      const runId = await scope.getByTestId("run").last().getAttribute("data-run-id");
-      const original = scope.locator(`[data-run-id="${runId}"]`);
+      const { run: original } = await runningRun(scope);
       for (const text of ["recover this input", "remove this input"]) {
         await editor.fill(text);
         await editor.press("Enter");
@@ -234,8 +231,12 @@ test("immediate sending while reading old history preserves navigator entries, p
     await editor.fill("hold original");
     await editor.press("Enter");
     await expect.poll(() => server.requests.length).toBe(1);
-    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "running");
-    const originalId = await page.getByTestId("run").last().getAttribute("data-run-id");
+    const { runId: originalId, run: original } = await runningRun(page.locator("main"));
+    await expect(original.locator(".answer")).toContainText("Original response.");
+    await expect(rail.getByRole("button", { name: "跳转到第 101 条问题", exact: true })).toHaveAttribute(
+      "aria-current",
+      "location",
+    );
     const jump = async (index: number, key: string) => {
       await rail.locator(".conversation-navigator-rail").evaluate((node, index) => {
         node.scrollTop = Math.max(0, (index - 5) * 10);
