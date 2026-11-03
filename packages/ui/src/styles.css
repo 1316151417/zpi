@@ -4298,3 +4298,92 @@ button.inline-mention,
 .selection-reference-detail button:focus-visible {
   opacity: 1;
 }
+
+/* ZCode-style conversation query navigator. */
+.conversation-navigator {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 10;
+  width: 48px;
+  pointer-events: none;
+}
+.conversation-navigator-rail {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 36px;
+  max-height: calc(100% - 6rem);
+  padding: 4px 0;
+  overflow: hidden auto;
+  scrollbar-width: none;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+.conversation-navigator-rail::-webkit-scrollbar {
+  display: none;
+}
+.conversation-navigator-item {
+  display: flex;
+  align-items: center;
+  width: 36px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.conversation-navigator-item span {
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-text-subtlest);
+  transform-origin: left;
+  transition:
+    transform 150ms ease-out,
+    opacity 150ms ease-out,
+    background-color 150ms ease-out;
+}
+.conversation-navigator-item span[data-highlighted="true"] {
+  background: var(--color-text);
+}
+.conversation-navigator-item:focus-visible {
+  outline: 2px solid var(--color-text-subtle);
+  outline-offset: 2px;
+}
+.conversation-navigator-tooltip {
+  z-index: 100;
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow:
+    0 8px 24px #0002,
+    0 1px 3px #0002;
+  font-size: var(--text-body);
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.conversation-navigator-user,
+.conversation-navigator-answer {
+  margin: 0;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.conversation-navigator-user {
+  -webkit-line-clamp: 2;
+  font-weight: 600;
+}
+.conversation-navigator-answer {
+  -webkit-line-clamp: 3;
+  margin-top: 8px;
+  color: var(--color-text-subtle);
+}
+@media (prefers-reduced-motion: reduce) {
+  .conversation-navigator-item span {
+    transition: none;
+  }
+}

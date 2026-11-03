@@ -71,6 +71,7 @@ import { collectAnswerSources } from "./answer-sources.ts";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CompactionDivider } from "./CompactionDivider.tsx";
 import { ConversationHistory, historyWindowThreshold } from "./ConversationHistory.tsx";
+import { ConversationNavigator } from "./ConversationNavigator.tsx";
 import { ConversationQueuePanel, type QueueActions } from "./ConversationQueuePanel.tsx";
 import { ConversationSelectionMenu, SelectionReferenceChip } from "./ConversationSelections.tsx";
 import {
@@ -1013,6 +1014,45 @@ export function Conversation({
     lastScrollTop.current = el.scrollTop;
   };
   const [showLatest, setShowLatest] = useState(false);
+  const [navigatorWide, setNavigatorWide] = useState(false);
+  const [navigatorTarget, setNavigatorTarget] = useState<string>();
+  const pinnedRuns = useMemo(
+    () => (navigatorTarget ? new Set([...pinnedFindRuns, navigatorTarget]) : pinnedFindRuns),
+    [navigatorTarget, pinnedFindRuns],
+  );
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const update = () => setNavigatorWide(element.clientWidth >= 864);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [sessionId]);
+  const navigableRuns = useMemo(
+    () =>
+      view.runs.filter(
+        (run) =>
+          !run.historyContinuation &&
+          !run.subagentNotification &&
+          run.kind !== "compact" &&
+          (run.userMessage.trim() || run.attachments?.length),
+      ),
+    [view.runs],
+  );
+  const jumpNavigator = useCallback((id: string) => {
+    const root = ref.current;
+    const target = root?.querySelector<HTMLElement>(`[data-history-run="${CSS.escape(id)}"]`);
+    if (!root || !target) return;
+    scrollNavigation.current++;
+    readingReady.current = true;
+    following.current = false;
+    setNavigatorTarget(id);
+    root.scrollTo({
+      top: root.scrollTop + target.getBoundingClientRect().top - root.getBoundingClientRect().top,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, []);
   useEffect(() => {
     const navigate = (event: Event) => {
       const detail = (event as CustomEvent<{ sessionId: string; runId: string }>).detail;
@@ -1069,41 +1109,61 @@ export function Conversation({
   const [historyPending, setHistoryPending] = useState(false);
   const autoLoadAttempt = useRef("");
   const [historyError, setHistoryError] = useState("");
-  const loadHistory = useCallback(() => {
-    const el = ref.current;
-    if (!el || !hasEarlier || loadingEarlier || !onLoadEarlier || historyRequest.current) return;
-    const request = {};
-    historyRequest.current = request;
-    setHistoryPending(true);
-    following.current = false;
-    prepend.current = {
-      cursor: historyCursor,
-      height: el.scrollHeight,
-      top: el.scrollTop,
-      navigation: scrollNavigation.current,
-    };
-    const viewportTop = el.getBoundingClientRect().top;
-    for (const node of el.querySelectorAll<HTMLElement>("[data-history-run]")) {
-      const top = node.getBoundingClientRect().top;
-      if (top >= viewportTop) {
-        prepend.current.anchor = { id: node.dataset.historyRun ?? "", top };
-        break;
-      }
-    }
-    setHistoryError("");
-    void onLoadEarlier()
-      .catch((error) => {
-        if (historyRequest.current !== request) return;
-        prepend.current = null;
-        setHistoryError(userErrorMessage(error));
-      })
-      .finally(() => {
-        if (historyRequest.current === request) {
-          historyRequest.current = null;
-          setHistoryPending(false);
+  const loadHistory = useCallback(
+    (background = false) => {
+      const el = ref.current;
+      if (!el || !hasEarlier || loadingEarlier || !onLoadEarlier || historyRequest.current) return;
+      const request = {};
+      historyRequest.current = request;
+      setHistoryPending(true);
+      if (!background) following.current = false;
+      prepend.current = {
+        cursor: historyCursor,
+        height: el.scrollHeight,
+        top: el.scrollTop,
+        navigation: scrollNavigation.current,
+      };
+      const viewportTop = el.getBoundingClientRect().top;
+      for (const node of el.querySelectorAll<HTMLElement>("[data-history-run]")) {
+        const top = node.getBoundingClientRect().top;
+        if (top >= viewportTop) {
+          prepend.current.anchor = { id: node.dataset.historyRun ?? "", top };
+          break;
         }
-      });
-  }, [hasEarlier, loadingEarlier, onLoadEarlier, historyCursor]);
+      }
+      setHistoryError("");
+      void onLoadEarlier()
+        .catch((error) => {
+          if (historyRequest.current !== request) return;
+          prepend.current = null;
+          setHistoryError(userErrorMessage(error));
+        })
+        .finally(() => {
+          if (historyRequest.current === request) {
+            historyRequest.current = null;
+            setHistoryPending(false);
+          }
+        });
+    },
+    [hasEarlier, loadingEarlier, onLoadEarlier, historyCursor],
+  );
+  const navigatorLoadAttempt = useRef("");
+  useEffect(() => {
+    if (!navigatorWide || !hasEarlier || loadingEarlier || historyPending || !onLoadEarlier) return;
+    const attempt = `${sessionId}:${historyCursor}`;
+    if (navigatorLoadAttempt.current === attempt) return;
+    navigatorLoadAttempt.current = attempt;
+    loadHistory(true);
+  }, [
+    navigatorWide,
+    hasEarlier,
+    loadingEarlier,
+    historyPending,
+    onLoadEarlier,
+    sessionId,
+    historyCursor,
+    loadHistory,
+  ]);
   const findLoadAttempt = useRef("");
   useEffect(() => {
     if (
@@ -1402,7 +1462,7 @@ export function Conversation({
                 ref={historyTrigger}
                 className="load-history"
                 disabled={loadingEarlier}
-                onClick={loadHistory}
+                onClick={() => loadHistory()}
               >
                 {loadingEarlier ? "正在加载…" : historyError ? "加载失败，点击重试" : "加载更早的十次调用"}
               </button>
@@ -1415,7 +1475,7 @@ export function Conversation({
                 root={ref}
                 windowed={windowed}
                 initialRunId={reading?.runId}
-                pinnedRunIds={pinnedFindRuns}
+                pinnedRunIds={pinnedRuns}
                 renderRun={renderRun}
               />
             ) : (
@@ -1425,6 +1485,14 @@ export function Conversation({
             )}
           </div>
         </div>
+        {navigatorWide && (
+          <ConversationNavigator
+            runs={navigableRuns}
+            scrollRoot={ref}
+            onJump={jumpNavigator}
+            busy={hasEarlier || loadingEarlier}
+          />
+        )}
         <ConversationSelectionMenu
           rootRef={ref}
           scopeKey={view.sessionId}
