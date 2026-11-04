@@ -2,8 +2,9 @@ import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createTwoFilesPatch } from "diff";
 import { expect, test, vi } from "vitest";
-import type { FileChange, SessionEntry } from "zpi-coding-agent";
+import { createEditTool, type FileChange, type SessionEntry } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
+import { recordFileChange } from "../../coding-agent/src/core/tools/file-change.ts";
 import * as changesModule from "../src/main/file-changes.ts";
 import { copyFileChangeSnapshots, entryFileChange, fileChanges } from "../src/main/file-changes.ts";
 import { projectEvent } from "../src/main/projection.ts";
@@ -315,6 +316,59 @@ test.each([
       { includePatch: false },
     );
     expect(item.snapshotUnavailable).toBe(snapshotUnavailable);
+  },
+);
+
+test("net counts survive an intermediate NUL edit that is repaired within the turn", async () => {
+  const f = await fixture();
+  const root = join(f.dir, "snapshots");
+  const path = join(f.workspace, "file.java");
+  await writeFile(path, "class Example {}\n");
+  const edit = createEditTool(f.workspace, root);
+  const changes: FileChange[] = [];
+  for (const [index, [oldText, newText]] of [
+    ["class Example {}", "class Example {\n    int value = 1;\n}"],
+    ["value = 1", "value = \u00002"],
+    ["value = \u00002", "value = 2"],
+  ].entries()) {
+    const result = await edit.execute(`edit-${index}`, { path, edits: [{ oldText, newText }] });
+    expect(result.isError).not.toBe(true);
+    changes.push((result.details as unknown as { fileChange: FileChange }).fileChange);
+  }
+  const summaries = await fileChanges(changes, root, "本轮变更", {
+    includePatch: false,
+    includeStats: true,
+  });
+  expect(summaries).toHaveLength(1);
+  const [summary] = summaries;
+  expect(summary).toMatchObject({ path, added: 3, removed: 1 });
+  expect(summary.reason).toBeUndefined();
+  expect(summary.patch).toBeUndefined();
+  const [review] = await fileChanges(changes, root, "本轮变更");
+  expect(review.patch).toContain("+    int value = 2;");
+  expect(review.patch).not.toContain("\u0000");
+});
+
+test.each(["binary\u0000content", Buffer.from([0xff, 0xfe])])(
+  "non-text endpoints retain snapshots without inventing text counts: %s",
+  async (after) => {
+    const f = await fixture();
+    const root = join(f.dir, "snapshots");
+    const path = join(f.workspace, "file.txt");
+    await writeFile(path, after);
+    const last = await recordFileChange(path, "edit", Buffer.from("before\n"), root);
+    expect(last?.beforeFile).toBeDefined();
+    expect(last?.afterFile).toBeDefined();
+    expect(last?.patch).toBeUndefined();
+    if (!last) throw new Error("missing file change");
+    const [summary] = await fileChanges([last], root, "本轮变更", {
+      includeStats: true,
+    });
+    expect(summary.patch).toBeUndefined();
+    expect(summary.added).toBeUndefined();
+    expect(summary.removed).toBeUndefined();
+    expect(summary.reason).toContain("二进制或非 UTF-8");
+    expect(summary.snapshotUnavailable).toBeUndefined();
   },
 );
 

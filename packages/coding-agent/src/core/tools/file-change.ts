@@ -45,11 +45,10 @@ export async function recordFileChange(
     ...(failed ? { failed } : {}),
   };
   try {
-    if ((before?.length ?? 0) + after.length > 4 * 1024 * 1024 || before?.includes(0) || after.includes(0))
+    if ((before?.length ?? 0) + after.length > 4 * 1024 * 1024)
       return { ...change, reason: "二进制或文件超限，无法内联比较" };
-    const decode = new TextDecoder("utf8", { fatal: true });
-    const beforeText = before === null ? "" : decode.decode(before),
-      afterText = decode.decode(after);
+    // Preserve bounded byte snapshots even when an intermediate edit is not text.
+    // A later repair still needs its final snapshot for the whole turn's net diff.
     if (outputDir) {
       await mkdir(outputDir, { recursive: true });
       const key = randomUUID();
@@ -60,6 +59,11 @@ export async function recordFileChange(
       change.afterFile = join(outputDir, `${key}.after`);
       await writeFile(change.afterFile, after, { mode: 0o600 });
     }
+    if (before?.includes(0) || after.includes(0))
+      return { ...change, reason: "二进制或文件超限，无法内联比较" };
+    const decode = new TextDecoder("utf8", { fatal: true });
+    const beforeText = before === null ? "" : decode.decode(before),
+      afterText = decode.decode(after);
     const patch = createTwoFilesPatch(
       before === null ? "/dev/null" : path,
       path,

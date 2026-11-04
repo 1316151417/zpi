@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -152,9 +153,25 @@ export async function fileChanges(
           first.beforeFile ? readFileSnapshot(first.beforeFile, root) : Buffer.alloc(0),
           readFileSnapshot(last.afterFile, root),
         ]);
+        if (beforeBytes.equals(afterBytes) && first.beforeHash !== null) continue;
+        if (
+          beforeBytes.includes(0) ||
+          afterBytes.includes(0) ||
+          !isUtf8(beforeBytes) ||
+          !isUtf8(afterBytes)
+        ) {
+          result.push({
+            id: `file:${path}`,
+            path,
+            status: first.beforeHash === null ? "created" : "modified",
+            area,
+            failed: writes.some((c) => c.failed),
+            reason: "二进制或非 UTF-8 文件，无法内联比较",
+          });
+          continue;
+        }
         const before = beforeBytes.toString("utf8"),
           after = afterBytes.toString("utf8");
-        if (before === after && first.beforeHash !== null) continue;
         // Defer large inputs before computing a patch that would only be stripped for IPC.
         const deferred = !includePatch || beforeBytes.length + afterBytes.length > maxPatchBytes;
         const patch =
