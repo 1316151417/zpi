@@ -294,6 +294,7 @@ export function DiffView({
       active = false;
     };
   }, [entries, patchScope, loadPatch]);
+  const shownReasons = new Set<string>();
   return (
     <div
       ref={root}
@@ -344,6 +345,10 @@ export function DiffView({
           {presentations
             .filter(({ entry }) => entry.path === selected)
             .map(({ entry, patch, singleSide, large }) => {
+              // A file preview can contain several legacy operation records with the same diagnostic.
+              const reason =
+                preview && entry.reason && shownReasons.has(entry.reason) ? undefined : entry.reason;
+              if (reason) shownReasons.add(reason);
               return (
                 <section className="diff-entry" key={entry.id} data-diff-id={entry.id}>
                   {!renderHeader && (
@@ -363,7 +368,7 @@ export function DiffView({
                       {entry.oldPath} → {entry.path}
                     </p>
                   )}
-                  {entry.reason && <p className="run-notice">{entry.reason}</p>}
+                  {reason && <p className="run-notice">{reason}</p>}
                   {singleSide ? (
                     <SingleSidePatch lines={singleSide} focusKey={searching ? focusKey : undefined} />
                   ) : patch ? (
