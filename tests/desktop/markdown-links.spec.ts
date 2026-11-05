@@ -64,6 +64,7 @@ test("Markdown links and streamed file citations share icons, preview locations 
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("链接测试");
     await editor.press("Enter");

@@ -6,7 +6,7 @@ import { defaultRehypePlugins, defaultRemarkPlugins, type StreamdownProps } from
 import { fileCitationRemarkPlugin, projectFileCitations } from "../file-citation.ts";
 import type { LinkContext } from "../link-target.ts";
 import { type MarkdownFence, markdownFence } from "../markdown-fence.ts";
-import { markdownLinkRemarkPlugin } from "../markdown-link-nodes.ts";
+import { markdownLinkRemarkPlugin, spacedFileLinkRemarkPlugin } from "../markdown-link-nodes.ts";
 import { normalizeMath } from "./markdown-math.ts";
 
 type Plugin = NonNullable<StreamdownProps["remarkPlugins"]>[number];
@@ -86,7 +86,12 @@ function groupImages(text: string): string {
 }
 
 export function markdownRemarkPlugins(workspace: LinkContext = {}) {
-  return [...remarkPlugins, fileCitationRemarkPlugin(workspace), markdownLinkRemarkPlugin];
+  return [
+    ...remarkPlugins,
+    spacedFileLinkRemarkPlugin(workspace),
+    fileCitationRemarkPlugin(workspace),
+    markdownLinkRemarkPlugin,
+  ];
 }
 export function markdownSource(text: string, streaming: boolean) {
   return normalizeMath(groupImages(projectFileCitations(text, streaming)));

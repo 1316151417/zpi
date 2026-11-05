@@ -1,5 +1,6 @@
 import { decodeString } from "micromark-util-decode-string";
 import type { Plugin } from "unified";
+import { type LinkContext, resolveMarkdownLinkTarget } from "./link-target.ts";
 
 interface MarkdownPoint {
   offset?: number;
@@ -13,9 +14,81 @@ interface MarkdownNode {
   title?: string | null;
   type: string;
   url?: string;
+  value?: string;
 }
 
 const windowsDestinationPattern = /^(?:[a-zA-Z]:[\\/]|\\)/u;
+const localDestinationPattern = /^(?:\/|\.\.?[\\/]|~\/|[a-zA-Z]:[\\/]|\\\\)/u;
+
+function spacedFileLinks(raw: string, context: LinkContext): MarkdownNode[] | null {
+  const nodes: MarkdownNode[] = [];
+  let cursor = 0,
+    scanned = 0;
+  for (const match of raw.matchAll(/(?<![\\!])\[((?:\\.|[^\\[\]\r\n])*)\]\(/gu)) {
+    if (match.index < scanned) continue;
+    const start = match.index + match[0].length;
+    let end = start,
+      depth = 1;
+    for (; end < raw.length; end++) {
+      const character = raw[end];
+      if (character === "\r" || character === "\n") break;
+      if (character === "\\" && /[()\\]/.test(raw[end + 1] ?? "")) {
+        end++;
+        continue;
+      }
+      if (character === "(") depth++;
+      else if (character === ")" && --depth === 0) break;
+    }
+    if (depth || end === raw.length) continue;
+    scanned = end + 1;
+    const destination = raw.slice(start, end);
+    if (
+      !localDestinationPattern.test(destination) ||
+      !/[ \t]/.test(destination) ||
+      /[<>\r\n]/.test(destination) ||
+      /[ \t]$/.test(destination) ||
+      /[ \t]+(?:"[^"]*"|'[^']*'|\([^()]*\))$/.test(destination)
+    )
+      continue;
+    const url = decodeString(
+      windowsDestinationPattern.test(destination) ? destination.replaceAll("\\", "\\\\") : destination,
+    );
+    if (resolveMarkdownLinkTarget(url, context)?.kind !== "file") continue;
+    if (match.index > cursor)
+      nodes.push({ type: "text", value: decodeString(raw.slice(cursor, match.index)) });
+    nodes.push({ type: "link", url, children: [{ type: "text", value: decodeString(match[1]) }] });
+    cursor = end + 1;
+  }
+  if (!cursor) return null;
+  if (cursor < raw.length) nodes.push({ type: "text", value: decodeString(raw.slice(cursor)) });
+  return nodes;
+}
+
+export function spacedFileLinkRemarkPlugin(context: LinkContext = {}) {
+  return () => (tree: unknown, file: unknown) => {
+    const source = String(file ?? "");
+    const visit = (node: MarkdownNode) => {
+      if (
+        !node.children ||
+        ["code", "inlineCode", "html", "link", "linkReference", "image", "imageReference"].includes(node.type)
+      )
+        return;
+      node.children = node.children.flatMap((child) => {
+        if (child.type !== "text") {
+          visit(child);
+          return [child];
+        }
+        const start = child.position?.start?.offset,
+          end = child.position?.end?.offset;
+        if (start === undefined || end === undefined) return [child];
+        const raw = source.slice(start, end);
+        // CommonMark 把含空格的裸路径留成文本；只修复可完整还原的文本节点，保留原始路径和代码语义。
+        return decodeString(raw) === child.value ? (spacedFileLinks(raw, context) ?? [child]) : [child];
+      });
+    };
+    visit(tree as MarkdownNode);
+  };
+}
 
 function extractRawDestination(node: MarkdownNode, slice: string): string | null {
   let target: string;

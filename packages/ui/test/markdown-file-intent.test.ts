@@ -47,6 +47,43 @@ it("marks chat table HTML anchors as Markdown links", () => {
   );
 });
 
+it.each([false, true])("opens complete spaced file destinations (streaming: %s)", (streaming) => {
+  const document =
+    "/Users/jiezhou/.zpi/workspace/draft-c2852ed4-5fca-4377-942c-0b2934304983/doc/【8.20】20261104 北京高端盘-资管&经纪人业绩规则.md";
+  const cases = [
+    [`[【8.20】20261104 北京高端盘-资管&经纪人业绩规则](${document})`, document, {}],
+    [
+      "[相对](./doc/北京 高端盘(终稿)&规则.md:12:3)",
+      "/workspace/doc/北京 高端盘(终稿)&规则.md",
+      { relative: true, line: 12, column: 3 },
+    ],
+    ["[Windows](C:\\My Files\\.config\\a&b.json)", "C:/My Files/.config/a&b.json", {}],
+    ["[编码](./doc/订单%2520 汇总.md)", "/workspace/doc/订单%20 汇总.md", { relative: true }],
+    ["[规范](</tmp/北京 高端盘.md>)", "/tmp/北京 高端盘.md", {}],
+    [
+      "| 文件 |\n| --- |\n| [表格](./doc/北京 高端盘.md) |",
+      "/workspace/doc/北京 高端盘.md",
+      { relative: true },
+    ],
+  ] as const;
+  for (const [text, path, location] of cases) {
+    links.length = 0;
+    const onFile = vi.fn();
+    renderToStaticMarkup(
+      createElement(Markdown, {
+        streaming,
+        text,
+        workspace: { cwd: "/workspace" },
+        onFile,
+        onLink: vi.fn(),
+      }),
+    );
+    expect(links, text).toHaveLength(1);
+    links[0].onOpen?.();
+    expect(onFile, text).toHaveBeenCalledWith(path, location, "markdown-link");
+  }
+});
+
 it("marks Markdown anchors inside tool previews without changing tool file chip intent", () => {
   const onFile = vi.fn();
   renderToStaticMarkup(createElement(ToolFilePreview, { block, workspace: { cwd: "/shared" }, onFile }));
