@@ -11,6 +11,56 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+test("missing file actions in tables show a dismissible window notice without changing cell layout or copied text", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-table-file-notice-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const tableText =
+    "| 功能 | 文件 | 说明 |\n| --- | --- | --- |\n| 房源评分 | [getHouseScores](./GetHouseScoresTool.java) | 查询房源评分 |";
+  const model = await fakeServer((_, response) => {
+    send(response, chunk({ content: tableText }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: model.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByLabel("消息", { exact: true }).fill("展示文件表格");
+    await page.getByLabel("消息", { exact: true }).press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    const table = page.locator(".markdown-table-block");
+    const link = table.getByRole("button", { name: "getHouseScores", exact: true });
+    const bounds = await table.locator("table").boundingBox();
+    const text = await table.locator("table").innerText();
+    for (const action of ["preview", "open", "reveal"] as const) {
+      if (action === "reveal") {
+        await link.click({ button: "right" });
+        await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
+      } else if (action === "open") await link.dispatchEvent("click", { metaKey: true });
+      else await link.click();
+      const notice = page.locator(".shell > .notice-window");
+      await expect(notice).toContainText("找不到文件“GetHouseScoresTool.java”");
+      await expect(notice).toHaveCSS("position", "absolute");
+      await expect(table.getByRole("alert")).toHaveCount(0);
+      expect(await table.locator("table").boundingBox()).toEqual(bounds);
+      expect(await table.locator("table").innerText()).toBe(text);
+      await table.getByRole("button", { name: "复制 Markdown", exact: true }).click();
+      expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+        tableText.replace("[getHouseScores](./GetHouseScoresTool.java)", "getHouseScores"),
+      );
+      await notice.getByRole("button", { name: "关闭错误", exact: true }).click();
+      await expect(notice).toHaveCount(0);
+    }
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => model.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("Markdown links and streamed file citations share icons, preview locations and browser routing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-markdown-links-"));
   const project = join(dir, "project");
@@ -161,7 +211,8 @@ test("Markdown links and streamed file citations share icons, preview locations 
     await expect(page.locator(".notice-window")).toHaveCount(0);
     await answer.getByRole("button", { name: "越界符号链接", exact: true }).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Finder", exact: true }).click();
-    await expect(answer.getByRole("alert")).toContainText("相对文件链接超出当前工作目录");
+    await expect(page.locator(".shell > .notice-window")).toContainText("相对文件链接超出当前工作目录");
+    await expect(answer.getByRole("alert")).toHaveCount(0);
     expect(
       await app.evaluate(
         () => (globalThis as typeof globalThis & { markdownFinderPaths: string[] }).markdownFinderPaths,

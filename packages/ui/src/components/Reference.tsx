@@ -1,12 +1,14 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Copy, ExternalLink } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { parseMentions } from "zpi-coding-agent/input";
 import { selectionIntersects } from "../conversation-selections.ts";
 import { fallbackFileIconSource, fileIconSource } from "../file-icons.ts";
 import type { FileLocation } from "../link-target.ts";
 import type { FileAction, FileActionHandler } from "../types.ts";
 import { userErrorMessage } from "../user-error.ts";
+import { Notice } from "./Notice.tsx";
 
 export interface DisplayReference {
   kind: "file" | "skill" | "command" | "session" | "subagent";
@@ -122,6 +124,7 @@ export function Reference({
   location?: FileLocation;
   className?: string;
 }) {
+  const anchor = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
   const perform = (action: FileAction) => {
     setError("");
@@ -131,6 +134,7 @@ export function Reference({
   const reference =
     kind === "file" && onOpen ? (
       <button
+        ref={anchor}
         type="button"
         className={`inline-mention file ${className}`}
         data-conversation-inline-link="true"
@@ -183,11 +187,11 @@ export function Reference({
           </ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>
-      {error && (
-        <span role="alert" className="run-error" data-find-ignore>
-          {error}
-        </span>
-      )}
+      {error &&
+        createPortal(
+          <Notice scope="window" message={error} onDismiss={() => setError("")} />,
+          anchor.current?.closest("dialog, .shell") ?? document.body,
+        )}
     </>
   );
 }

@@ -126,8 +126,9 @@ it("preserves selected file links on Command + click and shows default-open fail
   document.getSelection()?.removeAllRanges();
   await click();
   expect(onFile).not.toHaveBeenCalled();
-  expect(container.querySelector('[role="alert"]')?.textContent).toBe("无法打开文件，请重试。");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(document.querySelector('.notice-window[role="alert"]')?.textContent).toBe("无法打开文件，请重试。");
   onFileAction.mockResolvedValue(undefined);
   await click();
-  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(document.querySelector('.notice-window[role="alert"]')).toBeNull();
 });
