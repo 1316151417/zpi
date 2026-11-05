@@ -1,5 +1,7 @@
 // ZCode local-agent message renderers: public input details, no transport payloads.
 import { Reply, Send } from "lucide-react";
+import { useContext } from "react";
+import { SubagentContext } from "./SubagentToolBlock.tsx";
 import type { ToolBlockProps } from "./ToolBlock.tsx";
 import { ToolFailure } from "./ToolFailure.tsx";
 import { ToolLayout } from "./ToolLayout.tsx";
@@ -11,6 +13,8 @@ export function SubagentMessageToolBlock({ block, expanded, toggle, onCopy }: To
   const running = block.status === "preparing" || block.status === "running";
   const summary = typeof input.summary === "string" ? input.summary : "";
   const target = typeof input.to === "string" ? input.to : "";
+  const { tasks } = useContext(SubagentContext);
+  const targetName = tasks.find((task) => task.agentId === target)?.description.trim();
   const message = typeof input.message === "string" ? input.message : "";
   const details = !reply && Boolean(summary || target || message);
   return (
@@ -21,6 +25,7 @@ export function SubagentMessageToolBlock({ block, expanded, toggle, onCopy }: To
         running={running}
         expanded={details && expanded}
         toggle={details ? toggle : undefined}
+        title={!reply && target ? (targetName ? `${targetName}\n${target}` : target) : undefined}
         separator="·"
         // 与 ZCode SendMessage 一致：摘要和目标只占一行，侧栏打开后不能换行撑高工具行。
         primary={<span className="tool-summary-text">{summary || block.name}</span>}
@@ -28,7 +33,11 @@ export function SubagentMessageToolBlock({ block, expanded, toggle, onCopy }: To
           !reply && target ? (
             <span className="tool-message-target">
               <span>到</span>
-              <code className="tool-summary-text">{target}</code>
+              {targetName ? (
+                <span className="tool-summary-text">{targetName}</span>
+              ) : (
+                <code className="tool-summary-text">{target}</code>
+              )}
             </span>
           ) : undefined
         }
@@ -48,7 +57,7 @@ export function SubagentMessageToolBlock({ block, expanded, toggle, onCopy }: To
         content={
           <dl className="subagent-message-details">
             {[
-              ["目标", target],
+              ["目标", targetName || target],
               ["摘要", summary],
               ["消息", message],
             ]

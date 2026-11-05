@@ -743,7 +743,7 @@ small {
 .tool-summary-text:is(code) {
   font-family: var(--font-code);
 }
-.tool-message-target > span,
+.tool-message-target > span:first-child,
 .tool-summary-status {
   flex-shrink: 0;
   white-space: nowrap;
