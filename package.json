@@ -1,6 +1,6 @@
 {
   "name": "zpi",
-  "version": "0.2.244",
+  "version": "0.2.245",
   "private": true,
   "type": "module",
   "bin": {
@@ -20,6 +20,7 @@
     "test:desktop": "npm run test:safety && npm run build && node scripts/test-desktop.ts",
     "dev": "node scripts/dev.mjs",
     "docs": "node scripts/docs.mjs",
+    "docs:deploy": "node scripts/docs-deploy.mjs",
     "build": "node scripts/build.mjs",
     "package:mac": "npm run build && electron-builder --mac dmg",
     "package:mac:preview": "npm run build && electron-builder --mac dmg -c.productName=\"ZPI Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"ZPI Preview\"",
