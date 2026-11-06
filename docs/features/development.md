@@ -35,6 +35,10 @@ npm run build
 
 `check` 执行 TypeScript 和 Biome；`format` 会写格式修复。先运行受影响的测试，再扩大到相关套件。完整命令与 GUI 边界见[测试](testing.md)。
 
+## 阅读文档
+
+`npm run docs`（或在仓库内运行 `npx zpi-docs`）启动本地文档站点，默认地址为 <http://127.0.0.1:4400>。站点支持全文搜索、Mermaid 图、源码查看和深浅色主题，全部离线渲染。`--no-open` 阻止自动打开浏览器，`--no-live` 关闭文档变更后的自动刷新。
+
 ## 调试
 
 开发窗口的 View 菜单可打开 DevTools。`ZPI_DEV_DEBUG=1 npm run dev` 给 Electron 添加随机端口的 Chromium 远程调试入口；它不是 Node 主进程 inspector。renderer、主进程和 Worker 的错误归属不同，应结合[日志](diagnostics.md)定位。

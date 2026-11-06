@@ -28,4 +28,4 @@ main bundle 包含 workspace 核心及常用 JS 依赖，Electron、node-pty、S
 
 新增主进程能力同时检查 shared 类型、preload 暴露和 renderer 调用；业务逻辑尽量放可单测服务。新增 worker 或本地资源必须加入构建入口，开发模式能打开不等于发行包已经包含。
 
-源码：[dev](../../scripts/dev.mjs)、[进程收尾](../../scripts/dev-process.ts)、[build](../../scripts/build.mjs)、[main/preload 配置](../../scripts/desktop-build.mjs)、[Vite](../../packages/desktop/vite.config.ts)、[PDF assets](../../packages/desktop/pdf-assets-plugin.ts)、[根配置](../../package.json)。
+源码：[dev](../../scripts/dev.mjs)、[文档站点](../../scripts/docs.mjs)、[进程收尾](../../scripts/dev-process.ts)、[build](../../scripts/build.mjs)、[main/preload 配置](../../scripts/desktop-build.mjs)、[Vite](../../packages/desktop/vite.config.ts)、[PDF assets](../../packages/desktop/pdf-assets-plugin.ts)、[根配置](../../package.json)。

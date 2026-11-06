@@ -3,6 +3,9 @@
   "version": "0.2.242",
   "private": true,
   "type": "module",
+  "bin": {
+    "zpi-docs": "./scripts/docs.mjs"
+  },
   "workspaces": [
     "packages/*"
   ],
@@ -16,6 +19,7 @@
     "repair:sessions": "tsx scripts/repair-sessions.ts",
     "test:desktop": "npm run test:safety && npm run build && node scripts/test-desktop.ts",
     "dev": "node scripts/dev.mjs",
+    "docs": "node scripts/docs.mjs",
     "build": "node scripts/build.mjs",
     "package:mac": "npm run build && electron-builder --mac dmg",
     "package:mac:preview": "npm run build && electron-builder --mac dmg -c.productName=\"ZPI Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"ZPI Preview\"",
@@ -40,6 +44,9 @@
     "electron": "41.10.7",
     "electron-builder": "26.15.3",
     "happy-dom": "21.0.3",
+    "marked": "18.0.14",
+    "mermaid": "11.17.2",
+    "shiki": "4.5.0",
     "tailwindcss": "4.3.3",
     "tsup": "8.5.1",
     "tsx": "4.23.15",

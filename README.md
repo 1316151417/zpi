@@ -30,5 +30,6 @@
 | 测试 | [运行和选择测试](docs/features/testing.md) | [隔离与清理机制](docs/internals/testing.md) |
 | 打包 | [构建安装包](docs/features/packaging.md) | [产物与原生依赖](docs/internals/packaging.md) |
 
+- 本地阅读文档：`npm run docs`（或仓库内 `npx zpi-docs`），默认打开 <http://127.0.0.1:4400>
 - [下载发布包](https://github.com/1316151417/zpi/releases)
 - [仓库](https://github.com/1316151417/zpi)
