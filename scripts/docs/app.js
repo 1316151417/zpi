@@ -1,6 +1,8 @@
 const root = document.documentElement;
 const body = document.body;
 const THEME_KEY = "zpi-docs-theme";
+const docsBase = document.querySelector('meta[name="zpi-docs-base"]')?.getAttribute("content") ?? "";
+const docsUrl = (path) => `${docsBase}${path}`;
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent);
 
 if (!isMac) {
@@ -75,7 +77,7 @@ let searchEntries = [];
 let activeIndex = -1;
 
 function loadSearchIndex() {
-  searchIndex ??= fetch("/__search.json")
+  searchIndex ??= fetch(docsUrl("/__search.json"))
     .then((response) => {
       if (!response.ok) throw new Error(`搜索索引加载失败（${response.status}）`);
       return response.json();
@@ -254,7 +256,7 @@ function loadMermaid() {
   if (window.mermaid) return Promise.resolve(window.mermaid);
   mermaidLoader ??= new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "/__vendor/mermaid.min.js";
+    script.src = docsUrl("/__vendor/mermaid.min.js");
     script.onload = () => resolve(window.mermaid);
     script.onerror = () => reject(new Error("Mermaid 资源加载失败"));
     document.head.append(script);
@@ -320,7 +322,7 @@ setupScrollSpy();
 renderMermaid();
 
 if (document.querySelector('meta[name="zpi-live"]')) {
-  const events = new EventSource("/__events");
+  const events = new EventSource(docsUrl("/__events"));
   events.onmessage = (event) => {
     if (event.data === "reload") location.reload();
   };

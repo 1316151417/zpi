@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+    <meta
+      name="description"
+      content="ZPI 是本地运行的 AI 编码桌面客户端：四个基础工具、多模型自由切换、ChatGPT 套餐授权、辅助对话与子智能体、文件预览和变更审查。没有遥测，会话与配置保存在本机。"
+    >
+    <meta property="og:title" content="ZPI — 四个工具，一整间工作室">
+    <meta
+      property="og:description"
+      content="给 Agent 更少的内置工具，给你更完整的编码现场。一个本地优先、模型自由的 AI 编码桌面客户端。"
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="http://101.200.240.206/zpi/">
+    <link rel="canonical" href="http://101.200.240.206/zpi/">
+    <title>ZPI — 四个工具，一整间工作室</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body id="top">
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="header">
+      <nav class="container nav" aria-label="主导航">
+        <a class="brand" href="#top" aria-label="ZPI 首页"
+          ><span class="brand-mark" aria-hidden="true">Z</span>ZPI<span class="brand-caption"
+            >本地编码客户端</span
+          ></a
+        >
+        <div class="nav-links">
+          <a href="#philosophy">理念</a>
+          <a class="nav-optional" href="#models">模型</a>
+          <a class="nav-optional" href="#collaboration">协作</a>
+          <a href="#workspace">工作区</a>
+          <a class="nav-optional" href="#developer">开发</a>
+          <a class="nav-github" href="https://github.com/1316151417/zpi"
+            >GitHub <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero container" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> LOCAL-FIRST CODING CLIENT</p>
+          <h1 id="hero-title">四个工具，<br>一整间<span class="accent">工作室。</span></h1>
+          <p class="hero-lead">给 Agent 更少的内置工具，<br class="mobile-break">给你更完整的编码现场。</p>
+          <p class="hero-description">
+            ZPI 是本地运行的 AI 编码桌面客户端。模型读代码、改文件、跑命令；对话、变更、终端与预览留在同一界面。内核保持精简，能力按需扩展。
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/1316151417/zpi/releases"
+              >下载 ZPI <span aria-hidden="true">↗</span></a
+            >
+            <a class="button secondary" href="/zpi/docs/"
+              >阅读文档 <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <p class="hero-note">没有遥测 · 会话与配置存于本机 · 模型由你选择</p>
+        </div>
+
+        <figure
+          class="app-window"
+          role="img"
+          aria-label="ZPI 界面示意：主任务正在修改登录页，右侧审查面板列出两个文件的变更，输入框可以继续排队下一步需求。"
+        >
+          <div class="window-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="window-title">实现登录页面</span>
+            <span class="model-chip">ChatGPT · 中</span>
+          </div>
+          <div class="app-grid">
+            <div class="chat-pane">
+              <div class="message user-message">
+                把登录页标题改成“欢迎回来”，只改必要文件，并运行相关测试。
+              </div>
+              <div class="message assistant-message">
+                <p class="assistant-head"><span class="avatar" aria-hidden="true">Z</span>ZPI<span class="working">正在工作</span></p>
+                <p class="assistant-text">先确认组件位置和现有测试，再只修改必要文件。</p>
+                <div class="tool-row">
+                  <code>read</code><span class="tool-path">src/pages/login.tsx</span
+                  ><span class="tool-state ok">完成</span>
+                </div>
+                <div class="tool-row">
+                  <code>edit</code><span class="tool-path">src/pages/login.tsx</span
+                  ><span class="tool-state ok">+2 −2</span>
+                </div>
+                <div class="tool-row">
+                  <code>bash</code><span class="tool-path">npm run test:login</span
+                  ><span class="tool-state running">运行中</span>
+                </div>
+                <div class="diff-preview">
+                  <span class="diff-file">src/pages/login.tsx</span>
+                  <code class="diff-line del">- &lt;h1&gt;欢迎使用&lt;/h1&gt;</code>
+                  <code class="diff-line add">+ &lt;h1&gt;欢迎回来&lt;/h1&gt;</code>
+                </div>
+                <p class="assistant-tail">修改已保存，测试仍在运行。</p>
+              </div>
+              <div class="composer">
+                <span class="composer-placeholder">继续补充需求，随时排队…</span>
+                <kbd>⌘↵</kbd><span class="composer-hint">立即发送</span>
+              </div>
+            </div>
+            <aside class="panel-pane">
+              <div class="panel-tabs">
+                <span class="active">审查</span><span>文件</span><span>终端</span><span>辅助</span>
+              </div>
+              <div class="review-head"><span>上一轮更改</span><span class="review-count">2 个文件</span></div>
+              <ul class="review-files">
+                <li>
+                  <span class="file-badge">TS</span><span class="file-name">login.tsx</span
+                  ><span class="file-stat"><b>+2</b><i>−2</i></span>
+                </li>
+                <li>
+                  <span class="file-badge">CSS</span><span class="file-name">login.css</span
+                  ><span class="file-stat"><b>+6</b><i>−0</i></span>
+                </li>
+              </ul>
+              <div class="review-total">净变化 <b>+8</b> <i>−2</i></div>
+              <p class="panel-hint">关闭辅助对话不会停止主任务。</p>
+            </aside>
+          </div>
+        </figure>
+      </section>
+
+      <div class="principle-strip container">
+        <span>四个基础工具</span><span class="strip-divider" aria-hidden="true">/</span
+        ><span>多模型自由切换</span><span class="strip-divider" aria-hidden="true">/</span
+        ><span>本地优先</span><span class="strip-divider" aria-hidden="true">/</span
+        ><span>能力按需扩展</span>
+      </div>
+
+      <section id="philosophy" class="section container" aria-labelledby="philosophy-title">
+        <div class="section-heading">
+          <p class="eyebrow">01 / PHILOSOPHY</p>
+          <h2 id="philosophy-title">极简，是有意识的取舍。</h2>
+          <p>不把客户端变成一套庞大的 Agent 平台。少一层抽象，少一组常驻工具，少一点选择噪声。</p>
+        </div>
+        <div class="philosophy-grid">
+          <article class="philosophy-card">
+            <span class="card-number">01</span>
+            <h3>四个工具就够开始</h3>
+            <p>
+              读、写、精确编辑、执行命令。搜索、构建、测试和网络请求交给工作机已有的命令行程序，不为每件事增加专用工具。
+            </p>
+            <div class="inline-tools">
+              <code>read</code><code>write</code><code>edit</code><code>bash</code>
+            </div>
+          </article>
+          <article class="philosophy-card">
+            <span class="card-number">02</span>
+            <h3>不内置 MCP、REPL、Browser Use</h3>
+            <p>
+              Agent 已经能写脚本。需要浏览器自动化，就让它编写控制脚本并通过 bash 执行，而不是挂上一整组常驻浏览器工具。
+            </p>
+            <p class="small-note">需要本机具备相应的运行环境和依赖。</p>
+          </article>
+          <article class="philosophy-card">
+            <span class="card-number">03</span>
+            <h3>小内核，按需扩展</h3>
+            <p>
+              核心与 SDK 默认保留四个基础工具。桌面端通过通用扩展接口提供结构化提问、子智能体、后台命令、联网搜索和记忆。
+            </p>
+            <p class="small-note">
+              提问、子智能体、联网与记忆在任务首次发送时保存；之后修改全局开关，不会给旧任务追加这些能力。后台命令独立可用。
+            </p>
+          </article>
+        </div>
+        <aside class="clarification">
+          <span aria-hidden="true">↳</span>
+          <p>
+            <strong>不内置，不等于不能做。</strong>
+            Agent 可以通过 bash 使用已有程序。右侧网页预览是供你查看结果的界面，不是给 Agent 的 Browser Use
+            工具；提示词和工具白名单也不构成操作系统权限沙箱。
+          </p>
+        </aside>
+      </section>
+
+      <section id="models" class="section feature-section" aria-labelledby="models-title">
+        <div class="container">
+          <div class="section-heading">
+            <p class="eyebrow">02 / MODEL FREEDOM</p>
+            <h2 id="models-title">工具精简，模型选择不精简。</h2>
+            <p>用你已有的账号和 API。根据任务换模型，而不是为了模型更换整个工作流。</p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card featured">
+              <div class="card-top">
+                <span class="feature-symbol" aria-hidden="true">↔</span
+                ><span class="pill">同一任务，继续对话</span>
+              </div>
+              <h3>自由切换模型</h3>
+              <p>
+                预置 ChatGPT、DeepSeek、智谱、MiniMax、MiMo，也能自定义提供商、模型 ID
+                和能力参数。支持启用、排序、刷新模型目录与思考程度配置。
+              </p>
+              <div class="protocol-list">
+                <span>Chat Completions</span><span>Responses</span><span>Anthropic Messages</span>
+              </div>
+              <p class="small-note">
+                运行中也能切换：当前执行使用原配置，后续消息使用新选择。跨模型保留文本与工具历史，供应商专用推理字段按协议适配。切回 OpenAI 可能重新建连并发送完整有效上下文。
+              </p>
+            </article>
+            <article class="feature-card">
+              <div class="card-top">
+                <span class="feature-symbol" aria-hidden="true">◎</span
+                ><span class="pill">OAuth 套餐授权</span>
+              </div>
+              <h3>接入你的 ChatGPT</h3>
+              <p>
+                通过浏览器登录并授权 ChatGPT 套餐访问。不用复制网页 Cookie；使用授权令牌调用
+                Responses API，自动续期并获取账号模型目录。
+              </p>
+              <p class="small-note">
+                仅在官方 Responses 地址启用 WebSocket 连接复用与增量续接，长任务少传重复上下文；连接或代理失败时回退 HTTP。可用模型、额度和访问资格取决于账号。
+              </p>
+            </article>
+            <article class="feature-card">
+              <div class="card-top">
+                <span class="feature-symbol" aria-hidden="true">＋</span
+                ><span class="pill">不绑定供应商</span>
+              </div>
+              <h3>国产模型，也能自己配</h3>
+              <p>
+                预置常用国产提供商的套餐和按量 API 配置。其他兼容服务或本地模型，可填写地址、API Key
+                和模型参数接入。
+              </p>
+              <p class="small-note">
+                按服务端能力选择协议。高级配置支持推理等级映射和受限参数表达式；兼容性取决于服务端，不宣称支持任意模型。
+              </p>
+            </article>
+            <article class="feature-card">
+              <div class="card-top">
+                <span class="feature-symbol" aria-hidden="true">$_</span
+                ><span class="pill">已有配置，无需重填</span>
+              </div>
+              <h3>从环境变量自动发现</h3>
+              <p>
+                启动时识别预置提供商的 API Key，初始化尚未添加的配置。已经手动设置过的提供商，不会被自动发现覆盖。
+              </p>
+              <div class="env-example">
+                <code>DEEPSEEK_API_KEY</code><code>ZHIPU_API_KEY</code><code>MINIMAX_API_KEY</code
+                ><code>MIMO_API_KEY</code><span>以及 OpenAI 与按量 API 的对应变量</span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="collaboration" class="section container collaboration-section" aria-labelledby="collaboration-title">
+        <div class="collaboration-copy">
+          <p class="eyebrow">03 / COLLABORATION</p>
+          <h2 id="collaboration-title">主任务继续，<br>你可以再问一句。</h2>
+          <p>「为什么这样改？」<br>「还有没有另一种方案？」</p>
+          <p>
+            在右侧打开辅助对话，继承创建时的稳定上下文。不必重新解释背景，也不用把追问插进主任务。需要分工时，让主 Agent
+            委派子智能体；需要确认时，让 Agent 直接发起结构化提问。
+          </p>
+          <ul class="check-list">
+            <li>辅助对话有独立的消息、模型、队列和运行状态</li>
+            <li>子智能体默认包含 general-purpose 与 Explore，也可自定义</li>
+            <li>关闭辅助对话或停止单个子任务，不停止主任务</li>
+          </ul>
+        </div>
+        <div class="collaboration-diagram">
+          <div class="diagram-label">协作关系示意</div>
+          <div class="chat-block main-chat">
+            <span class="chat-label"><i class="status-dot" aria-hidden="true"></i> 主任务</span>
+            <h3>实现登录页面</h3>
+            <div class="task-steps"><span>读取项目</span><span>修改文件</span><span>执行测试</span></div>
+          </div>
+          <div class="context-bridge"><span aria-hidden="true">↳</span> 用户手动开启，或由主 Agent 显式委派</div>
+          <div class="branch-grid">
+            <div class="chat-block auxiliary-chat">
+              <span class="chat-label">辅助对话</span>
+              <h3>为什么选择这个实现？</h3>
+              <p>继承创建时的上下文，之后独立回答。</p>
+            </div>
+            <div class="chat-block subagent-chat">
+              <span class="chat-label">子智能体 · Explore</span>
+              <h3>查找现有登录实现</h3>
+              <p>使用各自工具范围，并行处理独立任务。</p>
+            </div>
+          </div>
+          <div class="question-block">
+            <span class="chat-label">结构化提问</span>
+            <p>使用哪种登录方式？</p>
+            <div class="question-options"><span>邮箱验证码</span><span>密码登录</span><span>稍后决定</span></div>
+          </div>
+          <p class="diagram-note">
+            辅助对话、子智能体和主任务共享工作目录，提示词不是权限隔离。需要独立检出目录时，使用独立任务的 Git 工作树。
+          </p>
+        </div>
+      </section>
+
+      <section id="workspace" class="section container workspace-section" aria-labelledby="workspace-title">
+        <div class="section-heading">
+          <p class="eyebrow">04 / EVERYDAY WORK</p>
+          <h2 id="workspace-title">常用的留下，复杂的拿掉。</h2>
+          <p>从提出需求到检查结果，保留日常编码真正需要的那几步。</p>
+        </div>
+        <div class="workspace-grid">
+          <article>
+            <span class="workspace-icon" aria-hidden="true">±</span>
+            <h3>对话与输入队列</h3>
+            <p>
+              执行中也能补充需求：排队、编辑、排序、暂停或立即发送。停止只结束当前执行，已完成的文件修改仍然保留。支持消息编辑、分叉与带冲突检查的回退。
+            </p>
+          </article>
+          <article>
+            <span class="workspace-icon" aria-hidden="true">▤</span>
+            <h3>文件与预览</h3>
+            <p>
+              文本、Markdown、Mermaid、SVG、HTML、图片、音视频、PDF、DOCX、XLSX 与 PPTX 在应用内查看。源码支持行号定位和行备注，备注直接进入当前草稿。
+            </p>
+          </article>
+          <article>
+            <span class="workspace-icon" aria-hidden="true">⇄</span>
+            <h3>看清每一处变更</h3>
+            <p>
+              审查未暂存、已暂存、全部分支或上一轮更改；聊天中的文件 Diff 只展示对应轮次或工具操作。轮末统计净变化，改回原样不会累计中间改动。
+            </p>
+          </article>
+          <article>
+            <span class="workspace-icon" aria-hidden="true">⑂</span>
+            <h3>项目、分组与工作树</h3>
+            <p>
+              按项目、分组或最近更新浏览任务；分组支持七色、折叠与拖拽。新任务可创建独立 Git 工作树，默认 detached HEAD，不自动新增分支。
+            </p>
+          </article>
+          <article>
+            <span class="workspace-icon" aria-hidden="true">▭</span>
+            <h3>面板与完整视图</h3>
+            <p>
+              右侧标签承载文件、浏览器、终端、审查与辅助对话，状态按任务恢复。完整视图把当前对话放进独立标签，浮动输入框可收起、展开或拖动吸附。界面主题与代码预览主题分别配置。
+            </p>
+          </article>
+          <article>
+            <span class="workspace-icon" aria-hidden="true">⌕</span>
+            <h3>搜索、快捷键与通知</h3>
+            <p>
+              ⌘K / Ctrl+K 查找任务、工作区文件和操作，⌘F / Ctrl+F 搜索当前任务与变更。快捷键可逐项改键；任务结束、中断或失败时可按需发送系统通知。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="extensions" class="section extension-section" aria-labelledby="extensions-title">
+        <div class="container">
+          <div class="section-heading">
+            <p class="eyebrow">05 / CONTEXT &amp; EXTENSIONS</p>
+            <h2 id="extensions-title">上下文按需提供，能力按需开启。</h2>
+            <p>引用、指令、技能与扩展都有明确边界；不需要的功能保持关闭。</p>
+          </div>
+          <div class="extension-grid">
+            <article class="extension-card">
+              <span class="extension-tag">CONTEXT</span>
+              <h3>引用与上下文</h3>
+              <p>
+                @ 引用工作区文件，# 选择已有会话，选中文字与行备注加入草稿。引用会按数量、长度和文件边界解析，不是把整个工作区自动上传。
+              </p>
+              <p class="small-note">接近预算时自动压缩，也可用 /compact 手动压缩；原始历史仍保存在本机。</p>
+            </article>
+            <article class="extension-card">
+              <span class="extension-tag">COMMANDS</span>
+              <h3>指令、技能与自定义命令</h3>
+              <p>
+                /init 生成项目指令；技能放在 .agents/skills 或 .zpi/skills，通过 $ 菜单选择。常用提示词可保存为 /名称 命令，支持参数、技能引用与 Shell 模板。
+              </p>
+              <p class="small-note">项目命令覆盖用户命令；可从其他客户端显式导入。</p>
+            </article>
+            <article class="extension-card">
+              <span class="extension-tag">BACKGROUND</span>
+              <h3>后台命令与终端</h3>
+              <p>
+                bash 可显式后台执行，或用 TaskOutput 读取、TaskStop 终止。右侧终端标签使用本机 Shell，保留独立 PTY 与输出，适合手动运行开发服务器和测试。
+              </p>
+              <p class="small-note">应用退出会清理所属后台命令；异常退出后不凭旧 PID 认领进程。</p>
+            </article>
+            <article class="extension-card">
+              <span class="extension-tag">WEB</span>
+              <h3>联网搜索与来源</h3>
+              <p>
+                web_search 与 web_fetch 由独立的 DeepSeek 凭据提供，可与聊天模型分开选择。回复旁的“来源”汇总当前轮成功结果，点击在内置浏览器打开原文。
+              </p>
+              <p class="small-note">默认关闭，按任务保存；只抓取无凭据的公网 HTTP(S) 地址。</p>
+            </article>
+            <article class="extension-card">
+              <span class="extension-tag">MEMORY</span>
+              <h3>短期与长期记忆</h3>
+              <p>
+                短期模式维护用户与项目的 MEMORY.md；长期模式从历史会话提取摘要，由后台 Agent 增量整合。两种模式互斥，默认都关闭。
+              </p>
+              <p class="small-note">快速对话不读取或生成记忆；当前用户要求与项目指令始终优先。</p>
+            </article>
+            <article class="extension-card">
+              <span class="extension-tag">QUICK CHAT</span>
+              <h3>随手问一句</h3>
+              <p>
+                全局快捷键唤起临时浮窗，不创建正式任务，也不写主任务历史。macOS 支持框选截图、复制当前内容和读取剪贴板，确认后才发送。
+              </p>
+              <p class="small-note">Option+Space / Alt+N 显示；超过 15 分钟会在下次唤起时重置。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="developer" class="section developer-section" aria-labelledby="developer-title">
+        <div class="container">
+          <div class="developer-grid">
+            <div class="developer-copy">
+              <p class="eyebrow light">06 / DEVELOPER</p>
+              <h2 id="developer-title">内核独立，<br>界面只是入口。</h2>
+              <p>
+                zpi-coding-agent 提供模型运行时、四个基础工具、会话与上下文管理，不依赖 Electron。桌面端的提问、子智能体、后台命令与记忆，都由通用扩展接口接入。
+              </p>
+              <ul class="check-list light">
+                <li>customTools 新增工具，toolOverrides 替换内置工具</li>
+                <li>内存、文件或自定义会话存储</li>
+                <li>仓库示例使用本地假模型，无需线上凭据</li>
+                <li>诊断页汇总错误日志、等待与重试，以及 TTFT、输出速度和 token 用量</li>
+              </ul>
+              <div class="developer-actions">
+                <a class="button primary inverse" href="https://github.com/1316151417/zpi/blob/main/docs/features/sdk.md"
+                  >SDK 文档 <span aria-hidden="true">↗</span></a
+                >
+                <code class="command-chip">npm run example:coding</code>
+              </div>
+              <p class="developer-note">
+                文档站：<a href="/zpi/docs/">打开文档</a>（也可在仓库内运行
+                <code>npm run docs</code> 或 <code>npx zpi-docs</code>）。60
+                篇中文文档支持全文搜索、Mermaid、源码查看与深浅色主题。
+              </p>
+            </div>
+            <div class="code-card">
+              <div class="code-head"><span>examples/coding-session.ts</span><span>TypeScript</span></div>
+              <pre><code>import {
+  createAgentSession,
+  ModelRuntime,
+  SessionManager,
+} from "zpi-coding-agent";
+
+const runtime = await ModelRuntime.create();
+runtime.registerProvider("local", {
+  baseUrl: "http://127.0.0.1:8000/v1",
+  api: "openai-completions",
+  apiKey: "",
+  models: [{
+    id: "your-model-id", name: "Local model", reasoning: false,
+    input: ["text"], contextWindow: 32768, maxTokens: 4096,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  }],
+});
+
+const { session } = await createAgentSession({
+  cwd: "/absolute/project",
+  modelRuntime: runtime,
+  sessionManager: SessionManager.inMemory("/absolute/project"),
+});
+await session.prompt("说明项目入口，先不修改文件。");</code></pre>
+            </div>
+          </div>
+
+          <div class="package-strip" aria-label="五个包的分工">
+            <div><code>ai</code><span>协议、认证与流</span></div>
+            <div><code>agent</code><span>执行循环与工具调度</span></div>
+            <div><code>coding-agent</code><span>会话、四工具与 SDK</span></div>
+            <div><code>ui</code><span>对话组件与展示模型</span></div>
+            <div><code>desktop</code><span>Electron、窗口与 IPC</span></div>
+          </div>
+
+          <div class="local-first">
+            <article>
+              <h3>数据留在本机</h3>
+              <p>业务状态使用 SQLite，会话事实使用 JSONL v2；搜索与投影索引是可重建的派生数据。备份时复制完整数据根。</p>
+            </article>
+            <article>
+              <h3>凭据谨慎保存</h3>
+              <p>系统加密可用时加密保存，不可用时只留在本次应用内存。公共设置与普通日志不承载完整密钥。</p>
+            </article>
+            <article>
+              <h3>边界如实说明</h3>
+              <p>没有产品遥测；但使用云端模型时，所需上下文仍会发送给所选提供商。联网搜索另外把搜索词或 URL 发给网页服务。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="start" class="section container" aria-labelledby="start-title">
+        <div class="getting-started">
+          <div>
+            <p class="eyebrow">07 / GET STARTED</p>
+            <h2 id="start-title">从一个任务开始。</h2>
+            <p>不必先配置一套工具平台。</p>
+            <a class="button primary" href="https://github.com/1316151417/zpi/releases"
+              >前往 Releases <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <ol class="start-steps">
+            <li>
+              <span>01</span>
+              <div>
+                <h3>下载客户端</h3>
+                <p>查看 Releases 中当前发布的安装包。</p>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <h3>连接你常用的模型</h3>
+                <p>登录 ChatGPT，填写 API Key，或让环境变量自动初始化预置配置。</p>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <h3>选个项目，描述需求</h3>
+                <p>检查变更和结果，必要时开辅助对话、委派子智能体，或换个模型继续。</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+        <p class="platform-note">
+          当前主要在 macOS Apple Silicon 上验证；仓库提供 macOS 与 Windows 打包命令，实际可下载平台以 Releases 附件为准。开发需 Node.js 24 与 npm。
+        </p>
+      </section>
+
+      <section id="faq" class="section container faq-section" aria-labelledby="faq-title">
+        <div class="section-heading">
+          <p class="eyebrow">A FEW CLEAR BOUNDARIES</p>
+          <h2 id="faq-title">把边界也说清楚。</h2>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>没有遥测，是否意味着所有内容都不出本机？</summary>
+            <p>
+              不是。会话与配置在本机保存，但使用云端模型时，所需上下文仍会发送给你选择的提供商。联网搜索另外把搜索词或 URL
+              发给网页服务。ZPI 不采集产品遥测，不能替第三方服务承诺数据处理方式。
+            </p>
+          </details>
+          <details>
+            <summary>ChatGPT 接入能保证不封号吗？</summary>
+            <p>
+              不能。ZPI 使用 OAuth 登录与套餐访问授权，不要求复制网页会话 Cookie，也不以绕过风控为目标。账号规则、额度和访问资格由
+              OpenAI 决定，请遵守提供商条款；模型目录能列出模型，也不代表账号一定有调用权限。
+            </p>
+          </details>
+          <details>
+            <summary>辅助对话是子智能体吗？</summary>
+            <p>
+              不是。辅助对话由你手动开启，继承创建时的稳定上下文，独立回答后续问题，不自动承接主任务。子智能体由主 Agent
+              显式委派，适合独立的分工任务。两者都共享父任务工作目录；如要分开代码修改，可使用独立任务的 Git 工作树，但工作树不是权限沙箱。
+            </p>
+          </details>
+          <details>
+            <summary>不支持 Browser Use，为什么有网页预览？</summary>
+            <p>
+              网页预览是供人查看结果的桌面面板，不是 Agent 的控制工具。需要自动化时，Agent 可以写浏览器控制脚本，通过
+              bash 运行；本机须具备对应依赖。
+            </p>
+          </details>
+          <details>
+            <summary>只有四个工具，会不会不够用？</summary>
+            <p>
+              内核只保留读、写、精确编辑和执行命令，搜索、构建、测试、Git 与网络请求都通过 bash
+              使用已有程序。桌面端再按需注入提问、子智能体、后台命令、联网搜索和记忆；SDK 也支持新增工具或替换内置工具。
+            </p>
+          </details>
+          <details>
+            <summary>数据存在哪，怎么备份？</summary>
+            <p>
+              macOS 正式版默认在 ~/Library/Application Support/ZPI/，开发版与 Preview 使用另一套目录（两者默认共用）。正常退出全部写入者后，复制完整数据根和受控附件；运行中只复制一个
+              SQLite 文件可能漏掉 WAL 或得到不一致组合。history.sqlite 是派生索引，不能通过删库“修复启动”。
+            </p>
+          </details>
+          <details>
+            <summary>能在脚本里复用 ZPI 的内核吗？</summary>
+            <p>
+              可以。仓库提供 zpi-coding-agent SDK，复用模型运行时、四个工具与会话能力；npm run example:coding
+              会启动本地假模型服务演示完整流程，不需要线上凭据。具体接口见 SDK 文档。
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="closing container" aria-label="项目链接">
+        <p>更少的工具。更完整的现场。</p>
+        <div>
+          <a href="https://github.com/1316151417/zpi"
+            >在 GitHub 上了解 ZPI <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </section>
+    </main>
+
+    <footer class="container footer">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">Z</span>ZPI</a>
+      <p>Local-first · Minimal tools · Model freedom</p>
+      <div>
+        <a href="https://github.com/1316151417/zpi/blob/main/README.md">文档</a
+        ><a href="https://github.com/1316151417/zpi/releases">Releases</a
+        ><a href="https://github.com/1316151417/zpi">GitHub ↗</a>
+      </div>
+    </footer>
+  </body>
+</html>

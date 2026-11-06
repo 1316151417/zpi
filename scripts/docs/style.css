@@ -177,6 +177,20 @@ kbd {
   height: 18px;
 }
 
+.topbar-link {
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.topbar-link:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+  text-decoration: none;
+}
+
 .menu-button {
   display: none;
 }
@@ -1056,6 +1070,10 @@ html[data-theme="dark"] .source-body pre {
 @media (max-width: 900px) {
   .menu-button {
     display: grid;
+  }
+
+  .topbar-link {
+    display: none;
   }
 
   .brand-version,

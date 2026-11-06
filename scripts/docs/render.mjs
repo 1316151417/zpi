@@ -76,6 +76,40 @@ const LANG_ALIASES = new Map([
 
 let highlighterPromise;
 const loadedLanguages = new Set();
+let basePath = "";
+let introPath = "";
+
+export function configureDocs(options = {}) {
+  const raw = String(options.base ?? "").trim();
+  const base = raw === "/" ? "" : raw.replace(/\/+$/, "");
+  if (
+    base &&
+    (!base.startsWith("/") ||
+      base.includes("//") ||
+      base.split("/").some((part) => part === "." || part === ".."))
+  ) {
+    throw new Error(`无效的文档子路径：${raw}`);
+  }
+  const intro = String(options.intro ?? "").trim();
+  if (
+    intro &&
+    (!intro.startsWith("/") ||
+      intro.includes("//") ||
+      intro.split("/").some((part) => part === "." || part === ".."))
+  ) {
+    throw new Error(`无效的介绍页路径：${intro}`);
+  }
+  if (base !== basePath || intro !== introPath) {
+    basePath = base;
+    introPath = intro;
+    invalidate();
+  }
+  return basePath;
+}
+
+export function withBase(path) {
+  return basePath && path.startsWith("/") ? `${basePath}${path}` : path;
+}
 
 async function getHighlighter() {
   highlighterPromise ??= createHighlighter({ themes: Object.values(SHIKI_THEMES) });
@@ -147,7 +181,7 @@ export function resolveLocalLink(href, urlPath) {
 function markdownLink(href, urlPath, label, title, external) {
   const titleAttr = title ? ` title="${escapeAttr(title)}"` : "";
   const target = external ? ' target="_blank" rel="noopener"' : "";
-  return `<a href="${escapeAttr(resolveLocalLink(href, urlPath))}"${titleAttr}${target}>${label}</a>`;
+  return `<a href="${escapeAttr(withBase(resolveLocalLink(href, urlPath)))}"${titleAttr}${target}>${label}</a>`;
 }
 
 export async function renderMarkdown(markdown, urlPath) {
@@ -187,7 +221,7 @@ export async function renderMarkdown(markdown, urlPath) {
       },
       image(token) {
         const titleAttr = token.title ? ` title="${escapeAttr(token.title)}"` : "";
-        return `<img src="${escapeAttr(resolveLocalLink(token.href, urlPath))}" alt="${escapeAttr(token.text)}"${titleAttr}>`;
+        return `<img src="${escapeAttr(withBase(resolveLocalLink(token.href, urlPath)))}" alt="${escapeAttr(token.text)}"${titleAttr}>`;
       },
     },
   });
@@ -244,7 +278,13 @@ function buildSearchEntries(docs) {
     const flush = () => {
       const text = stripMarkdown(current.parts.join(" ")).slice(0, 260);
       if (text)
-        entries.push({ url: doc.url, title: doc.title, id: current.id, heading: current.heading, text });
+        entries.push({
+          url: withBase(doc.url),
+          title: doc.title,
+          id: current.id,
+          heading: current.heading,
+          text,
+        });
     };
     for (const token of new Marked({ gfm: true }).lexer(doc.text)) {
       if (token.type === "heading") {
@@ -307,6 +347,8 @@ async function buildSite() {
     sidebar,
     linear: sidebar.flatMap((group) => group.items),
     version,
+    base: basePath,
+    intro: introPath || `${basePath}/intro/`,
     search: buildSearchEntries(docs),
   };
 }

@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import {
+  configureDocs,
   docUrlForPathname,
   findNeighbors,
   getSite,
@@ -24,6 +25,10 @@ const STATIC_ASSETS = new Map([
   ["/__app.js", { file: join(here, "docs/app.js"), type: "text/javascript; charset=utf-8" }],
   ["/__style.css", { file: join(here, "docs/style.css"), type: "text/css; charset=utf-8" }],
 ]);
+const INTRO_ASSETS = new Map([
+  ["/intro/styles.css", { file: join(ROOT, "docs/site/styles.css"), type: "text/css; charset=utf-8" }],
+  ["/intro/favicon.svg", { file: join(ROOT, "docs/site/favicon.svg"), type: "image/svg+xml" }],
+]);
 
 const options = parseArgs(process.argv.slice(2));
 const sseClients = new Set();
@@ -32,7 +37,14 @@ let watchers = [];
 let server;
 
 function parseArgs(argv) {
-  const parsed = { port: Number(process.env.PORT) || 4400, open: true, live: true, help: false };
+  const parsed = {
+    port: Number(process.env.PORT) || 4400,
+    open: true,
+    live: true,
+    help: false,
+    base: "",
+    intro: "",
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--no-open") parsed.open = false;
@@ -40,6 +52,10 @@ function parseArgs(argv) {
     else if (argument === "-h" || argument === "--help") parsed.help = true;
     else if (argument === "--port") parsed.port = Number(argv[++index]);
     else if (argument.startsWith("--port=")) parsed.port = Number(argument.slice("--port=".length));
+    else if (argument === "--base") parsed.base = argv[++index] ?? "";
+    else if (argument.startsWith("--base=")) parsed.base = argument.slice("--base=".length);
+    else if (argument === "--intro") parsed.intro = argv[++index] ?? "";
+    else if (argument.startsWith("--intro=")) parsed.intro = argument.slice("--intro=".length);
     else {
       console.error(`未知参数：${argument}`);
       parsed.help = true;
@@ -53,6 +69,8 @@ function printHelp() {
   console.log(`用法：zpi-docs [选项]
 
   --port <端口>  监听端口（默认 4400，被占用时自动递增）
+  --base <路径>  部署子路径，如 /zpi/docs（默认根路径）
+  --intro <路径> 介绍页路径（默认 base + /intro/）
   --no-open      不自动打开浏览器
   --no-live      关闭文档变更自动刷新
   -h, --help     显示帮助`);
@@ -94,6 +112,11 @@ async function sendStaticAsset(response, asset) {
     "X-Content-Type-Options": "nosniff",
   });
   response.end(body);
+}
+
+async function sendIntro(response) {
+  const html = await readFile(join(ROOT, "docs/site/index.html"), "utf8");
+  sendHtml(response, html);
 }
 
 async function sendMermaid(request, response) {
@@ -218,6 +241,21 @@ async function handle(request, response) {
     return;
   }
 
+  if (options.base) {
+    if (pathname === options.base) {
+      redirect(response, `${options.base}/`, url.search);
+      return;
+    }
+    if (!pathname.startsWith(`${options.base}/`)) {
+      await sendErrorPage(response, 404, "页面不存在");
+      return;
+    }
+    pathname = pathname.slice(options.base.length);
+  } else if (pathname === "/zpi/docs" || pathname.startsWith("/zpi/docs/")) {
+    redirect(response, pathname.slice("/zpi/docs".length) || "/", url.search);
+    return;
+  }
+
   if (pathname.startsWith("/__")) {
     if (pathname === "/__app.js" || pathname === "/__style.css") {
       await sendStaticAsset(response, STATIC_ASSETS.get(pathname));
@@ -233,23 +271,39 @@ async function handle(request, response) {
     return;
   }
 
+  if (pathname === "/intro") {
+    redirect(response, `${options.base}/intro/`, url.search);
+    return;
+  }
+
+  if (pathname === "/intro/" || pathname === "/intro/index.html") {
+    await sendIntro(response);
+    return;
+  }
+
+  const introAsset = INTRO_ASSETS.get(pathname);
+  if (introAsset) {
+    await sendStaticAsset(response, introAsset);
+    return;
+  }
+
   if (pathname.length > 1 && pathname.endsWith("/")) {
     const trimmed = pathname.slice(0, -1);
-    redirect(response, trimmed === "/docs" ? "/" : trimmed, url.search);
+    redirect(response, `${options.base}${trimmed === "/docs" ? "/" : trimmed}`, url.search);
     return;
   }
 
   const docRedirect = docUrlForPathname(pathname);
   if (docRedirect) {
-    redirect(response, docRedirect, url.search);
+    redirect(response, `${options.base}${docRedirect}`, url.search);
     return;
   }
   if (pathname === "/docs") {
-    redirect(response, "/", url.search);
+    redirect(response, `${options.base}/`, url.search);
     return;
   }
   if (pathname.startsWith("/docs/")) {
-    redirect(response, pathname.slice("/docs".length), url.search);
+    redirect(response, `${options.base}${pathname.slice("/docs".length)}`, url.search);
     return;
   }
 
@@ -323,6 +377,7 @@ async function main() {
     return;
   }
 
+  options.base = configureDocs({ base: options.base, intro: options.intro });
   const site = await getSite();
   server = createServer((request, response) => {
     handle(request, response).catch(async (error) => {
@@ -334,7 +389,7 @@ async function main() {
   setupLiveReload();
 
   const port = await listen(options.port);
-  const address = `http://127.0.0.1:${port}`;
+  const address = `http://127.0.0.1:${port}${options.base}/`;
   console.log(`ZPI 文档已启动：${address}`);
   console.log(`${site.docs.length} 篇文档 · ${site.search.length} 个搜索段落`);
   openBrowser(address);
