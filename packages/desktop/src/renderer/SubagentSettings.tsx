@@ -16,15 +16,15 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { desktopPluginIds } from "zpi-builtin-plugins";
-import type { CombinedSelection, Result } from "../shared/bridge.ts";
-import { availablePresets, modelReasoningLabel } from "../shared/config.ts";
 import {
   agentColors,
   type SaveSubagentInput,
   type SubagentCatalog,
   type SubagentConfig,
   type SubagentProfile,
-} from "../shared/subagents.ts";
+} from "zpi-builtin-plugins/collaboration/types";
+import type { CombinedSelection, Result } from "../shared/bridge.ts";
+import { availablePresets, modelReasoningLabel } from "../shared/config.ts";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { SettingsBreadcrumb } from "./SettingsBreadcrumb.tsx";
 import { SettingsHelp } from "./SettingsHelp.tsx";

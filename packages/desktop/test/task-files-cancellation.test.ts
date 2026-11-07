@@ -36,9 +36,9 @@ test("notification titles include only visible top-level sessions", async () => 
   const f = await fixture(() => {});
   const root = await f.host.createSession(f.a.id);
   const child = await f.host.createSession(f.a.id, { parentSessionId: root.id });
-  expect(f.host.notificationTitle(root.id)).toBe(root.title);
-  expect(f.host.notificationTitle(child.id)).toBeUndefined();
-  expect(f.host.notificationTitle("missing")).toBeUndefined();
+  expect(f.host.plugins.notifications.title(root.id)).toBe(root.title);
+  expect(f.host.plugins.notifications.title(child.id)).toBeUndefined();
+  expect(f.host.plugins.notifications.title("missing")).toBeUndefined();
   await f.host.archiveSession(root.id);
-  expect(f.host.notificationTitle(root.id)).toBeUndefined();
+  expect(f.host.plugins.notifications.title(root.id)).toBeUndefined();
 });

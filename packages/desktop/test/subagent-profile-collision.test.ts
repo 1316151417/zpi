@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { SubagentProfiles } from "../src/main/plugins/subagents/profiles.ts";
+import { SubagentProfiles } from "zpi-builtin-plugins/collaboration/profiles";
 import { StateStore } from "../src/main/state-store.ts";
 
 const directories: string[] = [];

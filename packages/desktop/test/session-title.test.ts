@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-
+import { parseSessionTitle } from "zpi-builtin-plugins/title/generate";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
-import { parseSessionTitle } from "../src/main/session-title.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
 
 it.each([
@@ -171,8 +170,7 @@ it("manual rename and deletion win over late title responses; title failure is n
   await idle(host, b.id);
   await expect.poll(() => server.titleRequests.length).toBe(2);
   // Await the existing jobs through their response handling, without adding a production testing API.
-  const titleJobs = (host as unknown as { titles: { jobs: Map<string, { done: Promise<void> }> } }).titles
-    .jobs;
+  const titleJobs = host.plugins.titles.jobs;
   const pendingTitles = [a.id, b.id].map((id) => {
     const job = titleJobs.get(id);
     if (!job) throw new Error(`Missing pending title job for ${id}`);
@@ -201,7 +199,7 @@ it("manual rename and deletion win over late title responses; title failure is n
 
 it("generates a Responses title using an available effort and the portable structured-output preference", async () => {
   const { ModelRuntime } = await import("zpi-coding-agent");
-  const { generateSessionTitle } = await import("../src/main/session-title.ts");
+  const { generateSessionTitle } = await import("zpi-builtin-plugins/title/generate");
   let payload: Record<string, unknown> = {};
   const runtime = await ModelRuntime.create({
     fetch: (async (_url, init) => {

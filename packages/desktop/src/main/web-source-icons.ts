@@ -4,7 +4,7 @@ import type { ClientRequest, IncomingMessage } from "node:http";
 import { type RequestOptions, request } from "node:https";
 import { isIP } from "node:net";
 import { abortable } from "zpi-ai";
-import { publicWebUrl } from "./web-client.ts";
+import { publicWebUrl } from "zpi-builtin-plugins/web/client";
 import { decodeIconImage, iconImageFormat } from "./web-icon-image.ts";
 
 const MAX_BYTES = 256 * 1024;

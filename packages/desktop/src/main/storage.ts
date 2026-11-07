@@ -30,6 +30,11 @@ import {
   desktopPluginIds,
   validateBuiltinPluginOptions,
 } from "zpi-builtin-plugins";
+import {
+  defaultMemorySettings,
+  type MemorySettings,
+  memorySettingLimits,
+} from "zpi-builtin-plugins/memory/types";
 import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
 import { isCodePreviewSettings } from "zpi-ui/code-preview";
 import type {
@@ -51,7 +56,6 @@ import {
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
-import { defaultMemorySettings, type MemorySettings, memorySettingLimits } from "../shared/memory.ts";
 import { memoryMode } from "../shared/plugins.ts";
 import {
   defaultShortcuts,

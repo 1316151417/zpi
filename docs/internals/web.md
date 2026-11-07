@@ -24,5 +24,5 @@ fetch 目标只允许公开 HTTP(S) URL，拒绝 credentials、局域网 IP 和�
 
 ## 源码与回归入口
 
-- [工具](../../packages/desktop/src/main/web-tools.ts)、[服务客户端](../../packages/desktop/src/main/web-client.ts)、[图标网络](../../packages/desktop/src/main/web-source-icons.ts)、[图标解码](../../packages/desktop/src/main/web-icon-image.ts)、[来源 UI](../../packages/ui/src/components/AnswerSources.tsx)。
-- [工具测试](../../packages/desktop/test/web-tools.test.ts)、[凭据 IPC](../../packages/desktop/test/web-credentials-ipc.test.ts)、[图标测试](../../packages/desktop/test/web-source-icons.test.ts)、[解码测试](../../packages/desktop/test/web-icon-image.test.ts)。
+- [工具](../../packages/builtin-plugins/src/web/tools.ts)、[服务客户端](../../packages/builtin-plugins/src/web/client.ts)、[图标网络](../../packages/desktop/src/main/web-source-icons.ts)、[图标解码](../../packages/desktop/src/main/web-icon-image.ts)、[来源 UI](../../packages/ui/src/components/AnswerSources.tsx)。
+- [工具测试](../../packages/builtin-plugins/test/web-tools.test.ts)、[凭据 IPC](../../packages/desktop/test/web-credentials-ipc.test.ts)、[图标测试](../../packages/desktop/test/web-source-icons.test.ts)、[解码测试](../../packages/desktop/test/web-icon-image.test.ts)。

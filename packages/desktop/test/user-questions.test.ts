@@ -2,10 +2,10 @@ import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
 import { Agent, type AgentTool } from "zpi-agent";
 import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
+import { UserQuestions } from "zpi-builtin-plugins/questions";
 import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { projectEvent } from "../src/main/projection.ts";
 import { SessionHost } from "../src/main/session-host.ts";
-import { UserQuestions } from "../src/main/user-questions.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 const params = {
@@ -202,7 +202,7 @@ it("snapshots the plugin for new sessions, resumes with answers, and restores th
   const running = f.host.activeRuns.get(session.id)?.done;
   await expect.poll(() => f.host.getSessionSnapshot(session.id).view.question?.id).toBe("ask");
   f.settings.setPluginEnabled("zpi.questions", false);
-  f.host.questions.respond(session.id, "ask", { answers: { "使用哪种方案？": "B" } });
+  f.host.plugins.questions.respond(session.id, "ask", { answers: { "使用哪种方案？": "B" } });
   await running;
   expect(JSON.stringify(f.server.requests[1].messages)).toContain("B");
   expect(f.host.getSessionSnapshot(session.id).view.question).toBeNull();

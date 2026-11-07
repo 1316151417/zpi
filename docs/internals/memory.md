@@ -44,6 +44,6 @@ SQLite 保存成功状态，Git 使用单提交基线比较整合工作区，不
 
 ## 源码与回归入口
 
-- [短期](../../packages/desktop/src/main/memory/short-memory.ts)、[长期](../../packages/desktop/src/main/memory/long-memory.ts)、[runner](../../packages/desktop/src/main/memory/runner.ts)、[工作区](../../packages/desktop/src/main/memory/workspace.ts)、[证据](../../packages/desktop/src/main/memory/evidence.ts)。
-- [提取提示](../../packages/desktop/src/main/memory/extraction-instructions.ts)、[整合提示](../../packages/desktop/src/main/memory/consolidation-instructions.ts)、[临时笔记规则](../../packages/desktop/src/main/memory/ad-hoc-instructions.ts)。
-- [长期测试](../../packages/desktop/test/long-memory.test.ts)、[runner 测试](../../packages/desktop/test/memory-runner.test.ts)、[恢复工作区](../../packages/desktop/test/memory-workspace.test.ts)、[生命周期](../../packages/desktop/test/memory-host-lifecycle.test.ts)、[笔记](../../packages/desktop/test/memory-notes.test.ts)。
+- [短期](../../packages/builtin-plugins/src/memory/short-memory.ts)、[长期](../../packages/builtin-plugins/src/memory/long-memory.ts)、[runner](../../packages/builtin-plugins/src/memory/runner.ts)、[工作区](../../packages/builtin-plugins/src/memory/workspace.ts)、[证据](../../packages/builtin-plugins/src/memory/evidence.ts)。
+- [提取提示](../../packages/builtin-plugins/src/memory/extraction-instructions.ts)、[整合提示](../../packages/builtin-plugins/src/memory/consolidation-instructions.ts)、[临时笔记规则](../../packages/builtin-plugins/src/memory/ad-hoc-instructions.ts)。
+- [长期测试](../../packages/builtin-plugins/test/long-memory.test.ts)、[runner 测试](../../packages/builtin-plugins/test/memory-runner.test.ts)、[恢复工作区](../../packages/builtin-plugins/test/memory-workspace.test.ts)、[生命周期](../../packages/desktop/test/memory-host-lifecycle.test.ts)、[笔记](../../packages/builtin-plugins/test/memory-notes.test.ts)。

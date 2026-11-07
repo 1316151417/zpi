@@ -2,10 +2,10 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { emptyAssistant } from "zpi-ai";
+import { sessionReferenceTranscriptReverse } from "zpi-builtin-plugins/transcripts";
 import { buildSessionMentionMarkdown, SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
-import { sessionReferenceTranscriptReverse } from "../src/main/session-references.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it("lists persisted cross-project conversations current workspace first, excluding drafts, side chats and archived sessions", async () => {

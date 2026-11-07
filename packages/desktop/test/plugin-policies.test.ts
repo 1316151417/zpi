@@ -11,9 +11,9 @@ test("title, notification and memory policies follow frozen plugin enablement ac
   f.host.setNotificationSink(notify);
   f.settings.setPluginOptions(desktopPluginIds.memory, { mode: "long" });
   const memory = vi
-    .spyOn(f.host.longMemory, "context")
+    .spyOn(f.host.plugins.longMemory, "context")
     .mockResolvedValue({ instructions: ["FROZEN_MEMORY"], sources: [] });
-  vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
+  vi.spyOn(f.host.plugins.longMemory, "check").mockResolvedValue();
   await run(f, "Freeze policy plugins");
   expect(memory).toHaveBeenCalled();
   expect(notify).toHaveBeenCalledTimes(1);
@@ -34,9 +34,9 @@ test("title, notification and memory policies follow frozen plugin enablement ac
   cleanup.push(() => restored.close());
   await restored.init();
   const restoredMemory = vi
-    .spyOn(restored.longMemory, "context")
+    .spyOn(restored.plugins.longMemory, "context")
     .mockResolvedValue({ instructions: ["RESTORED_FROZEN_MEMORY"], sources: [] });
-  vi.spyOn(restored.longMemory, "check").mockResolvedValue();
+  vi.spyOn(restored.plugins.longMemory, "check").mockResolvedValue();
   restored.setNotificationSink(notify);
   await restored.startRun({ sessionId: f.session.id, text: "Continue frozen policy" });
   await restored.activeRuns.get(f.session.id)?.done;

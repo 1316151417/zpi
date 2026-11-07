@@ -1,7 +1,10 @@
 import type { ThinkingLevel } from "zpi-agent";
 import { anthropicMessagesCompatKeys, thinkingChoices } from "zpi-ai";
+import { toThinking } from "zpi-builtin-plugins/models";
 import { defaultCodePreview } from "zpi-ui/code-preview";
 import type { InterfacePreferences, ModelSettings, ReasoningPreset } from "./bridge.ts";
+
+export { toThinking } from "zpi-builtin-plugins/models";
 export const modelDefaults = {
   contextWindow: 1000000,
   maxTokens: 128000,
@@ -67,10 +70,6 @@ export const defaultPreferences: InterfacePreferences = {
   projectsCollapsed: false,
   tasksCollapsed: false,
 };
-export function toThinking(preset: ReasoningPreset, model?: ModelSettings): ThinkingLevel {
-  if (model?.reasoningConfig && model.reasoning !== false) return preset;
-  return preset === "none" ? "off" : preset;
-}
 export function toPreset(level: ThinkingLevel, model?: ModelSettings): ReasoningPreset {
   if (model?.reasoningConfig && model.reasoning !== false && model.reasoningConfig.levels.includes(level))
     return level;

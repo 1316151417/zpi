@@ -1,16 +1,34 @@
 import type { ThinkingLevel } from "zpi-agent";
 import type { Message, ModelRetryStatus, ModelWaitStatus, ToolCall, ToolResultMessage } from "zpi-ai";
+import type {
+  BackgroundTask,
+  CombinedSelection,
+  ModelSelection,
+  SubagentNotification,
+  SubagentTask,
+  UserQuestionRequest,
+  UserQuestionResponse,
+  WebToolDetails,
+} from "zpi-builtin-plugins/types";
 import type { Attachment, ContextUsage, ModelPerformance, ResourceDiagnostic } from "zpi-coding-agent";
 import type { FileLocation } from "./link-target.ts";
+
+export type {
+  BackgroundTask,
+  BackgroundTaskOutput,
+  SubagentNotification,
+  SubagentTask,
+  UserQuestion,
+  UserQuestionRequest,
+  UserQuestionResponse,
+  WebSearchSource,
+  WebToolDetails,
+} from "zpi-builtin-plugins/types";
 export interface SessionControls {
-  selection: {
-    provider: string;
-    modelId: string;
-    reasoning: string;
-  } | null;
+  selection: CombinedSelection | null;
   presets: string[];
   selectionValid: boolean;
-  model: { provider: string; modelId: string } | null;
+  model: ModelSelection | null;
   thinkingLevel: ThinkingLevel;
   lastThinkingLevel: ThinkingLevel;
   thinkingLevels: ThinkingLevel[];
@@ -56,26 +74,6 @@ export interface WorktreeInfo {
   sourceCwd: string;
 }
 export type FileActionHandler = (path: string, action: FileAction, location?: FileLocation) => Promise<void>;
-export interface WebSearchSource {
-  title: string;
-  url: string;
-  snippet: string;
-  summary?: string;
-  site_name: string | null;
-  site_icon: string | null;
-  date: string | null;
-}
-export interface WebToolDetails {
-  kind: "web_search" | "web_fetch";
-  status: "pending" | "success" | "error" | "cancelled";
-  query?: string;
-  url?: string;
-  title?: string;
-  content?: string;
-  results?: WebSearchSource[];
-  truncated?: boolean;
-  message?: string;
-}
 export type ViewBlock =
   | {
       id: string;
@@ -102,11 +100,6 @@ export type ViewBlock =
       questionAnswers?: UserQuestionResponse;
       web?: WebToolDetails;
     };
-export interface SubagentNotification {
-  agentId: string;
-  agentType: string;
-  description: string;
-}
 export interface RunView {
   /** This page starts inside a run; its original input is on an older page. */
   historyContinuation?: boolean;
@@ -131,54 +124,6 @@ export interface RunView {
   preparation?: string | null;
   /** Failed assistant awaiting a retry; retained until the replacement starts. */
   failedMessageId?: string;
-}
-export interface SubagentTask {
-  prompt?: string;
-  outputFile?: string;
-  taskOutputFile?: string;
-  metadataFile?: string;
-  spawnToolCallId?: string;
-  cwd?: string;
-  tokensReported?: boolean;
-  usage?: Record<string, number>;
-  agentId: string;
-  childSessionId: string;
-  parentSessionId: string;
-  parentToolCallId: string;
-  agentType: string;
-  description: string;
-  color: string;
-  background: boolean;
-  status: RunStatus;
-  startedAt: number;
-  endedAt?: number;
-  modelLabel: string;
-  totalToolUseCount: number;
-  totalTokens: number;
-  result?: string;
-  error?: string;
-  latestActivity?: string;
-  waitingForInput?: boolean;
-}
-export interface BackgroundTask {
-  taskId: string;
-  sessionId: string;
-  toolCallId: string;
-  command: string;
-  description: string;
-  status: "running" | "completed" | "failed" | "cancelled" | "lost";
-  startedAt: number;
-  endedAt?: number;
-  pid?: number;
-  exitCode?: number | null;
-  outputPath: string;
-  error?: string;
-  autoBackgrounded?: boolean;
-}
-export interface BackgroundTaskOutput {
-  task: BackgroundTask;
-  output: string;
-  truncated: boolean;
 }
 export interface SessionView {
   modelPerformance?: ModelPerformance;
@@ -282,21 +227,4 @@ export interface FileRewindConflict {
   path: string;
   reason: string;
   ignored?: boolean;
-}
-export interface UserQuestion {
-  question: string;
-  header: string;
-  options: { label: string; description: string; preview?: string }[];
-  multiSelect: boolean;
-}
-export interface UserQuestionRequest {
-  id: string;
-  questions: UserQuestion[];
-  autoResolution?:
-    | { phase: "hiddenGrace" | "visibleCountdown"; startedAt: number; visibleAt: number; deadlineAt: number }
-    | { phase: "snoozed"; startedAt: number; snoozedAt: number };
-}
-export interface UserQuestionResponse {
-  answers: Record<string, string>;
-  annotations?: Record<string, { preview?: string; notes?: string }>;
 }

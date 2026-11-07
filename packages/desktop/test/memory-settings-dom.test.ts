@@ -1,8 +1,12 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import {
+  defaultMemorySettings,
+  type MemorySettings,
+  type MemoryStatus,
+} from "zpi-builtin-plugins/memory/types";
 import type { ProviderRecord } from "../src/shared/bridge.ts";
-import { defaultMemorySettings, type MemorySettings, type MemoryStatus } from "../src/shared/memory.ts";
 
 const fixture = vi.hoisted(() => ({
   selected: "sess_example",

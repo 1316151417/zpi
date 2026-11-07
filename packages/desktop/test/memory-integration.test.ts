@@ -1,9 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { defaultMemorySettings } from "zpi-builtin-plugins/memory/types";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
-import { defaultMemorySettings } from "../src/shared/memory.ts";
 import { cleanup, fixture, run } from "./helpers/context-fixture.ts";
 
 test.each([
@@ -18,11 +18,11 @@ test.each([
     const path = join(f.resources, ".zpi", "MEMORY.md");
     await writeFile(path, "# Memory\n- [language] USER_MEMORY_FIRST\n");
     await f.host.saveMemorySettings({ ...defaultMemorySettings, short, long });
-    const context = vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
+    const context = vi.spyOn(f.host.plugins.longMemory, "context").mockResolvedValue({
       instructions: ["LONG_SUMMARY_MARKER"],
       sources: [],
     });
-    const check = vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
+    const check = vi.spyOn(f.host.plugins.longMemory, "check").mockResolvedValue();
     await run(f, "first");
     const system = () => f.host.sessions.get(f.session.id)?.systemPrompt ?? "";
     expect(system().includes("USER_MEMORY_FIRST")).toBe(short);
@@ -73,10 +73,12 @@ test("loads the bound worktree project file, excludes project files without a pr
       ?.getResourceDiagnostics()
       .some((item) => item.path === path),
   ).toBe(true);
-  const status = await f.host.getMemoryStatus(session.id);
+  const status = await f.host.plugins.getMemoryStatus(session.id);
   expect(status.shortFiles.find((item) => item.scope === "project")?.characters).toBe(2001);
-  expect((await f.host.openMemoryFile(session.id, "project", "view")).path).toBe(path);
-  expect((await f.host.openMemoryFile(session.id, "project", "view")).content).toContain("长".repeat(2001));
+  expect((await f.host.plugins.openMemoryFile(session.id, "project", "view")).path).toBe(path);
+  expect((await f.host.plugins.openMemoryFile(session.id, "project", "view")).content).toContain(
+    "长".repeat(2001),
+  );
 });
 
 test("runs both stages through a frozen model, publishes source snapshots and injects only the summary", async () => {
@@ -164,8 +166,8 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   const trigger = await host.createSession(null);
   await host.startRun({ sessionId: trigger.id, text: "new task" });
   await host.activeRuns.get(trigger.id)?.done;
-  await vi.waitFor(() => expect(host.longMemory.status().status).toBe("success"), { timeout: 5000 });
-  const status = host.longMemory.status();
+  await vi.waitFor(() => expect(host.plugins.longMemory.status().status).toBe("success"), { timeout: 5000 });
+  const status = host.plugins.longMemory.status();
   expect(status.sources.map((item) => item.sessionId)).toEqual([sourceId]);
   expect(status.tokens).toBe(120);
   const extraction = f.server.requests.find((request) =>
@@ -184,23 +186,23 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   expect(host.sessions.get(trigger.id)?.systemPrompt).not.toContain("DETAIL_ONLY_MARKER");
   await host.startRun({ sessionId: trigger.id, text: `READ_MEMORY:${status.sources[0].summaryPath}` });
   await host.activeRuns.get(trigger.id)?.done;
-  expect((await host.getMemoryStatus(trigger.id)).usedSources?.map((item) => item.sessionId)).toEqual([
-    sourceId,
-  ]);
+  expect((await host.plugins.getMemoryStatus(trigger.id)).usedSources?.map((item) => item.sessionId)).toEqual(
+    [sourceId],
+  );
   const before = f.server.requests.length;
-  await host.checkMemoryNow(trigger.id);
-  await vi.waitFor(() => expect(host.longMemory.status().running).toBe(false));
+  await host.plugins.checkMemoryNow(trigger.id);
+  await vi.waitFor(() => expect(host.plugins.longMemory.status().running).toBe(false));
   expect(f.server.requests.length).toBe(before);
   await host.saveMemorySettings({ ...defaultMemorySettings, long: true, generate: false });
-  expect(host.longMemory.status().status).toBe("paused");
+  expect(host.plugins.longMemory.status().status).toBe("paused");
   await host.startRun({ sessionId: trigger.id, text: "while paused" });
   await host.activeRuns.get(trigger.id)?.done;
   expect(host.sessions.get(trigger.id)?.systemPrompt).toContain("SUMMARY_ONLY_MARKER");
-  await host.clearLongMemory();
+  await host.plugins.clearLongMemory();
   await host.saveMemorySettings({ ...defaultMemorySettings, long: true });
-  await host.checkMemoryNow(trigger.id);
-  await vi.waitFor(() => expect(host.longMemory.status().running).toBe(false));
-  expect(host.longMemory.status().sources).toEqual([]);
+  await host.plugins.checkMemoryNow(trigger.id);
+  await vi.waitFor(() => expect(host.plugins.longMemory.status().running).toBe(false));
+  expect(host.plugins.longMemory.status().sources).toEqual([]);
   expect(host.sessionPath(sourceId)).toBeTruthy();
   await mkdir(join(f.dir, "memories_v2"), { recursive: true });
   await mkdir(join(f.dir, "memories_v2", "extensions", "ad_hoc", "notes"), { recursive: true });
@@ -215,37 +217,37 @@ test("runs both stages through a frozen model, publishes source snapshots and in
     selection: { provider: "missing-provider", modelId: "missing-model", reasoning: "none" },
   });
   const callsBeforeUnavailable = f.server.requests.length;
-  await host.checkMemoryNow(trigger.id);
-  await vi.waitFor(() => expect(host.longMemory.status().status).toBe("failed"));
-  expect(host.longMemory.status().message).toContain("不可用");
+  await host.plugins.checkMemoryNow(trigger.id);
+  await vi.waitFor(() => expect(host.plugins.longMemory.status().status).toBe("failed"));
+  expect(host.plugins.longMemory.status().message).toContain("不可用");
   expect(f.server.requests.length).toBe(callsBeforeUnavailable);
 });
 
 test("explicit edit creates only missing short memory files and never overwrites existing contents", async () => {
   const f = await fixture();
-  const viewed = await f.host.openMemoryFile(null, "user", "view");
+  const viewed = await f.host.plugins.openMemoryFile(null, "user", "view");
   expect(viewed.content).toBe("");
   await expect(readFile(viewed.path)).rejects.toMatchObject({ code: "ENOENT" });
-  expect((await f.host.openMemoryFile(null, "user", "edit")).content).toBe("# Memory\n");
+  expect((await f.host.plugins.openMemoryFile(null, "user", "edit")).content).toBe("# Memory\n");
   await writeFile(viewed.path, "existing custom text");
-  expect((await f.host.openMemoryFile(null, "user", "edit")).content).toBe("existing custom text");
+  expect((await f.host.plugins.openMemoryFile(null, "user", "edit")).content).toBe("existing custom text");
   const project = await f.host.addProject(f.workspace);
   const session = await f.host.createSession(project.id);
   const projectPath = join(f.workspace, ".zpi", "MEMORY.md");
-  expect(await f.host.openMemoryFile(session.id, "project", "view")).toEqual({
+  expect(await f.host.plugins.openMemoryFile(session.id, "project", "view")).toEqual({
     path: projectPath,
     content: "",
     exists: false,
   });
   await expect(readFile(projectPath)).rejects.toMatchObject({ code: "ENOENT" });
-  expect((await f.host.openMemoryFile(session.id, "project", "edit")).content).toBe("# Memory\n");
+  expect((await f.host.plugins.openMemoryFile(session.id, "project", "edit")).content).toBe("# Memory\n");
   await writeFile(projectPath, "existing project memory");
-  expect((await f.host.openMemoryFile(session.id, "project", "edit")).content).toBe(
+  expect((await f.host.plugins.openMemoryFile(session.id, "project", "edit")).content).toBe(
     "existing project memory",
   );
   await expect(readFile(join(f.workspace, "MEMORY.md"))).rejects.toMatchObject({ code: "ENOENT" });
-  await expect(f.host.openMemoryFile(null, "project", "edit")).rejects.toThrow("没有项目");
-  await expect(f.host.openMemoryFile(null, "long", "edit")).rejects.toThrow("后台维护");
+  await expect(f.host.plugins.openMemoryFile(null, "project", "edit")).rejects.toThrow("没有项目");
+  await expect(f.host.plugins.openMemoryFile(null, "long", "edit")).rejects.toThrow("后台维护");
 });
 
 test("the main agent appends separate notes and the real consolidation runner reads instructions and notes before publishing", async () => {
@@ -320,9 +322,11 @@ test("the main agent appends separate notes and the real consolidation runner re
   expect(before).not.toContain("NOTE_A_BODY");
   expect(before).not.toContain("SHORT_MEMORY_MUST_STAY_OUT");
   await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
-  await f.host.checkMemoryNow(f.session.id);
+  await f.host.plugins.checkMemoryNow(f.session.id);
   // Consolidation performs six model/tool steps; allow the same budget as the test above under suite load.
-  await vi.waitFor(() => expect(f.host.longMemory.status().status).toBe("success"), { timeout: 5000 });
+  await vi.waitFor(() => expect(f.host.plugins.longMemory.status().status).toBe("success"), {
+    timeout: 5000,
+  });
   expect(await readFile(join(library, "memory_summary.md"), "utf8")).toBe(summary);
   expect(await readFile(notePath("remember.md"), "utf8")).toBe(noteA);
   expect(await readFile(notePath("correct.md"), "utf8")).toBe(noteB);
@@ -333,7 +337,7 @@ test("the main agent appends separate notes and the real consolidation runner re
   expect(after).not.toContain("NOTE_B_BODY");
   expect(after).not.toContain("SHORT_MEMORY_MUST_STAY_OUT");
   const calls = f.server.requests.length;
-  await f.host.checkMemoryNow(f.session.id);
-  await vi.waitFor(() => expect(f.host.longMemory.status().running).toBe(false));
+  await f.host.plugins.checkMemoryNow(f.session.id);
+  await vi.waitFor(() => expect(f.host.plugins.longMemory.status().running).toBe(false));
   expect(f.server.requests).toHaveLength(calls);
 });

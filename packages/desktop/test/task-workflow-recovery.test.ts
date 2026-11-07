@@ -45,7 +45,7 @@ it("closing an idle side chat stops its background work and blocks late notifica
   const child = await f.host.createSideChat(f.session.id);
   await f.host.startRun({ sessionId: child.id, text: "side chat history" });
   await f.host.activeRuns.get(child.id)?.done;
-  await f.host.backgroundTasks
+  await f.host.plugins.background
     .tool(f.session.id, f.workspace)
     .execute(
       "parent-bg",
@@ -54,7 +54,7 @@ it("closing an idle side chat stops its background work and blocks late notifica
       undefined,
       undefined as never,
     );
-  const tool = f.host.backgroundTasks.tool(child.id, f.workspace);
+  const tool = f.host.plugins.background.tool(child.id, f.workspace);
   await tool.execute(
     "bg",
     { command: "sleep 30", run_in_background: true },
@@ -62,21 +62,12 @@ it("closing an idle side chat stops its background work and blocks late notifica
     undefined,
     undefined as never,
   );
-  const task = f.host.backgroundTasks.list(child.id)[0];
+  const task = f.host.plugins.background.list(child.id)[0];
   await f.host.closeSideChat(child.id);
-  expect(f.host.backgroundTasks.list(child.id)[0].status).toBe("cancelled");
-  const notification = f.host as unknown as {
-    deliverSubagentMessage(task: {
-      parentSessionId: string;
-      agentId: string;
-      agentType: string;
-      description: string;
-      status: string;
-      result: string;
-    }): Promise<void>;
-  };
+  expect(f.host.plugins.background.list(child.id)[0].status).toBe("cancelled");
+  const notification = f.host.plugins.inbox;
   await expect(
-    notification.deliverSubagentMessage({
+    notification.deliver({
       parentSessionId: child.id,
       agentId: task.taskId,
       agentType: "bash",
@@ -86,7 +77,7 @@ it("closing an idle side chat stops its background work and blocks late notifica
     }),
   ).rejects.toThrow("已关闭");
   expect(f.host.activeRuns.has(child.id)).toBe(false);
-  expect(f.host.backgroundTasks.list(f.session.id)[0].status).toBe("running");
+  expect(f.host.plugins.background.list(f.session.id)[0].status).toBe("running");
   expect(f.host.getSessionSnapshot(child.id).view.runs[0].userMessage).toBe("side chat history");
   expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
   await f.host.closeSideChat(child.id);
@@ -106,7 +97,7 @@ it("closing an idle side chat stops its background work and blocks late notifica
 
 async function launchCompletedChild(f: Awaited<ReturnType<typeof fixture>>) {
   await run(f, "parent seed");
-  const launch = f.host.subagents.tools(f.session.id).find((tool) => tool.name === "Agent");
+  const launch = f.host.plugins.collaboration.tools(f.session.id).find((tool) => tool.name === "Agent");
   if (!launch) throw new Error("missing Agent tool");
   await launch.execute(
     "launch-child",
@@ -115,7 +106,7 @@ async function launchCompletedChild(f: Awaited<ReturnType<typeof fixture>>) {
     undefined,
     undefined as never,
   );
-  return f.host.subagents.list(f.session.id)[0];
+  return f.host.plugins.collaboration.list(f.session.id)[0];
 }
 
 it.each([false, true])(
@@ -138,8 +129,10 @@ it.each([false, true])(
     expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
     expect(host.getSessionSnapshot(sideChat.id).session.archivedAt).toEqual(expect.any(Number));
     await expect(host.closeSideChat(task.childSessionId)).rejects.toThrow("不是辅助对话");
-    host.subagents.prepare(f.session.id);
-    const followup = host.subagents.tools(f.session.id).find((tool) => tool.name === "SendMessage");
+    host.plugins.collaboration.prepare(f.session.id);
+    const followup = host.plugins.collaboration
+      .tools(f.session.id)
+      .find((tool) => tool.name === "SendMessage");
     if (!followup) throw new Error("missing SendMessage tool");
     await followup.execute(
       "resume-child",
@@ -148,7 +141,7 @@ it.each([false, true])(
       undefined,
       undefined as never,
     );
-    await expect.poll(() => host.subagents.list(f.session.id)[0].status).toBe("completed");
+    await expect.poll(() => host.plugins.collaboration.list(f.session.id)[0].status).toBe("completed");
     await expect.poll(() => host.activeRuns.size).toBe(0);
     expect(host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(2);
     expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
@@ -168,7 +161,7 @@ it("archiving a parent drains a running reusable agent and its background comman
     else childStarted.resolve();
   });
   await run(f, "parent seed");
-  const launch = f.host.subagents.tools(f.session.id).find((tool) => tool.name === "Agent");
+  const launch = f.host.plugins.collaboration.tools(f.session.id).find((tool) => tool.name === "Agent");
   if (!launch) throw new Error("missing Agent tool");
   await launch.execute(
     "launch-child",
@@ -178,8 +171,8 @@ it("archiving a parent drains a running reusable agent and its background comman
     undefined as never,
   );
   await childStarted.promise;
-  const task = f.host.subagents.list(f.session.id)[0];
-  await f.host.backgroundTasks
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
+  await f.host.plugins.background
     .tool(task.childSessionId, f.workspace, true)
     .execute(
       "child-service",
@@ -190,8 +183,8 @@ it("archiving a parent drains a running reusable agent and its background comman
     );
   await f.host.archiveSession(f.session.id);
   expect(f.host.activeRuns.size).toBe(0);
-  expect(f.host.subagents.list(f.session.id)[0].status).toBe("aborted");
-  expect(f.host.backgroundTasks.list(task.childSessionId)[0].status).toBe("cancelled");
+  expect(f.host.plugins.collaboration.list(f.session.id)[0].status).toBe("aborted");
+  expect(f.host.plugins.background.list(task.childSessionId)[0].status).toBe("cancelled");
   expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
   expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toEqual(expect.any(Number));
 });
@@ -212,8 +205,8 @@ it("side-chat closure rejects new runs and notifications while cleanup is still 
   const child = await f.host.createSideChat(f.session.id);
   const entered = deferred(),
     release = deferred();
-  const originalStop = f.host.backgroundTasks.stopAll.bind(f.host.backgroundTasks);
-  vi.spyOn(f.host.backgroundTasks, "stopAll").mockImplementation(async (id) => {
+  const originalStop = f.host.plugins.background.stopAll.bind(f.host.plugins.background);
+  vi.spyOn(f.host.plugins.background, "stopAll").mockImplementation(async (id) => {
     if (id === child.id) {
       entered.resolve();
       await release.promise;
@@ -223,17 +216,9 @@ it("side-chat closure rejects new runs and notifications while cleanup is still 
   const closing = f.host.closeSideChat(child.id);
   await entered.promise;
   await expect(f.host.startRun({ sessionId: child.id, text: "late input" })).rejects.toThrow("关闭");
-  const notification = f.host as unknown as {
-    deliverSubagentMessage(task: {
-      parentSessionId: string;
-      agentId: string;
-      agentType: string;
-      description: string;
-      status: string;
-    }): Promise<void>;
-  };
+  const notification = f.host.plugins.inbox;
   await expect(
-    notification.deliverSubagentMessage({
+    notification.deliver({
       parentSessionId: child.id,
       agentId: "agent_late",
       agentType: "general-purpose",
@@ -255,7 +240,7 @@ for (const fault of ["child-publication", "index-flush"] as const) {
     });
     const id = f.session.id;
     if (fault === "child-publication") {
-      f.host.subagents.restore({
+      f.host.plugins.collaboration.restore({
         agentId: "agent_fault",
         color: "blue",
         childSessionId: id,
@@ -295,7 +280,8 @@ for (const fault of ["child-publication", "index-flush"] as const) {
     const faultOwner =
       fault === "index-flush"
         ? (settleOwner.indexes.get(id) as { flush(): void })
-        : (f.host.subagents as unknown as { port: { publish(task: { status: string }): void } }).port;
+        : (f.host.plugins.collaboration as unknown as { port: { publish(task: { status: string }): void } })
+            .port;
     const faultSpy =
       fault === "index-flush"
         ? vi.spyOn(faultOwner as { flush(): void }, "flush").mockImplementation(() => {
@@ -341,7 +327,7 @@ it("shutdown surfaces subagent failure only after other live owners and resource
   });
   await f.host.startRun({ sessionId: f.session.id, text: "keep active" });
   await started.promise;
-  await f.host.backgroundTasks
+  await f.host.plugins.background
     .tool(f.session.id, f.workspace)
     .execute(
       "live-service",
@@ -351,14 +337,14 @@ it("shutdown surfaces subagent failure only after other live owners and resource
       undefined as never,
     );
   const fault = new Error("subagent shutdown publication failed");
-  const closeSubagents = vi.spyOn(f.host.subagents, "close").mockRejectedValue(fault);
+  const closeSubagents = vi.spyOn(f.host.plugins.collaboration, "close").mockRejectedValue(fault);
   const queueClose = vi.spyOn(f.host.inputQueue, "close");
   const session = f.host.sessions.get(f.session.id);
   if (!session) throw new Error("missing fixture session");
   const disposed = vi.spyOn(session, "dispose");
   try {
     await expect(f.host.close()).rejects.toBe(fault);
-    expect(f.host.backgroundTasks.list(f.session.id)[0].status).toBe("cancelled");
+    expect(f.host.plugins.background.list(f.session.id)[0].status).toBe("cancelled");
     expect(f.host.activeRuns.size).toBe(0);
     expect(queueClose).toHaveBeenCalledOnce();
     expect(disposed).toHaveBeenCalledOnce();
@@ -376,7 +362,7 @@ it("shutdown reports all cleanup errors after attempting every history index", a
   const firstError = new Error("subagent cleanup failed");
   const firstIndexError = new Error("first index failed");
   const secondIndexError = new Error("second index failed");
-  const subagentClose = vi.spyOn(f.host.subagents, "close").mockRejectedValue(firstError);
+  const subagentClose = vi.spyOn(f.host.plugins.collaboration, "close").mockRejectedValue(firstError);
   const firstIndex = vi
     .spyOn(owner.indexes.get(f.session.id) as { flush(): void }, "flush")
     .mockImplementation(() => {

@@ -1,13 +1,11 @@
 import { app, BrowserWindow, Notification } from "electron";
-import type { DesktopEventEnvelope } from "zpi-ui";
+import type { PluginNotification } from "zpi-builtin-plugins/types";
 import type { InterfacePreferences } from "../shared/bridge.ts";
 
-// Adapted from ZCode desktopNotifications.ts; ZPI supplies live run events directly.
-const dedupeWindowMs = 3000;
+// Native delivery and window activation adapted from ZCode desktopNotifications.ts.
 const maxActiveNotifications = 100;
 
 export class TaskNotifications {
-  private recent = new Map<string, number>();
   private active = new Set<Notification>();
   private disposed = false;
   private window: BrowserWindow;
@@ -18,10 +16,8 @@ export class TaskNotifications {
     this.preferences = preferences;
   }
 
-  handle(envelope: DesktopEventEnvelope, taskTitle: string): boolean {
-    const { event, sessionId } = envelope;
+  show({ sessionId, title, body }: PluginNotification): boolean {
     if (
-      event.type !== "settled" ||
       this.disposed ||
       this.window.isDestroyed() ||
       !this.preferences().notificationEnabled ||
@@ -29,17 +25,6 @@ export class TaskNotifications {
       BrowserWindow.getAllWindows().some((window) => !window.isDestroyed() && window.isFocused())
     )
       return false;
-
-    // ZCode treats completedInterrupted as completed, including a manually stopped turn.
-    const status = event.status === "error" ? "failed" : "completed";
-    const title = status === "failed" ? "任务出错" : "任务已完成";
-    const body = taskTitle.trim() ? `任务：${taskTitle.trim()}` : title;
-    const now = Date.now();
-    for (const [key, timestamp] of this.recent) if (now - timestamp > dedupeWindowMs) this.recent.delete(key);
-    const key = `${status}:${sessionId}`;
-    const previous = this.recent.get(key);
-    if (previous !== undefined && now - previous < dedupeWindowMs) return false;
-    this.recent.set(key, now);
 
     let notification: Notification | undefined;
     try {
@@ -81,6 +66,5 @@ export class TaskNotifications {
     this.disposed = true;
     for (const notification of this.active) notification.close();
     this.active.clear();
-    this.recent.clear();
   }
 }

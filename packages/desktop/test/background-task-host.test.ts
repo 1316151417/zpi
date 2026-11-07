@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
+import { TaskControls } from "zpi-builtin-plugins/tasks/controls";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
-import { TaskControls } from "../src/main/tasks/controls.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
 test("desktop Bash and shared controls work with subagents disabled; services outlive turns and persist terminal history", async () => {
@@ -45,7 +45,7 @@ test("desktop Bash and shared controls work with subagents disabled; services ou
     (tool) => tool.function.name,
   );
   expect(names).toEqual(["read", "bash", "edit", "write", "AskUserQuestion", "TaskOutput", "TaskStop"]);
-  const controls = new TaskControls([f.host.backgroundTasks.taskBackend()]).tools(f.session.id);
+  const controls = new TaskControls([f.host.plugins.background.taskBackend()]).tools(f.session.id);
   const session = f.host.sessions.get(f.session.id);
   if (!session) throw new Error("Missing agent session");
   const context = {
@@ -76,7 +76,7 @@ test("desktop Bash and shared controls work with subagents disabled; services ou
     taskId: task.taskId,
     status: "cancelled",
   });
-  expect((await restored.backgroundTasks.read(f.session.id, task.taskId)).output).toContain("ready");
+  expect((await restored.plugins.background.read(f.session.id, task.taskId)).output).toContain("ready");
 });
 
 test("completion wakes an idle owner with a model-only task notification", async () => {
@@ -155,7 +155,7 @@ test("archive stops a live service before hiding its session", async () => {
   });
   await run(f, "Start");
   await f.host.archiveSession(f.session.id);
-  expect(f.host.backgroundTasks.list(f.session.id)[0].status).toBe("cancelled");
+  expect(f.host.plugins.background.list(f.session.id)[0].status).toBe("cancelled");
 });
 
 test("child services appear in the parent panel and archive cleans them even after the agent finishes", async () => {
@@ -198,8 +198,8 @@ test("child services appear in the parent panel and archive cleans them even aft
   if (!task) throw new Error("Missing child service");
   expect(task.sessionId).toBe(view.subagents?.[0].childSessionId);
   expect(task.status).toBe("running");
-  await expect(f.host.backgroundTasks.read(f.session.id, task.taskId)).rejects.toThrow("不存在");
-  expect((await f.host.backgroundTasks.read(task.sessionId, task.taskId)).output).toContain("child-ready");
+  await expect(f.host.plugins.background.read(f.session.id, task.taskId)).rejects.toThrow("不存在");
+  expect((await f.host.plugins.background.read(task.sessionId, task.taskId)).output).toContain("child-ready");
   await f.host.archiveSession(f.session.id);
-  expect(f.host.backgroundTasks.list(task.sessionId)[0].status).toBe("cancelled");
+  expect(f.host.plugins.background.list(task.sessionId)[0].status).toBe("cancelled");
 });

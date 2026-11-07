@@ -11,3 +11,5 @@ export type {
   ToolDefinition,
 } from "zpi-coding-agent";
 export { createAgentSession, SessionManager, SettingsManager } from "zpi-coding-agent";
+
+export { nativeStopReason, queryResult } from "./query-result.ts";

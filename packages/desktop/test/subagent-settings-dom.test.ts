@@ -3,8 +3,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { defaultPluginSettings } from "zpi-builtin-plugins";
+import type { SubagentCatalog } from "zpi-builtin-plugins/collaboration/types";
 import type { Result } from "../src/shared/bridge.ts";
-import type { SubagentCatalog } from "../src/shared/subagents.ts";
 
 const state = vi.hoisted(() => ({
   selected: "session",

@@ -8,10 +8,10 @@
 | --- | ---: |
 | `packages/agent/src` 中的 TS/TSX、CSS、JSON、HTML | 6 |
 | `packages/ai/src` 中的 TS/TSX、CSS、JSON、HTML | 46 |
-| `packages/coding-agent/src` 中的 TS/TSX、CSS、JSON、HTML | 55 |
-| `packages/desktop/src` 中的 TS/TSX、CSS、JSON、HTML | 277 |
-| `packages/ui/src` 中的 TS/TSX、CSS、JSON、HTML | 103 |
-| `packages/builtin-plugins/src` 中的 TS/TSX | 1 |
+| `packages/coding-agent/src` 中的 TS/TSX、CSS、JSON、HTML | 59 |
+| `packages/desktop/src` 中的 TS/TSX、CSS、JSON、HTML | 239 |
+| `packages/ui/src` 中的 TS/TSX、CSS、JSON、HTML | 105 |
+| `packages/builtin-plugins/src` 中的 TS/TSX | 37 |
 | native、scripts、examples 支持文件 | 27 |
 
 测试用例按各原理页的回归入口及包内 test 目录维护；测试基础设施见[测试原理](testing.md)。图片、字体、音频、Office fixtures 等资源不逐件列作代码模块，归属见下方资源表。
@@ -28,7 +28,8 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main` | [background-tasks.ts](../../packages/desktop/src/main/background-tasks.ts) · [shell-environment.ts](../../packages/desktop/src/main/shell-environment.ts) · [task-processes.ts](../../packages/desktop/src/main/task-processes.ts) · [terminal-profile.ts](../../packages/desktop/src/main/terminal-profile.ts) · [terminal-shell.ts](../../packages/desktop/src/main/terminal-shell.ts) |
+| `packages/builtin-plugins/src/background` | [tasks.ts](../../packages/builtin-plugins/src/background/tasks.ts) · [processes.ts](../../packages/builtin-plugins/src/background/processes.ts) |
+| `packages/desktop/src/main` | [shell-environment.ts](../../packages/desktop/src/main/shell-environment.ts) · [terminal-profile.ts](../../packages/desktop/src/main/terminal-profile.ts) · [terminal-shell.ts](../../packages/desktop/src/main/terminal-shell.ts) |
 | `packages/desktop/src/renderer` | [BackgroundTaskPane.tsx](../../packages/desktop/src/renderer/BackgroundTaskPane.tsx) · [TerminalPane.tsx](../../packages/desktop/src/renderer/TerminalPane.tsx) · [terminal-presentation.ts](../../packages/desktop/src/renderer/terminal-presentation.ts) |
 | `packages/ui/src/components` | [process-presentation.ts](../../packages/ui/src/components/process-presentation.ts) |
 
@@ -80,7 +81,8 @@
 | 目录 | 文件 |
 | --- | --- |
 | `packages/coding-agent/src/core` | [input.ts](../../packages/coding-agent/src/core/input.ts) · [markdown-code.ts](../../packages/coding-agent/src/core/markdown-code.ts) · [mentions.ts](../../packages/coding-agent/src/core/mentions.ts) |
-| `packages/desktop/src/main` | [attachments.ts](../../packages/desktop/src/main/attachments.ts) · [draft-store.ts](../../packages/desktop/src/main/draft-store.ts) · [input-queue.ts](../../packages/desktop/src/main/input-queue.ts) · [session-references.ts](../../packages/desktop/src/main/session-references.ts) |
+| `packages/desktop/src/main` | [attachments.ts](../../packages/desktop/src/main/attachments.ts) · [draft-store.ts](../../packages/desktop/src/main/draft-store.ts) · [input-queue.ts](../../packages/desktop/src/main/input-queue.ts) |
+| `packages/builtin-plugins/src` | [transcripts.ts](../../packages/builtin-plugins/src/transcripts.ts) |
 | `packages/desktop/src/renderer` | [FileCommentEditor.tsx](../../packages/desktop/src/renderer/FileCommentEditor.tsx) · [composer-context.ts](../../packages/desktop/src/renderer/composer-context.ts) · [file-comments.ts](../../packages/desktop/src/renderer/file-comments.ts) · [file-gutter.ts](../../packages/desktop/src/renderer/file-gutter.ts) |
 | `packages/ui/src` | [conversation-selections.ts](../../packages/ui/src/conversation-selections.ts) |
 | `packages/ui/src/components` | [ConversationQueuePanel.tsx](../../packages/ui/src/components/ConversationQueuePanel.tsx) · [ConversationSelections.tsx](../../packages/ui/src/components/ConversationSelections.tsx) · [InputContext.tsx](../../packages/ui/src/components/InputContext.tsx) · [InputNotice.tsx](../../packages/ui/src/components/InputNotice.tsx) · [MentionEditor.tsx](../../packages/ui/src/components/MentionEditor.tsx) · [Reference.tsx](../../packages/ui/src/components/Reference.tsx) · [editor-history.ts](../../packages/ui/src/components/editor-history.ts) · [file-mention-query.ts](../../packages/ui/src/components/file-mention-query.ts) · [prompt-history.ts](../../packages/ui/src/components/prompt-history.ts) · [session-suggestions.ts](../../packages/ui/src/components/session-suggestions.ts) · [skill-suggestions.ts](../../packages/ui/src/components/skill-suggestions.ts) |
@@ -89,9 +91,8 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main/memory` | [ad-hoc-instructions.ts](../../packages/desktop/src/main/memory/ad-hoc-instructions.ts) · [consolidation-instructions.ts](../../packages/desktop/src/main/memory/consolidation-instructions.ts) · [evidence.ts](../../packages/desktop/src/main/memory/evidence.ts) · [extraction-instructions.ts](../../packages/desktop/src/main/memory/extraction-instructions.ts) · [long-memory.ts](../../packages/desktop/src/main/memory/long-memory.ts) · [prompts.ts](../../packages/desktop/src/main/memory/prompts.ts) · [runner.ts](../../packages/desktop/src/main/memory/runner.ts) · [short-memory.ts](../../packages/desktop/src/main/memory/short-memory.ts) · [workspace.ts](../../packages/desktop/src/main/memory/workspace.ts) |
+| `packages/builtin-plugins/src/memory` | [ad-hoc-instructions.ts](../../packages/builtin-plugins/src/memory/ad-hoc-instructions.ts) · [consolidation-instructions.ts](../../packages/builtin-plugins/src/memory/consolidation-instructions.ts) · [evidence.ts](../../packages/builtin-plugins/src/memory/evidence.ts) · [extraction-instructions.ts](../../packages/builtin-plugins/src/memory/extraction-instructions.ts) · [long-memory.ts](../../packages/builtin-plugins/src/memory/long-memory.ts) · [prompts.ts](../../packages/builtin-plugins/src/memory/prompts.ts) · [runner.ts](../../packages/builtin-plugins/src/memory/runner.ts) · [short-memory.ts](../../packages/builtin-plugins/src/memory/short-memory.ts) · [workspace.ts](../../packages/builtin-plugins/src/memory/workspace.ts) |
 | `packages/desktop/src/renderer` | [MemorySettings.tsx](../../packages/desktop/src/renderer/MemorySettings.tsx) · [memory-settings.css](../../packages/desktop/src/renderer/memory-settings.css) |
-| `packages/desktop/src/shared` | [memory.ts](../../packages/desktop/src/shared/memory.ts) |
 
 ### [消息如何变成模型请求](model-protocols.md)
 
@@ -167,7 +168,7 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main` | [user-questions.ts](../../packages/desktop/src/main/user-questions.ts) |
+| `packages/builtin-plugins/src` | [questions.ts](../../packages/builtin-plugins/src/questions.ts) |
 | `packages/desktop/src/renderer` | [UserQuestionCard.tsx](../../packages/desktop/src/renderer/UserQuestionCard.tsx) |
 | `packages/ui/src/components` | [AskQuestionToolBlock.tsx](../../packages/ui/src/components/AskQuestionToolBlock.tsx) · [user-question-presentation.ts](../../packages/ui/src/components/user-question-presentation.ts) |
 
@@ -240,7 +241,8 @@
 | 目录 | 文件 |
 | --- | --- |
 | `packages/coding-agent/src/core` | [agent-session.ts](../../packages/coding-agent/src/core/agent-session.ts) |
-| `packages/desktop/src/main` | [session-activity.ts](../../packages/desktop/src/main/session-activity.ts) · [session-host.ts](../../packages/desktop/src/main/session-host.ts) · [session-title.ts](../../packages/desktop/src/main/session-title.ts) |
+| `packages/desktop/src/main` | [session-activity.ts](../../packages/desktop/src/main/session-activity.ts) · [session-host.ts](../../packages/desktop/src/main/session-host.ts) |
+| `packages/builtin-plugins/src/title` | [generate.ts](../../packages/builtin-plugins/src/title/generate.ts) |
 | `packages/desktop/src/renderer` | [ArchivedTasks.tsx](../../packages/desktop/src/renderer/ArchivedTasks.tsx) · [SessionToolbar.tsx](../../packages/desktop/src/renderer/SessionToolbar.tsx) · [SideChatPane.tsx](../../packages/desktop/src/renderer/SideChatPane.tsx) · [TaskActivity.tsx](../../packages/desktop/src/renderer/TaskActivity.tsx) · [TaskMenu.tsx](../../packages/desktop/src/renderer/TaskMenu.tsx) · [TaskMenuItems.tsx](../../packages/desktop/src/renderer/TaskMenuItems.tsx) · [TaskViewMenu.tsx](../../packages/desktop/src/renderer/TaskViewMenu.tsx) |
 
 ### [快捷键路由、注册与焦点](shortcuts.md)
@@ -261,9 +263,8 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main/plugins/subagents` | [artifacts.ts](../../packages/desktop/src/main/plugins/subagents/artifacts.ts) · [built-in.ts](../../packages/desktop/src/main/plugins/subagents/built-in.ts) · [profiles.ts](../../packages/desktop/src/main/plugins/subagents/profiles.ts) · [prompts.ts](../../packages/desktop/src/main/plugins/subagents/prompts.ts) · [protocol.ts](../../packages/desktop/src/main/plugins/subagents/protocol.ts) · [runtime.ts](../../packages/desktop/src/main/plugins/subagents/runtime.ts) |
+| `packages/builtin-plugins/src/collaboration` | [artifacts.ts](../../packages/builtin-plugins/src/collaboration/artifacts.ts) · [built-in.ts](../../packages/builtin-plugins/src/collaboration/built-in.ts) · [profiles.ts](../../packages/builtin-plugins/src/collaboration/profiles.ts) · [prompts.ts](../../packages/builtin-plugins/src/collaboration/prompts.ts) · [protocol.ts](../../packages/builtin-plugins/src/collaboration/protocol.ts) · [runtime.ts](../../packages/builtin-plugins/src/collaboration/runtime.ts) |
 | `packages/desktop/src/renderer` | [SubagentPane.tsx](../../packages/desktop/src/renderer/SubagentPane.tsx) · [SubagentSettings.tsx](../../packages/desktop/src/renderer/SubagentSettings.tsx) |
-| `packages/desktop/src/shared` | [subagents.ts](../../packages/desktop/src/shared/subagents.ts) |
 | `packages/ui/src/components` | [SubagentMessageToolBlock.tsx](../../packages/ui/src/components/SubagentMessageToolBlock.tsx) · [SubagentTaskToolBlock.tsx](../../packages/ui/src/components/SubagentTaskToolBlock.tsx) · [SubagentToolBlock.tsx](../../packages/ui/src/components/SubagentToolBlock.tsx) |
 
 ### [测试隔离、真实边界与清理](testing.md)
@@ -285,7 +286,8 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main` | [web-client.ts](../../packages/desktop/src/main/web-client.ts) · [web-icon-image.ts](../../packages/desktop/src/main/web-icon-image.ts) · [web-source-icons.ts](../../packages/desktop/src/main/web-source-icons.ts) · [web-tools.ts](../../packages/desktop/src/main/web-tools.ts) |
+| `packages/builtin-plugins/src/web` | [client.ts](../../packages/builtin-plugins/src/web/client.ts) · [tools.ts](../../packages/builtin-plugins/src/web/tools.ts) |
+| `packages/desktop/src/main` | [web-icon-image.ts](../../packages/desktop/src/main/web-icon-image.ts) · [web-source-icons.ts](../../packages/desktop/src/main/web-source-icons.ts) |
 | `packages/desktop/src/renderer` | [WebSearchSettings.tsx](../../packages/desktop/src/renderer/WebSearchSettings.tsx) · [web-search-settings.css](../../packages/desktop/src/renderer/web-search-settings.css) |
 | `packages/ui/src/components` | [AnswerSources.tsx](../../packages/ui/src/components/AnswerSources.tsx) · [WebToolBlock.tsx](../../packages/ui/src/components/WebToolBlock.tsx) · [answer-sources.css](../../packages/ui/src/components/answer-sources.css) · [answer-sources.ts](../../packages/ui/src/components/answer-sources.ts) · [web-tool-data.ts](../../packages/ui/src/components/web-tool-data.ts) |
 
@@ -308,8 +310,11 @@
 | `packages/coding-agent/src/plugins` | [assembly.ts](../../packages/coding-agent/src/plugins/assembly.ts) · [types.ts](../../packages/coding-agent/src/plugins/types.ts) · [hooks.ts](../../packages/coding-agent/src/plugins/hooks.ts) · [session-hooks.ts](../../packages/coding-agent/src/plugins/session-hooks.ts) · [resources.ts](../../packages/coding-agent/src/plugins/resources.ts) |
 | `packages/plugin-compat/src` | [index.ts](../../packages/plugin-compat/src/index.ts) · [command-hooks.ts](../../packages/plugin-compat/src/command-hooks.ts) |
 | `packages/builtin-plugins/src` | [index.ts](../../packages/builtin-plugins/src/index.ts) |
-| `packages/desktop/src/main/plugins` | [desktop-plugins.ts](../../packages/desktop/src/main/plugins/desktop-plugins.ts) · [settings.ts](../../packages/desktop/src/main/plugins/settings.ts) · [tool-validation.ts](../../packages/desktop/src/main/plugins/tool-validation.ts) · [memory-policy.ts](../../packages/desktop/src/main/plugins/memory-policy.ts) · [memory-sources.ts](../../packages/desktop/src/main/plugins/memory-sources.ts) · [title-policy.ts](../../packages/desktop/src/main/plugins/title-policy.ts) · [local-plugins.ts](../../packages/desktop/src/main/plugins/local-plugins.ts) |
-| `packages/desktop/src/main/tasks` | [controls.ts](../../packages/desktop/src/main/tasks/controls.ts) |
+| `packages/builtin-plugins/src` | [assembly.ts](../../packages/builtin-plugins/src/assembly.ts) · [tool-validation.ts](../../packages/builtin-plugins/src/tool-validation.ts) |
+| `packages/desktop/src/main/plugins` | [settings.ts](../../packages/desktop/src/main/plugins/settings.ts) · [local-plugins.ts](../../packages/desktop/src/main/plugins/local-plugins.ts) |
+| `packages/builtin-plugins/src/memory` | [policy.ts](../../packages/builtin-plugins/src/memory/policy.ts) · [sources.ts](../../packages/builtin-plugins/src/memory/sources.ts) |
+| `packages/builtin-plugins/src/title` | [policy.ts](../../packages/builtin-plugins/src/title/policy.ts) |
+| `packages/builtin-plugins/src/tasks` | [controls.ts](../../packages/builtin-plugins/src/tasks/controls.ts) |
 | `packages/desktop/src/shared` | [plugins.ts](../../packages/desktop/src/shared/plugins.ts) · [hooks.ts](../../packages/desktop/src/shared/hooks.ts) |
 | `packages/desktop/src/renderer` | [PluginSettings.tsx](../../packages/desktop/src/renderer/PluginSettings.tsx) · [plugin-settings.css](../../packages/desktop/src/renderer/plugin-settings.css) · [HooksSettings.tsx](../../packages/desktop/src/renderer/HooksSettings.tsx) · [HookForm.tsx](../../packages/desktop/src/renderer/HookForm.tsx) · [hooks-settings.css](../../packages/desktop/src/renderer/hooks-settings.css) |
 | `packages/desktop/src/main/plugins` | [configured-hooks.ts](../../packages/desktop/src/main/plugins/configured-hooks.ts) · [hook-catalog.ts](../../packages/desktop/src/main/plugins/hook-catalog.ts) |
@@ -317,3 +322,13 @@
 ## 维护约定
 
 新增、移动或删除源文件时，同步调整本表和主要说明页。只把新文件加进表格不算完成文档：应说明可见行为、状态归属、输入输出、并发/取消/失败，以及最低合适层的回归依据。数值和协议参数在主要说明页维护，功能页通过链接引用。
+
+### [内置插件运行时边界](plugins.md)
+
+| 目录 | 文件 |
+| --- | --- |
+| `packages/builtin-plugins/src` | [runtime.ts](../../packages/builtin-plugins/src/runtime.ts) · [ports.ts](../../packages/builtin-plugins/src/ports.ts) · [types.ts](../../packages/builtin-plugins/src/types.ts) · [models.ts](../../packages/builtin-plugins/src/models.ts) · [notifications.ts](../../packages/builtin-plugins/src/notifications.ts) |
+| `packages/builtin-plugins/src/memory` | [types.ts](../../packages/builtin-plugins/src/memory/types.ts) |
+| `packages/builtin-plugins/src/collaboration` | [types.ts](../../packages/builtin-plugins/src/collaboration/types.ts) · [inbox.ts](../../packages/builtin-plugins/src/collaboration/inbox.ts) |
+| `packages/agent-sdk/src` | [query-result.ts](../../packages/agent-sdk/src/query-result.ts) |
+| `packages/coding-agent/src/core` | [fs.ts](../../packages/coding-agent/src/core/fs.ts) |

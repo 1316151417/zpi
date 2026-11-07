@@ -38,5 +38,5 @@ TaskOutput 与 TaskStop 的摘要按任务 ID 关联当前会话快照：子智�
 
 ## 源码与回归入口
 
-- [runtime](../../packages/desktop/src/main/plugins/subagents/runtime.ts)、[profiles](../../packages/desktop/src/main/plugins/subagents/profiles.ts)、[协议](../../packages/desktop/src/main/plugins/subagents/protocol.ts)、[大输出](../../packages/desktop/src/main/plugins/subagents/artifacts.ts)、[提示](../../packages/desktop/src/main/plugins/subagents/prompts.ts)。
-- [协作测试](../../packages/desktop/test/subagents.test.ts)、[协议测试](../../packages/desktop/test/subagent-protocol.test.ts)、[profile 碰撞](../../packages/desktop/test/subagent-profile-collision.test.ts)、[提示测试](../../packages/desktop/test/subagent-prompts.test.ts)。
+- [runtime](../../packages/builtin-plugins/src/collaboration/runtime.ts)、[profiles](../../packages/builtin-plugins/src/collaboration/profiles.ts)、[协议](../../packages/builtin-plugins/src/collaboration/protocol.ts)、[大输出](../../packages/builtin-plugins/src/collaboration/artifacts.ts)、[提示](../../packages/builtin-plugins/src/collaboration/prompts.ts)。
+- [协作测试](../../packages/desktop/test/subagents.test.ts)、[协议测试](../../packages/builtin-plugins/test/subagent-protocol.test.ts)、[profile 碰撞](../../packages/desktop/test/subagent-profile-collision.test.ts)、[提示测试](../../packages/desktop/test/subagent-prompts.test.ts)。

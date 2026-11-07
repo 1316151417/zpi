@@ -1,4 +1,7 @@
 import type { Model, ModelCompat, ModelDiscoveryResult, ProviderApi, ProviderPresetId } from "zpi-ai";
+import type { SaveSubagentInput, SubagentCatalog } from "zpi-builtin-plugins/collaboration/types";
+import type { MemorySettings, MemoryStatus } from "zpi-builtin-plugins/memory/types";
+import type { CombinedSelection } from "zpi-builtin-plugins/types";
 import type { Attachment, DiscoveredSkill, SkillList } from "zpi-coding-agent";
 import type {
   DesktopEventEnvelope,
@@ -22,12 +25,13 @@ import type {
 } from "./custom-commands.ts";
 import type { EditorInfo } from "./editors.ts";
 import type { HooksCatalog, HookTarget, SaveHookInput } from "./hooks.ts";
-import type { MemorySettings, MemoryStatus } from "./memory.ts";
 import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
-import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
 import type { WorkspaceFileSearchInput, WorkspaceFileSearchResult } from "./workspace-files.ts";
 
+export type { CombinedSelection, ModelSelection, ReasoningPreset } from "zpi-builtin-plugins/types";
+
 export type { SessionControls } from "zpi-ui";
+
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
 export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode; message: string } };
 export interface ProjectRecord {
@@ -107,14 +111,6 @@ export interface ProviderRecord extends Omit<ProviderInput, "apiKey" | "id"> {
   hasApiKey: boolean;
   chatgptAccount?: { label: string; connected: boolean };
 }
-export interface ModelSelection {
-  provider: string;
-  modelId: string;
-}
-export type ReasoningPreset = string;
-export interface CombinedSelection extends ModelSelection {
-  reasoning: ReasoningPreset;
-}
 export interface InterfacePreferences {
   codePreview?: import("zpi-ui/code-preview").CodePreviewSettings;
   theme: "system" | "light" | "dark";
@@ -162,7 +158,7 @@ export interface SessionSnapshot {
 }
 export interface RunInput {
   /** Internal plugin delivery; renderer IPC does not accept this field. */
-  subagentNotification?: import("zpi-ui").SubagentNotification;
+  subagentNotification?: import("zpi-builtin-plugins/types").SubagentNotification;
   sessionId: string;
   text: string;
   fileReferences?: string[];

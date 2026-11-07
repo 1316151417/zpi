@@ -34,6 +34,6 @@ renderer 保存编辑状态和附件引用，通过 preload 提交 RunInput。�
 
 ## 源码与回归入口
 
-- [队列](../../packages/desktop/src/main/input-queue.ts)、[附件](../../packages/desktop/src/main/attachments.ts)、[会话引用](../../packages/desktop/src/main/session-references.ts)、[草稿](../../packages/desktop/src/main/draft-store.ts)、[引用解析](../../packages/coding-agent/src/core/mentions.ts)。
+- [队列](../../packages/desktop/src/main/input-queue.ts)、[附件](../../packages/desktop/src/main/attachments.ts)、[会话引用](../../packages/builtin-plugins/src/transcripts.ts)、[草稿](../../packages/desktop/src/main/draft-store.ts)、[引用解析](../../packages/coding-agent/src/core/mentions.ts)。
 - [队列测试](../../packages/desktop/test/input-queue.test.ts)、[归档测试](../../packages/desktop/test/input-queue-archive.test.ts)、[引用测试](../../packages/desktop/test/input-references.test.ts)、[附件测试](../../packages/desktop/test/attachments.test.ts)。
 - [主辅对话立即发送回归](../../tests/desktop/immediate-send.spec.ts)、[快捷键回归](../../tests/desktop/composer-shortcuts.spec.ts)。

@@ -444,9 +444,7 @@ async function launch(): Promise<void> {
     write: (path, data) => writeFile(path, data),
   });
   const notifications = new TaskNotifications(window, () => settings.get().interface);
-  host.setNotificationSink((event, title) => {
-    if (!ending) notifications.handle(event, title);
-  });
+  host.setNotificationSink((request) => !ending && notifications.show(request));
   const eventBatcher = new EventBatcher((events) => {
     if (window.isDestroyed() || window.webContents.isDestroyed() || window.webContents.isCrashed()) return;
     try {
@@ -645,36 +643,36 @@ async function launch(): Promise<void> {
           value = host.listSubagents(sessionContext());
           break;
         case "saveSubagent":
-          value = host.saveSubagent(
+          value = host.plugins.saveSubagent(
             object(0, [
               "id",
               "config",
               "scope",
               "sessionId",
-            ]) as unknown as import("../shared/subagents.ts").SaveSubagentInput,
+            ]) as unknown as import("zpi-builtin-plugins/collaboration/types").SaveSubagentInput,
           );
           break;
         case "deleteSubagent":
-          value = host.subagents.profiles.delete(
+          value = host.plugins.collaboration.profiles.delete(
             string(0),
             args[1] === null ? undefined : host.workspaceInfo(string(1)).cwd,
           );
           break;
         case "setSubagentEnabled":
-          value = host.subagents.profiles.enable(
+          value = host.plugins.collaboration.profiles.enable(
             string(0),
             args[1] as boolean,
             args[2] === null ? undefined : host.workspaceInfo(string(2)).cwd,
           );
           break;
         case "stopSubagent":
-          await host.subagents.stop(string(0), string(1));
+          await host.plugins.collaboration.stop(string(0), string(1));
           break;
         case "stopBackgroundTask":
-          await host.backgroundTasks.stop(string(0), string(1));
+          await host.plugins.background.stop(string(0), string(1));
           break;
         case "readBackgroundTask":
-          value = await host.backgroundTasks.read(string(0), string(1));
+          value = await host.plugins.background.read(string(0), string(1));
           break;
         case "setPluginEnabled":
           settings.setPluginEnabled(string(0), args[1] as boolean);
@@ -741,14 +739,14 @@ async function launch(): Promise<void> {
           value = settings.get();
           break;
         case "respondToQuestion":
-          host.questions.respond(
+          host.plugins.questions.respond(
             string(0),
             string(1),
             object(2, ["answers", "annotations"]) as unknown as import("zpi-ui").UserQuestionResponse,
           );
           break;
         case "snoozeQuestion":
-          host.questions.snooze(string(0), string(1));
+          host.plugins.questions.snooze(string(0), string(1));
           break;
         case "closeSideChat":
           await host.closeSideChat(string(0));
@@ -1278,19 +1276,21 @@ async function launch(): Promise<void> {
           value = settings.getMemorySettings();
           break;
         case "saveMemorySettings":
-          value = await host.saveMemorySettings(args[0] as import("../shared/memory.ts").MemorySettings);
+          value = await host.saveMemorySettings(
+            args[0] as import("zpi-builtin-plugins/memory/types").MemorySettings,
+          );
           break;
         case "getMemoryStatus":
-          value = await host.getMemoryStatus(sessionContext());
+          value = await host.plugins.getMemoryStatus(sessionContext());
           break;
         case "checkMemoryNow":
-          value = await host.checkMemoryNow(sessionContext());
+          value = await host.plugins.checkMemoryNow(sessionContext());
           break;
         case "clearLongMemory":
-          value = await host.clearLongMemory();
+          value = await host.plugins.clearLongMemory();
           break;
         case "openMemoryFile": {
-          const result = await host.openMemoryFile(sessionContext(), string(1), string(2));
+          const result = await host.plugins.openMemoryFile(sessionContext(), string(1), string(2));
           if (result.exists && (args[2] === "edit" || args[1] === "long")) await openFile(result.path);
           value = result;
           break;

@@ -20,4 +20,4 @@ schema 要求 multiSelect；为兼容模型，prepareArguments 给遗漏值补 f
 
 参数 schema、主进程响应校验、UI 卡片和工具结果展示必须一起对齐。增加字段不能仅改 UI。问题超时行为是应用自身的工具约定，不能推广成任意批准请求的默认规则。
 
-源码：[UserQuestions](../../packages/desktop/src/main/user-questions.ts)、[卡片](../../packages/desktop/src/renderer/UserQuestionCard.tsx)、[历史展示](../../packages/ui/src/components/AskQuestionToolBlock.tsx)。回归：[工具测试](../../packages/desktop/test/user-questions.test.ts)、[展示测试](../../packages/ui/test/user-question-presentation.test.ts)。
+源码：[UserQuestions](../../packages/builtin-plugins/src/questions.ts)、[卡片](../../packages/desktop/src/renderer/UserQuestionCard.tsx)、[历史展示](../../packages/ui/src/components/AskQuestionToolBlock.tsx)。回归：[工具测试](../../packages/desktop/test/user-questions.test.ts)、[展示测试](../../packages/ui/test/user-question-presentation.test.ts)。

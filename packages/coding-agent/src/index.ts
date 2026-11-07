@@ -10,6 +10,7 @@ export {
   type FileRewindPlan,
   planFileRewind,
 } from "./core/file-rewind.ts";
+export { syncDirectory } from "./core/fs.ts";
 export * from "./core/image-limits.ts";
 export * from "./core/images.ts";
 export { type MarkdownFrontmatter, parseMarkdownFrontmatter } from "./core/markdown.ts";

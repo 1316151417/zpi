@@ -1,10 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { defaultMemorySettings } from "zpi-builtin-plugins/memory/types";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
-import { defaultMemorySettings } from "../src/shared/memory.ts";
 import { cleanup, fixture, run } from "./helpers/context-fixture.ts";
 
 test("a successful history edit invalidates old memory evidence after the replacement commits", async () => {
@@ -13,13 +13,15 @@ test("a successful history edit invalidates old memory evidence after the replac
   const original = f.host.getSessionSnapshot(f.session.id).view.runs.at(-1);
   if (!original) throw new Error("Expected original run");
   const previousPath = f.host.sessionPath(f.session.id);
-  const invalidate = f.host.longMemory.invalidateSource.bind(f.host.longMemory);
+  const invalidate = f.host.plugins.longMemory.invalidateSource.bind(f.host.plugins.longMemory);
   let transcriptAtInvalidation = "";
-  const invalidation = vi.spyOn(f.host.longMemory, "invalidateSource").mockImplementation(async (id) => {
-    expect(f.host.sessionPath(id)).not.toBe(previousPath);
-    transcriptAtInvalidation = await readFile(f.host.sessionPath(id), "utf8");
-    return invalidate(id);
-  });
+  const invalidation = vi
+    .spyOn(f.host.plugins.longMemory, "invalidateSource")
+    .mockImplementation(async (id) => {
+      expect(f.host.sessionPath(id)).not.toBe(previousPath);
+      transcriptAtInvalidation = await readFile(f.host.sessionPath(id), "utf8");
+      return invalidate(id);
+    });
   await f.host.editUserMessage(f.session.id, original.runId, { text: "REPLACEMENT PREFERENCE" });
   await f.host.activeRuns.get(f.session.id)?.done;
   expect(invalidation).toHaveBeenCalledWith(f.session.id);
@@ -36,7 +38,7 @@ test("a rejected history edit retains the original history and does not withdraw
   if (!original) throw new Error("Expected original run");
   const previousPath = f.host.sessionPath(f.session.id);
   const bytes = await readFile(previousPath);
-  const invalidation = vi.spyOn(f.host.longMemory, "invalidateSource");
+  const invalidation = vi.spyOn(f.host.plugins.longMemory, "invalidateSource");
   await expect(f.host.editUserMessage(f.session.id, original.runId, { text: "/compact" })).rejects.toThrow(
     "历史消息不能替换为 /compact",
   );
@@ -48,12 +50,14 @@ test("a rejected history edit retains the original history and does not withdraw
 test("deleting a conversation withdraws its memory source before removing durable history", async () => {
   const f = await fixture();
   await run(f, "A source to delete.");
-  const invalidate = f.host.longMemory.invalidateSource.bind(f.host.longMemory);
-  const invalidation = vi.spyOn(f.host.longMemory, "invalidateSource").mockImplementation(async (id) => {
-    expect(f.settings.state.getTask(id)).toBeDefined();
-    expect(await readFile(f.host.sessionPath(id), "utf8")).toContain("A source to delete.");
-    return invalidate(id);
-  });
+  const invalidate = f.host.plugins.longMemory.invalidateSource.bind(f.host.plugins.longMemory);
+  const invalidation = vi
+    .spyOn(f.host.plugins.longMemory, "invalidateSource")
+    .mockImplementation(async (id) => {
+      expect(f.settings.state.getTask(id)).toBeDefined();
+      expect(await readFile(f.host.sessionPath(id), "utf8")).toContain("A source to delete.");
+      return invalidate(id);
+    });
   await f.host.deleteSession(f.session.id);
   expect(invalidation).toHaveBeenCalledWith(f.session.id);
   expect(f.settings.state.getTask(f.session.id)).toBeUndefined();
@@ -64,17 +68,17 @@ test("application close waits for memory cleanup after stopping foreground runs"
   const f = await fixture((_, response) => response.flushHeaders());
   await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
   const events: string[] = [];
-  vi.spyOn(f.host.longMemory, "context").mockImplementation(async () => ({
+  vi.spyOn(f.host.plugins.longMemory, "context").mockImplementation(async () => ({
     instructions: ["Retained memory context"],
     sources: [],
   }));
-  vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
+  vi.spyOn(f.host.plugins.longMemory, "check").mockResolvedValue();
   let finishCleanup = () => {};
   const cleanupGate = new Promise<void>((resolve) => {
     finishCleanup = resolve;
   });
-  const drain = f.host.longMemory.drain.bind(f.host.longMemory);
-  vi.spyOn(f.host.longMemory, "drain").mockImplementation(async () => {
+  const drain = f.host.plugins.longMemory.drain.bind(f.host.plugins.longMemory);
+  vi.spyOn(f.host.plugins.longMemory, "drain").mockImplementation(async () => {
     events.push("memory-drain-start");
     await drain();
     await cleanupGate;
@@ -137,20 +141,20 @@ test.each(["delete-child", "close-app"])(
       }
     });
     await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
-    vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
+    vi.spyOn(f.host.plugins.longMemory, "context").mockResolvedValue({
       instructions: ["PARENT_SELECTED_MEMORY"],
       sources: [],
     });
-    vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
+    vi.spyOn(f.host.plugins.longMemory, "check").mockResolvedValue();
     await run(f, "Delegate a task while using memory.");
-    const task = f.host.subagents.list(f.session.id).at(-1);
+    const task = f.host.plugins.collaboration.list(f.session.id).at(-1);
     if (!task) throw new Error("Expected delegated child");
     await vi.waitFor(() => expect(f.host.activeRuns.has(task.childSessionId)).toBe(true));
     await vi.waitFor(() =>
       expect(f.host.sessions.get(task.childSessionId)?.systemPrompt).toContain("PARENT_SELECTED_MEMORY"),
     );
     if (action === "delete-child") {
-      await f.host.subagents.stop(f.session.id, task.agentId);
+      await f.host.plugins.collaboration.stop(f.session.id, task.agentId);
       expect(f.host.sessions.get(task.childSessionId)?.systemPrompt).toContain("PARENT_SELECTED_MEMORY");
       await f.host.deleteSession(task.childSessionId);
     } else await f.host.close();
@@ -199,32 +203,34 @@ test.each(["clear", "restart"])(
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
     await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [language] RETAINED_SHORT_MEMORY\n");
     await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
-    vi.spyOn(f.host.longMemory, "context").mockResolvedValue({
+    vi.spyOn(f.host.plugins.longMemory, "context").mockResolvedValue({
       instructions: ["STALE_LONG_MEMORY"],
       sources: [],
     });
-    vi.spyOn(f.host.longMemory, "check").mockResolvedValue();
+    vi.spyOn(f.host.plugins.longMemory, "check").mockResolvedValue();
     await run(f, "Delegate this memory task.");
-    const task = f.host.subagents.list(f.session.id).at(-1);
+    const task = f.host.plugins.collaboration.list(f.session.id).at(-1);
     if (!task) throw new Error("Expected delegated child");
     await vi.waitFor(() =>
       expect(f.host.sessions.get(task.childSessionId)?.systemPrompt).toContain("STALE_LONG_MEMORY"),
     );
-    await f.host.subagents.stop(f.session.id, task.agentId);
+    await f.host.plugins.collaboration.stop(f.session.id, task.agentId);
     let host = f.host;
-    if (action === "clear") await host.clearLongMemory();
+    if (action === "clear") await host.plugins.clearLongMemory();
     else {
       await host.close();
       host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
       cleanup.push(() => host.close());
       await host.init();
     }
-    const context = vi.spyOn(host.longMemory, "context");
+    const context = vi.spyOn(host.plugins.longMemory, "context");
     context.mockClear();
-    const checks = vi.spyOn(host.longMemory, "check").mockResolvedValue();
+    const checks = vi.spyOn(host.plugins.longMemory, "check").mockResolvedValue();
     checks.mockClear();
-    host.subagents.prepare(f.session.id);
-    const sendMessage = host.subagents.tools(f.session.id).find((tool) => tool.name === "SendMessage");
+    host.plugins.collaboration.prepare(f.session.id);
+    const sendMessage = host.plugins.collaboration
+      .tools(f.session.id)
+      .find((tool) => tool.name === "SendMessage");
     if (!sendMessage) throw new Error("Missing SendMessage tool");
     await sendMessage.execute(
       "resume",
@@ -249,6 +255,6 @@ test.each(["clear", "restart"])(
     expect(prompt).not.toContain("STALE_LONG_MEMORY");
     expect(context).not.toHaveBeenCalled();
     expect(checks).not.toHaveBeenCalled();
-    await host.subagents.stop(f.session.id, task.agentId);
+    await host.plugins.collaboration.stop(f.session.id, task.agentId);
   },
 );

@@ -3,9 +3,13 @@ import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
-import { createAgentSession } from "zpi-agent-sdk/host";
+import { createAgentSession, queryResult } from "zpi-agent-sdk/host";
 import { assertSupportedOptions, contentText, isJsonObject } from "zpi-ai";
-import { desktopPluginIds, enabledBuiltinPlugins } from "zpi-builtin-plugins";
+import type { MemorySettings } from "zpi-builtin-plugins/memory/types";
+import { BuiltinPluginRuntime, type PluginConfiguration, type PluginRun } from "zpi-builtin-plugins/runtime";
+import { sessionReferenceTranscriptReverse } from "zpi-builtin-plugins/transcripts";
+import type { PluginNotification } from "zpi-builtin-plugins/types";
+import { publicWebUrl } from "zpi-builtin-plugins/web/client";
 import {
   type AgentSession,
   assembleSession,
@@ -35,14 +39,12 @@ import {
   withPluginResources,
 } from "zpi-coding-agent";
 import type {
-  BackgroundTask,
   DesktopEvent,
   DesktopEventEnvelope,
   InputQueue,
   RunStatus,
   SessionMentionSuggestion,
   SessionView,
-  SubagentTask,
 } from "zpi-ui";
 import { splitFileLocation } from "zpi-ui/links";
 import { normalizeWebToolDetails, reduceSession, sessionViewBytes } from "zpi-ui/projection";
@@ -63,14 +65,10 @@ import type {
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
 import type { HooksCatalog, HookTarget, SaveHookInput } from "../shared/hooks.ts";
-import type { MemorySettings, MemoryStatus } from "../shared/memory.ts";
-import { webSearchAvailable } from "../shared/plugins.ts";
 import { type ReviewDiffData, reviewPatchStats } from "../shared/review.ts";
-import type { SaveSubagentInput, SubagentProfile } from "../shared/subagents.ts";
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
 import type { WorkspaceFileSearchInput } from "../shared/workspace-files.ts";
 import { AttachmentStore } from "./attachments.ts";
-import { BackgroundTasks } from "./background-tasks.ts";
 import { CommandImportService } from "./command-import.ts";
 import {
   expandCustomCommandPromptWithShell,
@@ -89,71 +87,34 @@ import { HistoryPerformance, historyPerformance, sideChatGuard } from "./history
 import { HistoryStorage, type WorkerHistoryIndex } from "./history-storage.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { localFileCandidate } from "./local-file-path.ts";
-import { LongMemoryService, type LongMemoryState } from "./memory/long-memory.ts";
-import { readShortMemory } from "./memory/short-memory.ts";
 import { modelRuntimeConfig } from "./model-runtime-config.ts";
 import { ConfiguredHooks } from "./plugins/configured-hooks.ts";
-import {
-  collaborationEnabled,
-  pluginsForSubagent,
-  resolveDesktopPlugins,
-  validateDesktopPluginSnapshots,
-} from "./plugins/desktop-plugins.ts";
 import { pluginHookGroups } from "./plugins/hook-catalog.ts";
 import { LocalPlugins } from "./plugins/local-plugins.ts";
-import { type MemoryInheritance, MemoryPolicy } from "./plugins/memory-policy.ts";
-import { memorySources } from "./plugins/memory-sources.ts";
-import { SubagentProfiles } from "./plugins/subagents/profiles.ts";
-import {
-  agentTaskNotification,
-  escapeXml,
-  formatAgentIncoming,
-  formatSubagentMessage,
-} from "./plugins/subagents/protocol.ts";
-import { SubagentPlugin } from "./plugins/subagents/runtime.ts";
-import { TitlePolicy, type TitleRequest } from "./plugins/title-policy.ts";
 import { projectEvent, restoreView } from "./projection.ts";
-import { queryResult } from "./sdk-query.ts";
 import { sessionActivityAt } from "./session-activity.ts";
-import { sessionReferenceTranscriptReverse } from "./session-references.ts";
 import type { StorageIntent, TaskState } from "./state-store.ts";
 import type { SettingsStore } from "./storage.ts";
 import { retryStorageCleanup } from "./storage-cleanup.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
-import { UserQuestions } from "./user-questions.ts";
-import { publicWebUrl } from "./web-client.ts";
-import { WebTools } from "./web-tools.ts";
+
 import { WorkspaceFileSearches } from "./workspace-file-searches.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
-
-type AgentInboxInput = RunInput & {
-  backgroundNotification?: boolean;
-  deliveryId?: string;
-  agentMessageKind?: "reply" | "notification";
-  receivedDuringRun?: string;
-};
 
 type WithoutSession<T> = T extends unknown ? Omit<T, "sessionId" | "cwd"> : never;
 type HostHookInput = WithoutSession<
   Extract<HookInvocation, { event: "InputAccepted" | "RunStart" | "RunEnd" | "Notification" }>
 >;
-interface SessionConfiguration extends MemoryInheritance {
+interface SessionConfiguration extends PluginConfiguration {
   pluginsVersion: 3;
-  plugins: PluginSnapshot[];
   template: PromptTemplate;
   disabledSkillPaths: string[];
-  subagentProfile?: SubagentProfile;
-  subagentInstructions?: string[];
 }
-interface ActiveRun {
-  titleRequest?: TitleRequest;
-  runId: string;
-  done: Promise<void>;
+interface ActiveRun extends PluginRun {
   finish: () => void;
   ordinal: number;
-  aborted?: boolean;
   preparationAbort: AbortController;
   session?: AgentSession;
   hasAssistant?: boolean;
@@ -175,28 +136,12 @@ export class SessionHost {
   updateTaskGroups(command: unknown) {
     return this.taskGroups.update(command, [...this.records.values()]);
   }
-  readonly subagents: SubagentPlugin;
-  readonly backgroundTasks: BackgroundTasks;
-  readonly longMemory: LongMemoryService;
-  private readonly memoryPolicy: MemoryPolicy;
-  private readonly titles: TitlePolicy;
+  readonly plugins: BuiltinPluginRuntime;
   readonly localPlugins: LocalPlugins;
   readonly configuredHooks: ConfiguredHooks;
   private pluginLifetime = new AbortController();
   private hostHookRunners = new WeakMap<SessionConfiguration, HookRunner>();
-  private notificationSink?: (event: DesktopEventEnvelope, title: string) => void;
-  private readonly webTools: WebTools;
-  readonly questions = new UserQuestions((id, question) => {
-    const record = this.records.get(id);
-    if (record)
-      record.pendingQuestion = question ? { id: question.id, autoResolution: question.autoResolution } : null;
-    const run = this.activeRuns.get(id);
-    if (run) this.emit(id, run.runId, { type: "question_changed", question });
-    else if (record) {
-      this.getSessionSnapshot(id);
-      this.emit(id, "questions", { type: "question_changed", question });
-    }
-  });
+  private notificationSink?: (request: PluginNotification) => boolean;
   readonly sessions = new Map<string, AgentSession>();
   readonly activeRuns = new Map<string, ActiveRun>();
   private runtimes = new Map<string, ModelRuntime>();
@@ -255,7 +200,6 @@ export class SessionHost {
     this.configuredHooks = new ConfiguredHooks(dir, settings.state);
     this.commandShellRunner = commandShellRunner;
     this.responsesProxy = responsesProxy;
-    this.webTools = new WebTools({ getApiKey: () => settings.getWebSearchApiKey(), requestFetch });
     const commandsDirectory = join(homeDir, ".zpi", "commands");
     this.commandImports = new CommandImportService({
       homeDirectory: homeDir,
@@ -270,76 +214,6 @@ export class SessionHost {
     this.worktreeRoot = privateWorktreeRoot;
     this.dir = dir;
     this.historyStorage = new HistoryStorage(join(dir, "history.sqlite"));
-    this.longMemory = new LongMemoryService({
-      directory: join(dir, "memories_v2"),
-      getState: () => settings.state.getSetting<LongMemoryState>("memory.state"),
-      setState: (value) => settings.state.setSetting("memory.state", value),
-      sources: async () =>
-        memorySources({
-          directory: this.dir,
-          records: () => this.records.values(),
-          index: (id) => this.requiredIndex(id),
-          cwd: (record) => this.cwd(record),
-          blocked: (id) => this.blocked.has(id),
-          active: (id) => this.activeRuns.has(id) || this.updating.has(id) || this.deleting.has(id),
-          exists: (id) => this.records.has(id),
-          deleting: (id) => this.deleting.has(id),
-        }),
-      run: (request) => this.memoryPolicy.run(request),
-    });
-    this.longMemory.configure(settings.getMemorySettings());
-    this.memoryPolicy = new MemoryPolicy({
-      settings: () => settings.getMemorySettings(),
-      selection: (id) => (id ? this.getControls(id).selection : settings.get().lastSelection),
-      closing: () => this.closing,
-      error: (error) => this.errors.write("memory.check", error),
-      model: (selection) => {
-        if (!settings.isSelectionValid(selection))
-          throw new Error("configuration: 记忆模型、提供商或思考强度不可用，请在记忆设置中重新选择");
-        const runtime = new ModelRuntime(this.requestFetch);
-        this.configure(runtime, selection.provider, settings.snapshot(selection.provider));
-        const model = runtime.getModel(selection.provider, selection.modelId);
-        if (!model) throw new Error("configuration: 记忆模型不存在");
-        return { runtime, model };
-      },
-      homeDir,
-      longMemory: this.longMemory,
-      context: (id) => {
-        const record = this.record(id),
-          config = this.configuration(id);
-        return {
-          cwd: this.cwd(record),
-          workspace: record.projectId ? this.cwd(record) : undefined,
-          child: !!config.subagentProfile,
-          parentId: record.parentSessionId,
-          memoryInstructions: config.memoryInstructions,
-          memoryShortInstructions: config.memoryShortInstructions,
-        };
-      },
-      updateInheritance: (id, inheritance) => {
-        const updated = { ...this.configuration(id), ...inheritance };
-        this.saveTask(id, { frozenConfiguration: updated });
-        this.configurations.set(id, updated);
-      },
-    });
-    this.titles = new TitlePolicy({
-      state: (id) => this.settings.state.getTask(id),
-      save: (id, patch) => this.saveTask(id, patch),
-      changed: (id, title, generated) => {
-        if (generated) this.emit(id, "title", { type: "session_changed", title });
-        else {
-          const view = this.views.get(id);
-          if (view) this.views.set(id, { ...view, title });
-        }
-      },
-      alive: (id) => !this.closing && !this.deleting.has(id) && this.records.has(id),
-      error: (error, id, model) =>
-        this.errors.write("session.title", error, {
-          sessionId: id,
-          provider: model.provider,
-          model: model.id,
-        }),
-    });
     this.errors = errors;
     this.drafts = new DraftStore(settings.state);
     this.requestFetch = requestFetch;
@@ -427,111 +301,110 @@ export class SessionHost {
     this.homeDir = homeDir;
     this.defaultWorkspace = defaultWorkspace;
     this.settings = settings;
-    this.backgroundTasks = new BackgroundTasks(dir, {
-      publish: (task) => {
-        if (!this.records.has(task.sessionId)) return;
-        this.settings.state.setRuntime(task.sessionId, "background", task.taskId, task, task.status);
-        if (!this.views.has(task.sessionId)) this.getSessionSnapshot(task.sessionId);
-        this.emit(task.sessionId, "background", { type: "background_task_changed", task });
-        const parentId = this.records.get(task.sessionId)?.parentSessionId;
-        if (parentId && this.subagents.taskForChild(task.sessionId)) {
-          if (!this.views.has(parentId)) this.getSessionSnapshot(parentId);
-          this.emit(parentId, "background", { type: "background_task_changed", task });
-        }
-      },
-      notify: async (task) => {
-        const active = this.activeRuns.get(task.sessionId);
-        if (active?.aborted) await active.done;
-        if (this.closing || this.deleting.has(task.sessionId)) return;
-        const child = this.subagents.taskForChild(task.sessionId);
-        if (child && child.status !== "running") return;
-        await this.deliverSubagentMessage(
-          {
-            parentSessionId: task.sessionId,
-            agentId: task.taskId,
-            agentType: "bash",
-            description: task.description,
-            status: task.status === "completed" ? "completed" : "error",
-            result: `Background command ${task.status}. Exit code: ${task.exitCode ?? "unknown"}.\nOutput file: ${task.outputPath}\nUse TaskOutput with task_id ${task.taskId} if the output is needed.`,
-          },
-          undefined,
-          true,
-        );
-      },
-      error: (error) => this.errors.write("background.task", error),
-    });
-    this.subagents = new SubagentPlugin(
-      new SubagentProfiles(dir, settings.state),
-      {
-        cwd: (id) => this.cwd(this.record(id)),
+    this.plugins = new BuiltinPluginRuntime({
+      directory: dir,
+      homeDirectory: homeDir,
+      storage: settings.state,
+      memorySettings: () => settings.getMemorySettings(),
+      files: { preview: (id, path) => readFilePreview(this.workspaceInfo(id).cwd, path) },
+      fetch: requestFetch,
+      credentials: () => settings.getWebSearchApiKey(),
+      closing: () => this.closing,
+      error: (scope, error, context) => this.errors.write(scope, error, context),
+      models: {
+        valid: (selection) => settings.isSelectionValid(selection),
         selection: (id) => {
-          const session = this.sessions.get(id);
-          const selection = session
+          const session = id ? this.sessions.get(id) : undefined;
+          return session
             ? {
                 provider: session.model.provider,
                 modelId: session.model.id,
                 reasoning: toPreset(session.thinkingLevel, session.model),
               }
-            : this.getControls(id).selection;
-          if (!selection) throw new Error("configuration: 请先选择模型");
-          return selection;
+            : id
+              ? this.getControls(id).selection
+              : settings.get().lastSelection;
         },
-        create: (id, profile, selection, description) =>
-          this.createSubagentSession(id, profile, selection, description),
-        run: async (id, prompt, profile, selection) => {
-          if (profile && selection) {
-            const record = this.record(id);
-            if (record.archivedAt != null) throw new Error("busy: 子智能体已归档");
-            if (!this.settings.isSelectionValid(selection))
-              throw new Error("configuration: 子智能体模型不可用");
-            const configuration = {
-              ...this.configuration(id),
-              subagentProfile: structuredClone(profile),
-              subagentInstructions: this.parentInstructions.get(this.record(id).parentSessionId ?? "") ?? [],
-            };
-            this.saveTask(id, { frozenConfiguration: configuration });
-            this.configurations.set(id, configuration);
-            const level = toThinking(selection.reasoning, this.settings.getModel(selection));
-            this.saveTask(id, {
-              currentSelection: selection,
-              ...(level !== "off" ? { lastThinkingLevel: level } : {}),
-            });
-            this.sessions.get(id)?.dispose();
-            this.sessions.delete(id);
-          }
-          this.memoryPolicy.refreshChild(id);
-          await this.startRun({ sessionId: id, text: prompt }, undefined, true);
-          // Settlement can reserve a follow-up when guidance arrives after the SDK inbox closes.
-          while (this.activeRuns.has(id)) await this.activeRuns.get(id)?.done;
+        create: (selection) => {
+          if (!settings.isSelectionValid(selection))
+            throw new Error("configuration: 模型、提供商或思考强度不可用，请重新选择");
+          const runtime = new ModelRuntime(this.requestFetch);
+          this.configure(runtime, selection.provider, settings.snapshot(selection.provider));
+          const model = runtime.getModel(selection.provider, selection.modelId);
+          if (!model) throw new Error("configuration: 模型不存在");
+          return { runtime, model };
         },
+      },
+      sessions: {
+        get: (id) => this.records.get(id),
+        records: () => this.records.values(),
+        cwd: (id) => this.cwd(this.record(id)),
+        configuration: (id) => this.configuration(id),
+        configure: (id, patch) => {
+          const configuration = { ...this.configuration(id), ...patch };
+          this.saveTask(id, { frozenConfiguration: configuration });
+          this.configurations.set(id, configuration);
+        },
+        state: (id) => settings.state.getTask(id),
+        update: (id, patch) => this.saveTask(id, patch),
+        createChild: async (id) => {
+          const parent = this.record(id);
+          return (await this.createSession(parent.projectId, { cwd: this.cwd(parent), parentSessionId: id }))
+            .id;
+        },
+        delete: (id) => this.deleteSession(id),
+        select: (id, selection) => {
+          if (!settings.isSelectionValid(selection)) throw new Error("configuration: 模型不可用，请重新选择");
+          const level = toThinking(selection.reasoning, settings.getModel(selection));
+          this.saveTask(id, {
+            currentSelection: selection,
+            ...(level !== "off" ? { lastThinkingLevel: level } : {}),
+          });
+          this.sessions.get(id)?.dispose();
+          this.sessions.delete(id);
+        },
+        run: async (input, internal) => {
+          await this.startRun(input, undefined, internal);
+        },
+        active: (id) => this.activeRuns.get(id),
         stop: async (id) => {
           const run = this.activeRuns.get(id);
           if (run) await this.abortRun({ sessionId: id, runId: run.runId });
-          else await this.backgroundTasks.stopAll(id);
         },
-        steer: (id, prompt) => {
-          const active = this.activeRuns.get(id);
-          if (!active || active.aborted) return false;
-          if (this.sessions.get(id)?.steer(prompt)) return true;
-          // Cover both startup and the SDK's closed-inbox settlement boundary.
-          const inbox = this.pendingSubagentMessages.get(id) ?? [];
-          inbox.push({ sessionId: id, text: prompt });
-          this.pendingSubagentMessages.set(id, inbox);
-          return true;
-        },
-        publish: (task) => {
-          if (!this.records.has(task.childSessionId) || !this.records.has(task.parentSessionId)) return;
-          this.settings.state.setRuntime(task.childSessionId, "subagent", task.agentId, task, task.status);
-          if (!this.views.has(task.parentSessionId)) this.getSessionSnapshot(task.parentSessionId);
-          this.emit(task.parentSessionId, "subagents", {
-            type: "subagent_changed",
-            task: structuredClone(task),
-          });
-        },
-        notify: (task, message) => this.deliverSubagentMessage(task, message),
+        closed: (id) =>
+          this.closing ||
+          !this.records.has(id) ||
+          this.deleting.has(id) ||
+          this.closingChildren.has(id) ||
+          this.records.get(id)?.archivedAt != null,
+        deleting: (id) => this.deleting.has(id),
+        changing: (id) => this.activeRuns.has(id) || this.updating.has(id) || this.deleting.has(id),
+        blocked: (id) => this.blocked.has(id),
+        history: (id) => this.requiredIndex(id),
       },
-      join(this.dir, "agent", "subagents"),
-    );
+      publish: (id, channel, event) => {
+        const record = this.records.get(id);
+        if (!record) return;
+        if (event.type === "question_changed")
+          record.pendingQuestion = event.question
+            ? { id: event.question.id, autoResolution: event.question.autoResolution }
+            : null;
+        if (!this.views.has(id)) this.getSessionSnapshot(id);
+        this.emit(
+          id,
+          event.type === "question_changed" ? (this.activeRuns.get(id)?.runId ?? channel) : channel,
+          event,
+        );
+      },
+      titleChanged: (id, title, generated) => {
+        if (generated) this.emit(id, "title", { type: "session_changed", title });
+        else {
+          const view = this.views.get(id);
+          if (view) this.views.set(id, { ...view, title });
+        }
+      },
+      notify: (request) => this.notificationSink?.(request) ?? false,
+    });
     this.projects = settings.state.listProjects();
   }
   async init(): Promise<void> {
@@ -680,44 +553,7 @@ export class SessionHost {
       }
       this.inputQueue.restore(task.id, savedQueue, accepted);
       for (const runtime of this.settings.state.getRuntime(task.id)) {
-        if (runtime.kind === "background") {
-          const value = runtime.data as BackgroundTask;
-          this.backgroundTasks.restore({
-            ...value,
-            status: runtime.status === "interrupted" ? "lost" : value.status,
-          });
-        }
-        if (runtime.kind === "subagent_inbox") {
-          const queued = runtime.data as RunInput[];
-          if (queued.length) {
-            const pending = new Set(queued.map((input: AgentInboxInput) => input.deliveryId ?? input.text));
-            const index = this.requiredIndex(task.id);
-            const snapshot = index.snapshot();
-            for (const { entry } of index.readRange(1, snapshot.endSeq, snapshot, ["message"])) {
-              if (
-                entry.type === "message" &&
-                entry.message.role === "user" &&
-                typeof entry.message.content === "string"
-              )
-                pending.delete(entry.message.inputId ?? entry.message.content);
-              if (!pending.size) break;
-            }
-            const inbox = queued.filter((input: AgentInboxInput) =>
-              pending.has(input.deliveryId ?? input.text),
-            );
-            if (inbox.length) this.pendingSubagentMessages.set(task.id, inbox);
-            if (inbox.length !== queued.length) this.saveSubagentInbox(task.id);
-          }
-        }
-        if (runtime.kind === "subagent") {
-          const value = runtime.data as SubagentTask;
-          this.subagents.restore({
-            ...value,
-            ...(runtime.status === "interrupted"
-              ? { status: "interrupted" as const, waitingForInput: false }
-              : {}),
-          });
-        }
+        this.plugins.restore(task.id, runtime);
       }
     }
     await this.retryCleanup();
@@ -739,7 +575,7 @@ export class SessionHost {
         await this.historyStorage.forgetTask(taskId);
         await this.attachments.deleteSession(taskId);
         await rm(join(this.dir, "agent", "tool-output", taskId), { recursive: true, force: true });
-        await rm(join(this.dir, "agent", "subagents", taskId), { recursive: true, force: true });
+        await this.plugins.deleteArtifacts(taskId);
         await rm(join(this.dir, "agent", "session-context", taskId), { recursive: true, force: true });
       },
       (error, taskId) => this.errors.write("session.delete.cleanup", error, { sessionId: taskId }),
@@ -755,9 +591,7 @@ export class SessionHost {
       pluginsVersion: 3,
       plugins: snapshotPlugins([
         ...this.configuredHooks.snapshot(projectId),
-        ...enabledBuiltinPlugins(settings.plugins).filter(
-          (plugin) => plugin.id !== desktopPluginIds.web || webSearchAvailable(settings),
-        ),
+        ...this.plugins.snapshots(settings.plugins),
         ...this.localPlugins.enabled(settings.plugins.enabled),
       ]),
     };
@@ -792,7 +626,7 @@ export class SessionHost {
       if (identities.has(plugin.id)) throw new Error("Duplicate session plugin");
       identities.add(plugin.id);
     }
-    validateDesktopPluginSnapshots(config.plugins, (plugin) => this.validateCustomPlugin(plugin));
+    this.plugins.validate(config.plugins, (plugin) => this.validateCustomPlugin(plugin));
     validateTemplate(config.template);
     if (
       !Array.isArray(config.disabledSkillPaths) ||
@@ -963,10 +797,6 @@ export class SessionHost {
     return (
       record.cwd ?? (record.projectId === null ? this.defaultWorkspace : this.project(record.projectId).path)
     );
-  }
-  notificationTitle(id: string): string | undefined {
-    const record = this.records.get(id);
-    return record && record.archivedAt == null && !record.parentSessionId ? record.title : undefined;
   }
   listRecentSessions(): SessionRecord[] {
     return structuredClone(
@@ -1141,233 +971,16 @@ export class SessionHost {
     return structuredClone(record);
   }
 
-  private parentInstructions = new Map<string, string[]>();
-  private pendingSubagentMessages = new Map<string, AgentInboxInput[]>();
-  private offeredSubagentMessages = new WeakMap<ActiveRun, Set<AgentInboxInput>>();
-
-  private saveSubagentInbox(id: string) {
-    this.settings.state.setRuntime(
-      id,
-      "subagent_inbox",
-      "inbox",
-      (this.pendingSubagentMessages.get(id) ?? []).filter((input) => input.subagentNotification),
-      "queued",
-    );
-  }
-
-  private offerSubagentMessages(id: string, run: ActiveRun, toolBoundary = false) {
-    if (run.aborted || !run.session) return;
-    const offered = this.offeredSubagentMessages.get(run) ?? new Set<AgentInboxInput>();
-    this.offeredSubagentMessages.set(run, offered);
-    for (const input of this.pendingSubagentMessages.get(id) ?? []) {
-      if (
-        !offered.has(input) &&
-        (!input.backgroundNotification || toolBoundary) &&
-        run.session.steer(
-          input.agentMessageKind
-            ? formatAgentIncoming(
-                input.text,
-                input.agentMessageKind === "reply",
-                input.receivedDuringRun === run.runId,
-              )
-            : input.text,
-          {
-            queueOnly: !!input.subagentNotification && !input.backgroundNotification,
-            inputId: input.deliveryId,
-          },
-        )
-      )
-        offered.add(input);
-    }
-  }
-
-  private acknowledgeSubagentMessage(id: string, text: unknown, inputId?: string) {
-    const inbox = this.pendingSubagentMessages.get(id);
-    const index =
-      inbox?.findIndex((input) => (inputId ? input.deliveryId === inputId : input.text === text)) ?? -1;
-    if (!inbox || index < 0) return;
-    inbox.splice(index, 1);
-    if (!inbox.length) this.pendingSubagentMessages.delete(id);
-    this.saveSubagentInbox(id);
-  }
-
-  private async deliverSubagentMessage(
-    task: Pick<
-      SubagentTask,
-      "parentSessionId" | "agentId" | "agentType" | "description" | "status" | "result" | "error"
-    > &
-      Partial<SubagentTask>,
-    reply?: { summary: string; message: string },
-    backgroundNotification = false,
-  ) {
-    const parentId = task.parentSessionId;
-    if (
-      this.closing ||
-      !this.records.has(parentId) ||
-      this.deleting.has(parentId) ||
-      this.closingChildren.has(parentId) ||
-      this.record(parentId).archivedAt != null
-    )
-      throw new Error("busy: 父会话已关闭");
-    const text = backgroundNotification
-      ? `<task-notification>\nagentId: ${task.agentId}\nstatus: ${task.status}\nsummary: ${escapeXml(task.description)}\n${escapeXml(task.result ?? task.error ?? "No output.")}\n</task-notification>`
-      : reply
-        ? formatSubagentMessage({
-            agentId: task.agentId,
-            agentType: task.agentType,
-            summary: reply.summary,
-            message: reply.message,
-          })
-        : agentTaskNotification({
-            ...task,
-            parentToolCallId: task.parentToolCallId ?? task.agentId,
-            childSessionId: task.childSessionId ?? "",
-            color: task.color ?? "blue",
-            background: task.background ?? true,
-            startedAt: task.startedAt ?? Date.now(),
-            totalToolUseCount: task.totalToolUseCount ?? 0,
-            totalTokens: task.totalTokens ?? 0,
-          } as SubagentTask);
-    const input: AgentInboxInput = {
-      sessionId: parentId,
-      deliveryId: randomUUID(),
-      ...(backgroundNotification ? { backgroundNotification: true } : {}),
-      text,
-      ...(!backgroundNotification
-        ? {
-            agentMessageKind: reply ? ("reply" as const) : ("notification" as const),
-            receivedDuringRun: this.activeRuns.get(parentId)?.runId,
-          }
-        : {}),
-      subagentNotification: {
-        agentId: task.agentId,
-        agentType: task.agentType,
-        description: reply?.summary ?? task.description,
-      },
-    };
-    const active = this.activeRuns.get(parentId);
-    if (backgroundNotification && !active) {
-      await this.startRun(input, undefined, !!this.subagents.taskForChild(parentId));
-      return;
-    }
-    const inbox = this.pendingSubagentMessages.get(parentId) ?? [];
-    inbox.push(input);
-    this.pendingSubagentMessages.set(parentId, inbox);
-    // Acceptance is durable and independent of starting a model turn.
-    this.saveSubagentInbox(parentId);
-    if (active) this.offerSubagentMessages(parentId, active);
-  }
-
   listSubagents(sessionId: string | null) {
-    const catalog = this.subagents.profiles.list(sessionId ? this.cwd(this.record(sessionId)) : undefined);
-    return {
-      ...catalog,
-      agents: [
-        ...catalog.agents,
-        ...this.localPlugins.agents(
-          sessionId ? this.configuration(sessionId).plugins : this.defaultConfiguration().plugins,
-        ),
-      ],
-    };
-  }
-  saveSubagent(input: SaveSubagentInput) {
-    if (!input || (input.sessionId !== null && typeof input.sessionId !== "string"))
-      throw new Error("invalid_input: 子智能体参数无效");
-    if (input.config?.modelSelection && !this.settings.isSelectionValid(input.config.modelSelection))
-      throw new Error("configuration: 请为子智能体选择可用模型和推理档位");
-    return this.subagents.profiles.save(
-      input.config,
-      input.scope,
-      input.id,
-      input.sessionId ? this.cwd(this.record(input.sessionId)) : undefined,
-    );
-  }
-  private async createSubagentSession(
-    parentId: string,
-    profile: SubagentProfile,
-    selection: CombinedSelection,
-    description: string,
-  ) {
-    if (!this.settings.isSelectionValid(selection))
-      throw new Error("configuration: 子智能体模型不可用，请在设置中重新选择");
-    const parent = this.record(parentId);
-    if (
-      parent.archivedAt != null ||
-      this.closing ||
-      this.deleting.has(parentId) ||
-      this.closingChildren.has(parentId) ||
-      this.activeRuns.get(parentId)?.aborted
-    )
-      throw new Error("busy: 父会话已停止或关闭");
-    const child = await this.createSession(parent.projectId, {
-      cwd: this.cwd(parent),
-      parentSessionId: parentId,
-    });
-    try {
-      const configuration = {
-        ...structuredClone(this.configuration(parentId)),
-        plugins: pluginsForSubagent(this.configuration(parentId).plugins),
-        subagentProfile: structuredClone(profile),
-        subagentInstructions: structuredClone(this.parentInstructions.get(parentId) ?? []),
-        ...this.memoryPolicy.inherit(child.id, parentId),
-      };
-      this.configurations.set(child.id, configuration);
-      this.saveTask(child.id, {
-        frozenConfiguration: configuration,
-        currentSelection: selection,
-        titleState: "manual",
-        title: description,
-        draft: false,
-      });
-      return child.id;
-    } catch (error) {
-      await this.deleteSession(child.id);
-      throw error;
-    }
-  }
-  private sessionQuestionTool(id: string) {
-    const parentId = this.configuration(id).subagentProfile ? this.record(id).parentSessionId : undefined;
-    const tool = this.questions.tool(parentId ?? id);
-    if (!parentId) return tool;
-    return {
-      ...tool,
-      execute: async (...args: Parameters<typeof tool.execute>) => {
-        const task = this.subagents.taskForChild(id);
-        if (task) this.subagents.update(task.agentId, { waitingForInput: true });
-        try {
-          return await tool.execute(...args);
-        } finally {
-          if (task) this.subagents.update(task.agentId, { waitingForInput: false });
-        }
-      },
-    };
+    const config = sessionId ? this.configuration(sessionId) : this.defaultConfiguration();
+    return this.plugins.listSubagents(sessionId, this.localPlugins.agents(config.plugins));
   }
   private sessionResourceLoader(
     id: string | null,
     config: SessionConfiguration,
     loader = this.resourceLoader(id),
   ) {
-    return {
-      listSkills: () => loader.listSkills(),
-      loadSkill: (name: string) => loader.loadSkill(name),
-      getDiagnostics: () => [...loader.getDiagnostics(), ...(id ? this.memoryPolicy.diagnostics(id) : [])],
-      reload: async () => {
-        await loader.reload?.();
-        if (id && !config.subagentProfile)
-          this.parentInstructions.set(
-            id,
-            loader.getInstructions().filter((part) => part.startsWith("<project_context")),
-          );
-      },
-      getBaseInstructions: () => config.subagentProfile?.systemPrompt ?? loader.getBaseInstructions(),
-      getInstructions: () =>
-        loader
-          .getInstructions()
-          .filter((part) => !config.subagentProfile || !part.startsWith("<project_context")),
-    };
-  }
-  private sessionCustomInstructions(config: SessionConfiguration): string[] {
-    return config.subagentProfile?.injectAgentsMd ? [...(config.subagentInstructions ?? [])] : [];
+    return this.plugins.resourceLoader(id, config, loader);
   }
   async createSideChat(id: string): Promise<SessionRecord> {
     const parent = this.record(id);
@@ -1507,14 +1120,10 @@ export class SessionHost {
     if (this.closingChildren.has(id)) throw new Error("busy: 子会话正在关闭");
     this.closingChildren.add(id);
     try {
-      const task = subagent ? this.subagents.taskForChild(id) : undefined;
-      if (task?.status === "running") await this.subagents.stop(task.parentSessionId, task.agentId);
-      const run = this.activeRuns.get(id);
-      if (run) await this.abortRun({ sessionId: id, runId: run.runId });
+      await this.plugins.closeChild(id);
       if (subagent) {
         // Parent archival stops reusable agents without discarding their ability
         // to receive SendMessage after the parent is restored.
-        await this.backgroundTasks.stopAll(id);
         if (record.archivedAt == null) await this.inputQueue.archive(id, () => {});
       } else if (record.archivedAt == null) {
         // Closing discards this tab; a new side chat gets a new child. Preserve
@@ -1574,7 +1183,7 @@ export class SessionHost {
     await this.inputQueue.archive(id, async () => {
       this.updating.add(id);
       try {
-        await this.backgroundTasks.stopAll(id);
+        await this.plugins.archive(id);
         for (const child of this.records.values())
           if (child.parentSessionId === id) await this.closeChildSession(child.id);
         const archivedAt = Date.now();
@@ -1696,12 +1305,7 @@ export class SessionHost {
       modelPerformance: modelPerformance(totals),
       queue: this.inputQueue.get(id),
       forkOrigin,
-      question: this.questions.get(id),
-      subagents: this.subagents.list(id),
-      backgroundTasks: [
-        ...this.backgroundTasks.list(id),
-        ...this.subagents.list(id).flatMap((task) => this.backgroundTasks.list(task.childSessionId)),
-      ],
+      ...this.plugins.view(id),
     };
     this.views.delete(id);
     this.views.set(id, view);
@@ -1792,10 +1396,7 @@ export class SessionHost {
     return this.commandServicesForDirectory(this.project(projectId).path);
   }
   private commandSubagents(id: string) {
-    const config = this.configuration(id);
-    if (!collaborationEnabled(config.plugins) || config.subagentProfile) return [];
-    const enabled = this.listSubagents(id).agents.filter((agent) => agent.enabled);
-    return [...new Map(enabled.map((agent) => [agent.name.toLowerCase(), agent])).values()];
+    return this.plugins.commandSubagents(id, () => this.localPlugins.agents(this.configuration(id).plugins));
   }
   async listSessionCustomCommands(id: string) {
     const record = this.record(id);
@@ -1846,80 +1447,11 @@ export class SessionHost {
   }
   async saveMemorySettings(input: MemorySettings): Promise<MemorySettings> {
     const saved = this.settings.saveMemorySettings(input);
-    await this.memoryPolicy.configure(saved);
+    await this.plugins.configure();
     return saved;
   }
   async refreshPluginSettings(): Promise<void> {
-    await this.memoryPolicy.configure(this.settings.getMemorySettings());
-  }
-  async getMemoryStatus(id: string | null): Promise<MemoryStatus> {
-    const record = id ? this.record(id) : undefined;
-    await this.longMemory.init();
-    const short = await readShortMemory({
-      homeDir: this.homeDir,
-      workspace: record?.projectId ? this.cwd(record) : undefined,
-    });
-    return {
-      shortFiles: short.files,
-      long: this.longMemory.status(),
-      usedSources: id ? this.memoryPolicy.usedSources(id) : [],
-    };
-  }
-  async checkMemoryNow(id: string | null): Promise<MemoryStatus> {
-    if (id) this.record(id);
-    this.memoryPolicy.schedule(id);
-    return this.getMemoryStatus(id);
-  }
-  async clearLongMemory(): Promise<MemoryStatus> {
-    await this.longMemory.clear();
-    await this.memoryPolicy.wait();
-    // Withdraw inherited long-memory copies too. Active model requests stay stable; subsequent
-    // child prompts read this owner again instead of a stale createAgentSession configuration closure.
-    this.memoryPolicy.withdraw(
-      [...this.records.values()]
-        .filter((record) => record.parentSessionId && !this.blocked.has(record.id))
-        .map((record) => record.id),
-    );
-    return this.getMemoryStatus(null);
-  }
-  async openMemoryFile(
-    id: string | null,
-    scope: string,
-    action: string,
-  ): Promise<{ path: string; content: string; exists: boolean }> {
-    if (!["user", "project", "long"].includes(scope) || !["view", "edit"].includes(action))
-      throw new Error("invalid_input: 记忆文件操作无效");
-    const record = id ? this.record(id) : undefined;
-    if (scope === "project" && !record?.projectId) throw new Error("invalid_input: 当前对话没有项目");
-    if (scope === "long" && action === "edit") throw new Error("invalid_input: 长期记忆由后台维护");
-    const path =
-      scope === "user"
-        ? join(this.homeDir, ".zpi", "MEMORY.md")
-        : scope === "project" && record
-          ? join(this.cwd(record), ".zpi", "MEMORY.md")
-          : join(this.longMemory.status().path, "memory_summary.md");
-    if (action === "edit") {
-      await mkdir(join(path, ".."), { recursive: true });
-      try {
-        await writeFile(path, "# Memory\n", { flag: "wx", mode: 0o600 });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-    }
-    try {
-      const info = await stat(path);
-      if (!info.isFile()) throw new Error("invalid_input: 记忆路径必须是普通文件");
-      if (scope === "long" || (action === "edit" && info.size > 2 * 1024 * 1024))
-        return { path, content: "", exists: true };
-      if (info.size > 2 * 1024 * 1024)
-        throw new Error("invalid_input: 文件超过 2 MB 预览限制，请使用文件面板或外部编辑器");
-      const preview = await readFilePreview(this.workspaceInfo(id).cwd, path);
-      if (preview.kind !== "text") throw new Error("invalid_input: 记忆文件必须是可读文本");
-      return { path, content: preview.text ?? "", exists: true };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { path, content: "", exists: false };
-      throw error;
-    }
+    await this.plugins.configure();
   }
   private resourceLoader(id: string | null) {
     const config = id ? this.configuration(id) : this.defaultConfiguration();
@@ -1971,7 +1503,7 @@ export class SessionHost {
     this.record(id);
     return this.attachments.remove(id, attachment);
   }
-  setNotificationSink(sink: (event: DesktopEventEnvelope, title: string) => void): void {
+  setNotificationSink(sink: (request: PluginNotification) => boolean): void {
     this.notificationSink = sink;
   }
   private async runPluginHook(id: string, input: HostHookInput, signal?: AbortSignal): Promise<void> {
@@ -1997,7 +1529,7 @@ export class SessionHost {
         this.hostHookRunners.set(configuration, runner);
       } else if (input.event === "RunStart") {
         // Reuse bindings, while rechecking imported files before every model run.
-        validateDesktopPluginSnapshots(configuration.plugins, (plugin) => this.validateCustomPlugin(plugin));
+        this.plugins.validate(configuration.plugins, (plugin) => this.validateCustomPlugin(plugin));
       }
       await runner.run({ ...input, sessionId: id, cwd: this.cwd(this.record(id)) }, currentSignal);
     } catch (error) {
@@ -2010,7 +1542,7 @@ export class SessionHost {
     else this.localPlugins.validate(snapshot);
   }
   private sessionContributions(id: string | null, config: SessionConfiguration): SessionContributions {
-    return resolveDesktopPlugins(
+    return this.plugins.contributions(
       config.plugins,
       {
         sessionId: id ?? "preview",
@@ -2019,62 +1551,14 @@ export class SessionHost {
         profile: config.subagentProfile,
       },
       {
-        external: {
-          validate: (snapshot) => this.validateCustomPlugin(snapshot),
-          bind: (snapshot) => {
-            const transcript = id ? this.path(this.record(id)) : undefined;
-            return this.configuredHooks.owns(snapshot)
-              ? this.configuredHooks.bind(snapshot, transcript)
-              : this.localPlugins.bind(snapshot, transcript);
-          },
+        validate: (snapshot) => this.validateCustomPlugin(snapshot),
+        bind: (snapshot) => {
+          const transcript = id ? this.path(this.record(id)) : undefined;
+          return this.configuredHooks.owns(snapshot)
+            ? this.configuredHooks.bind(snapshot, transcript)
+            : this.localPlugins.bind(snapshot, transcript);
         },
-        memory: {
-          prepare: (sessionId, mode, signal) => this.memoryPolicy.prepare(sessionId, mode, signal),
-          instructions: (sessionId) => this.memoryPolicy.instructions(sessionId),
-          read: (sessionId, path) => this.memoryPolicy.recordRead(sessionId, path),
-          schedule: (sessionId) => {
-            if (!this.record(sessionId).parentSessionId) this.memoryPolicy.schedule(sessionId);
-          },
-          settled: (sessionId) => this.memoryPolicy.settled(sessionId),
-        },
-        titles: {
-          fallback: (sessionId, text) => this.titles.fallback(sessionId, text),
-          start: (sessionId) => {
-            const request = this.activeRuns.get(sessionId)?.titleRequest;
-            if (request) this.titles.start(sessionId, request);
-          },
-        },
-        notifications: {
-          eligible: (sessionId) => this.notificationTitle(sessionId) !== undefined && !this.closing,
-          send: (sessionId, input) =>
-            this.notificationSink?.(
-              {
-                sessionId,
-                runId: input.runId,
-                seq: this.sequences.get(sessionId) ?? 0,
-                event: {
-                  type: "settled",
-                  status: input.notificationType === "task_failed" ? "error" : "completed",
-                  endedAt: Date.now(),
-                },
-              },
-              input.message,
-            ),
-        },
-        questionTool: (sessionId) =>
-          id ? this.sessionQuestionTool(sessionId) : this.questions.tool(sessionId),
-        webTools: () => this.webTools.tools(),
-        background: this.backgroundTasks,
-        collaboration: {
-          tools: (sessionId, codex) => this.subagents.tools(sessionId, codex),
-          childTools: (sessionId) => this.subagents.childTools(sessionId),
-          taskBackend: () => this.subagents.taskBackend(),
-          prepare: (sessionId, codex) =>
-            this.subagents.prepare(sessionId, codex, this.localPlugins.agents(config.plugins)),
-          listing: (sessionId) => this.subagents.listing(sessionId),
-          previewListing: (cwd, codex) =>
-            this.subagents.previewListing(cwd, codex, this.localPlugins.agents(config.plugins)),
-        },
+        agents: () => this.localPlugins.agents(config.plugins),
       },
     );
   }
@@ -2109,7 +1593,7 @@ export class SessionHost {
       prompt: buildSystemPrompt({
         ...options,
         loader: withPluginResources(this.sessionResourceLoader(null, config, loader), assembly.skills),
-        customInstructions: [...pluginInstructions, ...this.sessionCustomInstructions(config)],
+        customInstructions: [...pluginInstructions, ...this.plugins.customInstructions(config)],
       }),
     };
   }
@@ -2326,10 +1810,8 @@ export class SessionHost {
       throw new Error("busy: 请先停止运行");
     this.record(id);
     this.deleting.add(id);
-    this.titles.cancel(id);
     try {
-      await this.longMemory.invalidateSource(id);
-      await this.backgroundTasks.stopAll(id);
+      await this.plugins.beforeDelete(id);
       for (const child of [...this.records.values()])
         if (child.parentSessionId === id) {
           await this.closeChildSession(child.id);
@@ -2348,11 +1830,7 @@ export class SessionHost {
       } catch (error) {
         this.errors.write("task-groups.delete", error, { sessionId: id });
       }
-      this.subagents.forgetSession(id);
-      this.backgroundTasks.forget(id);
-      this.pendingSubagentMessages.delete(id);
-      this.parentInstructions.delete(id);
-      this.memoryPolicy.forget(id);
+      this.plugins.forget(id);
       if (this.visibleSessionId === id) this.visibleSessionId = undefined;
       this.configurations.delete(id);
       this.views.delete(id);
@@ -2661,8 +2139,7 @@ export class SessionHost {
       )
         throw new Error("configuration: 当前模型不支持图片，请选择图片模型或移除附件");
       if (!(await stat(this.cwd(record))).isDirectory()) throw new Error("configuration: 工作目录不可用");
-      this.titles.cancel(id);
-      await this.titles.wait(id);
+      await this.plugins.beforeHistoryChange(id);
       const active = this.activeRuns.get(id);
       if (active) await this.abortRun({ sessionId: id, runId: active.runId });
       if (this.closing) throw new Error("busy: 应用正在关闭");
@@ -2727,7 +2204,7 @@ export class SessionHost {
         await preserveEditedInput();
         await manager.replaceEntriesAsync(transcript());
       }
-      await this.longMemory.invalidateSource(id);
+      await this.plugins.historyChanged(id);
       this.sessions.get(id)?.dispose();
       this.sessions.delete(id);
       this.managers.delete(id);
@@ -2812,18 +2289,9 @@ export class SessionHost {
         : undefined;
       if (initialCustom && !initialCustom.enabled)
         throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
-      const agentMention = explicitUserInput ? /^@([^\s@/]+)(?:\s+([\s\S]*))?$/.exec(text.trim()) : null;
-      const declaredAgent = agentMention
-        ? this.listSubagents(id).agents.find(
-            (agent) => agent.name.toLowerCase() === agentMention[1].toLowerCase(),
-          )
+      const agentRequest = explicitUserInput
+        ? this.plugins.agentRequest(id, text, () => this.localPlugins.agents(this.configuration(id).plugins))
         : undefined;
-      const requestedAgent = declaredAgent
-        ? this.commandSubagents(id).find(
-            (agent) => agent.name.toLowerCase() === declaredAgent.name.toLowerCase(),
-          )
-        : undefined;
-      if (declaredAgent && !requestedAgent) throw new Error("invalid_input: 此会话未启用该子智能体");
       const commandNeedsShell =
         initialCustom && customInvocation
           ? prepareCustomCommandPrompt(initialCustom, customInvocation.args).parts.some(
@@ -2867,8 +2335,7 @@ export class SessionHost {
           this.settings.rememberSelection(this.getControls(id).selection ?? selection);
         const startedAt = Date.now();
         const modelLabel = `${config.name} / ${model.name}`;
-        const childTask = this.subagents.taskForChild(id);
-        if (childTask) this.subagents.update(childTask.agentId, { modelLabel });
+        this.plugins.started(id, modelLabel);
         acceptance = {
           operationId: randomUUID(),
           taskId: id,
@@ -2984,7 +2451,7 @@ export class SessionHost {
               cwd: this.cwd(record),
               agentDir: join(this.dir, "agent"),
               resourceLoader: this.sessionResourceLoader(id, configuration),
-              customInstructions: () => this.sessionCustomInstructions(configuration),
+              customInstructions: () => this.plugins.customInstructions(configuration),
               promptTemplate: () => configuration.template,
               projectName: () => this.workspaceInfo(id).projectName,
               modelRuntime: runtime,
@@ -3041,16 +2508,10 @@ export class SessionHost {
             if (skillContext.length) commandText += `\n\n${skillContext.join("\n\n")}`;
           }
         }
-        if (requestedAgent && agentMention) {
-          if (
-            !collaborationEnabled(configuration.plugins) ||
-            !this.commandSubagents(id).some(
-              (agent) => agent.name.toLowerCase() === requestedAgent.name.toLowerCase(),
-            )
-          )
-            throw new Error("invalid_input: 此会话未启用该子智能体");
-          commandText = `Use the Agent tool with subagent_type ${JSON.stringify(requestedAgent.name)} for the following user request. Preserve the requested agent's configured permissions and report its result.\n\n${agentMention[2]?.trim() || `Use ${requestedAgent.name} for this task.`}`;
-        }
+        if (agentRequest)
+          commandText = this.plugins.agentPrompt(id, agentRequest, () =>
+            this.localPlugins.agents(configuration.plugins),
+          );
         const prepared = await session.prepareInput(commandText, inputContext);
         if (prepared.kind === "prompt" && loaded.fileContext)
           prepared.text += `\n\nAttached files (contents are reference material):\n${loaded.fileContext}`;
@@ -3060,7 +2521,7 @@ export class SessionHost {
         }
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         if (!started) await accept(model);
-        run.titleRequest = {
+        run.modelInput = {
           text: text || (references.length ? references.join("\n") : ""),
           images: loaded.images,
           model,
@@ -3086,11 +2547,8 @@ export class SessionHost {
           run.preparationAbort.signal,
         );
         const unsubscribe = session.subscribe((e) => {
-          if (e.type === "agent_start") this.offerSubagentMessages(id, run);
-          if (e.type === "turn_end" && e.message.role === "assistant" && e.message.stopReason === "toolUse")
-            this.offerSubagentMessages(id, run, true);
+          this.plugins.observe(id, run, e);
           if (e.type === "message_end" && e.message.role === "user") {
-            this.acknowledgeSubagentMessage(id, e.message.content, e.message.inputId);
             if (e.message.inputId && e.message.userGuide) {
               const attachmentIds = e.message.userGuide.attachments.map((image) => image.id);
               // Clear queue retention only when durable consumption is marked used.
@@ -3125,31 +2583,6 @@ export class SessionHost {
             run.ordinal++;
             if (e.message.role === "assistant") run.hasAssistant = true;
           }
-          const childTask = this.subagents.taskForChild(id);
-          if (childTask && e.type === "tool_execution_start")
-            this.subagents.update(childTask.agentId, {
-              latestActivity: `${e.toolName} · ${isJsonObject(e.args) ? String(e.args.path ?? e.args.command ?? "").slice(0, 500) : ""}`,
-              totalToolUseCount: childTask.totalToolUseCount + 1,
-            });
-          if (childTask && e.type === "message_end" && e.message.role === "assistant")
-            if (e.message.usageAvailable || e.message.usage.totalTokens > 0) {
-              const usage = e.message.usage;
-              const delta: Record<string, number> = {
-                inputTokens: usage.input,
-                outputTokens: usage.output,
-                totalTokens: usage.totalTokens,
-                cacheReadTokens: usage.cacheRead,
-                cacheWriteTokens: usage.cacheWrite,
-                ...(usage.reasoning === undefined ? {} : { reasoningTokens: usage.reasoning }),
-              };
-              this.subagents.update(childTask.agentId, {
-                totalTokens: childTask.totalTokens + usage.totalTokens,
-                tokensReported: true,
-                usage: Object.fromEntries(
-                  Object.entries(delta).map(([key, value]) => [key, (childTask.usage?.[key] ?? 0) + value]),
-                ),
-              });
-            }
           const projected = projectEvent(e, `${run.runId}:${run.ordinal}`);
           if (projected) this.emit(id, run.runId, projected);
         });
@@ -3337,6 +2770,7 @@ export class SessionHost {
       status = "error";
       message = `storage: ${error instanceof Error ? error.message : String(error)}`;
       this.blocked.set(id, message);
+      return message;
     };
     try {
       await this.manager(id).appendCustomEntryAsync("zpi.run", {
@@ -3359,31 +2793,12 @@ export class SessionHost {
     } catch (error) {
       storageFailure(error, "agent.index");
     }
-    const inbox = (this.pendingSubagentMessages.get(id) ?? []).filter(
-      (input) => !input.subagentNotification || input.backgroundNotification,
+    const continuation = this.plugins.settle(
+      id,
+      run,
+      { status, endedAt, message, result: last ? contentText(last.content) : undefined },
+      storageFailure,
     );
-    const continueInbox =
-      inbox.length > 0 && !run.aborted && !this.closing && !this.deleting.has(id) && !this.blocked.has(id);
-    const childTask = this.subagents.taskForChild(id);
-    if (childTask) {
-      const result = last ? contentText(last.content) : undefined;
-      try {
-        this.subagents.update(childTask.agentId, {
-          status: continueInbox ? "running" : status,
-          endedAt: continueInbox ? undefined : endedAt,
-          error: message,
-          result: continueInbox ? undefined : result,
-          waitingForInput: false,
-        });
-      } catch (error) {
-        storageFailure(error, "subagent.persist");
-        try {
-          this.subagents.update(childTask.agentId, { status: "error", error: message, endedAt });
-        } catch {
-          // The in-memory terminal owner was updated before publication failed.
-        }
-      }
-    }
     if (message?.includes("storage:")) this.blocked.set(id, message);
     this.activeRuns.delete(id);
     const record = this.record(id);
@@ -3410,21 +2825,7 @@ export class SessionHost {
       });
       this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
       this.trimCaches(id);
-      // Explicit coordinator guidance and background commands retain their follow-up behavior.
-      // Queue-only child results and replies never reserve a new turn here.
-      if (continueInbox && !this.blocked.has(id)) {
-        const [first] = inbox;
-        this.acknowledgeSubagentMessage(id, first.text);
-        void this.startRun(first, undefined, !!childTask).catch((error) => {
-          this.errors.write("subagent.delivery", error, { sessionId: id });
-          if (childTask)
-            this.subagents.update(childTask.agentId, {
-              status: "error",
-              error: String(error),
-              endedAt: Date.now(),
-            });
-        });
-      }
+      this.plugins.continueRun(id, continuation);
     } finally {
       run.finish();
       this.inputQueue.settled(id, status);
@@ -3440,12 +2841,7 @@ export class SessionHost {
     if (!run || run.runId !== input.runId) throw new Error("not_found: 当前运行不存在");
     run.aborted = true;
     run.preparationAbort.abort();
-    await Promise.all([
-      this.subagents.stopAll(input.sessionId),
-      ...(this.subagents.taskForChild(input.sessionId)
-        ? [this.backgroundTasks.stopAll(input.sessionId)]
-        : []),
-    ]);
+    await this.plugins.stopSession(input.sessionId);
     await run.done;
   }
   private closePromise?: Promise<void>;
@@ -3469,19 +2865,14 @@ export class SessionHost {
       try {
         await work();
       } catch (error) {
-        errors.push(error);
+        if (error instanceof AggregateError) errors.push(...error.errors);
+        else errors.push(error);
       }
     };
     // One owner's persistence failure must not leave unrelated processes or
     // model runs alive. Drain each existing owner, then surface every failure.
-    await cleanup(() => this.longMemory.close());
-    await cleanup(async () => {
-      await this.memoryPolicy.wait();
-    });
-    await cleanup(() => this.subagents.close());
-    await cleanup(() => this.backgroundTasks.close());
+    await cleanup(() => this.plugins.close());
     const queueClose = cleanup(() => this.inputQueue.close());
-    await this.titles.close();
     const runs = [...this.activeRuns.values()];
     await Promise.all(
       runs.map((r) =>
@@ -3493,8 +2884,7 @@ export class SessionHost {
       ),
     );
     for (const s of this.sessions.values()) await cleanup(() => s.dispose());
-    this.memoryPolicy.close();
-    await cleanup(() => this.longMemory.drain());
+    await cleanup(() => this.plugins.drain());
     await queueClose;
     for (const index of this.indexes.values()) await cleanup(() => index.flush());
     await cleanup(() => this.historyStorage.close());

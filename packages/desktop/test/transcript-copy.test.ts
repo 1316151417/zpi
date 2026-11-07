@@ -1,8 +1,8 @@
 import { closeSync, existsSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { sessionReferenceTranscriptReverse } from "zpi-builtin-plugins/transcripts";
 import { maxSessionEntryBytes, type SessionEntry } from "zpi-coding-agent";
-import { sessionReferenceTranscriptReverse } from "../src/main/session-references.ts";
 import { stageTranscript } from "../src/main/transcript-copy.ts";
 
 vi.mock("node:fs", async (importOriginal) => {

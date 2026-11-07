@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { NotificationsPlugin } from "zpi-builtin-plugins/notifications";
 import type { DesktopEventEnvelope } from "zpi-ui";
 import { TaskNotifications } from "../src/main/task-notifications.ts";
 import { defaultPreferences } from "../src/shared/config.ts";
@@ -60,7 +61,30 @@ function setup() {
   };
   electron.windows = [window];
   const preferences = { ...defaultPreferences };
-  const notifications = new TaskNotifications(window as unknown as BrowserWindow, () => preferences);
+  const native = new TaskNotifications(window as unknown as BrowserWindow, () => preferences);
+  const policy = new NotificationsPlugin({
+    sessions: { get: (id) => ({ id, projectId: null, title: "任务", createdAt: 0, updatedAt: 0 }) },
+    closing: () => false,
+    notify: (request) => native.show(request),
+  });
+  const notifications = {
+    handle(envelope: DesktopEventEnvelope, message: string): boolean {
+      if (envelope.event.type !== "settled") return false;
+      return policy.send(envelope.sessionId, {
+        event: "Notification",
+        sessionId: envelope.sessionId,
+        cwd: "/tmp",
+        invocationId: envelope.runId,
+        runId: envelope.runId,
+        notificationType: envelope.event.status === "error" ? "task_failed" : "task_completed",
+        message,
+      });
+    },
+    dispose() {
+      policy.close();
+      native.dispose();
+    },
+  };
   return { notifications, window, state, preferences };
 }
 beforeEach(() => {

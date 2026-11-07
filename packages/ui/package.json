@@ -46,6 +46,7 @@
     "unified": "11.0.5",
     "zpi-agent": "0.1.60",
     "zpi-ai": "0.1.60",
-    "zpi-coding-agent": "0.1.60"
+    "zpi-coding-agent": "0.1.60",
+    "zpi-builtin-plugins": "0.1.60"
   }
 }

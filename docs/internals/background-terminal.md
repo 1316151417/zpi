@@ -28,5 +28,5 @@ Windows 使用 ComSpec/cmd；类 Unix 使用 SHELL 或 zsh/sh，并以登录 she
 
 ## 源码与回归入口
 
-- [后台任务](../../packages/desktop/src/main/background-tasks.ts)、[任务进程](../../packages/desktop/src/main/task-processes.ts)、[面板服务](../../packages/desktop/src/main/pane-services.ts)、[shell](../../packages/desktop/src/main/terminal-shell.ts)、[profile](../../packages/desktop/src/main/terminal-profile.ts)。
-- [后台任务测试](../../packages/desktop/test/background-tasks.test.ts)、[终端服务测试](../../packages/desktop/test/terminal-services.test.ts)、[终端 shell 测试](../../packages/desktop/test/terminal-shell.test.ts)、[进程展示](../../packages/ui/test/process-presentation.test.ts)。
+- [后台任务](../../packages/builtin-plugins/src/background/tasks.ts)、[任务进程](../../packages/builtin-plugins/src/background/processes.ts)、[面板服务](../../packages/desktop/src/main/pane-services.ts)、[shell](../../packages/desktop/src/main/terminal-shell.ts)、[profile](../../packages/desktop/src/main/terminal-profile.ts)。
+- [后台任务测试](../../packages/builtin-plugins/test/background-tasks.test.ts)、[终端服务测试](../../packages/desktop/test/terminal-services.test.ts)、[终端 shell 测试](../../packages/desktop/test/terminal-shell.test.ts)、[进程展示](../../packages/ui/test/process-presentation.test.ts)。

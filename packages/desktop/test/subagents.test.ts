@@ -39,22 +39,22 @@ test("persists Markdown profiles, preserves built-in colors, edits model overrid
     ["general-purpose", "blue"],
     ["Explore", "cyan"],
   ]);
-  const catalog = f.host.saveSubagent({
+  const catalog = f.host.plugins.saveSubagent({
     config: { ...custom, modelSelection: model },
     scope: "user",
     sessionId: null,
   });
   const agent = catalog.agents.find((agent) => agent.name === custom.name);
   expect(await readFile(agent?.path as string, "utf8")).toContain("CUSTOM ROLE");
-  f.host.subagents.profiles.enable(agent?.id as string, false);
+  f.host.plugins.collaboration.profiles.enable(agent?.id as string, false);
   expect(f.host.listSubagents(null).agents.find((agent) => agent.name === custom.name)?.enabled).toBe(false);
-  f.host.saveSubagent({
+  f.host.plugins.saveSubagent({
     id: builtins[0].id,
     config: { ...builtins[0], modelSelection: model },
     scope: "user",
     sessionId: null,
   });
-  f.host.saveSubagent({
+  f.host.plugins.saveSubagent({
     config: { ...custom, name: "workspace-reviewer" },
     scope: "workspace",
     sessionId: f.session.id,
@@ -69,24 +69,28 @@ test("persists Markdown profiles, preserves built-in colors, edits model overrid
     false,
   );
   expect(() =>
-    restored.saveSubagent({ config: { ...custom, name: "../invalid" }, scope: "user", sessionId: null }),
+    restored.plugins.saveSubagent({
+      config: { ...custom, name: "../invalid" },
+      scope: "user",
+      sessionId: null,
+    }),
   ).toThrow("配置无效");
   expect(() =>
-    restored.saveSubagent({
+    restored.plugins.saveSubagent({
       config: { ...custom, modelSelection: { ...model, modelId: "missing" } },
       scope: "user",
       sessionId: null,
     }),
   ).toThrow("可用模型");
   expect(() =>
-    restored.saveSubagent({
+    restored.plugins.saveSubagent({
       id: builtins[0].id,
       config: { ...builtins[0], systemPrompt: "changed" },
       scope: "user",
       sessionId: null,
     }),
   ).toThrow("仅支持修改模型");
-  expect(() => restored.subagents.profiles.delete(builtins[0].id)).toThrow("不可删除");
+  expect(() => restored.plugins.collaboration.profiles.delete(builtins[0].id)).toThrow("不可删除");
   await mkdir(join(f.dir, "agents"), { recursive: true });
   await writeFile(join(f.dir, "agents", "bad.md"), "---\nname: bad\nname: duplicate\n---\nPrompt");
   expect(restored.listSubagents(null).diagnostics).toHaveLength(1);
@@ -118,7 +122,11 @@ test.each(["Explore", "general-purpose", "code-reviewer"])(
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
     await writeFile(join(f.resources, ".zpi", "AGENTS.md"), "USER POLICY");
     if (name === "code-reviewer")
-      f.host.saveSubagent({ config: { ...custom, modelSelection: model }, scope: "user", sessionId: null });
+      f.host.plugins.saveSubagent({
+        config: { ...custom, modelSelection: model },
+        scope: "user",
+        sessionId: null,
+      });
     await run(f, "PARENT PRIVATE CONTEXT");
     const tasks = f.host.getSessionSnapshot(f.session.id).view.subagents ?? [];
     expect(tasks).toHaveLength(1);
@@ -175,17 +183,17 @@ test("publishes child updates without rebuilding cached parent snapshots and res
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research");
-  const task = f.host.subagents.list(f.session.id)[0];
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
   f.host.getSessionSnapshot(f.session.id);
   const snapshots = vi.spyOn(f.host, "getSessionSnapshot");
   try {
-    f.host.subagents.update(task.agentId, { latestActivity: "cached update" });
+    f.host.plugins.collaboration.update(task.agentId, { latestActivity: "cached update" });
     expect(snapshots).not.toHaveBeenCalled();
     const cached = f.host.getSessionSnapshot(f.session.id);
     expect(cached.view.subagents?.[0].latestActivity).toBe("cached update");
     for (let index = 0; index < 9; index++) f.host.getSessionSnapshot((await f.host.createSession(null)).id);
     snapshots.mockClear();
-    f.host.subagents.update(task.agentId, { latestActivity: "restored update" });
+    f.host.plugins.collaboration.update(task.agentId, { latestActivity: "restored update" });
     expect(snapshots).toHaveBeenCalledExactlyOnceWith(f.session.id);
     const restored = f.host.getSessionSnapshot(f.session.id);
     expect(restored.view.subagents?.[0].latestActivity).toBe("restored update");
@@ -245,8 +253,10 @@ test("runs independent children concurrently and cancels them when the parent st
   f.settings.setPluginEnabled("zpi.collaboration", true);
   const { runId } = await f.host.startRun({ sessionId: f.session.id, text: "Parallel work" });
   await bothStarted.promise;
-  expect(f.host.subagents.list(f.session.id).filter((task) => task.status === "running")).toHaveLength(2);
-  const childId = f.host.subagents.list(f.session.id)[0].childSessionId;
+  expect(
+    f.host.plugins.collaboration.list(f.session.id).filter((task) => task.status === "running"),
+  ).toHaveLength(2);
+  const childId = f.host.plugins.collaboration.list(f.session.id)[0].childSessionId;
   const child = f.host.sessions.get(childId);
   const parent = f.host.sessions.get(f.session.id);
   assert(child && parent);
@@ -267,7 +277,10 @@ test("runs independent children concurrently and cancels them when the parent st
     childSpy.mockRestore();
     parentSpy.mockRestore();
   }
-  expect(f.host.subagents.list(f.session.id).map((task) => task.status)).toEqual(["aborted", "aborted"]);
+  expect(f.host.plugins.collaboration.list(f.session.id).map((task) => task.status)).toEqual([
+    "aborted",
+    "aborted",
+  ]);
   expect(f.host.activeRuns.size).toBe(0);
 });
 
@@ -291,7 +304,7 @@ test("late background findings stay queued without waking the parent and survive
   await childStarted.promise;
   const requests = f.server.requests.length;
   expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].status).toBe("completed");
-  expect(f.host.subagents.list(f.session.id)[0].status).toBe("running");
+  expect(f.host.plugins.collaboration.list(f.session.id)[0].status).toBe("running");
   send(childResponse as ServerResponse, chunk({ content: "Background findings" }));
   done(childResponse as ServerResponse);
   await expect
@@ -306,7 +319,7 @@ test("late background findings stay queued without waking the parent and survive
   cleanup.push(() => restored.close());
   await restored.init();
   expect(restored.activeRuns.size).toBe(0);
-  expect(restored.subagents.list(f.session.id)[0]).toMatchObject({
+  expect(restored.plugins.collaboration.list(f.session.id)[0]).toMatchObject({
     status: "completed",
     result: "Background findings",
   });
@@ -372,7 +385,7 @@ test("a background result arriving during the final answer waits for the next us
   assert(childResponse);
   send(childResponse, chunk({ content: "Late findings" }));
   done(childResponse);
-  await expect.poll(() => f.host.subagents.list(f.session.id)[0]?.status).toBe("completed");
+  await expect.poll(() => f.host.plugins.collaboration.list(f.session.id)[0]?.status).toBe("completed");
   await expect
     .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
     .toHaveLength(1);
@@ -442,7 +455,9 @@ test("SendMessage resumes a completed child with its own history and automatical
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research and follow up");
-  await expect.poll(() => f.host.subagents.list(f.session.id)[0].result).toBe("Follow-up findings");
+  await expect
+    .poll(() => f.host.plugins.collaboration.list(f.session.id)[0].result)
+    .toBe("Follow-up findings");
   await expect
     .poll(
       () =>
@@ -463,7 +478,7 @@ test("SendMessage resumes a completed child with its own history and automatical
     )
     .toBe(true);
   await f.host.activeRuns.get(f.session.id)?.done;
-  const task = f.host.subagents.list(f.session.id)[0];
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
   expect(f.host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(2);
   const childRequests = f.server.requests.filter((body) => !tools(body).includes("Agent"));
   expect(JSON.stringify(childRequests[1])).toContain("Initial findings");
@@ -471,7 +486,7 @@ test("SendMessage resumes a completed child with its own history and automatical
   expect(JSON.stringify(f.server.requests)).toContain("Follow-up findings");
 
   const other = await f.host.createSession(null);
-  await expect(f.host.subagents.stop(other.id, task.agentId)).rejects.toThrow("不属于当前会话");
+  await expect(f.host.plugins.collaboration.stop(other.id, task.agentId)).rejects.toThrow("不属于当前会话");
 });
 
 test("child provider errors return failures without leaking into the parent runtime", async () => {
@@ -491,7 +506,7 @@ test("child provider errors return failures without leaking into the parent runt
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Launch a child");
-  expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({ status: "error" });
+  expect(f.host.plugins.collaboration.list(f.session.id)[0]).toMatchObject({ status: "error" });
   expect(f.host.getSessionSnapshot(f.session.id).view.runs[0]).toMatchObject({ status: "completed" });
   expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].orderedBlocks).toContainEqual(
     expect.objectContaining({ type: "tool", name: "Agent", status: "error" }),
@@ -514,7 +529,7 @@ test("built-in manual model overrides apply to child execution and leave the par
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
   const builtin = f.host.listSubagents(null).agents[0];
-  f.host.saveSubagent({
+  f.host.plugins.saveSubagent({
     id: builtin.id,
     config: { ...builtin, modelSelection: model },
     scope: "user",
@@ -524,7 +539,7 @@ test("built-in manual model overrides apply to child execution and leave the par
   expect(f.server.requests.find((body) => !tools(body).includes("Agent"))?.model).toBe("plain");
   expect(f.host.getSessionSnapshot(f.session.id).controls.selection?.modelId).toBe("vision");
   expect(f.settings.get().lastSelection?.modelId).toBe("vision");
-  expect(f.host.subagents.list(f.session.id)[0].modelLabel).toBe("Provider / plain");
+  expect(f.host.plugins.collaboration.list(f.session.id)[0].modelLabel).toBe("Provider / plain");
 });
 
 test("child questions route to the parent interaction while the child reports its waiting state", async () => {
@@ -559,12 +574,12 @@ test("child questions route to the parent interaction while the child reports it
   f.settings.setPluginEnabled("zpi.collaboration", true);
   f.settings.setPluginEnabled("zpi.questions", true);
   await f.host.startRun({ sessionId: f.session.id, text: "Delegate and ask" });
-  await expect.poll(() => f.host.questions.get(f.session.id)?.id).toBe("child-question");
-  expect(f.host.subagents.list(f.session.id)[0].waitingForInput).toBe(true);
+  await expect.poll(() => f.host.plugins.questions.get(f.session.id)?.id).toBe("child-question");
+  expect(f.host.plugins.collaboration.list(f.session.id)[0].waitingForInput).toBe(true);
   expect(f.host.getSessionSnapshot(f.session.id).view.question?.id).toBe("child-question");
-  f.host.questions.respond(f.session.id, "child-question", { answers: { "选择检查范围？": "A" } });
+  f.host.plugins.questions.respond(f.session.id, "child-question", { answers: { "选择检查范围？": "A" } });
   await f.host.activeRuns.get(f.session.id)?.done;
-  expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({
+  expect(f.host.plugins.collaboration.list(f.session.id)[0]).toMatchObject({
     status: "completed",
     waitingForInput: false,
     result: "Child used answer",
@@ -584,12 +599,12 @@ test.each(["unknown-agent", "code-reviewer"])(
     });
     f.settings.setPluginEnabled("zpi.collaboration", true);
     if (name === "code-reviewer") {
-      const catalog = f.host.saveSubagent({ config: custom, scope: "user", sessionId: null });
+      const catalog = f.host.plugins.saveSubagent({ config: custom, scope: "user", sessionId: null });
       const agent = catalog.agents.find((agent) => agent.name === name);
-      f.host.subagents.profiles.enable(agent?.id as string, false);
+      f.host.plugins.collaboration.profiles.enable(agent?.id as string, false);
     }
     await run(f, "Try the agent");
-    expect(f.host.subagents.list(f.session.id)).toEqual([]);
+    expect(f.host.plugins.collaboration.list(f.session.id)).toEqual([]);
     expect(f.host.listRecentSessions()).toHaveLength(1);
     expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].orderedBlocks).toContainEqual(
       expect.objectContaining({
@@ -627,8 +642,10 @@ test("delivers SendMessage during a live child at the next model boundary withou
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Start research");
   await ready.promise;
-  const task = f.host.subagents.list(f.session.id)[0];
-  const sendMessage = f.host.subagents.tools(f.session.id).find((tool) => tool.name === "SendMessage");
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
+  const sendMessage = f.host.plugins.collaboration
+    .tools(f.session.id)
+    .find((tool) => tool.name === "SendMessage");
   assert(sendMessage);
   const response = await sendMessage.execute(
     "follow-up",
@@ -648,11 +665,11 @@ test("delivers SendMessage during a live child at the next model boundary withou
     },
   );
   expect(JSON.stringify(response)).toContain("steered");
-  expect(f.host.subagents.list(f.session.id)[0].description).toBe("Stable original title");
+  expect(f.host.plugins.collaboration.list(f.session.id)[0].description).toBe("Stable original title");
   assert(childResponse);
   send(childResponse, chunk({ content: "Initial partial findings" }));
   done(childResponse);
-  await expect.poll(() => f.host.subagents.list(f.session.id)[0].result).toBe("Revised findings");
+  await expect.poll(() => f.host.plugins.collaboration.list(f.session.id)[0].result).toBe("Revised findings");
   expect(f.host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(1);
   expect(childRequests).toBe(2);
   await expect
@@ -707,7 +724,7 @@ test("RespondToCoordinator queues model-only progress and child continues to its
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research");
-  const task = f.host.subagents.list(f.session.id)[0];
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
   expect(task.result).toBe("Final child result");
   expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
   expect(f.host.getSessionSnapshot(f.session.id).view.runs[0].userMessage).toBe("Research");
@@ -738,9 +755,11 @@ test("startup guidance reaches the first child turn while input preparation is s
     this: AgentSession,
     ...args
   ) {
-    const task = f.host.subagents.taskForChild(this.sessionId);
+    const task = f.host.plugins.collaboration.taskForChild(this.sessionId);
     if (task && delivery === undefined) {
-      const tool = f.host.subagents.tools(f.session.id).find((item) => item.name === "SendMessage");
+      const tool = f.host.plugins.collaboration
+        .tools(f.session.id)
+        .find((item) => item.name === "SendMessage");
       assert(tool);
       delivery = await tool.execute(
         "guide",
@@ -761,7 +780,7 @@ test("startup guidance reaches the first child turn while input preparation is s
   try {
     await run(f, "Research");
     expect(JSON.stringify(delivery)).toContain("steered");
-    const task = f.host.subagents.list(f.session.id)[0];
+    const task = f.host.plugins.collaboration.list(f.session.id)[0];
     expect(f.host.getSessionSnapshot(task.childSessionId).view.runs).toHaveLength(1);
     expect(f.server.requests.filter((body) => !tools(body).includes("Agent"))).toHaveLength(2);
     expect(JSON.stringify(f.server.requests)).toContain("STARTUP GUIDANCE");
@@ -781,7 +800,7 @@ test("a coordinator reply at the SDK settlement boundary remains queued for the 
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research");
-  const task = f.host.subagents.list(f.session.id)[0];
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
   const parent = f.host.sessions.get(f.session.id);
   assert(parent);
   let sent = false;
@@ -789,7 +808,7 @@ test("a coordinator reply at the SDK settlement boundary remains queued for the 
   const unsubscribe = parent.subscribe((event) => {
     if (event.type !== "agent_settled" || sent) return;
     sent = true;
-    delivery = f.host.subagents.childTools(task.childSessionId)[0].execute(
+    delivery = f.host.plugins.collaboration.childTools(task.childSessionId)[0].execute(
       "reply",
       {
         summary: "Last moment reply",
@@ -847,12 +866,14 @@ test("guidance at child settlement keeps the foreground caller waiting for the f
     this: AgentSession,
     ...args
   ) {
-    const task = f.host.subagents.taskForChild(this.sessionId);
+    const task = f.host.plugins.collaboration.taskForChild(this.sessionId);
     if (task && !unsubscribe)
       unsubscribe = this.subscribe((event) => {
         if (event.type !== "agent_settled" || sent) return;
         sent = true;
-        const tool = f.host.subagents.tools(f.session.id).find((item) => item.name === "SendMessage");
+        const tool = f.host.plugins.collaboration
+          .tools(f.session.id)
+          .find((item) => item.name === "SendMessage");
         assert(tool);
         void tool.execute(
           "guide",
@@ -873,13 +894,13 @@ test("guidance at child settlement keeps the foreground caller waiting for the f
   try {
     const running = run(f, "Research");
     await ready.promise;
-    expect(f.host.subagents.list(f.session.id)[0].status).toBe("running");
+    expect(f.host.plugins.collaboration.list(f.session.id)[0].status).toBe("running");
     expect(f.host.activeRuns.has(f.session.id)).toBe(true);
     assert(responseToFinish);
     send(responseToFinish, chunk({ content: "Revised result" }));
     done(responseToFinish);
     await running;
-    expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({
+    expect(f.host.plugins.collaboration.list(f.session.id)[0]).toMatchObject({
       status: "completed",
       result: "Revised result",
     });
@@ -912,13 +933,13 @@ test("freezes agent definitions and inherited AGENTS.md for the complete parent 
   f.settings.setPluginEnabled("zpi.collaboration", true);
   await mkdir(f.workspace, { recursive: true });
   await writeFile(join(f.workspace, "AGENTS.md"), "INITIAL WORKSPACE POLICY");
-  const profile = f.host
+  const profile = f.host.plugins
     .saveSubagent({ config: custom, scope: "user", sessionId: null })
     .agents.find((agent) => agent.name === custom.name);
   assert(profile);
   await f.host.startRun({ sessionId: f.session.id, text: "Freeze definitions" });
   await started.promise;
-  f.host.saveSubagent({
+  f.host.plugins.saveSubagent({
     id: profile.id,
     config: { ...custom, systemPrompt: "MODIFIED ROLE" },
     scope: "user",
@@ -948,7 +969,7 @@ test("reads canonical Markdown selections, BOM/Markdown suffixes and preserves e
   expect(profile.modelSelection).toEqual(model);
   expect(profile.tools).toEqual(["read", "bash"]);
   expect(profile.disallowedTools).toEqual(["write"]);
-  const updated = f.host
+  const updated = f.host.plugins
     .saveSubagent({
       id: profile.id,
       config: { ...profile, systemPrompt: "Updated prompt" },
@@ -963,7 +984,7 @@ test("reads canonical Markdown selections, BOM/Markdown suffixes and preserves e
   expect(content).toContain("maxTurns: 12");
   expect(content).toContain("lint");
   expect(content).not.toContain("modelSelection:");
-  const inherited = f.host
+  const inherited = f.host.plugins
     .saveSubagent({
       id: updated.id,
       config: { ...updated, modelSelection: undefined },
@@ -1002,33 +1023,33 @@ test("terminal resume uses the refreshed definition/model while retaining child 
     }
   });
   f.settings.setPluginEnabled("zpi.collaboration", true);
-  const profile = f.host
+  const profile = f.host.plugins
     .saveSubagent({ config: custom, scope: "user", sessionId: null })
     .agents.find((agent) => agent.name === custom.name);
   assert(profile);
   await run(f, "Initial turn");
-  const original = f.host.subagents.list(f.session.id)[0];
+  const original = f.host.plugins.collaboration.list(f.session.id)[0];
   agentId = original.agentId;
-  f.host.saveSubagent({
+  f.host.plugins.saveSubagent({
     id: profile.id,
     config: { ...custom, modelSelection: model, systemPrompt: "UPDATED ROLE" },
     scope: "user",
     sessionId: null,
   });
   await run(f, "Resume child with refreshed definition");
-  await expect.poll(() => f.host.subagents.list(f.session.id)[0].result).toBe("Updated findings");
+  await expect.poll(() => f.host.plugins.collaboration.list(f.session.id)[0].result).toBe("Updated findings");
   await f.host.activeRuns.get(f.session.id)?.done;
   const requests = f.server.requests.filter((body) => !tools(body).includes("Agent"));
   expect(requests[1].model).toBe("plain");
   expect(JSON.stringify(requests[1])).toContain("UPDATED ROLE");
   expect(JSON.stringify(requests[1])).toContain("Initial findings");
-  expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({
+  expect(f.host.plugins.collaboration.list(f.session.id)[0]).toMatchObject({
     agentId,
     childSessionId: original.childSessionId,
     description: "Resume",
   });
   expect(f.host.getSessionSnapshot(original.childSessionId).view.runs).toHaveLength(2);
-  f.host.subagents.profiles.enable(profile.id, false);
+  f.host.plugins.collaboration.profiles.enable(profile.id, false);
   // Completion may be consumed at the same boundary or in a model-only turn; start from a fresh ordinary turn.
   disabledAttempt = true;
   parentSteps = 4;
@@ -1041,7 +1062,7 @@ test("terminal resume uses the refreshed definition/model while retaining child 
     }),
   );
   expect(f.server.requests.filter((body) => !tools(body).includes("Agent"))).toHaveLength(2);
-  expect(f.host.subagents.list(f.session.id)).toHaveLength(1);
+  expect(f.host.plugins.collaboration.list(f.session.id)).toHaveLength(1);
 });
 
 test.each(["continue", "stop", "error"])(
@@ -1099,7 +1120,7 @@ test.each(["continue", "stop", "error"])(
       expect(f.host.getSessionSnapshot(f.session.id).view.runs).toHaveLength(1);
       expect(f.host.activeRuns.has(f.session.id)).toBe(false);
       expect(f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data).toHaveLength(1);
-      expect(f.host.subagents.list(f.session.id)[0].result).toBe("EARLY CHILD FINDINGS");
+      expect(f.host.plugins.collaboration.list(f.session.id)[0].result).toBe("EARLY CHILD FINDINGS");
       await run(f, "Continue after interruption");
       expect(JSON.stringify(f.server.requests.at(-1))).toContain("EARLY CHILD FINDINGS");
     }
@@ -1129,7 +1150,7 @@ test("the parent receives the complete ZCode notification projection after a lat
     .poll(() => f.settings.state.getRuntime(f.session.id, "subagent_inbox")[0]?.data)
     .toHaveLength(1);
   const count = f.server.requests.length;
-  const task = f.host.subagents.list(f.session.id)[0];
+  const task = f.host.plugins.collaboration.list(f.session.id)[0];
   expect(f.host.activeRuns.has(f.session.id)).toBe(false);
   expect(await readFile(task.outputFile as string, "utf8")).toBe('Answer <tag> & "details"');
   await run(f, "Use the findings");

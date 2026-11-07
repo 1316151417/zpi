@@ -273,7 +273,7 @@ it("a readonly Agent delegation cannot run command shell templates", async () =>
   cleanup.push(() => host.close());
   await host.init();
   f.settings.setPluginEnabled("zpi.collaboration", true);
-  host.saveSubagent({
+  host.plugins.saveSubagent({
     scope: "user",
     sessionId: null,
     config: {

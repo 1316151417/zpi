@@ -3,7 +3,7 @@ import { closeSync, createReadStream, fsyncSync, openSync, readSync, statSync, w
 import { dirname, join } from "node:path";
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
 import { contentText, isJsonObject } from "zpi-ai";
-import { maxSessionEntryBytes, type SessionEntry, type SessionHeader } from "zpi-coding-agent";
+import { maxSessionEntryBytes, type SessionEntry, type SessionHeader, syncDirectory } from "zpi-coding-agent";
 import type {
   IndexedSessionEntry,
   TranscriptContextPlan,
@@ -12,7 +12,6 @@ import type {
   TranscriptStore,
 } from "../../../coding-agent/src/core/transcript-store.ts";
 import { entryFileChange } from "./file-changes.ts";
-import { syncDirectory } from "./storage-generation.ts";
 import { deleteTranscriptIndex, ensureTranscriptSchema, transcriptPathKey } from "./transcript-schema.ts";
 import {
   decodeTranscriptEntry,

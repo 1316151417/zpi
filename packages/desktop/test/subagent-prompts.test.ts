@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
+import { prepareTaskOutputArguments } from "zpi-builtin-plugins/tasks/controls";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
-import { prepareTaskOutputArguments } from "../src/main/tasks/controls.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
 // Captured from the checked-out ZCode provider descriptions and subagent prompt builders.
@@ -65,7 +65,7 @@ test.each(["general-purpose", "Explore"].flatMap((name) => [false, true].map((co
       .join("\n");
     expect(parentInstructions).not.toContain(adapt(reference.agent));
     expect(parentInstructions).not.toContain("- Agent:");
-    const task = f.host.subagents.list(f.session.id)[0];
+    const task = f.host.plugins.collaboration.list(f.session.id)[0];
     const child = f.server.requests.find(
       (request) =>
         !(request.tools as { function: { name: string } }[]).some((tool) => tool.function.name === "Agent"),
@@ -154,7 +154,7 @@ test.each(["general-purpose", "Explore"].flatMap((name) => [false, true].map((co
       isIdle: () => true,
       getSystemPrompt: () => "",
     };
-    const reply = await f.host.subagents
+    const reply = await f.host.plugins.collaboration
       .childTools(task.childSessionId)[0]
       .execute("reply", { summary: "Progress", message: "Done" }, undefined, undefined, context);
     expect(reply.content).toEqual([

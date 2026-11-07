@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { syncDirectory } from "zpi-coding-agent";
 import { validateStateDatabase } from "./state-store.ts";
 
 export interface StorageGeneration {
@@ -33,16 +34,6 @@ function assertGeneration(value: unknown): asserts value is StorageGeneration {
     !validId.test(item.generationId)
   )
     throw new Error("storage: 存储版本或 generation 标识无效");
-}
-export function syncDirectory(path: string): void {
-  // Windows does not expose directory fsync through Node's file API.
-  if (process.platform === "win32") return;
-  const fd = openSync(path, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 export function durableJson(path: string, value: unknown): void {
   const temporary = `${path}.${randomUUID()}.tmp`;
