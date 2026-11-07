@@ -164,10 +164,10 @@ function openSearch() {
     });
 }
 
-function closeSearch() {
+function closeSearch({ restoreFocus = true } = {}) {
   modal.hidden = true;
   body.classList.remove("search-open");
-  openButton?.focus();
+  if (restoreFocus) openButton?.focus();
 }
 
 openButton?.addEventListener("click", openSearch);
@@ -223,33 +223,35 @@ function fallbackCopy(text) {
   area.remove();
 }
 
-for (const pre of document.querySelectorAll(".markdown pre")) {
-  const shell = document.createElement("div");
-  shell.className = "code-shell";
-  pre.before(shell);
-  shell.append(pre);
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "copy-button";
-  button.textContent = "复制";
-  button.addEventListener("click", async () => {
-    const text = pre.textContent;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      fallbackCopy(text);
-    }
-    button.textContent = "已复制";
-    button.classList.add("copied");
-    setTimeout(() => {
-      button.textContent = "复制";
-      button.classList.remove("copied");
-    }, 1600);
-  });
-  shell.append(button);
+function setupCopyButtons(scope = document) {
+  for (const pre of scope.querySelectorAll(".markdown pre")) {
+    if (pre.parentElement?.classList.contains("code-shell")) continue;
+    const shell = document.createElement("div");
+    shell.className = "code-shell";
+    pre.before(shell);
+    shell.append(pre);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy-button";
+    button.textContent = "复制";
+    button.addEventListener("click", async () => {
+      const text = pre.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        fallbackCopy(text);
+      }
+      button.textContent = "已复制";
+      button.classList.add("copied");
+      setTimeout(() => {
+        button.textContent = "复制";
+        button.classList.remove("copied");
+      }, 1600);
+    });
+    shell.append(button);
+  }
 }
 
-const mermaidNodes = [...document.querySelectorAll(".mermaid")];
 let mermaidLoader;
 
 function loadMermaid() {
@@ -265,8 +267,9 @@ function loadMermaid() {
 }
 
 async function renderMermaid() {
-  if (!mermaidNodes.length) return;
-  for (const node of mermaidNodes) {
+  const nodes = [...document.querySelectorAll(".mermaid")];
+  if (!nodes.length) return;
+  for (const node of nodes) {
     if (!node.dataset.source) node.dataset.source = node.textContent;
   }
   try {
@@ -277,7 +280,7 @@ async function renderMermaid() {
       theme: currentTheme() === "dark" ? "dark" : "default",
       fontFamily: 'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
     });
-    for (const node of mermaidNodes) {
+    for (const node of nodes) {
       node.removeAttribute("data-processed");
       node.classList.remove("mermaid-error");
       node.innerHTML = node.dataset.source;
@@ -291,11 +294,15 @@ async function renderMermaid() {
     }
   } catch (error) {
     console.error(error);
-    for (const node of mermaidNodes) node.classList.add("mermaid-error");
+    for (const node of nodes) node.classList.add("mermaid-error");
   }
 }
 
+let scrollSpyObserver;
+
 function setupScrollSpy() {
+  scrollSpyObserver?.disconnect();
+  scrollSpyObserver = undefined;
   const links = [...document.querySelectorAll(".toc-link")];
   if (!links.length) return;
   const byId = new Map(
@@ -305,7 +312,7 @@ function setupScrollSpy() {
     }),
   );
   const headings = [...document.querySelectorAll(".markdown h2[id], .markdown h3[id]")];
-  const observer = new IntersectionObserver(
+  scrollSpyObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
@@ -315,9 +322,127 @@ function setupScrollSpy() {
     },
     { rootMargin: "-72px 0px -70% 0px", threshold: 0 },
   );
-  for (const heading of headings) observer.observe(heading);
+  for (const heading of headings) scrollSpyObserver.observe(heading);
 }
 
+function isDocsPagePath(pathname) {
+  const intro = docsUrl("/intro/");
+  if (pathname === intro || pathname === intro.slice(0, -1)) return false;
+  if (!docsBase) return true;
+  return pathname === docsBase || pathname === `${docsBase}/` || pathname.startsWith(`${docsBase}/`);
+}
+
+function updateSidebarActive(pathname) {
+  for (const link of document.querySelectorAll(".nav-item")) {
+    const active = new URL(link.href, location.href).pathname === pathname;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+}
+
+let navigationController;
+
+async function navigate(url, { push = true, force = false } = {}) {
+  const target = new URL(url, location.href);
+  if (!force && target.href === location.href && !target.hash) return;
+  navigationController?.abort();
+  const controller = new AbortController();
+  navigationController = controller;
+  const currentMain = document.querySelector("main.content");
+  currentMain?.classList.add("is-loading");
+  currentMain?.setAttribute("aria-busy", "true");
+  try {
+    const response = await fetch(target.href, {
+      headers: { Accept: "text/html" },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!(response.headers.get("content-type") ?? "").includes("text/html")) {
+      throw new Error("不是 HTML 页面");
+    }
+    const html = await response.text();
+    if (controller.signal.aborted) return;
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const nextMain = parsed.querySelector("main.content");
+    const nextLayout = parsed.querySelector(".layout");
+    if (!nextMain || !nextLayout) throw new Error("不是文档页面");
+    const finalUrl = new URL(response.url || target.href);
+    finalUrl.hash = target.hash;
+    const nextToc = nextLayout.querySelector(".toc");
+    const currentLayout = document.querySelector(".layout");
+    const currentToc = currentLayout?.querySelector(".toc");
+    if (nextToc) {
+      if (currentToc) currentToc.replaceWith(nextToc);
+      else currentLayout?.append(nextToc);
+      currentLayout?.classList.remove("no-toc");
+    } else {
+      currentToc?.remove();
+      currentLayout?.classList.add("no-toc");
+    }
+    currentMain.replaceWith(nextMain);
+    nextMain.classList.remove("is-loading");
+    nextMain.removeAttribute("aria-busy");
+    document.title = parsed.title || document.title;
+    const nextDescription = parsed.querySelector('meta[name="description"]')?.getAttribute("content");
+    if (nextDescription) {
+      document.querySelector('meta[name="description"]')?.setAttribute("content", nextDescription);
+    }
+    updateSidebarActive(finalUrl.pathname);
+    if (!modal.hidden) closeSearch({ restoreFocus: false });
+    body.classList.remove("sidebar-open");
+    if (push) history.pushState({}, "", finalUrl.href);
+    setupCopyButtons(nextMain);
+    setupScrollSpy();
+    renderMermaid();
+    const hash = decodeURIComponent(finalUrl.hash.slice(1));
+    const anchor = hash ? document.getElementById(hash) : null;
+    if (anchor) anchor.scrollIntoView({ block: "start" });
+    else window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  } catch (error) {
+    if (controller.signal.aborted || error.name === "AbortError") return;
+    currentMain?.classList.remove("is-loading");
+    currentMain?.removeAttribute("aria-busy");
+    location.href = target.href;
+  } finally {
+    if (navigationController === controller) navigationController = undefined;
+  }
+}
+
+document.addEventListener("click", (event) => {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+  const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+  if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+  const url = new URL(anchor.href, location.href);
+  if (url.origin !== location.origin) return;
+  if (url.searchParams.has("raw")) return;
+  if (url.pathname === location.pathname) {
+    if (!modal.hidden) closeSearch({ restoreFocus: false });
+    if (url.hash) return;
+    if (url.search && url.search !== location.search) return;
+    event.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  if (!isDocsPagePath(url.pathname)) return;
+  event.preventDefault();
+  navigate(url.href);
+});
+
+window.addEventListener("popstate", () => {
+  navigate(location.href, { push: false, force: true });
+});
+
+setupCopyButtons();
 setupScrollSpy();
 renderMermaid();
 

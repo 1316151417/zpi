@@ -312,6 +312,10 @@ html[data-theme="dark"] .icon-moon {
   padding: 40px 48px 72px;
 }
 
+.content.is-loading {
+  opacity: 0.55;
+}
+
 .content > * {
   max-width: var(--content-width);
 }
