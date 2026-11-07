@@ -15,8 +15,6 @@ const domTests = [
   "packages/ui/test/markdown-selection-dom.test.ts",
   "packages/ui/test/notice.test.ts",
   "packages/desktop/test/web-settings-actions.test.ts",
-  "packages/desktop/test/quick-chat-renderer.test.ts",
-  "packages/desktop/test/quick-chat-settings-dom.test.ts",
   "packages/desktop/test/provider-settings-dom.test.ts",
   "packages/desktop/test/memory-settings-dom.test.ts",
   "packages/desktop/test/workspace-editor-dom.test.ts",

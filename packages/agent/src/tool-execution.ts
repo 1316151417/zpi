@@ -81,6 +81,10 @@ export function createToolExecutor(
       );
       if (signal?.aborted) throw new Error("Tool cancelled before execution");
       if (blocked?.block) throw new Error(blocked.reason ?? "Tool blocked by hook");
+      if (blocked?.args !== undefined) {
+        args = blocked.args;
+        if (!Check(tool.parameters, args)) throw new Error(`Invalid arguments for tool ${call.name}`);
+      }
       return { call, tool, args };
     } catch (error) {
       return { call, tool, args, error: toolFailure(error) };

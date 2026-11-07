@@ -7,10 +7,10 @@ import type { ModelPerformanceTotals } from "zpi-coding-agent";
 import type { InputQueue, SessionControls } from "zpi-ui";
 import type { CombinedSelection, ProjectRecord, SessionRecord } from "../shared/bridge.ts";
 import { emptyTaskGroups, type TaskGroupState, taskGroupColors } from "../shared/task-groups.ts";
-import { migrateStateDatabase, validateStateDatabase } from "./state-migrations.ts";
+import { initializeStateDatabase, validateStateDatabase } from "./state-schema.ts";
 import { taskFromRow, validateTask } from "./task-state.ts";
 
-export { STATE_SCHEMA_VERSION, validateStateDatabase } from "./state-migrations.ts";
+export { STATE_SCHEMA_VERSION, validateStateDatabase } from "./state-schema.ts";
 export interface TaskState extends SessionRecord {
   modelPerformanceTotals?: ModelPerformanceTotals;
   sideChatInheritance?: {
@@ -104,9 +104,9 @@ const taskAuditFields = [
   "sideChatInheritance",
 ] as const;
 const settingsAuditFields = [
+  "webSearchEnabled",
   "shortcuts",
-  "shortcutDefaultsVersion",
-  "capabilities",
+  "plugins",
   "version",
   "templates",
   "selectedTemplateId",
@@ -130,7 +130,7 @@ function changedFields(before: unknown, after: unknown, fields: readonly string[
   const next = after as Record<string, unknown> | undefined;
   return fields.filter((field) => !isDeepStrictEqual(old?.[field], next?.[field]));
 }
-/** Authoritative desktop state; legacy transcript projections remain for schema compatibility. */
+/** Authoritative desktop state and rebuildable transcript indexes. */
 export class StateStore {
   readonly db: DatabaseSync;
   readonly ownerEpoch = randomUUID();
@@ -145,7 +145,7 @@ export class StateStore {
       this.db.exec(
         "PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",
       );
-      migrateStateDatabase(this.db);
+      initializeStateDatabase(this.db);
     } catch (error) {
       this.db.close();
       throw error;

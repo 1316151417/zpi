@@ -39,7 +39,7 @@ export function taskGroupFor(state: TaskGroupState, id: string): string | null {
 export function sameGroupNode(a: TaskGroupNode, b: TaskGroupNode) {
   return a.type === b.type && a.id === b.id;
 }
-/** Add legacy/new tasks once, without allowing runtime timestamps or hidden rows to reorder existing nodes. */
+/** Add new tasks once, without allowing runtime timestamps or hidden rows to reorder existing nodes. */
 export function reconcileTaskGroups(
   state: TaskGroupState,
   records: readonly SessionRecord[],

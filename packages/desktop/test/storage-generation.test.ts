@@ -40,15 +40,7 @@ test("fresh generation publishes once and reopens the exact authoritative databa
   reopened.close();
   second.close();
 });
-test("legacy data is not loaded, mutated, or implicitly migrated", () => {
-  const dir = root();
-  const old = '{"private":"unchanged"}';
-  writeFileSync(join(dir, "settings.json"), old);
-  expect(() => openStorageGeneration(dir, initialize)).toThrow("独立 storage-migrate");
-  expect(readFileSync(join(dir, "settings.json"), "utf8")).toBe(old);
-  expect(existsSync(join(dir, "active-generation.json"))).toBe(false);
-  expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
-});
+
 test("failed initialization never publishes or falls back to an unready directory", () => {
   const dir = root();
   expect(() =>
@@ -60,9 +52,9 @@ test("failed initialization never publishes or falls back to an unready director
   const result = openStorageGeneration(dir, initialize);
   result.close();
 });
-test("runtime and migration share an exclusive maintenance lock", () => {
+test("one runtime owns the data directory at a time", () => {
   const dir = root();
-  const release = acquireStorageLock(dir, "migration");
+  const release = acquireStorageLock(dir);
   expect(() => openStorageGeneration(dir, initialize)).toThrow("存储已锁定");
   release();
   release();
@@ -75,9 +67,9 @@ test("allows mutex readers while excluding another storage owner", () => {
   const reader = new DatabaseSync(join(dir, ".storage-lock.sqlite"));
   try {
     reader.exec("BEGIN; SELECT count(*) FROM sqlite_master");
-    const release = acquireStorageLock(dir, "runtime");
+    const release = acquireStorageLock(dir);
     try {
-      expect(() => acquireStorageLock(dir, "migration")).toThrow("存储已锁定");
+      expect(() => acquireStorageLock(dir)).toThrow("存储已锁定");
     } finally {
       release();
     }
@@ -97,32 +89,19 @@ test("reopens the same generation after a lock owner exits without cleanup", () 
       "--input-type=module",
       "-e",
       `import { acquireStorageLock } from ${JSON.stringify(source)};
-     acquireStorageLock(process.argv[1], "runtime"); process.exit(0);`,
+     acquireStorageLock(process.argv[1]); process.exit(0);`,
       dir,
     ],
     { timeout: 5000, encoding: "utf8" },
   );
   expect(child.status, child.stderr).toBe(0);
-  expect(existsSync(join(dir, ".storage-lock", "owner.json"))).toBe(true);
+  expect(existsSync(join(dir, ".storage-lock", "owner.json"))).toBe(false);
   const reopened = openStorageGeneration(dir, () => {
     throw new Error("must preserve the generation");
   });
   expect(reopened.marker).toEqual(first.marker);
   reopened.close();
 });
-
-test.each([undefined, {}, { pid: 0 }, { pid: "invalid" }, { pid: process.pid }])(
-  "does not reclaim an unverifiable or live legacy lock: %j",
-  (owner) => {
-    const dir = root();
-    mkdirSync(join(dir, ".storage-lock"));
-    const file = join(dir, ".storage-lock", "owner.json");
-    if (owner !== undefined) writeFileSync(file, JSON.stringify(owner));
-    expect(() => acquireStorageLock(dir, "runtime")).toThrow("存储已锁定");
-    expect(existsSync(join(dir, ".storage-lock"))).toBe(true);
-    if (owner !== undefined) expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(owner);
-  },
-);
 
 test("only one process can recover and hold an abandoned lock", async () => {
   const dir = root();
@@ -133,7 +112,7 @@ test("only one process can recover and hold an abandoned lock", async () => {
       "--input-type=module",
       "-e",
       `import { acquireStorageLock } from ${JSON.stringify(source)};
-     acquireStorageLock(process.argv[1], "runtime"); process.exit(0);`,
+     acquireStorageLock(process.argv[1]); process.exit(0);`,
       dir,
     ],
     { timeout: 5000, encoding: "utf8" },
@@ -147,7 +126,7 @@ test("only one process can recover and hold an abandoned lock", async () => {
         "-e",
         `import { acquireStorageLock } from ${JSON.stringify(source)};
      process.once("message", () => {
-       try { acquireStorageLock(process.argv[1], "runtime"); process.send({ acquired: true }); }
+       try { acquireStorageLock(process.argv[1]); process.send({ acquired: true }); }
        catch (error) {
          process.send({ acquired: false, error: error.message,
            cause: error.cause?.message, code: error.cause?.code, errcode: error.cause?.errcode });
@@ -165,12 +144,12 @@ test("only one process can recover and hold an abandoned lock", async () => {
     for (const child of children) child.send("go");
     const outcomes = (await Promise.all(results)).map(([result]) => result);
     expect(outcomes.map((result) => result.acquired).sort(), JSON.stringify(outcomes)).toEqual([false, true]);
-    expect(() => acquireStorageLock(dir, "migration")).toThrow("存储已锁定");
+    expect(() => acquireStorageLock(dir)).toThrow("存储已锁定");
   } finally {
     for (const child of children) child.kill("SIGKILL");
     await Promise.all(exited);
   }
-  const release = acquireStorageLock(dir, "migration");
+  const release = acquireStorageLock(dir);
   release();
 });
 test("bad pointer and missing database fail closed rather than recreating user state", () => {
@@ -190,7 +169,7 @@ test("bad pointer and missing database fail closed rather than recreating user s
 test("never publishes an empty or partial initialized database and releases its lock", () => {
   const dir = root();
   expect(() => openStorageGeneration(dir, (path) => writeFileSync(join(path, "state.sqlite"), ""))).toThrow(
-    "offline migration",
+    "unsupported schema version",
   );
   expect(existsSync(join(dir, "active-generation.json"))).toBe(false);
   expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
@@ -201,7 +180,7 @@ test("refuses a truncated active database without repair or leaving a lock", () 
   generation.close();
   const file = join(generation.directory, "state.sqlite");
   writeFileSync(file, "");
-  expect(() => openStorageGeneration(dir, initialize)).toThrow("offline migration");
+  expect(() => openStorageGeneration(dir, initialize)).toThrow("unsupported schema version");
   expect(readFileSync(file)).toHaveLength(0);
   expect(existsSync(join(dir, ".storage-lock"))).toBe(false);
 });

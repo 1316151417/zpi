@@ -4,7 +4,6 @@ import { expect, test } from "vitest";
 import {
   buildSystemPrompt,
   createCodingTools,
-  createPiTemplate,
   FileResourceLoader,
   piTemplate,
   renderTemplate,
@@ -53,50 +52,21 @@ test("Pi prompt facts, literal nonrecursive variables, custom rules replace defa
   expect(changed).toContain("Use write only for new files or complete rewrites.");
 });
 
-test("custom instructions preserve legacy prompt ordering and literal base instructions", () => {
+test("custom instructions follow resource instructions and preserve literal base instructions", () => {
   const cwd = "/project";
   const tools = createCodingTools(cwd);
   const instructions = ["<project_context>PROJECT</project_context>"];
   const additions = ["<system_rules>DESKTOP</system_rules>", "CHILD {{cwd}}"];
   const baseInstructions = "Literal {{cwd}}";
-  const legacy = buildSystemPrompt({
-    cwd,
-    tools,
-    loader: {
-      getSystemPrompt: () => baseInstructions,
-      getAppendSystemPrompt: () => [...instructions, ...additions],
-    },
-  });
   const current = buildSystemPrompt({
     cwd,
     tools,
     loader: new StaticResourceLoader({ baseInstructions, instructions }),
     customInstructions: additions,
   });
-  expect(current).toBe(legacy);
   expect(current.startsWith("Literal {{cwd}}\n\n<tools>")).toBe(true);
   expect(current.indexOf("PROJECT")).toBeLessThan(current.indexOf("DESKTOP"));
   expect(current.indexOf("CHILD {{cwd}}")).toBeLessThan(current.indexOf("<cwd>"));
-  expect(
-    buildSystemPrompt({ cwd, tools, loader: new StaticResourceLoader(baseInstructions, instructions) }),
-  ).toBe(
-    buildSystemPrompt({ cwd, tools, loader: new StaticResourceLoader({ baseInstructions, instructions }) }),
-  );
-});
-
-test("new resource methods take precedence even when clearing legacy instructions", () => {
-  const options = { cwd: "/project", tools: [] };
-  expect(
-    buildSystemPrompt({
-      ...options,
-      loader: {
-        getBaseInstructions: () => undefined,
-        getInstructions: () => [],
-        getSystemPrompt: () => "LEGACY BASE",
-        getAppendSystemPrompt: () => ["LEGACY APPEND"],
-      },
-    }),
-  ).toBe(buildSystemPrompt(options));
 });
 
 test("custom instructions are literal additions and reject invalid runtime values", () => {
@@ -120,8 +90,6 @@ test("default Pi template and generated prompt omit the mirrored tool catalog", 
     rules: "Be concise in your responses\nShow file paths clearly when working with files",
   };
   expect(piTemplate).toEqual(expected);
-  expect(createPiTemplate()).toEqual(expected);
-  expect(createPiTemplate({ writable: true })).toEqual(expected);
   expect(buildSystemPrompt({ cwd: "/project", tools: [] })).toBe(
     `${preamble}\n\n<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>\n\n<cwd>\n/project\n</cwd>`,
   );
@@ -153,15 +121,4 @@ test("only built-in tool snippets enter system instructions, without description
     tools: [{ name: "bash", description: "FULL DESCRIPTION" }],
   });
   expect(withoutSnippet).not.toMatch(/<tools>|FULL DESCRIPTION/);
-});
-
-test("read-only Pi variant reuses the base template without advertising file changes", () => {
-  const template = createPiTemplate({ writable: false });
-  expect(template.preamble).toBe(
-    "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files and executing commands.",
-  );
-  expect(template.rules).toBe(piTemplate.rules);
-  expect(template.id).toBe(piTemplate.id);
-  expect(template.name).toBe(piTemplate.name);
-  expect(template.preamble).not.toMatch(/editing code|writing new files/);
 });

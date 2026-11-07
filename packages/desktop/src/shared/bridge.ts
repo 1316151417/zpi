@@ -21,6 +21,7 @@ import type {
   CustomCommandUpdate,
 } from "./custom-commands.ts";
 import type { EditorInfo } from "./editors.ts";
+import type { HooksCatalog, HookTarget, SaveHookInput } from "./hooks.ts";
 import type { MemorySettings, MemoryStatus } from "./memory.ts";
 import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
 import type { SaveSubagentInput, SubagentCatalog } from "./subagents.ts";
@@ -73,17 +74,6 @@ export interface GitEnvironment {
   head: string;
   currentRef: string | null;
   branches: { ref: string; name: string; remote: boolean }[];
-}
-export interface SettingsInput {
-  baseUrl: string;
-  modelId: string;
-  apiKey?: string;
-  headers?: Record<string, string>;
-  supportsImages: boolean;
-  reasoning: boolean;
-  contextWindow: number;
-  maxTokens: number;
-  compat?: ModelCompat;
 }
 export interface ModelSettings {
   enabled?: boolean;
@@ -140,29 +130,13 @@ export interface InterfacePreferences {
   projectsCollapsed: boolean;
   tasksCollapsed: boolean;
 }
-export interface SessionCapabilities {
-  webSearch: boolean;
-  communicationStyle: boolean;
-  subagents: boolean;
-  codexSubagentPrompt: boolean;
-  askUserQuestion: boolean;
-  toolBatching: boolean;
-  fileLinks: boolean;
-  fileContextReuse: boolean;
-  proactiveExecution: boolean;
-}
-export type CapabilityName = keyof SessionCapabilities;
 export interface WebSearchSettingsInput {
   provider: "deepseek";
   enabled?: boolean;
   /** Omit to retain the saved key; an empty string removes it. */
   apiKey?: string;
 }
-export interface QuickChatSettingsInput {
-  defaultSelection: CombinedSelection | null;
-}
 export interface PublicSettings {
-  quickChat: QuickChatSettingsInput;
   webSearch: {
     provider: "deepseek";
     enabled: boolean;
@@ -172,7 +146,7 @@ export interface PublicSettings {
     credentialsLocked: boolean;
   };
   shortcuts: ShortcutSettings;
-  capabilities: SessionCapabilities;
+  plugins: typeof import("zpi-builtin-plugins").defaultPluginSettings;
   providers: ProviderRecord[];
   lastSelection: CombinedSelection | null;
   interface: InterfacePreferences;
@@ -293,7 +267,6 @@ export type PaneEvent =
   | { type: "terminal"; id: string; data: string; exited?: boolean }
   | { type: "browser"; state: BrowserState };
 export interface DesktopBridge {
-  openQuickChat(): Promise<Result<void>>;
   setSessionUnread(id: string): Promise<Result<void>>;
   getTaskGroups(): Promise<Result<import("./task-groups.ts").TaskGroupState>>;
   updateTaskGroups(
@@ -313,7 +286,14 @@ export interface DesktopBridge {
     sessionId: string,
     taskId: string,
   ): Promise<Result<import("zpi-ui").BackgroundTaskOutput>>;
-  setCapabilityEnabled(name: CapabilityName, enabled: boolean): Promise<Result<PublicSettings>>;
+  setPluginEnabled(id: string, enabled: boolean): Promise<Result<PublicSettings>>;
+  getLocalPlugins(): Promise<Result<import("zpi-coding-agent").PluginMetadata[]>>;
+  getHooks(projectId: string | null): Promise<Result<HooksCatalog>>;
+  saveHook(input: SaveHookInput): Promise<Result<HooksCatalog>>;
+  setHookEnabled(target: HookTarget, enabled: boolean): Promise<Result<HooksCatalog>>;
+  deleteHook(target: HookTarget): Promise<Result<HooksCatalog>>;
+  importLocalPlugin(): Promise<Result<PublicSettings>>;
+  setPluginOptions(id: string, options: import("zpi-ai").JsonObject): Promise<Result<PublicSettings>>;
   snoozeQuestion(sessionId: string, requestId: string): Promise<Result<void>>;
   respondToQuestion(
     sessionId: string,
@@ -506,7 +486,6 @@ export interface DesktopBridge {
   }): Promise<Result<ModelDiscoveryResult>>;
   saveProvider(input: ProviderInput): Promise<Result<PublicSettings>>;
   saveWebSearch(input: WebSearchSettingsInput): Promise<Result<PublicSettings>>;
-  saveQuickChatSettings(input: QuickChatSettingsInput): Promise<Result<PublicSettings>>;
   reorderProviders(ids: string[]): Promise<Result<PublicSettings>>;
   deleteProvider(id: string): Promise<Result<PublicSettings>>;
   getProviderCredentials(id: string): Promise<Result<{ apiKey: string }>>;
@@ -515,7 +494,7 @@ export interface DesktopBridge {
   updatePreferences(input: Partial<InterfacePreferences>): Promise<Result<PublicSettings>>;
   setSessionSelection(sessionId: string, selection: CombinedSelection): Promise<Result<SessionSnapshot>>;
   listSessionSkills(sessionId: string): Promise<Result<SkillList>>;
-  listCommands(): Promise<Result<{ name: string; description: string }[]>>;
+  listCommands(sessionId?: string): Promise<Result<{ name: string; description: string }[]>>;
   listSessionCustomCommands(sessionId: string): Promise<Result<CustomCommandsList>>;
   getCustomCommands(projectId?: string): Promise<Result<CustomCommandsList>>;
   createCustomCommand(input: CustomCommandInput, projectId?: string): Promise<Result<CustomCommand>>;
@@ -535,7 +514,6 @@ export const methods = [
   "checkMemoryNow",
   "clearLongMemory",
   "openMemoryFile",
-  "openQuickChat",
   "setSessionUnread",
   "getTaskGroups",
   "updateTaskGroups",
@@ -546,7 +524,14 @@ export const methods = [
   "stopSubagent",
   "stopBackgroundTask",
   "readBackgroundTask",
-  "setCapabilityEnabled",
+  "setPluginEnabled",
+  "getLocalPlugins",
+  "getHooks",
+  "saveHook",
+  "setHookEnabled",
+  "deleteHook",
+  "importLocalPlugin",
+  "setPluginOptions",
   "respondToQuestion",
   "snoozeQuestion",
   "createSideChat",
@@ -640,7 +625,6 @@ export const methods = [
   "discoverModels",
   "saveProvider",
   "saveWebSearch",
-  "saveQuickChatSettings",
   "reorderProviders",
   "deleteProvider",
   "getProviderCredentials",

@@ -1,6 +1,6 @@
 # 结构化提问
 
-使用入口：[协作与提问](../features/collaboration.md)。AskUserQuestion 是桌面 customTool，属于当前会话首次发送时确定的能力快照。
+使用入口：[协作与提问](../features/collaboration.md)。questions 插件复用 UserQuestions 服务，注册 AskUserQuestion 工具，属于当前会话首次发送时确定的插件快照。
 
 ## 参数和返回
 

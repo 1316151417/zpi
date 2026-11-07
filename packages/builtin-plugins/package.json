@@ -1,0 +1,9 @@
+{
+  "name": "zpi-builtin-plugins",
+  "version": "0.1.60",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

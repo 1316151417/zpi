@@ -78,6 +78,7 @@ export interface BeforeToolCallContext {
 export interface BeforeToolCallResult {
   block?: boolean;
   reason?: string;
+  args?: unknown;
 }
 export interface AfterToolCallContext extends BeforeToolCallContext {
   result: AgentToolResult;
@@ -112,6 +113,8 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
     turn: PrepareNextTurnContext,
     signal?: AbortSignal,
   ) => Promise<AgentLoopTurnUpdate | undefined>;
+  /** Called only before a normal final response settles; returned messages continue the loop. */
+  beforeStop?: (message: AssistantMessage, signal?: AbortSignal) => Promise<AgentMessage[] | undefined>;
 }
 export type AgentEvent =
   | { type: "agent_start" }
@@ -172,6 +175,7 @@ export interface AgentOptions
     | "prepareNextTurnWithContext"
     | "getSteeringMessages"
     | "getPendingMessages"
+    | "beforeStop"
   > {
   initialState?: AgentInitialState;
   streamFn: StreamFn;

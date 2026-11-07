@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { desktopPluginIds } from "zpi-builtin-plugins";
 import { ActionHint } from "zpi-ui";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
@@ -13,7 +14,7 @@ import "./web-search-settings.css";
 
 export function WebSearchSettings() {
   const settings = useStore((state) => state.settings?.webSearch);
-  const globalEnabled = useStore((state) => state.settings?.capabilities.webSearch);
+  const globalEnabled = useStore((state) => state.settings?.plugins?.enabled[desktopPluginIds.web]);
   const providerReady = Boolean(settings?.enabled && settings.hasApiKey && !settings.credentialsLocked);
   // Only genuine input changes populate the replacement. A revealed saved key is separate and transient.
   const [apiKey, setApiKey] = useState("");
@@ -159,7 +160,7 @@ export function WebSearchSettings() {
     setError("");
     clearReveal();
     try {
-      const settings = unwrap(await window.zpi.setCapabilityEnabled("webSearch", enabled));
+      const settings = unwrap(await window.zpi.setPluginEnabled(desktopPluginIds.web, enabled));
       useStore.setState({ settings });
       setNotice(enabled ? "已启用联网搜索。" : "已关闭联网搜索。");
     } catch {

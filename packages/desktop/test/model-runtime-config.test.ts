@@ -6,7 +6,6 @@ import type { JsonObject, Model, ProviderApi } from "zpi-ai";
 import { ModelRuntime, type ProviderConfigInput } from "zpi-coding-agent";
 import { chunk } from "../../../tests/fake-server.ts";
 import { modelRuntimeConfig } from "../src/main/model-runtime-config.ts";
-import { QuickChatHost } from "../src/main/quick-chat-host.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import * as storage from "../src/main/storage.ts";
 
@@ -166,9 +165,9 @@ test("forwards resolved model headers and pricing alongside every optional runti
   );
 });
 
-test.each(["quick", "task"] as const)(
+test.each(["task"] as const)(
   "%s host registers the accepted snapshot after initialization and preserves request configuration",
-  async (kind) => {
+  async () => {
     const dir = await mkdtemp(join(tmpdir(), "zpi-runtime-config-"));
     cleanup.push(() => rm(dir, { recursive: true, force: true }));
     const settings = new storage.SettingsStore(join(dir, "settings"), {
@@ -200,12 +199,7 @@ test.each(["quick", "task"] as const)(
       );
     };
     let idle: Promise<unknown>;
-    if (kind === "quick") {
-      const host = new QuickChatHost(settings, join(dir, "workspace"), transport);
-      cleanup.push(() => host.close());
-      host.send("hello");
-      idle = host.waitForIdle();
-    } else {
+    {
       const host = new SessionHost(dir, settings, join(dir, "home"), dir, transport);
       cleanup.push(() => host.close());
       await host.init();
@@ -237,7 +231,7 @@ test.each(["quick", "task"] as const)(
       body: {
         model: "advanced",
         max_completion_tokens: 8192,
-        reasoning_effort: kind === "quick" ? "off" : "high",
+        reasoning_effort: "high",
         thinking_budget: 2048,
         stream_options: { include_usage: false },
         temperature: 0.4,

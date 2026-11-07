@@ -54,7 +54,6 @@ Agent 可以读写文件和执行命令，使用当前用户的系统权限。�
 - 补充材料：[上下文、文件和技能](context.md)。
 - 执行中追问：[辅助对话和子智能体](collaboration.md)。
 - 查看结果：[文件预览](files.md)、[面板](panes.md)、[终端](background-terminal.md)。
-- 临时提问：[快速对话](quick-chat.md)。
 - 连接失败、长时间等待、历史打不开：[诊断](diagnostics.md)。
 
 会话和设置保存在本机；发送请求时所需上下文会发给所选模型服务。联网搜索另外把搜索词或 URL 发给网页服务，详见[联网搜索](web.md)。

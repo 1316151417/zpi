@@ -3,8 +3,16 @@ export { AgentSession } from "./core/agent-session.ts";
 export type { ParsedInput } from "./core/commands.ts";
 export { listCommands, parseInput } from "./core/commands.ts";
 export type { CompactionOptions } from "./core/compaction.ts";
+export {
+  applyFileRewind,
+  type FileRewindConflict,
+  type FileRewindOptions,
+  type FileRewindPlan,
+  planFileRewind,
+} from "./core/file-rewind.ts";
 export * from "./core/image-limits.ts";
 export * from "./core/images.ts";
+export { type MarkdownFrontmatter, parseMarkdownFrontmatter } from "./core/markdown.ts";
 export * from "./core/mentions.ts";
 export type { ModelPerformance, ModelPerformanceTotals } from "./core/model-performance.ts";
 export { modelPerformance, SessionPerformance, validPerformanceTotals } from "./core/model-performance.ts";
@@ -53,10 +61,34 @@ export {
 export { getShellConfig, getShellEnv, killProcessTree } from "./core/tools/pi/utils/shell.ts";
 export * from "./core/transcript-store.ts";
 export type {
-  ExtensionToolContext,
   ResourceDiagnostic,
   ResourceLoader,
   ToolContext,
   ToolDefinition,
 } from "./core/types.ts";
 export { StaticResourceLoader } from "./core/types.ts";
+export type { SessionContributions } from "./plugins/assembly.ts";
+export {
+  assembleSession,
+  expandPluginCommand,
+  pluginSnapshotData,
+  snapshotPlugins,
+  validatePluginSnapshot,
+} from "./plugins/assembly.ts";
+export type {
+  HookEvent,
+  HookExecution,
+  HookInput,
+  HookInvocation,
+  HookOutput,
+  HookRegistration,
+} from "./plugins/hooks.ts";
+export { HookRunner, hookEvents } from "./plugins/hooks.ts";
+export { withPluginResources } from "./plugins/resources.ts";
+export type {
+  PluginCommand,
+  PluginMetadata,
+  PluginSkill,
+  PluginSnapshot,
+  SessionPlugin,
+} from "./plugins/types.ts";

@@ -55,10 +55,6 @@ export const editToolSystemPromptContribution = {
 } as const;
 
 export type EditToolInput = Static<typeof editSchema>;
-type LegacyEditToolInput = EditToolInput & {
-  oldText?: unknown;
-  newText?: unknown;
-};
 
 type SingleEditInput = { oldText: string; newText: string };
 
@@ -128,15 +124,7 @@ function prepareEditArguments(input: unknown): EditToolInput {
     args.edits = [args.edits];
   }
 
-  const legacy = args as LegacyEditToolInput;
-  if (typeof legacy.oldText !== "string" || typeof legacy.newText !== "string") {
-    return args as EditToolInput;
-  }
-
-  const edits = Array.isArray(legacy.edits) ? [...legacy.edits] : [];
-  edits.push({ oldText: legacy.oldText, newText: legacy.newText });
-  const { oldText: _oldText, newText: _newText, ...rest } = legacy;
-  return { ...rest, edits } as EditToolInput;
+  return args as EditToolInput;
 }
 
 function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] } {

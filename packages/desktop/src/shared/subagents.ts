@@ -14,7 +14,7 @@ export interface SubagentConfig {
 }
 export interface SubagentProfile extends SubagentConfig {
   id: string;
-  scope: "built-in" | "user" | "workspace";
+  scope: "built-in" | "user" | "workspace" | "plugin";
   enabled: boolean;
   path?: string;
 }

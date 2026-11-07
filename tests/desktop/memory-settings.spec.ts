@@ -190,11 +190,12 @@ test("project memory capacity diagnostics are visible and malformed memory IPC p
   const dir = await realpath(await mkdtemp(join(tmpdir(), "zpi-memory-diagnostics-desktop-")));
   const project = join(dir, "project");
   await mkdir(project);
+  await mkdir(join(project, ".zpi"));
   await mkdir(join(dir, ".zpi"));
   const userContent = "# Memory\n- [language] 使用中文。\n";
   const projectContent = `# Memory\n${Array.from({ length: 21 }, (_, index) => `- [fact-${index}] ${index === 0 ? "😀".repeat(2001) : "事实"}`).join("\n")}\n`;
   await writeFile(join(dir, ".zpi", "MEMORY.md"), userContent);
-  await writeFile(join(project, "MEMORY.md"), projectContent);
+  await writeFile(join(project, ".zpi", "MEMORY.md"), projectContent);
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "unused" }));
     done(response);
@@ -204,20 +205,29 @@ test("project memory capacity diagnostics are visible and malformed memory IPC p
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
-    await expect.poll(() => page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).toBeTruthy();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const sessionId = localStorage.getItem("zpi.selectedSession");
+          if (!sessionId) return false;
+          const result = await window.zpi.getWorkspaceInfo(sessionId);
+          return result.ok && result.value.projectId !== null;
+        }),
+      )
+      .toBe(true);
     const id = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
     if (!id) throw new Error("Missing selected project session");
     await openMemorySettings(page);
     const projectRow = page.locator(".memory-file").filter({ hasText: "当前项目记忆" });
     await expect(projectRow).toContainText("文件异常，未自动加载");
     await expect(projectRow).not.toContainText("21 / 20 条");
-    await expect(projectRow).not.toContainText(join(project, "MEMORY.md"));
+    await expect(projectRow).not.toContainText(join(project, ".zpi", "MEMORY.md"));
     await projectRow.getByRole("button", { name: "查看", exact: true }).click();
     const preview = page.getByRole("dialog", { name: "记忆文件", exact: true });
     await expect(preview).toContainText("21 / 20 条");
     await expect(preview).toContainText("2,041 / 2,000 字符");
     await expect(preview).toContainText("记忆条数 21 超过上限 20");
-    await expect(preview).toContainText(join(project, "MEMORY.md"));
+    await expect(preview).toContainText(join(project, ".zpi", "MEMORY.md"));
     await page.getByRole("button", { name: "关闭记忆文件", exact: true }).click();
     const status = await page.evaluate(async (sessionId) => {
       const result = await window.zpi.getMemoryStatus(sessionId);
@@ -226,11 +236,11 @@ test("project memory capacity diagnostics are visible and malformed memory IPC p
     }, id);
     expect(status.shortFiles.map(({ scope }) => scope)).toEqual(["user", "project"]);
     expect(status.shortFiles[1]).toMatchObject({
-      path: join(project, "MEMORY.md"),
+      path: join(project, ".zpi", "MEMORY.md"),
       count: 21,
       characters: 2041,
     });
-    expect(await readFile(join(project, "MEMORY.md"), "utf8")).toBe(projectContent);
+    expect(await readFile(join(project, ".zpi", "MEMORY.md"), "utf8")).toBe(projectContent);
     expect(await readFile(join(dir, ".zpi", "MEMORY.md"), "utf8")).toBe(userContent);
 
     const before = await savedMemorySettings(page);

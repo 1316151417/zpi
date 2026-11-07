@@ -395,15 +395,13 @@
               <p>
                 短期模式维护用户与项目的 MEMORY.md；长期模式从历史会话提取摘要，由后台 Agent 增量整合。两种模式互斥，默认都关闭。
               </p>
-              <p class="small-note">快速对话不读取或生成记忆；当前用户要求与项目指令始终优先。</p>
+              <p class="small-note">当前用户要求与项目指令始终优先。</p>
             </article>
             <article class="extension-card">
-              <span class="extension-tag">QUICK CHAT</span>
-              <h3>随手问一句</h3>
-              <p>
-                全局快捷键唤起临时浮窗，不创建正式任务，也不写主任务历史。macOS 支持框选截图、复制当前内容和读取剪贴板，确认后才发送。
-              </p>
-              <p class="small-note">Option+Space / Alt+N 显示；超过 15 分钟会在下次唤起时重置。</p>
+              <span class="extension-tag">AGENT SDK</span>
+              <h3>独立接入你的应用</h3>
+              <p>TypeScript Agent SDK 提供查询、流式消息、工具控制、Hook 和会话恢复；ZPI 桌面与外部应用共用同一套执行入口。</p>
+              <p class="small-note">支持的接口按 Claude Agent SDK 命名与协议对齐，高级平台能力保持明确边界。</p>
             </article>
           </div>
         </div>
@@ -416,12 +414,12 @@
               <p class="eyebrow light">06 / DEVELOPER</p>
               <h2 id="developer-title">内核独立，<br>界面只是入口。</h2>
               <p>
-                zpi-coding-agent 提供模型运行时、四个基础工具、会话与上下文管理，不依赖 Electron。桌面端的提问、子智能体、后台命令与记忆，都由通用扩展接口接入。
+                zpi-agent-sdk 提供独立的 TypeScript 接口，不依赖 Electron。桌面端与外部应用共用查询协议，复杂能力通过工具和插件接口接入。
               </p>
               <ul class="check-list light">
-                <li>customTools 新增工具，toolOverrides 替换内置工具</li>
+                <li>tools 选择工具，allowedTools 与 canUseTool 控制调用</li>
                 <li>内存、文件或自定义会话存储</li>
-                <li>仓库示例使用本地假模型，无需线上凭据</li>
+                <li>仓库原生宿主示例使用本地假模型，无需线上凭据</li>
                 <li>诊断页汇总错误日志、等待与重试，以及 TTFT、输出速度和 token 用量</li>
               </ul>
               <div class="developer-actions">
@@ -437,41 +435,36 @@
               </p>
             </div>
             <div class="code-card">
-              <div class="code-head"><span>examples/coding-session.ts</span><span>TypeScript</span></div>
-              <pre><code>import {
-  createAgentSession,
-  ModelRuntime,
-  SessionManager,
-} from "zpi-coding-agent";
+              <div class="code-head"><span>zpi-agent-sdk</span><span>TypeScript</span></div>
+              <pre><code>import { query } from "zpi-agent-sdk";
 
-const runtime = await ModelRuntime.create();
-runtime.registerProvider("local", {
-  baseUrl: "http://127.0.0.1:8000/v1",
-  api: "openai-completions",
-  apiKey: "",
-  models: [{
-    id: "your-model-id", name: "Local model", reasoning: false,
-    input: ["text"], contextWindow: 32768, maxTokens: 4096,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  }],
-});
-
-const { session } = await createAgentSession({
-  cwd: "/absolute/project",
-  modelRuntime: runtime,
-  sessionManager: SessionManager.inMemory("/absolute/project"),
-});
-await session.prompt("说明项目入口，先不修改文件。");</code></pre>
+for await (const message of query({
+  prompt: "说明项目入口，先不修改文件。",
+  options: {
+    model: "deepseek",
+    cwd: "/absolute/project",
+    tools: ["Read", "Glob", "Grep"],
+    allowedTools: ["Read", "Glob", "Grep"],
+    maxTurns: 8,
+  },
+})) {
+  if (message.type === "result" &amp;&amp; message.subtype === "success") {
+    console.log(message.result);
+  }
+}</code></pre>
             </div>
           </div>
 
-          <div class="package-strip" aria-label="五个包的分工">
+          <section class="package-strip" aria-label="八个包的分工">
             <div><code>ai</code><span>协议、认证与流</span></div>
             <div><code>agent</code><span>执行循环与工具调度</span></div>
-            <div><code>coding-agent</code><span>会话、四工具与 SDK</span></div>
+            <div><code>coding-agent</code><span>会话、四工具与上下文</span></div>
+            <div><code>agent-sdk</code><span>公共 TypeScript 协议</span></div>
+            <div><code>builtin-plugins</code><span>可选内置能力</span></div>
+            <div><code>plugin-compat</code><span>外部插件适配</span></div>
             <div><code>ui</code><span>对话组件与展示模型</span></div>
             <div><code>desktop</code><span>Electron、窗口与 IPC</span></div>
-          </div>
+          </section>
 
           <div class="local-first">
             <article>
@@ -580,7 +573,7 @@ await session.prompt("说明项目入口，先不修改文件。");</code></pre>
           <details>
             <summary>能在脚本里复用 ZPI 的内核吗？</summary>
             <p>
-              可以。仓库提供 zpi-coding-agent SDK，复用模型运行时、四个工具与会话能力；npm run example:coding
+              可以。仓库提供 zpi-agent-sdk，复用模型运行时、四个工具与会话能力；npm run example:coding
               会启动本地假模型服务演示完整流程，不需要线上凭据。具体接口见 SDK 文档。
             </p>
           </details>

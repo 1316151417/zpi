@@ -46,35 +46,20 @@ function savedData(state: StateStore) {
 test("global search requires an enabled provider and disabling or removing credentials turns it off", async () => {
   const f = await fixture();
   const store = f.open();
-  expect(() => store.setCapabilityEnabled("webSearch", true)).toThrow("请先配置并启用");
+  expect(() => store.setPluginEnabled("zpi.web-search", true)).toThrow("请先配置并启用");
   store.saveWebSearch({ provider: "deepseek", apiKey: "fake-search-key" });
-  expect(() => store.setCapabilityEnabled("webSearch", true)).toThrow("请先配置并启用");
+  expect(() => store.setPluginEnabled("zpi.web-search", true)).toThrow("请先配置并启用");
   store.saveWebSearch({ provider: "deepseek", enabled: true });
-  expect(store.get().capabilities.webSearch).toBe(false);
-  store.setCapabilityEnabled("webSearch", true);
-  expect(f.open().get().capabilities.webSearch).toBe(true);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
+  store.setPluginEnabled("zpi.web-search", true);
+  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(true);
   store.saveWebSearch({ provider: "deepseek", enabled: false });
-  expect(f.open().get().capabilities.webSearch).toBe(false);
+  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(false);
   store.saveWebSearch({ provider: "deepseek", enabled: true });
-  expect(store.get().capabilities.webSearch).toBe(false);
-  store.setCapabilityEnabled("webSearch", true);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
+  store.setPluginEnabled("zpi.web-search", true);
   store.saveWebSearch({ provider: "deepseek", apiKey: "" });
-  expect(f.open().get().capabilities.webSearch).toBe(false);
-});
-
-test("legacy enabled preferences require a provider but valid configured choices survive restart", async () => {
-  const f = await fixture();
-  f.open().updatePreferences({ theme: "dark" });
-  const before = savedData(f.state);
-  f.state.setSetting("app", {
-    ...before,
-    capabilities: { ...(before.capabilities as object), webSearch: true },
-  });
-  const store = f.open();
-  expect(store.get().capabilities.webSearch).toBe(false);
-  store.saveWebSearch({ provider: "deepseek", apiKey: "fake-search-key", enabled: true });
-  store.setCapabilityEnabled("webSearch", true);
-  expect(f.open().get().capabilities.webSearch).toBe(true);
+  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(false);
 });
 
 test("keeps a separate encrypted web key across restart and chat-provider edits", async () => {
@@ -88,7 +73,7 @@ test("keeps a separate encrypted web key across restart and chat-provider edits"
     credentialsPersisted: false,
     credentialsLocked: false,
   });
-  expect(store.get().capabilities.webSearch).toBe(false);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
   store.saveWebSearch({ provider: "deepseek", apiKey: "web-only-fake-key", enabled: true });
   store.saveProvider({
     id: "chat",
@@ -134,14 +119,14 @@ test("requires a key to enable and never enables a provider by saving or replaci
   expect(() => store.getWebSearchApiKey()).toThrow("已停用");
   store.saveWebSearch({ provider: "deepseek", apiKey: "replacement-fake-key" });
   expect(f.open().get().webSearch).toMatchObject({ enabled: false, hasApiKey: true });
-  expect(store.get().capabilities.webSearch).toBe(false);
-  store.setCapabilityEnabled("webSearch", false);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
+  store.setPluginEnabled("zpi.web-search", false);
   store.saveWebSearch({ provider: "deepseek", enabled: true });
   expect(f.open().get()).toMatchObject({
-    capabilities: { webSearch: false },
+    plugins: { enabled: { "zpi.web-search": false } },
     webSearch: { enabled: true, hasApiKey: true },
   });
-  store.setCapabilityEnabled("webSearch", true);
+  store.setPluginEnabled("zpi.web-search", true);
   expect(f.open().get().webSearch.enabled).toBe(true);
 });
 
@@ -232,71 +217,6 @@ test("never overwrites locked encrypted credentials and allows disabling without
   expect(() => f.open().getWebSearchApiKey()).toThrow("已停用");
   expect(f.open().getWebSearchCredentials()).toEqual({ apiKey: "locked-fake-key" });
   expect(f.open().get().webSearch.apiKeyLength).toBe("locked-fake-key".length);
-});
-
-test.each([false, true])(
-  "migrates the old provider choice from existing credentials: key=%s",
-  async (hasKey) => {
-    const f = await fixture();
-    f.open().saveWebSearch({ provider: "deepseek", apiKey: hasKey ? "legacy-fake-key" : "" });
-    const before = savedData(f.state);
-    delete before.webSearchEnabled;
-    f.state.setSetting("app", before);
-    expect(f.open().get().webSearch).toMatchObject({ enabled: hasKey, hasApiKey: hasKey });
-    expect(savedData(f.state).webSearchEnabled).toBe(hasKey);
-    expect(f.open().get().webSearch.enabled).toBe(hasKey);
-  },
-);
-
-test("defers old provider migration while locked and preserves its choice through unrelated edits", async () => {
-  const f = await fixture();
-  f.open().saveWebSearch({ provider: "deepseek", apiKey: "legacy-locked-fake-key" });
-  const before = savedData(f.state);
-  delete before.webSearchEnabled;
-  const capabilities = { ...(before.capabilities as Record<string, unknown>) };
-  delete capabilities.webSearch;
-  f.state.setSetting("app", { ...before, capabilities });
-  f.lock();
-  const locked = f.open();
-  expect(locked.get().webSearch).toMatchObject({ enabled: false, hasApiKey: false, credentialsLocked: true });
-  expect(locked.get().capabilities.webSearch).toBe(false);
-  locked.updatePreferences({ theme: "dark" });
-  expect(savedData(f.state)).not.toHaveProperty("webSearchEnabled");
-  f.unlock();
-  expect(f.open().get().webSearch).toMatchObject({
-    enabled: true,
-    hasApiKey: true,
-    credentialsLocked: false,
-  });
-  expect(savedData(f.state).webSearchEnabled).toBe(true);
-});
-
-test("migrates a missing global capability to false and keeps strict booleans", async () => {
-  const f = await fixture();
-  f.open().updatePreferences({ theme: "dark" });
-  const before = savedData(f.state);
-  const capabilities = { ...(before.capabilities as Record<string, unknown>) };
-  delete capabilities.webSearch;
-  f.state.setSetting("app", { ...before, capabilities });
-  expect(f.open().get().capabilities.webSearch).toBe(false);
-  expect(f.state.getSetting<{ capabilities: { webSearch: boolean } }>("app")?.capabilities.webSearch).toBe(
-    false,
-  );
-  for (const value of [null, "true", 1]) {
-    f.state.setSetting("app", { ...before, capabilities: { ...capabilities, webSearch: value } });
-    expect(() => f.open()).toThrow("Invalid session capabilities");
-  }
-  f.state.setSetting("app", { ...before, capabilities: { ...capabilities, webSearch: false } });
-  const store = f.open();
-  store.saveWebSearch({ provider: "deepseek", apiKey: "legacy-enabled-fake-key", enabled: true });
-  const legacy = savedData(f.state);
-  delete legacy.webSearchEnabled;
-  f.state.setSetting("app", legacy);
-  expect(f.open().get()).toMatchObject({
-    capabilities: { webSearch: false },
-    webSearch: { enabled: true, hasApiKey: true },
-  });
-  expect(f.open().get().capabilities.webSearch).toBe(false);
 });
 
 test("rejects invalid persisted provider states", async () => {

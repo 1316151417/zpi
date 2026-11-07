@@ -5,6 +5,7 @@ import type { SubagentTask } from "zpi-ui";
 import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 import { SubagentProfiles } from "../src/main/plugins/subagents/profiles.ts";
 import { SubagentPlugin } from "../src/main/plugins/subagents/runtime.ts";
+import { TaskControls } from "../src/main/tasks/controls.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -52,7 +53,9 @@ function fixture(toolNames?: string[]) {
   const plugin = new SubagentPlugin(profiles, port);
   plugin.prepare("parent");
   const invoke = (name: string, params: unknown, signal?: AbortSignal, parent = "parent") => {
-    const tool = plugin.tools(parent).find((tool) => tool.name === name);
+    const tool = [...plugin.tools(parent), ...new TaskControls([plugin.taskBackend()]).tools(parent)].find(
+      (tool) => tool.name === name,
+    );
     if (!tool) throw new Error(`Missing tool ${name}`);
     return tool.execute("call", params, signal, undefined, {
       cwd: "/workspace",

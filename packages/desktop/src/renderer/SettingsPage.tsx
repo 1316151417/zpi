@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
+  Anchor,
   Archive,
   ArrowLeft,
   Bot,
@@ -10,7 +11,6 @@ import {
   Globe,
   Info,
   Keyboard,
-  MessageSquare,
   Monitor,
   Moon,
   Package,
@@ -40,16 +40,16 @@ import {
 import { ActionHint, codePreviewThemes, defaultCodePreview, SortableList } from "zpi-ui";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
-import { CapabilitySettings } from "./CapabilitySettings.tsx";
 import { ChatGPTConnection } from "./ChatGPTConnection.tsx";
 import { CommandSettings } from "./CommandSettings.tsx";
+import { HooksSettings } from "./HooksSettings.tsx";
 import { MemorySettings } from "./MemorySettings.tsx";
 import { draftModel, ModelConfigDialog, type ModelDraft, serializeModel } from "./ModelConfigDialog.tsx";
+import { PluginSettings } from "./PluginSettings.tsx";
 import { ProviderApiFormatSelect } from "./ProviderApiFormatSelect.tsx";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
-import { QuickChatSettings } from "./QuickChatSettings.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
 import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
@@ -69,21 +69,21 @@ const sections = [
   ["skills", "技能", Puzzle],
   ["commands", "命令", Terminal],
   ["models", "模型", Braces],
-  ["capabilities", "扩展能力", Package],
+  ["plugins", "插件", Package],
+  ["hooks", "钩子", Anchor],
   ["webSearch", "联网搜索", Globe],
   ["subagents", "子智能体", Bot],
   ["memory", "记忆", Brain],
-  ["quickChat", "快速对话", MessageSquare],
   ["archived", "已归档任务", Archive],
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
 const pageHelp: Partial<Record<SettingsTab, string>> = {
   interface: "主题和界面字号影响本机显示，代码预览可单独配置。",
   models: "配置提供商和模型后，可在聊天中选择使用。模型和提供商可分别启停。",
-  capabilities: "开关在新对话首次发送时生效，已有对话保留原配置。",
+  plugins: "插件在新对话首次发送时生效，已有对话保留冻结的版本、工具和选项。",
+  hooks:
+    "钩子在任务生命周期事件中运行本机命令。用户和项目配置保存在本机应用数据中，对新会话生效。插件自带的钩子在所属插件中管理。",
   commands: "在输入框键入 / 调用命令。可配置个人或项目命令，也可导入外部 Agent 的命令。",
-  quickChat:
-    "临时对话，不保存到任务列表。可用 read、bash 及已启用的联网工具；只读要求依赖提示词，bash 仍可读写本机文件。",
 };
 
 import {
@@ -458,6 +458,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                   breadcrumbContainer={commandBreadcrumb}
                   onEditingChange={setCommandEditing}
                 />
+              ) : tab === "hooks" ? (
+                <HooksSettings onOpenPlugins={() => setTab("plugins")} />
               ) : tab === "archived" ? (
                 <ArchivedTasks />
               ) : tab === "shortcuts" ? (
@@ -502,10 +504,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 <MemorySettings onNavigate={onClose} />
               ) : tab === "subagents" ? (
                 <SubagentSettings />
-              ) : tab === "quickChat" ? (
-                <QuickChatSettings onEditShortcut={() => setTab("shortcuts")} />
-              ) : tab === "capabilities" ? (
-                <CapabilitySettings />
+              ) : tab === "plugins" ? (
+                <PluginSettings />
               ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (
                 <ResourceSettings page={tab} />
               ) : tab === "interface" ? (

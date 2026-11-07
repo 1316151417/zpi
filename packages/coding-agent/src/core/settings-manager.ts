@@ -128,8 +128,7 @@ export class SettingsManager {
     return value === undefined || !Number.isFinite(value) ? DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS : value;
   }
   getStreamFirstResponseTimeoutMs(): number {
-    // Preserve an explicit legacy single-window override for both phases.
-    const value = this.settings.streamFirstResponseTimeoutMs ?? this.settings.streamIdleTimeoutMs;
+    const value = this.settings.streamFirstResponseTimeoutMs;
     return value === undefined || !Number.isFinite(value) ? DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS : value;
   }
   getHttpIdleTimeoutMs(): number {

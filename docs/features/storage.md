@@ -1,4 +1,4 @@
-# 本地数据、备份和迁移
+# 本地数据、备份和恢复
 
 ZPI 使用 SQLite 保存业务状态，JSONL v2 保存会话事实，另有派生历史索引和受控附件。数据根与项目目录是不同位置。
 
@@ -16,36 +16,14 @@ macOS 正式版默认 `~/Library/Application Support/ZPI/`，开发版和 Previe
 
 `history.sqlite` 是派生索引，`state.sqlite` 和 JSONL 是权威数据，不能通过删除业务库“修复启动”。凭据复制到其他身份或机器后可能无法解密，届时需要重新登录。
 
-## 从旧 JSON 存储迁移
+## 当前格式
 
-新运行时不会自动打开旧格式或后台迁移。先关闭旧、新客户端及迁移工具，保留离线源备份，在仓库依赖已安装的环境执行：
-
-```sh
-npx tsx scripts/storage-migrate.ts inspect --source /absolute/legacy
-npx tsx scripts/storage-migrate.ts plan --source /absolute/legacy --plan /absolute/plans/zpi.json
-npx tsx scripts/storage-migrate.ts convert --plan /absolute/plans/zpi.json --target /absolute/new-data --offline-confirmed
-npx tsx scripts/storage-migrate.ts validate --generation /actual/output/migration.staging
-npx tsx scripts/storage-migrate.ts activate --plan /absolute/plans/zpi.json --target /absolute/new-data --offline-confirmed
-```
-
-`validate` 的路径必须使用 convert 实际输出，不能照抄示例。源和目标不可相交，plan 放在源外；validate/activate 需要仍存在且未变化的离线源。`--offline-confirmed` 表示操作者已经停机，不会替你停止进程。
-
-检查计划的 blockers 和忽略条目；转换失败保留诊断，重新生成计划。目标位置参与受控路径重定位，转换后不能随意搬走目录。
-
-## 试用与回滚
-
-```sh
-ZPI_DATA_DIR=/absolute/new-data npm run dev
-```
-
-核对设置、任务组织、草稿、队列、附件和实际模型上下文。迁移 manifest 只描述转换时快照，正常使用后再次校验可能因合法修改失败。
-
-回旧版本需要旧源或旧备份，新版本新增数据不会反向转换。不能让旧程序打开新 generation，也不能只删活动指针降级。
+应用只接受当前 SQLite schema 4、应用设置 version 5、加密凭据 version 4 和 JSONL v2。新目录直接创建当前结构；已有数据必须已经符合当前格式。运行时没有旧配置转换、逐版本 schema 升级或旧目录读取分支，仓库也不携带一次性迁移工具。
 
 ## 锁与损坏
 
-进程退出会释放 SQLite 锁。兼容 owner 标记只有在确认旧进程不存在后自动清理；仍存活、无权检查或信息损坏时拒绝打开，不能按等待时长判定安全。
+SQLite 事务锁保证同一数据根只有一个写入者，进程退出后由操作系统释放。遇到锁冲突应关闭占用同一目录的进程。
 
-损坏的业务记录、未知新版本或被修改的 schema 会明确报错并保留原数据。任务删除的失败清理待办会在下次启动重试，不表示全部文件立即消失。
+损坏记录、不同版本或被修改的 schema 会明确报错并保留原数据。当前格式的事务恢复、日志索引重建和失败清理重试仍正常工作。
 
-旧 `repair:sessions` 只修复未迁移的旧格式，不是 SQLite 修复工具，不应对活动 generation 运行。机制见[迁移与恢复](../internals/storage.md)。
+启动时不会扫描或导入数据根中的旧 JSON 文件。备份与恢复应针对完整的当前数据根操作。机制见[存储原理](../internals/storage.md)。

@@ -4,6 +4,8 @@
 
 ## 桌面 bash 覆盖
 
+background-tasks 插件显式覆盖内置 bash，并向共享 TaskControls 注册后台任务后端。协作插件独立注册子智能体后端；两者按实际任务归属路由，关闭协作不影响后台命令。关闭后台命令插件后，新会话使用 SDK 基础 bash。
+
 桌面 bash 的 timeout 单位是毫秒，默认 120000、最大默认 600000，可由 BASH_DEFAULT_TIMEOUT_MS/BASH_MAX_TIMEOUT_MS 调整。与 SDK bash 的秒单位不同。`run_in_background` 立即后台化；普通前台命令到时可转后台，单纯 sleep 命令到时则终止。
 
 每次命令创建 exec_ ID 和独占输出文件，主进程维护执行句柄、状态、等待者与输出位置。后台化解除当前前台等待，进程可以跨模型 turn 存活。它不表示进程能够跨应用重启恢复。

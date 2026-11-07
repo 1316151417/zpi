@@ -92,6 +92,7 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await configureModels(page);
     await page.reload();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.locator(".draft-project-trigger")).toHaveText("project");
     await page.getByLabel("消息", { exact: true }).fill("initial task");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
@@ -108,30 +109,23 @@ test("read-only resource settings, skill defaults, file changes and compaction u
       "技能",
       "命令",
       "模型",
-      "扩展能力",
+      "插件",
+      "钩子",
       "联网搜索",
       "子智能体",
       "记忆",
-      "快速对话",
       "已归档任务",
     ]);
     await expect(page.getByRole("button", { name: "界面设置", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await expect(page.locator(".capability-settings .settings-row strong")).toHaveText([
-      "指令 · 交互方式",
-      "指令 · 多工具调用",
-      "指令 · 文件链接格式",
-      "指令 · 文件内容复用",
-      "指令 · 主动推进",
-      "工具 · 向用户提问",
-    ]);
+    await page.getByRole("button", { name: "插件", exact: true }).click();
     const capabilitySwitches = page.locator(".capability-settings input[type=checkbox]");
-    await expect(capabilitySwitches).toHaveCount(6);
+    await expect(capabilitySwitches).toHaveCount(13);
     await expect(page.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toHaveCount(0);
-    for (const toggle of await capabilitySwitches.all()) await expect(toggle).toBeChecked();
+    for (const toggle of await capabilitySwitches.all())
+      await expect(toggle).toBeChecked({ checked: (await toggle.getAttribute("aria-label")) !== "联网搜索" });
     await page.screenshot({ path: "test-results/desktop-settings-capabilities.png" });
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(
@@ -150,9 +144,9 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await expect(rules).toContainText("Return web URLs as Markdown links");
     await expect(rules).toContainText("return local file references as Markdown links");
     const customInstructions = await rules.textContent();
-    await expect(page.locator(".resource-settings")).not.toContainText("按启用的扩展能力追加规则");
+    await expect(page.locator(".resource-settings")).not.toContainText("按启用的插件追加规则");
     await page.getByRole("button", { name: "追加指令说明", exact: true }).hover();
-    await expect(page.getByRole("tooltip")).toContainText("按启用的扩展能力追加规则");
+    await expect(page.getByRole("tooltip")).toContainText("按启用的插件追加规则");
     expect(
       await page.locator(".prompt-preview").evaluate((base) => {
         const rules = document.querySelector(".custom-instructions-preview");

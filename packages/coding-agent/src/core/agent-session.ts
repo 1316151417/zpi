@@ -24,8 +24,12 @@ import {
   retryDelayMs,
 } from "zpi-ai";
 import { ResponsesSession } from "zpi-ai/api/responses-session";
+import { expandPluginCommand } from "../plugins/assembly.ts";
+import type { HookExecution, HookRegistration } from "../plugins/hooks.ts";
+import { SessionHooks } from "../plugins/session-hooks.ts";
+import type { PluginCommand } from "../plugins/types.ts";
 import type { ParsedInput } from "./commands.ts";
-import { parseInput } from "./commands.ts";
+import { listCommands, parseInput } from "./commands.ts";
 import {
   calculateContextTokens,
   compact as compactContext,
@@ -65,6 +69,7 @@ function validateInputContext(input: ParsedInput, context: InputContext): void {
     throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
 }
 export type AgentSessionEvent =
+  | { type: "hook_execution"; execution: HookExecution }
   | { type: "model_performance"; performance: ModelPerformance; totals: ModelPerformanceTotals }
   | Exclude<AgentEvent, { type: "agent_end" }>
   | { type: "agent_end"; messages: AgentState["messages"]; willRetry: boolean }
@@ -83,7 +88,15 @@ export type AgentSessionEvent =
     }
   | { type: "command_result"; message: string };
 export class AgentSession {
+  private modelRequestOptions?: () => SimpleStreamOptions;
+  private onCompaction?: (
+    phase: "before" | "after",
+    context: { manual: boolean; instructions: string },
+    signal?: AbortSignal,
+  ) => Promise<void>;
   private agent: Agent;
+  private pluginCommands: readonly PluginCommand[];
+  private hooks: SessionHooks;
   private manager: SessionManager;
   private steering: import("zpi-ai").UserMessage[] = [];
   private pendingMessages: import("zpi-ai").UserMessage[] = [];
@@ -130,7 +143,30 @@ export class AgentSession {
       settingsManager?: SettingsManager;
     },
     performanceTotals?: ModelPerformanceTotals,
+    extensions: {
+      modelRequestOptions?: () => SimpleStreamOptions;
+      onCompaction?: (
+        phase: "before" | "after",
+        context: { manual: boolean; instructions: string },
+        signal?: AbortSignal,
+      ) => Promise<void>;
+      beforeModelRequest?: (model: Model, context: import("zpi-ai").Context) => void;
+      commands?: readonly PluginCommand[];
+      hooks?: readonly (HookRegistration & { pluginId?: string })[];
+    } = {},
   ) {
+    this.modelRequestOptions = extensions.modelRequestOptions;
+    this.onCompaction = extensions.onCompaction;
+    this.pluginCommands = structuredClone(extensions.commands ?? []);
+    this.hooks = new SessionHooks(
+      {
+        sessionId: manager.getSessionId(),
+        cwd: manager.getCwd(),
+        source: manager.buildSessionContext().messages.some((m) => m.role === "user") ? "resume" : "startup",
+      },
+      extensions.hooks ?? [],
+      (execution) => this.notify({ type: "hook_execution", execution }),
+    );
     this.performance = new SessionPerformance(
       (performance, totals) => this.notify({ type: "model_performance", performance, totals }),
       performanceTotals,
@@ -155,7 +191,10 @@ export class AgentSession {
         messages: manager.buildSessionContext().messages,
         tools: activeTools,
       },
-      streamFn: (m, c, o) => this.streamWithRecovery(m, c, o),
+      streamFn: (m, c, o) => {
+        extensions.beforeModelRequest?.(m, c);
+        return this.streamWithRecovery(m, c, o);
+      },
       transformContext: async (messages) => {
         const config = this.settingsManager.getMicrocompactSettings();
         const settings = this.settingsManager.getCompactionSettings(this.model);
@@ -190,9 +229,13 @@ export class AgentSession {
         }
         return undefined;
       },
+      beforeToolCall: this.hooks.runner.hasToolHooks ? this.hooks.beforeToolCall : undefined,
+      afterToolCall: this.hooks.runner.hasToolHooks ? this.hooks.afterToolCall : undefined,
+      beforeStop: this.hooks.beforeStop,
+      streamingToolExecution: this.hooks.runner.hasToolHooks ? "off" : "readOnly",
       toolExecution: "parallel",
       getSteeringMessages: () => this.steering.splice(0),
-      getPendingMessages: () => this.pendingMessages.splice(0),
+      getPendingMessages: () => [...this.hooks.drainMessages(), ...this.pendingMessages.splice(0)],
     });
     const streamingTools = new StreamingToolJournal(manager, () => this.notifyLastEntry());
     this.agent.subscribe(async (event) => {
@@ -328,13 +371,20 @@ export class AgentSession {
     this.idleCheck();
     const parsed = parseInput(text);
     validateInputContext(parsed, context);
-    if (parsed.kind === "init")
-      return {
-        kind: "prompt",
-        text: `Inspect this project (${this.manager.getCwd()}) and create or edit ONLY its root AGENTS.md. If it exists, read it first and use precise edits to preserve existing rules; do not overwrite it wholesale. Derive concise instructions from the actual project. Never modify the user-level AGENTS.md. Additional requirements: ${parsed.args || "none"}`,
-      };
+    if (parsed.kind === "prompt") {
+      const invocation = /^\s*\/(\S+)(?:\s+([\s\S]*))?$/.exec(text);
+      const command = invocation && this.pluginCommands.find((command) => command.name === invocation[1]);
+      if (command)
+        return {
+          kind: "prompt",
+          text: expandPluginCommand(command, invocation?.[2]?.trim() ?? "", this.manager.getCwd()),
+        };
+    }
     if (parsed.kind === "compact" && !this.alreadyCompacted()) this.compactionBoundary();
     return parsed;
+  }
+  listCommands(): { name: string; description: string }[] {
+    return listCommands(this.pluginCommands);
   }
   async submit(text: string): Promise<void> {
     return this.executeInput(await this.prepareInput(text));
@@ -534,18 +584,19 @@ export class AgentSession {
     return true;
   }
   private requestOptions(options: SimpleStreamOptions = {}): SimpleStreamOptions {
+    const request = { ...options, ...this.modelRequestOptions?.(), signal: options.signal };
     const provider = this.settingsManager.getProviderRetrySettings();
     const idle = this.settingsManager.getHttpIdleTimeoutMs();
-    const requestFetch = options.fetch ?? this.runtime.fetch;
+    const requestFetch = request.fetch ?? this.runtime.fetch;
     return {
       ...provider,
-      ...options,
-      timeoutMs: options.timeoutMs ?? provider.timeoutMs ?? (idle === 0 ? 2147483647 : idle),
-      streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? this.settingsManager.getStreamIdleTimeoutMs(),
+      ...request,
+      timeoutMs: request.timeoutMs ?? provider.timeoutMs ?? (idle === 0 ? 2147483647 : idle),
+      streamIdleTimeoutMs: request.streamIdleTimeoutMs ?? this.settingsManager.getStreamIdleTimeoutMs(),
       streamFirstResponseTimeoutMs:
-        options.streamFirstResponseTimeoutMs ?? this.settingsManager.getStreamFirstResponseTimeoutMs(),
-      maxRetries: options.maxRetries ?? provider.maxRetries,
-      maxRetryDelayMs: options.maxRetryDelayMs ?? provider.maxRetryDelayMs,
+        request.streamFirstResponseTimeoutMs ?? this.settingsManager.getStreamFirstResponseTimeoutMs(),
+      maxRetries: request.maxRetries ?? provider.maxRetries,
+      maxRetryDelayMs: request.maxRetryDelayMs ?? provider.maxRetryDelayMs,
       fetch: withHttpIdleTimeout(requestFetch, idle),
     };
   }
@@ -558,7 +609,9 @@ export class AgentSession {
     const origin = manual ? "manual" : "auto";
     this.notify({ type: "compaction", id, status: "running", origin });
     try {
+      await this.onCompaction?.("before", { manual, instructions }, signal);
       await this.summarizeContext(manual, instructions, signal);
+      await this.onCompaction?.("after", { manual, instructions }, signal);
       this.notify({ type: "compaction", id, status: "completed", origin });
     } catch (error) {
       this.notify({
@@ -785,6 +838,7 @@ export class AgentSession {
       return Promise.reject(e);
     }
     this.active = "prompt";
+    this.hooks.beginRun();
     this.performance.begin();
     this.abortRequested = false;
     this.overflowRecoveryAttempted = false;
@@ -793,12 +847,22 @@ export class AgentSession {
     this.compactController = new AbortController();
     this.running = Promise.resolve()
       .then(async () => {
-        await this.refreshInstructions();
         if (this.abortRequested) return;
         const signal = this.compactController?.signal;
+        const hookMessages = await this.hooks.preparePrompt(text, signal);
+        if (signal?.aborted) return;
+        await this.refreshInstructions();
+        if (signal?.aborted) return;
         await this.checkCompaction(signal, true);
         if (signal?.aborted) return;
-        await this.agent.prompt(text, options.images);
+        await this.agent.prompt([
+          ...hookMessages,
+          {
+            role: "user",
+            content: options.images?.length ? [{ type: "text", text }, ...options.images] : text,
+            timestamp: Date.now(),
+          },
+        ]);
         while (!signal?.aborted) {
           const last = this.messages.findLast((message) => message.role === "assistant");
           if (last?.role === "assistant" && (await this.waitForRetry(last, signal))) {

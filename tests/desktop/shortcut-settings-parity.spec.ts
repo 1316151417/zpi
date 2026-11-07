@@ -66,33 +66,6 @@ test("shortcut search, capture, cancel, clear, reset confirmation and failure fe
     await page.keyboard.press("Escape");
     await expect(keySearch).toHaveAttribute("aria-pressed", "false");
     await expect(rows).toHaveCount(shortcutCommands.length);
-    for (const [command, label, shiftKey] of [
-      ["quick-chat", "快速对话", false],
-      ["quick-chat-new", "新建快速对话", true],
-    ] as const) {
-      const quickChat = page.locator(`[data-shortcut-command="${command}"]`);
-      await quickChat.getByLabel(`编辑${label}快捷键`, { exact: true }).click();
-      await expect(quickChat.locator(".shortcut-recorder")).toHaveAttribute("aria-pressed", "true");
-      // Option-letter dead keys and Shift variants use physical letters only for quick-chat commands.
-      await page.evaluate(
-        (shiftKey) =>
-          document.activeElement?.dispatchEvent(
-            new KeyboardEvent("keydown", {
-              key: "Dead",
-              code: "KeyN",
-              altKey: true,
-              shiftKey,
-              bubbles: true,
-              cancelable: true,
-            }),
-          ),
-        shiftKey,
-      );
-      await expect(quickChat.locator(".shortcut-recorder")).toHaveAttribute("aria-pressed", "false");
-      await expect(quickChat.locator(".shortcut-recorder")).toHaveText(
-        process.platform === "darwin" ? `⌥${shiftKey ? "⇧" : ""}N` : `Alt${shiftKey ? "Shift" : ""}N`,
-      );
-    }
     const model = page.locator('[data-shortcut-command="select-model"]');
     const old = await model.locator(".shortcut-recorder").textContent();
     await model.getByLabel("编辑选择模型快捷键", { exact: true }).click();
@@ -246,7 +219,9 @@ test("environment shortcut closes from the nested branch search and restores its
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     const editor = page.getByLabel("消息", { exact: true });
+    await expect(page.getByRole("button", { name: "配置本地环境", exact: true })).toBeVisible();
     await editor.focus();
+    await expect(editor).toBeFocused();
     await page.keyboard.press(`${primary}+j`);
     await expect(page.locator('.environment-menu[data-state="open"]').first()).toBeVisible();
     await page.getByRole("menuitemcheckbox", { name: "新工作树" }).click();

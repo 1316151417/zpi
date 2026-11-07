@@ -79,6 +79,7 @@ test("streaming tools, manual expansion, default collapse, IME, safe renderer an
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toContainText("project");
     await page.getByLabel("消息", { exact: true }).fill("完整工具演示");
     await page.getByLabel("发送", { exact: true }).click();
     await expect(page.locator(".answer")).toContainText("首段已到达");

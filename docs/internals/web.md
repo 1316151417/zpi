@@ -4,7 +4,7 @@
 
 ## 请求管线
 
-WebSearch/WebFetch 使用 DeepSeek 工具服务的 `/v1/tools/search` 和 `/v1/tools/fetch`。凭据由主进程解析；能力快照控制会话是否具备工具，服务状态与凭据在请求时再次检查。
+web-search 插件复用 WebTools 注册 web_search/web_fetch，使用 DeepSeek 工具服务的 `/v1/tools/search` 和 `/v1/tools/fetch`。凭据由主进程解析；插件快照控制会话是否具备工具，服务状态与凭据在请求时再次检查。
 
 客户端每种操作每实例限制 5 QPS。30 秒总预算包含排队、请求、读取与重试；408、429 和 5xx 可重试，最多三次尝试，尊重 Retry-After。单响应限制 2 MiB，提供给模型的文本还有 32000 字符预算。等待与读取均可取消。
 

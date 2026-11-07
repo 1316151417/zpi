@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { ElectronApplication, Locator } from "@playwright/test";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
+import { create as createTask } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
@@ -59,8 +60,8 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await page.getByRole("checkbox", { name: "工具 · 向用户提问", exact: true }).check();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
+    await page.getByRole("checkbox", { name: "向用户提问", exact: true }).check();
     await page.getByLabel("关闭设置").click();
     const editor = page.getByLabel("消息", { exact: true });
     const card = page.getByRole("dialog", { name: "回答助手问题" });
@@ -129,7 +130,7 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
   }
 });
 
-test("instruction switches update their preview and the first-send prompt", async () => {
+test("instruction plugins update their preview and the first-send prompt", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-instructions-"));
   const server = await fakeServer((_, response) => {
     send(response, chunk({ content: "完成" }));
@@ -140,21 +141,20 @@ test("instruction switches update their preview and the first-send prompt", asyn
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await expect(page.locator(".capability-settings .settings-row strong").first()).toHaveText(
-      "指令 · 交互方式",
-    );
+    await page.getByRole("button", { name: "插件", exact: true }).click();
+    await expect(page.locator(".capability-settings .settings-row strong").first()).toHaveText("交互方式");
     await page.getByRole("button", { name: "系统提示词", exact: true }).click();
     await expect(page.locator(".custom-instructions-preview")).toContainText(
       "all answers, conclusions, and deliverables",
     );
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
     for (const name of [
-      "指令 · 交互方式",
-      "指令 · 多工具调用",
-      "指令 · 文件链接格式",
-      "指令 · 文件内容复用",
-      "指令 · 主动推进",
+      "交互方式",
+      "多工具调用",
+      "文件链接格式",
+      "文件内容复用",
+      "主动推进",
+      "子智能体协作",
     ]) {
       await expect(page.getByRole("checkbox", { name, exact: true })).toBeChecked();
       await page.getByRole("checkbox", { name, exact: true }).uncheck();
@@ -171,14 +171,14 @@ test("instruction switches update their preview and the first-send prompt", asyn
     expect(JSON.stringify(server.requests[0].messages)).not.toContain("<system_rules>");
     await page.reload();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    const communication = page.getByRole("checkbox", { name: "指令 · 交互方式", exact: true });
+    await page.getByRole("button", { name: "插件", exact: true }).click();
+    const communication = page.getByRole("checkbox", { name: "交互方式", exact: true });
     await expect(communication).not.toBeChecked();
     await communication.check();
     await expect(communication).toBeEnabled();
-    await expect(page.getByRole("checkbox", { name: "指令 · 文件链接格式", exact: true })).not.toBeChecked();
-    await expect(page.getByRole("checkbox", { name: "指令 · 多工具调用", exact: true })).not.toBeChecked();
-    const reuse = page.getByRole("checkbox", { name: "指令 · 文件内容复用", exact: true });
+    await expect(page.getByRole("checkbox", { name: "文件链接格式", exact: true })).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "多工具调用", exact: true })).not.toBeChecked();
+    const reuse = page.getByRole("checkbox", { name: "文件内容复用", exact: true });
     await expect(reuse).not.toBeChecked();
     await reuse.check();
     await expect(reuse).toBeEnabled();
@@ -193,7 +193,7 @@ test("instruction switches update their preview and the first-send prompt", asyn
     await expect(page.locator(".custom-instructions-preview")).not.toContainText("Return web URLs");
     expect(await page.locator(".prompt-preview").textContent()).toBe(basePrompt);
     await page.getByLabel("关闭设置").click();
-    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await createTask(page);
     await page.getByLabel("消息", { exact: true }).fill("复用文件内容的新会话");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
@@ -207,8 +207,8 @@ test("instruction switches update their preview and the first-send prompt", asyn
       "When you have enough information to act, act.",
     );
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    const proactive = page.getByRole("checkbox", { name: "指令 · 主动推进", exact: true });
+    await page.getByRole("button", { name: "插件", exact: true }).click();
+    const proactive = page.getByRole("checkbox", { name: "主动推进", exact: true });
     await expect(proactive).not.toBeChecked();
     await proactive.check();
     await expect(proactive).toBeEnabled();
@@ -223,7 +223,7 @@ test("instruction switches update their preview and the first-send prompt", asyn
     );
     expect(await page.locator(".prompt-preview").textContent()).toBe(basePrompt);
     await page.getByLabel("关闭设置").click();
-    await page.getByLabel("新建任务", { exact: true }).first().click();
+    await createTask(page);
     await page.getByLabel("消息", { exact: true }).fill("主动推进的新会话");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
@@ -232,7 +232,7 @@ test("instruction switches update their preview and the first-send prompt", asyn
     );
     await page.reload();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
     await expect(proactive).toBeChecked();
     await expect(communication).toBeChecked();
   } finally {
@@ -293,8 +293,8 @@ test("long question cards retain ZCode scroll bounds and responsive collapse in 
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await page.getByRole("checkbox", { name: "工具 · 向用户提问", exact: true }).check();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
+    await page.getByRole("checkbox", { name: "向用户提问", exact: true }).check();
     await page.getByLabel("关闭设置").click();
     await page.getByLabel("消息", { exact: true }).fill("长问题");
     await page.getByLabel("消息", { exact: true }).press("Enter");
@@ -370,17 +370,13 @@ test("capability settings add AskUserQuestion to a new chat, with paging, custom
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
     const settings = page.locator(".capability-settings");
-    await expect(settings.locator(".settings-row strong")).toHaveText([
-      "指令 · 交互方式",
-      "指令 · 多工具调用",
-      "指令 · 文件链接格式",
-      "指令 · 文件内容复用",
-      "指令 · 主动推进",
-      "工具 · 向用户提问",
-    ]);
-    for (const row of await settings.locator(".settings-row").all()) {
+    await expect(settings.getByRole("checkbox")).toHaveCount(13);
+    for (const row of await settings
+      .locator(".settings-row")
+      .filter({ has: page.getByRole("checkbox") })
+      .all()) {
       const toggle = row.getByRole("checkbox");
       const checked = await toggle.isChecked();
       await row.locator("strong").click();
@@ -388,21 +384,24 @@ test("capability settings add AskUserQuestion to a new chat, with paging, custom
       await row.locator("small").click();
       await expect(toggle).toBeChecked({ checked });
     }
-    await page.getByRole("checkbox", { name: "工具 · 向用户提问", exact: true }).check();
-    await expect(page.getByRole("checkbox", { name: "工具 · 向用户提问", exact: true })).toBeChecked();
+    await page.getByRole("checkbox", { name: "向用户提问", exact: true }).check();
+    await expect(page.getByRole("checkbox", { name: "向用户提问", exact: true })).toBeChecked();
     await expect(settings.getByRole("checkbox", { name: "工具-提问自动继续", exact: true })).toHaveCount(0);
-    const rows = await settings.locator(".settings-row").evaluateAll((rows) =>
-      rows.map((row) => {
-        const copy = row.querySelector(".settings-row-copy")?.getBoundingClientRect();
-        const toggle = row.querySelector("input")?.getBoundingClientRect();
-        return {
-          copyRight: copy?.right,
-          toggleLeft: toggle?.left,
-          height: row.getBoundingClientRect().height,
-        };
-      }),
-    );
-    expect(rows).toHaveLength(6);
+    const rows = await settings
+      .locator(".settings-row")
+      .filter({ has: page.getByRole("checkbox") })
+      .evaluateAll((rows) =>
+        rows.map((row) => {
+          const copy = row.querySelector(".settings-row-copy")?.getBoundingClientRect();
+          const toggle = row.querySelector("input")?.getBoundingClientRect();
+          return {
+            copyRight: copy?.right,
+            toggleLeft: toggle?.left,
+            height: row.getBoundingClientRect().height,
+          };
+        }),
+      );
+    expect(rows).toHaveLength(13);
     for (const row of rows) {
       expect(row.toggleLeft).toBeGreaterThan(row.copyRight ?? 0);
       expect(row.height).toBeLessThan(100);
@@ -413,7 +412,7 @@ test("capability settings add AskUserQuestion to a new chat, with paging, custom
       await expect(
         settings
           .locator(".settings-row")
-          .filter({ hasText: "指令 · 多工具调用" })
+          .filter({ hasText: "向用户提问" })
           .locator(".settings-switch > span"),
       ).toHaveCSS("background-color", colorScheme === "light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
       await page.screenshot({
@@ -658,9 +657,9 @@ test("selection disables only the auxiliary action while its active chat awaits 
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-    await page.getByRole("checkbox", { name: "工具 · 向用户提问", exact: true }).check();
-    await expect(page.getByRole("checkbox", { name: "工具 · 向用户提问", exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
+    await page.getByRole("checkbox", { name: "向用户提问", exact: true }).check();
+    await expect(page.getByRole("checkbox", { name: "向用户提问", exact: true })).toBeChecked();
     await page.getByLabel("关闭设置").click();
     const main = page.locator("main");
     await main.getByLabel("消息", { exact: true }).fill("主问题");
@@ -725,6 +724,7 @@ test("Markdown preview selections open an auxiliary chat with their source path 
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.locator(".draft-project-trigger")).toHaveText("project");
     const main = page.locator("main");
     await main.getByLabel("消息", { exact: true }).fill("阅读文档");
     await main.getByLabel("发送", { exact: true }).click();

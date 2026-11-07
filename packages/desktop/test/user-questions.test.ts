@@ -196,12 +196,12 @@ it("snapshots the plugin for new sessions, resumes with answers, and restores th
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("askUserQuestion", true);
+  f.settings.setPluginEnabled("zpi.questions", true);
   const session = await f.host.createSession(f.a.id);
   await f.host.startRun({ sessionId: session.id, text: "choose" });
   const running = f.host.activeRuns.get(session.id)?.done;
   await expect.poll(() => f.host.getSessionSnapshot(session.id).view.question?.id).toBe("ask");
-  f.settings.setCapabilityEnabled("askUserQuestion", false);
+  f.settings.setPluginEnabled("zpi.questions", false);
   f.host.questions.respond(session.id, "ask", { answers: { "使用哪种方案？": "B" } });
   await running;
   expect(JSON.stringify(f.server.requests[1].messages)).toContain("B");

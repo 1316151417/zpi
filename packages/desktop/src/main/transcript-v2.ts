@@ -27,7 +27,7 @@ export function validateTranscriptHeader(value: unknown): TranscriptHeader {
     typeof value.generation !== "string" ||
     !value.generation
   )
-    throw new Error("storage: Expected transcript v2; migrate legacy data offline");
+    throw new Error("storage: Unsupported transcript format; expected v2");
   return value as unknown as TranscriptHeader;
 }
 /** UI/core adapters may use SessionEntry; only semantic v2 records reach disk. */

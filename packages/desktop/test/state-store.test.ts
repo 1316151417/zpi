@@ -37,6 +37,22 @@ const queue = (): InputQueue => ({
     },
   ],
 });
+it("creates only the current schema without a migration ledger", () => {
+  const { value } = store();
+  expect(value.db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'transcript_%'").all()).toEqual([]);
+  expect(value.db.prepare("PRAGMA user_version").get()?.user_version).toBe(STATE_SCHEMA_VERSION);
+  expect(
+    value.db.prepare("SELECT name FROM sqlite_master WHERE name='schema_migrations'").get(),
+  ).toBeUndefined();
+});
+it.each([1, 2, 3])("rejects historical SQLite schema %s without modifying its bytes", (version) => {
+  const { value, file } = store();
+  value.db.exec(`PRAGMA user_version=${version}`);
+  value.close();
+  const before = readFileSync(file);
+  expect(() => new StateStore(file)).toThrow("unsupported schema version");
+  expect(readFileSync(file)).toEqual(before);
+});
 afterEach(() => {
   for (const item of stores.splice(0)) {
     try {
@@ -412,7 +428,7 @@ describe("authoritative SQLite state", () => {
     const db = new DatabaseSync(other);
     db.exec("CREATE TABLE legacy(x TEXT)");
     db.close();
-    expect(() => new StateStore(other)).toThrow("offline migration");
+    expect(() => new StateStore(other)).toThrow("unsupported schema version");
   });
 });
 
@@ -424,7 +440,7 @@ it("rejects existing empty databases without modifying their bytes", () => {
     if (name === "zero.sqlite") writeFileSync(file, "");
     else new DatabaseSync(file).close();
     const bytes = readFileSync(file);
-    expect(() => new StateStore(file)).toThrow("offline migration");
+    expect(() => new StateStore(file)).toThrow("unsupported schema version");
     expect(readFileSync(file)).toEqual(bytes);
   }
 });
@@ -487,10 +503,10 @@ it("explicit full diagnosis rejects foreign-key corruption without repairing aut
   expect(readFileSync(file)).toEqual(bytes);
 });
 
-it("opens with large derived tables without any whole-database integrity scan", () => {
+it("opens with large settings without any whole-database integrity scan", () => {
   const { value: s, file } = store();
   s.db.exec(`WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<20000)
-    INSERT INTO transcript_search SELECT 'large',n,'run',printf('%01024d',n) FROM rows;`);
+    INSERT INTO app_settings SELECT 'large-'||n,json_object('text',printf('%01024d',n)),1 FROM rows;`);
   s.close();
   const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
   try {

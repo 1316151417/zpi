@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
-import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { isolatedHistory } from "./helpers/history-reader.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
@@ -18,7 +18,7 @@ for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
     await f.host.activeRuns.get(parent.id)?.done;
     await f.host.close();
     const path = join(f.dir, "agent", "sessions", f.a.id, `${parent.id}.jsonl`);
-    const index = new HistoryIndex(path, f.settings.state.db);
+    const index = isolatedHistory(path);
     await index.load();
     const manager = SessionManager.fromStore(index);
     const boundary = [...manager.iterateEntries()].find((entry) =>
@@ -60,7 +60,7 @@ for (const boundaryType of ["message", "run", "streaming-tools"] as const) {
     await host.init();
     cleanup.push(() => host.close());
     const child = await host.createSideChat(parent.id);
-    const childIndex = new HistoryIndex(host.sessionPath(child.id), f.settings.state.db);
+    const childIndex = isolatedHistory(host.sessionPath(child.id));
     await childIndex.load();
     expect(SessionManager.fromStore(childIndex).buildSessionContext().messages.slice(0, -1)).toEqual(
       expected,
@@ -255,26 +255,6 @@ it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages 
   await f.host.startRun({ sessionId: child.id, text: "local question" });
   await f.host.activeRuns.get(child.id)?.done;
   expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ turns: 3, steps: 30 });
-  // Simulate an old installation's already-saved inflated totals, including local latency/usage.
-  const completed = f.settings.state.getTask(child.id);
-  if (!completed?.modelPerformanceTotals) throw new Error("Missing completed totals");
-  const totals = { ...completed.modelPerformanceTotals, turns: 8, llmMs: 1234, toolMs: 567 };
-  f.settings.state.upsertTask({
-    ...completed,
-    sideChatInheritance: undefined,
-    modelPerformanceTotals: totals,
-  });
-  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({
-    turns: 3,
-    steps: 30,
-    llmMs: 1234,
-    toolMs: 567,
-  });
-  const repaired = f.settings.state.getTask(child.id);
-  if (!repaired) throw new Error("Missing repaired task");
-  expect(repaired.modelPerformanceTotals).toEqual({ ...totals, turns: 3 });
-  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance?.turns).toBe(3);
-  expect(f.settings.state.getTask(child.id)?.revision).toBe(repaired.revision);
   await f.host.close();
   const restored = new SessionHost(f.dir, f.settings, f.dir, undefined, undefined);
   await restored.init();
@@ -289,40 +269,6 @@ it("inherits 2/29 instead of seven internal prompts, rebuilds totals, and pages 
   expect(f.settings.state.getTask(child.id)?.sideChatInheritance?.childGeneration).toBe(
     restored["requiredIndex"](child.id).snapshot().generation,
   );
-});
-
-it("keeps legacy usage and timings but omits unprovable inherited turns", async () => {
-  const f = await fixture((_, response) => {
-    send(response, chunk({ content: "answer" }));
-    done(response);
-  });
-  const parent = await f.host.createSession(f.a.id);
-  await f.host.startRun({ sessionId: parent.id, text: "original" });
-  await f.host.activeRuns.get(parent.id)?.done;
-  const child = await f.host.createSideChat(parent.id);
-  const saved = f.settings.state.getTask(child.id);
-  if (!saved?.modelPerformanceTotals) throw new Error("Missing totals");
-  f.settings.state.upsertTask({ ...saved, sideChatInheritance: undefined });
-  // IDs alone cannot verify a historical message if the parent's content was replaced.
-  const manager = f.host["manager"](parent.id);
-  await manager.replaceEntriesAsync(
-    [...manager.iterateEntries()].map((entry) =>
-      entry.type === "message" && entry.message.role === "user"
-        ? { ...entry, message: { ...entry.message, content: "changed" } }
-        : entry,
-    ),
-  );
-  const value = f.host.getSessionSnapshot(child.id).view.modelPerformance;
-  expect(value?.turns).toBeUndefined();
-  expect(value?.steps).toBe(1);
-  expect(f.settings.state.getTask(child.id)?.modelPerformanceTotals).toEqual({
-    ...saved.modelPerformanceTotals,
-    turnsKnown: false,
-  });
-  await f.host.startRun({ sessionId: child.id, text: "local" });
-  await f.host.activeRuns.get(child.id)?.done;
-  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject({ steps: 2 });
-  expect(f.host.getSessionSnapshot(child.id).view.modelPerformance?.turns).toBeUndefined();
 });
 
 it("freezes an active parent's completed prefix rather than its later totals", async () => {

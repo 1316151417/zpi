@@ -1,8 +1,8 @@
-import { lstat, open, readdir, rm } from "node:fs/promises";
+import { lstat, open, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { StateStore } from "./state-store.ts";
 import { taskFromRow } from "./task-state.ts";
-import { canonicalTranscriptPath, deleteTranscriptIndex, transcriptTables } from "./transcript-schema.ts";
+import { canonicalTranscriptPath } from "./transcript-schema.ts";
 import { validateTranscriptHeader } from "./transcript-v2.ts";
 
 /** Only managed regular files qualify. A symlink at any level is a diagnostic, not deletion authority. */
@@ -94,47 +94,7 @@ export async function retryStorageCleanup(
         .get(job.taskId);
       if (!row) throw new Error("storage: cleanup requires a deleted task");
       const task = taskFromRow(row);
-      const paths = new Set<string>();
-      if (task.sessionFile) paths.add(key(task.sessionFile));
-      for (const row of state.db
-        .prepare(
-          "SELECT path FROM transcript_state WHERE json_extract(CASE WHEN json_valid(header) THEN header ELSE '{}' END,'$.id')=?",
-        )
-        .all(task.id))
-        paths.add(String(row.path));
-      const ownedName = (name: string) =>
-        name === `${task.id}.jsonl` ||
-        (name.startsWith(`${task.id}.generation-`) &&
-          /^[0-9a-f-]{36}\.jsonl$/.test(name.slice(`${task.id}.generation-`.length)));
-      // Index-only remnants can outlive both file and watermark. Bound scans by the known
-      // filename prefix, using each projection's existing path-leading primary key.
-      for (const parent of new Set([...paths].map(dirname))) {
-        const prefix = join(parent, `${task.id}.`);
-        for (const table of transcriptTables) {
-          for (const row of state.db
-            .prepare(`SELECT DISTINCT path FROM transcript_${table} WHERE path>=? AND path<?`)
-            .all(prefix, `${prefix}\uffff`)) {
-            if (ownedName(basename(String(row.path)))) paths.add(String(row.path));
-          }
-        }
-      }
-      // Reclaim pre-queue generations only on explicit task deletion, with both a matching name and header.
-      for (const path of [...paths]) {
-        await managedPath(sessions, absolute(path));
-        let names: string[];
-        try {
-          names = await readdir(dirname(absolute(path)));
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-          throw error;
-        }
-        for (const name of names) {
-          if (ownedName(name)) paths.add(key(join(dirname(absolute(path)), name)));
-        }
-      }
-      state.transaction("cleanup.schedule", task.id, () => {
-        for (const path of paths) state.enqueueCleanup("transcript", task.id, path);
-      });
+      if (task.sessionFile) state.enqueueCleanup("transcript", task.id, key(task.sessionFile));
       await deleteResources(task.id);
       finish(job.kind, job.taskId, job.path);
     });
@@ -157,15 +117,6 @@ export async function retryStorageCleanup(
           )
       )
         throw new Error("storage: cleanup deferred: transcript still referenced by task or recovery intent");
-      const keys = new Set([key(job.path), job.path, file]);
-      // Preserve compatibility with absolute and macOS path-alias keys from older index writers.
-      for (const row of state.db
-        .prepare(
-          "SELECT path FROM transcript_state WHERE json_extract(CASE WHEN json_valid(header) THEN header ELSE '{}' END,'$.id')=?",
-        )
-        .all(job.taskId)) {
-        if (absolute(String(row.path)) === file) keys.add(String(row.path));
-      }
       if (await managedPath(sessions, file)) {
         const deleted = state.db
           .prepare("SELECT * FROM tasks WHERE id=? AND deleted_at IS NOT NULL")
@@ -184,7 +135,6 @@ export async function retryStorageCleanup(
       }
       await deleteIndex?.(file);
       state.transaction("cleanup.transcript", job.taskId, () => {
-        for (const path of keys) deleteTranscriptIndex(state.db, path);
         finish(job.kind, job.taskId, job.path);
       });
     });

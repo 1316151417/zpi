@@ -12,8 +12,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { parseDocument, stringify } from "yaml";
+import { stringify } from "yaml";
 import { isJsonObject } from "zpi-ai";
+import { parseMarkdownFrontmatter } from "zpi-coding-agent";
 import type { CombinedSelection } from "../../../shared/bridge.ts";
 import type { SubagentCatalog, SubagentConfig, SubagentProfile } from "../../../shared/subagents.ts";
 import { agentColors } from "../../../shared/subagents.ts";
@@ -24,7 +25,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-const frontmatter = /^(?:\uFEFF)?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 function markdownSelection(fields: Record<string, unknown>): CombinedSelection | undefined {
   if (typeof fields.model !== "string") return fields.modelSelection as CombinedSelection | undefined;
   const value = fields.model.trim();
@@ -95,6 +95,23 @@ export function validateSubagentConfig(value: unknown): asserts value is Subagen
     throw new Error(
       "invalid_input: 子智能体配置无效（名称为 3–50 位字母、数字或连字符，描述和提示词不能为空）",
     );
+}
+
+export function parseSubagentMarkdown(text: string): SubagentConfig {
+  const parsed = parseMarkdownFrontmatter(text);
+  if (!parsed) throw new Error("缺少 YAML frontmatter");
+  const fields = parsed.fields;
+  const config = {
+    ...fields,
+    modelSelection: markdownSelection(fields),
+    tools: toolNames(fields.tools),
+    disallowedTools: toolNames(fields.disallowedTools),
+    color: fields.color ?? "blue",
+    injectAgentsMd: fields.injectAgentsMd ?? true,
+    systemPrompt: parsed.body,
+  };
+  validateSubagentConfig(config);
+  return config;
 }
 
 export interface SubagentProfileState {
@@ -179,22 +196,7 @@ export class SubagentProfiles {
           if (!statSync(path).isFile()) continue;
           const text = readFileSync(path, "utf8");
           if (text.length > 128000) throw new Error("配置文件过大");
-          const match = frontmatter.exec(text);
-          if (!match) throw new Error("缺少 YAML frontmatter");
-          const doc = parseDocument(match[1], { uniqueKeys: true });
-          if (doc.errors.length) throw new Error(doc.errors[0].message);
-          const fields = doc.toJS({ maxAliasCount: 20 });
-          if (!isJsonObject(fields)) throw new Error("frontmatter 必须是对象");
-          const config = {
-            ...fields,
-            modelSelection: markdownSelection(fields),
-            tools: toolNames(fields.tools),
-            disallowedTools: toolNames(fields.disallowedTools),
-            color: fields.color ?? "blue",
-            injectAgentsMd: fields.injectAgentsMd ?? true,
-            systemPrompt: text.slice(match[0].length).trim(),
-          };
-          validateSubagentConfig(config);
+          const config = parseSubagentMarkdown(text);
           const id = `${scope}:${file.replace(/\.(md|markdown)$/i, "")}`;
           agents.push({ ...config, id, path, scope, enabled: !this.state.disabled.includes(id) });
         } catch (error) {
@@ -239,9 +241,10 @@ export class SubagentProfiles {
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${config.name}.md`);
     const { systemPrompt, modelSelection, ...edited } = config;
-    const priorMatch = previous?.path ? frontmatter.exec(readFileSync(previous.path, "utf8")) : null;
-    const original = priorMatch ? parseDocument(priorMatch[1]).toJS({ maxAliasCount: 20 }) : {};
-    const fields = {
+    const original = previous?.path
+      ? (parseMarkdownFrontmatter(readFileSync(previous.path, "utf8"))?.fields ?? {})
+      : {};
+    const fields: Record<string, unknown> = {
       ...original,
       ...edited,
       model: modelSelection ? markdownModel(modelSelection) : "inherit",

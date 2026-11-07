@@ -128,7 +128,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
               追加指令{" "}
               <SettingsHelp
                 label="追加指令"
-                text="按启用的扩展能力追加规则，可在扩展能力页调整。新对话首次发送时生效，已有对话保留原配置；此处只读。"
+                text="按启用的插件追加规则，可在插件页调整。新对话首次发送时生效，已有对话保留原配置；此处只读。"
               />
             </span>{" "}
             <small>只读</small>

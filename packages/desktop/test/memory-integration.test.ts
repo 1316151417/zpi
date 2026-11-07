@@ -248,38 +248,6 @@ test("explicit edit creates only missing short memory files and never overwrites
   await expect(f.host.openMemoryFile(null, "long", "edit")).rejects.toThrow("后台维护");
 });
 
-test("restored legacy dual-memory sessions select long memory and persist an exclusive configuration", async () => {
-  const f = await fixture();
-  await mkdir(join(f.resources, ".zpi"), { recursive: true });
-  await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [language] LEGACY_SHORT_MEMORY\n");
-  await f.host.saveMemorySettings({ ...defaultMemorySettings, short: true });
-  await run(f, "An existing short-memory session.");
-  await f.host.close();
-  const task = f.settings.state.getTask(f.session.id);
-  if (!task) throw new Error("Missing session");
-  const config = task.frozenConfiguration as { memory: { short: boolean; long: boolean } };
-  f.settings.state.upsertTask({
-    ...task,
-    frozenConfiguration: { ...config, memory: { short: true, long: true } },
-  });
-  const host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
-  cleanup.push(() => host.close());
-  await host.init();
-  vi.spyOn(host.longMemory, "context").mockResolvedValue({
-    instructions: ["RESTORED_LONG_MEMORY"],
-    sources: [],
-  });
-  vi.spyOn(host.longMemory, "check").mockResolvedValue();
-  await host.startRun({ sessionId: f.session.id, text: "Continue the legacy session." });
-  await host.activeRuns.get(f.session.id)?.done;
-  const prompt = host.sessions.get(f.session.id)?.systemPrompt;
-  expect(prompt).toContain("RESTORED_LONG_MEMORY");
-  expect(prompt).not.toContain("LEGACY_SHORT_MEMORY");
-  expect(f.settings.state.getTask(f.session.id)?.frozenConfiguration).toMatchObject({
-    memory: { short: false, long: true },
-  });
-});
-
 test("the main agent appends separate notes and the real consolidation runner reads instructions and notes before publishing", async () => {
   let library = "";
   const noteA = "Remember Chinese responses for project A. NOTE_A_BODY";

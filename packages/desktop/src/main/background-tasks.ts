@@ -10,6 +10,7 @@ import { Value } from "typebox/value";
 import { getShellConfig, getShellEnv, killProcessTree, type ToolDefinition } from "zpi-coding-agent";
 import type { BackgroundTask, BackgroundTaskOutput } from "zpi-ui";
 import { processGroupAlive as alive, terminateTaskProcess } from "./task-processes.ts";
+import type { TaskBackend } from "./tasks/controls.ts";
 
 interface Port {
   publish(task: BackgroundTask): void;
@@ -108,6 +109,26 @@ export class BackgroundTasks {
       return;
     execution.notified = true;
     void this.port.notify({ ...execution.task }).catch((error) => this.port.error(error));
+  }
+  taskBackend(): TaskBackend {
+    return {
+      kind: "local_bash",
+      owns: (sessionId, taskId) => this.tasks.get(taskId)?.sessionId === sessionId,
+      output: (sessionId, _callId, input, signal) => this.output(sessionId, input, signal),
+      stop: async (sessionId, _callId, taskId, signal) => {
+        signal?.throwIfAborted();
+        await this.stop(sessionId, taskId, true);
+        const task = this.owned(sessionId, taskId);
+        return textResult(
+          JSON.stringify({
+            message: `Successfully stopped task: ${taskId} (${task.command ?? "local_bash"})`,
+            task_id: taskId,
+            task_type: "local_bash",
+            command: task.command,
+          }),
+        );
+      },
+    };
   }
   tool(sessionId: string, cwd: string, child = false): ToolDefinition {
     return {

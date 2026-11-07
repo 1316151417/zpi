@@ -176,7 +176,7 @@ test("one compact task panel manages agents and services and retains finished hi
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.evaluate(async () => {
-      const result = await window.zpi.setCapabilityEnabled("subagents", true);
+      const result = await window.zpi.setPluginEnabled("zpi.collaboration", true);
       if (!result.ok) throw new Error(result.error.message);
     });
     const editor = page.getByLabel("消息", { exact: true });

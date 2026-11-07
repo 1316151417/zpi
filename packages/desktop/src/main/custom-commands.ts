@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
+import { builtinPlugins } from "zpi-builtin-plugins";
 import type {
   CustomCommand,
   CustomCommandDelete,
@@ -151,12 +152,18 @@ export function parseCustomCommandMarkdown(content: string): ParsedCustomCommand
       : { disableNonInteractive: ["true", "yes"].includes(scalar(nonInteractive).trim().toLowerCase()) }),
   };
 }
+const reservedCommandNames = new Set([
+  "compact",
+  "side",
+  "btw",
+  ...builtinPlugins.flatMap((plugin) => (plugin.commands ?? []).map((command) => command.name.toLowerCase())),
+]);
 export function validateCustomCommandName(name: string): string {
   if (typeof name !== "string") fail("invalid_input", "Command name must be text");
   const normalized = name.replace(/^\//, "");
   if (!/^[A-Za-z0-9_-]{1,50}$/.test(normalized))
     fail("invalid_input", "Use 1–50 letters, numbers, underscores, or hyphens for a command name");
-  if (["init", "compact", "side", "btw"].includes(normalized.toLowerCase()))
+  if (reservedCommandNames.has(normalized.toLowerCase()))
     fail("invalid_input", "Command name is reserved for a built-in command");
   return normalized;
 }
@@ -585,7 +592,7 @@ export class CustomCommandsStore {
           selected.set(key, command);
           if (
             !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(command.name) ||
-            ["/init", "/compact", "/side", "/btw"].includes(command.name.toLowerCase())
+            reservedCommandNames.has(command.name.slice(1).toLowerCase())
           )
             diagnostics.push({
               code: "unsupported_name",

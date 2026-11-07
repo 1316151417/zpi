@@ -3,6 +3,7 @@ import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
+import { TaskControls } from "../src/main/tasks/controls.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
 test("desktop Bash and shared controls work with subagents disabled; services outlive turns and persist terminal history", async () => {
@@ -35,7 +36,7 @@ test("desktop Bash and shared controls work with subagents disabled; services ou
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", false);
+  f.settings.setPluginEnabled("zpi.collaboration", false);
   await run(f, "Start a server");
   const task = f.host.getSessionSnapshot(f.session.id).view.backgroundTasks?.[0];
   if (!task) throw new Error("Missing background task");
@@ -44,7 +45,7 @@ test("desktop Bash and shared controls work with subagents disabled; services ou
     (tool) => tool.function.name,
   );
   expect(names).toEqual(["read", "bash", "edit", "write", "AskUserQuestion", "TaskOutput", "TaskStop"]);
-  const controls = f.host.taskTools(f.session.id, false);
+  const controls = new TaskControls([f.host.backgroundTasks.taskBackend()]).tools(f.session.id);
   const session = f.host.sessions.get(f.session.id);
   if (!session) throw new Error("Missing agent session");
   const context = {
@@ -189,7 +190,7 @@ test("child services appear in the parent panel and archive cleans them even aft
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Delegate server startup");
   const view = f.host.getSessionSnapshot(f.session.id).view;
   expect(view.subagents?.[0].status).toBe("completed");

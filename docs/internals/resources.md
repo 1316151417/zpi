@@ -25,15 +25,15 @@
 
 核心基础模板描述通用编码行为和工具。资源加载完成后加入指令及技能索引。SDK 的 `customInstructions` 可以是字符串数组，或返回字符串数组的同步函数；函数在资源加载后求值。它不是模板语言，不执行字符串中的任意表达式。
 
-自定义 loader 的 `getBaseInstructions` 可以替代基础指令，`getInstructions` 添加补充指令；保留的旧接口只用于兼容。桌面提示再说明当前项目、桌面可用能力和协作约定，避免将整个工具 schema 重复写入文字提示。
+自定义 loader 的 `getBaseInstructions` 可以替代基础指令，`getInstructions` 添加补充指令；保留的旧接口只用于兼容。五类桌面规则由独立内置插件贡献 instructions，首次发送冻结其文本和版本；协作插件贡献动态类型列表与协调提醒，当前项目资源仍由宿主加载。组件通过[统一装配入口](plugins.md)进入提示预览和实际会话。
 
 ## 刷新、禁用与出错
 
 资源设置管理的是可用项和加载状态，修改磁盘文件后需要通过相应刷新路径重新加载。不存在文件与格式错误要区分：不存在是可选资源缺失，坏 YAML、非法 metadata、读取失败应显示诊断。
 
-资源正文属于提供给模型的指令内容，并不赋予操作系统权限。技能不能让 SDK 获得 Electron，也不改变 shell 可访问的目录范围。工作目录、工具选择和桌面能力快照分别由各自状态 owner 管理。
+资源正文属于提供给模型的指令内容，并不赋予操作系统权限。技能不能让 SDK 获得 Electron，也不改变 shell 可访问的目录范围。工作目录、工具选择和桌面插件快照分别由各自状态 owner 管理。
 
 ## 源码与回归入口
 
-- [加载器](../../packages/coding-agent/src/core/resources.ts)、[系统提示](../../packages/coding-agent/src/core/system-prompt.ts)、[桌面提示](../../packages/desktop/src/main/desktop-prompt.ts)、[设置界面](../../packages/desktop/src/renderer/ResourceSettings.tsx)。
+- [加载器](../../packages/coding-agent/src/core/resources.ts)、[系统提示](../../packages/coding-agent/src/core/system-prompt.ts)、[内置插件](../../packages/builtin-plugins/src/index.ts)、[设置界面](../../packages/desktop/src/renderer/ResourceSettings.tsx)。
 - [发现测试](../../packages/coding-agent/test/resource-discovery.test.ts)、[技能测试](../../packages/coding-agent/test/skills.test.ts)、[自定义指令](../../packages/coding-agent/test/custom-instructions.test.ts)、[桌面资源](../../packages/desktop/test/resources.test.ts)。

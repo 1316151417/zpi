@@ -8,7 +8,8 @@ import {
   type MemoryStatus,
   memorySettingLimits,
 } from "../shared/memory.ts";
-import { quickChatModels } from "../shared/quick-chat-settings.ts";
+import { memoryMode } from "../shared/plugins.ts";
+import { selectableModels } from "../shared/selectable-models.ts";
 import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { selectSession, useStore } from "./store.ts";
@@ -35,7 +36,7 @@ function MemoryModelSelection({
   optional?: boolean;
   onChange: (value: CombinedSelection | null) => void;
 }) {
-  const models = quickChatModels(providers);
+  const models = selectableModels(providers);
   const selected = models.find(
     ({ provider, model }) => provider.id === value?.provider && model.id === value?.modelId,
   );
@@ -156,7 +157,14 @@ function ThresholdInput({
 export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
   const sessionId = useStore((state) => state.selected) ?? null;
   const providers = useStore((state) => state.settings?.providers) ?? [];
-  const [settings, setSettings] = useState<MemorySettingsData>();
+  const plugins = useStore((state) => state.settings?.plugins);
+  const [savedSettings, setSettings] = useState<MemorySettingsData>();
+  const mode = plugins ? memoryMode(plugins) : undefined;
+  const settings =
+    savedSettings &&
+    (mode === undefined
+      ? savedSettings
+      : { ...savedSettings, short: mode === "short", long: mode === "long" });
   const [status, setStatus] = useState<MemoryStatus>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -270,7 +278,7 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                 <strong>启用短记忆</strong>
                 <SettingsHelp
                   label="短记忆"
-                  text="与长期记忆互斥，开启时自动关闭长期记忆。保存明确偏好与可复用约束，由主 Agent 维护用户和当前项目的 MEMORY.md。每个文件最多 20 条、正文共 2,000 个 Unicode 字符；异常文件不加载。开关在新对话首次发送时生效，已有对话保留原配置；文件内容在安全轮次刷新。关闭保留数据，快速对话不加载。"
+                  text="与长期记忆互斥，开启时自动关闭长期记忆。保存明确偏好与可复用约束，由主 Agent 维护用户和当前项目的 MEMORY.md。每个文件最多 20 条、正文共 2,000 个 Unicode 字符；异常文件不加载。开关在新对话首次发送时生效，已有对话保留原配置；文件内容在安全轮次刷新。关闭保留数据。"
                 />
               </span>
               <span className="settings-switch">
@@ -330,7 +338,7 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                 <strong>启用长期记忆</strong>
                 <SettingsHelp
                   label="长期记忆"
-                  text="从历史会话提取可复用经验，仅自动加载简短摘要，详情按需读取。与短记忆互斥，开启时自动关闭短记忆。新对话首次发送时保存开关配置；关闭立即取消后台任务并保留数据，已有对话仍按原配置读取。快速对话不加载或生成记忆。"
+                  text="从历史会话提取可复用经验，仅自动加载简短摘要，详情按需读取。与短记忆互斥，开启时自动关闭短记忆。新对话首次发送时保存开关配置；关闭立即取消后台任务并保留数据，已有对话仍按原配置读取。"
                 />
               </span>
               <span className="settings-switch">

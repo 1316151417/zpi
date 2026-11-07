@@ -272,7 +272,7 @@ it("rejects legacy headers instead of reading product metadata as authority", as
       timestamp: new Date().toISOString(),
     })}\n`,
   );
-  await expect(new HistoryIndex(path, db).load()).rejects.toThrow(/migrate legacy/);
+  await expect(new HistoryIndex(path, db).load()).rejects.toThrow(/Unsupported transcript format/);
 });
 
 it("rebuilds corrupt derived metadata without changing authoritative bytes or business tables", async () => {

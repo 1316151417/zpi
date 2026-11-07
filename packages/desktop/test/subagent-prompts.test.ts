@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
-import { prepareTaskOutputArguments } from "../src/main/plugins/subagents/runtime.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
+import { prepareTaskOutputArguments } from "../src/main/tasks/controls.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
 // Captured from the checked-out ZCode provider descriptions and subagent prompt builders.
@@ -56,7 +56,7 @@ test.each(["general-purpose", "Explore"].flatMap((name) => [false, true].map((co
         done(response);
       }
     });
-    f.settings.setCapabilityEnabled("codexSubagentPrompt", codex);
+    f.settings.setPluginOptions("zpi.collaboration", { promptPreset: codex ? "codex" : "default" });
     await run(f, "Use a subagent to research");
     const parent = f.server.requests[0];
     const parentInstructions = (parent.messages as { role: string; content: string }[])
@@ -182,18 +182,18 @@ test("TaskOutput applies ZCode runtime defaults and semantic booleans without ac
   expect(prepareTaskOutputArguments({ task_id: "id", timeout: null })).toMatchObject({ timeout: null });
 });
 
-test("persists Codex guidance and snapshots its mode on first send, including legacy sessions", async () => {
+test("persists Codex guidance and snapshots its mode on first send, including restored sessions", async () => {
   const f = await fixture();
   const description = () => {
     const tools = f.server.requests.at(-1)?.tools as { function: { name: string; description: string } }[];
     return tools.find((tool) => tool.function.name === "Agent")?.function.description ?? "";
   };
   const codexRule = "Do not launch subagents unless";
-  expect(f.settings.get().capabilities.codexSubagentPrompt).toBe(false);
+  expect(f.settings.get().plugins.options["zpi.collaboration"]?.promptPreset === "codex").toBe(false);
   await run(f, "original chat");
   expect(description()).toBe(adapt(reference.agent));
   const draft = await f.host.createSession(null);
-  f.settings.setCapabilityEnabled("codexSubagentPrompt", true);
+  f.settings.setPluginOptions("zpi.collaboration", { promptPreset: "codex" });
   expect(f.host.listTools().find((tool) => tool.name === "Agent")?.description).toContain(codexRule);
   expect((await f.host.previewPrompt()).prompt).toContain(
     "Read-only codebase exploration for a bounded question",
@@ -201,19 +201,14 @@ test("persists Codex guidance and snapshots its mode on first send, including le
   await f.host.startRun({ sessionId: draft.id, text: "first send after enabling" });
   await f.host.activeRuns.get(draft.id)?.done;
   expect(description()).toContain(codexRule);
-  f.settings.setCapabilityEnabled("codexSubagentPrompt", false);
+  f.settings.setPluginOptions("zpi.collaboration", { promptPreset: "default" });
   await f.host.startRun({ sessionId: draft.id, text: "keep Codex guidance" });
   await f.host.activeRuns.get(draft.id)?.done;
   expect(description()).toContain(codexRule);
   await f.host.close();
-  const task = f.settings.state.getTask(f.session.id);
-  if (!task) throw new Error("Missing task fixture");
-  const configuration = { ...(task.frozenConfiguration as Record<string, unknown>) };
-  delete configuration.codexSubagentPrompt;
-  f.settings.state.upsertTask({ ...task, frozenConfiguration: configuration });
   const settings = new SettingsStore(f.dir, codec);
-  expect(settings.get().capabilities.codexSubagentPrompt).toBe(false);
-  settings.setCapabilityEnabled("codexSubagentPrompt", true);
+  expect(settings.get().plugins.options["zpi.collaboration"]?.promptPreset === "codex").toBe(false);
+  settings.setPluginOptions("zpi.collaboration", { promptPreset: "codex" });
   const host = new SessionHost(f.dir, settings, f.resources, f.workspace, undefined);
   await host.init();
   cleanup.push(() => host.close());
@@ -227,20 +222,4 @@ test("persists Codex guidance and snapshots its mode on first send, including le
     const messages = JSON.stringify(f.server.requests.at(-1)?.messages);
     expect(messages.includes("not confident that you will find the right match")).toBe(!codex);
   }
-});
-
-test("migrates missing Codex guidance settings to off and rejects invalid saved values", async () => {
-  const f = await fixture();
-  const app = f.settings.state.getSetting<Record<string, unknown>>("app");
-  const capabilities = { ...f.settings.get().capabilities } as Record<string, unknown>;
-  delete capabilities.codexSubagentPrompt;
-  f.settings.state.setSetting("app", { ...app, capabilities });
-  const restored = new SettingsStore(f.dir, codec);
-  expect(restored.get().capabilities.codexSubagentPrompt).toBe(false);
-  expect(restored.state.getSetting("app")).toMatchObject({ capabilities: { codexSubagentPrompt: false } });
-  f.settings.state.setSetting("app", {
-    ...app,
-    capabilities: { ...capabilities, codexSubagentPrompt: "on" },
-  });
-  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid session capabilities");
 });

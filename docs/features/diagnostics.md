@@ -12,7 +12,6 @@
 | 文件编辑失败 | 目标文本、外部修改、文件类型、当前 cwd | [工具](../internals/tools.md) |
 | 任务历史打不开 | 数据 generation、schema 和原始日志错误 | [存储](../internals/storage.md) |
 | 界面卡顿或搜索慢 | 主进程/renderer 性能摘要、历史规模、动态内容 | [渲染](../internals/rendering.md) |
-| 快速浮窗不出现或焦点异常 | 实际快捷键、权限、窗口/Space 状态 | [快速对话](../internals/quick-chat.md) |
 
 ## 日志
 
@@ -22,7 +21,6 @@
 
 `renderer.performance`、`main.performance`、无响应和恢复事件帮助区分卡顿所在层。定时器延迟不是某个函数精确耗时，需要进一步分析时采集目标流程的 profile。
 
-快速对话可用 `ZPI_QUICK_CHAT_TIMING=1` 开启有界本地计时。它记录状态和相对时间，不记录草稿或截图正文；帧确认不等于操作系统已经完成像素合成。
 
 ## 等待和重试
 

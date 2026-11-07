@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
@@ -86,9 +87,9 @@ describe("task list search", () => {
     const host = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.cwd);
     await host.init();
     cleanup.push(() => host.close());
-    expect(
-      f.settings.state.db.prepare("SELECT count(*) AS n FROM transcript_search").get()?.n,
-    ).toBeGreaterThan(0);
+    const cache = new DatabaseSync(join(f.dir, "history.sqlite"));
+    cleanup.push(async () => cache.close());
+    expect(cache.prepare("SELECT count(*) AS n FROM transcript_search").get()?.n).toBeGreaterThan(0);
     expect(host.searchTasks("完整第一条用户上下文")).toEqual([]); // The visible run input owns user text.
     expect(host.searchTasks("用户上下文 0")[0]).toMatchObject({
       id: seed.id,
@@ -108,7 +109,7 @@ describe("task list search", () => {
     host.restoreSession(seed.id);
     expect(host.searchTasks("needle")[0].id).toBe(seed.id);
     await host.close();
-    f.settings.state.db.exec("DELETE FROM transcript_state");
+    cache.exec("DELETE FROM transcript_state");
     const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "resources"), f.cwd);
     await reopened.init();
     cleanup.push(() => reopened.close());

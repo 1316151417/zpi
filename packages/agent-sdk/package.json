@@ -1,0 +1,44 @@
+{
+  "name": "zpi-agent-sdk",
+  "version": "0.1.60",
+  "type": "module",
+  "description": "TypeScript Agent SDK for ZPI with a Claude-compatible public API",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./host": {
+      "development": "./src/host.ts",
+      "types": "./dist/host.d.ts",
+      "import": "./dist/host.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-agent-sdk.mjs"
+  },
+  "dependencies": {
+    "sharp": "0.35.5",
+    "typebox": "1.3.27",
+    "openai": "7.19.0",
+    "@anthropic-ai/sdk": "0.124.0"
+  },
+  "devDependencies": {
+    "zpi-ai": "0.1.60",
+    "zpi-agent": "0.1.60",
+    "zpi-coding-agent": "0.1.60",
+    "zpi-plugin-compat": "0.1.60",
+    "yaml": "2.9.1"
+  }
+}

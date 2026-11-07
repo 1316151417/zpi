@@ -12,7 +12,3 @@ declare module "*?url" {
   const url: string;
   export default url;
 }
-
-interface Window {
-  zpiQuickChat: import("../shared/quick-chat.ts").QuickChatBridge;
-}

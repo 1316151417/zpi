@@ -1,10 +1,13 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { defaultPluginSettings } from "zpi-builtin-plugins";
 import type { PublicSettings, WebSearchSettingsInput } from "../src/shared/bridge.ts";
 
 const mocks = vi.hoisted(() => ({
-  state: {} as { settings: { webSearch: PublicSettings["webSearch"]; capabilities: { webSearch: boolean } } },
+  state: {} as {
+    settings: { webSearch: PublicSettings["webSearch"]; plugins: typeof defaultPluginSettings };
+  },
   listeners: new Set<() => void>(),
   save: vi.fn(),
   reveal: vi.fn(),
@@ -119,7 +122,10 @@ beforeEach(async () => {
         credentialsPersisted: true,
         credentialsLocked: false,
       },
-      capabilities: { webSearch: true },
+      plugins: {
+        ...structuredClone(defaultPluginSettings),
+        enabled: { ...defaultPluginSettings.enabled, "zpi.web-search": true },
+      },
     },
   };
   mocks.listeners.clear();

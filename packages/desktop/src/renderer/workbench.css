@@ -6409,16 +6409,6 @@ button.model-stat-pill:hover,
   background: var(--color-bg);
 }
 
-.quick-chat-settings .settings-select-trigger {
-  flex-shrink: 0;
-  max-width: 55%;
-}
-.quick-chat-settings .settings-select-trigger > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ZCode ProjectNode title is one folder/name trigger and the sortable activator. */
 .sidebar .project-title {
   gap: 4px;

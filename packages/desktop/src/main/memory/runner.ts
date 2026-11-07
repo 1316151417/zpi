@@ -1,15 +1,8 @@
 import { lstat, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { createAgentSession } from "zpi-agent-sdk/host";
+import { type AssistantMessage, contentText, estimateMessageTokens, isJsonObject, type Model } from "zpi-ai";
 import {
-  type AssistantMessage,
-  type Context,
-  contentText,
-  estimateMessageTokens,
-  isJsonObject,
-  type Model,
-} from "zpi-ai";
-import {
-  createAgentSession,
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
@@ -19,6 +12,7 @@ import {
   SettingsManager,
 } from "zpi-coding-agent";
 import { toThinking } from "../../shared/config.ts";
+import { nativeStopReason, queryResult } from "../sdk-query.ts";
 import type { MemoryRunRequest, MemoryRunResult } from "./long-memory.ts";
 import { replaceMemoryFile, summaryLimit } from "./workspace.ts";
 
@@ -125,29 +119,41 @@ export async function runMemoryRequest(
   const signal = AbortSignal.any([request.signal, timeout.signal]);
   try {
     if (request.stage === "extract") {
-      const context: Context = {
-        messages: [
-          { role: "system", content: request.instructions, timestamp: Date.now() },
-          { role: "user", content: extractionInput(request, model), timestamp: Date.now() },
-        ],
-      };
-      const result = await runtime
-        .streamSimple(model, context, {
-          signal,
-          reasoning: toThinking(request.model.reasoning, model),
-          maxTokens: model.maxTokens,
-          maxRetries: 0,
-          timeoutMs: 300_000,
-          onPayload: extractionPayload,
-        })
-        .result();
-      recordUsage(result);
-      if (result.stopReason !== "stop" || result.content.some((part) => part.type === "toolCall"))
-        throw new Error(
-          `provider: 记忆提取未完成：${result.errorMessage || result.stopReason}；模型 ${model.provider}/${model.id}，配置输出上限 ${model.maxTokens}，本次输出 ${result.usage.output} tokens`,
-        );
-      signal.throwIfAborted();
-      return { text: contentText(result.content, ""), usage };
+      const controller = new AbortController();
+      const cancel = () => controller.abort(signal.reason);
+      signal.addEventListener("abort", cancel, { once: true });
+      try {
+        signal.throwIfAborted();
+        const result = await queryResult({
+          prompt: extractionInput(request, model),
+          options: {
+            model: `${model.provider}/${model.id}`,
+            systemPrompt: request.instructions,
+            tools: [],
+            maxTurns: 1,
+            persistSession: false,
+            abortController: controller,
+            zpi: {
+              modelRuntime: workerRuntime,
+              requestOptions: {
+                reasoning: toThinking(request.model.reasoning, model),
+                maxTokens: model.maxTokens,
+                maxRetries: 0,
+                timeoutMs: 300_000,
+                onPayload: extractionPayload,
+              },
+            },
+          },
+        });
+        if (result.stop_reason !== "end_turn")
+          throw new Error(
+            `provider: 记忆提取未完成：${nativeStopReason(result.stop_reason)}；模型 ${model.provider}/${model.id}，配置输出上限 ${model.maxTokens}`,
+          );
+        signal.throwIfAborted();
+        return { text: result.result, usage };
+      } finally {
+        signal.removeEventListener("abort", cancel);
+      }
     }
     const directory = request.directory;
     if (!directory) throw new Error("缺少记忆整合工作目录。");
@@ -179,6 +185,7 @@ export async function runMemoryRequest(
         throw new Error("长期记忆摘要必须小于 10,000 UTF-8 字节。");
       await replaceMemoryFile(target, content, signal);
     };
+    const manager = SessionManager.inMemory(root);
     ({ session } = await createAgentSession({
       cwd: root,
       agentDir: root,
@@ -186,7 +193,7 @@ export async function runMemoryRequest(
       modelRuntime: workerRuntime,
       model,
       thinkingLevel: toThinking(request.model.reasoning, model),
-      sessionManager: SessionManager.inMemory(root),
+      sessionManager: manager,
       settingsManager: SettingsManager.inMemory({ retry: { enabled: false, provider: { maxRetries: 0 } } }),
       resourceLoader: { getBaseInstructions: () => request.instructions, getInstructions: () => [] },
       tools: ["read", "write", "edit"],
@@ -227,7 +234,18 @@ export async function runMemoryRequest(
     };
     signal.addEventListener("abort", abort, { once: true });
     signal.throwIfAborted();
-    await session.prompt(request.prompt);
+    await queryResult({
+      prompt: request.prompt,
+      options: {
+        cwd: root,
+        zpi: {
+          session,
+          sessionManager: manager,
+          modelRuntime: workerRuntime,
+          input: { parsed: { kind: "prompt", text: request.prompt }, context: {} },
+        },
+      },
+    });
     signal.throwIfAborted();
     if (truncated)
       throw new Error(

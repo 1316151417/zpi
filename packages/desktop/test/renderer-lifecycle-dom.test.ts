@@ -2,11 +2,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { SessionView, UserQuestionRequest } from "zpi-ui";
-import { Conversation, emptySession } from "zpi-ui";
+import { emptySession } from "zpi-ui";
 import { AppBoundary } from "../src/renderer/AppBoundary.tsx";
 import { BackgroundTaskPane } from "../src/renderer/BackgroundTaskPane.tsx";
 import { logRendererError } from "../src/renderer/error-log.ts";
-import QuickChatConversation from "../src/renderer/QuickChatConversation.tsx";
 import { SubagentPane } from "../src/renderer/SubagentPane.tsx";
 
 const state = vi.hoisted(() => ({
@@ -88,22 +87,6 @@ test("the root boundary displays a recoverable error and records a shell render 
   } finally {
     warning.mockRestore();
   }
-});
-
-test("quick chat reuses workspace context across stream updates and updates it when cwd changes", async () => {
-  const render = (cwd: string, seq: number) =>
-    act(async () =>
-      root.render(
-        createElement(QuickChatConversation, { view: { ...emptySession("s"), seq }, cwd, onError: vi.fn() }),
-      ),
-    );
-  await render("/repo", 1);
-  const first = vi.mocked(Conversation).mock.lastCall?.[0].workspace;
-  await render("/repo", 2);
-  expect(vi.mocked(Conversation).mock.lastCall?.[0].workspace).toBe(first);
-  await render("/other", 3);
-  expect(vi.mocked(Conversation).mock.lastCall?.[0].workspace).toEqual({ cwd: "/other" });
-  expect(vi.mocked(Conversation).mock.lastCall?.[0].workspace).not.toBe(first);
 });
 
 test("switching a subagent question resets its question index and answer draft", async () => {

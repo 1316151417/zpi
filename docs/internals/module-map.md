@@ -8,9 +8,10 @@
 | --- | ---: |
 | `packages/agent/src` 中的 TS/TSX、CSS、JSON、HTML | 6 |
 | `packages/ai/src` 中的 TS/TSX、CSS、JSON、HTML | 46 |
-| `packages/coding-agent/src` 中的 TS/TSX、CSS、JSON、HTML | 51 |
-| `packages/desktop/src` 中的 TS/TSX、CSS、JSON、HTML | 276 |
+| `packages/coding-agent/src` 中的 TS/TSX、CSS、JSON、HTML | 55 |
+| `packages/desktop/src` 中的 TS/TSX、CSS、JSON、HTML | 277 |
 | `packages/ui/src` 中的 TS/TSX、CSS、JSON、HTML | 103 |
+| `packages/builtin-plugins/src` 中的 TS/TSX | 1 |
 | native、scripts、examples 支持文件 | 27 |
 
 测试用例按各原理页的回归入口及包内 test 目录维护；测试基础设施见[测试原理](testing.md)。图片、字体、音频、Office fixtures 等资源不逐件列作代码模块，归属见下方资源表。
@@ -73,7 +74,6 @@
 | `packages/coding-agent/src/core` | [read-file-bounded.ts](../../packages/coding-agent/src/core/read-file-bounded.ts) · [record-validation.ts](../../packages/coding-agent/src/core/record-validation.ts) · [session-manager.ts](../../packages/coding-agent/src/core/session-manager.ts) · [session-state.ts](../../packages/coding-agent/src/core/session-state.ts) · [transcript-store.ts](../../packages/coding-agent/src/core/transcript-store.ts) |
 | `packages/desktop/src/main` | [history-index.ts](../../packages/desktop/src/main/history-index.ts) · [history-performance.ts](../../packages/desktop/src/main/history-performance.ts) · [history-storage.ts](../../packages/desktop/src/main/history-storage.ts) · [history-worker.ts](../../packages/desktop/src/main/history-worker.ts) · [transcript-copy.ts](../../packages/desktop/src/main/transcript-copy.ts) · [transcript-schema.ts](../../packages/desktop/src/main/transcript-schema.ts) · [transcript-v2.ts](../../packages/desktop/src/main/transcript-v2.ts) |
 | `packages/ui/src/components` | [ConversationHistory.tsx](../../packages/ui/src/components/ConversationHistory.tsx) |
-| `scripts` | [repair-sessions.ts](../../scripts/repair-sessions.ts) |
 
 ### [输入、附件、引用与发送队列](input.md)
 
@@ -120,7 +120,7 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `scripts` | [app-icon.mjs](../../scripts/app-icon.mjs) · [build-native.mjs](../../scripts/build-native.mjs) · [prepare-terminal.ts](../../scripts/prepare-terminal.ts) |
+| `scripts` | [app-icon.mjs](../../scripts/app-icon.mjs) · [prepare-terminal.ts](../../scripts/prepare-terminal.ts) |
 
 ### [标签身份、完整视图与原生面板](panes.md)
 
@@ -171,15 +171,6 @@
 | `packages/desktop/src/renderer` | [UserQuestionCard.tsx](../../packages/desktop/src/renderer/UserQuestionCard.tsx) |
 | `packages/ui/src/components` | [AskQuestionToolBlock.tsx](../../packages/ui/src/components/AskQuestionToolBlock.tsx) · [user-question-presentation.ts](../../packages/ui/src/components/user-question-presentation.ts) |
 
-### [快速对话的临时会话与窗口协调](quick-chat.md)
-
-| 目录 | 文件 |
-| --- | --- |
-| `packages/desktop/native` | [copy-selection.m](../../packages/desktop/native/copy-selection.m) · [quick-chat-focus.m](../../packages/desktop/native/quick-chat-focus.m) |
-| `packages/desktop/src/main` | [mac-quick-chat-capture.ts](../../packages/desktop/src/main/mac-quick-chat-capture.ts) · [mac-quick-chat-focus.ts](../../packages/desktop/src/main/mac-quick-chat-focus.ts) · [quick-chat-attachments.ts](../../packages/desktop/src/main/quick-chat-attachments.ts) · [quick-chat-capture.ts](../../packages/desktop/src/main/quick-chat-capture.ts) · [quick-chat-host.ts](../../packages/desktop/src/main/quick-chat-host.ts) · [quick-chat-presentation.ts](../../packages/desktop/src/main/quick-chat-presentation.ts) · [quick-chat-prompt.ts](../../packages/desktop/src/main/quick-chat-prompt.ts) · [quick-chat-source-icons.ts](../../packages/desktop/src/main/quick-chat-source-icons.ts) · [quick-chat-timing.ts](../../packages/desktop/src/main/quick-chat-timing.ts) · [quick-chat-window.ts](../../packages/desktop/src/main/quick-chat-window.ts) |
-| `packages/desktop/src/preload` | [quick-chat.ts](../../packages/desktop/src/preload/quick-chat.ts) |
-| `packages/desktop/src/renderer` | [QuickChat.tsx](../../packages/desktop/src/renderer/QuickChat.tsx) · [QuickChatAttachment.tsx](../../packages/desktop/src/renderer/QuickChatAttachment.tsx) · [QuickChatConversation.tsx](../../packages/desktop/src/renderer/QuickChatConversation.tsx) · [QuickChatSettings.tsx](../../packages/desktop/src/renderer/QuickChatSettings.tsx) · [quick-chat-attachments.ts](../../packages/desktop/src/renderer/quick-chat-attachments.ts) · [quick-chat-main.tsx](../../packages/desktop/src/renderer/quick-chat-main.tsx) · [quick-chat.css](../../packages/desktop/src/renderer/quick-chat.css) · [quick-chat.html](../../packages/desktop/src/renderer/quick-chat.html) |
-| `packages/desktop/src/shared` | [quick-chat-settings.ts](../../packages/desktop/src/shared/quick-chat-settings.ts) · [quick-chat.ts](../../packages/desktop/src/shared/quick-chat.ts) |
 
 ### [发送失败、超时与恢复](recovery.md)
 
@@ -202,14 +193,15 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/coding-agent/src/core` | [resources.ts](../../packages/coding-agent/src/core/resources.ts) · [system-prompt.ts](../../packages/coding-agent/src/core/system-prompt.ts) |
-| `packages/desktop/src/main` | [desktop-prompt.ts](../../packages/desktop/src/main/desktop-prompt.ts) |
+| `packages/coding-agent/src/core` | [markdown.ts](../../packages/coding-agent/src/core/markdown.ts) · [resources.ts](../../packages/coding-agent/src/core/resources.ts) · [system-prompt.ts](../../packages/coding-agent/src/core/system-prompt.ts) |
+
 | `packages/desktop/src/renderer` | [ResourceSettings.tsx](../../packages/desktop/src/renderer/ResourceSettings.tsx) |
 
 ### [Git 审查、工具快照与文件回退](review.md)
 
 | 目录 | 文件 |
 | --- | --- |
+| `packages/coding-agent/src/core` | [file-rewind.ts](../../packages/coding-agent/src/core/file-rewind.ts) |
 | `packages/desktop/src/main` | [diff-worker.ts](../../packages/desktop/src/main/diff-worker.ts) · [file-changes.ts](../../packages/desktop/src/main/file-changes.ts) · [file-rewind.ts](../../packages/desktop/src/main/file-rewind.ts) · [git-review.ts](../../packages/desktop/src/main/git-review.ts) |
 | `packages/desktop/src/renderer` | [ChangesPane.tsx](../../packages/desktop/src/renderer/ChangesPane.tsx) · [DiffsWorkerPool.tsx](../../packages/desktop/src/renderer/DiffsWorkerPool.tsx) · [ReviewPane.tsx](../../packages/desktop/src/renderer/ReviewPane.tsx) · [diffs.worker.ts](../../packages/desktop/src/renderer/diffs.worker.ts) · [review-pane.css](../../packages/desktop/src/renderer/review-pane.css) |
 | `packages/desktop/src/shared` | [review.ts](../../packages/desktop/src/shared/review.ts) |
@@ -249,13 +241,13 @@
 | --- | --- |
 | `packages/coding-agent/src/core` | [agent-session.ts](../../packages/coding-agent/src/core/agent-session.ts) |
 | `packages/desktop/src/main` | [session-activity.ts](../../packages/desktop/src/main/session-activity.ts) · [session-host.ts](../../packages/desktop/src/main/session-host.ts) · [session-title.ts](../../packages/desktop/src/main/session-title.ts) |
-| `packages/desktop/src/renderer` | [ArchivedTasks.tsx](../../packages/desktop/src/renderer/ArchivedTasks.tsx) · [CapabilitySettings.tsx](../../packages/desktop/src/renderer/CapabilitySettings.tsx) · [SessionToolbar.tsx](../../packages/desktop/src/renderer/SessionToolbar.tsx) · [SideChatPane.tsx](../../packages/desktop/src/renderer/SideChatPane.tsx) · [TaskActivity.tsx](../../packages/desktop/src/renderer/TaskActivity.tsx) · [TaskMenu.tsx](../../packages/desktop/src/renderer/TaskMenu.tsx) · [TaskMenuItems.tsx](../../packages/desktop/src/renderer/TaskMenuItems.tsx) · [TaskViewMenu.tsx](../../packages/desktop/src/renderer/TaskViewMenu.tsx) |
+| `packages/desktop/src/renderer` | [ArchivedTasks.tsx](../../packages/desktop/src/renderer/ArchivedTasks.tsx) · [SessionToolbar.tsx](../../packages/desktop/src/renderer/SessionToolbar.tsx) · [SideChatPane.tsx](../../packages/desktop/src/renderer/SideChatPane.tsx) · [TaskActivity.tsx](../../packages/desktop/src/renderer/TaskActivity.tsx) · [TaskMenu.tsx](../../packages/desktop/src/renderer/TaskMenu.tsx) · [TaskMenuItems.tsx](../../packages/desktop/src/renderer/TaskMenuItems.tsx) · [TaskViewMenu.tsx](../../packages/desktop/src/renderer/TaskViewMenu.tsx) |
 
 ### [快捷键路由、注册与焦点](shortcuts.md)
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main` | [shortcut-controller.ts](../../packages/desktop/src/main/shortcut-controller.ts) · [shortcut-defaults-migration.ts](../../packages/desktop/src/main/shortcut-defaults-migration.ts) · [shortcut-modifier.ts](../../packages/desktop/src/main/shortcut-modifier.ts) |
+| `packages/desktop/src/main` | [shortcut-controller.ts](../../packages/desktop/src/main/shortcut-controller.ts) · [shortcut-modifier.ts](../../packages/desktop/src/main/shortcut-modifier.ts) |
 | `packages/desktop/src/renderer` | [ShortcutSettings.tsx](../../packages/desktop/src/renderer/ShortcutSettings.tsx) · [app-shortcuts.ts](../../packages/desktop/src/renderer/app-shortcuts.ts) · [composer-shortcuts.ts](../../packages/desktop/src/renderer/composer-shortcuts.ts) · [shortcut-context.ts](../../packages/desktop/src/renderer/shortcut-context.ts) · [shortcut-recording.ts](../../packages/desktop/src/renderer/shortcut-recording.ts) · [shortcut-settings-model.ts](../../packages/desktop/src/renderer/shortcut-settings-model.ts) · [use-dialog-dismiss.ts](../../packages/desktop/src/renderer/use-dialog-dismiss.ts) · [use-overlay-shortcut.ts](../../packages/desktop/src/renderer/use-overlay-shortcut.ts) · [use-stop-on-escape.ts](../../packages/desktop/src/renderer/use-stop-on-escape.ts) |
 | `packages/desktop/src/shared` | [shortcuts.ts](../../packages/desktop/src/shared/shortcuts.ts) · [workspace-shortcuts.ts](../../packages/desktop/src/shared/workspace-shortcuts.ts) |
 
@@ -263,15 +255,13 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main` | [state-migrations.ts](../../packages/desktop/src/main/state-migrations.ts) · [state-schema-v1.ts](../../packages/desktop/src/main/state-schema-v1.ts) · [state-store.ts](../../packages/desktop/src/main/state-store.ts) · [storage-cleanup.ts](../../packages/desktop/src/main/storage-cleanup.ts) · [storage-generation.ts](../../packages/desktop/src/main/storage-generation.ts) · [storage.ts](../../packages/desktop/src/main/storage.ts) · [task-state.ts](../../packages/desktop/src/main/task-state.ts) |
-| `scripts` | [storage-migrate.ts](../../scripts/storage-migrate.ts) |
-| `scripts/storage-migration` | [legacy-journal.ts](../../scripts/storage-migration/legacy-journal.ts) · [legacy-settings.ts](../../scripts/storage-migration/legacy-settings.ts) · [legacy.ts](../../scripts/storage-migration/legacy.ts) · [workflow.ts](../../scripts/storage-migration/workflow.ts) |
+| `packages/desktop/src/main` | [state-schema.ts](../../packages/desktop/src/main/state-schema.ts) · [state-store.ts](../../packages/desktop/src/main/state-store.ts) · [storage-cleanup.ts](../../packages/desktop/src/main/storage-cleanup.ts) · [storage-generation.ts](../../packages/desktop/src/main/storage-generation.ts) · [storage.ts](../../packages/desktop/src/main/storage.ts) · [task-state.ts](../../packages/desktop/src/main/task-state.ts) |
 
 ### [子智能体的配置、协议与邮箱](subagents.md)
 
 | 目录 | 文件 |
 | --- | --- |
-| `packages/desktop/src/main/plugins/subagents` | [artifacts.ts](../../packages/desktop/src/main/plugins/subagents/artifacts.ts) · [built-in.ts](../../packages/desktop/src/main/plugins/subagents/built-in.ts) · [profiles.ts](../../packages/desktop/src/main/plugins/subagents/profiles.ts) · [prompts.ts](../../packages/desktop/src/main/plugins/subagents/prompts.ts) · [protocol.ts](../../packages/desktop/src/main/plugins/subagents/protocol.ts) · [runtime.ts](../../packages/desktop/src/main/plugins/subagents/runtime.ts) · [validation.ts](../../packages/desktop/src/main/plugins/subagents/validation.ts) |
+| `packages/desktop/src/main/plugins/subagents` | [artifacts.ts](../../packages/desktop/src/main/plugins/subagents/artifacts.ts) · [built-in.ts](../../packages/desktop/src/main/plugins/subagents/built-in.ts) · [profiles.ts](../../packages/desktop/src/main/plugins/subagents/profiles.ts) · [prompts.ts](../../packages/desktop/src/main/plugins/subagents/prompts.ts) · [protocol.ts](../../packages/desktop/src/main/plugins/subagents/protocol.ts) · [runtime.ts](../../packages/desktop/src/main/plugins/subagents/runtime.ts) |
 | `packages/desktop/src/renderer` | [SubagentPane.tsx](../../packages/desktop/src/renderer/SubagentPane.tsx) · [SubagentSettings.tsx](../../packages/desktop/src/renderer/SubagentSettings.tsx) |
 | `packages/desktop/src/shared` | [subagents.ts](../../packages/desktop/src/shared/subagents.ts) |
 | `packages/ui/src/components` | [SubagentMessageToolBlock.tsx](../../packages/ui/src/components/SubagentMessageToolBlock.tsx) · [SubagentTaskToolBlock.tsx](../../packages/ui/src/components/SubagentTaskToolBlock.tsx) · [SubagentToolBlock.tsx](../../packages/ui/src/components/SubagentToolBlock.tsx) |
@@ -281,7 +271,7 @@
 | 目录 | 文件 |
 | --- | --- |
 | `packages/desktop/src/main` | [automation.ts](../../packages/desktop/src/main/automation.ts) |
-| `scripts` | [benchmark-history-worker.ts](../../scripts/benchmark-history-worker.ts) · [benchmark-lazy-restore.ts](../../scripts/benchmark-lazy-restore.ts) · [benchmark-storage-migration.ts](../../scripts/benchmark-storage-migration.ts) · [observe-desktop-tests.mjs](../../scripts/observe-desktop-tests.mjs) · [test-desktop.ts](../../scripts/test-desktop.ts) · [verify-file-manager-parity.mjs](../../scripts/verify-file-manager-parity.mjs) · [verify-task-list-parity.mjs](../../scripts/verify-task-list-parity.mjs) · [verify-test-cleanup.mjs](../../scripts/verify-test-cleanup.mjs) |
+| `scripts` | [benchmark-history-worker.ts](../../scripts/benchmark-history-worker.ts) · [benchmark-lazy-restore.ts](../../scripts/benchmark-lazy-restore.ts) · [observe-desktop-tests.mjs](../../scripts/observe-desktop-tests.mjs) · [test-desktop.ts](../../scripts/test-desktop.ts) · [verify-file-manager-parity.mjs](../../scripts/verify-file-manager-parity.mjs) · [verify-task-list-parity.mjs](../../scripts/verify-task-list-parity.mjs) · [verify-test-cleanup.mjs](../../scripts/verify-test-cleanup.mjs) |
 
 ### [read、write、edit、bash 的实现](tools.md)
 
@@ -310,6 +300,19 @@
 | [desktop assets](../../packages/desktop/src/renderer/assets)、[public](../../packages/desktop/src/renderer/public)、[icon.png](../../icon.png) | 提供商图标、字体、提示音与应用资源 | [界面](rendering.md) · [打包](packaging.md) |
 | [tests](../../tests)、各包 test | fixture、假模型、DOM/服务/Electron/平台验证 | [测试](testing.md) |
 | [licenses](../../licenses/third-party-notices.txt) | 随分发保留的第三方许可和来源 | [打包](packaging.md) |
+
+### [插件与生命周期](plugins.md)
+
+| 目录 | 文件 |
+| --- | --- |
+| `packages/coding-agent/src/plugins` | [assembly.ts](../../packages/coding-agent/src/plugins/assembly.ts) · [types.ts](../../packages/coding-agent/src/plugins/types.ts) · [hooks.ts](../../packages/coding-agent/src/plugins/hooks.ts) · [session-hooks.ts](../../packages/coding-agent/src/plugins/session-hooks.ts) · [resources.ts](../../packages/coding-agent/src/plugins/resources.ts) |
+| `packages/plugin-compat/src` | [index.ts](../../packages/plugin-compat/src/index.ts) · [command-hooks.ts](../../packages/plugin-compat/src/command-hooks.ts) |
+| `packages/builtin-plugins/src` | [index.ts](../../packages/builtin-plugins/src/index.ts) |
+| `packages/desktop/src/main/plugins` | [desktop-plugins.ts](../../packages/desktop/src/main/plugins/desktop-plugins.ts) · [settings.ts](../../packages/desktop/src/main/plugins/settings.ts) · [tool-validation.ts](../../packages/desktop/src/main/plugins/tool-validation.ts) · [memory-policy.ts](../../packages/desktop/src/main/plugins/memory-policy.ts) · [memory-sources.ts](../../packages/desktop/src/main/plugins/memory-sources.ts) · [title-policy.ts](../../packages/desktop/src/main/plugins/title-policy.ts) · [local-plugins.ts](../../packages/desktop/src/main/plugins/local-plugins.ts) |
+| `packages/desktop/src/main/tasks` | [controls.ts](../../packages/desktop/src/main/tasks/controls.ts) |
+| `packages/desktop/src/shared` | [plugins.ts](../../packages/desktop/src/shared/plugins.ts) · [hooks.ts](../../packages/desktop/src/shared/hooks.ts) |
+| `packages/desktop/src/renderer` | [PluginSettings.tsx](../../packages/desktop/src/renderer/PluginSettings.tsx) · [plugin-settings.css](../../packages/desktop/src/renderer/plugin-settings.css) · [HooksSettings.tsx](../../packages/desktop/src/renderer/HooksSettings.tsx) · [HookForm.tsx](../../packages/desktop/src/renderer/HookForm.tsx) · [hooks-settings.css](../../packages/desktop/src/renderer/hooks-settings.css) |
+| `packages/desktop/src/main/plugins` | [configured-hooks.ts](../../packages/desktop/src/main/plugins/configured-hooks.ts) · [hook-catalog.ts](../../packages/desktop/src/main/plugins/hook-catalog.ts) |
 
 ## 维护约定
 

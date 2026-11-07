@@ -75,8 +75,10 @@ it("loads global/project settings with recursive overrides and ZPI defaults", as
   expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 0 }).getStreamIdleTimeoutMs()).toBe(0);
   expect(SettingsManager.inMemory({ streamIdleTimeoutMs: -1 }).getStreamIdleTimeoutMs()).toBe(-1);
   expect(SettingsManager.inMemory({ streamIdleTimeoutMs: NaN }).getStreamIdleTimeoutMs()).toBe(300000);
-  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 100 }).getStreamFirstResponseTimeoutMs()).toBe(100);
-  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 0 }).getStreamFirstResponseTimeoutMs()).toBe(0);
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 100 }).getStreamFirstResponseTimeoutMs()).toBe(
+    120000,
+  );
+  expect(SettingsManager.inMemory({ streamIdleTimeoutMs: 0 }).getStreamFirstResponseTimeoutMs()).toBe(120000);
   expect(
     SettingsManager.inMemory({
       streamFirstResponseTimeoutMs: 500,

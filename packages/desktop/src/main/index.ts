@@ -17,11 +17,10 @@ import {
   screen,
   session,
   shell,
-  systemPreferences,
 } from "electron";
 import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
-import { imageLimits, listCommands } from "zpi-coding-agent";
-import { attachmentLimitMessage, userErrorMessage } from "zpi-ui/errors";
+import { imageLimits } from "zpi-coding-agent";
+import { attachmentLimitMessage } from "zpi-ui/errors";
 import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
@@ -45,18 +44,12 @@ import { performFileAction } from "./file-actions.ts";
 import { downloadableImageUrl, readFilePreview, readPreviewRange } from "./file-preview.ts";
 import { gitReview, gitReviewDiff } from "./git-review.ts";
 import { loadRenderer } from "./load-renderer.ts";
-import { macQuickChatCapture } from "./mac-quick-chat-capture.ts";
-import { macQuickChatFocus } from "./mac-quick-chat-focus.ts";
 import { PaneServices } from "./pane-services.ts";
 import { startMainPerformanceDiagnostics, trackRendererResponsiveness } from "./performance-diagnostics.ts";
 import { checkPreviewFiles } from "./preview-files.ts";
 import { PreviewPdfExporter, previewPdfOptions } from "./preview-pdf-export.ts";
 import { previewPrintHostScript, previewPrintIsolationCss } from "./preview-print-host.ts";
 import { openProjectFromDialog } from "./project-picker.ts";
-import { QuickChatCapture } from "./quick-chat-capture.ts";
-import { QuickChatHost } from "./quick-chat-host.ts";
-import { QuickChatTiming } from "./quick-chat-timing.ts";
-import { installQuickChatIpc, QuickChatWindow } from "./quick-chat-window.ts";
 import { responsesProxyUrl } from "./responses-proxy.ts";
 import { SessionHost } from "./session-host.ts";
 import { shellEnvironment } from "./shell-environment.ts";
@@ -211,15 +204,21 @@ async function launch(): Promise<void> {
   }
   const chatgptAuth = new ChatGPTAuth(settings, requestFetch, errors);
   if (testMode && process.env.ZPI_TEST_BASE_URL && settings.get().providers.length === 0)
-    settings.save({
+    settings.saveProvider({
+      id: "custom",
+      name: "Custom",
       baseUrl: process.env.ZPI_TEST_BASE_URL,
-      modelId: "fake",
       apiKey: "local-test-key",
-      supportsImages: false,
-      reasoning: true,
-      contextWindow: 32768,
-      maxTokens: 4096,
-      compat: { supportsReasoningEffort: true },
+      models: [
+        {
+          id: "fake",
+          input: ["text"],
+          reasoning: true,
+          contextWindow: 32768,
+          maxTokens: 4096,
+          compat: { supportsReasoningEffort: true },
+        },
+      ],
     });
   if (testMode && process.env.ZPI_TEST_AUTO_SELECTION === "1") {
     if (!settings.get().lastSelection)
@@ -319,7 +318,6 @@ async function launch(): Promise<void> {
           models: result.models.map((model) => ({ ...model, useRecommendedConfig: true })),
         });
         await settingsReady;
-        quickChatHost.refreshSettings();
         if (!window.isDestroyed()) window.webContents.send("zpi:settings", settings.get());
       })
       .catch((error) => {
@@ -328,92 +326,11 @@ async function launch(): Promise<void> {
       });
   }
   const rendererUrl = process.env.ZPI_DEV_URL ?? pathToFileURL(join(dir, "../renderer/index.html")).href;
-  const quickChatHost = new QuickChatHost(
-    settings,
-    testMode ? join(app.getPath("userData"), "workspace") : join(homedir(), "Documents", "ZPI"),
-    requestFetch,
-    undefined,
-    errors,
-    responsesProxy,
-  );
-  const quickChatTiming =
-    process.env.ZPI_QUICK_CHAT_TIMING === "1"
-      ? new QuickChatTiming(app.getPath("userData"), true)
-      : undefined;
-  const quickChat = new QuickChatWindow({
-    host: quickChatHost,
-    onError: (error, method) => errors.write("quick-chat.ipc", error, { method }),
-    timing: quickChatTiming,
-    createWindow: createDesktopWindow,
-    rendererUrl: new URL("quick-chat.html", rendererUrl).href,
-    preload: join(dir, "../preload/quick-chat.cjs"),
-    hiddenTestMode,
-    platform: process.platform,
-    getDisplay: (bounds) =>
-      bounds
-        ? screen.getDisplayMatching(bounds)
-        : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
-    loadSourceIcon: (url, signal) => webSourceIcons.load(url, signal),
-    ...(process.platform === "darwin" ? { workspaceNotifications: systemPreferences } : {}),
-    copyText: (text) => clipboard.writeText(text),
-    activateApp:
-      process.platform === "darwin" && !hiddenTestMode
-        ? macQuickChatFocus(
-            join(dir, "../native"),
-            () => app.focus({ steal: true }),
-            (error) => errors.write("quick-chat.focus", error),
-          )
-        : undefined,
-    openExternal: (url) => shell.openExternal(url),
-  });
-  const removeQuickChatIpc = installQuickChatIpc(ipcMain, quickChat);
-  const quickChatCapture = new QuickChatCapture({
-    sessionId: () => quickChatHost.sessionId,
-    hide: () => quickChat.hide("capture-hide"),
-    open: (input, sessionId) => quickChat.openWithDraft(input, sessionId),
-    read: macQuickChatCapture({
-      platform: process.platform,
-      testMode,
-      temporaryDirectory: app.getPath("temp"),
-      copyHelper: join(dir, "../native/copy-selection").replace(/\.asar([/\\])/, ".asar.unpacked$1"),
-      clipboard,
-      accessibilityAccess: () => systemPreferences.isTrustedAccessibilityClient(true),
-    }),
-  });
   const shortcuts = new ShortcutController(
     globalShortcut,
     process.platform,
-    (command) => {
+    () => {
       if (ending) return;
-      if (
-        command === "quick-chat-screenshot" ||
-        command === "quick-chat-selection" ||
-        command === "quick-chat-clipboard"
-      ) {
-        const kind =
-          command === "quick-chat-screenshot"
-            ? "screenshot"
-            : command === "quick-chat-selection"
-              ? "selection"
-              : "clipboard";
-        const sessionId = quickChatHost.sessionId;
-        void quickChatCapture.invoke(kind).catch((error) => {
-          if (ending) return;
-          errors.write("quick-chat.capture", error);
-          void quickChat
-            .openWithDraft({ error: userErrorMessage(error) }, sessionId)
-            .catch((reason) => errors.write("quick-chat.capture-notice", reason));
-        });
-        return;
-      }
-      if (command === "quick-chat" || command === "quick-chat-new") {
-        const action = quickChat.toggle(command === "quick-chat-new");
-        void action.catch((error) => {
-          errors.write("quick-chat.window", error);
-          if (!testMode && !ending) dialog.showErrorBox("快速对话无法打开", String(error));
-        });
-        return;
-      }
       if (hiddenTestMode || !toggleShortcutWindow(window)) return;
       // Native guests and DOM controls normally retain focus; notify only for a lost-target fallback.
       if (!window.webContents.isDestroyed() && !panes.hasFocusedBrowser())
@@ -421,7 +338,6 @@ async function launch(): Promise<void> {
     },
     testMode,
     (ignore) => setWindowMenuShortcutsIgnored(window, ignore),
-    quickChatTiming ? quickChat.recordShortcut : undefined,
   );
   let shortcutSettings = settings.get().shortcuts;
   const shortcutModifier = new ShortcutModifier(
@@ -528,6 +444,9 @@ async function launch(): Promise<void> {
     write: (path, data) => writeFile(path, data),
   });
   const notifications = new TaskNotifications(window, () => settings.get().interface);
+  host.setNotificationSink((event, title) => {
+    if (!ending) notifications.handle(event, title);
+  });
   const eventBatcher = new EventBatcher((events) => {
     if (window.isDestroyed() || window.webContents.isDestroyed() || window.webContents.isCrashed()) return;
     try {
@@ -539,10 +458,6 @@ async function launch(): Promise<void> {
   });
   const offEvents = host.subscribe((event) => {
     if (!window.webContents.isCrashed()) eventBatcher.push(event);
-    if (!ending && event.event.type === "settled") {
-      const title = host.notificationTitle(event.sessionId);
-      if (title !== undefined) notifications.handle(event, title);
-    }
   });
   window.on("closed", () => {
     offEvents();
@@ -586,7 +501,6 @@ async function launch(): Promise<void> {
         return path;
       };
       const count: Record<(typeof methods)[number], number> = {
-        openQuickChat: 0,
         setSessionUnread: 1,
         getTaskGroups: 0,
         updateTaskGroups: 1,
@@ -597,7 +511,14 @@ async function launch(): Promise<void> {
         stopSubagent: 2,
         stopBackgroundTask: 2,
         readBackgroundTask: 2,
-        setCapabilityEnabled: 2,
+        setPluginEnabled: 2,
+        getLocalPlugins: 0,
+        getHooks: 1,
+        saveHook: 1,
+        setHookEnabled: 2,
+        deleteHook: 1,
+        importLocalPlugin: 0,
+        setPluginOptions: 2,
         respondToQuestion: 3,
         snoozeQuestion: 2,
         createSideChat: 1,
@@ -710,21 +631,16 @@ async function launch(): Promise<void> {
         openExternal: 1,
         saveProvider: 1,
         saveWebSearch: 1,
-        saveQuickChatSettings: 1,
         reorderProviders: 1,
         discoverModels: 1,
         deleteProvider: 1,
-        listCommands: 0,
+        listCommands: 1,
       };
       if (args.length !== count[method as (typeof methods)[number]])
         throw new Error("invalid_input: 参数数量无效");
       const sessionContext = () => (args[0] === null ? null : string(0));
       let value: unknown;
       switch (method) {
-        case "openQuickChat":
-          if (ending) throw new Error("busy: 应用正在退出");
-          await quickChat.show();
-          break;
         case "listSubagents":
           value = host.listSubagents(sessionContext());
           break;
@@ -760,11 +676,69 @@ async function launch(): Promise<void> {
         case "readBackgroundTask":
           value = await host.backgroundTasks.read(string(0), string(1));
           break;
-        case "setCapabilityEnabled":
-          value = settings.setCapabilityEnabled(
-            string(0) as import("../shared/bridge.ts").CapabilityName,
+        case "setPluginEnabled":
+          settings.setPluginEnabled(string(0), args[1] as boolean);
+          await host.refreshPluginSettings();
+          value = settings.get();
+          break;
+        case "getLocalPlugins":
+          value = host.localPlugins
+            .list()
+            .map(({ id, version, name, description }) => ({ id, version, name, description }));
+          break;
+        case "getHooks":
+          value = host.getHooks(args[0] === null ? null : string(0));
+          break;
+        case "saveHook":
+          value = host.saveHook(
+            object(0, [
+              "id",
+              "expectedRevision",
+              "projectId",
+              "event",
+              "type",
+              "command",
+              "args",
+              "matcher",
+              "timeoutMs",
+              "enabled",
+            ]) as unknown as import("../shared/hooks.ts").SaveHookInput,
+          );
+          break;
+        case "setHookEnabled":
+          value = host.setHookEnabled(
+            object(0, [
+              "id",
+              "projectId",
+              "expectedRevision",
+            ]) as unknown as import("../shared/hooks.ts").HookTarget,
             args[1] as boolean,
           );
+          break;
+        case "deleteHook":
+          value = host.deleteHook(
+            object(0, [
+              "id",
+              "projectId",
+              "expectedRevision",
+            ]) as unknown as import("../shared/hooks.ts").HookTarget,
+          );
+          break;
+        case "importLocalPlugin": {
+          const selected = await dialog.showOpenDialog(window, {
+            title: "添加本地插件",
+            properties: ["openDirectory"],
+          });
+          if (!selected.canceled && selected.filePaths[0]) {
+            const plugin = await host.localPlugins.import(selected.filePaths[0]);
+            value = settings.setPluginEnabled(plugin.id, true);
+          } else value = settings.get();
+          break;
+        }
+        case "setPluginOptions":
+          settings.setPluginOptions(string(0), args[1] as import("zpi-ai").JsonObject);
+          await host.refreshPluginSettings();
+          value = settings.get();
           break;
         case "respondToQuestion":
           host.questions.respond(
@@ -1168,7 +1142,6 @@ async function launch(): Promise<void> {
           shortcutSettings = updated.shortcuts;
           shortcutModifier.reset();
           value = updated;
-          window.webContents.send("zpi:settings", updated);
           break;
         }
         case "setShortcutCapture":
@@ -1371,13 +1344,6 @@ async function launch(): Promise<void> {
           );
           break;
         }
-        case "saveQuickChatSettings":
-          value = settings.saveQuickChatSettings(
-            object(0, [
-              "defaultSelection",
-            ]) as unknown as import("../shared/bridge.ts").QuickChatSettingsInput,
-          );
-          break;
         case "saveWebSearch":
           value = settings.saveWebSearch(
             object(0, [
@@ -1401,7 +1367,7 @@ async function launch(): Promise<void> {
           value = settings.reorderProviders(args[0] as string[]);
           break;
         case "listCommands":
-          value = listCommands();
+          value = host.listCommands(args[0] === null ? undefined : string(0));
           break;
         case "openExternal": {
           const url = new URL(browserUrl(string(0)));
@@ -1417,16 +1383,19 @@ async function launch(): Promise<void> {
           "updateShortcuts",
           "updatePreferences",
           "saveWebSearch",
-          "saveQuickChatSettings",
           "saveProvider",
           "deleteProvider",
           "reorderProviders",
           "completeChatGPTLogin",
           "disconnectChatGPT",
-          "setCapabilityEnabled",
+          "setPluginEnabled",
+          "setPluginOptions",
+          "saveMemorySettings",
+          "importLocalPlugin",
         ].includes(method)
-      )
-        quickChatHost.refreshSettings();
+      ) {
+        window.webContents.send("zpi:settings", settings.get());
+      }
       return { ok: true, value };
     } catch (error) {
       errors.write("ipc", error, { method: typeof method === "string" ? method : "unknown" });
@@ -1460,9 +1429,6 @@ async function launch(): Promise<void> {
         // Drafts are durable now. Finish shutdown even if one service fails;
         // returning to a partially disposed application is not recoverable.
         for (const [scope, close] of [
-          ["quick-chat-capture", () => quickChatCapture.dispose()],
-          ["quick-chat", () => quickChat.dispose()],
-          ["quick-chat-ipc", removeQuickChatIpc],
           ["chatgpt-auth", () => chatgptAuth.close()],
           ["notifications", () => notifications.dispose()],
           ["panes", () => panes.close()],
@@ -1505,7 +1471,6 @@ async function launch(): Promise<void> {
   app.on("second-instance", showWindow);
   app.on("will-quit", () => shortcuts.dispose());
   await loadRenderer(window, rendererUrl);
-  if (!testMode && !ending) quickChat.scheduleWarmup((error) => errors.write("quick-chat.warmup", error));
   if (shortcutStartupError && !testMode && !ending)
     void dialog.showMessageBox(window, {
       type: "warning",

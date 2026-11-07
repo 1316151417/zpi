@@ -113,12 +113,9 @@ it("retries persisted resource and transcript-index failures after restart witho
   const index = history(f.host, task.id);
   await append(index, "content");
   const path = index.path;
-  // A released installation can also leave projections in the old shared state database.
-  f.settings.state.db
-    .prepare("INSERT INTO transcript_entries VALUES (?,?,?,?,?,?,?,?,?,?)")
-    .run(index.key, 1, "legacy", "message", "user", 0, 1, null, 0, null);
-  f.settings.state.db.exec(`CREATE TRIGGER fail_cleanup BEFORE DELETE ON transcript_entries
-    BEGIN SELECT RAISE(ABORT,'injected cleanup failure'); END;`);
+  const indexFailure = vi
+    .spyOn(f.host["historyStorage"], "forget")
+    .mockRejectedValue(new Error("injected cleanup failure"));
   const failure = vi
     .spyOn(f.host.attachments, "deleteSession")
     .mockRejectedValue(new Error("attachment failure"));
@@ -132,11 +129,16 @@ it("retries persisted resource and transcript-index failures after restart witho
   ]);
   expect(existsSync(path)).toBe(false); // Retry must also remove indexes when the file is already gone.
   failure.mockRestore();
-  f.settings.state.db.exec("DROP TRIGGER fail_cleanup");
+  indexFailure.mockRestore();
   const host = await reopen(f);
   expect(host.listSessions(f.a.id)).toEqual([]);
   expect(f.settings.state.pendingCleanup()).toEqual([]);
-  expect(f.settings.state.db.prepare("SELECT COUNT(*) AS n FROM transcript_search").get()?.n).toBe(0);
+  const cache = new DatabaseSync(join(f.dir, "history.sqlite"));
+  try {
+    expect(cache.prepare("SELECT COUNT(*) AS n FROM transcript_search").get()?.n).toBe(0);
+  } finally {
+    cache.close();
+  }
 });
 it("protects current/archived task paths and unresolved recovery generations until references are released", async () => {
   const f = await fixture((_, response) => done(response));
@@ -147,8 +149,6 @@ it("protects current/archived task paths and unresolved recovery generations unt
   await index.replaceAsync(index.getHeader(), []);
   const current = index.path;
   const state = f.settings.state;
-  state.db.prepare("UPDATE transcript_state SET path=? WHERE path=?").run(original, originalKey);
-  state.db.prepare("INSERT INTO transcript_search VALUES (?,?,?,?)").run(original, 1, "r", "legacy alias");
   state.enqueueCleanup("transcript", task.id, relative(f.dir, current));
   state.putIntent({
     operationId: "recovery",
@@ -165,6 +165,8 @@ it("protects current/archived task paths and unresolved recovery generations unt
       f.dir,
       async () => {},
       (error) => errors.push(error),
+      undefined,
+      (file) => f.host["historyStorage"].forget(file),
     );
   await retry();
   expect(existsSync(original)).toBe(true);
@@ -173,7 +175,12 @@ it("protects current/archived task paths and unresolved recovery generations unt
   state.completeIntent("recovery");
   await retry();
   expect(existsSync(original)).toBe(false);
-  expect(state.db.prepare("SELECT * FROM transcript_search WHERE path=?").all(original)).toEqual([]);
+  const cache = new DatabaseSync(join(f.dir, "history.sqlite"));
+  try {
+    expect(cache.prepare("SELECT * FROM transcript_search WHERE path=?").all(originalKey)).toEqual([]);
+  } finally {
+    cache.close();
+  }
   expect(existsSync(current)).toBe(true);
   expect(state.pendingCleanup()).toHaveLength(1);
   expect(errors).toHaveLength(3);
@@ -191,6 +198,7 @@ it("preserves mismatched generations and external files, recording a retryable d
   const outside = join(f.dir, "outside.jsonl");
   await writeFile(outside, bytes);
   f.settings.state.enqueueCleanup("transcript", task.id, outside);
+  f.settings.state.enqueueCleanup("transcript", task.id, relative(f.dir, foreign));
   await f.host.deleteSession(task.id);
   expect(readFileSync(foreign)).toEqual(bytes);
   expect(readFileSync(outside)).toEqual(bytes);

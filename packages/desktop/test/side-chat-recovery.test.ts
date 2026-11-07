@@ -4,8 +4,8 @@ import { emptyAssistant } from "zpi-ai";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { StreamingToolJournal } from "../../coding-agent/src/core/streaming-tool-journal.ts";
-import { HistoryIndex } from "../src/main/history-index.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { isolatedHistory } from "./helpers/history-reader.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it("inherits the current selection while preserving historical model and thinking anchors across reopen", async () => {
@@ -43,7 +43,7 @@ it("inherits the current selection while preserving historical model and thinkin
     modelId: "fake",
     reasoning: "none",
   });
-  const index = new HistoryIndex(reopened.sessionPath(child.id), f.settings.state.db);
+  const index = isolatedHistory(reopened.sessionPath(child.id));
   await index.load();
   expect(index.getStateAt(index.snapshot())).toMatchObject({
     model: { provider: "other", modelId: "other-model" },
@@ -72,7 +72,7 @@ it("directly creates a side chat after crash recovery without dropping known jou
   await f.host.activeRuns.get(parent.id)?.done;
   const path = f.host.sessionPath(parent.id);
   await f.host.close();
-  const index = new HistoryIndex(path, f.settings.state.db);
+  const index = isolatedHistory(path);
   await index.load();
   const manager = SessionManager.fromStore(index);
   manager.appendMessage({ role: "user", content: "interrupted tool turn", timestamp: Date.now() });
@@ -106,7 +106,7 @@ it("directly creates a side chat after crash recovery without dropping known jou
   await reopened.init();
   // Do not open a snapshot or session manager for the parent before this call.
   const child = await reopened.createSideChat(parent.id);
-  const childIndex = new HistoryIndex(reopened.sessionPath(child.id), f.settings.state.db);
+  const childIndex = isolatedHistory(reopened.sessionPath(child.id));
   await childIndex.load();
   const context = SessionManager.fromStore(childIndex).buildSessionContext();
   const results = context.messages.filter((message) => message.role === "toolResult");

@@ -1,64 +1,38 @@
-# 在脚本中使用 SDK
+# 在 TypeScript 中使用 Agent SDK
 
-`zpi-coding-agent` 提供模型运行时、四个工具、会话和上下文管理，可在仓库脚本中使用。桌面提问、子智能体和后台任务由桌面扩展提供。
-
-## 运行示例
-
-按[开发步骤](development.md)安装依赖后执行：
-
-```sh
-npm run example:coding
-```
-
-[示例源码](../../examples/coding-session.ts)启动本地假模型服务，在临时目录演示 read/write/edit/bash、事件订阅、扩展工具和会话恢复，不需要线上模型凭据。示例会打印保存路径，结束时关闭会话和服务。
-
-## 接入真实提供商
-
-创建 `ModelRuntime`，调用 `registerProvider` 设置服务地址、认证和模型，再传入 `createAgentSession`。选择的模型必须已注册且有可用认证或自定义 stream；SDK 不自动读取桌面已保存账号。
+公开入口是 `zpi-agent-sdk`，ZPI 桌面和独立的 `zpi-quick-chat` 使用同一套查询执行协议。支持范围按 [Claude Agent SDK TypeScript reference](https://code.claude.com/docs/zh-CN/agent-sdk/typescript) 对齐，运行引擎仍由 ZPI 实现。
 
 ```ts
-import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
+import { query } from "zpi-agent-sdk";
 
-const runtime = await ModelRuntime.create();
-runtime.registerProvider("local", {
-  baseUrl: "http://127.0.0.1:8000/v1",
-  api: "openai-completions",
-  apiKey: "",
-  models: [{
-    id: "your-model-id", name: "Local model", reasoning: false,
-    input: ["text"], contextWindow: 32768, maxTokens: 4096,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  }],
-});
-const { session } = await createAgentSession({
-  cwd: "/absolute/project",
-  modelRuntime: runtime,
-  sessionManager: SessionManager.inMemory("/absolute/project"),
-});
-try {
-  await session.prompt("说明项目入口，先不修改文件。");
-} finally {
-  await session.abort();
-  session.dispose();
+for await (const message of query({
+  prompt: "说明这个项目的入口",
+  options: {
+    model: "deepseek",
+    cwd: "/absolute/project",
+    tools: ["Read", "Glob", "Grep"],
+    allowedTools: ["Read", "Glob", "Grep"],
+    maxTurns: 8,
+    includePartialMessages: true,
+  },
+})) {
+  if (message.type === "result" && message.subtype === "success") {
+    console.log(message.result);
+  }
 }
 ```
 
-地址、ID 和预算是示例配置，需替换为本地服务实际值。内存会话不写会话日志，但工具仍能写文件和运行命令。
+配置 `DEEPSEEK_API_KEY` 后可使用该例。`tools` 选择模型可见的工具，`allowedTools` 自动批准匹配调用，`disallowedTools` 拒绝调用。未预批准的调用交给 `canUseTool`；未设置回调时直接执行。纯文本和图片对话使用 `tools: []`。
 
-## 扩展入口
+支持字符串和异步用户消息流、标准消息协议、会话恢复/分叉、模型和思考控制、Hook 回调、Agent 定义、本地插件、JSON schema 输出校验、用量统计和文件检查点。完整接口、示例和限制见 [SDK 包说明](../../packages/agent-sdk/README.md)。Node.js 24 必需，Grep 需要 PATH 中存在 `rg`。
 
-| 选项 | 用途 |
-| --- | --- |
-| `customTools` | 新增工具名 |
-| `toolOverrides` | 替换已存在的内置工具 |
-| `customInstructions` | 追加文字数组，或资源刷新后求值的同步函数 |
-| `resourceLoader` | 注入资源发现与指令加载 |
-| `promptTemplate` | 定义基础提示模板 |
-| `settingsManager` | 提供内存或文件运行设置 |
-| `sessionManager` | 选择新建、恢复、内存或自定义存储 |
+SDK 不实现权限模式、MCP、LSP、插件 UI、市场、远程会话和 Claude Code 的企业/账户服务。高级能力不提供空实现。`claude_code` 提示预设使用 ZPI 的编码提示词，不能复制 Anthropic 的专有提示词。环境变量预置模型价格为零；需要金额预算时显式提供模型价格。
 
-工具通过 `ToolDefinition` 声明 schema 和 execute，运行时提供 cwd、模型、thinkingLevel、sessionManager、取消信号等上下文。`outputSchema` 是元数据，不会自动验证结果。
+构建独立包：
 
-恢复会话时重新提供原有扩展，工具定义和函数不能仅靠日志恢复。长期服务应在结束时 abort 并 dispose，释放连接和工具资源。
+```sh
+npm run build:sdk
+npm pack --workspace zpi-agent-sdk
+```
 
-接口细节：[SDK 装配](../internals/sdk.md) · [模型运行时](../internals/providers.md)。
+原生宿主可从 `zpi-agent-sdk/host` 获取 `createAgentSession`，注入索引存储、模型运行时和插件，再用 `query` 驱动会话。宿主保留服务生命周期与事件订阅。底层 `zpi-coding-agent` 是内部引擎，不再作为应用默认接入入口。内核装配机制见 [SDK 装配](../internals/sdk.md)。

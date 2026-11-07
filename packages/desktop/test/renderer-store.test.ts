@@ -172,7 +172,11 @@ it("keeps a late input-scoped failure off a draft changed after submit", async (
 it("lists built-in commands without auxiliary slash shortcuts", async () => {
   const f = await setup();
   const { listCommands } = await import("zpi-coding-agent");
-  f.bridge.listCommands.mockResolvedValue({ ok: true, value: listCommands() });
+  const { builtinPlugins } = await import("zpi-builtin-plugins");
+  f.bridge.listCommands.mockResolvedValue({
+    ok: true,
+    value: listCommands(builtinPlugins.flatMap((plugin) => plugin.commands ?? [])),
+  });
   await f.store.refreshSuggestions(f.session.id);
   const names = f.store.useStore
     .getState()

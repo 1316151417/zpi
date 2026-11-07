@@ -2,8 +2,8 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
-// Released projection schema. Keep stable for validating and upgrading v1 databases.
-export const transcriptSchemaV1 = `
+// Current rebuildable transcript index schema.
+export const transcriptSchema = `
       CREATE TABLE IF NOT EXISTS transcript_state(path TEXT PRIMARY KEY, generation TEXT NOT NULL, header TEXT NOT NULL, size INTEGER NOT NULL, modified REAL NOT NULL, inode TEXT NOT NULL, seq INTEGER NOT NULL, parent_id TEXT, current_run TEXT NOT NULL, cache_read INTEGER NOT NULL, cache_input INTEGER NOT NULL, activity REAL);
       CREATE TABLE IF NOT EXISTS transcript_entries(path TEXT NOT NULL, seq INTEGER NOT NULL, entry_id TEXT NOT NULL, type TEXT NOT NULL, role TEXT, offset INTEGER NOT NULL, length INTEGER NOT NULL, run_id TEXT, file_change INTEGER NOT NULL, kept_seq INTEGER, PRIMARY KEY(path,seq), UNIQUE(path,entry_id));
       CREATE INDEX IF NOT EXISTS transcript_entries_type ON transcript_entries(path,type,seq);
@@ -17,7 +17,7 @@ export const transcriptSchemaV1 = `
       CREATE TABLE IF NOT EXISTS transcript_search(path TEXT NOT NULL, seq INTEGER NOT NULL, run_id TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY(path,seq));
     `;
 
-export const transcriptIndexesV2 = `
+export const transcriptIndexes = `
 CREATE INDEX IF NOT EXISTS transcript_calls_open ON transcript_calls(path) WHERE complete=0;
 CREATE INDEX IF NOT EXISTS transcript_runs_start ON transcript_runs(path,start);
 `;
@@ -54,7 +54,7 @@ export function ensureTranscriptSchema(db: DatabaseSync, readOnly = false): bool
     if (missing) throw new Error("storage: Missing prepared transcript cache");
     return false;
   }
-  db.exec(transcriptSchemaV1 + transcriptIndexesV2);
+  db.exec(transcriptSchema + transcriptIndexes);
   if (missing) db.exec("DELETE FROM transcript_state");
   return missing;
 }

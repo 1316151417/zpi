@@ -90,6 +90,7 @@ async function run(
           prepareNextTurnWithContext: ________,
           getSteeringMessages: _________,
           getPendingMessages: __________,
+          beforeStop: ___________,
           ...options
         } = config;
         const apiKey = (await getApiKey?.(config.model.provider)) ?? config.apiKey;
@@ -212,7 +213,11 @@ async function run(
         ...(config.getSteeringMessages?.() ?? []),
       ];
       for (const message of steering) await add(message);
-      if (!calls.length && !steering.length) break;
+      if (!calls.length && !steering.length) {
+        const feedback = await config.beforeStop?.(assistant, signal);
+        if (signal?.aborted || !feedback?.length) break;
+        for (const message of feedback) await add(message);
+      }
       const next = await config.prepareNextTurnWithContext?.(
         { message: assistant, toolResults: results, context, newMessages: fresh },
         signal,

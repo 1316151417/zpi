@@ -9,7 +9,6 @@ import {
   discoverProviderCredentials,
   getProviderPreset,
   isJsonObject,
-  isLegacyOpenAIModel,
   openAICompletionsCompatKeys,
   presetModels,
   providerApi,
@@ -25,10 +24,15 @@ import {
   refreshChatGPTCredential,
   verifyRefreshedChatGPTCredential,
 } from "zpi-ai/auth/openai-chatgpt";
+import {
+  builtinPluginCatalog,
+  defaultPluginSettings,
+  desktopPluginIds,
+  validateBuiltinPluginOptions,
+} from "zpi-builtin-plugins";
 import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
 import { isCodePreviewSettings } from "zpi-ui/code-preview";
 import type {
-  CapabilityName,
   CombinedSelection,
   InterfacePreferences,
   ModelSelection,
@@ -36,14 +40,10 @@ import type {
   ProviderInput,
   ProviderRecord,
   PublicSettings,
-  QuickChatSettingsInput,
-  SessionCapabilities,
-  SettingsInput,
   WebSearchSettingsInput,
 } from "../shared/bridge.ts";
 import {
   availablePresets,
-  defaultCapabilities,
   defaultPreferences,
   defaultPreset,
   modelDefaults,
@@ -51,22 +51,15 @@ import {
   toThinking,
   uiFontSizeLimits,
 } from "../shared/config.ts";
-import {
-  defaultMemorySettings,
-  exclusiveMemoryMode,
-  type MemorySettings,
-  memorySettingLimits,
-} from "../shared/memory.ts";
-import { quickChatSelectionIsValid } from "../shared/quick-chat-settings.ts";
+import { defaultMemorySettings, type MemorySettings, memorySettingLimits } from "../shared/memory.ts";
+import { memoryMode } from "../shared/plugins.ts";
 import {
   defaultShortcuts,
   normalizeShortcuts,
   type ShortcutSettings,
   validateShortcuts,
-  withAddedShortcuts,
-  withTaskMenuShortcut,
 } from "../shared/shortcuts.ts";
-import { shortcutDefaultsVersion } from "./shortcut-defaults-migration.ts";
+import { validatePluginSettings } from "./plugins/settings.ts";
 import { StateStore } from "./state-store.ts";
 export function atomicJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -91,19 +84,17 @@ interface Credentials {
 }
 export interface SettingsData {
   shortcuts: ShortcutSettings;
-  shortcutDefaultsVersion: typeof shortcutDefaultsVersion;
-  capabilities: SessionCapabilities;
-  // Missing only while an older configuration's encrypted credentials are locked.
-  webSearchEnabled?: boolean;
-  version: 4;
+  plugins: PublicSettings["plugins"];
+  webSearchEnabled: boolean;
+  version: 5;
   templates: PromptTemplate[];
   selectedTemplateId: string;
   disabledSkillPaths: string[];
   providers: ProviderData[];
   lastSelection: CombinedSelection | null;
-  quickChat: QuickChatSettingsInput;
-  interface: InterfacePreferences;
+  interface: Omit<InterfacePreferences, "notificationEnabled">;
 }
+const { notificationEnabled: _notificationEnabled, ...defaultStoredPreferences } = defaultPreferences;
 export function resolveModel(provider: ProviderData, input: ModelSettings): Model {
   const model: Model = {
     id: input.id,
@@ -131,17 +122,15 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
 export class SettingsStore {
   private data: SettingsData = {
     shortcuts: defaultShortcuts(process.platform),
-    shortcutDefaultsVersion,
-    capabilities: { ...defaultCapabilities },
+    plugins: structuredClone(defaultPluginSettings),
     webSearchEnabled: false,
-    version: 4,
+    version: 5,
     templates: [],
     selectedTemplateId: "pi",
     disabledSkillPaths: [],
     providers: [],
     lastSelection: null,
-    quickChat: { defaultSelection: null },
-    interface: structuredClone(defaultPreferences),
+    interface: structuredClone(defaultStoredPreferences),
   };
   private credentials: Record<string, Credentials> = {};
   private webApiKey = "";
@@ -160,56 +149,7 @@ export class SettingsStore {
     try {
       const creds = join(dir, "credentials.enc");
       const raw = this.state.getSetting<SettingsData>("app");
-      let migrated = false;
       if (raw !== undefined) {
-        if (!isJsonObject(raw)) throw new Error("storage: Invalid settings record");
-        raw.shortcuts = withAddedShortcuts(
-          withTaskMenuShortcut(raw.shortcuts, process.platform),
-          process.platform,
-        );
-        if (isJsonObject(raw.interface) && raw.interface.showModelPerformance === undefined)
-          raw.interface.showModelPerformance = defaultPreferences.showModelPerformance;
-        const migrateWebSearch = isJsonObject(raw.capabilities) && raw.capabilities.webSearch === undefined;
-        if (migrateWebSearch) {
-          raw.capabilities.webSearch = defaultCapabilities.webSearch;
-          migrated = true;
-        }
-        if (isJsonObject(raw.capabilities) && raw.capabilities.codexSubagentPrompt === undefined) {
-          raw.capabilities.codexSubagentPrompt = defaultCapabilities.codexSubagentPrompt;
-          migrated = true;
-        }
-        if (raw.quickChat === undefined) {
-          raw.quickChat = { defaultSelection: null };
-          migrated = true;
-        }
-        if (Array.isArray(raw.providers)) {
-          for (const provider of raw.providers) {
-            if (!isJsonObject(provider) || !["openai-chatgpt", "openai-api"].includes(provider.preset ?? ""))
-              continue;
-            if (provider.preset === "openai-api" && provider.api === "openai-completions") {
-              provider.api = "openai-responses";
-              migrated = true;
-            }
-            if (!Array.isArray(provider.models)) continue;
-            const defaults = new Map(presetModels(provider.preset ?? "").map((model) => [model.id, model]));
-            provider.models = provider.models.flatMap((model) => {
-              if (!isJsonObject(model)) return [model];
-              if (isLegacyOpenAIModel(model.id)) {
-                migrated = true;
-                return [];
-              }
-              const known = defaults.get(model.id);
-              if (!known) return [model];
-              const contextWindow =
-                model.useRecommendedConfig !== false || [272000, 1050000].includes(model.contextWindow ?? 0)
-                  ? known.contextWindow
-                  : model.contextWindow;
-              if (model.name === known.name && model.contextWindow === contextWindow) return [model];
-              migrated = true;
-              return [{ ...model, name: known.name, contextWindow }];
-            });
-          }
-        }
         this.validateData(raw);
         this.data = raw;
       }
@@ -218,8 +158,8 @@ export class SettingsStore {
         else {
           const raw: unknown = JSON.parse(encryption.decryptString(readFileSync(creds)));
           if (!isJsonObject(raw)) throw new Error("storage: Invalid credential record");
-          const values =
-            raw.version === 2 || raw.version === 3 || raw.version === 4 ? raw.providers : { custom: raw };
+          if (raw.version !== 4) throw new Error("storage: Unsupported credential format");
+          const values = raw.providers;
           if (!isJsonObject(values)) throw new Error("storage: Invalid credential providers");
           for (const [id, value] of Object.entries(values)) {
             if (!isJsonObject(value) || typeof value.baseUrl !== "string" || typeof value.apiKey !== "string")
@@ -231,7 +171,7 @@ export class SettingsStore {
                 ...(isChatGPTCredential(value.chatgpt) ? { chatgpt: value.chatgpt } : {}),
               };
           }
-          if (raw.version === 4 && raw.webSearch !== undefined) {
+          if (raw.webSearch !== undefined) {
             if (!isJsonObject(raw.webSearch) || typeof raw.webSearch.apiKey !== "string")
               throw new Error("storage: Invalid web search credentials");
             this.webApiKey = raw.webSearch.apiKey;
@@ -239,18 +179,6 @@ export class SettingsStore {
           this.persisted = true;
         }
       }
-      if (this.data.webSearchEnabled === undefined && !this.unreadCredentials) {
-        this.data.webSearchEnabled = Boolean(this.webApiKey);
-        migrated = true;
-      }
-      if (
-        this.data.capabilities.webSearch &&
-        (!this.data.webSearchEnabled || (!this.unreadCredentials && !this.webApiKey))
-      ) {
-        this.data.capabilities.webSearch = false;
-        migrated = true;
-      }
-      if (migrated) this.state.setSetting("app", this.data);
     } catch (error) {
       this.close();
       throw error;
@@ -266,14 +194,14 @@ export class SettingsStore {
     return {
       webSearch: {
         provider: "deepseek",
-        enabled: this.data.webSearchEnabled ?? false,
+        enabled: this.data.webSearchEnabled,
         hasApiKey: Boolean(this.webApiKey),
         apiKeyLength: this.unreadCredentials ? 0 : this.webApiKey.length,
         credentialsPersisted: this.persisted,
         credentialsLocked: this.unreadCredentials,
       },
       shortcuts: structuredClone(this.data.shortcuts),
-      capabilities: structuredClone(this.data.capabilities),
+      plugins: structuredClone(this.data.plugins),
       providers: this.data.providers.map((p) => ({
         ...structuredClone(p),
         hasApiKey: Boolean(this.credentials[p.id]?.apiKey),
@@ -289,8 +217,10 @@ export class SettingsStore {
           : {}),
       })),
       lastSelection: structuredClone(this.data.lastSelection),
-      quickChat: structuredClone(this.data.quickChat),
-      interface: structuredClone(this.data.interface),
+      interface: {
+        ...structuredClone(this.data.interface),
+        notificationEnabled: this.data.plugins.enabled[desktopPluginIds.notifications] !== false,
+      },
       credentialsPersisted: this.persisted,
       disabledSkillPaths: [...this.data.disabledSkillPaths],
     };
@@ -327,25 +257,29 @@ export class SettingsStore {
       ...(input.enabled !== undefined ? { webSearchEnabled: input.enabled } : {}),
       ...((input.enabled ?? this.data.webSearchEnabled) && webApiKey
         ? {}
-        : { capabilities: { ...this.data.capabilities, webSearch: false } }),
+        : {
+            plugins: {
+              ...this.data.plugins,
+              enabled: { ...this.data.plugins.enabled, [desktopPluginIds.web]: false },
+            },
+          }),
     };
     if (input.apiKey === undefined) return this.savePublic(data);
     this.persist(data, this.credentials, webApiKey);
     return this.get();
   }
-  saveQuickChatSettings(input: QuickChatSettingsInput): PublicSettings {
-    this.validateQuickChat(input);
-    const selection = input.defaultSelection;
-    if (selection && !quickChatSelectionIsValid(this.get().providers, selection))
-      throw new Error("configuration: 请选择可用的模型和思考级别");
-    return this.savePublic({ ...this.data, quickChat: structuredClone(input) });
-  }
   getMemorySettings(): MemorySettings {
-    const value = this.state.getSetting<MemorySettings>("memory.settings") ?? defaultMemorySettings;
+    const saved = this.state.getSetting<Omit<MemorySettings, "short" | "long">>("memory.settings");
+    if (saved !== undefined)
+      assertSupportedOptions(
+        saved,
+        Object.keys(defaultMemorySettings).filter((key) => key !== "short" && key !== "long"),
+        "memory pipeline settings",
+      );
+    const mode = memoryMode(this.data.plugins);
+    const value = { ...(saved ?? defaultMemorySettings), short: mode === "short", long: mode === "long" };
     this.validateMemorySettings(value);
-    const normalized = exclusiveMemoryMode(value);
-    if (normalized !== value) this.state.setSetting("memory.settings", normalized);
-    return structuredClone(normalized);
+    return structuredClone(value);
   }
   saveMemorySettings(input: MemorySettings): MemorySettings {
     this.validateMemorySettings(input);
@@ -370,7 +304,27 @@ export class SettingsStore {
       )
         throw new Error("configuration: 记忆模型不支持所选思考级别");
     }
-    this.state.setSetting("memory.settings", structuredClone(input));
+    const { short, long, ...pipeline } = input;
+    const data = {
+      ...this.data,
+      plugins: {
+        ...this.data.plugins,
+        enabled: {
+          ...this.data.plugins.enabled,
+          ...(short || long ? { [desktopPluginIds.memory]: true } : {}),
+        },
+        options: {
+          ...this.data.plugins.options,
+          [desktopPluginIds.memory]: { mode: long ? "long" : short ? "short" : "off" },
+        },
+      },
+    };
+    this.validateData(data);
+    this.state.transaction("memory.settings", "memory", () => {
+      this.state.setSetting("memory.settings", structuredClone(pipeline));
+      this.state.setSetting("app", data);
+    });
+    this.data = data;
     return this.getMemorySettings();
   }
   private validateMemorySettings(value: unknown): asserts value is MemorySettings {
@@ -432,13 +386,6 @@ export class SettingsStore {
     const p = this.data.providers.find((p) => p.id === providerId);
     if (!p) throw new Error("configuration: 所选提供商已删除，请选择新模型");
     return structuredClone({ ...p, ...this.getProviderCredentials(providerId) });
-  }
-  // Internal legacy shape remains useful to callers migrating old single-model settings.
-  save(input: SettingsInput): PublicSettings {
-    return this.saveProvider({
-      ...this.legacy(input).providers[0],
-      ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
-    });
   }
   saveProvider(input: ProviderInput, chatgptCredential?: ChatGPTCredential): PublicSettings {
     if (!isJsonObject(input)) throw new Error("configuration: 提供商配置必须为对象");
@@ -627,21 +574,55 @@ export class SettingsStore {
     return this.savePublic({ ...this.data, shortcuts: normalizeShortcuts(input, process.platform) });
   }
   updatePreferences(input: Partial<InterfacePreferences>): PublicSettings {
-    const data = { ...this.data, interface: { ...this.data.interface, ...input } };
-    this.validateData(data);
-    this.state.setSetting("app", data);
-    this.data = data;
-    return this.get();
+    if (Object.hasOwn(input, "notificationEnabled") && typeof input.notificationEnabled !== "boolean")
+      throw new Error("configuration: 无效通知设置");
+    const { notificationEnabled, ...preferences } = input;
+    return this.savePublic({
+      ...this.data,
+      interface: { ...this.data.interface, ...preferences },
+      ...(notificationEnabled !== undefined
+        ? {
+            plugins: {
+              ...this.data.plugins,
+              enabled: {
+                ...this.data.plugins.enabled,
+                [desktopPluginIds.notifications]: notificationEnabled,
+              },
+            },
+          }
+        : {}),
+    });
   }
-  setCapabilityEnabled(name: CapabilityName, enabled: boolean): PublicSettings {
-    if (!Object.hasOwn(defaultCapabilities, name) || typeof enabled !== "boolean")
-      throw new Error("invalid_input: 无效扩展能力");
-    if (name === "webSearch" && enabled) {
+  setPluginEnabled(id: string, enabled: boolean): PublicSettings {
+    if (
+      (!builtinPluginCatalog.some((plugin) => plugin.id === id) &&
+        !(this.state.getSetting<{ id: string }[]>("plugins.local") ?? []).some(
+          (plugin) => plugin.id === id,
+        )) ||
+      typeof enabled !== "boolean"
+    )
+      throw new Error("invalid_input: 无效插件");
+    if (id === desktopPluginIds.web && enabled) {
       if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
       if (!this.data.webSearchEnabled || !this.webApiKey)
         throw new Error("configuration: 请先配置并启用一个联网搜索提供商");
     }
-    return this.savePublic({ ...this.data, capabilities: { ...this.data.capabilities, [name]: enabled } });
+    return this.savePublic({
+      ...this.data,
+      plugins: { ...this.data.plugins, enabled: { ...this.data.plugins.enabled, [id]: enabled } },
+    });
+  }
+  setPluginOptions(id: string, options: import("zpi-ai").JsonObject): PublicSettings {
+    if (!builtinPluginCatalog.some((plugin) => plugin.id === id) || !isJsonObject(options))
+      throw new Error("invalid_input: 无效插件配置");
+    validateBuiltinPluginOptions(id, options);
+    return this.savePublic({
+      ...this.data,
+      plugins: {
+        ...this.data.plugins,
+        options: { ...this.data.plugins.options, [id]: structuredClone(options) },
+      },
+    });
   }
   getTemplate(): PromptTemplate {
     return structuredClone(
@@ -720,53 +701,6 @@ export class SettingsStore {
       rmSync(credsTemp, { force: true });
     }
   }
-  private legacy(input: SettingsInput): SettingsData {
-    assertSupportedOptions(
-      input,
-      [
-        "baseUrl",
-        "modelId",
-        "apiKey",
-        "headers",
-        "supportsImages",
-        "reasoning",
-        "contextWindow",
-        "maxTokens",
-        "compat",
-      ],
-      "legacy settings",
-    );
-    return {
-      shortcuts: defaultShortcuts(process.platform),
-      shortcutDefaultsVersion,
-      version: 4,
-      templates: [],
-      selectedTemplateId: "pi",
-      disabledSkillPaths: [],
-      capabilities: { ...defaultCapabilities },
-      webSearchEnabled: false,
-      providers: [
-        {
-          id: "custom",
-          name: "Custom",
-          baseUrl: input.baseUrl,
-          models: [
-            {
-              id: input.modelId,
-              input: input.supportsImages ? ["text", "image"] : ["text"],
-              reasoning: input.reasoning,
-              contextWindow: input.contextWindow,
-              maxTokens: input.maxTokens,
-              compat: { supportsReasoningEffort: false, ...input.compat },
-            },
-          ],
-        },
-      ],
-      lastSelection: null,
-      quickChat: { defaultSelection: null },
-      interface: structuredClone(defaultPreferences),
-    };
-  }
   private validateData(data: SettingsData): void {
     assertSupportedOptions(
       data,
@@ -774,33 +708,22 @@ export class SettingsStore {
         "version",
         "providers",
         "lastSelection",
-        "quickChat",
         "interface",
         "templates",
         "selectedTemplateId",
         "disabledSkillPaths",
-        "capabilities",
+        "plugins",
         "webSearchEnabled",
         "shortcuts",
-        "shortcutDefaultsVersion",
       ],
       "settings",
     );
     const shortcutError = validateShortcuts(data.shortcuts, process.platform);
     if (shortcutError) throw new Error(`storage: ${shortcutError}`);
-    if (data.shortcutDefaultsVersion !== shortcutDefaultsVersion)
-      throw new Error("storage: Unsupported shortcut defaults version");
-    if (data.version !== 4 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");
-    if (data.webSearchEnabled !== undefined && typeof data.webSearchEnabled !== "boolean")
+    if (data.version !== 5 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");
+    if (typeof data.webSearchEnabled !== "boolean")
       throw new Error("storage: Invalid web search provider state");
-    if (
-      !isJsonObject(data.capabilities) ||
-      (Object.keys(defaultCapabilities) as CapabilityName[]).some(
-        (name) => typeof data.capabilities[name] !== "boolean",
-      )
-    )
-      throw new Error("storage: Invalid session capabilities");
-    assertSupportedOptions(data.capabilities, Object.keys(defaultCapabilities), "session capabilities");
+    validatePluginSettings(data.plugins);
     if (
       !Array.isArray(data.templates) ||
       !Array.isArray(data.disabledSkillPaths) ||
@@ -817,7 +740,6 @@ export class SettingsStore {
     for (const p of data.providers) this.validateProvider(p);
     if (new Set(data.providers.map((p) => p.id)).size !== data.providers.length)
       throw new Error("configuration: 重复提供商 ID");
-    this.validateQuickChat(data.quickChat);
     const selection = data.lastSelection;
     if (
       selection !== null &&
@@ -831,7 +753,7 @@ export class SettingsStore {
       throw new Error("storage: Invalid model selection");
     const prefs = data.interface;
     if (!isJsonObject(prefs)) throw new Error("storage: Invalid interface preferences");
-    assertSupportedOptions(prefs, Object.keys(defaultPreferences), "interface preferences");
+    assertSupportedOptions(prefs, Object.keys(defaultStoredPreferences), "interface preferences");
     if (prefs.codePreview !== undefined && !isCodePreviewSettings(prefs.codePreview))
       throw new Error("configuration: 无效代码预览设置");
     if (
@@ -839,7 +761,6 @@ export class SettingsStore {
         prefs.showContextUsage,
         prefs.showModelPerformance,
         prefs.showSendButton,
-        prefs.notificationEnabled,
         prefs.notificationSoundEnabled,
         prefs.sidebarCollapsed,
         prefs.projectsCollapsed,
@@ -856,20 +777,6 @@ export class SettingsStore {
       prefs.collapsedProjectIds.some((id) => typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id))
     )
       throw new Error("configuration: 无效界面设置");
-  }
-  private validateQuickChat(input: QuickChatSettingsInput): void {
-    if (!isJsonObject(input)) throw new Error("invalid_input: 快速对话配置必须为对象");
-    assertSupportedOptions(input, ["defaultSelection"], "quick chat settings");
-    const selection = input.defaultSelection;
-    if (selection === null) return;
-    if (
-      !isJsonObject(selection) ||
-      ["provider", "modelId", "reasoning"].some(
-        (key) => typeof selection[key] !== "string" || !selection[key].trim() || selection[key].length > 256,
-      )
-    )
-      throw new Error("invalid_input: 快速对话默认模型无效");
-    assertSupportedOptions(selection, ["provider", "modelId", "reasoning"], "quick chat selection");
   }
   private validateProvider(p: ProviderData): void {
     if (!isJsonObject(p)) throw new Error("configuration: 无效提供商");

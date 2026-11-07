@@ -113,11 +113,7 @@ export function ShortcutSettings() {
         setPreview(null);
         return;
       }
-      const binding = shortcutFromEvent(
-        event,
-        platform,
-        recording.startsWith("quick-chat") || recording === "key-search",
-      );
+      const binding = shortcutFromEvent(event, platform, recording === "key-search");
       if (recording === "key-search") {
         if (!binding || (!event.metaKey && !event.ctrlKey && !event.altKey && !/^F\d+$/.test(binding)))
           return;

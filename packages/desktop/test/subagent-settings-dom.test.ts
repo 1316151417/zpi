@@ -2,12 +2,20 @@ import { readFileSync } from "node:fs";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { defaultPluginSettings } from "zpi-builtin-plugins";
 import type { Result } from "../src/shared/bridge.ts";
 import type { SubagentCatalog } from "../src/shared/subagents.ts";
 
 const state = vi.hoisted(() => ({
   selected: "session",
-  settings: { providers: [], capabilities: { subagents: true, codexSubagentPrompt: false } },
+  settings: {
+    providers: [],
+    plugins: {
+      version: 2,
+      enabled: { "zpi.collaboration": true },
+      options: {},
+    } as typeof import("zpi-builtin-plugins").defaultPluginSettings,
+  },
   projects: [{ id: "project", name: "Project" }],
   sessions: new Map([["session", { projectId: "project" }]]),
 }));
@@ -22,7 +30,8 @@ import { SubagentSettings } from "../src/renderer/SubagentSettings.tsx";
 const catalog: SubagentCatalog = { agents: [], diagnostics: [] };
 const listSubagents = vi.fn<() => Promise<Result<SubagentCatalog>>>();
 const saveSubagent = vi.fn();
-const setCapabilityEnabled = vi.fn();
+const setPluginEnabled = vi.fn();
+const setPluginOptions = vi.fn();
 let root: Root;
 let container: HTMLDivElement;
 let style: HTMLStyleElement;
@@ -51,14 +60,24 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   listSubagents.mockReset().mockResolvedValue({ ok: true, value: catalog });
   saveSubagent.mockReset();
-  state.settings.capabilities = { subagents: true, codexSubagentPrompt: false };
-  setCapabilityEnabled.mockReset().mockImplementation(async (name: string, enabled: boolean) => ({
+  state.settings.plugins = structuredClone(defaultPluginSettings);
+  setPluginEnabled.mockReset().mockImplementation(async (id: string, enabled: boolean) => ({
     ok: true,
-    value: { ...state.settings, capabilities: { ...state.settings.capabilities, [name]: enabled } },
+    value: {
+      ...state.settings,
+      plugins: { ...state.settings.plugins, enabled: { ...state.settings.plugins.enabled, [id]: enabled } },
+    },
+  }));
+  setPluginOptions.mockReset().mockImplementation(async (id: string, options: object) => ({
+    ok: true,
+    value: {
+      ...state.settings,
+      plugins: { ...state.settings.plugins, options: { ...state.settings.plugins.options, [id]: options } },
+    },
   }));
   Object.defineProperty(window, "zpi", {
     configurable: true,
-    value: { listSubagents, saveSubagent, setCapabilityEnabled },
+    value: { listSubagents, saveSubagent, setPluginEnabled, setPluginOptions },
   });
   style = document.createElement("style");
   // This checks the cascade in DOM, not text layout, browser hover, or rendered pixels.
@@ -192,16 +211,17 @@ test("Codex prompts default off, save independently, and retain their choice whi
   expect(toggle().checked).toBe(false);
   expect(toggle().disabled).toBe(false);
   await click(toggle());
-  expect(setCapabilityEnabled).toHaveBeenCalledWith("codexSubagentPrompt", true);
+  expect(setPluginOptions).toHaveBeenCalledWith("zpi.collaboration", { promptPreset: "codex" });
   await render();
   expect(toggle().checked).toBe(true);
   await click(query('[aria-label="启用子智能体"]'));
-  expect(setCapabilityEnabled).toHaveBeenLastCalledWith("subagents", false);
+  expect(setPluginEnabled).toHaveBeenLastCalledWith("zpi.collaboration", false);
   await render();
   expect(toggle().disabled).toBe(true);
   expect(toggle().checked).toBe(true);
   await click(toggle());
-  expect(setCapabilityEnabled).toHaveBeenCalledTimes(2);
+  expect(setPluginOptions).toHaveBeenCalledTimes(1);
+  expect(setPluginEnabled).toHaveBeenCalledTimes(1);
   await click(query('[aria-label="启用子智能体"]'));
   await render();
   expect(toggle().disabled).toBe(false);
@@ -210,7 +230,7 @@ test("Codex prompts default off, save independently, and retain their choice whi
 
 test("failed Codex prompt saves preserve the previous choice and show the error", async () => {
   await render();
-  setCapabilityEnabled.mockRejectedValueOnce(new Error("save failed"));
+  setPluginOptions.mockRejectedValueOnce(new Error("save failed"));
   await click(query('[aria-label="Codex 子智能体提示"]'));
   expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').checked).toBe(false);
   expect(query('[role="alert"]').textContent).toContain("操作失败");

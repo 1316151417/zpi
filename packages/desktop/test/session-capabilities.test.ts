@@ -28,13 +28,13 @@ test.each(
   "custom instructions rules follow independent switches: communication=%s, batching=%s, links=%s, reuse=%s, proactive=%s",
   async (communicationStyle, toolBatching, fileLinks, fileContextReuse, proactiveExecution) => {
     const f = await fixture();
-    f.settings.setCapabilityEnabled("subagents", false);
+    f.settings.setPluginEnabled("zpi.collaboration", false);
     const basePrompt = (await f.host.previewPrompt()).basePrompt;
-    f.settings.setCapabilityEnabled("communicationStyle", communicationStyle);
-    f.settings.setCapabilityEnabled("toolBatching", toolBatching);
-    f.settings.setCapabilityEnabled("fileLinks", fileLinks);
-    f.settings.setCapabilityEnabled("fileContextReuse", fileContextReuse);
-    f.settings.setCapabilityEnabled("proactiveExecution", proactiveExecution);
+    f.settings.setPluginEnabled("zpi.communication-style", communicationStyle);
+    f.settings.setPluginEnabled("zpi.tool-batching", toolBatching);
+    f.settings.setPluginEnabled("zpi.file-links", fileLinks);
+    f.settings.setPluginEnabled("zpi.file-context-reuse", fileContextReuse);
+    f.settings.setPluginEnabled("zpi.proactive-execution", proactiveExecution);
     const preview = await f.host.previewPrompt();
     for (const rule of [
       "Before the first tool call",
@@ -88,16 +88,16 @@ test.each(
 
 test("snapshots custom instructions on first send and keeps them when global settings change or the app restarts", async () => {
   const f = await fixture();
-  f.settings.setCapabilityEnabled("communicationStyle", false);
-  f.settings.setCapabilityEnabled("fileLinks", false);
-  f.settings.setCapabilityEnabled("fileContextReuse", false);
-  f.settings.setCapabilityEnabled("proactiveExecution", false);
+  f.settings.setPluginEnabled("zpi.communication-style", false);
+  f.settings.setPluginEnabled("zpi.file-links", false);
+  f.settings.setPluginEnabled("zpi.file-context-reuse", false);
+  f.settings.setPluginEnabled("zpi.proactive-execution", false);
   await run(f, "first send");
-  f.settings.setCapabilityEnabled("communicationStyle", true);
-  f.settings.setCapabilityEnabled("fileLinks", true);
-  f.settings.setCapabilityEnabled("toolBatching", false);
-  f.settings.setCapabilityEnabled("fileContextReuse", true);
-  f.settings.setCapabilityEnabled("proactiveExecution", true);
+  f.settings.setPluginEnabled("zpi.communication-style", true);
+  f.settings.setPluginEnabled("zpi.file-links", true);
+  f.settings.setPluginEnabled("zpi.tool-batching", false);
+  f.settings.setPluginEnabled("zpi.file-context-reuse", true);
+  f.settings.setPluginEnabled("zpi.proactive-execution", true);
   await f.host.close();
   const host = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace, undefined);
   await host.init();
@@ -123,82 +123,77 @@ test("snapshots custom instructions on first send and keeps them when global set
   expect(system()).toContain("When you have enough information to act, act.");
 });
 
-test("defaults web search and Codex subagent prompts off, preserving other capabilities, preserving saved choices in SQLite", async () => {
+test("instruction and tool plugins persist through the same settings contract", async () => {
   const f = await fixture();
-  expect(f.settings.get().capabilities).toEqual({
-    webSearch: false,
-    communicationStyle: true,
-    subagents: true,
-    codexSubagentPrompt: false,
-    askUserQuestion: true,
-    toolBatching: true,
-    fileLinks: true,
-    fileContextReuse: true,
-    proactiveExecution: true,
+  expect(f.settings.get()).not.toHaveProperty("capabilities");
+  expect(f.settings.get().plugins.enabled).toMatchObject({
+    "zpi.questions": true,
+    "zpi.collaboration": true,
+    "zpi.web-search": false,
   });
-  const settings = f.settings.state.getSetting<Record<string, unknown>>("app");
-  f.settings.setCapabilityEnabled("askUserQuestion", false);
+  f.settings.setPluginEnabled("zpi.questions", false);
+  f.settings.setPluginEnabled("zpi.communication-style", false);
   const restored = new SettingsStore(f.dir, codec);
-  expect(restored.get().capabilities).toEqual({
-    webSearch: false,
-    communicationStyle: true,
-    subagents: true,
-    codexSubagentPrompt: false,
-    askUserQuestion: false,
-    toolBatching: true,
-    fileLinks: true,
-    fileContextReuse: true,
-    proactiveExecution: true,
-  });
-  expect(() => restored.setCapabilityEnabled("unknown" as "fileLinks", true)).toThrow("无效扩展能力");
-  restored.setCapabilityEnabled("communicationStyle", false);
-  restored.setCapabilityEnabled("subagents", false);
-  restored.setCapabilityEnabled("fileLinks", false);
-  restored.setCapabilityEnabled("fileContextReuse", false);
-  restored.setCapabilityEnabled("proactiveExecution", false);
-  const saved = new SettingsStore(f.dir, codec).get();
-  expect(saved.capabilities.communicationStyle).toBe(false);
-  expect(saved.capabilities.subagents).toBe(false);
-  expect(saved.capabilities.askUserQuestion).toBe(false);
-  expect(saved.capabilities.fileContextReuse).toBe(false);
-  expect(saved.capabilities.proactiveExecution).toBe(false);
-  expect(new SettingsStore(f.dir, codec).get().capabilities.fileLinks).toBe(false);
-  f.settings.state.setSetting("app", {
-    ...settings,
-    capabilities: { ...f.settings.get().capabilities, communicationStyle: "on" },
-  });
-  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid session capabilities");
-  f.settings.state.setSetting("app", { ...settings, capabilities: true });
-  expect(() => new SettingsStore(f.dir, codec)).toThrow("Invalid session capabilities");
+  expect(restored.get().plugins.enabled["zpi.questions"]).toBe(false);
+  expect(restored.get().plugins.enabled["zpi.communication-style"]).toBe(false);
+  expect(() => restored.setPluginEnabled("unknown", true)).toThrow("无效插件");
 });
 
-test.each(["communicationStyle", "fileContextReuse", "proactiveExecution"] as const)(
-  "sessions created before the %s switch keep their prompt when reopened",
-  async (capability) => {
+test.each(["missing-runtime", "unknown-runtime", "different-version"])(
+  "unavailable %s plugin blocks restoration before any model request",
+  async (mode) => {
     const f = await fixture();
-    f.settings.setCapabilityEnabled(capability, false);
-    await run(f, "legacy conversation");
+    await run(f, "freeze runtime plugins");
     await f.host.close();
     const task = f.settings.state.getTask(f.session.id);
     if (!task) throw new Error("Missing task fixture");
-    const configuration = { ...(task.frozenConfiguration as Record<string, unknown>) };
-    delete configuration[capability];
-    f.settings.state.upsertTask({ ...task, frozenConfiguration: configuration });
-    f.settings.setCapabilityEnabled(capability, true);
-    const host = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace, undefined);
-    await host.init();
-    cleanup.push(() => host.close());
-    await host.startRun({ sessionId: f.session.id, text: "continue legacy conversation" });
-    await host.activeRuns.get(f.session.id)?.done;
-    expect(JSON.stringify(f.server.requests.at(-1)?.messages)).not.toContain(
-      {
-        communicationStyle: "Before the first tool call",
-        fileContextReuse: "Reuse file content already in context",
-        proactiveExecution: "When you have enough information to act, act.",
-      }[capability],
+    const config = task.frozenConfiguration as { plugins: import("zpi-coding-agent").PluginSnapshot[] };
+    const runtime = config.plugins.find((plugin) => plugin.id === "zpi.questions");
+    if (!runtime) throw new Error("Missing runtime plugin fixture");
+    if (mode === "missing-runtime") delete runtime.runtime;
+    if (mode === "unknown-runtime") runtime.runtime = "unknown.runtime";
+    if (mode === "different-version") runtime.version = "next";
+    f.settings.state.upsertTask({ ...task, frozenConfiguration: config });
+    const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
+    cleanup.push(() => restored.close());
+    await restored.init();
+    await expect(restored.startRun({ sessionId: f.session.id, text: "continue" })).rejects.toThrow(
+      "运行时不可用或版本不匹配",
     );
+    expect(f.server.requests).toHaveLength(1);
   },
 );
+
+test("frozen plugin versions, instructions and commands survive restart and global disabling", async () => {
+  const f = await fixture();
+  await run(f, "freeze plugins");
+  await f.host.close();
+  const task = f.settings.state.getTask(f.session.id);
+  if (!task) throw new Error("Missing task fixture");
+  const config = task.frozenConfiguration as { plugins: import("zpi-coding-agent").PluginSnapshot[] };
+  const init = config.plugins.find((plugin) => plugin.id === "zpi.project-init");
+  if (!init?.commands) throw new Error("Missing initialization plugin");
+  init.version = "frozen-version";
+  init.instructions = ["frozen plugin text"];
+  init.commands = [{ name: "init", description: "Frozen init", prompt: "FROZEN INIT {{arguments}}" }];
+  f.settings.state.upsertTask({ ...task, frozenConfiguration: config });
+  f.settings.setPluginEnabled("zpi.project-init", false);
+  const host = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace, undefined);
+  await host.init();
+  cleanup.push(() => host.close());
+  expect(host.listCommands(f.session.id).map((command) => command.name)).toContain("init");
+  expect(host.listCommands().map((command) => command.name)).not.toContain("init");
+  await host.startRun({ sessionId: f.session.id, text: "/init preserve" });
+  await host.activeRuns.get(f.session.id)?.done;
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("FROZEN INIT preserve");
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("frozen plugin text");
+  const next = await host.createSession(null);
+  expect(host.listCommands(next.id).map((command) => command.name)).not.toContain("init");
+  await host.startRun({ sessionId: next.id, text: "/init plain input" });
+  await host.activeRuns.get(next.id)?.done;
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).not.toContain("FROZEN INIT");
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).not.toContain("Inspect this project");
+});
 
 test("session paths resolve to the real JSONL file and reject missing session IDs", async () => {
   const f = await fixture();
@@ -226,7 +221,7 @@ test("rejects an invalid communication switch in a saved conversation before sen
   cleanup.push(() => host.close());
   await host.init();
   await expect(host.startRun({ sessionId: f.session.id, text: "continue" })).rejects.toThrow(
-    "Invalid communication style capability",
+    "session configuration: unsupported option communicationStyle",
   );
   expect(f.server.requests).toHaveLength(1);
 });

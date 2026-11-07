@@ -188,7 +188,7 @@ it("required skills use the owning session resource loader and preserve metadata
 
 it("subagent mentions route through the existing Agent tool and honor session capability snapshots", async () => {
   const { host, settings, a, server } = await fixture((_, response) => done(response));
-  settings.setCapabilityEnabled("subagents", true);
+  settings.setPluginEnabled("zpi.collaboration", true);
   const session = await host.createSession(a.id);
   expect(
     (await host.listSessionCustomCommands(session.id)).subagents?.some((agent) => agent.name === "Explore"),
@@ -200,7 +200,7 @@ it("subagent mentions route through the existing Agent tool and honor session ca
   expect(host.getSessionSnapshot(session.id).view.runs[0].userMessage).toBe(
     "@Explore inspect the entry point",
   );
-  settings.setCapabilityEnabled("subagents", false);
+  settings.setPluginEnabled("zpi.collaboration", false);
   expect((await host.listSessionCustomCommands(session.id)).subagents?.length).toBeGreaterThan(0);
   const disabled = await host.createSession(a.id);
   expect((await host.listSessionCustomCommands(disabled.id)).subagents).toEqual([]);
@@ -272,7 +272,7 @@ it("a readonly Agent delegation cannot run command shell templates", async () =>
   );
   cleanup.push(() => host.close());
   await host.init();
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   host.saveSubagent({
     scope: "user",
     sessionId: null,

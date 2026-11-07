@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { desktopPluginIds } from "zpi-builtin-plugins";
 import { StateStore } from "../src/main/state-store.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import type { InterfacePreferences } from "../src/shared/bridge.ts";
@@ -46,6 +47,22 @@ const provider = {
   apiKey: "secret",
 };
 
+it("notification preferences and plugin settings share one persisted switch", async () => {
+  const f = await fixture();
+  const store = f.open();
+  const id = desktopPluginIds.notifications;
+  expect(store.get().interface.notificationEnabled).toBe(true);
+  expect(store.updatePreferences({ notificationEnabled: false }).plugins.enabled[id]).toBe(false);
+  expect(f.open().get().interface.notificationEnabled).toBe(false);
+  expect(store.setPluginEnabled(id, true).interface.notificationEnabled).toBe(true);
+  expect(f.open().get().plugins.enabled[id]).toBe(true);
+  expect(f.state.getSetting<{ interface: object }>("app")?.interface).not.toHaveProperty(
+    "notificationEnabled",
+  );
+  expect(store.updatePreferences({ notificationSoundEnabled: false }).plugins.enabled[id]).toBe(true);
+  expect(() => store.updatePreferences({ notificationEnabled: "yes" } as never)).toThrow();
+});
+
 it("uses SQLite exclusively and never imports or rewrites legacy settings", async () => {
   const f = await fixture();
   const file = join(f.dir, "settings.json");
@@ -56,60 +73,7 @@ it("uses SQLite exclusively and never imports or rewrites legacy settings", asyn
   expect(f.open().get().interface.theme).toBe("dark");
   expect(await readFile(file, "utf8")).toBe("{broken old settings");
 });
-it("normalizes saved OpenAI defaults and removes superseded models without changing credentials or custom providers", async () => {
-  const f = await fixture();
-  const store = f.open();
-  store.saveProvider({ ...provider, models: [{ id: "gpt-6-sol", name: "Custom", contextWindow: 272000 }] });
-  for (const preset of ["openai-chatgpt", "openai-api"] as const) {
-    store.saveProvider({
-      id: preset,
-      preset,
-      name: preset,
-      baseUrl: "https://api.openai.com/v1",
-      api: "openai-responses",
-      ...(preset === "openai-api" ? { apiKey: "openai-secret" } : {}),
-      models: [
-        { id: "gpt-6.1-terra", name: "GPT-6.1-Terra", contextWindow: 1050000 },
-        { id: "gpt-6.1-sol", name: "GPT-6.1-Sol", contextWindow: 272000, useRecommendedConfig: false },
-        { id: "gpt-6-luna", name: "GPT-6-Luna", contextWindow: 272000, enabled: false },
-        { id: "gpt-6-astra", name: "GPT-6-Astra", contextWindow: 400000, useRecommendedConfig: false },
-        ...["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].map((id) => ({
-          id,
-          enabled: false,
-          useRecommendedConfig: false,
-        })),
-        { id: "manual-model", name: "Manual", contextWindow: 160000, useRecommendedConfig: false },
-      ],
-    });
-  }
-  const credentials = await readFile(join(f.dir, "credentials.enc"));
-  const raw = f.state.getSetting<{ providers: { preset?: string; api?: string }[] }>("app");
-  if (!raw) throw new Error("Missing settings");
-  for (const saved of raw.providers) if (saved.preset === "openai-api") saved.api = "openai-completions";
-  f.state.setSetting("app", raw);
-  const restored = f.open();
-  for (const preset of ["openai-chatgpt", "openai-api"]) {
-    const saved = restored.snapshot(preset);
-    expect(saved.api).toBe("openai-responses");
-    expect(saved.models.map((model) => model.name)).toEqual([
-      "GPT-6.1 Terra",
-      "GPT-6.1 Sol",
-      "GPT-6 Luna",
-      "GPT-6 Astra",
-      "Manual",
-    ]);
-    expect(saved.models.map((model) => model.contextWindow)).toEqual([
-      500000, 500000, 500000, 400000, 160000,
-    ]);
-    expect(saved.models[2].enabled).toBe(false);
-  }
-  expect(restored.snapshot("saved").models).toEqual(store.snapshot("saved").models);
-  expect(restored.snapshot("openai-api").apiKey).toBe("openai-secret");
-  expect(await readFile(join(f.dir, "credentials.enc"))).toEqual(credentials);
-  const normalized = f.state.getSetting("app");
-  expect(f.open().get()).toEqual(restored.get());
-  expect(f.state.getSetting("app")).toEqual(normalized);
-});
+
 it("locked credential discovery preserves public state and encrypted bytes", async () => {
   const f = await fixture();
   f.open().saveProvider(provider);
@@ -155,10 +119,40 @@ it("rejects invalid current settings instead of applying legacy migrations", asy
   f.open().updatePreferences({ theme: "dark" });
   const data = f.state.getSetting<Record<string, unknown>>("app");
   if (!data) throw new Error("missing settings");
-  for (const version of [1, 2, 3, 99]) {
+  for (const version of [1, 2, 3, 4, 99]) {
     f.state.setSetting("app", { ...data, version });
     expect(() => f.open()).toThrow();
   }
+});
+it.each([
+  { capabilities: { webSearch: true } },
+  { quickChat: {} },
+  { shortcutDefaultsVersion: 2 },
+  { webSearchEnabled: undefined },
+])("rejects retired configuration fields without rewriting saved data: %j", async (patch) => {
+  const f = await fixture();
+  f.open().updatePreferences({ theme: "dark" });
+  const data = { ...f.state.getSetting<object>("app"), ...patch };
+  f.state.setSetting("app", data);
+  const before = f.state.getSetting("app");
+  expect(() => f.open()).toThrow();
+  expect(f.state.getSetting("app")).toEqual(before);
+});
+it("rejects retired memory switches instead of converting them to plugin options", async () => {
+  const f = await fixture();
+  const store = f.open();
+  const memory = store.getMemorySettings();
+  f.state.setSetting("memory.settings", memory);
+  expect(() => store.getMemorySettings()).toThrow("unsupported option short");
+  expect(f.state.getSetting("memory.settings")).toEqual(memory);
+});
+it.each([1, 2, 3])("rejects credential format %s without rewriting the encrypted file", async (version) => {
+  const f = await fixture();
+  const file = join(f.dir, "credentials.enc");
+  const bytes = Buffer.from(JSON.stringify({ version, providers: {} }));
+  await writeFile(file, bytes);
+  expect(() => f.open()).toThrow("Unsupported credential format");
+  expect(await readFile(file)).toEqual(bytes);
 });
 it("binds restored credentials to their endpoint and keeps secrets out of SQLite", async () => {
   const f = await fixture();

@@ -36,13 +36,9 @@ it("isolates task/run updates and retains metrics on the next accepted send", ()
   expect(view.modelPerformance).toEqual(event.performance);
 });
 
-it("defaults new and old settings to on, validates and preserves an explicit opt-out", async () => {
+it("defaults new settings to on, validates and preserves an explicit opt-out", async () => {
   const { dir, settings } = await setup();
   expect(settings.get().interface.showModelPerformance).toBe(true);
-  const saved = settings.state.getSetting<{ interface: Record<string, unknown> }>("app");
-  if (!saved) throw new Error("Missing settings");
-  delete saved.interface.showModelPerformance;
-  settings.state.setSetting("app", saved);
   const reopened = new SettingsStore(dir, {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.alloc(0),
@@ -61,7 +57,7 @@ it("defaults new and old settings to on, validates and preserves an explicit opt
   expect(restored.get().interface.showModelPerformance).toBe(false);
 });
 
-it("backfills historical counts on upgrade and continues accumulating after restart", async () => {
+it("reconstructs missing derived counts and continues accumulating after restart", async () => {
   const { dir, cwd, host, settings } = await setup();
   const task = await host.createSession(null, { cwd });
   await host.startRun({ sessionId: task.id, text: "first" });
@@ -69,7 +65,7 @@ it("backfills historical counts on upgrade and continues accumulating after rest
   const first = host.getSessionSnapshot(task.id).view.modelPerformance;
   expect(first).toMatchObject({ turns: 1, steps: 1 });
   await host.close();
-  // Upgrading from a version without persisted totals recovers counts from history, not invented timings.
+  // Derived counts can be reconstructed from current facts without inventing timings.
   const saved = settings.state.getTask(task.id);
   if (!saved) throw new Error("Missing task");
   settings.state.upsertTask({ ...saved, modelPerformanceTotals: undefined });

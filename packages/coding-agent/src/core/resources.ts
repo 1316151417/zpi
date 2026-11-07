@@ -1,7 +1,8 @@
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { parseDocument } from "yaml";
+import type { JsonObject } from "zpi-ai";
+import { matchMarkdownFrontmatter, parseMarkdownFrontmatter } from "./markdown.ts";
 import type { ResourceDiagnostic, ResourceLoader } from "./types.ts";
 
 export interface SkillMetadata {
@@ -9,7 +10,7 @@ export interface SkillMetadata {
   description: string;
   path: string;
   baseDir: string;
-  source: "user" | "project";
+  source: "user" | "project" | "plugin";
 }
 export interface DiscoveredSkill extends SkillMetadata {
   enabled: boolean;
@@ -31,11 +32,6 @@ export interface LoadedSkill extends SkillMetadata {
 function missing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
-function frontmatter(text: string): { yaml: string; bodyOffset: number } {
-  const match = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
-  if (!match) throw new Error("SKILL.md requires closed YAML frontmatter");
-  return { yaml: match[1], bodyOffset: match[0].length };
-}
 async function metadataText(path: string): Promise<string> {
   // Skip devices and pipes before opening: a FIFO without a writer blocks discovery indefinitely.
   if (!(await stat(path)).isFile()) throw new Error("SKILL.md must be a regular file");
@@ -47,7 +43,7 @@ async function metadataText(path: string): Promise<string> {
       const buffer = Buffer.alloc(1024);
       const { bytesRead } = await file.read(buffer, 0, buffer.length, offset);
       text += decoder.decode(buffer.subarray(0, bytesRead), { stream: bytesRead !== 0 });
-      if (/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.test(text)) return text;
+      if (matchMarkdownFrontmatter(text)) return text;
       if (bytesRead === 0) break;
     }
     throw new Error("Missing or oversized YAML frontmatter (limit 64 KiB)");
@@ -55,13 +51,13 @@ async function metadataText(path: string): Promise<string> {
     await file.close();
   }
 }
-function parseMetadata(path: string, source: SkillMetadata["source"], text: string): SkillMetadata {
-  const doc = parseDocument(frontmatter(text).yaml, { uniqueKeys: true });
-  if (doc.errors.length) throw new Error(doc.errors.map((e) => e.message).join("; "));
-  const value: unknown = doc.toJS({ maxAliasCount: 20 });
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Skill metadata must be a mapping");
-  const { description } = value as Record<string, unknown>;
+function skillMarkdown(text: string) {
+  const parsed = parseMarkdownFrontmatter(text);
+  if (!parsed) throw new Error("SKILL.md requires closed YAML frontmatter");
+  return parsed;
+}
+function parseMetadata(path: string, source: SkillMetadata["source"], fields: JsonObject): SkillMetadata {
+  const { description } = fields;
   const name = basename(dirname(path));
   if (typeof description !== "string" || !description.trim() || description.length > 1024)
     throw new Error("Skill description must contain 1–1024 characters");
@@ -96,7 +92,7 @@ export class SkillCatalog {
           if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
           const path = join(root.path, entry.name, "SKILL.md");
           try {
-            const skill = parseMetadata(path, root.source, await metadataText(path));
+            const skill = parseMetadata(path, root.source, skillMarkdown(await metadataText(path)).fields);
             skill.path = await realpath(skill.path);
             discovered.push(skill);
             skills.set(skill.name, skill);
@@ -137,8 +133,9 @@ export class SkillCatalog {
     const skill = this.catalog.skills.find((s) => s.name === name);
     if (!skill) throw new Error(`invalid_input: Skill not found: ${name}`);
     const text = await readFile(skill.path, "utf8");
-    const current = parseMetadata(skill.path, skill.source, text);
-    return { ...current, name: skill.name, body: text.slice(frontmatter(text).bodyOffset).trim() };
+    const parsed = skillMarkdown(text);
+    const current = parseMetadata(skill.path, skill.source, parsed.fields);
+    return { ...current, name: skill.name, body: parsed.body };
   }
 }
 export class FileResourceLoader implements ResourceLoader {
@@ -156,14 +153,7 @@ export class FileResourceLoader implements ResourceLoader {
   getInstructions(): string[] {
     return [...this.instructions];
   }
-  /** @deprecated Use getBaseInstructions. */
-  getSystemPrompt(): undefined {
-    return this.getBaseInstructions();
-  }
-  /** @deprecated Use getInstructions. */
-  getAppendSystemPrompt(): string[] {
-    return this.getInstructions();
-  }
+
   async reload(): Promise<void> {
     const home = this.options.homeDir ?? homedir();
     const project = resolve(this.options.projectDir);

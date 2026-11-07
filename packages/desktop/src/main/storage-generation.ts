@@ -59,62 +59,19 @@ export function durableJson(path: string, value: unknown): void {
     rmSync(temporary, { force: true });
   }
 }
-/** The OS releases the SQLite lock on exit. Keep owner.json for older runtimes and migration checks. */
-export function acquireStorageLock(root: string, purpose: "runtime" | "migration"): () => void {
+/** SQLite releases this exclusive owner lock when the process exits. */
+export function acquireStorageLock(root: string): () => void {
   mkdirSync(root, { recursive: true });
-  const path = join(root, ".storage-lock");
   const mutex = new DatabaseSync(join(root, ".storage-lock.sqlite"));
-  const token = randomUUID();
   try {
-    // A single writer serializes recovery; transient SQLite readers must not block the owner.
     mutex.exec("BEGIN IMMEDIATE");
-    try {
-      mkdirSync(path);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8")) as { pid?: number };
-      if (!Number.isSafeInteger(owner?.pid) || !owner.pid || owner.pid < 1) throw error;
-      let exited = false;
-      try {
-        process.kill(owner.pid, 0);
-      } catch (probe) {
-        // EPERM and unreadable/missing owner records are not evidence that a process has exited.
-        if ((probe as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-        exited = true;
-      }
-      // A live legacy owner does not hold the SQLite mutex.
-      if (!exited) throw error;
-      rmSync(path, { recursive: true });
-      mkdirSync(path);
-    }
-    try {
-      durableJson(join(path, "owner.json"), {
-        token,
-        pid: process.pid,
-        purpose,
-        createdAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      rmSync(path, { recursive: true, force: true });
-      throw error;
-    }
   } catch (cause) {
     mutex.close();
-    throw new Error(
-      "storage: 存储已锁定或锁所有者无法确认。请关闭 ZPI 和迁移工具；无法验证的遗留锁需人工检查。",
-      {
-        cause,
-      },
-    );
+    throw new Error("storage: 存储已锁定，请关闭使用此数据目录的 ZPI", { cause });
   }
   let released = false;
   return () => {
-    if (released) return;
-    try {
-      const owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8")) as { token?: string };
-      if (owner.token !== token) throw new Error("storage: 存储锁所有者已变化");
-      rmSync(path, { recursive: true });
-    } finally {
+    if (!released) {
       mutex.close();
       released = true;
     }
@@ -156,12 +113,6 @@ export function activateStorageGeneration(root: string, marker: StorageGeneratio
   durableJson(join(root, "active-generation.json"), marker);
   syncDirectory(root);
 }
-export function hasLegacyStorage(root: string): boolean {
-  if (["settings.json", "projects.json", "task-groups.json"].some((name) => existsSync(join(root, name))))
-    return true;
-  const sessions = join(root, "agent", "sessions");
-  return existsSync(sessions) && readdirSync(sessions).length > 0;
-}
 /** The initializer creates the new schema only; it must close/checkpoint before returning. */
 export function openStorageGeneration(
   root: string,
@@ -171,14 +122,10 @@ export function openStorageGeneration(
   marker: StorageGeneration;
   close: () => void;
 } {
-  const close = acquireStorageLock(root, "runtime");
+  const close = acquireStorageLock(root);
   try {
     const active = readActiveGeneration(root);
     if (active) return { ...active, close };
-    if (hasLegacyStorage(root))
-      throw new Error(
-        "storage: 检测到旧版数据。请先退出应用，使用独立 storage-migrate 工具迁移；本版本不会自动修改或加载旧数据。",
-      );
     const storageRoot = join(root, "storage");
     if (
       existsSync(storageRoot) &&

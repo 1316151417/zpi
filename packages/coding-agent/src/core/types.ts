@@ -8,10 +8,6 @@ import type { ImageResizeOptions } from "./tools/pi/utils/image-resize-core.ts";
 export interface ResourceLoader {
   getBaseInstructions?(): string | undefined;
   getInstructions?(): readonly string[];
-  /** @deprecated Use getBaseInstructions; this replaces only the template preamble. */
-  getSystemPrompt?(): string | undefined;
-  /** @deprecated Use getInstructions for resources, or customInstructions for session additions. */
-  getAppendSystemPrompt?(): string[];
   reload?(): Promise<void>;
   listSkills?(): SkillList;
   loadSkill?(name: string): Promise<LoadedSkill>;
@@ -22,37 +18,23 @@ export interface ResourceDiagnostic {
   message: string;
 }
 export function resourceInstructions(loader?: ResourceLoader): readonly string[] {
-  return loader?.getInstructions?.() ?? loader?.getAppendSystemPrompt?.() ?? [];
+  return loader?.getInstructions?.() ?? [];
 }
 export function resourceBaseInstructions(loader?: ResourceLoader): string | undefined {
-  return loader?.getBaseInstructions ? loader.getBaseInstructions() : loader?.getSystemPrompt?.();
+  return loader?.getBaseInstructions?.();
 }
 export class StaticResourceLoader implements ResourceLoader {
   private baseInstructions?: string;
   private instructions: readonly string[];
-  constructor(options?: { baseInstructions?: string; instructions?: readonly string[] });
-  /** @deprecated Use the named baseInstructions and instructions options. */
-  constructor(baseInstructions?: string, instructions?: string[]);
-  constructor(
-    options?: string | { baseInstructions?: string; instructions?: readonly string[] },
-    instructions: string[] = [],
-  ) {
-    this.baseInstructions = typeof options === "object" ? options.baseInstructions : options;
-    this.instructions = [...(typeof options === "object" ? (options.instructions ?? []) : instructions)];
+  constructor(options: { baseInstructions?: string; instructions?: readonly string[] } = {}) {
+    this.baseInstructions = options.baseInstructions;
+    this.instructions = [...(options.instructions ?? [])];
   }
   getBaseInstructions(): string | undefined {
     return this.baseInstructions;
   }
   getInstructions(): string[] {
     return [...this.instructions];
-  }
-  /** @deprecated Use getBaseInstructions. */
-  getSystemPrompt(): string | undefined {
-    return this.getBaseInstructions();
-  }
-  /** @deprecated Use getInstructions. */
-  getAppendSystemPrompt(): string[] {
-    return this.getInstructions();
   }
 }
 /** Session context supplied to custom tools and built-in overrides. */
@@ -66,8 +48,6 @@ export interface ToolContext {
   getSystemPrompt(): string;
   getToolNames?(): string[];
 }
-/** @deprecated Use ToolContext. */
-export type ExtensionToolContext = ToolContext;
 export interface ToolDefinition<
   TParameters extends TSchema = TSchema,
   TDetails = JsonValue | undefined,

@@ -171,7 +171,8 @@ it("manual rename and deletion win over late title responses; title failure is n
   await idle(host, b.id);
   await expect.poll(() => server.titleRequests.length).toBe(2);
   // Await the existing jobs through their response handling, without adding a production testing API.
-  const titleJobs = (host as unknown as { titleJobs: Map<string, { done: Promise<void> }> }).titleJobs;
+  const titleJobs = (host as unknown as { titles: { jobs: Map<string, { done: Promise<void> }> } }).titles
+    .jobs;
   const pendingTitles = [a.id, b.id].map((id) => {
     const job = titleJobs.get(id);
     if (!job) throw new Error(`Missing pending title job for ${id}`);

@@ -1,0 +1,76 @@
+.plugin-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.plugin-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.plugin-section-heading,
+.plugin-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plugin-settings .plugin-section-heading h2 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.plugin-section-heading h2 span {
+  margin-left: 4px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+  font-weight: 400;
+}
+.plugin-refresh,
+.plugin-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+.plugin-refresh {
+  width: 32px;
+  padding: 0;
+}
+.plugin-add-menu {
+  z-index: 60;
+}
+.plugin-add-menu .menu-item {
+  justify-content: flex-start;
+}
+.plugin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 190px;
+  padding: 32px 20px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  text-align: center;
+}
+.plugin-empty strong {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.plugin-empty p {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: var(--text-small);
+  line-height: 1.6;
+}
+.plugin-empty .plugin-add {
+  margin-top: 4px;
+}

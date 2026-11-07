@@ -125,7 +125,7 @@ test("subagent slash selection inserts a canonical chip without sending or spawn
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     const profileId = await page.evaluate(async () => {
-      const enabled = await window.zpi.setCapabilityEnabled("subagents", true);
+      const enabled = await window.zpi.setPluginEnabled("zpi.collaboration", true);
       if (!enabled.ok) throw new Error(enabled.error.message);
       const result = await window.zpi.saveSubagent({
         sessionId: null,

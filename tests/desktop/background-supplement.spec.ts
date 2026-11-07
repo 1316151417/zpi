@@ -8,7 +8,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
-test("keeps the main answer visible beside a separately titled late background supplement", async () => {
+test("keeps the main answer visible and delivers late agent findings on the next user turn", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-background-supplement-"));
   const answering = deferred();
   let childResponse: ServerResponse | undefined;
@@ -54,7 +54,7 @@ test("keeps the main answer visible beside a separately titled late background s
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.evaluate(async () => {
-      const result = await window.zpi.setCapabilityEnabled("subagents", true);
+      const result = await window.zpi.setPluginEnabled("zpi.collaboration", true);
       if (!result.ok) throw new Error(result.error.message);
     });
     const editor = page.getByLabel("消息", { exact: true });
@@ -70,13 +70,22 @@ test("keeps the main answer visible beside a separately titled late background s
     );
     done(parentResponse as ServerResponse);
     const runs = page.locator("main [data-testid=run]");
+    await expect(runs.nth(0)).toHaveAttribute("data-status", "completed");
+    await expect(runs).toHaveCount(1);
+    await expect(runs.nth(0).locator(".answer")).toContainText("主任务完整结论");
+    await page.reload();
+    await expect(runs).toHaveCount(1);
+    await page.getByLabel("消息", { exact: true }).fill("结合后台核查结果补充结论");
+    await page.getByLabel("发送", { exact: true }).click();
     await expect(runs).toHaveCount(2);
+    await expect(runs.nth(1)).toHaveAttribute("data-status", "completed");
     await expect(runs.nth(0).locator(".answer")).toContainText("主任务完整结论");
     await expect(runs.nth(0).getByTestId("background-result-heading")).toHaveCount(0);
-    await expect(runs.nth(1).getByTestId("background-result-heading")).toHaveText("核查查询 SQL");
-    await expect(runs.nth(1).getByTestId("progress")).toHaveCount(0);
+    await expect(runs.nth(1).getByTestId("background-result-heading")).toHaveCount(0);
+    await expect(runs.nth(1).getByTestId("progress")).toHaveCount(1);
     await expect(runs.nth(0).getByTestId("progress")).toHaveCount(1);
     await expect(runs.nth(1).locator(".answer")).toContainText("补充：周期表缺少软删除过滤。");
+    expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("Late SQL findings");
     await expect(page.locator("main")).not.toContainText("<task-notification>");
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate(async (theme) => {
@@ -86,8 +95,8 @@ test("keeps the main answer visible beside a separately titled late background s
       await page.reload();
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator("main .answer")).toHaveCount(2);
-      await expect(page.getByTestId("background-result-heading")).toHaveText("核查查询 SQL");
-      await expect(page.locator("main [data-testid=run]").nth(1).getByTestId("progress")).toHaveCount(0);
+      await expect(page.getByTestId("background-result-heading")).toHaveCount(0);
+      await expect(page.locator("main [data-testid=run]").nth(1).getByTestId("progress")).toHaveCount(1);
       await page.screenshot({
         path: test.info().outputPath(`background-supplement-${theme}.png`),
         animations: "disabled",

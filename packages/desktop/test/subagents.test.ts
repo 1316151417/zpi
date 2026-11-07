@@ -112,7 +112,7 @@ test.each(["Explore", "general-purpose", "code-reviewer"])(
         done(response);
       }
     });
-    f.settings.setCapabilityEnabled("subagents", true);
+    f.settings.setPluginEnabled("zpi.collaboration", true);
     await mkdir(f.workspace, { recursive: true });
     await writeFile(join(f.workspace, "AGENTS.md"), "WORKSPACE POLICY");
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
@@ -173,7 +173,7 @@ test("publishes child updates without rebuilding cached parent snapshots and res
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research");
   const task = f.host.subagents.list(f.session.id)[0];
   f.host.getSessionSnapshot(f.session.id);
@@ -200,7 +200,7 @@ test("plugin enablement defaults on and is frozen on first send, including resta
   const f = await fixture();
   expect(f.host.listTools().map((tool) => tool.name)).toContain("Agent");
   await run(f, "first send");
-  f.settings.setCapabilityEnabled("subagents", false);
+  f.settings.setPluginEnabled("zpi.collaboration", false);
   await run(f, "existing session");
   expect(tools(f.server.requests.at(-1) ?? {})).toContain("Agent");
   const next = await f.host.createSession(null);
@@ -208,7 +208,7 @@ test("plugin enablement defaults on and is frozen on first send, including resta
   await f.host.activeRuns.get(next.id)?.done;
   expect(tools(f.server.requests.at(-1) ?? {})).not.toContain("Agent");
   await f.host.close();
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
   await restored.init();
   cleanup.push(() => restored.close());
@@ -242,7 +242,7 @@ test("runs independent children concurrently and cancels them when the parent st
     );
     done(response, "tool_calls");
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   const { runId } = await f.host.startRun({ sessionId: f.session.id, text: "Parallel work" });
   await bothStarted.promise;
   expect(f.host.subagents.list(f.session.id).filter((task) => task.status === "running")).toHaveLength(2);
@@ -365,7 +365,7 @@ test("a background result arriving during the final answer waits for the next us
       answering.resolve();
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await f.host.startRun({ sessionId: f.session.id, text: "Research" });
   await answering.promise;
   await expect.poll(() => !!childResponse).toBe(true);
@@ -440,7 +440,7 @@ test("SendMessage resumes a completed child with its own history and automatical
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research and follow up");
   await expect.poll(() => f.host.subagents.list(f.session.id)[0].result).toBe("Follow-up findings");
   await expect
@@ -489,7 +489,7 @@ test("child provider errors return failures without leaking into the parent runt
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Launch a child");
   expect(f.host.subagents.list(f.session.id)[0]).toMatchObject({ status: "error" });
   expect(f.host.getSessionSnapshot(f.session.id).view.runs[0]).toMatchObject({ status: "completed" });
@@ -512,7 +512,7 @@ test("built-in manual model overrides apply to child execution and leave the par
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   const builtin = f.host.listSubagents(null).agents[0];
   f.host.saveSubagent({
     id: builtin.id,
@@ -556,8 +556,8 @@ test("child questions route to the parent interaction while the child reports it
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
-  f.settings.setCapabilityEnabled("askUserQuestion", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
+  f.settings.setPluginEnabled("zpi.questions", true);
   await f.host.startRun({ sessionId: f.session.id, text: "Delegate and ask" });
   await expect.poll(() => f.host.questions.get(f.session.id)?.id).toBe("child-question");
   expect(f.host.subagents.list(f.session.id)[0].waitingForInput).toBe(true);
@@ -582,7 +582,7 @@ test.each(["unknown-agent", "code-reviewer"])(
         done(response);
       }
     });
-    f.settings.setCapabilityEnabled("subagents", true);
+    f.settings.setPluginEnabled("zpi.collaboration", true);
     if (name === "code-reviewer") {
       const catalog = f.host.saveSubagent({ config: custom, scope: "user", sessionId: null });
       const agent = catalog.agents.find((agent) => agent.name === name);
@@ -624,7 +624,7 @@ test("delivers SendMessage during a live child at the next model boundary withou
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Start research");
   await ready.promise;
   const task = f.host.subagents.list(f.session.id)[0];
@@ -705,7 +705,7 @@ test("RespondToCoordinator queues model-only progress and child continues to its
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research");
   const task = f.host.subagents.list(f.session.id)[0];
   expect(task.result).toBe("Final child result");
@@ -731,7 +731,7 @@ test("startup guidance reaches the first child turn while input preparation is s
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   const prepare = AgentSession.prototype.prepareInput;
   let delivery: unknown;
   const spy = vi.spyOn(AgentSession.prototype, "prepareInput").mockImplementation(async function (
@@ -779,7 +779,7 @@ test("a coordinator reply at the SDK settlement boundary remains queued for the 
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await run(f, "Research");
   const task = f.host.subagents.list(f.session.id)[0];
   const parent = f.host.sessions.get(f.session.id);
@@ -839,7 +839,7 @@ test("guidance at child settlement keeps the foreground caller waiting for the f
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   const prepare = AgentSession.prototype.prepareInput;
   let unsubscribe: (() => void) | undefined;
   let sent = false;
@@ -909,7 +909,7 @@ test("freezes agent definitions and inherited AGENTS.md for the complete parent 
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   await mkdir(f.workspace, { recursive: true });
   await writeFile(join(f.workspace, "AGENTS.md"), "INITIAL WORKSPACE POLICY");
   const profile = f.host
@@ -1001,7 +1001,7 @@ test("terminal resume uses the refreshed definition/model while retaining child 
       done(response);
     }
   });
-  f.settings.setCapabilityEnabled("subagents", true);
+  f.settings.setPluginEnabled("zpi.collaboration", true);
   const profile = f.host
     .saveSubagent({ config: custom, scope: "user", sessionId: null })
     .agents.find((agent) => agent.name === custom.name);

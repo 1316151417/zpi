@@ -20,23 +20,29 @@ ZPI 是本地运行的编码桌面客户端。用户选择项目、模型和任�
 
 主任务、辅助对话、子智能体可拥有独立对话状态，但辅助对话和子智能体共享父任务工作目录。Git 工作树隔离检出文件；工作目录和提示词都不构成操作系统权限沙箱。
 
-## 五个包
+## 包边界
 
 ```mermaid
 flowchart TD
-  D[desktop：主进程、preload、renderer] --> C[coding-agent：会话、工具、上下文]
+  D[desktop：主进程、preload、renderer] --> SDK[agent-sdk：查询与消息协议]
+  Q[独立应用] --> SDK
+  SDK --> C[coding-agent：会话、工具、上下文]
   D --> U[ui：对话组件和展示模型]
   D --> AI[ai：认证、模型协议和流]
   C --> A[agent：执行循环和工具调度]
   C --> AI
   A --> AI
+  D --> B[builtin-plugins：可选指令与命令]
 ```
 
 | 包 | 负责 | 入口 |
 | --- | --- | --- |
 | `ai` | 协议、消息事件、认证原语、缓存、媒体投影、模型发现 | [stream.ts](../packages/ai/src/stream.ts)、[types.ts](../packages/ai/src/types.ts) |
 | `agent` | 请求模型、执行工具、消费排队指令、结束运行 | [agent-loop.ts](../packages/agent/src/agent-loop.ts) |
+| `agent-sdk` | TypeScript 公共查询、控制和消息协议；独立打包与宿主接入 | [公开入口](../packages/agent-sdk/src/index.ts)、[SDK 说明](../packages/agent-sdk/README.md) |
 | `coding-agent` | 会话装配、资源、四工具、历史、压缩、运行设置 | [sdk.ts](../packages/coding-agent/src/core/sdk.ts)、[agent-session.ts](../packages/coding-agent/src/core/agent-session.ts) |
+| `builtin-plugins` | 五类行为指令、项目初始化命令及桌面运行时插件清单，通过通用契约接入 | [插件定义](../packages/builtin-plugins/src/index.ts) · [装配与 hook](internals/plugins.md) |
+| `plugin-compat` | 本地 Claude/ZCode 插件的声明适配、文件冻结和命令 hook 子进程，独立于执行核心 | [适配器](../packages/plugin-compat/src/index.ts) · [兼容边界](internals/plugins.md#本地外部插件) |
 | `ui` | 对话、Markdown、输入、工具卡片、查找、预览解析 | [index.ts](../packages/ui/src/index.ts) |
 | `desktop` | 持久状态、会话编排、原生窗口、IPC、桌面界面 | [main/index.ts](../packages/desktop/src/main/index.ts)、[App.tsx](../packages/desktop/src/renderer/App.tsx) |
 
@@ -77,7 +83,6 @@ sequenceDiagram
 | API Key 和 OAuth 凭据 | `SettingsStore` | 系统加密文件；加密不可用时留在内存 |
 | 当前执行、取消、WebSocket 续接 | `AgentSession` 和连接管理器 | 进程内存 |
 | 标签、选区、阅读位置和显示状态 | renderer store、pane store、组件 | 按用途使用内存或本地偏好 |
-| PTY、原生浏览器和快速浮窗 | 主进程桌面服务 | 原生资源，按生命周期销毁 |
 
 历史、模型上下文和界面时间线是三种视图：完整事实留在 JSONL；模型看到有效上下文；界面分页读取并按需挂载。压缩不等于删除原始对话，界面虚拟化也不等于限制全部历史内存。
 
@@ -91,7 +96,7 @@ sequenceDiagram
 
 - 小工具集与桌面能力分层，SDK 可独立使用。
 - 主进程掌握文件、进程、网络和持久化能力，preload 提供有限类型接口。
-- 首次发送冻结桌面能力；修改选择不重配已经开始的请求。
+- 首次发送冻结插件指令、命令、运行时版本与选项；修改选择不重配已经开始的请求。
 - 原始历史和派生索引分离，重建索引不改写事实；业务数据库不能按缓存删除。
 - 模型恢复与工具恢复分开，避免网络重试隐式重放修改和命令。
 - 同一功能只维护一份当前规则，外部参考项目的历史实现不覆盖本项目代码。

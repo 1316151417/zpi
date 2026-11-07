@@ -222,9 +222,7 @@ test("reloading the main renderer releases native browsers and terminals", async
     await expect.poll(() => page.evaluate(() => localStorage.getItem("zpi.selectedSession"))).not.toBeNull();
     expect(
       await app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()
-          .filter((window) => !window.webContents.getURL().includes("view=quick-chat"))
-          .map((window) => window.contentView.children.length),
+        BrowserWindow.getAllWindows().map((window) => window.contentView.children.length),
       ),
     ).toEqual([0]);
     expect(await app.evaluate(({ webContents }, id) => webContents.fromId(id) === undefined, guestId)).toBe(

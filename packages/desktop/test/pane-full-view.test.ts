@@ -5,7 +5,6 @@ import {
   floatingPosition,
   nearestFloatingAnchor,
 } from "../src/renderer/pane-full-view.ts";
-import { defaultShortcuts, withAddedShortcuts } from "../src/shared/shortcuts.ts";
 
 test("full-view geometry snaps to the same seven anchors and stays inside its workspace slot", () => {
   const slot = { left: 4, top: 52, width: 1000, height: 800 },
@@ -26,14 +25,4 @@ test("answer previews remove Markdown syntax without damaging snake_case", () =>
   expect(
     floatingAnswerPreview("# Done\n\n**updated** `snake_case` [file](file.ts)\n```ts\nignored\n```"),
   ).toBe("Done updated snake_case file");
-});
-test("the full-view shortcut uses the reference default and preserves cleared or conflicting bindings", () => {
-  const settings = defaultShortcuts("darwin");
-  expect(settings.bindings["pane-full-view"]).toBe("Shift+Command+F");
-  Reflect.deleteProperty(settings.bindings, "pane-full-view");
-  expect(withAddedShortcuts(settings, "darwin").bindings["pane-full-view"]).toBe("Shift+Command+F");
-  settings.bindings.search = "Command+Shift+F";
-  expect(withAddedShortcuts(settings, "darwin").bindings["pane-full-view"]).toBeNull();
-  settings.bindings["pane-full-view"] = null;
-  expect(withAddedShortcuts(settings, "darwin")).toBe(settings);
 });

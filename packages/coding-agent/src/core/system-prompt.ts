@@ -7,20 +7,13 @@ export interface PromptTemplate {
   preamble: string;
   rules: string;
 }
-/** Adapt the built-in capabilities without changing the default coding-task prompt. */
-export function createPiTemplate(options: { writable?: boolean } = {}): PromptTemplate {
-  const capabilities =
-    options.writable === false
-      ? "reading files and executing commands"
-      : "reading files, executing commands, editing code, and writing new files";
-  return {
-    id: "pi",
-    name: "ZPI 通用",
-    preamble: `You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by ${capabilities}.`,
-    rules: "Be concise in your responses\nShow file paths clearly when working with files",
-  };
-}
-export const piTemplate: PromptTemplate = createPiTemplate();
+export const piTemplate: PromptTemplate = {
+  id: "pi",
+  name: "ZPI 通用",
+  preamble:
+    "You are an expert coding assistant operating inside ZPI, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+  rules: "Be concise in your responses\nShow file paths clearly when working with files",
+};
 export function validateTemplate(template: PromptTemplate): void {
   if (
     !template ||
@@ -52,7 +45,7 @@ export function buildSystemPrompt(options: {
   projectName?: string;
   platform?: string;
   template?: PromptTemplate;
-  tools: Pick<AgentTool, "name" | "description" | "promptSnippet" | "promptGuidelines">[];
+  tools: readonly Pick<AgentTool, "name" | "description" | "promptSnippet" | "promptGuidelines">[];
   loader?: ResourceLoader;
   /** Literal instructions appended after resources, before the skill catalog and working directory. */
   customInstructions?: readonly string[];
@@ -86,20 +79,15 @@ export function buildSystemPrompt(options: {
   const toolSnippets = options.tools
     .filter((tool) => ["read", "write", "edit", "bash"].includes(tool.name) && tool.promptSnippet)
     .map((tool) => `- ${tool.name}: ${tool.promptSnippet}`);
+  const skills = options.loader?.listSkills?.().skills ?? [];
   const sections = [
     resourceBaseInstructions(options.loader) ?? renderTemplate(template.preamble, context),
     ...(toolSnippets.length ? [`<tools>\n${toolSnippets.join("\n")}\n</tools>`] : []),
     `<rules>\n${[...new Set(rules)].map((r) => `- ${r}`).join("\n")}\n</rules>`,
     ...resourceInstructions(options.loader).filter((part) => !part.startsWith("<skills>")),
     ...(options.customInstructions ?? []),
-    ...(options.loader?.listSkills?.().skills.length &&
-    options.tools.some((t) => ["read", "bash"].includes(t.name))
-      ? [
-          formatSkillsForPrompt(
-            options.loader.listSkills().skills,
-            options.tools.some((t) => t.name === "read") ? "read" : "bash",
-          ),
-        ]
+    ...(skills.length && options.tools.some((t) => ["read", "bash"].includes(t.name))
+      ? [formatSkillsForPrompt(skills, options.tools.some((t) => t.name === "read") ? "read" : "bash")]
       : []),
     `<cwd>\n${options.cwd.replace(/\\/g, "/")}\n</cwd>`,
   ];

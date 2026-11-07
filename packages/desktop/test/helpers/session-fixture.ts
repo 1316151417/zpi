@@ -25,14 +25,20 @@ export async function setup(title?: Parameters<typeof fakeServer>[1]) {
     encryptString: () => Buffer.alloc(0),
     decryptString: () => "",
   });
-  settings.save({
+  settings.saveProvider({
+    id: "custom",
+    name: "Custom",
     baseUrl: server.url,
-    modelId: "fake",
-    supportsImages: true,
-    reasoning: false,
-    contextWindow: 1000000,
-    maxTokens: 4096,
-    compat: { structuredOutput: "json_schema" },
+    models: [
+      {
+        id: "fake",
+        input: ["text", "image"],
+        reasoning: false,
+        contextWindow: 1000000,
+        maxTokens: 4096,
+        compat: { supportsReasoningEffort: false, ...{ structuredOutput: "json_schema" } },
+      },
+    ],
   });
   settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
   const host = new SessionHost(dir, settings, join(dir, "resources"), cwd, undefined);

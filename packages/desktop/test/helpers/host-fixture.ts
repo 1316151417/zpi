@@ -23,16 +23,21 @@ export async function fixture(
     encryptString: () => Buffer.alloc(0),
     decryptString: () => "",
   });
-  settings.save({
+  settings.saveProvider({
+    id: "custom",
+    name: "Custom",
     baseUrl: server.url,
-    modelId: "fake",
     apiKey: "secret-host",
-    headers: { "X-Auth": "secret-header" },
-    supportsImages: false,
-    reasoning: true,
-    compat: { supportsReasoningEffort: true },
-    contextWindow: 32768,
-    maxTokens: 4096,
+    models: [
+      {
+        id: "fake",
+        input: ["text"],
+        reasoning: true,
+        contextWindow: 32768,
+        maxTokens: 4096,
+        compat: { supportsReasoningEffort: true },
+      },
+    ],
   });
   settings.rememberSelection({ provider: "custom", modelId: "fake", reasoning: "none" });
   const host = new SessionHost(

@@ -2,9 +2,9 @@ import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
-import { HistoryIndex } from "../src/main/history-index.ts";
 import { sessionActivityAt, streamingActivityIntervalMs } from "../src/main/session-activity.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { isolatedHistory } from "./helpers/history-reader.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it("uses the header creation time and persisted conversation activity, excluding metadata", async () => {
@@ -101,7 +101,7 @@ it("reconstructs last message activity for an interrupted historical run", async
   try {
     vi.setSystemTime(new Date("2026-10-01T01:00:00Z"));
     const task = await f.host.createSession(f.a.id);
-    const index = new HistoryIndex(f.host.sessionPath(task.id), f.settings.state.db);
+    const index = isolatedHistory(f.host.sessionPath(task.id));
     await index.load();
     const manager = SessionManager.fromStore(index);
     manager.appendCustomEntry("zpi.run", { runId: "r", phase: "start", startedAt: Date.now(), text: "hi" });

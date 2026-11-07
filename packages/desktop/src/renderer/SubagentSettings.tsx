@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { desktopPluginIds } from "zpi-builtin-plugins";
 import type { CombinedSelection, Result } from "../shared/bridge.ts";
 import { availablePresets, modelReasoningLabel } from "../shared/config.ts";
 import {
@@ -213,8 +214,12 @@ export function SubagentSettings() {
   const sessionId = useStore((state) => state.selected ?? null);
   const [catalog, setCatalog] = useState<SubagentCatalog>({ agents: [], diagnostics: [] });
   const providers = useStore((state) => state.settings?.providers ?? []);
-  const enabled = useStore((state) => state.settings?.capabilities?.subagents ?? true);
-  const codexSubagentPrompt = useStore((state) => state.settings?.capabilities?.codexSubagentPrompt ?? false);
+  const enabled = useStore(
+    (state) => state.settings?.plugins?.enabled[desktopPluginIds.collaboration] ?? true,
+  );
+  const codexSubagentPrompt = useStore(
+    (state) => state.settings?.plugins?.options[desktopPluginIds.collaboration]?.promptPreset === "codex",
+  );
   const [deleteTarget, setDeleteTarget] = useState<SubagentProfile>();
   const [listScope, setListScope] = useState<SaveSubagentInput["scope"]>("user");
   const [search, setSearch] = useState("");
@@ -257,11 +262,19 @@ export function SubagentSettings() {
       setBusy(false);
     }
   };
-  const setEnabled = async (name: "subagents" | "codexSubagentPrompt", enabled: boolean) => {
+  const setEnabled = async (name: "plugin" | "preset", enabled: boolean) => {
     setBusy(true);
     setError("");
     try {
-      useStore.setState({ settings: unwrap(await window.zpi.setCapabilityEnabled(name, enabled)) });
+      useStore.setState({
+        settings: unwrap(
+          await (name === "plugin"
+            ? window.zpi.setPluginEnabled(desktopPluginIds.collaboration, enabled)
+            : window.zpi.setPluginOptions(desktopPluginIds.collaboration, {
+                promptPreset: enabled ? "codex" : "default",
+              })),
+        ),
+      });
     } catch (error) {
       setError(userErrorMessage(error));
     } finally {
@@ -324,7 +337,7 @@ export function SubagentSettings() {
               aria-checked={enabled}
               checked={enabled}
               disabled={busy}
-              onChange={(event) => void setEnabled("subagents", event.target.checked)}
+              onChange={(event) => void setEnabled("plugin", event.target.checked)}
             />
             <span aria-hidden="true" />
           </span>
@@ -347,7 +360,7 @@ export function SubagentSettings() {
               aria-describedby="codex-subagent-prompt-description"
               checked={codexSubagentPrompt}
               disabled={busy || !enabled}
-              onChange={(event) => void setEnabled("codexSubagentPrompt", event.target.checked)}
+              onChange={(event) => void setEnabled("preset", event.target.checked)}
             />
             <span aria-hidden="true" />
           </span>

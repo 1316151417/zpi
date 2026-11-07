@@ -366,7 +366,7 @@ export function subscribeEvents(): () => void {
 }
 export async function refreshSuggestions(id: string, current = () => true): Promise<void> {
   const [commands, catalog, custom] = await Promise.all([
-    window.zpi.listCommands().then(unwrap),
+    window.zpi.listCommands(id).then(unwrap),
     window.zpi.listSessionSkills(id).then(unwrap),
     window.zpi.listSessionCustomCommands(id).then(unwrap),
   ]);

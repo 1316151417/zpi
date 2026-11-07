@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -116,31 +116,6 @@ async function prepareMemoryNotes(root: string): Promise<void> {
     syncDirectory(dirname(path));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-  }
-}
-
-/** Retire the old single-file inbox only after its complete contents are durably preserved. */
-export async function migrateMemoryNotes(root: string, legacyDirectories: string[] = []): Promise<void> {
-  for (const directory of [root, ...legacyDirectories]) {
-    const path = join(directory, "memory_notes.md");
-    const content = await readMemoryFile(path, 32_000);
-    if (content) {
-      const hash = createHash("sha256").update(content).digest("hex").slice(0, 20);
-      const target = join(root, memoryNotesDirectory, `migrated-${hash}.md`);
-      let exists = true;
-      try {
-        await lstat(target);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        exists = false;
-      }
-      if (exists && (await readMemoryFile(target, 32_000)) !== content)
-        throw new Error(`迁移后的记忆请求已被修改，原文件保留：${path}`);
-      if (!exists) await replaceMemoryFile(target, content);
-    }
-    await rm(path, { force: true });
-    // The legacy directory may not exist at all.
-    if (content) syncDirectory(directory);
   }
 }
 

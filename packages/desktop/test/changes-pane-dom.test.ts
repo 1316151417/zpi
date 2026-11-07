@@ -14,12 +14,7 @@ import {
 import { useStore } from "../src/renderer/store.ts";
 import type { DesktopBridge, DiffItem, Result } from "../src/shared/bridge.ts";
 
-const paths = [
-  "/project/index.ts",
-  "/project/quick-chat-window.ts",
-  "/project/app-state.ts",
-  "/project/App.tsx",
-];
+const paths = ["/project/index.ts", "/project/browser-pane.ts", "/project/app-state.ts", "/project/App.tsx"];
 const appPath = paths[3];
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 const patch = (path: string, text: string) => `--- /dev/null\n+++ b/${path}\n@@ -0,0 +1 @@\n+${text}\n`;

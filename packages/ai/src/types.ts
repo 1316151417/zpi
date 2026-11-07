@@ -346,8 +346,6 @@ export interface StreamOptions {
   streamFirstResponseTimeoutMs?: number;
   /** Model-event idle deadline after output starts; defaults to 300s, <= 0 disables it. */
   streamIdleTimeoutMs?: number;
-  /** @deprecated Retained for compatibility; retries no longer extend the idle deadline. */
-  streamIdleTimeoutRetryNumber?: number;
   /** Absolute recovery deadline, independent of model-event activity. */
   streamDeadlineMs?: number;
   /** Retry this request without cancelling the enclosing agent turn. */

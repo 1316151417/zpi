@@ -21,8 +21,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       const page = await app.firstWindow();
       await page.emulateMedia({ colorScheme });
       await page.getByRole("button", { name: "设置", exact: true }).click();
-      await page.getByRole("button", { name: "扩展能力", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "插件", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).not.toBeChecked();
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();
       const enabled = page.getByRole("switch", { name: "启用联网搜索", exact: true });
       const header = page.locator(".web-search-settings .settings-page-heading");
@@ -90,6 +90,15 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(enabled).toBeEnabled();
       await enabled.click();
       await expect(enabled).toBeChecked();
+      await page.getByRole("button", { name: "插件", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toBeChecked();
+      await page.getByRole("checkbox", { name: "联网搜索", exact: true }).uncheck();
+      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "联网搜索", exact: true }).click();
+      await expect(enabled).not.toBeChecked();
+      await enabled.check();
+      await page.getByRole("button", { name: "插件", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toBeChecked();
       await page.getByRole("button", { name: "模型", exact: true }).click();
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();
       await expect(key).toHaveValue("*".repeat("fake-desktop-web-key".length));

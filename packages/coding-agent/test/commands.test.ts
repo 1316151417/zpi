@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { getCurrentSystemPrompt } from "zpi-ai";
+import { builtinPlugins } from "zpi-builtin-plugins";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { parseInput } from "../src/index.ts";
 import { fixture } from "./helpers/resource-fixture.ts";
@@ -30,7 +31,7 @@ it.each([
   expect(parseInput(text)).toEqual({ kind: "prompt", text });
 });
 
-it.each(["init", "compact"] as const)("recognizes only the exact /%s command", (name) => {
+it.each(["compact"] as const)("recognizes only the exact /%s command", (name) => {
   expect(parseInput(`/${name}`)).toEqual({ kind: name, args: "" });
   expect(parseInput(`  /${name}\t first line\nsecond line  `)).toEqual({
     kind: name,
@@ -39,34 +40,37 @@ it.each(["init", "compact"] as const)("recognizes only the exact /%s command", (
 });
 
 it("init uses the normal read/edit loop and preserves an existing project's instructions", async () => {
-  const f = await fixture((_, r, index) => {
-    const calls = [
-      { name: "read", arguments: { path: "AGENTS.md" } },
-      {
-        name: "edit",
-        arguments: { path: "AGENTS.md", edits: [{ oldText: "old rule", newText: "new rule" }] },
-      },
-    ];
-    if (index < 2) {
-      send(
-        r,
-        chunk({
-          tool_calls: [
-            {
-              index: 0,
-              id: `init-${index}`,
-              type: "function",
-              function: { name: calls[index].name, arguments: JSON.stringify(calls[index].arguments) },
-            },
-          ],
-        }),
-      );
-      done(r, "tool_calls");
-    } else {
-      send(r, chunk({ content: "updated" }));
-      done(r);
-    }
-  });
+  const f = await fixture(
+    (_, r, index) => {
+      const calls = [
+        { name: "read", arguments: { path: "AGENTS.md" } },
+        {
+          name: "edit",
+          arguments: { path: "AGENTS.md", edits: [{ oldText: "old rule", newText: "new rule" }] },
+        },
+      ];
+      if (index < 2) {
+        send(
+          r,
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: `init-${index}`,
+                type: "function",
+                function: { name: calls[index].name, arguments: JSON.stringify(calls[index].arguments) },
+              },
+            ],
+          }),
+        );
+        done(r, "tool_calls");
+      } else {
+        send(r, chunk({ content: "updated" }));
+        done(r);
+      }
+    },
+    { plugins: builtinPlugins },
+  );
   await writeFile(join(f.cwd, "AGENTS.md"), "Keep this paragraph.\nold rule\n");
   await f.session.submit("/init preserve rules");
   expect(await readFile(join(f.cwd, "AGENTS.md"), "utf8")).toBe("Keep this paragraph.\nnew rule\n");

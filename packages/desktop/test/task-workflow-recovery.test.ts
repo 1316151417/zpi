@@ -118,23 +118,15 @@ async function launchCompletedChild(f: Awaited<ReturnType<typeof fixture>>) {
   return f.host.subagents.list(f.session.id)[0];
 }
 
-it.each([
-  { restart: false, legacy: false, alreadyRestored: false },
-  { restart: true, legacy: false, alreadyRestored: false },
-  { restart: true, legacy: true, alreadyRestored: false },
-  { restart: true, legacy: true, alreadyRestored: true },
-])(
-  "restores reusable agents without reopening closed side chats ($restart, $legacy, $alreadyRestored)",
-  async ({ restart, legacy, alreadyRestored }) => {
+it.each([false, true])(
+  "restores reusable agents without reopening closed side chats (restart=%s)",
+  async (restart) => {
     const f = await fixture();
     const task = await launchCompletedChild(f);
     const sideChat = await f.host.createSideChat(f.session.id);
     await f.host.closeSideChat(sideChat.id);
     await f.host.archiveSession(f.session.id);
     expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
-    if (alreadyRestored) f.host.restoreSession(f.session.id);
-    // Reproduce the durable child state created by the 0.2.33–0.2.34 cascade.
-    if (legacy) await f.host.archiveSession(task.childSessionId);
     let host = f.host;
     if (restart) {
       await f.host.close();
@@ -142,14 +134,8 @@ it.each([
       cleanup.push(() => host.close());
       await host.init();
     }
-    if (!alreadyRestored) {
-      host.restoreSession(f.session.id);
-      expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
-    } else {
-      // An active parent has no Restore action in the UI; SendMessage must repair it lazily.
-      expect(host.getSessionSnapshot(f.session.id).session.archivedAt).toBeNull();
-      expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt).toEqual(expect.any(Number));
-    }
+    host.restoreSession(f.session.id);
+    expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
     expect(host.getSessionSnapshot(sideChat.id).session.archivedAt).toEqual(expect.any(Number));
     await expect(host.closeSideChat(task.childSessionId)).rejects.toThrow("不是辅助对话");
     host.subagents.prepare(f.session.id);
@@ -210,25 +196,14 @@ it("archiving a parent drains a running reusable agent and its background comman
   expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toEqual(expect.any(Number));
 });
 
-it("surfaces child restore persistence failures and permits retry after the parent was restored", async () => {
+it("restoring a parent preserves a child's explicitly archived state", async () => {
   const f = await fixture();
   const task = await launchCompletedChild(f);
   await f.host.archiveSession(f.session.id);
   await f.host.archiveSession(task.childSessionId);
-  const save = f.settings.state.upsertTask.bind(f.settings.state);
-  const failure = vi.spyOn(f.settings.state, "upsertTask").mockImplementation((value) => {
-    if (value.id === task.childSessionId) throw new Error("storage: cannot restore child");
-    return save(value);
-  });
-  try {
-    expect(() => f.host.restoreSession(f.session.id)).toThrow("cannot restore child");
-    expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toBeNull();
-    expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt).toEqual(expect.any(Number));
-  } finally {
-    failure.mockRestore();
-  }
   f.host.restoreSession(f.session.id);
-  expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
+  expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toBeNull();
+  expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt).toEqual(expect.any(Number));
 });
 
 it("side-chat closure rejects new runs and notifications while cleanup is still pending", async () => {

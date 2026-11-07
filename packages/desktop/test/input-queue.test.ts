@@ -419,14 +419,20 @@ it("stopped queues and image ownership survive restart; errors pause without los
     }
     done(response);
   });
-  f.settings.save({
+  f.settings.saveProvider({
+    id: "custom",
+    name: "Custom",
     baseUrl: f.server.url,
-    modelId: "fake",
-    supportsImages: true,
-    reasoning: true,
-    compat: { supportsReasoningEffort: true },
-    contextWindow: 32768,
-    maxTokens: 4096,
+    models: [
+      {
+        id: "fake",
+        input: ["text", "image"],
+        reasoning: true,
+        contextWindow: 32768,
+        maxTokens: 4096,
+        compat: { supportsReasoningEffort: true },
+      },
+    ],
   });
   const id = (await f.host.createSession(f.a.id)).id;
   const b = (await f.host.createSession(f.b.id)).id;

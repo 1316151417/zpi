@@ -8,6 +8,8 @@ import type { ToolDefinition } from "zpi-coding-agent";
 import type { SubagentTask } from "zpi-ui";
 import type { CombinedSelection } from "../../../shared/bridge.ts";
 import type { SubagentProfile } from "../../../shared/subagents.ts";
+import type { TaskBackend, TaskOutputInput } from "../../tasks/controls.ts";
+import { assertToolArguments, validateToolArguments } from "../tool-validation.ts";
 import { SubagentArtifacts, textResult } from "./artifacts.ts";
 import type { SubagentProfiles } from "./profiles.ts";
 import {
@@ -15,8 +17,6 @@ import {
   codexAgentDescription,
   respondToCoordinatorDescription,
   sendMessageDescription,
-  taskOutputDescription,
-  taskStopDescription,
 } from "./prompts.ts";
 import {
   type AgentBackgroundedOutput,
@@ -30,7 +30,6 @@ import {
   type SendMessageOutput,
   type TaskOutputResult,
 } from "./protocol.ts";
-import { assertToolArguments, validateToolArguments } from "./validation.ts";
 
 interface SubagentPort {
   cwd(parentId: string): string;
@@ -99,35 +98,6 @@ const responseParameters = Type.Object(
   },
   { additionalProperties: false },
 );
-const stopParameters = Type.Object(
-  {
-    task_id: Type.Optional(Type.String({ description: "The ID of the background task to stop" })),
-    shell_id: Type.Optional(Type.String({ description: "Deprecated: use task_id instead" })),
-  },
-  { additionalProperties: false },
-);
-const outputParameters = Type.Object(
-  {
-    task_id: Type.String({ description: "The task ID to get output from" }),
-    block: Type.Boolean({ default: true, description: "Whether to wait for completion" }),
-    timeout: Type.Number({ minimum: 0, maximum: 600000, default: 30000, description: "Max wait time in ms" }),
-  },
-  { additionalProperties: false },
-);
-export function prepareTaskOutputArguments(args: unknown) {
-  if (!args || typeof args !== "object" || Array.isArray(args)) return args;
-  const input = args as Record<string, unknown>;
-  return {
-    ...input,
-    block:
-      input.block === undefined || input.block === "true"
-        ? true
-        : input.block === "false"
-          ? false
-          : input.block,
-    timeout: input.timeout === undefined ? 30000 : input.timeout,
-  };
-}
 const result = textResult;
 
 export class SubagentPlugin {
@@ -149,17 +119,28 @@ export class SubagentPlugin {
     this.profiles = profiles;
     this.port = port;
   }
-  prepare(parentId: string, codexSubagentPrompt = false) {
-    const agents = this.profiles
-      .list(this.port.cwd(parentId), codexSubagentPrompt)
-      .agents.filter((agent) => agent.enabled);
+  private availableProfiles(
+    cwd: string,
+    codexSubagentPrompt: boolean,
+    extra: readonly SubagentProfile[] = [],
+  ) {
+    const agents = this.profiles.list(cwd, codexSubagentPrompt).agents.filter((agent) => agent.enabled);
+    return structuredClone([...new Map([...agents, ...extra].map((agent) => [agent.name, agent])).values()]);
+  }
+  prepare(parentId: string, codexSubagentPrompt = false, extra: readonly SubagentProfile[] = []) {
     this.definitions.set(
       parentId,
-      structuredClone([...new Map(agents.map((agent) => [agent.name, agent])).values()]),
+      this.availableProfiles(this.port.cwd(parentId), codexSubagentPrompt, extra),
     );
   }
+  previewListing(cwd: string, codexSubagentPrompt = false, extra: readonly SubagentProfile[] = []) {
+    return this.formatListing(this.availableProfiles(cwd, codexSubagentPrompt, extra));
+  }
   listing(parentId: string) {
-    return (this.definitions.get(parentId) ?? [])
+    return this.formatListing(this.definitions.get(parentId) ?? []);
+  }
+  private formatListing(agents: readonly SubagentProfile[]) {
+    return agents
       .map(
         (agent) =>
           `- ${agent.name}: ${agent.description}${agent.tools ? ` (Tools: ${agent.tools.filter((tool) => !agent.disallowedTools?.includes(tool)).join(", ")})` : ""}`,
@@ -189,12 +170,7 @@ export class SubagentPlugin {
     );
   }
   private contract(tool: ToolDefinition): ToolDefinition {
-    const prepare = (args: unknown) =>
-      validateToolArguments(
-        tool.name,
-        tool.parameters,
-        tool.name === "TaskOutput" ? prepareTaskOutputArguments(args) : args,
-      );
+    const prepare = (args: unknown) => validateToolArguments(tool.name, tool.parameters, args);
     return {
       ...tool,
       prepareArguments: prepare,
@@ -466,6 +442,80 @@ export class SubagentPlugin {
       signal?.addEventListener("abort", abort, { once: true });
     });
   }
+  taskBackend(): TaskBackend {
+    return {
+      kind: "local_agent",
+      owns: (sessionId, taskId) => this.tasks.get(taskId)?.parentSessionId === sessionId,
+      output: (parentId, callId, input, signal) => this.taskOutput(parentId, callId, input, signal),
+      stop: (parentId, callId, taskId, signal) => this.taskStop(parentId, callId, taskId, signal),
+    };
+  }
+  private async taskOutput(parentId: string, _id: string, params: TaskOutputInput, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!params.task_id) throw new Error("<tool_use_error>Task ID is required</tool_use_error>");
+    const owned = this.tasks.get(params.task_id);
+    if (!owned || owned.parentSessionId !== parentId)
+      throw new Error(`<tool_use_error>No task found with ID: ${params.task_id}</tool_use_error>`);
+    if (params.block) await this.waitForOutput(parentId, params.task_id, params.timeout, signal);
+    signal?.throwIfAborted();
+    const task = this.tasks.get(params.task_id);
+    if (!task) {
+      const output: TaskOutputResult = { retrieval_status: "timeout", task: null };
+      return this.artifacts.result(parentId, _id, "TaskOutput", formatTaskOutputModelContent(output), output);
+    }
+    const diskOutput = await this.artifacts.read(task.outputFile, signal);
+    const clean = task.status === "completed" ? task.result : undefined;
+    const text = clean || diskOutput;
+    const output: TaskOutputResult = {
+      retrieval_status: task.status === "running" ? (params.block ? "timeout" : "not_ready") : "success",
+      task: {
+        task_id: task.agentId,
+        task_type: "local_agent",
+        status: providerTaskStatus(task),
+        description: task.description,
+        output: text,
+        ...(task.outputFile ? { outputFile: task.outputFile } : {}),
+        ...(task.prompt ? { prompt: task.prompt } : {}),
+        ...(text ? { result: text } : {}),
+        ...(task.error ? { error: task.error } : {}),
+      },
+    };
+    signal?.throwIfAborted();
+    const projected = await this.artifacts.result(
+      parentId,
+      _id,
+      "TaskOutput",
+      formatTaskOutputModelContent(output),
+      output,
+    );
+    signal?.throwIfAborted();
+    if (output.retrieval_status === "success") this.notified.add(task);
+    return projected;
+  }
+  private async taskStop(parentId: string, _id: string, taskId: string, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!taskId) throw new Error("Missing required parameter: task_id");
+    const task = this.tasks.get(taskId);
+    if (!task || task.parentSessionId !== parentId)
+      throw new Error(
+        `Invalid task ID "${taskId}". This lookup failure does not mean the task has completed or stopped; use the full task_id returned when the task started to stop it.`,
+      );
+    if (task.status !== "running")
+      throw new Error(`Task ${taskId} is not running (status: ${providerTaskStatus(task)})`);
+    await this.stop(parentId, taskId);
+    const stopped = this.tasks.get(taskId);
+    if (stopped?.background && !this.closing && !this.notified.has(stopped)) {
+      await this.port.notify(stopped);
+      this.notified.add(stopped);
+    }
+    const output = {
+      message: `Successfully stopped task: ${task.agentId} (${task.description})`,
+      task_id: task.agentId,
+      task_type: "local_agent",
+      command: task.description,
+    };
+    return this.artifacts.result(parentId, _id, "TaskStop", JSON.stringify(output), output);
+  }
   tools(parentId: string, codexSubagentPrompt = false): ToolDefinition[] {
     const tools: ToolDefinition[] = [
       {
@@ -642,96 +692,6 @@ export class SubagentPlugin {
             formatSendMessageModelContent(output),
             output,
           );
-        },
-      },
-      {
-        name: "TaskOutput",
-        label: "查看子智能体输出",
-        parameters: outputParameters,
-        description: taskOutputDescription,
-        metadata: { concurrentSafe: true, sideEffectScope: "session", destructive: false },
-
-        execute: async (_id, params, signal) => {
-          assertToolArguments("TaskOutput", outputParameters, params);
-          signal?.throwIfAborted();
-          if (!params.task_id) throw new Error("<tool_use_error>Task ID is required</tool_use_error>");
-          const owned = this.tasks.get(params.task_id);
-          if (!owned || owned.parentSessionId !== parentId)
-            throw new Error(`<tool_use_error>No task found with ID: ${params.task_id}</tool_use_error>`);
-          if (params.block) await this.waitForOutput(parentId, params.task_id, params.timeout, signal);
-          signal?.throwIfAborted();
-          const task = this.tasks.get(params.task_id);
-          if (!task) {
-            const output: TaskOutputResult = { retrieval_status: "timeout", task: null };
-            return this.artifacts.result(
-              parentId,
-              _id,
-              "TaskOutput",
-              formatTaskOutputModelContent(output),
-              output,
-            );
-          }
-          const diskOutput = await this.artifacts.read(task.outputFile, signal);
-          const clean = task.status === "completed" ? task.result : undefined;
-          const text = clean || diskOutput;
-          const output: TaskOutputResult = {
-            retrieval_status:
-              task.status === "running" ? (params.block ? "timeout" : "not_ready") : "success",
-            task: {
-              task_id: task.agentId,
-              task_type: "local_agent",
-              status: providerTaskStatus(task),
-              description: task.description,
-              output: text,
-              ...(task.outputFile ? { outputFile: task.outputFile } : {}),
-              ...(task.prompt ? { prompt: task.prompt } : {}),
-              ...(text ? { result: text } : {}),
-              ...(task.error ? { error: task.error } : {}),
-            },
-          };
-          signal?.throwIfAborted();
-          const projected = await this.artifacts.result(
-            parentId,
-            _id,
-            "TaskOutput",
-            formatTaskOutputModelContent(output),
-            output,
-          );
-          signal?.throwIfAborted();
-          if (output.retrieval_status === "success") this.notified.add(task);
-          return projected;
-        },
-      },
-      {
-        name: "TaskStop",
-        label: "停止子智能体",
-        parameters: stopParameters,
-        description: taskStopDescription,
-        execute: async (_id, params, signal) => {
-          assertToolArguments("TaskStop", stopParameters, params);
-          signal?.throwIfAborted();
-          const taskId = params.task_id ?? params.shell_id;
-          if (!taskId) throw new Error("Missing required parameter: task_id");
-          const task = this.tasks.get(taskId);
-          if (!task || task.parentSessionId !== parentId)
-            throw new Error(
-              `Invalid task ID "${taskId}". This lookup failure does not mean the task has completed or stopped; use the full task_id returned when the task started to stop it.`,
-            );
-          if (task.status !== "running")
-            throw new Error(`Task ${taskId} is not running (status: ${providerTaskStatus(task)})`);
-          await this.stop(parentId, taskId);
-          const stopped = this.tasks.get(taskId);
-          if (stopped?.background && !this.closing && !this.notified.has(stopped)) {
-            await this.port.notify(stopped);
-            this.notified.add(stopped);
-          }
-          const output = {
-            message: `Successfully stopped task: ${task.agentId} (${task.description})`,
-            task_id: task.agentId,
-            task_type: "local_agent",
-            command: task.description,
-          };
-          return this.artifacts.result(parentId, _id, "TaskStop", JSON.stringify(output), output);
         },
       },
     ];

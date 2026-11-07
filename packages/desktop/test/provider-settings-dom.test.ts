@@ -2,10 +2,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { fetchProviderModels, presetModels } from "zpi-ai";
+import { defaultPluginSettings } from "zpi-builtin-plugins";
 import { SettingsPage } from "../src/renderer/SettingsPage.tsx";
 import { useStore } from "../src/renderer/store.ts";
 import type { DesktopBridge, PublicSettings } from "../src/shared/bridge.ts";
-import { defaultCapabilities, defaultPreferences } from "../src/shared/config.ts";
+import { defaultPreferences } from "../src/shared/config.ts";
 import { defaultShortcuts } from "../src/shared/shortcuts.ts";
 import { emptyTaskGroups } from "../src/shared/task-groups.ts";
 
@@ -33,10 +34,10 @@ beforeEach(async () => {
   settings = {
     providers: [],
     lastSelection: null,
-    quickChat: { defaultSelection: null },
+
     interface: defaultPreferences,
     shortcuts: defaultShortcuts("darwin"),
-    capabilities: defaultCapabilities,
+    plugins: structuredClone(defaultPluginSettings),
     credentialsPersisted: false,
     disabledSkillPaths: [],
     webSearch: {

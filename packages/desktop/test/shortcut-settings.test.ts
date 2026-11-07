@@ -47,14 +47,6 @@ describe("shortcut settings presentation", () => {
     expect(html).toContain('aria-label="清除选择模型快捷键"');
     expect(html).toContain("<kbd>⌘</kbd><kbd>L</kbd>");
     expect(html).toContain("全部恢复默认");
-    expect(html).toContain('data-shortcut-command="quick-chat"');
-    expect(html).toContain("<kbd>⌥</kbd><kbd>Space</kbd>");
-    expect(html).toContain('aria-label="编辑快速对话快捷键"');
-    expect(html).toContain('data-shortcut-command="quick-chat-new"');
-    expect(html).toContain("<kbd>⌥</kbd><kbd>⇧</kbd><kbd>Space</kbd>");
-    expect(html).toContain('aria-label="编辑新建快速对话快捷键"');
-    expect(html).toContain('aria-label="清除新建快速对话快捷键"');
-    for (const suffix of ["screenshot", "selection", "clipboard"])
-      expect(html).toContain(`data-shortcut-command="quick-chat-${suffix}"`);
+    expect(html).not.toContain('data-shortcut-command="quick-chat');
   });
 });

@@ -1,0 +1,14 @@
+{
+  "name": "zpi-plugin-compat",
+  "version": "0.1.60",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "yaml": "2.9.1",
+    "zpi-ai": "0.1.60",
+    "zpi-coding-agent": "0.1.60"
+  }
+}

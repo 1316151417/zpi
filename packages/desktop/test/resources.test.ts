@@ -1,15 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import { builtinPlugins } from "zpi-builtin-plugins";
 import { buildMentionMarkdown } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
-import { desktopInstructions } from "../src/main/desktop-prompt.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
-import { defaultCapabilities } from "../src/shared/config.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
-const defaultInstructions = desktopInstructions(defaultCapabilities);
+const defaultInstructions = builtinPlugins.flatMap((plugin) => plugin.instructions ?? []).join("\n\n");
 
 test("session resources remain bound to the project root after bash changes directory", async () => {
   const f = await fixture((_, response, index) => {
@@ -89,7 +88,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
     { id: "custom", name: "Custom", preamble: "Custom assistant", rules: "CUSTOM RULE" },
   ]) {
     const f = await fixture(undefined, template);
-    f.settings.setCapabilityEnabled("subagents", false);
+    f.settings.setPluginEnabled("zpi.collaboration", false);
     const assertLinks = (prompt: string) => {
       expect(prompt).toContain("Return web URLs as Markdown links");
       expect(prompt).toContain("return local file references as Markdown links");
@@ -115,7 +114,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
     const systemPrompt = requestPrompt(0);
     assertLinks(systemPrompt);
     expect(systemPrompt).toBe(preview.prompt);
-    expect(systemPrompt.split("<system_rules>")).toHaveLength(2);
+    expect(systemPrompt.split("return local file references as Markdown links")).toHaveLength(2);
     await f.host.close();
     const restarted = new SessionHost(
       f.dir,

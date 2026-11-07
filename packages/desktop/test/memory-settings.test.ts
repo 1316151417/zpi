@@ -138,12 +138,3 @@ test("failed durable writes leave the previous setting available", async () => {
   expect(() => settings.saveMemorySettings({ ...defaultMemorySettings, long: true })).toThrow("disk full");
   expect(open().getMemorySettings()).toEqual({ ...defaultMemorySettings, short: true });
 });
-
-test("legacy dual-enabled settings migrate to long memory without changing model or thresholds", async () => {
-  const { settings, state, open } = await fixture();
-  state.setSetting("memory.settings", { ...defaultMemorySettings, short: true, long: true, maxAgeDays: 90 });
-  const expected = { ...defaultMemorySettings, short: false, long: true, maxAgeDays: 90 };
-  expect(settings.getMemorySettings()).toEqual(expected);
-  expect(state.getSetting("memory.settings")).toEqual(expected);
-  expect(open().getMemorySettings()).toEqual(expected);
-});

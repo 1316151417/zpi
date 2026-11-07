@@ -1,11 +1,11 @@
 import { performance } from "node:perf_hooks";
+import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
-import { StateStore } from "../src/main/state-store.ts";
-import { transcriptIndexesV2 } from "../src/main/transcript-schema.ts";
+import { ensureTranscriptSchema, transcriptIndexes } from "../src/main/transcript-schema.ts";
 
 it("uses bounded open-call updates and run-start seeks with 100,000 historical calls/runs", () => {
-  const state = new StateStore(":memory:");
-  const db = state.db;
+  const db = new DatabaseSync(":memory:");
+  ensureTranscriptSchema(db);
   try {
     db.exec(`WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<100000)
       INSERT INTO transcript_calls SELECT 'long',n,'run-'||n,0,n*100,n*100+99,1 FROM rows;
@@ -47,7 +47,7 @@ it("uses bounded open-call updates and run-start seeks with 100,000 historical c
     expect(plan(update, [10000200, "long"])).not.toContain("transcript_calls_open");
     expect(plan(seek, ["long", 7654321])).toContain("TEMP B-TREE");
     const baselineMs = measure();
-    db.exec(transcriptIndexesV2);
+    db.exec(transcriptIndexes);
     // Timings are evidence only; avoid a flaky wall-clock threshold on shared developer machines.
     console.info(
       JSON.stringify({
@@ -60,6 +60,6 @@ it("uses bounded open-call updates and run-start seeks with 100,000 historical c
       }),
     );
   } finally {
-    state.close();
+    db.close();
   }
 });

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { done } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
+import { isolatedHistory } from "./helpers/history-reader.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it.each([false, true])(
@@ -228,7 +229,6 @@ for (const phase of ["prepared", "durable", "published"] as const) {
   it(`reopens the authoritative generation after a ${phase} replacement failure`, async () => {
     const f = await fixture((_, response) => done(response));
     const task = await f.host.createSession(f.a.id);
-    const { HistoryIndex } = await import("../src/main/history-index.ts");
     const owner = f.host as unknown as {
       indexes: Map<string, import("../src/main/history-storage.ts").WorkerHistoryIndex>;
     };
@@ -275,7 +275,7 @@ for (const phase of ["prepared", "durable", "published"] as const) {
     const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"));
     await reopened.init();
     cleanup.push(() => reopened.close());
-    const restored = new HistoryIndex(reopened.sessionPath(task.id), f.settings.state.db);
+    const restored = isolatedHistory(reopened.sessionPath(task.id));
     await restored.load();
     expect(restored.snapshot().endSeq).toBe(phase === "published" ? 2 : originalCount);
     if (phase === "published") {

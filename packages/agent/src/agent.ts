@@ -30,6 +30,7 @@ export class Agent {
         "prepareNextTurnWithContext",
         "getSteeringMessages",
         "getPendingMessages",
+        "beforeStop",
       ],
       "Agent",
     );

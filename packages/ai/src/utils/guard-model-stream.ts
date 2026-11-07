@@ -53,7 +53,6 @@ export function guardModelStream(
 ): AssistantMessageEventStream {
   const {
     streamIdleTimeoutMs,
-    streamIdleTimeoutRetryNumber: _streamIdleTimeoutRetryNumber,
     streamFirstResponseTimeoutMs,
     streamDeadlineMs,
     retrySignal,

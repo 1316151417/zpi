@@ -16,7 +16,6 @@
     "check": "tsc --noEmit && biome check .",
     "format": "biome check --write .",
     "test:unit": "npm run test:safety && vitest run",
-    "repair:sessions": "tsx scripts/repair-sessions.ts",
     "test:desktop": "npm run test:safety && npm run build && node scripts/test-desktop.ts",
     "dev": "node scripts/dev.mjs",
     "docs": "node scripts/docs.mjs",
@@ -31,7 +30,8 @@
     "install:terminal": "electron-rebuild -f -w node-pty && node scripts/prepare-terminal.ts",
     "test:safety": "node tests/safety-check.ts",
     "test:interactive": "npm run test:safety && npm run build && playwright test --config=playwright.interactive.config.ts",
-    "test:cleanup": "npm run test:safety && npm run build && node scripts/verify-test-cleanup.mjs"
+    "test:cleanup": "npm run test:safety && npm run build && node scripts/verify-test-cleanup.mjs",
+    "build:sdk": "node scripts/build-agent-sdk.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
@@ -94,7 +94,6 @@
       }
     ],
     "asarUnpack": [
-      "packages/desktop/dist/native/**/*",
       "**/node_modules/sharp/**/*",
       "**/node_modules/@img/**/*",
       "**/node_modules/node-pty/**/*"

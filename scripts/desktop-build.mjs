@@ -1,3 +1,10 @@
+import { rm } from "node:fs/promises";
+
+/** Start builds from generated output only, so retired entry points cannot ship again. */
+export async function cleanDesktopBuild() {
+  await rm(new URL("../packages/desktop/dist/", import.meta.url), { recursive: true, force: true });
+}
+
 export const mainBuild = {
   entry: [
     "packages/desktop/src/main/index.ts",
@@ -10,9 +17,12 @@ export const mainBuild = {
   splitting: false,
   sourcemap: true,
   noExternal: [
+    "zpi-agent-sdk",
     "zpi-ai",
     "zpi-agent",
     "zpi-coding-agent",
+    "zpi-builtin-plugins",
+    "zpi-plugin-compat",
     "typebox",
     "openai",
     "ws",
@@ -25,13 +35,16 @@ export const mainBuild = {
   ],
   external: ["electron", "node-pty", "sharp"],
   target: "node24",
+  esbuildOptions(options) {
+    options.conditions = [...(options.conditions ?? []), "development"];
+  },
   removeNodeProtocol: false,
   banner: {
     js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
   },
 };
 export const preloadBuild = {
-  entry: ["packages/desktop/src/preload/index.ts", "packages/desktop/src/preload/quick-chat.ts"],
+  entry: ["packages/desktop/src/preload/index.ts"],
   outDir: "packages/desktop/dist/preload",
   format: ["cjs"],
   bundle: true,

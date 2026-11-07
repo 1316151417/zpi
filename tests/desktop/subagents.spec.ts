@@ -55,7 +55,7 @@ test("subagent capability manages profiles/models and opens complete read-only c
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "扩展能力", exact: true }).click();
+    await page.getByRole("button", { name: "插件", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "子智能体", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "子智能体", exact: true }).click();
     const enabled = page.getByRole("switch", { name: "启用子智能体", exact: true });
@@ -270,7 +270,7 @@ test("background child updates live and keeps late findings for the next user in
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.evaluate(async () => {
-      const result = await window.zpi.setCapabilityEnabled("subagents", true);
+      const result = await window.zpi.setPluginEnabled("zpi.collaboration", true);
       if (!result.ok) throw new Error(result.error.message);
     });
     const editor = page.getByLabel("消息", { exact: true });
@@ -434,7 +434,7 @@ test("TaskOutput waits for the child and shows a clean result without duplicate 
   try {
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
-    await page.evaluate(() => window.zpi.setCapabilityEnabled("subagents", true));
+    await page.evaluate(() => window.zpi.setPluginEnabled("zpi.collaboration", true));
     const editor = page.getByLabel("消息", { exact: true });
     await editor.fill("Research and collect");
     await editor.press("Enter");
@@ -522,7 +522,7 @@ test("message tools match ZCode summaries and keep coordinator inbox bodies out 
   try {
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
-    await page.evaluate(() => window.zpi.setCapabilityEnabled("subagents", true));
+    await page.evaluate(() => window.zpi.setPluginEnabled("zpi.collaboration", true));
     await page.getByLabel("消息", { exact: true }).fill("Research and revise");
     await page.getByLabel("消息", { exact: true }).press("Enter");
     await expect(page.locator("main .answer").first()).toContainText("Coordinator report");

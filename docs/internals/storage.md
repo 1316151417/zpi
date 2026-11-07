@@ -8,11 +8,13 @@
 
 TaskState 的 SQL 归属/顺序列是权威，附加 JSON 必须验证。revision 针对持久任务字段变化，不随每个流 delta、草稿或队列更新而增长。删除通过 tombstone 阻止迟到 upsert 复活。
 
-## 数据库打开与迁移
+## 当前数据库结构
 
-使用 Node 24 的 `node:sqlite` DatabaseSync，启用 WAL、FULL 同步、foreign keys 和 5000 ms busy timeout。schema 迁移通过 user_version 与 schema_migrations 共同验证；v1 保持基线，v2 加迁移账本与索引，v3 加待清理记录。
+使用 Node 24 的 `node:sqlite` DatabaseSync，启用 WAL、FULL 同步、foreign keys 和 5000 ms busy timeout。新数据库在一个事务中创建当前 schema 4；已有数据库只接受当前版本，不进行升级，也没有 schema_migrations 账本。
 
-打开前做只读结构验证，检查表/索引等对象摘要。未知或被修改的结构不能静默重建为空库。事务内更新有关联的业务状态，凭据则不允许出现在任意普通 JSON 字段中。
+打开前只读验证表、索引等定义。未知版本或被修改的权威结构直接报错；`state.sqlite` 不创建历史索引表；`history.sqlite` 的派生索引可按当前 JSONL 重建。应用设置只接受 version 5，凭据只接受 version 4，记忆状态只接受 version 2，会话插件快照只接受 pluginsVersion 3。
+
+有关联的业务状态在事务内更新，凭据不允许出现在普通 JSON 字段中。历史格式转换工具不进入源码、构建或启动流程。
 
 ## generation 发布
 
@@ -22,9 +24,7 @@ TaskState 的 SQL 归属/顺序列是权威，附加 JSON 必须验证。revisio
 
 ## 单写者锁
 
-`.storage-lock.sqlite` 的 `BEGIN IMMEDIATE` 提供进程锁，进程退出后由操作系统释放。兼容 `.storage-lock/owner.json` 保存 token、PID、用途。
-
-遗留目录存在时只在 PID 探测明确得到 ESRCH 后回收。进程仍活、EPERM、owner 缺失/坏格式都不是“已退出”的证据，会拒绝打开并提示检查。因此不应照旧文档遇到锁就手动删除；当前实现能自动恢复一部分已确认死亡的 owner。
+`.storage-lock.sqlite` 的 `BEGIN IMMEDIATE` 提供进程锁，进程退出后由操作系统释放。释放函数可重复调用，不维护 PID 文件或历史 owner 标记。
 
 ## 凭据
 
@@ -38,10 +38,4 @@ OAuth 刷新先持久化轮换结果，再完成可能失败的身份验证，�
 
 切换 generation 后旧目录的清理按安全时机排队。清空记忆有额外 writer 和水位协调，见[记忆](memory.md)。
 
-## 离线迁移
-
-迁移脚本分 inspect、plan、convert、validate、activate 阶段，持有同一存储锁。转换使用分块读取和 SQLite spool，避免全部历史进内存；激活前比较来源是否变化。manifest 记录绝对目标路径，转换后不可随意移动目录再激活。
-
-验证比较存在共用适配器的限制，不等于两个完全独立实现的数学证明。运行时不长期同时兼容所有旧格式；旧格式转换留在离线脚本中。
-
-源码：[StateStore](../../packages/desktop/src/main/state-store.ts)、[迁移](../../packages/desktop/src/main/state-migrations.ts)、[generation](../../packages/desktop/src/main/storage-generation.ts)、[清理](../../packages/desktop/src/main/storage-cleanup.ts)、[设置/凭据](../../packages/desktop/src/main/storage.ts)、[离线流程](../../scripts/storage-migration/workflow.ts)。回归：[generation](../../packages/desktop/test/storage-generation.test.ts)、[schema](../../packages/desktop/test/state-migrations.test.ts)、[清理](../../packages/desktop/test/storage-cleanup.test.ts)、[迁移](../../packages/desktop/test/storage-migration.test.ts)。
+源码：[StateStore](../../packages/desktop/src/main/state-store.ts)、[当前 schema](../../packages/desktop/src/main/state-schema.ts)、[generation](../../packages/desktop/src/main/storage-generation.ts)、[清理](../../packages/desktop/src/main/storage-cleanup.ts)、[设置/凭据](../../packages/desktop/src/main/storage.ts)。回归：[generation](../../packages/desktop/test/storage-generation.test.ts)、[schema 与状态](../../packages/desktop/test/state-store.test.ts)、[清理](../../packages/desktop/test/storage-cleanup.test.ts)。

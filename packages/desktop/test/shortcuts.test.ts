@@ -8,8 +8,6 @@ import {
   shortcutForEvent,
   shortcutFromEvent,
   validateShortcuts,
-  withAddedShortcuts,
-  withTaskMenuShortcut,
 } from "../src/shared/shortcuts.ts";
 
 describe("shortcut contract", () => {
@@ -25,8 +23,6 @@ describe("shortcut contract", () => {
       );
       const primary = platform === "darwin" ? "Command" : "Control";
       expect(settings.bindings).toMatchObject({
-        "quick-chat": platform === "darwin" ? "Alt+Space" : "Alt+N",
-        "quick-chat-new": platform === "darwin" ? "Alt+Shift+Space" : "Alt+Shift+N",
         "toggle-sidebar": `${primary}+[`,
         "toggle-pane": `${primary}+]`,
         search: `${primary}+K`,
@@ -163,143 +159,4 @@ describe("shortcut contract", () => {
     expect(formatShortcut("CmdOrCtrl+Alt+E", "linux")).toBe("Ctrl+Alt+E");
     expect(formatShortcut(null, "darwin")).toBe("未设置");
   });
-});
-
-describe.each(["darwin", "win32", "linux"])("quick-chat shortcut on %s", (platform) => {
-  it.each(["quick-chat", "quick-chat-new"] as const)(
-    "allows Alt plus a letter or macOS Space and optional Shift only for %s",
-    (command) => {
-      const settings = defaultShortcuts(platform);
-      settings.bindings["quick-chat"] = null;
-      settings.bindings["quick-chat-new"] = null;
-      const allowed = ["Alt+A", "Option+N", "Alt+Z", "Option+Shift+N", "Shift+Alt+B"];
-      if (platform === "darwin") allowed.push("Option+Space", "Option+Shift+Space");
-      for (const binding of allowed) {
-        settings.bindings[command] = binding;
-        expect(validateShortcuts(settings, platform)).toBeUndefined();
-        for (const { id, scope } of shortcutCommands) {
-          if (id.startsWith("quick-chat")) continue;
-          const previous = settings.bindings[id];
-          settings.bindings[id] = binding;
-          expect(validateShortcuts(settings, platform), `${scope}: ${id}`).toContain("Ctrl 或 Command");
-          settings.bindings[id] = previous;
-        }
-      }
-      const reserved = ["Alt+1", "Alt+Shift+1", "Shift+N", "Alt+Tab", "Alt+F4", "N"];
-      if (platform !== "darwin") reserved.push("Alt+Space", "Alt+Shift+Space");
-      for (const binding of reserved) {
-        settings.bindings[command] = binding;
-        expect(validateShortcuts(settings, platform)).toBeTypeOf("string");
-      }
-    },
-  );
-
-  it("records physical quick-chat letters without changing ordinary IME or dead-key handling", () => {
-    for (const shiftKey of [false, true]) {
-      const event = { key: "Dead", code: "KeyN", altKey: true, shiftKey };
-      const binding = shiftKey ? "Alt+Shift+N" : "Alt+N";
-      const command = shiftKey ? "quick-chat-new" : "quick-chat";
-      expect(shortcutFromEvent(event, platform)).toBeNull();
-      expect(shortcutFromEvent(event, platform, true)).toBe(binding);
-      expect(shortcutFromEvent({ ...event, key: "˜" }, platform, true)).toBe(binding);
-      const settings = defaultShortcuts(platform);
-      const defaultEvent = platform === "darwin" ? { ...event, key: "\u00a0", code: "Space" } : event;
-      expect(shortcutForEvent(defaultEvent, platform, settings)).toBe(command);
-      settings.bindings[command] = binding;
-      expect(shortcutForEvent(event, platform, settings)).toBe(command);
-      for (const extra of [{ isComposing: true }, { repeat: true }, { altKey: false }])
-        expect(shortcutFromEvent({ ...event, ...extra }, platform, true)).toBeNull();
-      expect(shortcutFromEvent({ ...event, key: "Process" }, platform, true)).toBeNull();
-      settings.bindings[command] = null;
-      expect(shortcutForEvent(event, platform, settings)).toBeUndefined();
-      settings.bindings[command] = binding;
-      settings.enabled = false;
-      expect(shortcutForEvent(event, platform, settings)).toBeUndefined();
-    }
-  });
-
-  it("adds the default without changing an explicit custom or cleared quick-chat binding", () => {
-    for (const binding of [null, "Alt+B"]) {
-      const settings = defaultShortcuts(platform);
-      settings.bindings["quick-chat"] = binding;
-      expect(withAddedShortcuts(settings, platform)).toBe(settings);
-    }
-    const settings = defaultShortcuts(platform);
-    Reflect.deleteProperty(settings.bindings, "quick-chat");
-    const snapshot = structuredClone(settings);
-    expect(withAddedShortcuts(settings, platform)).toEqual(defaultShortcuts(platform));
-    expect(settings).toEqual(snapshot);
-    settings.bindings["new-task"] = platform === "darwin" ? "Option+Space" : "Option+N";
-    expect(withAddedShortcuts(settings, platform).bindings["quick-chat"]).toBeNull();
-  });
-});
-
-describe.each(["darwin", "win32", "linux"])("additive shortcut migrations on %s", (platform) => {
-  it("adds capture commands without stealing custom keys, overwriting clears, or enabling shortcuts", () => {
-    const settings = defaultShortcuts(platform);
-    const bindings = settings.bindings;
-    for (const id of ["quick-chat-screenshot", "quick-chat-selection", "quick-chat-clipboard"] as const)
-      Reflect.deleteProperty(bindings, id);
-    bindings["quick-chat"] = "Shift+Option+A";
-    bindings["quick-chat-selection"] = null;
-    settings.enabled = false;
-    const before = structuredClone(settings);
-    const next = withAddedShortcuts(settings, platform);
-    expect(next.bindings["quick-chat-screenshot"]).toBeNull();
-    expect(next.bindings["quick-chat-selection"]).toBeNull();
-    expect(next.bindings["quick-chat-clipboard"]).toBe(platform === "darwin" ? "Alt+Shift+V" : null);
-    expect(next.enabled).toBe(false);
-    expect(settings).toEqual(before);
-    expect(validateShortcuts(next, platform)).toBeUndefined();
-  });
-  it("appends missing commands in migration order without changing existing bindings or the input", () => {
-    const settings = defaultShortcuts(platform);
-    settings.enabled = false;
-    Reflect.deleteProperty(settings.bindings, "task-menu");
-    Reflect.deleteProperty(settings.bindings, "quick-chat");
-    Reflect.deleteProperty(settings.bindings, "quick-chat-new");
-    const snapshot = structuredClone(settings);
-    const next = withAddedShortcuts(withTaskMenuShortcut(settings, platform), platform);
-    expect(next).toEqual({ ...defaultShortcuts(platform), enabled: false });
-    expect(Object.keys(next.bindings)).toEqual([
-      ...Object.keys(settings.bindings),
-      "task-menu",
-      "quick-chat",
-      "quick-chat-new",
-    ]);
-    expect(settings).toEqual(snapshot);
-    expect(next.bindings).not.toBe(settings.bindings);
-  });
-
-  it.each([
-    { command: "task-menu" as const, migrate: withTaskMenuShortcut, occupied: "CmdOrCtrl+U" },
-    {
-      command: "quick-chat" as const,
-      migrate: withAddedShortcuts,
-      occupied: platform === "darwin" ? "Option+Space" : "Option+N",
-    },
-    {
-      command: "quick-chat-new" as const,
-      migrate: withAddedShortcuts,
-      occupied: platform === "darwin" ? "Shift+Option+Space" : "Shift+Option+N",
-    },
-  ])(
-    "preserves existing $command values and normalized historical conflicts",
-    ({ command, migrate, occupied }) => {
-      for (const binding of [null, "", "CmdOrCtrl+Shift+B"]) {
-        const settings = defaultShortcuts(platform);
-        settings.bindings[command] = binding;
-        expect(migrate(settings, platform)).toBe(settings);
-      }
-      const settings = defaultShortcuts(platform);
-      Reflect.deleteProperty(settings.bindings, command);
-      settings.bindings["new-task"] = occupied;
-      const snapshot = structuredClone(settings);
-      const next = migrate(settings, platform);
-      expect(next.bindings[command]).toBeNull();
-      expect(next.bindings["new-task"]).toBe(occupied);
-      expect(settings).toEqual(snapshot);
-      expect(migrate(next, platform)).toBe(next);
-    },
-  );
 });

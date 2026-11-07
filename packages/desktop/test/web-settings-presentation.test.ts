@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { defaultCapabilities } from "../src/shared/config.ts";
+import { defaultPluginSettings } from "zpi-builtin-plugins";
 
 const fixture = vi.hoisted(() => ({
   webSearch: {
@@ -13,13 +13,12 @@ const fixture = vi.hoisted(() => ({
     credentialsPersisted: false,
     credentialsLocked: false,
   },
-  capabilities: { webSearch: true },
+  plugins: { enabled: { "zpi.web-search": true } },
 }));
 vi.mock("../src/renderer/store.ts", () => ({
   useStore: (selector: (state: unknown) => unknown) => selector({ settings: fixture }),
 }));
 
-import { CapabilitySettings } from "../src/renderer/CapabilitySettings.tsx";
 import { WebSearchSettings } from "../src/renderer/WebSearchSettings.tsx";
 
 beforeEach(() => {
@@ -31,7 +30,7 @@ beforeEach(() => {
     credentialsPersisted: false,
     credentialsLocked: false,
   };
-  fixture.capabilities = { ...defaultCapabilities };
+  fixture.plugins = { enabled: { "zpi.web-search": defaultPluginSettings.enabled["zpi.web-search"] } };
 });
 afterEach(() => vi.unstubAllGlobals());
 const render = () => renderToStaticMarkup(createElement(WebSearchSettings));
@@ -79,7 +78,7 @@ test("memory-only and locked states are honest; no guessed length for locked cre
 test("provider and global switches remain independent with one credential field", () => {
   fixture.webSearch.hasApiKey = true;
   fixture.webSearch.enabled = true;
-  fixture.capabilities.webSearch = false;
+  fixture.plugins.enabled["zpi.web-search"] = false;
   const markup = render();
   expect(toggle(markup)).toContain('aria-checked="true"');
   expect(toggle(markup)).not.toContain("disabled");
@@ -132,16 +131,16 @@ test("the compact model-style layout lists only DeepSeek beside the existing edi
   expect(css).toMatch(/@media \(max-width: 1023px\)[\s\S]*\.provider-status\s*\{\s*display: none;/);
 });
 test("feature switches live in their own pages and model navigation preserves its order", () => {
-  const markup = renderToStaticMarkup(createElement(CapabilitySettings));
-  expect(markup).not.toContain('aria-label="联网搜索"');
-  expect(markup).not.toContain('aria-label="子智能体"');
+  const pluginSource = source("../src/renderer/PluginSettings.tsx");
+  expect(pluginSource).toContain("builtinPluginMetadata");
+  expect(pluginSource).toContain("setPluginEnabled");
   expect(render()).toContain('aria-label="启用联网搜索"');
   const page = source("../src/renderer/SettingsPage.tsx");
   expect(page.indexOf('["models", "模型", Braces]')).toBeGreaterThan(
     page.indexOf('["commands", "命令", Terminal]'),
   );
   expect(page.indexOf('["models", "模型", Braces]')).toBeLessThan(
-    page.indexOf('["capabilities", "扩展能力", Package]'),
+    page.indexOf('["plugins", "插件", Package]'),
   );
 });
 

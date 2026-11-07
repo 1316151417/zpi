@@ -1,11 +1,6 @@
 /** The same accelerator grammar is used by settings, DOM events and Electron. */
 export const shortcutCommands = [
   { id: "toggle-window", label: "显示或隐藏窗口", scope: "global" },
-  { id: "quick-chat", label: "快速对话", scope: "global" },
-  { id: "quick-chat-new", label: "新建快速对话", scope: "global" },
-  { id: "quick-chat-screenshot", label: "截图带入快速对话", scope: "global" },
-  { id: "quick-chat-selection", label: "复制选中文字并带入快速对话", scope: "global" },
-  { id: "quick-chat-clipboard", label: "剪贴板带入快速对话", scope: "global" },
   { id: "toggle-sidebar", label: "显示或隐藏左侧栏", scope: "app" },
   { id: "pane-full-view", label: "进入或退出完整视图", scope: "app" },
   { id: "toggle-pane", label: "显示或隐藏右侧面板", scope: "app" },
@@ -128,11 +123,6 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
     enabled: true,
     bindings: {
       "toggle-window": platform === "darwin" ? "Control+Command+E" : "Control+Alt+E",
-      "quick-chat": platform === "darwin" ? "Alt+Space" : "Alt+N",
-      "quick-chat-new": platform === "darwin" ? "Alt+Shift+Space" : "Alt+Shift+N",
-      "quick-chat-screenshot": platform === "darwin" ? "Alt+Shift+A" : null,
-      "quick-chat-selection": platform === "darwin" ? "Alt+Shift+C" : null,
-      "quick-chat-clipboard": platform === "darwin" ? "Alt+Shift+V" : null,
       "toggle-sidebar": `${primary}+[`,
       "toggle-pane": `${primary}+]`,
       "pane-full-view": platform === "darwin" ? "Shift+Command+F" : "Control+Shift+F",
@@ -159,7 +149,7 @@ export function shortcutFromEvent(
   platform: string,
   allowAltLetter = false,
 ): string | null {
-  // Option+N is a dead key on macOS; quick-chat recording still uses the physical letter.
+  // Key search can opt into recording physical Option-letter combinations.
   const altLetter = allowAltLetter && event.altKey && /^Key[A-Z]$/.test(event.code ?? "");
   if (
     event.isComposing ||
@@ -198,11 +188,7 @@ export function shortcutForEvent(
   if (!binding) return undefined;
   return shortcutCommands.find(({ id }) => {
     const saved = settings.bindings[id];
-    return (
-      (event.key !== "Dead" || id.startsWith("quick-chat")) &&
-      saved !== null &&
-      normalizeShortcut(saved, platform) === binding
-    );
+    return event.key !== "Dead" && saved !== null && normalizeShortcut(saved, platform) === binding;
   })?.id;
 }
 export function shortcutLabelParts(binding: string | null, platform: string): string[] {
@@ -246,12 +232,7 @@ function reservedShortcut(binding: string, command: ShortcutCommand, platform: s
   )
     return "此组合保留给系统导航或文本编辑";
   if (key === "Escape") return "Escape 组合保留给系统或弹窗操作";
-  const quickChatAltShortcut =
-    command.startsWith("quick-chat") &&
-    held.has("Alt") &&
-    [...held].every((modifier) => modifier === "Alt" || modifier === "Shift") &&
-    (/^[A-Z]$/.test(key) || (platform === "darwin" && key === "Space"));
-  if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key) && !quickChatAltShortcut)
+  if (!held.has("Control") && !held.has("Command") && !/^F\d+$/.test(key))
     return "请包含 Ctrl 或 Command，避免影响正常输入";
   const primary = platform === "darwin" ? "Command" : "Control";
   if (
@@ -341,41 +322,4 @@ export function normalizeShortcuts(settings: ShortcutSettings, platform: string)
       ]),
     ) as ShortcutSettings["bindings"],
   };
-}
-
-/** Adding a command never steals a user's existing custom binding. */
-function withMissingShortcut(
-  settings: ShortcutSettings,
-  platform: string,
-  command: ShortcutCommand,
-  defaultBinding: () => string | null,
-): ShortcutSettings {
-  if (!settings?.bindings || Object.hasOwn(settings.bindings, command)) return settings;
-  const binding = defaultBinding();
-  const normalizedBinding = binding === null ? null : normalizeShortcut(binding, platform);
-  const occupied = Object.values(settings.bindings).some(
-    (value) => typeof value === "string" && normalizeShortcut(value, platform) === normalizedBinding,
-  );
-  return { ...settings, bindings: { ...settings.bindings, [command]: occupied ? null : binding } };
-}
-
-export function withTaskMenuShortcut(settings: ShortcutSettings, platform: string): ShortcutSettings {
-  return withMissingShortcut(settings, platform, "task-menu", () =>
-    platform === "darwin" ? "Command+U" : "Control+U",
-  );
-}
-
-/** Keep rollout order and conflict precedence shared by storage and default migration. */
-export function withAddedShortcuts(settings: ShortcutSettings, platform: string): ShortcutSettings {
-  const defaults = defaultShortcuts(platform).bindings;
-  for (const command of [
-    "quick-chat",
-    "quick-chat-new",
-    "quick-chat-screenshot",
-    "quick-chat-selection",
-    "quick-chat-clipboard",
-    "pane-full-view",
-  ] as const)
-    settings = withMissingShortcut(settings, platform, command, () => defaults[command]);
-  return settings;
 }

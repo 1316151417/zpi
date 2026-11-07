@@ -142,6 +142,7 @@ it("applies the same fixed watchdog to compaction retries", async () => {
     modelRuntime: runtime,
     sessionManager: manager,
     settingsManager: SettingsManager.inMemory({
+      streamFirstResponseTimeoutMs: 100,
       streamIdleTimeoutMs: 100,
       retry: { baseDelayMs: 0, maxRetries: 1 },
       compaction: { enabled: false, keepRecentTokens: 0 },

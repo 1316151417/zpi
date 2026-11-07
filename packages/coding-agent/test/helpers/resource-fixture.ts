@@ -14,7 +14,10 @@ afterEach(async () => {
       .map((f) => f()),
   );
 });
-export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
+export async function fixture(
+  handler: Parameters<typeof fakeServer>[0],
+  options: Pick<import("zpi-coding-agent").CreateAgentSessionOptions, "plugins" | "hooks"> = {},
+) {
   const dir = await mkdtemp(join(tmpdir(), "zpi-resources-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const cwd = join(dir, "project"),
@@ -27,6 +30,7 @@ export async function fixture(handler: Parameters<typeof fakeServer>[0]) {
   runtime.registerProvider("fake", { baseUrl: server.url, apiKey: "", models: [fakeConfig(server.url)] });
   const manager = SessionManager.create(cwd, join(dir, "sessions"));
   const { session } = await createAgentSession({
+    ...options,
     homeDir: join(dir, "home"),
     cwd,
     agentDir,

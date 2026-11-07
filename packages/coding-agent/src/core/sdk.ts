@@ -1,9 +1,11 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { TSchema } from "typebox";
 import type { AgentTool, ThinkingLevel } from "zpi-agent";
-import type { Model } from "zpi-ai";
+import type { Context, Model } from "zpi-ai";
 import { assertSupportedOptions, clampThinkingLevel } from "zpi-ai";
+import { assembleSession, type SessionContributions, validatePluginSnapshot } from "../plugins/assembly.ts";
+import type { HookRegistration } from "../plugins/hooks.ts";
+import { withPluginResources } from "../plugins/resources.ts";
 import { AgentSession } from "./agent-session.ts";
 import type { CompactionOptions } from "./compaction.ts";
 import type { ModelPerformanceTotals } from "./model-performance.ts";
@@ -14,21 +16,32 @@ import { SettingsManager } from "./settings-manager.ts";
 import { recoverCanonicalToolCallsAsync } from "./streaming-tool-journal.ts";
 import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
-import { wrapToolDefinition } from "./tools/pi/tool-definition-wrapper.ts";
-import type { ResourceLoader, ToolContext, ToolDefinition } from "./types.ts";
-export interface CreateAgentSessionOptions {
+import type { ResourceLoader, ToolContext } from "./types.ts";
+export interface SystemPromptContext {
+  tools: readonly AgentTool[];
+  pluginInstructions: readonly string[];
+  resourceLoader: ResourceLoader;
+}
+export interface CreateAgentSessionOptions extends SessionContributions {
+  /** Build tool definitions and selection once the shared resource catalog is loaded. */
+  prepareTools?: (loader: ResourceLoader) => Pick<SessionContributions, "customTools" | "tools">;
+  modelRequestOptions?: () => import("zpi-ai").SimpleStreamOptions;
+  onCompaction?: (
+    phase: "before" | "after",
+    context: { manual: boolean; instructions: string },
+    signal?: AbortSignal,
+  ) => Promise<void>;
+  /** Explicit complete prompt, evaluated again after resource refresh. */
+  systemPrompt?: string | ((context: SystemPromptContext) => string);
+  /** Host policy checked at each foreground model request, including continuation requests. */
+  beforeModelRequest?: (model: Model, context: Context) => void;
+  hooks?: readonly HookRegistration[];
   modelPerformanceTotals?: ModelPerformanceTotals;
   cwd?: string;
   agentDir?: string;
   modelRuntime?: ModelRuntime;
   model?: Model;
   thinkingLevel?: ThinkingLevel;
-  noTools?: "all" | "builtin";
-  tools?: string[];
-  excludeTools?: string[];
-  customTools?: ToolDefinition<TSchema, unknown>[];
-  /** Explicitly replace named built-ins while preserving the other coding tools. */
-  toolOverrides?: ToolDefinition<TSchema, unknown>[];
   /** Literal additions, recomputed after resource reload when supplied as a function. */
   customInstructions?: readonly string[] | (() => readonly string[]);
   resourceLoader?: ResourceLoader;
@@ -49,6 +62,11 @@ export async function createAgentSession(
     options,
     [
       "cwd",
+      "prepareTools",
+      "beforeModelRequest",
+      "systemPrompt",
+      "modelRequestOptions",
+      "onCompaction",
       "agentDir",
       "modelRuntime",
       "model",
@@ -57,6 +75,8 @@ export async function createAgentSession(
       "tools",
       "excludeTools",
       "customTools",
+      "plugins",
+      "hooks",
       "customInstructions",
       "toolOverrides",
       "resourceLoader",
@@ -115,48 +135,52 @@ export async function createAgentSession(
     getSystemPrompt: () => session.systemPrompt,
     getToolNames: () => session.state.tools.map((tool) => tool.name),
   });
-  const wrap = (definition: ToolDefinition<TSchema, unknown>): AgentTool =>
-    wrapToolDefinition(definition, toolContext, false);
-  const custom = (options.customTools ?? []).map(wrap);
-  const overrides = (options.toolOverrides ?? []).map(wrap);
-  if (new Set(overrides.map((tool) => tool.name)).size !== overrides.length)
-    throw new Error("Duplicate tool overrides");
-  for (const tool of overrides)
-    if (!builtin.some((base) => base.name === tool.name))
-      throw new Error(`Unknown built-in tool override: ${tool.name}`);
-  const all = [
-    ...builtin.map((base) => overrides.find((tool) => tool.name === base.name) ?? base),
-    ...custom,
-  ];
-  if (new Set(all.map((t) => t.name)).size !== all.length) throw new Error("Duplicate tool names");
-  const defaults = options.noTools === "all" ? [] : options.noTools === "builtin" ? custom : all;
-  const selected = (options.tools ?? defaults.map((t) => t.name)).map((n) => {
-    const t = all.find((t) => t.name === n);
-    if (!t) throw new Error(`Unknown tool: ${n}`);
-    return t;
-  });
-  for (const n of options.excludeTools ?? [])
-    if (!all.some((t) => t.name === n)) throw new Error(`Unknown excluded tool: ${n}`);
-  const active = selected.filter((t) => !options.excludeTools?.includes(t.name));
-  const loader =
+  // The final loader is shared by tool preparation, prompt construction and later refreshes.
+  const plugins = options.plugins ?? [];
+  for (const plugin of plugins) validatePluginSnapshot(plugin);
+  const baseLoader =
     options.resourceLoader ??
-    new FileResourceLoader({
-      projectDir: manager.getCwd(),
-      homeDir: options.homeDir,
-    });
+    new FileResourceLoader({ projectDir: manager.getCwd(), homeDir: options.homeDir });
+  const loader = withPluginResources(
+    baseLoader,
+    plugins.flatMap((plugin) => [...(plugin.skills ?? [])]),
+  );
   await loader.reload?.();
-  const buildPrompt = () =>
-    buildSystemPrompt({
+  const prepared = options.prepareTools?.(loader) ?? {};
+  assertSupportedOptions(prepared, ["customTools", "tools"], "prepareTools result");
+  const assembly = assembleSession({ ...options, ...prepared, builtinTools: builtin, context: toolContext });
+  const { allTools: all, activeTools: active } = assembly;
+  const buildPrompt = () => {
+    if (options.systemPrompt !== undefined) {
+      const value =
+        typeof options.systemPrompt === "function"
+          ? options.systemPrompt({
+              tools: session?.state.tools ?? active,
+              pluginInstructions: assembly.getInstructions(),
+              resourceLoader: loader,
+            })
+          : options.systemPrompt;
+      if (typeof value !== "string") throw new Error("Invalid systemPrompt");
+      return value;
+    }
+    const instructions =
+      typeof options.customInstructions === "function"
+        ? options.customInstructions()
+        : options.customInstructions;
+    if (
+      instructions !== undefined &&
+      (!Array.isArray(instructions) || instructions.some((part) => typeof part !== "string"))
+    )
+      throw new Error("invalid_input: customInstructions must be an array of strings");
+    return buildSystemPrompt({
       cwd,
       projectName: typeof options.projectName === "function" ? options.projectName() : options.projectName,
       template: options.promptTemplate?.(),
       tools: session?.state.tools ?? active,
       loader,
-      customInstructions:
-        typeof options.customInstructions === "function"
-          ? options.customInstructions()
-          : options.customInstructions,
+      customInstructions: [...assembly.getInstructions(), ...(instructions ?? [])],
     });
+  };
   let requestedThinking = options.thinkingLevel;
   if (requestedThinking == null) {
     const hasExistingSession = restored.messages.length > 0;
@@ -186,6 +210,13 @@ export async function createAgentSession(
       settingsManager,
     },
     options.modelPerformanceTotals,
+    {
+      commands: assembly.commands,
+      hooks: [...assembly.hooks, ...(options.hooks ?? [])],
+      beforeModelRequest: options.beforeModelRequest,
+      modelRequestOptions: options.modelRequestOptions,
+      onCompaction: options.onCompaction,
+    },
   );
   session.subscribe((event) => {
     if (

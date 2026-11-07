@@ -14,7 +14,8 @@
     "resolveJsonModule": true,
     "types": ["node"],
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "customConditions": ["development"]
   },
   "include": [
     "packages/**/*.ts",

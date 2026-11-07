@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -9,7 +9,7 @@ import {
   type MemoryRunRequest,
   type MemoryRunResult,
 } from "../src/main/memory/long-memory.ts";
-import { memoryNotesDirectory, readMemoryNotes } from "../src/main/memory/workspace.ts";
+import { memoryNotesDirectory } from "../src/main/memory/workspace.ts";
 import type { CombinedSelection } from "../src/shared/bridge.ts";
 import { defaultMemorySettings, type MemorySettings } from "../src/shared/memory.ts";
 
@@ -783,7 +783,7 @@ test("v2 bounds complete per-session summaries to 9,000 UTF-8 bytes without gene
   expect(f.service.status().status).toBe("success");
   expect(Buffer.byteLength(f.state.records["session-a"].rolloutSummary, "utf8")).toBeLessThanOrEqual(9000);
   expect(f.state.records["session-a"].rolloutSummary).toContain("truncated");
-  expect(f.state.records["session-a"].rawMemory).toBeUndefined();
+  expect(f.state.records["session-a"]).not.toHaveProperty("rawMemory");
   expect(await readdir(f.directory)).not.toContain("MEMORY.md");
   expect(await readdir(f.directory)).not.toContain("raw_memories.md");
 });
@@ -806,56 +806,6 @@ test("the v2 processing version restores retry eligibility for old capped failur
   expect(f.requests.filter(({ stage }) => stage === "extract")).toHaveLength(2);
   expect(f.state.jobs["session-a"].version).toBe("zpi-memory-v2");
   expect(f.state.jobs["session-a"].completed).toBe(true);
-});
-
-test("legacy generations migrate once to the fixed v2 library and explicit clear removes both formats", async () => {
-  const f = await fixture();
-  const legacy = join(f.directory, "legacy");
-  const directory = join(f.directory, "memories_v2");
-  await mkdir(join(legacy, "generations", "old"), { recursive: true });
-  await writeFile(
-    join(legacy, "generations", "old", "memory_summary.md"),
-    "## User preferences\nExplicit legacy preference.",
-  );
-  await writeFile(join(legacy, "memory_notes.md"), "Forget obsolete advice.");
-  let state: LongMemoryState = {
-    version: 1,
-    records: {},
-    jobs: {},
-    tombstones: { cleared: "1:3" },
-    activeGeneration: "old",
-    activeSources: [],
-    invalidated: false,
-    tokens: 30,
-    cost: null,
-  };
-  const run = vi.fn(async () => ({ text: "" }));
-  const service = new LongMemoryService({
-    directory,
-    legacyDirectory: legacy,
-    getState: () => state,
-    setState: (next) => {
-      state = next;
-    },
-    sources: async () => [],
-    run,
-  });
-  services.push(service);
-  await service.init();
-  expect(state.formatVersion).toBe(2);
-  expect(state.activeGeneration).toBeUndefined();
-  expect(state.tombstones.cleared).toBe("1:3");
-  expect(state.tokens).toBe(30);
-  expect((await service.context()).instructions.join("\n")).toContain("Explicit legacy preference");
-  expect((await readMemoryNotes(directory)).map(({ content }) => content)).toContain(
-    "Forget obsolete advice.",
-  );
-  await expect(readFile(join(directory, "memory_notes.md"))).rejects.toMatchObject({ code: "ENOENT" });
-  expect(await readdir(directory)).not.toContain("generations");
-  expect(run).not.toHaveBeenCalled();
-  await service.clear();
-  await expect(readdir(legacy)).rejects.toMatchObject({ code: "ENOENT" });
-  await expect(readdir(directory)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
 test("a cancelled file worker settles before rollback and the next writer is allowed", async () => {
@@ -906,7 +856,7 @@ test("clear waits for initialization so a late initializer cannot recreate the l
   await f.service.clear();
   await initialization;
   await expect(readdir(f.directory)).rejects.toMatchObject({ code: "ENOENT" });
-  expect(f.state.formatVersion).toBe(2);
+  expect(f.state.version).toBe(2);
 });
 
 test("credential-bearing notes are diagnosed before the Git diff is sent to the model", async () => {
