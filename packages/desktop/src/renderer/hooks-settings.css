@@ -145,17 +145,10 @@ button.hook-row-copy:hover {
   flex-direction: column;
   gap: 16px;
 }
-.hook-back {
-  display: flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 6px;
-  padding: 0;
-  color: var(--color-text-subtle);
-}
 .hook-form-heading h3 {
-  font-size: var(--text-heading);
+  font-size: calc(var(--text-body) + 4px);
   font-weight: 600;
+  line-height: 1.5;
   margin: 0 0 4px;
 }
 .hook-form-heading p {
@@ -168,7 +161,7 @@ button.hook-row-copy:hover {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 .hook-form-columns {
   display: grid;
@@ -176,8 +169,11 @@ button.hook-row-copy:hover {
   gap: 12px;
   min-width: 0;
 }
+.hook-form-top {
+  align-items: flex-start;
+}
 .hook-form-top > .hook-form-columns {
-  flex: 1;
+  grid-template-columns: repeat(2, 192px);
 }
 .hook-field {
   display: flex;
@@ -200,15 +196,18 @@ button.hook-row-copy:hover {
   padding: 8px 12px;
 }
 .hook-field > input {
-  height: 40px;
+  height: 32px;
 }
 .hook-field > textarea {
+  field-sizing: content;
+  min-height: 64px;
+  padding: 8px;
   resize: vertical;
 }
 .hook-field .settings-select-trigger {
   width: 100%;
   max-width: none;
-  height: 40px;
+  height: 32px;
 }
 .hook-field p {
   font-size: var(--text-small);
@@ -229,21 +228,42 @@ button.hook-row-copy:hover {
   font-size: var(--text-small);
 }
 .hook-form-scope .settings-select-trigger {
-  max-width: 200px;
+  height: 28px;
+  width: auto;
+  min-width: 0;
+  max-width: 240px;
+  border-radius: 999px;
 }
 .hook-advanced {
   border-top: 1px solid var(--color-border);
   padding-top: 12px;
 }
 .hook-advanced summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
   cursor: pointer;
   color: var(--color-text-subtle);
+}
+.hook-advanced summary::-webkit-details-marker {
+  display: none;
+}
+.hook-advanced[open] summary svg {
+  transform: rotate(90deg);
 }
 .hook-advanced > .hook-field {
   margin-top: 12px;
 }
 .hook-form-actions {
   justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.hook-cancel {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
 }
 .hook-delete {
   display: flex;
@@ -264,16 +284,19 @@ button.hook-row-copy:hover {
   .hooks-search {
     width: 100%;
   }
-  .hook-form-columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .hook-form-top {
-    align-items: flex-start;
-  }
   .hook-form-top > .hook-form-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
     flex-basis: 100%;
   }
   .hook-plugin-state {
     max-width: 60%;
+  }
+}
+
+@media (max-width: 639px) {
+  .hook-form-columns,
+  .hook-form-top > .hook-form-columns {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -51,6 +51,7 @@ import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { ResourceSettings } from "./ResourceSettings.tsx";
+import { SettingsBreadcrumbProvider } from "./SettingsBreadcrumb.tsx";
 import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { ShortcutSettings } from "./ShortcutSettings.tsx";
@@ -78,6 +79,7 @@ const sections = [
 ] as const;
 type SettingsTab = (typeof sections)[number][0];
 const pageHelp: Partial<Record<SettingsTab, string>> = {
+  subagents: "管理子智能体的提示词、工具、模型与作用域。保存后返回列表。",
   interface: "主题和界面字号影响本机显示，代码预览可单独配置。",
   models: "配置提供商和模型后，可在聊天中选择使用。模型和提供商可分别启停。",
   plugins: "插件在新对话首次发送时生效，已有对话保留冻结的版本、工具和选项。",
@@ -156,8 +158,8 @@ function FontSizeInput({
 }
 export function SettingsPage({ onClose }: { onClose: () => void }) {
   const opener = useRef(document.activeElement);
-  const [commandEditing, setCommandEditing] = useState(false);
-  const [commandBreadcrumb, setCommandBreadcrumb] = useState<HTMLDivElement | null>(null);
+  const [detail, setDetail] = useState(false);
+  const [breadcrumbContainer, setBreadcrumbContainer] = useState<HTMLDivElement | null>(null);
   const settings = useStore((s) => s.settings);
   const back = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -436,702 +438,702 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         </nav>
       </aside>
       <div className="settings-main">
-        <div
-          className="settings-titlebar"
-          ref={setCommandBreadcrumb}
-          aria-hidden={tab !== "commands" || !commandEditing}
-        />
+        <div className="settings-titlebar" ref={setBreadcrumbContainer} aria-hidden={!detail}>
+          {detail && pageHelp[tab] && <SettingsHelp label={title ?? "设置"} text={pageHelp[tab] ?? ""} />}
+        </div>
         <div className="settings-scroll">
-          <div className={`settings-content ${tab === "models" ? "model-settings-content" : ""}`}>
-            {!["archived", "shortcuts", "webSearch", "subagents"].includes(tab) &&
-              !(tab === "commands" && commandEditing) && (
-                <div className="settings-page-heading">
-                  <div className="settings-heading-title">
-                    <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
-                    {pageHelp[tab] && <SettingsHelp label={title ?? "设置"} text={pageHelp[tab] ?? ""} />}
-                  </div>
+          <div
+            className={`settings-content ${tab === "models" ? "model-settings-content" : ""}${detail ? " settings-detail-content" : ""}`}
+          >
+            {!["archived", "shortcuts", "webSearch", "subagents"].includes(tab) && !detail && (
+              <div className="settings-page-heading">
+                <div className="settings-heading-title">
+                  <h1>{tab === "models" ? "模型设置" : tab === "interface" ? "外观" : title}</h1>
+                  {pageHelp[tab] && <SettingsHelp label={title ?? "设置"} text={pageHelp[tab] ?? ""} />}
                 </div>
-              )}
-            <div className="settings-page">
-              {tab === "commands" ? (
-                <CommandSettings
-                  breadcrumbContainer={commandBreadcrumb}
-                  onEditingChange={setCommandEditing}
-                />
-              ) : tab === "hooks" ? (
-                <HooksSettings onOpenPlugins={() => setTab("plugins")} />
-              ) : tab === "archived" ? (
-                <ArchivedTasks />
-              ) : tab === "shortcuts" ? (
-                <ShortcutSettings />
-              ) : tab === "general" ? (
-                <div className="general-settings">
-                  <div className="settings-group">
-                    {(
-                      [
-                        ["notificationEnabled", "任务通知", "任务完成、失败或需要确认时发送桌面通知。"],
-                        ["notificationSoundEnabled", "通知声音", "通知开启后，可单独关闭任务通知提示音。"],
-                      ] as const
-                    ).map(([field, label, description]) => (
-                      <div className="settings-row" key={field}>
-                        <span className="settings-label">
-                          <strong>{label}</strong>
-                          <SettingsHelp label={label} text={description} />
-                        </span>
-                        <span className="settings-switch task-notification-switch">
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            aria-label={label}
-                            aria-checked={settings?.interface[field] ?? defaultPreferences[field]}
-                            checked={settings?.interface[field] ?? defaultPreferences[field]}
-                            disabled={
-                              field === "notificationSoundEnabled" &&
-                              !(settings?.interface.notificationEnabled ?? true)
-                            }
-                            onChange={(event) => updateAppearance({ [field]: event.target.checked })}
-                          />
-                          <span aria-hidden="true" />
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {error && <div role="alert">{error}</div>}
-                </div>
-              ) : tab === "webSearch" ? (
-                <WebSearchSettings />
-              ) : tab === "memory" ? (
-                <MemorySettings onNavigate={onClose} />
-              ) : tab === "subagents" ? (
-                <SubagentSettings />
-              ) : tab === "plugins" ? (
-                <PluginSettings />
-              ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (
-                <ResourceSettings page={tab} />
-              ) : tab === "interface" ? (
-                <div className="interface-settings">
-                  <h2>界面</h2>
-                  <div className="settings-group">
-                    <div className="settings-row">
-                      <span className="settings-row-copy">
-                        <strong>界面主题</strong>
-                      </span>
-                      <SettingsSelect
-                        label="界面主题"
-                        value={settings?.interface.theme ?? "system"}
-                        options={[
-                          { value: "system", label: "系统", icon: <Monitor size={16} /> },
-                          { value: "dark", label: "深色", icon: <Moon size={16} /> },
-                          { value: "light", label: "浅色", icon: <Sun size={16} /> },
-                        ]}
-                        onChange={(theme) => updateAppearance({ theme })}
-                      />
+              </div>
+            )}
+            <SettingsBreadcrumbProvider container={breadcrumbContainer} onDetailChange={setDetail}>
+              <div className="settings-page">
+                {tab === "commands" ? (
+                  <CommandSettings />
+                ) : tab === "hooks" ? (
+                  <HooksSettings onOpenPlugins={() => setTab("plugins")} />
+                ) : tab === "archived" ? (
+                  <ArchivedTasks />
+                ) : tab === "shortcuts" ? (
+                  <ShortcutSettings />
+                ) : tab === "general" ? (
+                  <div className="general-settings">
+                    <div className="settings-group">
+                      {(
+                        [
+                          ["notificationEnabled", "任务通知", "任务完成、失败或需要确认时发送桌面通知。"],
+                          ["notificationSoundEnabled", "通知声音", "通知开启后，可单独关闭任务通知提示音。"],
+                        ] as const
+                      ).map(([field, label, description]) => (
+                        <div className="settings-row" key={field}>
+                          <span className="settings-label">
+                            <strong>{label}</strong>
+                            <SettingsHelp label={label} text={description} />
+                          </span>
+                          <span className="settings-switch task-notification-switch">
+                            <input
+                              type="checkbox"
+                              role="switch"
+                              aria-label={label}
+                              aria-checked={settings?.interface[field] ?? defaultPreferences[field]}
+                              checked={settings?.interface[field] ?? defaultPreferences[field]}
+                              disabled={
+                                field === "notificationSoundEnabled" &&
+                                !(settings?.interface.notificationEnabled ?? true)
+                              }
+                              onChange={(event) => updateAppearance({ [field]: event.target.checked })}
+                            />
+                            <span aria-hidden="true" />
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    <div className="settings-row">
-                      <span className="settings-label">
-                        <strong>界面字号</strong>
-                        <SettingsHelp label="界面字号" text="仅调整界面文字，图标和布局尺寸保持不变。" />
-                      </span>
-                      <FontSizeInput
-                        key={settings?.interface.fontSize ?? defaultPreferences.fontSize}
-                        value={settings?.interface.fontSize ?? defaultPreferences.fontSize}
-                        onChange={(fontSize) => updateAppearance({ fontSize })}
-                      />
-                    </div>
+                    {error && <div role="alert">{error}</div>}
                   </div>
-                  <h2>审查代码预览</h2>
-                  <div className="settings-group">
-                    {(
-                      [
-                        ["lightTheme", "浅色代码主题"],
-                        ["darkTheme", "深色代码主题"],
-                      ] as const
-                    ).map(([field, label]) => (
-                      <div className="settings-row" key={field}>
+                ) : tab === "webSearch" ? (
+                  <WebSearchSettings />
+                ) : tab === "memory" ? (
+                  <MemorySettings onNavigate={onClose} />
+                ) : tab === "subagents" ? (
+                  <SubagentSettings />
+                ) : tab === "plugins" ? (
+                  <PluginSettings />
+                ) : tab === "prompt" || tab === "tools" || tab === "skills" ? (
+                  <ResourceSettings page={tab} />
+                ) : tab === "interface" ? (
+                  <div className="interface-settings">
+                    <h2>界面</h2>
+                    <div className="settings-group">
+                      <div className="settings-row">
                         <span className="settings-row-copy">
-                          <strong>{label}</strong>
+                          <strong>界面主题</strong>
                         </span>
                         <SettingsSelect
-                          label={label}
-                          value={codePreview[field]}
-                          options={codePreviewThemes}
-                          onChange={(value) =>
-                            updateAppearance({ codePreview: { ...codePreview, [field]: value } })
+                          label="界面主题"
+                          value={settings?.interface.theme ?? "system"}
+                          options={[
+                            { value: "system", label: "系统", icon: <Monitor size={16} /> },
+                            { value: "dark", label: "深色", icon: <Moon size={16} /> },
+                            { value: "light", label: "浅色", icon: <Sun size={16} /> },
+                          ]}
+                          onChange={(theme) => updateAppearance({ theme })}
+                        />
+                      </div>
+                      <div className="settings-row">
+                        <span className="settings-label">
+                          <strong>界面字号</strong>
+                          <SettingsHelp label="界面字号" text="仅调整界面文字，图标和布局尺寸保持不变。" />
+                        </span>
+                        <FontSizeInput
+                          key={settings?.interface.fontSize ?? defaultPreferences.fontSize}
+                          value={settings?.interface.fontSize ?? defaultPreferences.fontSize}
+                          onChange={(fontSize) => updateAppearance({ fontSize })}
+                        />
+                      </div>
+                    </div>
+                    <h2>审查代码预览</h2>
+                    <div className="settings-group">
+                      {(
+                        [
+                          ["lightTheme", "浅色代码主题"],
+                          ["darkTheme", "深色代码主题"],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <div className="settings-row" key={field}>
+                          <span className="settings-row-copy">
+                            <strong>{label}</strong>
+                          </span>
+                          <SettingsSelect
+                            label={label}
+                            value={codePreview[field]}
+                            options={codePreviewThemes}
+                            onChange={(value) =>
+                              updateAppearance({ codePreview: { ...codePreview, [field]: value } })
+                            }
+                          />
+                        </div>
+                      ))}
+                      <div className="settings-row">
+                        <span className="settings-row-copy">
+                          <strong>代码字号</strong>
+                        </span>
+                        <FontSizeInput
+                          label="代码字号"
+                          value={codePreview.fontSizePx}
+                          key={codePreview.fontSizePx}
+                          onChange={(fontSizePx) =>
+                            updateAppearance({ codePreview: { ...codePreview, fontSizePx } })
                           }
                         />
                       </div>
-                    ))}
-                    <div className="settings-row">
-                      <span className="settings-row-copy">
-                        <strong>代码字号</strong>
-                      </span>
-                      <FontSizeInput
-                        label="代码字号"
-                        value={codePreview.fontSizePx}
-                        key={codePreview.fontSizePx}
-                        onChange={(fontSizePx) =>
-                          updateAppearance({ codePreview: { ...codePreview, fontSizePx } })
-                        }
-                      />
+                      {(
+                        [
+                          ["showLineNumbers", "显示行号"],
+                          ["wrapLongLines", "长行自动换行"],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <div className="settings-row" key={field}>
+                          <span className="settings-row-copy">
+                            <strong>{label}</strong>
+                          </span>
+                          <span className="settings-switch">
+                            <input
+                              type="checkbox"
+                              aria-label={label}
+                              checked={codePreview[field]}
+                              onChange={(event) =>
+                                updateAppearance({
+                                  codePreview: { ...codePreview, [field]: event.target.checked },
+                                })
+                              }
+                            />
+                            <span aria-hidden="true" />
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    {(
-                      [
-                        ["showLineNumbers", "显示行号"],
-                        ["wrapLongLines", "长行自动换行"],
-                      ] as const
-                    ).map(([field, label]) => (
-                      <div className="settings-row" key={field}>
-                        <span className="settings-row-copy">
-                          <strong>{label}</strong>
-                        </span>
-                        <span className="settings-switch">
-                          <input
-                            type="checkbox"
-                            aria-label={label}
-                            checked={codePreview[field]}
-                            onChange={(event) =>
-                              updateAppearance({
-                                codePreview: { ...codePreview, [field]: event.target.checked },
-                              })
-                            }
-                          />
-                          <span aria-hidden="true" />
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <h2 className="settings-label">
-                    聊天 <SettingsHelp label="聊天" text="Enter 发送，Shift + Enter 换行。" />
-                  </h2>
-                  <div className="settings-group">
-                    {(
-                      [
+                    <h2 className="settings-label">
+                      聊天 <SettingsHelp label="聊天" text="Enter 发送，Shift + Enter 换行。" />
+                    </h2>
+                    <div className="settings-group">
+                      {(
                         [
-                          "showModelPerformance",
-                          "显示模型性能与用量",
-                          "在输入框下方显示整个任务的性能与用量，点击查看时间和 token 明细。",
-                        ],
-                        [
-                          "showContextUsage",
-                          "显示上下文占用",
-                          "在输入栏显示当前模型的上下文容量和使用情况。",
-                        ],
-                        [
-                          "showSendButton",
-                          "显示发送按钮",
-                          "在输入栏右下方显示发送按钮；运行时显示停止按钮。",
-                        ],
-                      ] as const
-                    ).map(([field, label, description]) => (
-                      <div className="settings-row" key={field}>
-                        <span className="settings-label">
-                          <strong>{label}</strong>
-                          <SettingsHelp label={label} text={description} />
-                        </span>
-                        <span className="settings-switch">
-                          <input
-                            type="checkbox"
-                            aria-label={label}
-                            checked={settings?.interface[field] ?? false}
-                            onChange={(e) => {
-                              void window.zpi
-                                .updatePreferences({ [field]: e.target.checked })
-                                .then(unwrap)
-                                .then((value) => useStore.setState({ settings: value }))
-                                .catch((e) => setError(userErrorMessage(e)));
-                            }}
-                          />
-                          <span aria-hidden="true" />
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {error && <div role="alert">{error}</div>}
-                </div>
-              ) : (
-                <div className="model-provider-section">
-                  <div className="resource-section-heading model-settings-toolbar">
-                    <div className="model-section-actions">
-                      <button
-                        className="model-refresh"
-                        aria-label="获取模型"
-                        title="刷新模型列表"
-                        disabled={
-                          saving ||
-                          discovering ||
-                          picker ||
-                          !keyReady ||
-                          !url.trim() ||
-                          (chatgpt && !original?.chatgptAccount?.connected)
-                        }
-                        onClick={() => void loadModels()}
-                      >
-                        <RefreshCcw size={16} className={discovering ? "spin" : undefined} />
-                      </button>
-                      <button
-                        className="primary"
-                        disabled={saving || discovering}
-                        onClick={() => setPicker(true)}
-                      >
-                        <Plus size={14} />
-                        新增提供商
-                      </button>
+                          [
+                            "showModelPerformance",
+                            "显示模型性能与用量",
+                            "在输入框下方显示整个任务的性能与用量，点击查看时间和 token 明细。",
+                          ],
+                          [
+                            "showContextUsage",
+                            "显示上下文占用",
+                            "在输入栏显示当前模型的上下文容量和使用情况。",
+                          ],
+                          [
+                            "showSendButton",
+                            "显示发送按钮",
+                            "在输入栏右下方显示发送按钮；运行时显示停止按钮。",
+                          ],
+                        ] as const
+                      ).map(([field, label, description]) => (
+                        <div className="settings-row" key={field}>
+                          <span className="settings-label">
+                            <strong>{label}</strong>
+                            <SettingsHelp label={label} text={description} />
+                          </span>
+                          <span className="settings-switch">
+                            <input
+                              type="checkbox"
+                              aria-label={label}
+                              checked={settings?.interface[field] ?? false}
+                              onChange={(e) => {
+                                void window.zpi
+                                  .updatePreferences({ [field]: e.target.checked })
+                                  .then(unwrap)
+                                  .then((value) => useStore.setState({ settings: value }))
+                                  .catch((e) => setError(userErrorMessage(e)));
+                              }}
+                            />
+                            <span aria-hidden="true" />
+                          </span>
+                        </div>
+                      ))}
                     </div>
+                    {error && <div role="alert">{error}</div>}
                   </div>
-                  <div className="settings-layout model-provider-panel">
-                    <nav className="provider-list" aria-label="提供商列表">
-                      <div className="provider-nav-group">
-                        <h3>供应商</h3>
-                        <SortableList
-                          items={settings?.providers ?? []}
+                ) : (
+                  <div className="model-provider-section">
+                    <div className="resource-section-heading model-settings-toolbar">
+                      <div className="model-section-actions">
+                        <button
+                          className="model-refresh"
+                          aria-label="获取模型"
+                          title="刷新模型列表"
+                          disabled={
+                            saving ||
+                            discovering ||
+                            picker ||
+                            !keyReady ||
+                            !url.trim() ||
+                            (chatgpt && !original?.chatgptAccount?.connected)
+                          }
+                          onClick={() => void loadModels()}
+                        >
+                          <RefreshCcw size={16} className={discovering ? "spin" : undefined} />
+                        </button>
+                        <button
+                          className="primary"
                           disabled={saving || discovering}
-                          onReorder={(providers) => {
-                            setSaving(true);
-                            setError("");
-                            void window.zpi
-                              .reorderProviders(providers.map((provider) => provider.id))
-                              .then(unwrap)
-                              .then((settings) => useStore.setState({ settings }))
-                              .catch((error) => setError(userErrorMessage(error)))
-                              .finally(() => setSaving(false));
-                          }}
-                          renderItem={(
-                            provider,
-                            { setNodeRef, style, attributes, listeners, isDragging },
-                          ) => (
-                            <ActionHint appearance="control" label={provider.name} side="right">
-                              <button
-                                ref={setNodeRef}
-                                style={style}
-                                {...attributes}
-                                {...listeners}
-                                data-sortable-select
-                                data-provider-id={provider.id}
-                                className={`sortable-provider ${provider.id === selected && !picker ? "selected" : ""}${isDragging ? " dragging" : ""}`}
-                                disabled={saving || discovering}
-                                aria-label={provider.name}
-                                onClick={() => requestSelection(() => select(provider))}
-                              >
-                                <ProviderLogo preset={provider.preset} size={16} />
-                                <span>{provider.name}</span>
-                                <i
-                                  className={`provider-status ${provider.enabled === false ? "disabled" : "enabled"}`}
-                                  title={provider.enabled === false ? "已关闭" : "已启用"}
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </ActionHint>
-                          )}
-                        />
+                          onClick={() => setPicker(true)}
+                        >
+                          <Plus size={14} />
+                          新增提供商
+                        </button>
                       </div>
-                    </nav>
-                    <div className="provider-editor">
-                      {picker ? (
-                        <section className="provider-template-picker">
-                          <header>
-                            {Boolean(settings?.providers.length) && (
-                              <button aria-label="返回提供商" onClick={() => setPicker(false)}>
-                                <ArrowLeft size={16} />
-                              </button>
+                    </div>
+                    <div className="settings-layout model-provider-panel">
+                      <nav className="provider-list" aria-label="提供商列表">
+                        <div className="provider-nav-group">
+                          <h3>供应商</h3>
+                          <SortableList
+                            items={settings?.providers ?? []}
+                            disabled={saving || discovering}
+                            onReorder={(providers) => {
+                              setSaving(true);
+                              setError("");
+                              void window.zpi
+                                .reorderProviders(providers.map((provider) => provider.id))
+                                .then(unwrap)
+                                .then((settings) => useStore.setState({ settings }))
+                                .catch((error) => setError(userErrorMessage(error)))
+                                .finally(() => setSaving(false));
+                            }}
+                            renderItem={(
+                              provider,
+                              { setNodeRef, style, attributes, listeners, isDragging },
+                            ) => (
+                              <ActionHint appearance="control" label={provider.name} side="right">
+                                <button
+                                  ref={setNodeRef}
+                                  style={style}
+                                  {...attributes}
+                                  {...listeners}
+                                  data-sortable-select
+                                  data-provider-id={provider.id}
+                                  className={`sortable-provider ${provider.id === selected && !picker ? "selected" : ""}${isDragging ? " dragging" : ""}`}
+                                  disabled={saving || discovering}
+                                  aria-label={provider.name}
+                                  onClick={() => requestSelection(() => select(provider))}
+                                >
+                                  <ProviderLogo preset={provider.preset} size={16} />
+                                  <span>{provider.name}</span>
+                                  <i
+                                    className={`provider-status ${provider.enabled === false ? "disabled" : "enabled"}`}
+                                    title={provider.enabled === false ? "已关闭" : "已启用"}
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              </ActionHint>
                             )}
-                            <h2>添加模型提供商</h2>
-                          </header>
-                          <h3>预置与自定义供应商</h3>
-                          <div className="provider-template-grid">
-                            <ActionHint appearance="control" label="自定义提供商">
-                              <button onClick={() => requestSelection(() => select())}>
-                                <Package size={24} />
-                                <span className="provider-template-label">自定义提供商</span>
-                                <ChevronRight size={16} />
-                              </button>
-                            </ActionHint>
-                            {providerPresets.map((item) => (
-                              <ActionHint appearance="control" label={item.name} key={item.id}>
-                                <button onClick={() => requestSelection(() => selectPreset(item.id))}>
-                                  <ProviderLogo preset={item.id} size={32} />
-                                  <span className="provider-template-label">{item.name}</span>
+                          />
+                        </div>
+                      </nav>
+                      <div className="provider-editor">
+                        {picker ? (
+                          <section className="provider-template-picker">
+                            <header>
+                              {Boolean(settings?.providers.length) && (
+                                <button aria-label="返回提供商" onClick={() => setPicker(false)}>
+                                  <ArrowLeft size={16} />
+                                </button>
+                              )}
+                              <h2>添加模型提供商</h2>
+                            </header>
+                            <h3>预置与自定义供应商</h3>
+                            <div className="provider-template-grid">
+                              <ActionHint appearance="control" label="自定义提供商">
+                                <button onClick={() => requestSelection(() => select())}>
+                                  <Package size={24} />
+                                  <span className="provider-template-label">自定义提供商</span>
                                   <ChevronRight size={16} />
                                 </button>
                               </ActionHint>
-                            ))}
-                          </div>
-                        </section>
-                      ) : (
-                        <div className="provider-details">
-                          <header className="provider-detail-heading">
-                            <ProviderLogo preset={preset} size={20} />
-                            {renaming ? (
-                              <input
-                                ref={renameInput}
-                                className="provider-rename-input"
-                                aria-label="重命名供应商"
-                                value={name}
-                                onChange={(event) => setName(event.target.value)}
-                                onBlur={() => {
-                                  setRenaming(false);
-                                  if (name.trim() && name.trim() !== renameStart.current)
-                                    void save(models, enabled, name.trim());
-                                  else setName(renameStart.current);
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") event.currentTarget.blur();
-                                  if (event.key === "Escape") {
-                                    event.stopPropagation();
-                                    setName(renameStart.current);
+                              {providerPresets.map((item) => (
+                                <ActionHint appearance="control" label={item.name} key={item.id}>
+                                  <button onClick={() => requestSelection(() => selectPreset(item.id))}>
+                                    <ProviderLogo preset={item.id} size={32} />
+                                    <span className="provider-template-label">{item.name}</span>
+                                    <ChevronRight size={16} />
+                                  </button>
+                                </ActionHint>
+                              ))}
+                            </div>
+                          </section>
+                        ) : (
+                          <div className="provider-details">
+                            <header className="provider-detail-heading">
+                              <ProviderLogo preset={preset} size={20} />
+                              {renaming ? (
+                                <input
+                                  ref={renameInput}
+                                  className="provider-rename-input"
+                                  aria-label="重命名供应商"
+                                  value={name}
+                                  onChange={(event) => setName(event.target.value)}
+                                  onBlur={() => {
                                     setRenaming(false);
+                                    if (name.trim() && name.trim() !== renameStart.current)
+                                      void save(models, enabled, name.trim());
+                                    else setName(renameStart.current);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") event.currentTarget.blur();
+                                    if (event.key === "Escape") {
+                                      event.stopPropagation();
+                                      setName(renameStart.current);
+                                      setRenaming(false);
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <h2>{name || "新提供商"}</h2>
+                              )}
+                              <ProviderHeadingActions
+                                enabled={enabled}
+                                name={name}
+                                disabled={saving || discovering}
+                                switchDisabled={saving || discovering || !keyReady}
+                                onEnabledChange={(value) => {
+                                  if (selected) void save(models, value);
+                                  else setEnabled(value);
+                                }}
+                                onCloseAutoFocus={(event) => {
+                                  if (renameRequested.current) {
+                                    event.preventDefault();
+                                    renameRequested.current = false;
+                                    renameInput.current?.focus();
+                                    renameInput.current?.select();
                                   }
                                 }}
-                              />
-                            ) : (
-                              <h2>{name || "新提供商"}</h2>
-                            )}
-                            <ProviderHeadingActions
-                              enabled={enabled}
-                              name={name}
-                              disabled={saving || discovering}
-                              switchDisabled={saving || discovering || !keyReady}
-                              onEnabledChange={(value) => {
-                                if (selected) void save(models, value);
-                                else setEnabled(value);
-                              }}
-                              onCloseAutoFocus={(event) => {
-                                if (renameRequested.current) {
-                                  event.preventDefault();
-                                  renameRequested.current = false;
-                                  renameInput.current?.focus();
-                                  renameInput.current?.select();
-                                }
-                              }}
-                            >
-                              {selected && (
+                              >
+                                {selected && (
+                                  <>
+                                    {!preset && (
+                                      <>
+                                        <Menu.Item
+                                          className="provider-action-item"
+                                          onSelect={() => {
+                                            renameStart.current = name;
+                                            renameRequested.current = true;
+                                            setRenaming(true);
+                                          }}
+                                        >
+                                          <Pencil size={14} />
+                                          重命名
+                                        </Menu.Item>
+                                        <Menu.Separator className="provider-action-separator" />
+                                      </>
+                                    )}
+                                    <Menu.Item
+                                      className="provider-action-item provider-action-delete"
+                                      onSelect={() => setConfirmDelete(true)}
+                                    >
+                                      <Trash2 size={14} />
+                                      删除
+                                    </Menu.Item>
+                                  </>
+                                )}
+                              </ProviderHeadingActions>
+                            </header>
+                            <div className="provider-connection-fields">
+                              {!preset && (
                                 <>
-                                  {!preset && (
-                                    <>
-                                      <Menu.Item
-                                        className="provider-action-item"
-                                        onSelect={() => {
-                                          renameStart.current = name;
-                                          renameRequested.current = true;
-                                          setRenaming(true);
-                                        }}
-                                      >
-                                        <Pencil size={14} />
-                                        重命名
-                                      </Menu.Item>
-                                      <Menu.Separator className="provider-action-separator" />
-                                    </>
-                                  )}
-                                  <Menu.Item
-                                    className="provider-action-item provider-action-delete"
-                                    onSelect={() => setConfirmDelete(true)}
-                                  >
-                                    <Trash2 size={14} />
-                                    删除
-                                  </Menu.Item>
+                                  <label>
+                                    <span>提供商名称</span>
+                                    <input
+                                      aria-label="提供商名称"
+                                      disabled={saving || discovering}
+                                      value={name}
+                                      onChange={(event) => setName(event.target.value)}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>Base URL</span>
+                                    <input
+                                      aria-label="Base URL"
+                                      placeholder={
+                                        api === "anthropic-messages"
+                                          ? "http://127.0.0.1:8000"
+                                          : "http://127.0.0.1:8000/v1"
+                                      }
+                                      disabled={saving || discovering}
+                                      value={url}
+                                      onChange={(event) => setUrl(event.target.value)}
+                                    />
+                                  </label>
                                 </>
                               )}
-                            </ProviderHeadingActions>
-                          </header>
-                          <div className="provider-connection-fields">
-                            {!preset && (
-                              <>
-                                <label>
-                                  <span>提供商名称</span>
-                                  <input
-                                    aria-label="提供商名称"
-                                    disabled={saving || discovering}
-                                    value={name}
-                                    onChange={(event) => setName(event.target.value)}
-                                  />
-                                </label>
+                              {preset && !chatgpt && preset !== "openai-api" && (
                                 <label>
                                   <span>Base URL</span>
-                                  <input
-                                    aria-label="Base URL"
-                                    placeholder={
-                                      api === "anthropic-messages"
-                                        ? "http://127.0.0.1:8000"
-                                        : "http://127.0.0.1:8000/v1"
-                                    }
-                                    disabled={saving || discovering}
-                                    value={url}
-                                    onChange={(event) => setUrl(event.target.value)}
+                                  <input aria-label="Base URL" readOnly value={url} />
+                                </label>
+                              )}
+                              <div className="provider-api-field">
+                                <label htmlFor="provider-api-format">API 格式</label>
+                                <ProviderApiFormatSelect
+                                  value={api}
+                                  preset={preset}
+                                  disabled={
+                                    providerApis(preset).length === 1 || saving || discovering || !keyReady
+                                  }
+                                  onChange={changeApi}
+                                />
+                              </div>
+                              {chatgpt ? (
+                                <ChatGPTConnection
+                                  key={selected ?? "new-chatgpt"}
+                                  provider={original}
+                                  onBusy={setSaving}
+                                  onError={setError}
+                                  onNotice={setNotice}
+                                  onSettings={(value, providerId) => {
+                                    useStore.setState({ settings: value });
+                                    select(value.providers.find((provider) => provider.id === providerId));
+                                    void refresh();
+                                  }}
+                                />
+                              ) : (
+                                <label htmlFor="model-provider-api-key">
+                                  <span>API Key</span>
+                                  <ProviderCredentialInput
+                                    id="model-provider-api-key"
+                                    visible={keyVisible}
+                                    onToggleVisibility={() => setKeyVisible(!keyVisible)}
+                                    value={key}
+                                    onChange={(event) => setKey(event.target.value)}
+                                    disabled={!keyReady || saving || discovering}
+                                    placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
                                   />
                                 </label>
-                              </>
-                            )}
-                            {preset && !chatgpt && preset !== "openai-api" && (
-                              <label>
-                                <span>Base URL</span>
-                                <input aria-label="Base URL" readOnly value={url} />
-                              </label>
-                            )}
-                            <div className="provider-api-field">
-                              <label htmlFor="provider-api-format">API 格式</label>
-                              <ProviderApiFormatSelect
-                                value={api}
-                                preset={preset}
-                                disabled={
-                                  providerApis(preset).length === 1 || saving || discovering || !keyReady
-                                }
-                                onChange={changeApi}
-                              />
+                              )}
                             </div>
-                            {chatgpt ? (
-                              <ChatGPTConnection
-                                key={selected ?? "new-chatgpt"}
-                                provider={original}
-                                onBusy={setSaving}
-                                onError={setError}
-                                onNotice={setNotice}
-                                onSettings={(value, providerId) => {
-                                  useStore.setState({ settings: value });
-                                  select(value.providers.find((provider) => provider.id === providerId));
-                                  void refresh();
-                                }}
-                              />
-                            ) : (
-                              <label htmlFor="model-provider-api-key">
-                                <span>API Key</span>
-                                <ProviderCredentialInput
-                                  id="model-provider-api-key"
-                                  visible={keyVisible}
-                                  onToggleVisibility={() => setKeyVisible(!keyVisible)}
-                                  value={key}
-                                  onChange={(event) => setKey(event.target.value)}
-                                  disabled={!keyReady || saving || discovering}
-                                  placeholder={keyReady ? "输入 API Key" : "正在读取凭据…"}
-                                />
-                              </label>
-                            )}
-                          </div>
-                          <section className="provider-models" aria-label="模型列表">
-                            <div className="model-list-heading">
-                              <h3>模型列表</h3>
-                              <div className="model-list-actions">
+                            <section className="provider-models" aria-label="模型列表">
+                              <div className="model-list-heading">
+                                <h3>模型列表</h3>
+                                <div className="model-list-actions">
+                                  <button
+                                    className="secondary"
+                                    disabled={saving || discovering}
+                                    onClick={() =>
+                                      setEditing({ index: models.length, draft: draftModel(newModel(api)) })
+                                    }
+                                  >
+                                    <Plus size={14} />
+                                    新增模型
+                                  </button>
+                                </div>
+                              </div>
+                              {models.some((model) => model.id) ? (
+                                <div className="provider-model-list">
+                                  <SortableList
+                                    items={models.filter((model) => model.id)}
+                                    disabled={saving || discovering || !keyReady || Boolean(editing)}
+                                    onReorder={(next) => {
+                                      setModels(next);
+                                      if (selected)
+                                        void save(next).then((saved) => {
+                                          if (!saved) setModels(models);
+                                        });
+                                    }}
+                                    renderItem={(
+                                      model,
+                                      { setNodeRef, style, attributes, listeners, isDragging },
+                                    ) => {
+                                      const index = models.indexOf(model);
+                                      return (
+                                        // biome-ignore lint/a11y/useSemanticElements: The sortable row contains independent edit, delete and switch controls.
+                                        <div
+                                          ref={setNodeRef}
+                                          style={style}
+                                          {...attributes}
+                                          {...listeners}
+                                          data-model-id={model.id}
+                                          role="button"
+                                          tabIndex={0}
+                                          aria-label={`拖拽排序模型 ${model.id}`}
+                                          className={`provider-model-row sortable-model${isDragging ? " dragging" : ""}`}
+                                        >
+                                          <div className="model-row-summary">
+                                            <span className="model-row-name" title={model.name || model.id}>
+                                              {model.name || model.id}
+                                            </span>
+                                            <span
+                                              className="model-context-badge"
+                                              title={`上下文窗口 ${model.contextWindow ?? modelDefaults.contextWindow}`}
+                                            >
+                                              {contextLabel(
+                                                model.contextWindow ?? modelDefaults.contextWindow,
+                                              )}
+                                            </span>
+                                            {model.input?.includes("image") && (
+                                              <span className="model-vision-badge">视觉</span>
+                                            )}
+                                          </div>
+                                          <button
+                                            disabled={saving || discovering}
+                                            aria-label={`编辑模型 ${model.id}`}
+                                            title="编辑模型配置"
+                                            onClick={() => setEditing({ index, draft: model })}
+                                          >
+                                            <Pencil size={14} />
+                                          </button>
+                                          <button
+                                            disabled={saving || discovering}
+                                            aria-label={`删除模型 ${model.id}`}
+                                            title="删除模型"
+                                            onClick={() =>
+                                              setModels(models.filter((_, item) => item !== index))
+                                            }
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                          <label className="settings-switch model-enabled-switch">
+                                            <input
+                                              type="checkbox"
+                                              role="switch"
+                                              aria-label={`启用模型 ${model.id}`}
+                                              aria-checked={model.enabled !== false}
+                                              checked={model.enabled !== false}
+                                              disabled={saving || discovering || !keyReady}
+                                              onChange={(event) => {
+                                                const next = models.map((item, at) =>
+                                                  at === index
+                                                    ? { ...item, enabled: event.target.checked }
+                                                    : item,
+                                                );
+                                                if (selected) void save(next);
+                                                else setModels(next);
+                                              }}
+                                            />
+                                            <span />
+                                          </label>
+                                        </div>
+                                      );
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="provider-model-empty">
+                                  <Info size={16} aria-hidden="true" />
+                                  暂无模型，点击“新增模型”添加。
+                                </div>
+                              )}
+                            </section>
+                            <div className="provider-footer">
+                              {error && (
+                                <div className="run-error" role="alert">
+                                  {error}
+                                </div>
+                              )}
+                              {notice && (
+                                <div className="run-notice" role="status">
+                                  {notice}
+                                </div>
+                              )}
+                              <div className="modal-actions">
                                 <button
-                                  className="secondary"
-                                  disabled={saving || discovering}
-                                  onClick={() =>
-                                    setEditing({ index: models.length, draft: draftModel(newModel(api)) })
+                                  className="primary"
+                                  disabled={
+                                    saving ||
+                                    !keyReady ||
+                                    (chatgpt ? !selected : Boolean(preset) && !key.trim()) ||
+                                    discovering
                                   }
+                                  onClick={() => void save()}
                                 >
-                                  <Plus size={14} />
-                                  新增模型
+                                  保存提供商
                                 </button>
                               </div>
                             </div>
-                            {models.some((model) => model.id) ? (
-                              <div className="provider-model-list">
-                                <SortableList
-                                  items={models.filter((model) => model.id)}
-                                  disabled={saving || discovering || !keyReady || Boolean(editing)}
-                                  onReorder={(next) => {
-                                    setModels(next);
-                                    if (selected)
-                                      void save(next).then((saved) => {
-                                        if (!saved) setModels(models);
-                                      });
-                                  }}
-                                  renderItem={(
-                                    model,
-                                    { setNodeRef, style, attributes, listeners, isDragging },
-                                  ) => {
-                                    const index = models.indexOf(model);
-                                    return (
-                                      // biome-ignore lint/a11y/useSemanticElements: The sortable row contains independent edit, delete and switch controls.
-                                      <div
-                                        ref={setNodeRef}
-                                        style={style}
-                                        {...attributes}
-                                        {...listeners}
-                                        data-model-id={model.id}
-                                        role="button"
-                                        tabIndex={0}
-                                        aria-label={`拖拽排序模型 ${model.id}`}
-                                        className={`provider-model-row sortable-model${isDragging ? " dragging" : ""}`}
-                                      >
-                                        <div className="model-row-summary">
-                                          <span className="model-row-name" title={model.name || model.id}>
-                                            {model.name || model.id}
-                                          </span>
-                                          <span
-                                            className="model-context-badge"
-                                            title={`上下文窗口 ${model.contextWindow ?? modelDefaults.contextWindow}`}
-                                          >
-                                            {contextLabel(model.contextWindow ?? modelDefaults.contextWindow)}
-                                          </span>
-                                          {model.input?.includes("image") && (
-                                            <span className="model-vision-badge">视觉</span>
-                                          )}
-                                        </div>
-                                        <button
-                                          disabled={saving || discovering}
-                                          aria-label={`编辑模型 ${model.id}`}
-                                          title="编辑模型配置"
-                                          onClick={() => setEditing({ index, draft: model })}
-                                        >
-                                          <Pencil size={14} />
-                                        </button>
-                                        <button
-                                          disabled={saving || discovering}
-                                          aria-label={`删除模型 ${model.id}`}
-                                          title="删除模型"
-                                          onClick={() =>
-                                            setModels(models.filter((_, item) => item !== index))
-                                          }
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
-                                        <label className="settings-switch model-enabled-switch">
-                                          <input
-                                            type="checkbox"
-                                            role="switch"
-                                            aria-label={`启用模型 ${model.id}`}
-                                            aria-checked={model.enabled !== false}
-                                            checked={model.enabled !== false}
-                                            disabled={saving || discovering || !keyReady}
-                                            onChange={(event) => {
-                                              const next = models.map((item, at) =>
-                                                at === index
-                                                  ? { ...item, enabled: event.target.checked }
-                                                  : item,
-                                              );
-                                              if (selected) void save(next);
-                                              else setModels(next);
-                                            }}
-                                          />
-                                          <span />
-                                        </label>
-                                      </div>
-                                    );
-                                  }}
-                                />
-                              </div>
-                            ) : (
-                              <div className="provider-model-empty">
-                                <Info size={16} aria-hidden="true" />
-                                暂无模型，点击“新增模型”添加。
-                              </div>
-                            )}
-                          </section>
-                          <div className="provider-footer">
-                            {error && (
-                              <div className="run-error" role="alert">
-                                {error}
-                              </div>
-                            )}
-                            {notice && (
-                              <div className="run-notice" role="status">
-                                {notice}
-                              </div>
-                            )}
-                            <div className="modal-actions">
-                              <button
-                                className="primary"
-                                disabled={
-                                  saving ||
-                                  !keyReady ||
-                                  (chatgpt ? !selected : Boolean(preset) && !key.trim()) ||
-                                  discovering
-                                }
-                                onClick={() => void save()}
-                              >
-                                保存提供商
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <Dialog.Root
-                    open={confirmDelete}
-                    onOpenChange={(open) => {
-                      if (!saving) setConfirmDelete(open);
-                    }}
-                  >
-                    <Dialog.Portal>
-                      <Dialog.Overlay className="model-config-backdrop" />
-                      <Dialog.Content
-                        className="provider-delete-dialog"
-                        onOpenAutoFocus={(event) => {
-                          event.preventDefault();
-                          document
-                            .querySelector<HTMLButtonElement>(".provider-delete-dialog .primary")
-                            ?.focus();
-                        }}
-                        onKeyDownCapture={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            event.currentTarget.querySelector<HTMLButtonElement>(".primary")?.click();
-                          }
-                        }}
-                        onEscapeKeyDown={(event) => {
-                          if (saving) event.preventDefault();
-                        }}
-                      >
-                        <header>
-                          <Dialog.Title>删除供应商“{name}”？</Dialog.Title>
-                          <Dialog.Description>
-                            删除后将移除这条自定义 Provider 配置，当前设置页中的相关内容不会自动恢复。
-                          </Dialog.Description>
-                        </header>
-                        {error && (
-                          <div className="model-config-error" role="alert">
-                            {error}
                           </div>
                         )}
-                        <footer>
-                          <Dialog.Close className="secondary" disabled={saving}>
-                            取消<span aria-hidden="true">esc</span>
-                          </Dialog.Close>
-                          <button
-                            className="primary"
-                            disabled={saving}
-                            onClick={async () => {
-                              if (!selected || saving) return;
-                              setSaving(true);
-                              setError("");
-                              try {
-                                const value = unwrap(await window.zpi.deleteProvider(selected));
-                                useStore.setState({ settings: value });
-                                await refresh();
-                                select(value.providers[0]);
-                                setPicker(value.providers.length === 0);
-                              } catch (error) {
-                                setError(userErrorMessage(error));
-                              } finally {
-                                setSaving(false);
-                              }
-                            }}
-                          >
-                            确认删除<span aria-hidden="true">⏎</span>
-                          </button>
-                        </footer>
-                      </Dialog.Content>
-                    </Dialog.Portal>
-                  </Dialog.Root>
-                  {editing && (
-                    <ModelConfigDialog
-                      key={`${selected ?? preset ?? "new"}:${editing.index}`}
-                      initial={editing.draft}
-                      chatgpt={chatgpt}
-                      api={api}
-                      recommended={recommended.current.get(editing.draft.id)}
-                      onClose={() => setEditing(undefined)}
-                      onSave={async (model) => {
-                        const next = models.slice();
-                        next[editing.index] = model;
-                        if (selected && !(await save(next))) throw new Error("模型保存失败，请检查配置。");
-                        if (!selected) setModels(next);
+                      </div>
+                    </div>
+                    <Dialog.Root
+                      open={confirmDelete}
+                      onOpenChange={(open) => {
+                        if (!saving) setConfirmDelete(open);
                       }}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
+                    >
+                      <Dialog.Portal>
+                        <Dialog.Overlay className="model-config-backdrop" />
+                        <Dialog.Content
+                          className="provider-delete-dialog"
+                          onOpenAutoFocus={(event) => {
+                            event.preventDefault();
+                            document
+                              .querySelector<HTMLButtonElement>(".provider-delete-dialog .primary")
+                              ?.focus();
+                          }}
+                          onKeyDownCapture={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              event.currentTarget.querySelector<HTMLButtonElement>(".primary")?.click();
+                            }
+                          }}
+                          onEscapeKeyDown={(event) => {
+                            if (saving) event.preventDefault();
+                          }}
+                        >
+                          <header>
+                            <Dialog.Title>删除供应商“{name}”？</Dialog.Title>
+                            <Dialog.Description>
+                              删除后将移除这条自定义 Provider 配置，当前设置页中的相关内容不会自动恢复。
+                            </Dialog.Description>
+                          </header>
+                          {error && (
+                            <div className="model-config-error" role="alert">
+                              {error}
+                            </div>
+                          )}
+                          <footer>
+                            <Dialog.Close className="secondary" disabled={saving}>
+                              取消<span aria-hidden="true">esc</span>
+                            </Dialog.Close>
+                            <button
+                              className="primary"
+                              disabled={saving}
+                              onClick={async () => {
+                                if (!selected || saving) return;
+                                setSaving(true);
+                                setError("");
+                                try {
+                                  const value = unwrap(await window.zpi.deleteProvider(selected));
+                                  useStore.setState({ settings: value });
+                                  await refresh();
+                                  select(value.providers[0]);
+                                  setPicker(value.providers.length === 0);
+                                } catch (error) {
+                                  setError(userErrorMessage(error));
+                                } finally {
+                                  setSaving(false);
+                                }
+                              }}
+                            >
+                              确认删除<span aria-hidden="true">⏎</span>
+                            </button>
+                          </footer>
+                        </Dialog.Content>
+                      </Dialog.Portal>
+                    </Dialog.Root>
+                    {editing && (
+                      <ModelConfigDialog
+                        key={`${selected ?? preset ?? "new"}:${editing.index}`}
+                        initial={editing.draft}
+                        chatgpt={chatgpt}
+                        api={api}
+                        recommended={recommended.current.get(editing.draft.id)}
+                        onClose={() => setEditing(undefined)}
+                        onSave={async (model) => {
+                          const next = models.slice();
+                          next[editing.index] = model;
+                          if (selected && !(await save(next))) throw new Error("模型保存失败，请检查配置。");
+                          if (!selected) setModels(next);
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            </SettingsBreadcrumbProvider>
           </div>
         </div>
       </div>

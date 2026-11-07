@@ -20,6 +20,11 @@ test("commands settings create, search, persist switches, edit conflicts, and co
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "命令", exact: true }).click();
     await page.getByRole("button", { name: "新建", exact: true }).first().click();
+    const breadcrumb = page.getByRole("navigation", { name: "命令导航", exact: true });
+    await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText("新建命令");
+    await breadcrumb.getByRole("button", { name: "返回命令列表", exact: true }).click();
+    await expect(breadcrumb).toHaveCount(0);
+    await page.getByRole("button", { name: "新建", exact: true }).first().click();
     await page.getByLabel("名称", { exact: true }).fill("review");
     await page.getByLabel("描述（可选）", { exact: true }).fill("Review selected files");
     await page.getByLabel("参数提示（可选）", { exact: true }).fill("<file>");
@@ -94,6 +99,8 @@ test("project commands appear in slash picker, insert without sending, and execu
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     const editor = page.getByLabel("消息", { exact: true });
+    await page.getByRole("button", { name: "收起项目 project", exact: true }).hover();
+    await page.getByRole("button", { name: "新建任务 project", exact: true }).click();
     await editor.fill("/rev");
     await expect(page.getByRole("option").filter({ hasText: "/review" })).toBeVisible();
     await editor.press("Tab");

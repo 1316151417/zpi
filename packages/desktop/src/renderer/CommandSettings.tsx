@@ -3,7 +3,6 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   Folder,
   LoaderCircle,
   Monitor,
@@ -16,23 +15,17 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { ActionHint } from "zpi-ui";
 import type { CustomCommand, CustomCommandInput } from "../shared/custom-commands.ts";
 import { CommandImportDialog } from "./CommandImportDialog.tsx";
+import { SettingsBreadcrumb } from "./SettingsBreadcrumb.tsx";
 import { SettingsHelp } from "./SettingsHelp.tsx";
 import { useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";
 import "./command-settings.css";
 
-export function CommandSettings({
-  breadcrumbContainer,
-  onEditingChange,
-}: {
-  breadcrumbContainer: HTMLElement | null;
-  onEditingChange: (editing: boolean) => void;
-}) {
+export function CommandSettings() {
   const projects = useStore((state) => state.projects);
   const [projectId, setProjectId] = useState<string>();
   const [linkedSave, setLinkedSave] = useState<CustomCommandInput>();
@@ -42,10 +35,6 @@ export function CommandSettings({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<CustomCommand | "new">();
-  useEffect(() => {
-    onEditingChange(Boolean(editor));
-    return () => onEditingChange(false);
-  }, [editor, onEditingChange]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [importing, setImporting] = useState(false);
   const request = useRef(0);
@@ -176,24 +165,15 @@ export function CommandSettings({
     >
       {editor ? (
         <>
-          {breadcrumbContainer &&
-            createPortal(
-              <nav className="command-breadcrumb" aria-label="命令导航">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setEditor(undefined);
-                    setError("");
-                  }}
-                >
-                  命令
-                </button>
-                <ChevronRight size={14} />
-                <span aria-current="page">{editor === "new" ? "新建命令" : editor.name}</span>
-              </nav>,
-              breadcrumbContainer,
-            )}
+          <SettingsBreadcrumb
+            section="命令"
+            current={editor === "new" ? "新建命令" : editor.name}
+            disabled={busy}
+            onBack={() => {
+              setEditor(undefined);
+              setError("");
+            }}
+          />
           <h3 className="settings-label">
             {editor === "new" ? "新建命令" : "编辑命令"}{" "}
             <SettingsHelp label="命令编辑" text="名称和提示词必填，描述及参数提示可选。保存后返回列表。" />

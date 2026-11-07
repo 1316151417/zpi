@@ -1,6 +1,7 @@
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ChevronRight, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { type ConfiguredHook, configurableHookEvents, type SaveHookInput } from "../shared/hooks.ts";
+import { SettingsBreadcrumb } from "./SettingsBreadcrumb.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 
 const matcherEvents = new Set([
@@ -77,22 +78,24 @@ export function HookForm({
         }
       }}
     >
-      <button type="button" className="hook-back" onClick={onCancel} disabled={saving}>
-        <ArrowLeft size={16} />
-        返回钩子列表
-      </button>
+      <SettingsBreadcrumb
+        section="钩子"
+        current={hook?.event ?? "新建钩子"}
+        disabled={saving}
+        onBack={onCancel}
+      />
       <div className="hook-form-heading">
         <h3>{hook ? "编辑钩子" : "新建钩子"}</h3>
-        <p>在任务生命周期事件中运行命令。</p>
+        <p>管理任务生命周期钩子，在特定事件发生时自动执行命令。</p>
       </div>
       <div className="hook-form-panel">
         <div className="hook-form-top">
           <div className="hook-form-columns">
             <div className="hook-field">
-              <label htmlFor="hook-event">触发事件</label>
+              <label htmlFor="hook-event">事件</label>
               <SettingsSelect<ConfiguredHook["event"]>
                 id="hook-event"
-                label="触发事件"
+                label="事件"
                 value={event}
                 disabled={saving}
                 options={configurableHookEvents.map((value) => ({ value, label: value }))}
@@ -100,31 +103,31 @@ export function HookForm({
               />
             </div>
             <div className="hook-field">
-              <label htmlFor="hook-type">执行方式</label>
+              <label htmlFor="hook-type">运行方式</label>
               <SettingsSelect<"process" | "command">
                 id="hook-type"
-                label="执行方式"
+                label="运行方式"
                 value={type}
                 disabled={saving}
                 options={[
-                  { value: "process", label: "进程（process）" },
-                  { value: "command", label: "命令（command）" },
+                  { value: "process", label: "进程" },
+                  { value: "command", label: "命令" },
                 ]}
                 onChange={setType}
               />
             </div>
           </div>
-          <span className="hook-form-scope">范围 {scopeControl}</span>
+          <span className="hook-form-scope">作用域 {scopeControl}</span>
         </div>
         <div className="hook-form-columns">
           <div className="hook-field">
-            <label htmlFor="hook-matcher">匹配规则</label>
+            <label htmlFor="hook-matcher">匹配器</label>
             <input
               id="hook-matcher"
               value={matcher}
               onChange={(e) => setMatcher(e.target.value)}
               disabled={saving || !matcherEvents.has(event)}
-              placeholder="例如 Bash|Edit|Write"
+              placeholder="例如 read|edit|bash"
             />
             <p>
               {matcherError ||
@@ -134,14 +137,14 @@ export function HookForm({
             </p>
           </div>
           <div className="hook-field">
-            <label htmlFor="hook-command">{type === "process" ? "可执行程序" : "命令"}</label>
+            <label htmlFor="hook-command">命令</label>
             <input
               id="hook-command"
               className="hook-code"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               disabled={saving}
-              placeholder={type === "process" ? "例如 python3" : "例如 python3 /path/to/check.py"}
+              placeholder={type === "process" ? "例如 python3" : "例如 echo 'Hello from hook'"}
               maxLength={16000}
             />
           </div>
@@ -156,12 +159,16 @@ export function HookForm({
               onChange={(e) => setArgs(e.target.value)}
               disabled={saving}
               rows={4}
+              placeholder="每行一个 argv 参数"
             />
             <p>每行一个参数，无需添加引号；空行表示空参数。</p>
           </div>
         )}
         <details className="hook-advanced">
-          <summary>高级设置</summary>
+          <summary>
+            <ChevronRight size={14} aria-hidden="true" />
+            高级
+          </summary>
           <div className="hook-field">
             <label htmlFor="hook-timeout">超时（秒）</label>
             <input
@@ -192,7 +199,7 @@ export function HookForm({
           <button type="submit" className="primary plugin-add" disabled={!valid || saving}>
             保存
           </button>
-          <button type="button" className="plugin-add" onClick={onCancel} disabled={saving}>
+          <button type="button" className="hook-cancel" onClick={onCancel} disabled={saving}>
             取消
           </button>
         </footer>

@@ -32,9 +32,7 @@ function editor(initial?: CustomCommand, busy = false) {
 // These are server-rendered component contracts, not browser layout/cascade assertions.
 describe("command settings presentation", () => {
   it("announces initial loading and disables the refresh action while pending", () => {
-    const html = renderToStaticMarkup(
-      createElement(CommandSettings, { breadcrumbContainer: null, onEditingChange: () => {} }),
-    );
+    const html = renderToStaticMarkup(createElement(CommandSettings));
     expect(html).toContain('aria-label="刷新命令" aria-busy="true" disabled=""');
     expect(html).toContain('class="command-loading" role="status"');
     expect(html).toContain("加载中...");

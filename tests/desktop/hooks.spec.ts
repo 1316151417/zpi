@@ -15,9 +15,9 @@ async function openHooks(page: Page) {
 const script = (text: string) =>
   `process.stdout.write(JSON.stringify({additionalContext:${JSON.stringify(text)}}))`;
 async function fillHook(page: Page, text: string) {
-  await page.getByRole("combobox", { name: "触发事件", exact: true }).click();
+  await page.getByRole("combobox", { name: "事件", exact: true }).click();
   await page.getByRole("option", { name: "UserPromptSubmit", exact: true }).click();
-  await page.getByLabel("可执行程序", { exact: true }).fill(process.execPath);
+  await page.getByRole("textbox", { name: "命令", exact: true }).fill(process.execPath);
   await page.getByLabel("参数", { exact: true }).fill(`-e\n${script(text)}`);
 }
 
@@ -60,8 +60,60 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.getByLabel("搜索钩子", { exact: true }).fill("not-a-hook");
       await expect(installed()).toContainText("未找到匹配的钩子");
       await page.getByRole("button", { name: "新建", exact: true }).click();
+      const breadcrumb = page.getByRole("navigation", { name: "钩子导航", exact: true });
+      await expect(breadcrumb).toBeVisible();
+      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText("新建钩子");
+      await expect(page.getByRole("heading", { name: "钩子", exact: true })).toHaveCount(0);
+      const geometry = await page.getByRole("form", { name: "新建钩子", exact: true }).evaluate((form) => {
+        const eventInput = form.querySelector("#hook-event");
+        const typeInput = form.querySelector("#hook-type");
+        const scopeInput = form.querySelector(".hook-form-scope");
+        const argsInput = form.querySelector("#hook-args");
+        if (!eventInput || !typeInput || !scopeInput || !argsInput) throw new Error("Missing hook fields");
+        const event = eventInput.getBoundingClientRect();
+        const type = typeInput.getBoundingClientRect();
+        const scope = scopeInput.getBoundingClientRect();
+        return {
+          eventWidth: event.width,
+          typeWidth: type.width,
+          inputHeight: event.height,
+          scopeRight: scope.x > type.right,
+          scopeAboveInput: scope.y < event.y,
+          argsHeight: argsInput.getBoundingClientRect().height,
+        };
+      });
+      expect(geometry).toMatchObject({
+        eventWidth: 192,
+        typeWidth: 192,
+        inputHeight: 32,
+        scopeRight: true,
+        scopeAboveInput: true,
+        argsHeight: 64,
+      });
+      for (const width of [800, 640]) {
+        await page.setViewportSize({ width, height: 900 });
+        expect(await page.locator(".hook-form").evaluate((form) => form.scrollWidth > form.clientWidth)).toBe(
+          false,
+        );
+        await expect(breadcrumb).toBeVisible();
+      }
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.screenshot({
+        path: test.info().outputPath(`hook-new-layout-${colorScheme}.png`),
+        animations: "disabled",
+      });
+      await breadcrumb.getByRole("button", { name: "返回钩子列表", exact: true }).click();
+      await expect(breadcrumb).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "钩子", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "新建", exact: true }).click();
+      await page.getByRole("button", { name: "常规", exact: true }).click();
+      await expect(breadcrumb).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "常规", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "钩子", exact: true }).click();
+      await expect(page.getByRole("button", { name: "刷新钩子", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "新建", exact: true }).click();
       await fillHook(page, "HOOK_UI_CONTEXT");
-      await page.getByText("高级设置", { exact: true }).click();
+      await page.getByText("高级", { exact: true }).click();
       await page.getByLabel("超时（秒）", { exact: true }).fill("5");
       await page.screenshot({
         path: test.info().outputPath(`hook-form-${colorScheme}.png`),
@@ -77,6 +129,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("HOOK_UI_CONTEXT");
       await openHooks(page);
       await page.getByRole("button", { name: "编辑 UserPromptSubmit 钩子", exact: true }).click();
+      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText("UserPromptSubmit");
       await page.getByLabel("参数", { exact: true }).fill(`-e\n${script("UPDATED_HOOK")}`);
       await page.getByRole("button", { name: "保存", exact: true }).click();
       await expect(installed()).toContainText("UPDATED_HOOK");

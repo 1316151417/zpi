@@ -115,6 +115,13 @@ test("subagent capability manages profiles/models and opens complete read-only c
     await emptyCreate.hover();
     expect(await createAppearance(".subagent-empty .primary")).toEqual(toolbarHover);
     await emptyCreate.click();
+    const breadcrumb = page.getByRole("navigation", { name: "子智能体导航", exact: true });
+    await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText("新建子智能体");
+    await expect(header).toHaveCount(0);
+    await breadcrumb.getByRole("button", { name: "返回子智能体列表", exact: true }).click();
+    await expect(breadcrumb).toHaveCount(0);
+    await expect(header).toBeVisible();
+    await emptyCreate.click();
     await expect(page.getByLabel("子智能体名称", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "取消", exact: true }).click();
     await expect(emptyCreate).toBeVisible();

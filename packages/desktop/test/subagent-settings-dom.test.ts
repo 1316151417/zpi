@@ -25,6 +25,7 @@ vi.mock("../src/renderer/store.ts", () => ({
   }),
 }));
 
+import { SettingsBreadcrumbProvider } from "../src/renderer/SettingsBreadcrumb.tsx";
 import { SubagentSettings } from "../src/renderer/SubagentSettings.tsx";
 
 const catalog: SubagentCatalog = { agents: [], diagnostics: [] };
@@ -35,6 +36,7 @@ const setPluginOptions = vi.fn();
 let root: Root;
 let container: HTMLDivElement;
 let style: HTMLStyleElement;
+let breadcrumb: HTMLDivElement;
 const query = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
   expect(element, selector).not.toBeNull();
@@ -53,7 +55,15 @@ const button = (text: string) => {
   return element as HTMLButtonElement;
 };
 async function render() {
-  await act(async () => root.render(createElement(SubagentSettings)));
+  await act(async () =>
+    root.render(
+      createElement(
+        SettingsBreadcrumbProvider,
+        { container: breadcrumb, onDetailChange: () => {} },
+        createElement(SubagentSettings),
+      ),
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -87,6 +97,8 @@ beforeEach(() => {
     readFileSync(new URL("../src/renderer/workbench.css", import.meta.url), "utf8"),
   ].join("\n");
   document.head.append(style);
+  breadcrumb = document.createElement("div");
+  document.body.append(breadcrumb);
   container = document.createElement("div");
   container.className = "settings-screen";
   document.body.append(container);
@@ -95,6 +107,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  breadcrumb.remove();
   style.remove();
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.style.removeProperty("--ui-font-size");

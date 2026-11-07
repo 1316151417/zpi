@@ -2,7 +2,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
-  ArrowLeft,
   Bot,
   Brain,
   Check,
@@ -27,6 +26,7 @@ import {
   type SubagentProfile,
 } from "../shared/subagents.ts";
 import { ProviderLogo } from "./ProviderLogo.tsx";
+import { SettingsBreadcrumb } from "./SettingsBreadcrumb.tsx";
 import { SettingsHelp } from "./SettingsHelp.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 import { useStore } from "./store.ts";
@@ -319,60 +319,68 @@ export function SubagentSettings() {
   );
   return (
     <section className="subagent-settings" aria-label="子智能体管理">
-      <header className="settings-page-heading">
-        <div className="settings-heading-title">
-          <h1>子智能体</h1>
-          <SettingsHelp
-            label="子智能体"
-            text="允许助手委派任务。开关在新对话首次发送时生效，已有对话保留原配置；关闭后仍可管理智能体。"
-          />
-        </div>
-        <label className="settings-enable">
-          <span>启用子智能体</span>
-          <span className="settings-switch">
-            <input
-              type="checkbox"
-              role="switch"
-              aria-label="启用子智能体"
-              aria-checked={enabled}
-              checked={enabled}
-              disabled={busy}
-              onChange={(event) => void setEnabled("plugin", event.target.checked)}
-            />
-            <span aria-hidden="true" />
-          </span>
-        </label>
-      </header>
-      <div className="settings-group">
-        <div className="settings-row">
-          <span className="settings-row-copy">
-            <strong>Codex 子智能体提示</strong>
-            <small id="codex-subagent-prompt-description">
-              采用 Codex 的委派策略：仅在你或适用指令明确要求时使用子智能体。新对话首次发送时生效。
-            </small>
-          </span>
-          <span className="settings-switch">
-            <input
-              type="checkbox"
-              role="switch"
-              aria-label="Codex 子智能体提示"
-              aria-checked={codexSubagentPrompt}
-              aria-describedby="codex-subagent-prompt-description"
-              checked={codexSubagentPrompt}
-              disabled={busy || !enabled}
-              onChange={(event) => void setEnabled("preset", event.target.checked)}
-            />
-            <span aria-hidden="true" />
-          </span>
-        </div>
-      </div>
+      {!editing && (
+        <>
+          <header className="settings-page-heading">
+            <div className="settings-heading-title">
+              <h1>子智能体</h1>
+              <SettingsHelp
+                label="子智能体"
+                text="允许助手委派任务。开关在新对话首次发送时生效，已有对话保留原配置；关闭后仍可管理智能体。"
+              />
+            </div>
+            <label className="settings-enable">
+              <span>启用子智能体</span>
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="启用子智能体"
+                  aria-checked={enabled}
+                  checked={enabled}
+                  disabled={busy}
+                  onChange={(event) => void setEnabled("plugin", event.target.checked)}
+                />
+                <span aria-hidden="true" />
+              </span>
+            </label>
+          </header>
+          <div className="settings-group">
+            <div className="settings-row">
+              <span className="settings-row-copy">
+                <strong>Codex 子智能体提示</strong>
+                <small id="codex-subagent-prompt-description">
+                  采用 Codex 的委派策略：仅在你或适用指令明确要求时使用子智能体。新对话首次发送时生效。
+                </small>
+              </span>
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="Codex 子智能体提示"
+                  aria-checked={codexSubagentPrompt}
+                  aria-describedby="codex-subagent-prompt-description"
+                  checked={codexSubagentPrompt}
+                  disabled={busy || !enabled}
+                  onChange={(event) => void setEnabled("preset", event.target.checked)}
+                />
+                <span aria-hidden="true" />
+              </span>
+            </div>
+          </div>
+        </>
+      )}
+      {editing && (
+        <SettingsBreadcrumb
+          section="子智能体"
+          current={editing === "new" ? "新建子智能体" : editing.name}
+          disabled={busy}
+          onBack={() => setEditing(undefined)}
+        />
+      )}
       <header className={`subagent-settings-heading${editing ? " editing" : ""}`}>
         <div>
-          {editing ? (
-            <button onClick={() => setEditing(undefined)} disabled={busy} aria-label="返回子智能体列表">
-              <ArrowLeft size={16} />
-            </button>
-          ) : (
+          {!editing && (
             <AgentScopeSelect
               label="子智能体列表作用域"
               value={listScope}
