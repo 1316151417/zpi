@@ -22,7 +22,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await page.getByRole("button", { name: "设置", exact: true }).click();
       await page.getByRole("button", { name: "插件", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).not.toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toBeChecked();
       await page.getByRole("button", { name: "联网搜索", exact: true }).click();
       const enabled = page.getByRole("switch", { name: "启用联网搜索", exact: true });
       const header = page.locator(".web-search-settings .settings-page-heading");
@@ -39,8 +39,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       });
       expect(headerLayout.gap).toBeGreaterThan(32);
       expect(headerLayout.centers).toBeLessThan(2);
-      await expect(enabled).not.toBeChecked();
-      await expect(enabled).toBeDisabled();
+      await expect(enabled).toBeChecked();
+      await expect(enabled).toBeEnabled();
       const key = page.getByLabel("API Key", { exact: true });
       const originalViewport = page.viewportSize() ?? { width: 1280, height: 900 };
       for (const width of [1280, 800, 640, 480]) {
@@ -83,12 +83,11 @@ for (const colorScheme of ["light", "dark"] as const) {
       const settings = await page.evaluate(() => window.zpi.getSettings());
       expect(settings.ok && settings.value.webSearch.hasApiKey).toBe(true);
       expect(JSON.stringify(settings)).not.toContain("fake-desktop-web-key");
-      await expect(enabled).toBeDisabled();
+      await expect(enabled).toBeChecked();
       const providerSwitch = page.getByRole("switch", { name: "启用供应商 DeepSeek 联网服务", exact: true });
       await providerSwitch.click();
       await expect(providerSwitch).toBeChecked();
       await expect(enabled).toBeEnabled();
-      await enabled.click();
       await expect(enabled).toBeChecked();
       await page.getByRole("button", { name: "插件", exact: true }).click();
       await expect(page.getByRole("checkbox", { name: "联网搜索", exact: true })).toBeChecked();
@@ -120,8 +119,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.getByRole("menuitem", { name: "移除 API Key", exact: true }).click();
       await page.getByRole("button", { name: "确认移除", exact: true }).click();
       await expect(page.getByText("已移除 API Key。", { exact: true })).toBeVisible();
-      await expect(enabled).not.toBeChecked();
-      await expect(enabled).toBeDisabled();
+      await expect(enabled).toBeChecked();
+      await expect(enabled).toBeEnabled();
       await expect(page.getByRole("menuitem", { name: "移除 API Key", exact: true })).toHaveCount(0);
       await page.screenshot({ path: `test-results/web-settings-${colorScheme}.png`, animations: "disabled" });
     } finally {

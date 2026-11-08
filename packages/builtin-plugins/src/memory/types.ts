@@ -19,7 +19,7 @@ export interface MemorySettings {
 }
 
 export const defaultMemorySettings: Readonly<MemorySettings> = {
-  short: false,
+  short: true,
   long: false,
   generate: true,
   modelMode: "follow",

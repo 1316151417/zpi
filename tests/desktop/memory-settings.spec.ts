@@ -37,7 +37,7 @@ test("memory settings keep mutually exclusive defaults, preview absent files saf
     const short = page.getByRole("switch", { name: "短记忆", exact: true });
     const long = page.getByRole("switch", { name: "长期记忆", exact: true });
     const generation = page.getByRole("switch", { name: "自动生成长期记忆", exact: true });
-    await expect(short).not.toBeChecked();
+    await expect(short).toBeChecked();
     await expect(long).not.toBeChecked();
     await expect(generation).toBeChecked();
     await expect(panel).not.toContainText("/MEMORY.md");
@@ -129,7 +129,7 @@ test("memory settings keep mutually exclusive defaults, preview absent files saf
 
     // Exercise both exclusive modes and the off state without sending a foreground or background model request.
     for (const [control, expected] of [
-      [short, { short: true, long: false }],
+      [short, { short: false, long: false }],
       [long, { short: false, long: true }],
       [short, { short: true, long: false }],
       [short, { short: false, long: false }],

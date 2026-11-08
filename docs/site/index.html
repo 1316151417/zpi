@@ -167,7 +167,7 @@
               提问、联网搜索、子智能体协作、后台命令、记忆、自动标题和任务通知，由系统内置插件提供。在“设置 → 插件”选择所需能力，无需另外安装。
             </p>
             <p class="small-note">
-              多项插件默认启用，记忆模式与联网默认关闭；联网需配置凭据。新任务首次发送保存插件配置；详见<a href="/zpi/docs/features/plugins">插件与生效范围</a>。
+              内置插件初始默认启用，记忆默认使用短记忆；联网需配置凭据并启用提供商。新任务首次发送保存插件配置；详见<a href="/zpi/docs/features/plugins">插件与生效范围</a>。
             </p>
           </article>
         </div>
@@ -388,13 +388,13 @@
               <p>
                 web_search 与 web_fetch 由独立的 DeepSeek 凭据提供，可与聊天模型分开选择。回复旁的“来源”汇总当前轮成功结果，点击在内置浏览器打开原文。
               </p>
-              <p class="small-note">默认关闭，按任务保存；只抓取无凭据的公网 HTTP(S) 地址。</p>
+              <p class="small-note">插件默认启用，配置并启用提供商后生效，按任务保存；只抓取无凭据的公网 HTTP(S) 地址。</p>
             </article>
             <article class="extension-card">
               <span class="extension-tag">MEMORY</span>
               <h3>短期与长期记忆</h3>
               <p>
-                记忆插件提供两种互斥模式：短期模式维护用户与项目的 MEMORY.md，长期模式从历史会话提取摘要并由后台 Agent 增量整合。记忆模式默认关闭。
+                记忆插件提供两种互斥模式：短期模式维护用户与项目的 MEMORY.md，长期模式从历史会话提取摘要并由后台 Agent 增量整合。默认启用短记忆。
               </p>
               <p class="small-note">当前用户要求与项目指令始终优先。</p>
             </article>
@@ -566,7 +566,7 @@ for await (const message of query({
           <details>
             <summary>系统内置插件需要安装吗？默认都关闭吗？</summary>
             <p>
-              内置插件随应用提供，在“设置 → 插件”管理。多项默认启用，记忆模式与联网默认关闭；联网搜索需先配置服务凭据。对应功能页共享同一份设置，新任务在首次发送时保存插件快照。也可从本地文件夹添加支持的 Claude Code/ZCode 插件；使用方法见<a href="/zpi/docs/features/plugins">插件文档</a>。
+              内置插件随应用提供，在“设置 → 插件”管理，初始默认启用；记忆默认使用短记忆，联网搜索配置服务凭据并启用提供商后生效。对应功能页共享同一份设置，新任务在首次发送时保存插件快照。也可从本地文件夹添加支持的 Claude Code/ZCode 插件；使用方法见<a href="/zpi/docs/features/plugins">插件文档</a>。
             </p>
           </details>
           <details>

@@ -66,7 +66,7 @@ test("deleting a conversation withdraws its memory source before removing durabl
 
 test("application close waits for memory cleanup after stopping foreground runs", async () => {
   const f = await fixture((_, response) => response.flushHeaders());
-  await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
+  await f.host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
   const events: string[] = [];
   vi.spyOn(f.host.plugins.longMemory, "context").mockImplementation(async () => ({
     instructions: ["Retained memory context"],
@@ -140,7 +140,7 @@ test.each(["delete-child", "close-app"])(
         done(response);
       }
     });
-    await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
+    await f.host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
     vi.spyOn(f.host.plugins.longMemory, "context").mockResolvedValue({
       instructions: ["PARENT_SELECTED_MEMORY"],
       sources: [],
@@ -202,7 +202,7 @@ test.each(["clear", "restart"])(
     });
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
     await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [language] RETAINED_SHORT_MEMORY\n");
-    await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
+    await f.host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
     vi.spyOn(f.host.plugins.longMemory, "context").mockResolvedValue({
       instructions: ["STALE_LONG_MEMORY"],
       sources: [],

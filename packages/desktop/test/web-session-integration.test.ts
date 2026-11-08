@@ -109,7 +109,6 @@ test("one capability drives catalog, live tools and first-send frozen inheritanc
   expect(f.host.listTools().map((t) => t.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   f.settings.saveWebSearch({ provider: "deepseek", apiKey: "fake-web-key", enabled: true });
-  f.settings.setPluginEnabled("zpi.web-search", true);
   expect(f.host.listTools().map((t) => t.name)).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
   // Extension schemas travel with the request; the prompt's tool list only summarizes core tools.
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
@@ -258,9 +257,9 @@ test.each([
   expect(toolNames(childRequests[0]).filter((name) => name.startsWith("web_"))).toEqual(profile.expected);
 });
 
-test("new sessions freeze availability only after provider and global switches are enabled", async () => {
+test("new sessions freeze web availability after provider setup with the plugin enabled by default", async () => {
   const f = await fixture();
-  expect(f.settings.get().plugins.enabled["zpi.web-search"]).toBe(false);
+  expect(f.settings.get().plugins.enabled["zpi.web-search"]).toBe(true);
   expect(f.settings.get().webSearch.enabled).toBe(false);
   await run(f.host, f.session.id, "Freeze before setup");
   expect(toolNames(f.requests.at(-1) ?? {})).not.toContain("web_search");
@@ -268,7 +267,6 @@ test("new sessions freeze availability only after provider and global switches a
   expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   f.settings.saveWebSearch({ provider: "deepseek", enabled: true });
-  f.settings.setPluginEnabled("zpi.web-search", true);
   expect(f.host.listTools().map((tool) => tool.name)).toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");
   await run(f.host, f.session.id, "Old session stays restricted");
@@ -279,6 +277,10 @@ test("new sessions freeze availability only after provider and global switches a
   const fresh = await f.host.createSession(null);
   await run(f.host, fresh.id, "Ready at first send");
   expect(toolNames(f.requests.at(-1) ?? {})).toContain("web_search");
+  f.settings.saveWebSearch({ provider: "deepseek", enabled: false });
+  expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
+  f.settings.saveWebSearch({ provider: "deepseek", enabled: true });
+  expect(f.host.listTools().map((tool) => tool.name)).toContain("web_search");
   f.settings.setPluginEnabled("zpi.web-search", false);
   expect(f.host.listTools().map((tool) => tool.name)).not.toContain("web_search");
   expect((await f.host.previewPrompt()).prompt).not.toContain("web_search");

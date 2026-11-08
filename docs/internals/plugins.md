@@ -47,7 +47,7 @@ communication-style、tool-batching、file-links、file-context-reuse、proactiv
 
 ## 策略插件与宿主事件
 
-memory、session-title、notifications 均为版本化运行时插件，默认启用。记忆模式默认 off，存放在 `plugins.options["zpi.memory"].mode`，可选 short/long；记忆页与插件页读写同一份选项，模型选择、周期和预算继续由记忆服务设置管理。会话使用 pluginsVersion 3 的冻结插件选项，不使用当前全局模式重配已有任务。
+memory、session-title、notifications 均为版本化运行时插件，默认启用。记忆模式默认 short，可通过 `plugins.options["zpi.memory"].mode` 设置 off/short/long；记忆页与插件页读写同一份选项，模型选择、周期和预算继续由记忆服务设置管理。会话使用 pluginsVersion 3 的冻结插件选项，不使用当前全局模式重配已有任务。
 
 - memory 在 UserPromptSubmit 选择本轮上下文，在成功的 read 后记录来源使用，在 RunEnd 释放根任务选择；批次调度、模型快照与使用状态由 MemoryPolicy 持有。子智能体只继承父任务已选上下文，不能自行启动记忆整理。清空、历史修改和删除仍通过现有持久化边界撤销旧来源。
 - session-title 在 InputAccepted 提供临时标题，在 RunStart 启动独立辅助请求。TitlePolicy 持有任务、取消和收尾；手动改名与删除优先于晚到结果，失败不重试，不改变前台请求结果。

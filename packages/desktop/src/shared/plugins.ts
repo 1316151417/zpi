@@ -3,7 +3,7 @@ import type { PublicSettings } from "./bridge.ts";
 
 export function memoryMode(plugins: PublicSettings["plugins"]): "off" | "short" | "long" {
   if (plugins.enabled[desktopPluginIds.memory] === false) return "off";
-  const mode = plugins.options[desktopPluginIds.memory]?.mode;
+  const mode = plugins.options[desktopPluginIds.memory]?.mode ?? "short";
   return mode === "short" || mode === "long" ? mode : "off";
 }
 

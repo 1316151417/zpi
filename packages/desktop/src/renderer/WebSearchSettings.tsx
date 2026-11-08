@@ -15,7 +15,6 @@ import "./web-search-settings.css";
 export function WebSearchSettings() {
   const settings = useStore((state) => state.settings?.webSearch);
   const globalEnabled = useStore((state) => state.settings?.plugins?.enabled[desktopPluginIds.web]);
-  const providerReady = Boolean(settings?.enabled && settings.hasApiKey && !settings.credentialsLocked);
   // Only genuine input changes populate the replacement. A revealed saved key is separate and transient.
   const [apiKey, setApiKey] = useState("");
   const [editing, setEditing] = useState(false);
@@ -177,7 +176,7 @@ export function WebSearchSettings() {
           <h1>联网搜索</h1>
           <SettingsHelp
             label="联网搜索"
-            text="先配置并启用下方提供商，再开启搜索和网页读取。开关在新对话首次发送时生效，已有对话保留原配置。停用提供商会同时关闭此开关。"
+            text="联网搜索默认开启，配置并启用下方提供商后即可搜索和读取网页。开关在新对话首次发送时生效，已有对话保留原配置。停用提供商不改变此开关，联网工具暂不可用。"
           />
         </div>
         <label className="settings-enable">
@@ -189,7 +188,7 @@ export function WebSearchSettings() {
               aria-label="启用联网搜索"
               aria-checked={globalEnabled ?? false}
               checked={globalEnabled ?? false}
-              disabled={saving || removing || (!globalEnabled && !providerReady)}
+              disabled={saving || removing}
               onChange={(event) => void setGlobalEnabled(event.target.checked)}
             />
             <span aria-hidden="true" />

@@ -89,6 +89,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
   ]) {
     const f = await fixture(undefined, template);
     f.settings.setPluginEnabled("zpi.collaboration", false);
+    f.settings.setPluginEnabled("zpi.memory", false);
     const assertLinks = (prompt: string) => {
       expect(prompt).toContain("Return web URLs as Markdown links");
       expect(prompt).toContain("return local file references as Markdown links");

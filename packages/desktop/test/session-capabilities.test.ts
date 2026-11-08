@@ -29,6 +29,7 @@ test.each(
   async (communicationStyle, toolBatching, fileLinks, fileContextReuse, proactiveExecution) => {
     const f = await fixture();
     f.settings.setPluginEnabled("zpi.collaboration", false);
+    f.settings.setPluginEnabled("zpi.memory", false);
     const basePrompt = (await f.host.previewPrompt()).basePrompt;
     f.settings.setPluginEnabled("zpi.communication-style", communicationStyle);
     f.settings.setPluginEnabled("zpi.tool-batching", toolBatching);
@@ -129,7 +130,7 @@ test("instruction and tool plugins persist through the same settings contract", 
   expect(f.settings.get().plugins.enabled).toMatchObject({
     "zpi.questions": true,
     "zpi.collaboration": true,
-    "zpi.web-search": false,
+    "zpi.web-search": true,
   });
   f.settings.setPluginEnabled("zpi.questions", false);
   f.settings.setPluginEnabled("zpi.communication-style", false);

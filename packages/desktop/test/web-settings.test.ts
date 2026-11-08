@@ -6,6 +6,7 @@ import { afterEach, expect, test } from "vitest";
 import { StateStore } from "../src/main/state-store.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import type { WebSearchSettingsInput } from "../src/shared/bridge.ts";
+import { webSearchAvailable } from "../src/shared/plugins.ts";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -43,23 +44,28 @@ function savedData(state: StateStore) {
   return data;
 }
 
-test("global search requires an enabled provider and disabling or removing credentials turns it off", async () => {
+test("web plugin defaults on and becomes available after provider setup without another toggle", async () => {
   const f = await fixture();
   const store = f.open();
-  expect(() => store.setPluginEnabled("zpi.web-search", true)).toThrow("请先配置并启用");
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(true);
+  expect(webSearchAvailable(store.get())).toBe(false);
   store.saveWebSearch({ provider: "deepseek", apiKey: "fake-search-key" });
-  expect(() => store.setPluginEnabled("zpi.web-search", true)).toThrow("请先配置并启用");
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(true);
+  expect(webSearchAvailable(store.get())).toBe(false);
   store.saveWebSearch({ provider: "deepseek", enabled: true });
-  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
-  store.setPluginEnabled("zpi.web-search", true);
-  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(true);
+  expect(webSearchAvailable(f.open().get())).toBe(true);
   store.saveWebSearch({ provider: "deepseek", enabled: false });
-  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(false);
+  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(true);
+  expect(webSearchAvailable(f.open().get())).toBe(false);
   store.saveWebSearch({ provider: "deepseek", enabled: true });
-  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
-  store.setPluginEnabled("zpi.web-search", true);
+  expect(webSearchAvailable(store.get())).toBe(true);
   store.saveWebSearch({ provider: "deepseek", apiKey: "" });
-  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(false);
+  expect(f.open().get().plugins.enabled["zpi.web-search"]).toBe(true);
+  expect(webSearchAvailable(f.open().get())).toBe(false);
+  store.setPluginEnabled("zpi.web-search", false);
+  store.setPluginEnabled("zpi.web-search", true);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(true);
+  expect(webSearchAvailable(store.get())).toBe(false);
 });
 
 test("keeps a separate encrypted web key across restart and chat-provider edits", async () => {
@@ -73,7 +79,7 @@ test("keeps a separate encrypted web key across restart and chat-provider edits"
     credentialsPersisted: false,
     credentialsLocked: false,
   });
-  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(true);
   store.saveWebSearch({ provider: "deepseek", apiKey: "web-only-fake-key", enabled: true });
   store.saveProvider({
     id: "chat",
@@ -119,7 +125,7 @@ test("requires a key to enable and never enables a provider by saving or replaci
   expect(() => store.getWebSearchApiKey()).toThrow("已停用");
   store.saveWebSearch({ provider: "deepseek", apiKey: "replacement-fake-key" });
   expect(f.open().get().webSearch).toMatchObject({ enabled: false, hasApiKey: true });
-  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(false);
+  expect(store.get().plugins.enabled["zpi.web-search"]).toBe(true);
   store.setPluginEnabled("zpi.web-search", false);
   store.saveWebSearch({ provider: "deepseek", enabled: true });
   expect(f.open().get()).toMatchObject({

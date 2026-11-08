@@ -39,13 +39,22 @@ const keyInput = (markup: string) => markup.match(/<input[^>]*id="web-search-api
 const toggle = (markup: string) =>
   markup.match(/<input[^>]*aria-label="启用供应商 DeepSeek 联网服务"[^>]*>/)?.[0];
 
-test("unconfigured settings cannot enable and do not claim encryption failure", () => {
+test("unconfigured provider stays disabled while the web plugin defaults on", () => {
   const markup = render();
   expect(markup).not.toContain("系统加密存储不可用");
   expect(keyInput(markup)).toContain('type="password"');
   expect(keyInput(markup)).toContain('value=""');
   expect(toggle(markup)).toContain("disabled");
+  const globalSwitch = markup.match(/<input[^>]*aria-label="启用联网搜索"[^>]*>/)?.[0];
+  expect(globalSwitch).toContain('checked=""');
+  expect(globalSwitch).not.toContain("disabled");
   expect(markup).not.toContain("provider-more");
+});
+test("web plugin can be enabled before provider setup", () => {
+  fixture.plugins.enabled["zpi.web-search"] = false;
+  const globalSwitch = render().match(/<input[^>]*aria-label="启用联网搜索"[^>]*>/)?.[0];
+  expect(globalSwitch).not.toContain('checked=""');
+  expect(globalSwitch).not.toContain("disabled");
 });
 test("saved keys use derived length only, with an enabled eye and no automatic read", () => {
   fixture.webSearch.hasApiKey = true;

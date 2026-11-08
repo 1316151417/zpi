@@ -18,7 +18,7 @@ const services: LongMemoryService[] = [];
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const model: CombinedSelection = { provider: "fake", modelId: "memory", reasoning: "medium" };
-const enabled: MemorySettings = { ...defaultMemorySettings, long: true };
+const enabled: MemorySettings = { ...defaultMemorySettings, short: false, long: true };
 
 afterEach(async () => {
   await Promise.all(services.splice(0).map((service) => service.close()));
