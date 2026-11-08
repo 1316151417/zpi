@@ -37,6 +37,7 @@ import {
   prepareCompaction,
   shouldCompact,
 } from "./compaction.ts";
+import { contextUpdate } from "./dynamic-context.ts";
 import { withHttpIdleTimeout } from "./http-idle-timeout.ts";
 import { buildDefaultMicrocompactThreshold, maybeMicrocompact } from "./microcompact.ts";
 import {
@@ -51,6 +52,7 @@ import type { ContextUsage } from "./session-state.ts";
 import { contextUsage } from "./session-state.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { StreamingToolJournal } from "./streaming-tool-journal.ts";
+import type { SystemContext } from "./system-prompt.ts";
 import type { ResourceDiagnostic, ResourceLoader } from "./types.ts";
 export interface InputContext {
   images?: ImageContent[];
@@ -113,7 +115,7 @@ export class AgentSession {
   private responsesWarmupController?: AbortController;
   private resources?: {
     loader: ResourceLoader;
-    buildPrompt: () => string;
+    buildContext: () => SystemContext;
     settingsManager?: SettingsManager;
   };
   private compactController?: AbortController;
@@ -139,7 +141,7 @@ export class AgentSession {
     thinkingLevel: ThinkingLevel,
     resources?: {
       loader: ResourceLoader;
-      buildPrompt: () => string;
+      buildContext: () => SystemContext;
       settingsManager?: SettingsManager;
     },
     performanceTotals?: ModelPerformanceTotals,
@@ -176,7 +178,12 @@ export class AgentSession {
     this.resources = resources;
     this.settingsManager = resources?.settingsManager ?? SettingsManager.inMemory();
     this.allTools = new Map(allTools.map((t) => [t.name, t]));
-    for (const message of initialSystemMessages(manager, activeTools, systemPrompt))
+    for (const message of initialSystemMessages(
+      manager,
+      activeTools,
+      systemPrompt,
+      resources?.buildContext(),
+    ))
       manager.appendMessage(message);
     this.lastAssistantCompletedAtMs = manager
       .buildSessionContext()
@@ -219,6 +226,7 @@ export class AgentSession {
         return result.messages;
       },
       prepareNextTurnWithContext: async (turn, signal) => {
+        const updated = await this.syncContext();
         const settings = this.settingsManager.getCompactionSettings(this.model);
         if (
           this.model.contextWindow > 0 &&
@@ -227,7 +235,9 @@ export class AgentSession {
           if (await this.tryAutoCompact(signal))
             return { context: { ...turn.context, messages: this.manager.buildSessionContext().messages } };
         }
-        return undefined;
+        return updated
+          ? { context: { ...turn.context, messages: this.manager.buildSessionContext().messages } }
+          : undefined;
       },
       beforeToolCall: this.hooks.runner.hasToolHooks ? this.hooks.beforeToolCall : undefined,
       afterToolCall: this.hooks.runner.hasToolHooks ? this.hooks.afterToolCall : undefined,
@@ -325,8 +335,13 @@ export class AgentSession {
     this.responsesWarmupTimer.unref();
   }
   static async create(...args: ConstructorParameters<typeof AgentSession>): Promise<AgentSession> {
-    const [, , manager, , activeTools, systemPrompt] = args;
-    for (const message of initialSystemMessages(manager, activeTools, systemPrompt))
+    const [, , manager, , activeTools, systemPrompt, , resources] = args;
+    for (const message of initialSystemMessages(
+      manager,
+      activeTools,
+      systemPrompt,
+      resources?.buildContext(),
+    ))
       await manager.appendEntryAsync({ type: "message", message });
     return new AgentSession(...args);
   }
@@ -395,28 +410,22 @@ export class AgentSession {
     if (input.kind !== "prompt") throw new Error("Input must be prepared before execution");
     return this.prompt(withReferences(input.text, context.fileReferences), { images: context.images });
   }
-  private async syncSection(name: string, value: string | null): Promise<void> {
-    const prior = this.agent.state.messages
-      .filter((m) => m.role === "system" && m.sections && name in m.sections)
-      .at(-1);
-    if (prior?.role === "system" && prior.sections?.[name] === value) return;
-    if (!prior && value === null) return;
-    await this.manager.appendEntryAsync({
-      type: "message",
-      message: {
-        role: "system",
-        content: "",
-        sections: { [name]: value },
-        timestamp: Date.now(),
-      },
+  private async syncContext(): Promise<boolean> {
+    const current = this.resources?.buildContext();
+    if (!current) return false;
+    const update = contextUpdate(this.manager.buildSessionContext().messages, {
+      "zpi.base": current.base,
+      ...current.sections,
     });
+    if (!update) return false;
+    await this.manager.appendEntryAsync({ type: "message", message: update });
     this.notifyLastEntry();
-    this.agent.state.messages = this.manager.buildSessionContext().messages;
+    return true;
   }
   private async refreshInstructions(): Promise<void> {
     await this.resources?.loader.reload?.();
 
-    if (this.resources) await this.syncSection("zpi.instructions", this.resources.buildPrompt());
+    if (await this.syncContext()) this.agent.state.messages = this.manager.buildSessionContext().messages;
   }
   private compactionBoundary() {
     const preparation = prepareCompaction(
@@ -485,9 +494,10 @@ export class AgentSession {
     return false;
   }
   private dropFailedAssistant(): void {
-    const last = this.messages.at(-1);
+    const index = this.messages.findLastIndex((message) => message.role !== "system");
+    const last = this.messages[index];
     if (last?.role === "assistant" && ["error", "length"].includes(last.stopReason))
-      this.state.messages = this.messages.slice(0, -1);
+      this.state.messages = this.messages.filter((_, i) => i !== index);
   }
   private async waitForRetry(
     message: Extract<AgentState["messages"][number], { role: "assistant" }>,
@@ -1009,32 +1019,30 @@ function initialSystemMessages(
   manager: SessionManager,
   activeTools: AgentTool[],
   systemPrompt: string,
+  context?: SystemContext,
 ): Extract<Message, { role: "system" }>[] {
   const messages: Extract<Message, { role: "system" }>[] = [];
   const restored = manager.buildSessionContext();
-  if (!restored.messages.some((m) => m.role === "system"))
-    messages.push({
-      role: "system",
-      content: "",
-      sections: { "zpi.instructions": systemPrompt },
-      toolsAdded: activeTools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      })),
-      timestamp: Date.now(),
+  // Restored plugin readers may not be prepared until the prompt hooks run.
+  // Keep the last effective state until that boundary instead of withdrawing it at startup.
+  if (restored.messages.some((m) => m.role === "system")) return messages;
+  messages.push({
+    role: "system",
+    content: "",
+    sections: { "zpi.base": systemPrompt },
+    toolsAdded: activeTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    })),
+    timestamp: Date.now(),
+  });
+  if (context) {
+    const update = contextUpdate([...restored.messages, ...messages], {
+      "zpi.base": context.base,
+      ...context.sections,
     });
-  const sections = restored.messages
-    .filter((m) => m.role === "system")
-    .map((m) => m.sections?.["zpi.instructions"])
-    .filter((value) => value !== undefined);
-  const prior = sections.at(-1);
-  if (prior !== undefined && prior !== systemPrompt)
-    messages.push({
-      role: "system",
-      content: "",
-      sections: { "zpi.instructions": systemPrompt },
-      timestamp: Date.now(),
-    });
+    if (update) messages.push(update);
+  }
   return messages;
 }

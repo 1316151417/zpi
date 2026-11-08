@@ -151,5 +151,8 @@ it("preserves line separators in array system content while retaining separate s
       },
     },
   ).result();
-  expect((payload.system as JsonObject[]).map((block) => block.text)).toEqual(["first\nsecond", "dynamic"]);
+  const text = (payload.system as JsonObject[]).map((block) => block.text);
+  expect(text[0]).toBe("first\nsecond");
+  expect(text[1]).toContain('Context block "dynamic" replaces all earlier versions');
+  expect(text[1]).toContain("\n\ndynamic");
 });

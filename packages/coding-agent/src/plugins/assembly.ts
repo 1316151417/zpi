@@ -183,14 +183,27 @@ export function assembleSession(
     activeTools,
     commands,
     skills,
-    instructions: plugins.flatMap((plugin) => [...(plugin.instructions ?? [])]),
-    getInstructions: () =>
-      plugins.flatMap((plugin) => {
-        const dynamic = plugin.contextInstructions?.() ?? [];
-        if (!Array.isArray(dynamic) || dynamic.some((part) => typeof part !== "string"))
-          throw new Error("Invalid plugin context instructions");
-        return [...(plugin.instructions ?? []), ...dynamic];
-      }),
+    getContextSections: (): Record<string, string> =>
+      Object.fromEntries(
+        plugins.flatMap((plugin) => {
+          const dynamic = plugin.contextInstructions?.() ?? {};
+          if (
+            !dynamic ||
+            typeof dynamic !== "object" ||
+            Array.isArray(dynamic) ||
+            Object.entries(dynamic).some(([name, part]) => !name || typeof part !== "string")
+          )
+            throw new Error("Invalid plugin context instructions");
+          // Tuple keys prevent a plugin's local names from colliding with another owner or the SDK.
+          return [
+            [JSON.stringify(["plugin", plugin.id]), (plugin.instructions ?? []).join("\n\n")],
+            ...Object.entries(dynamic).map(([name, value]) => [
+              JSON.stringify(["plugin", plugin.id, name]),
+              value,
+            ]),
+          ].filter(([, value]) => value);
+        }),
+      ),
     hooks: plugins.flatMap((plugin) =>
       (plugin.hooks ?? []).map((hook) => ({ ...hook, pluginId: plugin.id })),
     ),

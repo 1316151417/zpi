@@ -3,19 +3,8 @@
 import type { SystemMessage } from "../types.ts";
 import { contentText } from "./transcript.ts";
 
-/** Render a system message as a complete prompt: its content followed by its sections. */
-export function getSystemMessageText(message: SystemMessage): string {
-  const parts = [contentText(message.content)];
-  for (const text of Object.values(message.sections ?? {})) {
-    if (text !== null) parts.push(text);
-  }
-  return parts.filter((part) => part.length > 0).join("\n\n");
-}
-
 /**
- * Render a later system message for APIs that accept system messages mid-conversation.
- * Section changes are framed by name so the model can relate them to the leading prompt.
- * This framing is request-time only and may change between versions.
+ * Shared wire representation of named context changes, regardless of provider role.
  */
 export function renderSystemMessageUpdate(message: SystemMessage): string {
   const parts: string[] = [];
@@ -24,8 +13,8 @@ export function renderSystemMessageUpdate(message: SystemMessage): string {
   for (const [name, value] of Object.entries(message.sections ?? {})) {
     parts.push(
       value === null
-        ? `Removed system prompt section "${name}".`
-        : `Updated system prompt section "${name}":\n\n${value}`,
+        ? `Context block ${JSON.stringify(name)} is withdrawn. All earlier versions of this block no longer apply.`
+        : `Context block ${JSON.stringify(name)} replaces all earlier versions of this block. Apply it until a later context update replaces or withdraws it, including updates carried in user messages:\n\n${value}`,
     );
   }
   return parts.join("\n\n");

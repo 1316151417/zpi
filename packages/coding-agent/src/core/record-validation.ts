@@ -114,6 +114,7 @@ const entry = Type.Intersect([
       ),
       usage: Type.Optional(usage),
       systemMessage: Type.Optional(systemMessage),
+      contextMessage: Type.Optional(systemMessage),
     }),
   ]),
 ]);

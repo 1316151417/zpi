@@ -12,7 +12,7 @@ import {
 import {
   type AgentSession,
   type AgentSessionEvent,
-  buildSystemPrompt,
+  buildSystemContext,
   type CreateAgentSessionOptions,
   createAgentSession,
   type ModelRuntime,
@@ -281,30 +281,27 @@ class AgentQuery implements Query {
         );
         return { customTools: tools, tools: primary?.tools?.filter((name) => !disabled.has(name)) ?? names };
       };
-      const systemPrompt: Exclude<CreateAgentSessionOptions["systemPrompt"], string | undefined> = ({
-        tools,
-        pluginInstructions,
-        resourceLoader,
-      }) => {
+      const systemPrompt: Exclude<CreateAgentSessionOptions["systemPrompt"], string | undefined> = () => {
         const value = options.systemPrompt;
-        const skills = resourceLoader.listSkills?.().skills ?? [];
-        const custom =
-          typeof value === "string"
+        return (
+          primary?.prompt ??
+          (typeof value === "string"
             ? value
             : Array.isArray(value)
               ? value.join("\n\n")
               : value?.type === "custom"
                 ? [value.prompt].flat().join("\n\n")
                 : value?.type === "preset"
-                  ? buildSystemPrompt({ cwd, tools })
-                  : "You are a helpful assistant.";
+                  ? buildSystemContext({ cwd, tools: [] }).base
+                  : "You are a helpful assistant.")
+        );
+      };
+      const customInstructions = () => {
+        const value = options.systemPrompt;
         return [
-          primary?.prompt ?? custom,
           typeof value === "object" && !Array.isArray(value) && value.type === "preset"
             ? value.append
             : undefined,
-          ...(resourceLoader.getInstructions?.() ?? []),
-          ...pluginInstructions,
           ...(Object.keys(options.agents ?? {}).length
             ? [
                 `Available agents:\n${Object.entries(options.agents ?? {})
@@ -312,19 +309,10 @@ class AgentQuery implements Query {
                   .join("\n")}`,
               ]
             : []),
-          ...(skills.length
-            ? [
-                `Available skills:\n${skills
-                  .map((skill) => `${skill.name}: ${skill.description}`)
-                  .join("\n")}`,
-              ]
-            : []),
           ...(options.outputFormat
             ? [`Return only JSON satisfying this schema: ${JSON.stringify(options.outputFormat.schema)}`]
             : []),
-        ]
-          .filter(Boolean)
-          .join("\n\n");
+        ].filter((part): part is string => typeof part === "string" && !!part);
       };
       const hooks = [
         ...coreHooks(options, this.manager.getSessionFile() ?? ""),
@@ -378,6 +366,7 @@ class AgentQuery implements Query {
         settingsManager: SettingsManager.inMemory({ retry: { enabled: false } }),
         resourceLoader: options.zpi?.resourceLoader ?? new SdkResources(options, cwd),
         systemPrompt,
+        customInstructions,
         plugins,
         prepareTools,
         noTools: "builtin",

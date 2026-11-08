@@ -91,7 +91,7 @@ export interface AnthropicMessagesCompat {
   supportsStrictTools?: boolean;
   /** Whether the exact model transport supports effort-only system messages and thinking binding controls. Default: false. */
   supportsMidConvoEffort?: boolean;
-  /** Whether the exact model accepts system-role messages inside the conversation. When false, later system messages are folded into the top-level system prompt. Default: false. */
+  /** Whether the exact model accepts system-role messages inside the conversation. When false, updates remain in place as user messages. Default: false. */
   supportsMidConvoSystemMessages?: boolean;
   /** Whether the exact model accepts mid-conversation `tool_addition` and `tool_removal` blocks. Requires `supportsMidConvoSystemMessages`. Default: false. */
   supportsMidConvoToolChanges?: boolean;
@@ -197,6 +197,7 @@ export interface SystemMessage {
   role: "system";
   content: string | TextContent[];
   timestamp: number;
+  /** Named context patches: a string replaces the entire block; null withdraws every earlier version. */
   sections?: Record<string, string | null>;
   toolsAdded?: Tool[];
   toolsRemoved?: { name: string }[];

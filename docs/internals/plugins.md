@@ -55,6 +55,8 @@ memory、session-title、notifications 均为版本化运行时插件，默认�
 
 四个通用宿主事件使用同一个 HookRunner：InputAccepted（输入接受准备）、RunStart（接受完成、模型执行前）、RunEnd（成功/取消/失败均触发）、Notification（结算完成后）。SDK 自动调度原有六个循环事件；桌面负责这四个宿主事件，独立 SDK 宿主可以使用导出的 HookRunner 调度。宿主事件不修改输入、工具或历史；需要拒绝输入的插件应使用 UserPromptSubmit。Stop 仍只表示模型正常最终回答，不能用于替代失败和取消清理。关闭时取消宿主 hook 及子进程。
 
+SDK 插件的 `contextInstructions()` 返回以本地块名为键的当前字符串字典，例如 `{ agents: listing, memory: text }`。SDK 负责插件命名空间、比较、去重和缺失块的撤销，不再把它们与基础提示拼成一整份更新。该接口直接使用当前字典形式，不保留旧数组接口；详见[动态上下文和最终请求结构](context.md#基础提示与动态上下文)。
+
 ## 本地外部插件
 
 “设置 → 插件”的“已安装”区域显示本地插件数量，顶部提供刷新和“添加 → 从本地文件夹添加”，空状态也提供添加按钮；内置插件单独列出，不提供插件市场。选择根目录后导入并启用。导入只读取、校验和复制文件，不执行 hook、依赖安装或模块入口。实现独立在 `zpi-plugin-compat`，不向 agent/coding-agent 引入 Claude、ZCode 或 Electron 分支。

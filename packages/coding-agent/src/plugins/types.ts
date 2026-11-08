@@ -37,7 +37,8 @@ export interface SessionPlugin extends PluginSnapshot {
   tools?: readonly ToolDefinition<TSchema, unknown>[];
   /** Explicitly replace an existing built-in; collisions are rejected during assembly. */
   toolOverrides?: readonly ToolDefinition<TSchema, unknown>[];
-  /** Pure synchronous context reader, evaluated for previews and after prompt hooks/resource refresh. */
-  contextInstructions?: () => readonly string[];
+  /** Pure current-state reader. Local block names are scoped to this plugin by the SDK.
+   * Omitted/empty blocks withdraw prior versions; no plugin-owned diffing or history writes. */
+  contextInstructions?: () => Readonly<Record<string, string>>;
   hooks?: readonly HookRegistration[];
 }

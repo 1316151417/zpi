@@ -159,7 +159,10 @@ test("quickstart query uses canonical init, assistant, partial and result protoc
     num_turns: 1,
     is_error: false,
   });
-  expect(f.server.requests[0].messages).toContainEqual({ role: "system", content: "CUSTOM_SYSTEM" });
+  expect(f.server.requests[0].messages).toContainEqual({
+    role: "system",
+    content: expect.stringContaining("\n\nCUSTOM_SYSTEM"),
+  });
 });
 
 test("streaming input preserves one session and yields one result for each input", async () => {
@@ -732,6 +735,10 @@ test("one resource catalog serves initialization, Skill execution and later relo
   for await (const message of response) messages.push(message);
   expect(result(messages)).toMatchObject({ subtype: "success", result: "Skill applied" });
   expect(revision).toBeGreaterThan(1);
-  expect(JSON.stringify(server.requests[0].messages)).not.toContain("RESOURCE_REVISION_1");
+  const initialMessages = server.requests[0].messages as { role: string; content: string }[];
+  expect(initialMessages[0].content).not.toContain("RESOURCE_REVISION_");
+  expect(initialMessages.findLast((message) => message.role === "system")?.content).toContain(
+    "RESOURCE_REVISION_2",
+  );
   expect(JSON.stringify(server.requests[1].messages)).toContain("FROZEN_TRANSLATION_SKILL");
 });

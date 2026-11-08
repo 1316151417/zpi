@@ -76,10 +76,11 @@ test.each(
       expect(preview.customInstructions).not.toContain("not watching in real time");
     }
     await run(f, "show files");
-    const prompt = (f.server.requests[0].messages as { role: string; content: string }[]).find(
-      (message) => message.role === "system",
-    )?.content;
-    expect(prompt).toBe(preview.prompt);
+    const prompt = (f.server.requests[0].messages as { role: string; content: string }[])
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n");
+    for (const part of preview.prompt.split("\n\n")) expect(prompt).toContain(part);
     if (!communicationStyle && !toolBatching && !fileLinks && !fileContextReuse && !proactiveExecution) {
       expect(preview.customInstructions).toBe("");
       expect(preview.prompt).toBe(preview.basePrompt);
@@ -106,9 +107,10 @@ test("snapshots custom instructions on first send and keeps them when global set
   await host.startRun({ sessionId: f.session.id, text: "old conversation" });
   await host.activeRuns.get(f.session.id)?.done;
   const system = () =>
-    ((f.server.requests.at(-1)?.messages ?? []) as { role: string; content: string }[]).find(
-      (message) => message.role === "system",
-    )?.content ?? "";
+    ((f.server.requests.at(-1)?.messages ?? []) as { role: string; content: string }[])
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n") ?? "";
   expect(system()).not.toContain("Before the first tool call");
   expect(system()).toContain("Independent tool calls");
   expect(system()).not.toContain("return local file references as Markdown links");

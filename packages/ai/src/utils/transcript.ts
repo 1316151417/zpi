@@ -115,54 +115,6 @@ export function getInitialSystemMessage(messages: TranscriptMessages): SystemMes
   return first && isSystemMessage(first) ? first : undefined;
 }
 
-/**
- * Replay every system message into one leading system message holding the current
- * prompt and tools. Later `content` is appended to the base prompt, `sections` are
- * patched by name, and tools are resolved with {@link getCurrentTools}.
- */
-export function getCurrentSystemMessage(messages: TranscriptMessages): SystemMessage | undefined {
-  const content: string[] = [];
-  const sections = new Map<string, string>();
-  let timestamp: number | undefined;
-  for (const message of messages) {
-    if (!isSystemMessage(message)) continue;
-    timestamp ??= message.timestamp;
-    const text = contentText(message.content);
-    if (text.length > 0) content.push(text);
-    for (const [name, value] of Object.entries(message.sections ?? {})) {
-      if (value === null) sections.delete(name);
-      else sections.set(name, value);
-    }
-  }
-  const tools = getCurrentTools(messages);
-  if (timestamp === undefined && tools.length === 0) return undefined;
-  return {
-    role: "system",
-    content: content.join("\n\n"),
-    ...(sections.size > 0 ? { sections: Object.fromEntries(sections) } : {}),
-    ...(tools.length > 0 ? { toolsAdded: tools } : {}),
-    timestamp: timestamp ?? 0,
-  };
-}
-
-/**
- * Rebuild the transcript for APIs without mid-conversation system messages: the replayed
- * system message leads, and every later system message is dropped.
- */
-export function collapseSystemMessages(context: TranscriptContext): TranscriptContext {
-  const head = getCurrentSystemMessage(context.messages);
-  const messages = context.messages.filter((message) => message.role !== "system");
-  return { messages: head ? [head, ...messages] : messages } as TranscriptContext;
-}
-
-/** Keep later system messages in place when the model accepts them; otherwise collapse them. */
-export function resolveTranscript(
-  context: TranscriptContext,
-  supportsMidConvoSystemMessages: boolean | undefined,
-): TranscriptContext {
-  return supportsMidConvoSystemMessages ? context : collapseSystemMessages(context);
-}
-
 export function getDeclaredTools(messages: TranscriptMessages): Tool[] {
   const definitions = new Map<string, Tool>();
   for (const message of messages) {

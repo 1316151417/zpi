@@ -58,6 +58,8 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   expect(s.requests.at(-1)?.messages).toEqual(
     expect.arrayContaining([expect.objectContaining({ role: "tool", tool_call_id: "call-3" })]),
   );
-  expect(restored.session.messages.filter((m) => m.role === "system")).toHaveLength(1);
+  expect(restored.session.messages.filter((m) => m.role === "system")).toEqual(
+    session.messages.filter((m) => m.role === "system"),
+  );
   restored.session.dispose();
 });

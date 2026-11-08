@@ -250,7 +250,7 @@ it("matches full-history projection at every cutoff across repeated compactions 
         source.appendMessage({
           role: "system",
           content: `system ${i}`,
-          sections: { stable: "keep", changed: `${i}` },
+          sections: { stable: "keep", changed: i % 14 === 0 ? null : `${i}` },
           timestamp: 100 - i,
         });
       boundaries.push(

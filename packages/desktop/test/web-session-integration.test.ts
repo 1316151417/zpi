@@ -72,7 +72,7 @@ async function fixture(
     if (!request.url.startsWith("https://chat.example/v1/")) throw new Error("Unexpected test destination");
     if (
       messages(body).some(
-        (row) => typeof row.content === "string" && row.content.startsWith("ZPI_SESSION_TITLE:"),
+        (row) => typeof row.content === "string" && row.content.includes("ZPI_SESSION_TITLE:"),
       )
     )
       return sse({ content: '{"session_title":"Test"}' });

@@ -136,6 +136,7 @@ it("SDK discovery uses the session-bound root rather than a different tool worki
     await session.abort();
     session.dispose();
   });
+  await session.prompt("check session resources");
   expect(session.systemPrompt).toContain("ROOT RULE");
   expect(session.systemPrompt).not.toContain("NESTED RULE");
   expect(session.listSkills().skills.map((s) => s.name)).toEqual(["root"]);

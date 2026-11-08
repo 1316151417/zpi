@@ -79,8 +79,8 @@ test("extraction separates instructions and evidence, uses supported strict sche
   expect(result.text).toContain('"rollout_slug":"correction"');
   const body = f.server.requests[0];
   const messages = body.messages as { role: string; content: string }[];
-  expect(messages[0].content).toBe(extractionInstructions);
-  expect(messages[1].content).toContain("[user] Use Chinese");
+  expect(messages[0].content).toContain(extractionInstructions);
+  expect(messages.find((message) => message.role === "user")?.content).toContain("[user] Use Chinese");
   expect(body.tools).toBeUndefined();
   expect(body.response_format).toMatchObject({
     type: "json_schema",

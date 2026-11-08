@@ -116,15 +116,16 @@ export function resolveBuiltinPlugins(
         plugin: {
           ...snapshot,
           tools: ports.collaboration.tools(context.sessionId, codex),
-          contextInstructions: () => [
-            "<system-reminder>\nAvailable agent types for the Agent tool:\n" +
+          contextInstructions: () => ({
+            agents:
+              "<system-reminder>\nAvailable agent types for the Agent tool:\n" +
               (context.preview
                 ? ports.collaboration.previewListing(context.cwd, codex)
                 : ports.collaboration.listing(context.sessionId)) +
               "\n\n" +
               agentConcurrencyNote +
               "\n</system-reminder>",
-          ],
+          }),
           hooks: bindBuiltinHooks(snapshot, {
             prepare: () => {
               try {
@@ -150,7 +151,8 @@ export function resolveBuiltinPlugins(
       return {
         plugin: {
           ...snapshot,
-          contextInstructions: () => (context.preview ? [] : ports.memory.instructions(context.sessionId)),
+          contextInstructions: (): Record<string, string> =>
+            context.preview ? {} : { memory: ports.memory.instructions(context.sessionId).join("\n\n") },
           hooks: context.preview
             ? []
             : bindBuiltinHooks(snapshot, {
