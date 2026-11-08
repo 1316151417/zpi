@@ -116,10 +116,19 @@ export function canonicalTools(
         if (input.run_in_background)
           return text(
             JSON.stringify({
-              task_id: tasks.start(async (taskSignal) => {
-                const result = await call("bash", id, args, taskSignal);
-                return contentText(result.content);
-              }),
+              task_id: tasks.start(
+                async (taskSignal, progress) => {
+                  const result = await call("bash", id, args, taskSignal, (partial) =>
+                    progress(contentText(partial.content)),
+                  );
+                  return contentText(result.content);
+                },
+                {
+                  toolUseId: id,
+                  description: String(input.description ?? input.command),
+                  taskType: "local_bash",
+                },
+              ),
             }),
           );
         return call("bash", id, args, signal, update);

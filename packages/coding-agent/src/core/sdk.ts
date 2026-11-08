@@ -16,6 +16,7 @@ import { SettingsManager } from "./settings-manager.ts";
 import { recoverCanonicalToolCallsAsync } from "./streaming-tool-journal.ts";
 import { buildSystemContext, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
+import type { SessionCurrentState, TranscriptStore } from "./transcript-store.ts";
 import type { ResourceLoader, ToolContext } from "./types.ts";
 export interface SystemPromptContext {
   tools: readonly AgentTool[];
@@ -44,6 +45,8 @@ export interface CreateAgentSessionOptions extends SessionContributions {
   customInstructions?: readonly string[] | (() => readonly string[]);
   resourceLoader?: ResourceLoader;
   sessionManager?: SessionManager;
+  /** Indexed transcript and explicit current product choices. Mutually exclusive with sessionManager. */
+  storage?: { transcript: TranscriptStore; currentState: SessionCurrentState };
   homeDir?: string;
   compaction?: CompactionOptions;
   settingsManager?: SettingsManager;
@@ -52,6 +55,7 @@ export interface CreateAgentSessionOptions extends SessionContributions {
 }
 export interface CreateAgentSessionResult {
   session: AgentSession;
+  sessionManager: SessionManager;
 }
 export async function createAgentSession(
   options: CreateAgentSessionOptions = {},
@@ -79,6 +83,7 @@ export async function createAgentSession(
       "toolOverrides",
       "resourceLoader",
       "sessionManager",
+      "storage",
       "homeDir",
       "compaction",
       "settingsManager",
@@ -88,14 +93,49 @@ export async function createAgentSession(
     ],
     "createAgentSession",
   );
+  if (options.storage !== undefined) {
+    assertSupportedOptions(options.storage, ["transcript", "currentState"], "storage");
+    if (options.sessionManager) throw new Error("storage and sessionManager are mutually exclusive");
+    if (!options.storage.transcript || !options.storage.currentState)
+      throw new Error("storage requires transcript and currentState");
+    for (const method of ["get", "setModel", "setThinkingLevel", "setName"] as const)
+      if (typeof options.storage.currentState[method] !== "function")
+        throw new Error(`Invalid storage.currentState.${method}`);
+    for (const method of [
+      "getHeader",
+      "getFile",
+      "snapshot",
+      "getStateAt",
+      "getTail",
+      "readEntryById",
+      "readRange",
+      "getContextPlan",
+      "readUnresolvedToolJournals",
+      "append",
+      "replace",
+    ] as const)
+      if (typeof options.storage.transcript[method] !== "function")
+        throw new Error(`Invalid storage.transcript.${method}`);
+    for (const method of ["appendAsync", "replaceAsync"] as const)
+      if (
+        options.storage.transcript[method] !== undefined &&
+        typeof options.storage.transcript[method] !== "function"
+      )
+        throw new Error(`Invalid storage.transcript.${method}`);
+  }
   if (options.noTools !== undefined && options.noTools !== "all" && options.noTools !== "builtin")
     throw new Error("Invalid noTools");
-  const cwd = resolve(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
+  const managerOption =
+    options.sessionManager ??
+    (options.storage
+      ? SessionManager.fromStore(options.storage.transcript, options.storage.currentState)
+      : undefined);
+  const cwd = resolve(options.cwd ?? managerOption?.getCwd() ?? process.cwd());
   const agentDir = options.agentDir ?? join(homedir(), ".zpi", "agent");
   const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
   if (options.compaction) settingsManager.applyOverrides({ compaction: options.compaction });
   const runtime = options.modelRuntime ?? (await ModelRuntime.create());
-  const manager = options.sessionManager ?? SessionManager.create(cwd, join(agentDir, "sessions"));
+  const manager = managerOption ?? SessionManager.create(cwd, join(agentDir, "sessions"));
   const restored = await manager.materializeContext();
   const selection = manager.getCurrentState();
   const available = await runtime.getAvailable();
@@ -223,5 +263,5 @@ export async function createAgentSession(
     )
       fileReadState.clear();
   });
-  return { session };
+  return { session, sessionManager: manager };
 }

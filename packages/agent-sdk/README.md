@@ -53,3 +53,31 @@ Only TypeScript is supported. `permissionMode`, sandbox/permission UI, MCP, LSP,
 ## Build and distribution
 
 From the ZPI repository, run `npm run build:sdk`, then `npm pack --workspace @zpi-dev/agent-sdk`. Published output bundles the private ZPI runtime and ships rewritten standalone declaration files; consumers do not need the desktop package or private workspace modules. Local builds are not automatically published to npm.
+
+## Session mirrors and controls
+
+```ts
+import { query, InMemorySessionStore, listSessions, listSubagents, getSubagentMessages } from "@zpi-dev/agent-sdk";
+const sessionStore = new InMemorySessionStore(); // Replace with your durable adapter.
+const options = { cwd: process.cwd(), model: "deepseek", tools: [], sessionStore };
+const run = query({ prompt: "Hello", options });
+console.log(await run.getContextUsage()); // Reads the engine; does not generate a response.
+for await (const message of run) {
+  if (message.type === "system" && message.subtype === "mirror_error") console.error(message.error);
+}
+const sessions = await listSessions({ dir: options.cwd, sessionStore });
+if (sessions[0]) {
+  const agents = await listSubagents(sessions[0].sessionId, { dir: options.cwd, sessionStore });
+  if (agents[0]) console.log(await getSubagentMessages(sessions[0].sessionId, agents[0], { dir: options.cwd, sessionStore }));
+}
+```
+
+Session helpers also support `deleteSession`, rename, tag and fork on the same `sessionStore`. Main keys use sanitized absolute cwd (or explicit `zpi.projectKey`); subagents use `subagents/agent-{id}`. Adapters preserve opaque JSON entries, deduplicate stable `uuid`, serialize concurrent summary updates, and may use `foldSessionSummary` to maintain `listSessionSummaries`. Missing optional capabilities fail explicitly when required. Deletion/fork require `listSubkeys`; deletion also requires `delete`. Helpers never silently switch from your adapter to the default local directory.
+
+Mirroring follows successful local writes. Append failures retry three times; a 60s timeout does not retry. Final failures emit `mirror_error`, while local persistence errors fail execution. `sessionStoreFlush` is `batched` (default) or `eager`; turn completion and query exit drain writes. Resume loads the adapter first (`loadTimeoutMs`, default 60000), materializes owned temporary files, and falls back to local records only on `null`. Mirrors require persistence and cannot be combined with file checkpointing or host-owned sessions.
+
+`result.usage` measures the current main-loop user turn; `total_cost_usd` and `modelUsage` snapshot session totals, including recorded child costs. Current-query budgets exclude restored historical costs and persist across streaming inputs. Model keys include the provider. Missing historical accounting cannot be reconstructed. `canUseTool` must return allow/deny; `null` produces `SDK_UNSUPPORTED_PERMISSION_NULL` and blocks execution because there is no external approval transport.
+
+Background events are `task_started`, `task_progress`, and one `task_notification` terminal event, linked by task/tool/session IDs. `await run.stopTask(taskId)` shares TaskStop's cancellation and ownership checks. Native hosts can supply `zpi.taskControl`; otherwise this capability reports unsupported. `getContextUsage` distinguishes provider measurements from local estimates. The host entry also exports the complete `TranscriptStore` and `SessionCurrentState` types; `createAgentSession({ storage: { transcript, currentState } })` returns both session and sessionManager. `storage` and sessionManager are mutually exclusive.
+
+Compatibility is pinned to Claude Agent SDK **0.3.319** (2026-11-08), for the supported subset. Native indexed storage and external mirrors are distinct contracts. See the repository's [SDK internals](https://github.com/1316151417/zpi/blob/main/docs/internals/sdk.md) for ownership, restoration and lifecycle details. Version `0.1.62` narrows the permission callback return type: callbacks must return allow/deny; returning null fails closed with `SDK_UNSUPPORTED_PERMISSION_NULL`.

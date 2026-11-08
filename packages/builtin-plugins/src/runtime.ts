@@ -30,6 +30,7 @@ import type {
   PluginRuntimeState,
 } from "./ports.ts";
 import { UserQuestions } from "./questions.ts";
+import { SdkTaskControl } from "./tasks/sdk-control.ts";
 import { TitlePolicy } from "./title/policy.ts";
 import type { BackgroundTask, SubagentTask } from "./types.ts";
 import { WebTools } from "./web/tools.ts";
@@ -51,6 +52,7 @@ export class BuiltinPluginRuntime {
   readonly background: BackgroundTasks;
   readonly collaboration: SubagentPlugin;
   readonly inbox: CollaborationInbox;
+  readonly taskControl: SdkTaskControl;
   private readonly parentInstructions = new Map<string, string[]>();
   private readonly web: WebTools;
   private readonly ports: BuiltinPluginPorts;
@@ -115,6 +117,7 @@ export class BuiltinPluginRuntime {
     this.background = new BackgroundTasks(ports.directory, {
       publish: (task) => {
         if (!sessions.get(task.sessionId)) return;
+        this.taskControl?.publish(task);
         ports.storage.setRuntime(task.sessionId, "background", task.taskId, task, task.status);
         ports.publish(task.sessionId, "background", { type: "background_task_changed", task });
         const parentId = sessions.get(task.sessionId)?.parentSessionId;
@@ -196,6 +199,7 @@ export class BuiltinPluginRuntime {
         steer: (id, text) => this.inbox.guidance(id, text),
         publish: (task) => {
           if (!sessions.get(task.childSessionId) || !sessions.get(task.parentSessionId)) return;
+          this.taskControl?.publish(task);
           ports.storage.setRuntime(task.childSessionId, "subagent", task.agentId, task, task.status);
           ports.publish(task.parentSessionId, "subagents", {
             type: "subagent_changed",
@@ -205,6 +209,10 @@ export class BuiltinPluginRuntime {
         notify: (task, message) => this.inbox.deliver(task, message),
       },
       join(ports.directory, "agent", "subagents"),
+    );
+    this.taskControl = new SdkTaskControl(
+      [this.background.taskBackend(), this.collaboration.taskBackend()],
+      (id) => [...this.background.list(id), ...this.collaboration.list(id)],
     );
   }
 

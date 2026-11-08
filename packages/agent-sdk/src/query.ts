@@ -25,13 +25,21 @@ import { bindExternalPlugin, importLocalPlugin } from "@zpi-dev/plugin-compat";
 import { type TObject, Type } from "typebox";
 import { Check } from "typebox/value";
 import { version as sdkVersion } from "../package.json";
+import { Accounting } from "./accounting.ts";
 import { coreHooks, lifecycleHook } from "./hooks.ts";
-import { assistantMessage, emptyUsage, messageText, stableUuid, usage, userMessage } from "./messages.ts";
+import { assistantMessage, messageText, stableUuid, userMessage } from "./messages.ts";
 import { matchesRule, permissionHook, permissionRules } from "./permissions.ts";
 import { pluginAgents, SdkResources } from "./resources.ts";
 import { runtimeFor, selectModel, thinkingLevel } from "./runtime.ts";
-import { agentDirectory, openSession, rewindFiles } from "./sessions.ts";
-import { Tasks } from "./tasks.ts";
+import { TranscriptMirror, validateId } from "./session-store.ts";
+import {
+  agentDirectory,
+  type ChildRecord,
+  type OpenedSession,
+  openSession,
+  rewindFiles,
+} from "./sessions.ts";
+import { type TaskEvent, Tasks } from "./tasks.ts";
 import { canonicalTools } from "./tools.ts";
 import type {
   Options,
@@ -43,6 +51,7 @@ import type {
   SDKResultMessage,
   SDKUserMessage,
 } from "./types.ts";
+import { validateOptions } from "./validation.ts";
 
 export interface QueryParams {
   prompt: string | AsyncIterable<SDKUserMessage>;
@@ -68,6 +77,9 @@ const allowedOptions = [
   "includeHookEvents",
   "hooks",
   "persistSession",
+  "sessionStore",
+  "sessionStoreFlush",
+  "loadTimeoutMs",
   "resume",
   "continue",
   "forkSession",
@@ -106,18 +118,24 @@ class AgentQuery implements Query {
   private error?: unknown;
   private interrupted = false;
   private owns = true;
-  private tasks = new Tasks();
+  private tasks = new Tasks((event) => this.taskEvent(event));
+  private opened?: OpenedSession;
+  private mirror?: TranscriptMirror;
+  private childRecord?: ChildRecord;
+  private unsubscribeTasks?: () => void;
+  private hostTaskTerminal = new Set<string>();
+  private accounting: Accounting;
+  private permissionFailure?: Error;
   private denials: SDKPermissionDenial[] = [];
   private turns = 0;
-  private totalUsage = emptyUsage();
-  private modelUsage: SDKResultMessage["modelUsage"] = {};
-  private totalCost = 0;
   private limit?: Exclude<SDKResultMessage["subtype"], "success">;
   private assistantId: string = randomUUID();
   private unsubscribe?: () => void;
   private pendingUser?: { uuid: string; text: string };
   private abortListener: () => void;
-  constructor(params: QueryParams) {
+  constructor(params: QueryParams, childRecord?: ChildRecord, budget?: { cost: number }) {
+    this.childRecord = childRecord;
+    this.accounting = new Accounting(budget);
     assertSupportedOptions(params, ["prompt", "options"], "query");
     this.options = { ...params.options };
     assertSupportedOptions(
@@ -125,6 +143,7 @@ class AgentQuery implements Query {
       allowedOptions,
       "Agent SDK Options (permissionMode, MCP, LSP and UI are not supported)",
     );
+    validateOptions(this.options);
     if (typeof params.prompt !== "string" && typeof params.prompt?.[Symbol.asyncIterator] !== "function")
       throw new Error("prompt must be a string or AsyncIterable<SDKUserMessage>");
     for (const key of ["maxTurns", "maxBudgetUsd"] as const)
@@ -178,6 +197,8 @@ class AgentQuery implements Query {
     if (options.zpi?.session) {
       if (!options.zpi.sessionManager || !options.zpi.modelRuntime)
         throw new Error("A host-owned session requires sessionManager and modelRuntime");
+      if (options.zpi.session.sessionId !== options.zpi.sessionManager.getSessionId())
+        throw new Error("Host session and sessionManager identities do not match");
       if (
         options.hooks ||
         options.allowedTools ||
@@ -195,7 +216,18 @@ class AgentQuery implements Query {
     } else {
       this.runtime = await runtimeFor(options);
       const model = await selectModel(this.runtime, options.model);
-      this.manager = await openSession(options, cwd);
+      this.opened = await openSession(options, cwd, this.childRecord, this.controller.signal);
+      this.manager = this.opened.manager;
+      this.accounting.restore(this.manager.getEntries(), this.runtime);
+      if (options.sessionStore && this.opened.key) {
+        this.mirror = new TranscriptMirror(
+          options.sessionStore,
+          this.opened.key,
+          options.sessionStoreFlush ?? "batched",
+          (message) => this.push(message),
+        );
+        this.mirror.attach(this.manager);
+      }
       if (options.title && !this.manager.getEntries().some((entry) => entry.type === "session_info"))
         this.manager.appendSessionInfo(options.title);
       const directory = agentDirectory(options.zpi),
@@ -317,10 +349,18 @@ class AgentQuery implements Query {
       };
       const hooks = [
         ...coreHooks(options, this.manager.getSessionFile() ?? ""),
-        permissionHook(options, this.denials, () => {
-          this.interrupted = true;
-          void this.session?.abort();
-        }),
+        permissionHook(
+          options,
+          this.denials,
+          () => {
+            this.interrupted = true;
+            void this.session?.abort();
+          },
+          (error) => {
+            this.permissionFailure = error;
+            this.controller.abort(error);
+          },
+        ),
       ];
       const created = await createAgentSession({
         cwd,
@@ -351,8 +391,7 @@ class AgentQuery implements Query {
             : (request ?? {});
         },
         onCompaction: (phase, data, signal) =>
-          lifecycleHook(
-            options,
+          this.lifecycle(
             phase === "before" ? "PreCompact" : "PostCompact",
             {
               session_id: this.manager?.getSessionId() ?? "",
@@ -375,7 +414,7 @@ class AgentQuery implements Query {
         beforeModelRequest: () => {
           if (
             (options.maxTurns !== undefined && this.turns >= options.maxTurns) ||
-            (options.maxBudgetUsd !== undefined && this.totalCost >= options.maxBudgetUsd)
+            (options.maxBudgetUsd !== undefined && this.accounting.queryCost >= options.maxBudgetUsd)
           ) {
             this.limit =
               options.maxTurns !== undefined && this.turns >= options.maxTurns
@@ -408,6 +447,13 @@ class AgentQuery implements Query {
       agents: Object.keys(options.agents ?? {}),
       capabilities: ["zpi_sdk_v1"],
     });
+    if (!this.owns && options.zpi?.taskControl?.subscribe)
+      this.unsubscribeTasks = options.zpi.taskControl.subscribe(this.session.sessionId, (message) => {
+        const key = `${message.task_id}:${message.run_id ?? ""}`;
+        if (message.session_id !== this.session?.sessionId || this.hostTaskTerminal.has(key)) return;
+        if (message.subtype === "task_notification") this.hostTaskTerminal.add(key);
+        this.push(message);
+      });
   }
   private observe(event: AgentSessionEvent): void {
     if (!this.session || !this.manager) return;
@@ -486,7 +532,9 @@ class AgentQuery implements Query {
       }
     } else if (
       event.type === "hook_execution" &&
-      (this.options.includeHookEvents || event.execution.event === "SessionStart")
+      (this.options.includeHookEvents ||
+        event.execution.event === "SessionStart" ||
+        event.execution.error !== undefined)
     )
       this.push({
         type: "system",
@@ -498,7 +546,7 @@ class AgentQuery implements Query {
         hook_event: event.execution.event,
         output: "",
         stdout: "",
-        stderr: "",
+        stderr: event.execution.error ?? "",
         exit_code: event.execution.status === "completed" ? 0 : 1,
         outcome:
           event.execution.status === "completed"
@@ -516,33 +564,71 @@ class AgentQuery implements Query {
         compact_metadata: { trigger: event.origin, pre_tokens: 0 },
       });
   }
+  private lifecycle(
+    event: Parameters<typeof lifecycleHook>[1],
+    input: Parameters<typeof lifecycleHook>[2],
+    signal: AbortSignal,
+  ): Promise<void> {
+    return lifecycleHook(this.options, event, input, signal, (error) =>
+      this.push({
+        type: "system",
+        subtype: "hook_response",
+        uuid: randomUUID(),
+        session_id: input.session_id,
+        hook_id: randomUUID(),
+        hook_name: "sdk",
+        hook_event: event,
+        output: "",
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+        exit_code: 1,
+        outcome: signal.aborted ? "cancelled" : "error",
+      }),
+    );
+  }
   private addUsage(message: AssistantMessage): void {
-    const value = usage(message.usage);
-    for (const key of [
-      "input_tokens",
-      "output_tokens",
-      "cache_read_input_tokens",
-      "cache_creation_input_tokens",
-    ] as const)
-      this.totalUsage[key] += value[key];
-    this.totalCost += message.usage.cost.total;
-    const model = this.session?.model;
-    this.modelUsage[message.model] ??= {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadInputTokens: 0,
-      cacheCreationInputTokens: 0,
-      webSearchRequests: 0,
-      costUSD: 0,
-      contextWindow: model?.contextWindow ?? 0,
-      maxOutputTokens: model?.maxTokens ?? 0,
+    this.accounting.assistant(message, this.runtime);
+  }
+  private taskEvent(event: TaskEvent): void {
+    if (!this.session) return;
+    const base = {
+      type: "system" as const,
+      uuid: randomUUID(),
+      session_id: this.session.sessionId,
+      task_id: event.id,
+      tool_use_id: event.toolUseId,
     };
-    const row = this.modelUsage[message.model];
-    row.inputTokens += value.input_tokens;
-    row.outputTokens += value.output_tokens;
-    row.cacheReadInputTokens += value.cache_read_input_tokens;
-    row.cacheCreationInputTokens += value.cache_creation_input_tokens;
-    row.costUSD += message.usage.cost.total;
+    const stats = {
+      total_tokens: event.totalTokens,
+      tool_uses: event.toolUses,
+      duration_ms: Date.now() - event.startedAt,
+    };
+    if (event.phase === "started")
+      this.push({
+        ...base,
+        subtype: "task_started",
+        description: event.description ?? "Background task",
+        task_type: event.taskType,
+        subagent_type: event.subagentType,
+        is_backgrounded: true,
+      });
+    else if (event.phase === "progress")
+      this.push({
+        ...base,
+        subtype: "task_progress",
+        description: event.description ?? "Background task",
+        summary: event.output.slice(-1000),
+        usage: stats,
+      });
+    else
+      this.push({
+        ...base,
+        subtype: "task_notification",
+        status: event.status === "running" ? "failed" : event.status,
+        output_file: "",
+        summary: event.output.slice(-1000),
+        usage: stats,
+      });
   }
   private agentTool(): ToolDefinition<TObject> {
     return {
@@ -558,10 +644,16 @@ class AgentQuery implements Query {
       execute: async (toolId, input, signal) => {
         const definition = this.options.agents?.[String(input.subagent_type)];
         if (!definition) throw new Error("Unknown subagent_type");
-        const run = async (childSignal: AbortSignal): Promise<string> => {
+        const run = async (
+          childSignal: AbortSignal,
+          progress?: (output: string, totalTokens?: number, toolUses?: number) => void,
+        ): Promise<string> => {
           const controller = new AbortController(),
             abort = () => controller.abort(childSignal.reason);
+          childSignal.throwIfAborted();
           childSignal.addEventListener("abort", abort, { once: true });
+          let started = false,
+            result = "";
           try {
             const childOptions: Options = {
               ...this.options,
@@ -572,6 +664,7 @@ class AgentQuery implements Query {
               resume: undefined,
               continue: undefined,
               forkSession: undefined,
+              resumeSessionAt: undefined,
               sessionId: undefined,
               title: undefined,
               tools:
@@ -589,7 +682,7 @@ class AgentQuery implements Query {
               effort: definition.effort ?? this.options.effort,
               skills: definition.skills ?? this.options.skills,
               maxTurns: definition.maxTurns ?? this.options.maxTurns,
-              persistSession: false,
+              persistSession: this.options.persistSession,
               abortController: controller,
               zpi: {
                 ...this.options.zpi,
@@ -597,10 +690,10 @@ class AgentQuery implements Query {
                 session: undefined,
                 sessionManager: undefined,
                 input: undefined,
+                taskControl: undefined,
               },
             };
-            await lifecycleHook(
-              this.options,
+            await this.lifecycle(
               "SubagentStart",
               {
                 session_id: this.session?.sessionId ?? "",
@@ -611,30 +704,41 @@ class AgentQuery implements Query {
               },
               controller.signal,
             );
-            let result = "";
-            for await (const message of query({ prompt: String(input.prompt), options: childOptions })) {
+            started = true;
+            let totalTokens = 0,
+              toolUses = 0;
+            const child = new AgentQuery(
+              { prompt: String(input.prompt), options: childOptions },
+              this.options.persistSession === false
+                ? undefined
+                : {
+                    parentSessionId: this.manager?.getSessionId() ?? "",
+                    agentId: stableUuid(toolId),
+                    parentToolUseId: toolId,
+                  },
+              this.accounting.budget,
+            );
+            for await (const message of child) {
+              if (message.type === "assistant") {
+                totalTokens +=
+                  message.message.usage.input_tokens +
+                  message.message.usage.output_tokens +
+                  message.message.usage.cache_read_input_tokens +
+                  message.message.usage.cache_creation_input_tokens;
+                toolUses += message.message.content.filter((block) => block.type === "tool_use").length;
+                progress?.(contentText(message.message.content, ""), totalTokens, toolUses);
+              }
+              if (message.type === "system" && message.subtype === "mirror_error") this.push(message);
               if (message.type === "result") {
-                this.totalCost += message.total_cost_usd;
-                for (const key of [
-                  "input_tokens",
-                  "output_tokens",
-                  "cache_read_input_tokens",
-                  "cache_creation_input_tokens",
-                ] as const)
-                  this.totalUsage[key] += message.usage[key];
-                for (const [name, usage] of Object.entries(message.modelUsage)) {
-                  const prior = this.modelUsage[name];
-                  if (!prior) this.modelUsage[name] = { ...usage };
-                  else
-                    for (const key of [
-                      "inputTokens",
-                      "outputTokens",
-                      "cacheReadInputTokens",
-                      "cacheCreationInputTokens",
-                      "webSearchRequests",
-                      "costUSD",
-                    ] as const)
-                      prior[key] += usage[key];
+                if (
+                  this.accounting.child(toolId, message.total_cost_usd, message.modelUsage) &&
+                  this.manager
+                ) {
+                  await this.manager.appendCustomEntryAsync("sdk.child_usage", {
+                    agentId: toolId,
+                    cost: message.total_cost_usd,
+                    models: message.modelUsage,
+                  } as unknown as import("@zpi-dev/ai").JsonValue);
                 }
                 if (message.subtype !== "success") throw new Error(message.errors.join("\n"));
                 result = message.result;
@@ -644,23 +748,24 @@ class AgentQuery implements Query {
               )
                 this.push({ ...message, parent_tool_use_id: toolId });
             }
-            await lifecycleHook(
-              this.options,
-              "SubagentStop",
-              {
-                stop_hook_active: false,
-                last_assistant_message: result,
-                session_id: this.session?.sessionId ?? "",
-                transcript_path: this.manager?.getSessionFile() ?? "",
-                cwd: this.manager?.getCwd() ?? "",
-                agent_id: toolId,
-                agent_type: String(input.subagent_type),
-              },
-              controller.signal,
-            );
             return result;
           } finally {
             childSignal.removeEventListener("abort", abort);
+            if (started) {
+              await this.lifecycle(
+                "SubagentStop",
+                {
+                  stop_hook_active: false,
+                  last_assistant_message: result,
+                  session_id: this.session?.sessionId ?? "",
+                  transcript_path: this.manager?.getSessionFile() ?? "",
+                  cwd: this.manager?.getCwd() ?? "",
+                  agent_id: toolId,
+                  agent_type: String(input.subagent_type),
+                },
+                new AbortController().signal,
+              );
+            }
           }
         };
         return {
@@ -668,7 +773,14 @@ class AgentQuery implements Query {
             {
               type: "text",
               text: input.run_in_background
-                ? JSON.stringify({ task_id: this.tasks.start(run) })
+                ? JSON.stringify({
+                    task_id: this.tasks.start(run, {
+                      toolUseId: toolId,
+                      description: String(input.description),
+                      taskType: "local_agent",
+                      subagentType: String(input.subagent_type),
+                    }),
+                  })
                 : await run(signal ?? new AbortController().signal),
             },
           ],
@@ -707,8 +819,7 @@ class AgentQuery implements Query {
     } finally {
       if (this.owns && this.session && this.manager) {
         try {
-          await lifecycleHook(
-            this.options,
+          await this.lifecycle(
             "SessionEnd",
             {
               session_id: this.session.sessionId,
@@ -723,9 +834,27 @@ class AgentQuery implements Query {
         }
       }
       this.unsubscribe?.();
+      this.unsubscribeTasks?.();
       this.controller.signal.removeEventListener("abort", this.abortListener);
-      await this.tasks.close();
-      if (this.owns) this.session?.dispose();
+      try {
+        await this.tasks.close();
+        await this.manager?.flushAsync();
+      } catch (error) {
+        this.error ??= error;
+      } finally {
+        try {
+          await this.mirror?.close();
+        } catch (error) {
+          this.error ??= error;
+        } finally {
+          if (this.owns) this.session?.dispose();
+          try {
+            await this.opened?.cleanup();
+          } catch (error) {
+            this.error ??= error;
+          }
+        }
+      }
       this.done = true;
       this.wake?.();
     }
@@ -747,9 +876,7 @@ class AgentQuery implements Query {
             .filter((block) => block.type === "image")
             .map((block) => ({ type: "image", data: block.source.data, mimeType: block.source.media_type }));
     this.turns = 0;
-    this.totalCost = 0;
-    this.totalUsage = emptyUsage();
-    this.modelUsage = {};
+    this.accounting.beginTurn();
     this.denials.splice(0);
     this.interrupted = false;
     this.limit = undefined;
@@ -789,12 +916,15 @@ class AgentQuery implements Query {
     } catch (error) {
       failure = error;
     }
+    if (typeof this.prompt === "string" && this.owns) await this.tasks.close();
     await this.manager.flushAsync();
+    await this.mirror?.drain();
     const latest = this.session.messages.findLast((message) => message.role === "assistant"),
       last = this.turns === 0 || latest === priorAssistant ? undefined : latest,
       reason = last?.role === "assistant" ? last.stopReason : null;
     const error =
       failure ??
+      this.permissionFailure ??
       this.limit ??
       (this.interrupted || this.controller.signal.aborted
         ? new Error("Query interrupted")
@@ -808,9 +938,9 @@ class AgentQuery implements Query {
       duration_ms: Date.now() - start,
       duration_api_ms: Math.max(0, (this.session.modelPerformance.llmMs ?? 0) - apiStart),
       num_turns: this.turns,
-      total_cost_usd: this.totalCost,
-      usage: this.totalUsage,
-      modelUsage: this.modelUsage,
+      total_cost_usd: this.accounting.cost,
+      usage: structuredClone(this.accounting.turnUsage),
+      modelUsage: structuredClone(this.accounting.models),
       permission_denials: [...this.denials],
       stop_reason:
         reason === "stop"
@@ -893,6 +1023,24 @@ class AgentQuery implements Query {
     this.interrupted = true;
     await this.session?.abort();
     return undefined;
+  }
+  async getContextUsage() {
+    if (this.closed || this.done) throw new Error("Query is closed");
+    await this.initialize();
+    this.controller.signal.throwIfAborted();
+    if (!this.session) throw new Error("Session unavailable");
+    return this.session.getContextUsage();
+  }
+  async stopTask(taskId: string): Promise<void> {
+    validateId(taskId, "task ID");
+    if (this.closed || this.done) throw new Error("Query is closed");
+    this.controller.signal.throwIfAborted();
+    await this.initialize();
+    if (this.owns) return this.tasks.stop(taskId, this.controller.signal);
+    const port = this.options.zpi?.taskControl;
+    if (!port) throw new Error("Host task control is not supported");
+    if (!this.session) throw new Error("Session unavailable");
+    await port.stopTask(this.session.sessionId, taskId, this.controller.signal);
   }
   async setModel(model?: string): Promise<void> {
     await this.initialize();

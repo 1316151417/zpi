@@ -67,3 +67,43 @@ test("invalid or cancelled task operations do not reach a backend", async () => 
   expect(task.output).not.toHaveBeenCalled();
   expect(task.stop).not.toHaveBeenCalled();
 });
+
+test("SDK host adapter shares real backend ownership, emits a single terminal, and unsubscribes", async () => {
+  const { SdkTaskControl } = await import("../src/tasks/sdk-control.ts");
+  const bash = backend("local_bash", "agent-looking-id"),
+    agent = backend("local_agent", "bash-looking-id");
+  const port = new SdkTaskControl([bash, agent], () => []),
+    events: import("@zpi-dev/agent-sdk").SDKTaskMessage[] = [];
+  const unsubscribe = port.subscribe("owner", (event) => events.push(event));
+  const task = {
+    taskId: "agent-looking-id",
+    sessionId: "owner",
+    toolCallId: "call",
+    command: "command",
+    description: "task",
+    status: "running" as const,
+    startedAt: 1,
+    outputPath: "/tmp/output",
+  };
+  port.publish({ ...task, sessionId: "foreign" });
+  expect(events).toEqual([]);
+  port.publish(task);
+  port.publish({ ...task, status: "completed" });
+  port.publish({ ...task, status: "completed" });
+  expect(events.map((e) => e.subtype)).toEqual(["task_started", "task_progress", "task_notification"]);
+  expect(events.every((e) => e.session_id === "owner" && e.tool_use_id === "call")).toBe(true);
+  await port.stopTask("owner", "agent-looking-id", new AbortController().signal);
+  expect(bash.stop).toHaveBeenCalledOnce();
+  expect(agent.stop).not.toHaveBeenCalled();
+  await expect(port.stopTask("foreign", "agent-looking-id", new AbortController().signal)).rejects.toThrow(
+    "Invalid task ID",
+  );
+  port.publish({ ...task, startedAt: 2 });
+  port.publish({ ...task, startedAt: 2, status: "completed" });
+  port.publish({ ...task, status: "completed" }); // A late terminal from the old run.
+  expect(events.filter((e) => e.subtype === "task_notification")).toHaveLength(2);
+  expect(events[0].run_id).not.toBe(events[3].run_id);
+  unsubscribe();
+  port.publish({ ...task, taskId: "new" });
+  expect(events).toHaveLength(6);
+});

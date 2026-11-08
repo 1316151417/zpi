@@ -367,7 +367,20 @@ export class AgentSession {
     return this.state.systemPrompt;
   }
   getContextUsage(): ContextUsage {
-    return contextUsage(this.manager.getContextEntries(), this.model);
+    const entries = this.manager.getContextEntries();
+    const estimate = estimateContextTokens(this.messages);
+    const settings = this.settingsManager.getCompactionSettings(this.model);
+    return {
+      ...contextUsage(entries, this.model),
+      estimatedTokens: this.estimateTokens(this.messages, estimate),
+      estimateSource: estimate.lastUsageIndex === null ? "local" : "server usage + local",
+      compaction: {
+        enabled: settings.enabled,
+        reserveTokens: settings.reserveTokens,
+        threshold: this.model.contextWindow - settings.reserveTokens,
+        compacted: entries.some((entry) => entry.type === "compaction"),
+      },
+    };
   }
   listSkills(): SkillList {
     return this.resources?.loader.listSkills?.() ?? { skills: [], diagnostics: [] };
@@ -435,8 +448,10 @@ export class AgentSession {
     if (!preparation) throw new Error("invalid_input: 没有可压缩的完整对话内容");
     return preparation;
   }
-  private estimateTokens(messages: AgentState["messages"]): number {
-    const estimate = estimateContextTokens(messages);
+  private estimateTokens(
+    messages: AgentState["messages"],
+    estimate = estimateContextTokens(messages),
+  ): number {
     const source = estimate.lastUsageIndex === null ? undefined : messages[estimate.lastUsageIndex];
     if (source?.role === "assistant" && this.precedesCompaction(source)) return 0;
     return estimate.tokens;

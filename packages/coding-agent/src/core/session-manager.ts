@@ -17,8 +17,8 @@ import { assertSupportedOptions, getCurrentTools, isJsonObject } from "@zpi-dev/
 import { applyMicrocompactBoundary, microcompactClearedIds } from "./microcompact.ts";
 import {
   isSessionEntry,
-  isSessionHeader,
   maxSessionEntryBytes,
+  parseSessionTranscript,
   validateMessage,
 } from "./record-validation.ts";
 import { recoverStreamedToolJournal } from "./streaming-tool-journal.ts";
@@ -201,44 +201,23 @@ export class SessionManager {
   }
   static open(path: string, _sessionDir?: string, cwdOverride?: string): SessionManager {
     const raw = readFileSync(path, "utf8");
-    const lines = raw.split("\n");
-    if (lines.at(-1) === "") lines.pop();
-    const parsed: unknown[] = [];
-    let repairTo: string | undefined;
-    for (let i = 0; i < lines.length; i++) {
-      try {
-        if (Buffer.byteLength(lines[i]) > maxSessionEntryBytes)
-          throw new Error("Session entry exceeds 8 MiB");
-        parsed.push(JSON.parse(lines[i]));
-      } catch (error) {
-        if (i !== lines.length - 1 || i === 0 || raw.endsWith("\n"))
-          throw new Error(`Corrupt session at line ${i + 1}: ${String(error)}`);
-        repairTo = `${lines.slice(0, i).join("\n")}\n`;
-      }
-    }
-    const h: unknown = parsed.shift();
-    if (!isSessionHeader(h)) throw new Error("Unsupported session header");
-    let parent: string | null = null;
-    const ids = new Set<string>();
-    for (const row of parsed) {
-      if (!isSessionEntry(row) || ids.has(row.id) || row.parentId !== parent)
-        throw new Error("Invalid session entry chain or content");
-      ids.add(row.id);
-      parent = row.id;
-    }
+    const { header, entries, repairTo } = parseSessionTranscript(raw, { repairIncompleteTail: true });
     if (repairTo !== undefined) {
       copyFileSync(path, `${path}.corrupt-${Date.now()}-${randomUUID()}`);
       writeFileSync(path, repairTo, { mode: 0o600 });
     } else if (!raw.endsWith("\n")) appendFileSync(path, "\n");
-    const m = new SessionManager(cwdOverride ?? h.cwd, h.id);
-    m.header = { ...h, cwd: cwdOverride ?? h.cwd };
+    const m = new SessionManager(cwdOverride ?? header.cwd, header.id);
+    m.header = { ...header, cwd: cwdOverride ?? header.cwd };
     m.file = path;
-    m.entries = parsed as SessionEntry[];
+    m.entries = entries;
     recoverStreamedToolJournal(m);
     return m;
   }
   getSessionId(): string {
     return this.header.id;
+  }
+  getHeader(): SessionHeader {
+    return { ...this.header };
   }
   getSessionFile(): string | undefined {
     return this.store ? this.store.getFile() : this.file;

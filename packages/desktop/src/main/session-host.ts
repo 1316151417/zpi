@@ -2599,6 +2599,7 @@ export class SessionHost {
               session,
               sessionManager: manager,
               modelRuntime: runtime,
+              taskControl: this.plugins.taskControl,
               input: { parsed: prepared, context: inputContext },
             },
           },

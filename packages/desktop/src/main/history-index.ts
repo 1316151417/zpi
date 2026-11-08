@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import { closeSync, createReadStream, fsyncSync, openSync, readSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
+import type {
+  IndexedSessionEntry,
+  TranscriptContextPlan,
+  TranscriptSnapshot,
+  TranscriptState,
+  TranscriptStore,
+} from "@zpi-dev/agent-sdk/host";
 import { contentText, isJsonObject } from "@zpi-dev/ai";
 import {
   maxSessionEntryBytes,
@@ -9,13 +16,6 @@ import {
   type SessionHeader,
   syncDirectory,
 } from "@zpi-dev/coding-agent";
-import type {
-  IndexedSessionEntry,
-  TranscriptContextPlan,
-  TranscriptSnapshot,
-  TranscriptState,
-  TranscriptStore,
-} from "../../../coding-agent/src/core/transcript-store.ts";
 import { entryFileChange } from "./file-changes.ts";
 import { deleteTranscriptIndex, ensureTranscriptSchema, transcriptPathKey } from "./transcript-schema.ts";
 import {

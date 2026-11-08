@@ -1,4 +1,5 @@
 import { isAbsolute, resolve } from "node:path";
+import { assertSupportedOptions } from "@zpi-dev/ai";
 import type { HookRegistration } from "@zpi-dev/coding-agent";
 import type { Options, SDKPermissionDenial } from "./types.ts";
 
@@ -41,6 +42,7 @@ export function permissionHook(
   options: Options,
   denials: SDKPermissionDenial[],
   interrupt: () => void,
+  fail?: (error: Error) => void,
 ): HookRegistration {
   const allow = permissionRules(options.allowedTools),
     deny = permissionRules(options.disallowedTools);
@@ -52,27 +54,53 @@ export function permissionHook(
       const input = event.toolInput as Record<string, unknown>;
       const denied = deny.some((rule) => matchesRule(rule, event.toolName, input, event.cwd));
       const allowed = allow.some((rule) => matchesRule(rule, event.toolName, input, event.cwd));
-      const result = denied
-        ? { behavior: "deny" as const, message: "Tool use denied by disallowedTools" }
-        : allowed || !options.canUseTool
-          ? { behavior: "allow" as const }
-          : await options.canUseTool(event.toolName, structuredClone(input), {
-              signal,
-              toolUseID: event.toolCallId,
-              requestId: event.invocationId,
-            });
-      signal.throwIfAborted();
-      if (result?.behavior === "allow")
-        return { ...(result.updatedInput ? { updatedInput: result.updatedInput } : {}) };
-      if (result && result.behavior !== "deny")
-        throw new Error("canUseTool returned an invalid permission result");
-      denials.push({
-        tool_name: event.toolName,
-        tool_use_id: event.toolCallId,
-        tool_input: structuredClone(input),
-      });
-      if (result?.interrupt) interrupt();
-      return { block: true, reason: result?.message || "Tool use was not approved" };
+      try {
+        const result = denied
+          ? { behavior: "deny" as const, message: "Tool use denied by disallowedTools" }
+          : allowed || !options.canUseTool
+            ? { behavior: "allow" as const }
+            : await options.canUseTool(event.toolName, structuredClone(input), {
+                signal,
+                toolUseID: event.toolCallId,
+                requestId: event.invocationId,
+              });
+        signal.throwIfAborted();
+        if (result === null)
+          throw new Error("SDK_UNSUPPORTED_PERMISSION_NULL: external approval transport is not supported");
+        if (!result || typeof result !== "object" || !["allow", "deny"].includes(result.behavior))
+          throw new Error("SDK_INVALID_PERMISSION_RESULT: canUseTool must return allow or deny");
+        assertSupportedOptions(
+          result,
+          result.behavior === "allow" ? ["behavior", "updatedInput"] : ["behavior", "message", "interrupt"],
+          "canUseTool result",
+        );
+        if (
+          result.behavior === "allow" &&
+          result.updatedInput !== undefined &&
+          (!result.updatedInput ||
+            typeof result.updatedInput !== "object" ||
+            Array.isArray(result.updatedInput))
+        )
+          throw new Error("SDK_INVALID_PERMISSION_RESULT: updatedInput must be an object");
+        if (
+          result.behavior === "deny" &&
+          (typeof result.message !== "string" ||
+            (result.interrupt !== undefined && typeof result.interrupt !== "boolean"))
+        )
+          throw new Error("SDK_INVALID_PERMISSION_RESULT: invalid denial");
+        if (result.behavior === "allow")
+          return { ...(result.updatedInput ? { updatedInput: result.updatedInput } : {}) };
+        denials.push({
+          tool_name: event.toolName,
+          tool_use_id: event.toolCallId,
+          tool_input: structuredClone(input),
+        });
+        if (result.interrupt) interrupt();
+        return { block: true, reason: result.message || "Tool use was not approved" };
+      } catch (error) {
+        if (!signal.aborted) fail?.(error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     },
   };
 }

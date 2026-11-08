@@ -1,5 +1,6 @@
 import type {
   AgentSession,
+  ContextUsage,
   InputContext,
   ModelRuntime,
   ParsedInput,
@@ -9,6 +10,8 @@ import type {
   SessionPlugin,
   ToolDefinition,
 } from "@zpi-dev/coding-agent";
+
+import type { SessionKey, SessionStore, SessionStoreFlush } from "./session-store.ts";
 
 export type UUID = string;
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -228,8 +231,6 @@ export interface SyncHookJSONOutput {
   stopReason?: string;
   decision?: "approve" | "block";
   reason?: string;
-  suppressOutput?: boolean;
-  systemMessage?: string;
   hookSpecificOutput?: {
     hookEventName: HookEvent;
     additionalContext?: string;
@@ -257,7 +258,7 @@ export type CanUseTool = (
   toolName: string,
   input: Record<string, unknown>,
   options: { signal: AbortSignal; toolUseID: string; requestId: string; agentID?: string },
-) => Promise<PermissionResult | null>;
+) => Promise<PermissionResult>;
 export interface AgentDefinition {
   description: string;
   prompt: string;
@@ -273,6 +274,9 @@ export interface SdkPluginConfig {
   path: string;
 }
 export interface ZpiOptions {
+  /** Override the sanitized cwd scope consistently for query and session helpers. */
+  projectKey?: string;
+  taskControl?: HostTaskControl;
   requestOptions?:
     | import("@zpi-dev/ai").SimpleStreamOptions
     | (() => import("@zpi-dev/ai").SimpleStreamOptions);
@@ -312,6 +316,9 @@ export interface Options {
   includeHookEvents?: boolean;
   hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>;
   persistSession?: boolean;
+  sessionStore?: SessionStore;
+  sessionStoreFlush?: SessionStoreFlush;
+  loadTimeoutMs?: number;
   resume?: string;
   continue?: boolean;
   forkSession?: boolean;
@@ -355,7 +362,9 @@ export type SDKMessage =
   | SDKPartialAssistantMessage
   | SDKResultMessage
   | SDKHookResponseMessage
-  | SDKCompactBoundaryMessage;
+  | SDKCompactBoundaryMessage
+  | SDKMirrorErrorMessage
+  | SDKTaskMessage;
 export interface SlashCommand {
   name: string;
   description: string;
@@ -399,5 +408,54 @@ export interface Query extends AsyncGenerator<SDKMessage, void> {
   supportedAgents(): Promise<AgentInfo[]>;
   initializationResult(): Promise<SDKControlInitializeResponse>;
   rewindFiles(userMessageId: string, options?: { dryRun?: boolean }): Promise<RewindFilesResult>;
+  getContextUsage(): Promise<ContextUsage>;
+  stopTask(taskId: string): Promise<void>;
   close(): void;
+}
+
+export type { ContextUsage };
+export interface SDKMirrorErrorMessage {
+  type: "system";
+  subtype: "mirror_error";
+  error: string;
+  key: SessionKey;
+  uuid: UUID;
+  session_id: string;
+}
+export type TaskUsage = { total_tokens: number; tool_uses: number; duration_ms: number };
+interface TaskMessageBase {
+  /** Identifies one run when a host backend can resume the same task ID. */
+  run_id?: string;
+  type: "system";
+  task_id: string;
+  tool_use_id?: string;
+  uuid: UUID;
+  session_id: string;
+}
+export interface SDKTaskStartedMessage extends TaskMessageBase {
+  subtype: "task_started";
+  description: string;
+  task_type?: string;
+  subagent_type?: string;
+  is_backgrounded?: boolean;
+}
+export interface SDKTaskProgressMessage extends TaskMessageBase {
+  subtype: "task_progress";
+  description: string;
+  usage: TaskUsage;
+  last_tool_name?: string;
+  summary?: string;
+}
+export interface SDKTaskNotificationMessage extends TaskMessageBase {
+  subtype: "task_notification";
+  status: "completed" | "failed" | "stopped";
+  output_file: string;
+  summary: string;
+  usage?: TaskUsage;
+}
+export type SDKTaskMessage = SDKTaskStartedMessage | SDKTaskProgressMessage | SDKTaskNotificationMessage;
+/** Host adapter owns isolation, execution and task state; SDK only projects its events. */
+export interface HostTaskControl {
+  stopTask(sessionId: string, taskId: string, signal: AbortSignal): Promise<void>;
+  subscribe?(sessionId: string, listener: (message: SDKTaskMessage) => void): () => void;
 }

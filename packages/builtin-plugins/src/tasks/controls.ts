@@ -73,6 +73,15 @@ export class TaskControls {
       );
     return matches[0];
   }
+  async stop(
+    sessionId: string,
+    callId: string,
+    taskId: string,
+    signal?: AbortSignal,
+  ): Promise<AgentToolResult> {
+    signal?.throwIfAborted();
+    return this.backend(sessionId, taskId, "TaskStop").stop(sessionId, callId, taskId, signal);
+  }
   tools(sessionId: string): ToolDefinition[] {
     const prepareOutput = (input: unknown) =>
       validateToolArguments("TaskOutput", outputParameters, prepareTaskOutputArguments(input));
@@ -108,7 +117,7 @@ export class TaskControls {
           signal?.throwIfAborted();
           const taskId = input.task_id ?? input.shell_id;
           if (!taskId) throw new Error("Missing required parameter: task_id");
-          return this.backend(sessionId, taskId, "TaskStop").stop(sessionId, callId, taskId, signal);
+          return this.stop(sessionId, callId, taskId, signal);
         },
       },
     ];

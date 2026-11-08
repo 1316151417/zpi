@@ -4,6 +4,10 @@ import { thinkingChoices } from "@zpi-dev/ai";
 import type { SessionEntry } from "./session-manager.ts";
 
 export interface ContextUsage {
+  /** Engine estimate of the current effective context, including trailing messages. */
+  estimatedTokens?: number;
+  estimateSource?: "local" | "server usage + local";
+  compaction?: { enabled: boolean; reserveTokens: number; threshold: number; compacted: boolean };
   contextWindow: number;
   inputTokens: number | null;
   percent: number | null;

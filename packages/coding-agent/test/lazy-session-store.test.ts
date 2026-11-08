@@ -546,3 +546,57 @@ it.each([false, true])(
     });
   },
 );
+
+it("public host storage convenience preserves the manager and current state ownership", async () => {
+  const { createAgentSession: createHostSession } = await import("@zpi-dev/agent-sdk/host");
+  const runtime = await ModelRuntime.create();
+  const model = fakeModel("http://local");
+  runtime.registerProvider("fake", { apiKey: "local", models: [fakeConfig("http://local")] });
+  const index = indexed(fixture());
+  const state = {
+    get: () => ({
+      model: { provider: model.provider, modelId: model.id },
+      thinkingLevel: "off",
+      lastThinkingLevel: "off",
+    }),
+    setModel: vi.fn(),
+    setThinkingLevel: vi.fn(),
+    setName: vi.fn(),
+  };
+  const created = await createHostSession({
+    storage: { transcript: index.store, currentState: state },
+    modelRuntime: runtime,
+    model,
+    noTools: "all",
+    resourceLoader: new StaticResourceLoader(),
+    settingsManager: SettingsManager.inMemory(),
+  });
+  expect(created.sessionManager.hasCurrentState()).toBe(true);
+  expect(created.sessionManager.getSessionId()).toBe("indexed");
+  expect(created.session.messages.some((m) => m.role === "user" && m.content === "retained")).toBe(true);
+  created.session.dispose();
+  const injected = SessionManager.inMemory("/tmp");
+  const second = await createHostSession({
+    sessionManager: injected,
+    modelRuntime: runtime,
+    model,
+    noTools: "all",
+    resourceLoader: new StaticResourceLoader(),
+    settingsManager: SettingsManager.inMemory(),
+  });
+  expect(second.sessionManager).toBe(injected);
+  second.session.dispose();
+});
+
+it("rejects invalid storage combinations before reading stores, resources or model configuration", async () => {
+  const getHeader = vi.fn(() => {
+    throw new Error("unnecessary IO");
+  });
+  for (const options of [
+    { storage: { transcript: { getHeader } } },
+    { storage: { transcript: { getHeader }, currentState: {} }, sessionManager: SessionManager.inMemory() },
+  ]) {
+    await expect(createAgentSession(options as never)).rejects.toThrow(/requires|mutually exclusive/);
+  }
+  expect(getHeader).not.toHaveBeenCalled();
+});

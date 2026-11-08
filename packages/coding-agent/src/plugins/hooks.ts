@@ -64,6 +64,7 @@ export interface HookExecution {
   index: number;
   status: "completed" | "blocked" | "error" | "cancelled" | "timeout";
   durationMs: number;
+  error?: string;
 }
 
 const outputSchema = Type.Object(
@@ -151,6 +152,7 @@ export class HookRunner {
         controller.abort(new Error("Hook timed out"));
       }, hook.timeoutMs ?? 30_000);
       let status: HookExecution["status"] = "completed";
+      let diagnostic: string | undefined;
       let updatingInput = false;
       try {
         const returned = await abortable(
@@ -179,6 +181,7 @@ export class HookRunner {
           result.additionalContexts.push(output.additionalContext);
         }
       } catch (error) {
+        diagnostic = (error instanceof Error ? error.message : String(error)).slice(0, 4000);
         status = signal?.aborted ? "cancelled" : timedOut ? "timeout" : "error";
         if (signal?.aborted) throw error;
         if (
@@ -192,6 +195,7 @@ export class HookRunner {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);
         this.observe({
+          ...(diagnostic ? { error: diagnostic } : {}),
           invocationId: eventInput.invocationId,
           pluginId: hook.pluginId,
           event: input.event,

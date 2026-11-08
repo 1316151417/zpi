@@ -4,8 +4,20 @@ import { join } from "node:path";
 import { createAgentSession, SessionManager, StaticResourceLoader } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
 import { afterEach, expect, test, vi } from "vitest";
-import { chunk, done, fakeServer, send } from "../../../tests/fake-server.ts";
-import { forkSession, getSessionMessages, listSessions, query, renameSession } from "../src/index.ts";
+import { chunk, deferred, done, fakeServer, send } from "../../../tests/fake-server.ts";
+import {
+  deleteSession,
+  forkSession,
+  getSessionInfo,
+  getSessionMessages,
+  getSubagentMessages,
+  InMemorySessionStore,
+  listSessions,
+  listSubagents,
+  query,
+  renameSession,
+  tagSession,
+} from "../src/index.ts";
 import { runtimeFor } from "../src/runtime.ts";
 import type { Options, SDKMessage, SDKResultMessage } from "../src/types.ts";
 
@@ -741,4 +753,607 @@ test("one resource catalog serves initialization, Skill execution and later relo
     "RESOURCE_REVISION_2",
   );
   expect(JSON.stringify(server.requests[1].messages)).toContain("FROZEN_TRANSLATION_SKILL");
+});
+
+test("context controls initialize without a model request and protect active session deletion", async () => {
+  const f = await fixture();
+  const response = query({ prompt: "Hello", options: { ...f.options, sessionId: "controlled" } });
+  const context = await response.getContextUsage();
+  expect(context).toMatchObject({
+    contextWindow: 128000,
+    source: "unknown",
+    estimateSource: "local",
+    estimatedTokens: expect.any(Number),
+  });
+  expect(f.server.requests).toHaveLength(0);
+  await expect(deleteSession("controlled", { zpi: f.options.zpi })).rejects.toThrow("active");
+  response.close();
+  await response.return();
+  await deleteSession("controlled", { zpi: f.options.zpi });
+  await expect(response.stopTask("task")).rejects.toThrow("closed");
+});
+
+test("streaming costs accumulate, turn usage resets, resumed history does not consume a fresh budget", async () => {
+  const f = await fixture();
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "priced" }));
+    send(response, {
+      ...chunk({}, "stop"),
+      usage: { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 },
+    });
+    response.end("data: [DONE]\n\n");
+  });
+  cleanup.push(() => server.close());
+  const options = { ...structuredOptions(f.options, server.url), maxBudgetUsd: 0.0015 };
+  async function* input() {
+    for (const content of ["one", "two", "three"])
+      yield { type: "user" as const, parent_tool_use_id: null, message: { role: "user" as const, content } };
+  }
+  const messages: SDKMessage[] = [];
+  for await (const message of query({ prompt: input(), options })) messages.push(message);
+  const results = messages.filter((m): m is SDKResultMessage => m.type === "result");
+  expect(results).toHaveLength(3);
+  expect(server.requests).toHaveLength(2);
+  expect(results.map((r) => r.total_cost_usd)).toEqual([0.0011, 0.0022, 0.0022]);
+  expect(results.map((r) => r.usage.input_tokens)).toEqual([1000, 1000, 0]);
+  expect(results[2].subtype).toBe("error_max_budget_usd");
+  const resumed = result(await collect({ ...options, resume: results[0].session_id, maxBudgetUsd: 0.0001 }));
+  expect(resumed.subtype).toBe("success");
+  expect(resumed.total_cost_usd).toBeCloseTo(0.0033);
+  expect(Object.keys(resumed.modelUsage)).toEqual(["local/test"]);
+});
+
+test.each([null, undefined, { behavior: "unknown" }, { behavior: "allow", updatedInput: [] }] as const)(
+  "invalid permission result %j fails closed with a diagnostic",
+  async (value) => {
+    const f = await fixture();
+    const server = await fakeServer((_, response) => {
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "write",
+              type: "function",
+              function: { name: "Write", arguments: '{"file_path":"forbidden.txt","content":"bad"}' },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    });
+    cleanup.push(() => server.close());
+    const messages = await collect({
+      ...structuredOptions(f.options, server.url),
+      tools: ["Write"],
+      canUseTool: async () => value as never,
+    });
+    const final = result(messages);
+    expect(final.subtype).toBe("error_during_execution");
+    expect(final.subtype !== "success" && final.errors.join()).toContain(
+      value === null ? "SDK_UNSUPPORTED_PERMISSION_NULL" : "SDK_INVALID_PERMISSION_RESULT",
+    );
+    expect(final.permission_denials).toEqual([]);
+    await expect(readFile(join(f.dir, "forbidden.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(server.requests).toHaveLength(1);
+  },
+);
+
+test("external mirrors restore in another local runtime and all helpers use that same backend", async () => {
+  const f = await fixture(),
+    store = new InMemorySessionStore();
+  const options = { ...f.options, sessionStore: store };
+  const first = result(await collect(options, "persisted prompt"));
+  await renameSession(first.session_id, "Remote title", { dir: f.dir, sessionStore: store });
+  await tagSession(first.session_id, "tag", { dir: f.dir, sessionStore: store });
+  expect(await getSessionInfo(first.session_id, { dir: f.dir, sessionStore: store })).toMatchObject({
+    customTitle: "Remote title",
+    tag: "tag",
+  });
+  expect(await listSessions({ dir: f.dir, sessionStore: store })).toHaveLength(1);
+  const other = { ...options, zpi: { ...options.zpi, agentDir: join(f.dir, "other-runtime") } };
+  const resumed = result(await collect({ ...other, resume: first.session_id }, "new prompt"));
+  expect(resumed.session_id).toBe(first.session_id);
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("persisted prompt");
+  expect(await getSessionMessages(first.session_id, { dir: f.dir, sessionStore: store })).toHaveLength(4);
+  const fork = await forkSession(first.session_id, { dir: f.dir, sessionStore: store, title: "Fork" });
+  const forked = await getSessionMessages(fork.sessionId, { dir: f.dir, sessionStore: store });
+  expect(forked).toHaveLength(4);
+  expect(forked[0].uuid).not.toBe(
+    (await getSessionMessages(first.session_id, { dir: f.dir, sessionStore: store }))[0].uuid,
+  );
+  await deleteSession(first.session_id, { dir: f.dir, sessionStore: store });
+  await deleteSession(first.session_id, { dir: f.dir, sessionStore: store });
+  expect(await getSessionInfo(first.session_id, { dir: f.dir, sessionStore: store })).toBeUndefined();
+  expect(await getSessionMessages(first.session_id, { dir: f.dir, sessionStore: store })).toEqual([]);
+  expect(await listSessions({ dir: f.dir, sessionStore: store })).toMatchObject([
+    { sessionId: fork.sessionId },
+  ]);
+});
+
+test.each([false, true])(
+  "subagent records survive runtime changes and follow parent fork/delete (mirror=%s)",
+  async (mirrored) => {
+    const f = await fixture();
+    let delegated = false;
+    const server = await fakeServer((body, response) => {
+      const child = JSON.stringify(body.messages).includes("CHILD_ONLY");
+      if (!child && !delegated) {
+        delegated = true;
+        send(
+          response,
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "delegate",
+                type: "function",
+                function: {
+                  name: "Agent",
+                  arguments: JSON.stringify({
+                    description: "Delegate",
+                    subagent_type: "worker",
+                    prompt: "child prompt",
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+        send(response, {
+          ...chunk({}, "tool_calls"),
+          usage: { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 },
+        });
+        response.end("data: [DONE]\n\n");
+      } else {
+        send(response, chunk({ content: child ? "child answer" : "parent answer" }));
+        send(response, {
+          ...chunk({}, "stop"),
+          usage: { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 },
+        });
+        response.end("data: [DONE]\n\n");
+      }
+    });
+    cleanup.push(() => server.close());
+    const sessionStore = mirrored ? new InMemorySessionStore() : undefined;
+    const base = structuredOptions(f.options, server.url);
+    const local = base.zpi?.providers?.local,
+      model = local?.models?.[0];
+    if (!model) throw new Error("Missing fixture model");
+    const options = {
+      ...base,
+      zpi: {
+        ...base.zpi,
+        providers: { local: { ...local, models: [model, { ...model, id: "child-model" }] } },
+      },
+      tools: ["Agent"],
+      agents: { worker: { description: "Worker", prompt: "CHILD_ONLY", tools: [], model: "child-model" } },
+      sessionStore,
+    };
+    const final = result(await collect(options));
+    expect(final.subtype).toBe("success");
+    expect(final.total_cost_usd).toBeCloseTo(0.0033);
+    expect(final.usage.input_tokens).toBe(2000);
+    expect(Object.keys(final.modelUsage).sort()).toEqual(["local/child-model", "local/test"]);
+    const helper = {
+      dir: f.dir,
+      zpi: mirrored ? { agentDir: join(f.dir, "unrelated") } : options.zpi,
+      sessionStore,
+    };
+    const sourceAgents = await listSubagents(final.session_id, helper);
+    expect(sourceAgents).toHaveLength(1);
+    const history = await getSubagentMessages(final.session_id, sourceAgents[0], helper);
+    expect(history).toHaveLength(2);
+    expect(
+      history.every((m) => m.parent_tool_use_id === "delegate" && m.session_id === final.session_id),
+    ).toBe(true);
+    expect(JSON.stringify(history)).toContain("child answer");
+    const fork = await forkSession(final.session_id, helper);
+    const ids = await listSubagents(fork.sessionId, helper);
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).not.toBe("delegate");
+    expect((await getSubagentMessages(fork.sessionId, ids[0], helper))[0].parent_tool_use_id).toBe(ids[0]);
+    const resumed = result(await collect({ ...options, resume: final.session_id, maxBudgetUsd: 0.0001 }));
+    expect(resumed.total_cost_usd).toBeCloseTo(0.0044);
+    expect(resumed.usage.input_tokens).toBe(1000);
+    const forkedResult = result(await collect({ ...options, resume: fork.sessionId, maxBudgetUsd: 0.0001 }));
+    expect(forkedResult.total_cost_usd).toBeCloseTo(0.0044);
+    await deleteSession(final.session_id, helper);
+    expect(await listSubagents(final.session_id, helper)).toEqual([]);
+    expect(await listSubagents(fork.sessionId, helper)).toHaveLength(1);
+  },
+);
+
+test("mirrors report append failure, but load errors do not fall back to local sessions", async () => {
+  const f = await fixture(),
+    store = new InMemorySessionStore();
+  vi.spyOn(store, "append").mockRejectedValue(new Error("mirror offline"));
+  const messages = await collect({ ...f.options, sessionStore: store });
+  expect(result(messages).subtype).toBe("success");
+  expect(
+    messages.some((m) => m.type === "system" && m.subtype === "mirror_error" && m.error === "mirror offline"),
+  ).toBe(true);
+  vi.spyOn(store, "load").mockRejectedValue(new Error("load failed"));
+  await expect(
+    collect({ ...f.options, sessionStore: store, resume: result(messages).session_id }),
+  ).rejects.toThrow("load failed");
+});
+
+test("unsupported mirror combinations and nested values fail before initialization", async () => {
+  const store = new InMemorySessionStore();
+  for (const options of [
+    { sessionStore: store, persistSession: false },
+    { sessionStore: store, enableFileCheckpointing: true },
+    { sessionStore: store, loadTimeoutMs: 0 },
+    { sessionStoreFlush: "invalid" },
+    { thinking: { type: "invalid" } },
+    { hooks: { Unknown: [] } },
+    { zpi: { unexpected: true } },
+  ])
+    expect(() => query({ prompt: "hello", options: options as never })).toThrow();
+});
+
+test("borrowed session context and task controls use the host owner and survive query cleanup", async () => {
+  const f = await fixture(),
+    runtime = await runtimeFor(f.options),
+    manager = SessionManager.inMemory(f.dir);
+  const { session } = await createAgentSession({
+    cwd: f.dir,
+    modelRuntime: runtime,
+    sessionManager: manager,
+    resourceLoader: new StaticResourceLoader(),
+    noTools: "all",
+  });
+  cleanup.push(async () => {
+    await session.abort();
+    session.dispose();
+  });
+  const expected = session.getContextUsage(),
+    stopTask = vi.fn(async () => {});
+  const unsupported = query({
+    prompt: "hello",
+    options: { zpi: { session, sessionManager: manager, modelRuntime: runtime } },
+  });
+  expect(await unsupported.getContextUsage()).toEqual(expected);
+  expect(f.server.requests).toHaveLength(0);
+  await expect(unsupported.stopTask("task")).rejects.toThrow("not supported");
+  await unsupported.return();
+  const run = query({
+    prompt: "hello",
+    options: { zpi: { session, sessionManager: manager, modelRuntime: runtime, taskControl: { stopTask } } },
+  });
+  await run.stopTask("task");
+  expect(stopTask).toHaveBeenCalledWith(session.sessionId, "task", expect.any(AbortSignal));
+  await run.return();
+  expect(session.isIdle).toBe(true);
+});
+
+test("query stopTask cancels the exact background Bash and reports linked lifecycle messages", async () => {
+  const f = await fixture();
+  let requested = false;
+  const server = await fakeServer((_, response) => {
+    if (!requested) {
+      requested = true;
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "background",
+              type: "function",
+              function: {
+                name: "Bash",
+                arguments: JSON.stringify({
+                  command: `${process.execPath} -e 'setInterval(()=>{},1000)'`,
+                  run_in_background: true,
+                }),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: "done" }));
+      done(response);
+    }
+  });
+  cleanup.push(() => server.close());
+  const run = query({
+    prompt: "run task",
+    options: { ...structuredOptions(f.options, server.url), tools: ["Bash", "TaskOutput", "TaskStop"] },
+  });
+  const events: SDKMessage[] = [];
+  for await (const event of run) {
+    events.push(event);
+    if (event.type === "system" && event.subtype === "task_started") await run.stopTask(event.task_id);
+  }
+  const started = events.find((e) => e.type === "system" && e.subtype === "task_started"),
+    terminal = events.filter((e) => e.type === "system" && e.subtype === "task_notification");
+  expect(started).toMatchObject({ tool_use_id: "background", task_type: "local_bash" });
+  expect(terminal).toHaveLength(1);
+  expect(terminal[0]).toMatchObject({ status: "stopped", tool_use_id: "background" });
+});
+
+test("local persistence failure is fatal and never appears as mirror_error", async () => {
+  const f = await fixture(),
+    store = new InMemorySessionStore();
+  const messages: SDKMessage[] = [];
+  const run = query({
+    prompt: "must not run",
+    options: {
+      ...f.options,
+      sessionStore: store,
+      zpi: {
+        ...f.options.zpi,
+        resourceLoader: {
+          reload: async () => {
+            await rm(join(f.dir, "sdk", "sessions"), { recursive: true, force: true });
+          },
+        },
+      },
+    },
+  });
+  await expect(
+    (async () => {
+      for await (const m of run) messages.push(m);
+    })(),
+  ).rejects.toThrow("storage:");
+  expect(f.server.requests).toHaveLength(0);
+  expect(messages.some((m) => m.type === "system" && m.subtype === "mirror_error")).toBe(false);
+});
+
+test("mirror load/subkey failure and cancellation release the session owner", async () => {
+  const f = await fixture(),
+    store = new InMemorySessionStore(),
+    first = result(await collect({ ...f.options, sessionStore: store }));
+  const original = store.listSubkeys.bind(store),
+    subkeys = vi.spyOn(store, "listSubkeys").mockRejectedValue(new Error("subkeys unavailable"));
+  await expect(collect({ ...f.options, sessionStore: store, resume: first.session_id })).rejects.toThrow(
+    "subkeys unavailable",
+  );
+  subkeys.mockImplementation(original);
+  const loader = vi.spyOn(store, "load").mockImplementation(() => new Promise(() => {}));
+  const controller = new AbortController(),
+    run = query({
+      prompt: "restore",
+      options: { ...f.options, sessionStore: store, resume: first.session_id, abortController: controller },
+    });
+  const read = run.next();
+  await vi.waitFor(() => expect(loader).toHaveBeenCalled());
+  controller.abort(new Error("restore cancelled"));
+  await expect(read).rejects.toThrow("restore cancelled");
+  loader.mockRestore();
+  expect(result(await collect({ ...f.options, sessionStore: store, resume: first.session_id })).subtype).toBe(
+    "success",
+  );
+});
+
+test("callback exceptions and cancelled approval do not execute tools", async () => {
+  const f = await fixture();
+  const server = await fakeServer((_, response) => {
+    send(
+      response,
+      chunk({
+        tool_calls: [
+          {
+            index: 0,
+            id: "write",
+            type: "function",
+            function: { name: "Write", arguments: '{"file_path":"never.txt","content":"bad"}' },
+          },
+        ],
+      }),
+    );
+    done(response, "tool_calls");
+  });
+  cleanup.push(() => server.close());
+  for (const cancel of [false, true]) {
+    const controller = new AbortController();
+    const final = result(
+      await collect({
+        ...structuredOptions(f.options, server.url),
+        tools: ["Write"],
+        persistSession: false,
+        abortController: controller,
+        canUseTool: async () => {
+          if (cancel) controller.abort();
+          throw new Error("approval failed");
+        },
+      }),
+    );
+    expect(final.subtype).toBe("error_during_execution");
+    await expect(readFile(join(f.dir, "never.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  }
+});
+
+test("invalid nested hook output is diagnosed and block policy prevents its guarded tool", async () => {
+  const f = await fixture();
+  let requested = false;
+  const server = await fakeServer((_, response) => {
+    if (!requested) {
+      requested = true;
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "write",
+              type: "function",
+              function: { name: "Write", arguments: '{"file_path":"guarded.txt","content":"bad"}' },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      send(response, chunk({ content: "blocked" }));
+      done(response);
+    }
+  });
+  cleanup.push(() => server.close());
+  const messages = await collect({
+    ...structuredOptions(f.options, server.url),
+    tools: ["Write"],
+    hooks: {
+      PreToolUse: [
+        {
+          onFailure: "block",
+          hooks: [
+            async () =>
+              ({
+                hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "invalid" },
+              }) as never,
+          ],
+        },
+      ],
+    },
+  });
+  expect(
+    messages.some(
+      (m) =>
+        m.type === "system" &&
+        m.subtype === "hook_response" &&
+        m.stderr.includes("Invalid hook permissionDecision"),
+    ),
+  ).toBe(true);
+  await expect(readFile(join(f.dir, "guarded.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test.each([false, true])(
+  "failed subagent retains history only for persistent parents and always stops its lifecycle (memory=%s)",
+  async (memory) => {
+    const f = await fixture();
+    let delegated = false;
+    const stopped = vi.fn(async () => ({}));
+    const server = await fakeServer((body, response) => {
+      const child = JSON.stringify(body.messages).includes("FAILED_CHILD");
+      if (child) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { message: "child provider failed" } }));
+      } else if (!delegated) {
+        delegated = true;
+        send(
+          response,
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "failed:child.tool",
+                type: "function",
+                function: {
+                  name: "Agent",
+                  arguments: JSON.stringify({
+                    description: "fail",
+                    subagent_type: "worker",
+                    prompt: "child prompt",
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+        done(response, "tool_calls");
+      } else {
+        send(response, chunk({ content: "child failed safely" }));
+        done(response);
+      }
+    });
+    cleanup.push(() => server.close());
+    const options = {
+      ...structuredOptions(f.options, server.url),
+      persistSession: !memory,
+      tools: ["Agent"],
+      agents: { worker: { description: "worker", prompt: "FAILED_CHILD", tools: [] } },
+      hooks: { SubagentStop: [{ hooks: [stopped] }] },
+    };
+    const final = result(await collect(options));
+    expect(final.subtype).toBe("success");
+    expect(stopped).toHaveBeenCalledOnce();
+    const agents = await listSubagents(final.session_id, { zpi: options.zpi });
+    expect(agents).toHaveLength(memory ? 0 : 1);
+    if (!memory) {
+      const messages = await getSubagentMessages(final.session_id, agents[0], { zpi: options.zpi });
+      expect(messages.some((m) => m.parent_tool_use_id === "failed:child.tool")).toBe(true);
+      expect(JSON.stringify(messages)).toContain("child provider failed");
+    }
+  },
+);
+
+test("cancelled background child keeps its history and emits one linked terminal", async () => {
+  const f = await fixture(),
+    childStarted = deferred(),
+    release = deferred();
+  let delegated = false;
+  const server = await fakeServer(async (body, response) => {
+    if (JSON.stringify(body.messages).includes("BACKGROUND_CHILD")) {
+      childStarted.resolve();
+      await release.promise;
+      send(response, chunk({ content: "late child" }));
+      done(response);
+    } else if (!delegated) {
+      delegated = true;
+      send(
+        response,
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: "background-child",
+              type: "function",
+              function: {
+                name: "Agent",
+                arguments: JSON.stringify({
+                  description: "background",
+                  subagent_type: "worker",
+                  prompt: "work",
+                  run_in_background: true,
+                }),
+              },
+            },
+          ],
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      await childStarted.promise;
+      send(response, chunk({ content: "parent done" }));
+      done(response);
+    }
+  });
+  cleanup.push(() => server.close());
+  const run = query({
+      prompt: "background",
+      options: {
+        ...structuredOptions(f.options, server.url),
+        tools: ["Agent"],
+        agents: { worker: { description: "worker", prompt: "BACKGROUND_CHILD", tools: [] } },
+      },
+    }),
+    events: SDKMessage[] = [];
+  try {
+    for await (const event of run) {
+      events.push(event);
+      if (event.type === "system" && event.subtype === "task_started") {
+        await childStarted.promise;
+        await run.stopTask(event.task_id);
+        release.resolve();
+      }
+    }
+  } finally {
+    release.resolve();
+    await run.return();
+  }
+  const terminal = events.filter((e) => e.type === "system" && e.subtype === "task_notification");
+  expect(terminal).toHaveLength(1);
+  expect(terminal[0]).toMatchObject({ status: "stopped", tool_use_id: "background-child" });
+  const id = result(events).session_id,
+    agents = await listSubagents(id, { zpi: f.options.zpi });
+  expect(agents).toHaveLength(1);
+  const history = await getSubagentMessages(id, agents[0], { zpi: f.options.zpi });
+  expect(history[0].parent_tool_use_id).toBe("background-child");
+  expect(history.some((m) => m.error)).toBe(true);
 });

@@ -160,3 +160,85 @@ test("file rewind succeeds for a known user without changes and diagnoses unknow
     error: "User message not found",
   });
 });
+
+test("all helpers validate paging and session ownership, with explicit optional store capabilities", async () => {
+  const { deleteSession, forkSession, renameSession, tagSession, listSubagents } = await import(
+    "../src/sessions.ts"
+  );
+  const { InMemorySessionStore, projectKey, transcriptEntries } = await import("../src/session-store.ts");
+  const f = await fixture();
+  for (const paging of [{ limit: -1 }, { offset: -1 }, { limit: 0.5 }, { offset: Infinity }])
+    await expect(getSessionMessages("target", { zpi: f.zpi, ...paging })).rejects.toThrow("Invalid session");
+  for (const id of ["../target", "", "a/b"])
+    await expect(getSessionMessages(id, { zpi: f.zpi })).rejects.toThrow("Invalid session ID");
+  await expect(renameSession("target", "wrong", { zpi: f.zpi, dir: "/unrelated" })).rejects.toThrow(
+    "does not belong",
+  );
+  await expect(tagSession("target", "wrong", { zpi: f.zpi, dir: "/unrelated" })).rejects.toThrow(
+    "does not belong",
+  );
+  await deleteSession("target", { zpi: f.zpi, dir: "/unrelated" });
+  expect(await getSessionInfo("target", { zpi: f.zpi })).toBeDefined();
+  const memory = new InMemorySessionStore(),
+    key = { projectKey: projectKey(f.root), sessionId: "target" };
+  await memory.append(key, transcriptEntries(f.target));
+  const store = { append: memory.append.bind(memory), load: memory.load.bind(memory) };
+  const options = { dir: f.root, sessionStore: store };
+  await expect(listSessions(options)).rejects.toThrow("not supported");
+  await expect(deleteSession("target", options)).rejects.toThrow("not supported");
+  await expect(listSubagents("target", options)).rejects.toThrow("not supported");
+  await expect(forkSession("target", options)).rejects.toThrow("required");
+  expect(await getSessionMessages("missing", options)).toEqual([]);
+});
+
+test("historical reads do not run recovery or append to a live tool journal", async () => {
+  const f = await fixture();
+  const assistant = emptyAssistant(fakeModel(""));
+  assistant.stopReason = "toolUse";
+  assistant.content = [{ type: "toolCall", id: "live-call", name: "Bash", arguments: { command: "work" } }];
+  await f.target.appendCustomEntryAsync("zpi.streaming_tools", {
+    id: "live-journal",
+    anchorId: f.target.getLastEntry()?.id ?? null,
+    assistant,
+    results: [],
+  } as unknown as import("@zpi-dev/ai").JsonValue);
+  const path = f.target.getSessionFile() as string,
+    before = await readFile(path, "utf8");
+  await getSessionInfo("target", { zpi: f.zpi });
+  await getSessionMessages("target", { zpi: f.zpi });
+  await listSessions({ zpi: f.zpi });
+  expect(await readFile(path, "utf8")).toBe(before);
+});
+
+test("store-backed pages hydrate only the matching sessions needed for the requested window", async () => {
+  const { projectKey, transcriptEntries } = await import("../src/session-store.ts");
+  const f = await fixture();
+  const foreign = SessionManager.inMemory(join(f.root, "other"), { id: "foreign" });
+  const older = SessionManager.inMemory(f.root, { id: "older" });
+  const transcripts = new Map([
+    ["foreign", transcriptEntries(foreign)],
+    ["target", transcriptEntries(f.target)],
+    ["older", transcriptEntries(older)],
+  ]);
+  const loaded: string[] = [];
+  const store = {
+    append: async () => {},
+    listSessions: async () => [
+      { sessionId: "corrupt", mtime: 1 },
+      { sessionId: "target", mtime: 3 },
+      { sessionId: "older", mtime: 2 },
+      { sessionId: "foreign", mtime: 4 },
+    ],
+    load: async (key: { projectKey: string; sessionId: string }) => {
+      expect(key.projectKey).toBe(projectKey(f.root));
+      loaded.push(key.sessionId);
+      const entries = transcripts.get(key.sessionId);
+      if (!entries) throw new Error("Unused transcript must not be loaded");
+      return entries;
+    },
+  };
+  expect(await listSessions({ dir: f.root, sessionStore: store, limit: 1, offset: 1 })).toMatchObject([
+    { sessionId: "older" },
+  ]);
+  expect(loaded).toEqual(["foreign", "target", "older"]);
+});

@@ -128,6 +128,42 @@ export function isSessionHeader(value: unknown): value is SessionHeader {
 export function isSessionEntry(value: unknown): value is SessionEntry {
   return entryValidator.Check(value);
 }
+/** Validate native records without repairing files or replaying tool journals. */
+export function decodeSessionTranscript(records: readonly unknown[]): {
+  header: SessionHeader;
+  entries: SessionEntry[];
+} {
+  const header = records[0];
+  if (!isSessionHeader(header)) throw new Error("Unsupported session header");
+  let parent: string | null = null;
+  const ids = new Set<string>();
+  for (let i = 1; i < records.length; i++) {
+    const entry = records[i];
+    if (!isSessionEntry(entry) || ids.has(entry.id) || entry.parentId !== parent)
+      throw new Error("Invalid session entry chain or content");
+    ids.add(entry.id);
+    parent = entry.id;
+  }
+  return { header, entries: records.slice(1) as SessionEntry[] };
+}
+/** Pure JSONL parsing; the writable owner decides whether to apply a tail repair. */
+export function parseSessionTranscript(raw: string, options: { repairIncompleteTail?: boolean } = {}) {
+  const lines = raw.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  const records: unknown[] = [];
+  let repairTo: string | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    try {
+      if (Buffer.byteLength(lines[i]) > maxSessionEntryBytes) throw new Error("Session entry exceeds 8 MiB");
+      records.push(JSON.parse(lines[i]));
+    } catch (error) {
+      if (!options.repairIncompleteTail || i !== lines.length - 1 || i === 0 || raw.endsWith("\n"))
+        throw new Error(`Corrupt session at line ${i + 1}: ${String(error)}`);
+      repairTo = `${lines.slice(0, i).join("\n")}\n`;
+    }
+  }
+  return { ...decodeSessionTranscript(records), repairTo };
+}
 export function validateMessage(value: unknown): asserts value is Message {
   if (!messageValidator.Check(value)) throw new Error("Invalid message record");
 }
