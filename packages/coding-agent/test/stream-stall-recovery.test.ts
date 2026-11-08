@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { ModelRetryStatus, TranscriptContext } from "@zpi-dev/ai";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
+import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } from "@zpi-dev/coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
-import type { ModelRetryStatus, TranscriptContext } from "zpi-ai";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } from "zpi-coding-agent";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

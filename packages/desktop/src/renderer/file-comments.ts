@@ -4,7 +4,7 @@ import {
   type ConversationSelection,
   fileCommentSourceKey,
   getFileCommentSelection,
-} from "zpi-ui";
+} from "@zpi-dev/ui";
 
 export interface FileCommentRange {
   start: number;

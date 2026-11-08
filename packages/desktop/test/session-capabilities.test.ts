@@ -147,7 +147,7 @@ test.each(["missing-runtime", "unknown-runtime", "different-version"])(
     await f.host.close();
     const task = f.settings.state.getTask(f.session.id);
     if (!task) throw new Error("Missing task fixture");
-    const config = task.frozenConfiguration as { plugins: import("zpi-coding-agent").PluginSnapshot[] };
+    const config = task.frozenConfiguration as { plugins: import("@zpi-dev/coding-agent").PluginSnapshot[] };
     const runtime = config.plugins.find((plugin) => plugin.id === "zpi.questions");
     if (!runtime) throw new Error("Missing runtime plugin fixture");
     if (mode === "missing-runtime") delete runtime.runtime;
@@ -170,7 +170,7 @@ test("frozen plugin versions, instructions and commands survive restart and glob
   await f.host.close();
   const task = f.settings.state.getTask(f.session.id);
   if (!task) throw new Error("Missing task fixture");
-  const config = task.frozenConfiguration as { plugins: import("zpi-coding-agent").PluginSnapshot[] };
+  const config = task.frozenConfiguration as { plugins: import("@zpi-dev/coding-agent").PluginSnapshot[] };
   const init = config.plugins.find((plugin) => plugin.id === "zpi.project-init");
   if (!init?.commands) throw new Error("Missing initialization plugin");
   init.version = "frozen-version";

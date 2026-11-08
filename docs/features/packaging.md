@@ -4,6 +4,8 @@
 
 ## 命令
 
+npm 分发包使用 `npm run pack:npm` 构建，SDK 和桌面应用的 `.tgz` 输出到 `release/npm/`。桌面包包含 CLI、界面和 Worker 资源，Electron、Sharp 和终端模块作为运行依赖安装。用户使用 Node.js 24 执行 `npx @zpi-dev/desktop`，或安装后执行 `zpi-desktop`。
+
 ```sh
 npm run build
 npm run package:mac

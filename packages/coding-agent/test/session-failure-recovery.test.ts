@@ -1,14 +1,14 @@
 import { join } from "node:path";
-import { expect, it, vi } from "vitest";
-import type { Message, Model } from "zpi-ai";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
+import type { Message, Model } from "@zpi-dev/ai";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it, vi } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { generateSummaryWithUsage } from "../src/core/compaction.ts";
 import { directory } from "./helpers/session-fixture.ts";

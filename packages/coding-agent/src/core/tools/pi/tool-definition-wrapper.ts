@@ -1,6 +1,6 @@
+import type { AgentTool } from "@zpi-dev/agent";
+import { assertSupportedOptions, type JsonValue } from "@zpi-dev/ai";
 import type { TSchema } from "typebox";
-import type { AgentTool } from "zpi-agent";
-import { assertSupportedOptions, type JsonValue } from "zpi-ai";
 import type { ToolDefinition } from "../../types.ts";
 export function wrapToolDefinition<T extends TSchema, D, C>(
   definition: ToolDefinition<T, D, C>,

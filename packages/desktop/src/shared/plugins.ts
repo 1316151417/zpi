@@ -1,4 +1,4 @@
-import { desktopPluginIds } from "zpi-builtin-plugins";
+import { desktopPluginIds } from "@zpi-dev/builtin-plugins";
 import type { PublicSettings } from "./bridge.ts";
 
 export function memoryMode(plugins: PublicSettings["plugins"]): "off" | "short" | "long" {

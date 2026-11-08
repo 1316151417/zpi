@@ -1,5 +1,5 @@
+import type { ModelRetryStatus, ModelWaitStatus } from "@zpi-dev/ai";
 import { useEffect, useRef, useState } from "react";
-import type { ModelRetryStatus, ModelWaitStatus } from "zpi-ai";
 import { userErrorMessage } from "../user-error.ts";
 
 /** A single local clock; waiting does not send periodic IPC or persist timer ticks. */

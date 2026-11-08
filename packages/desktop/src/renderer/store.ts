@@ -1,5 +1,5 @@
-import { buildMentionMarkdown } from "zpi-coding-agent/input";
-import type { DesktopEvent, DesktopEventEnvelope, InputSuggestion, SessionView } from "zpi-ui";
+import { buildMentionMarkdown } from "@zpi-dev/coding-agent/input";
+import type { DesktopEvent, DesktopEventEnvelope, InputSuggestion, SessionView } from "@zpi-dev/ui";
 import {
   appendSelection,
   ComposerDraftStore,
@@ -10,8 +10,8 @@ import {
   mergeHistoryPages,
   reduceSession,
   sessionViewBytes,
-} from "zpi-ui";
-import { readReadingBookmark } from "zpi-ui/reading-position";
+} from "@zpi-dev/ui";
+import { readReadingBookmark } from "@zpi-dev/ui/reading-position";
 import { create } from "zustand";
 import type { DesktopBridge, ProjectRecord, PublicSettings, SessionRecord } from "../shared/bridge.ts";
 import {

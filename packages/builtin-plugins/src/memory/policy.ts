@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import type { Model } from "zpi-ai";
-import type { ModelRuntime } from "zpi-coding-agent";
+import type { Model } from "@zpi-dev/ai";
+import type { ModelRuntime } from "@zpi-dev/coding-agent";
 import type { CombinedSelection } from "../types.ts";
 import type { LongMemoryService, MemoryRunRequest } from "./long-memory.ts";
 import { runMemoryRequest } from "./runner.ts";

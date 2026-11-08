@@ -1,9 +1,9 @@
 import { realpath } from "node:fs/promises";
-import { type FileChange, planFileRewind as planRewind } from "zpi-coding-agent";
+import { type FileChange, planFileRewind as planRewind } from "@zpi-dev/coding-agent";
 import { readFileSnapshot } from "./file-changes.ts";
 import { isPathInside } from "./path-bounds.ts";
 
-export { applyFileRewind, type FileRewindPlan } from "zpi-coding-agent";
+export { applyFileRewind, type FileRewindPlan } from "@zpi-dev/coding-agent";
 /** Desktop restores only its workspace and its owned snapshots. */
 export async function planFileRewind(changes: FileChange[], snapshotRoot: string, cwd: string) {
   const workspace = await realpath(cwd);

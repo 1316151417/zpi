@@ -1,7 +1,7 @@
 import { join } from "node:path";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
+import { createAgentSession, ModelRuntime, type ResourceLoader, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, test } from "vitest";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { createAgentSession, ModelRuntime, type ResourceLoader, SessionManager } from "zpi-coding-agent";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

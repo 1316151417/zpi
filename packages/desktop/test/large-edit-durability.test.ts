@@ -1,8 +1,8 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
+import { createAgentSession, type FileChange, ModelRuntime, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { createAgentSession, type FileChange, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "../../coding-agent/test/helpers/session-fixture.ts";
 import { applyFileRewind, planFileRewind } from "../src/main/file-rewind.ts";

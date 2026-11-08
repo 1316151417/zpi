@@ -1,5 +1,5 @@
+import { normalizeContext, streamSimple } from "@zpi-dev/ai";
 import { expect, it, vi } from "vitest";
-import { normalizeContext, streamSimple } from "zpi-ai";
 import { chunk, fakeModel } from "../../../tests/fake-server.ts";
 
 const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });

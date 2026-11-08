@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createEditTool, type FileChange } from "@zpi-dev/coding-agent";
 import { expect, it, vi } from "vitest";
-import { createEditTool, type FileChange } from "zpi-coding-agent";
 import { applyFileRewind, planFileRewind } from "../src/main/file-rewind.ts";
 import { fixture } from "./helpers/context-fixture.ts";
 

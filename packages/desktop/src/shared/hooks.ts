@@ -1,4 +1,4 @@
-import type { HookEvent } from "zpi-coding-agent";
+import type { HookEvent } from "@zpi-dev/coding-agent";
 
 export const configurableHookEvents: readonly HookEvent[] = [
   "SessionStart",

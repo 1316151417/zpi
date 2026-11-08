@@ -1,6 +1,14 @@
 // Adapted from ZCode settings/SubagentsSection.tsx; uses the same Lucide Bot and identity colors.
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { desktopPluginIds } from "@zpi-dev/builtin-plugins";
+import {
+  agentColors,
+  type SaveSubagentInput,
+  type SubagentCatalog,
+  type SubagentConfig,
+  type SubagentProfile,
+} from "@zpi-dev/builtin-plugins/collaboration/types";
 import {
   Bot,
   Brain,
@@ -15,14 +23,6 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { desktopPluginIds } from "zpi-builtin-plugins";
-import {
-  agentColors,
-  type SaveSubagentInput,
-  type SubagentCatalog,
-  type SubagentConfig,
-  type SubagentProfile,
-} from "zpi-builtin-plugins/collaboration/types";
 import type { CombinedSelection, Result } from "../shared/bridge.ts";
 import { availablePresets, modelReasoningLabel } from "../shared/config.ts";
 import { ProviderLogo } from "./ProviderLogo.tsx";

@@ -1,4 +1,4 @@
-import { imageLimits } from "zpi-coding-agent/input";
+import { imageLimits } from "@zpi-dev/coding-agent/input";
 
 /** Shared so the renderer pre-check and the main process reject with the same copy. */
 export const attachmentLimitMessage = `每个草稿最多 ${imageLimits.count} 个附件，请先发送或移除已有附件。`;

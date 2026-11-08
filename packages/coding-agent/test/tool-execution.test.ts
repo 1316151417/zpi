@@ -1,9 +1,7 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Type } from "typebox";
-import { expect, it } from "vitest";
-import type { JsonObject } from "zpi-ai";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
+import type { JsonObject } from "@zpi-dev/ai";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
 import {
   createAgentSession,
   createEditTool,
@@ -12,7 +10,9 @@ import {
   projectStreamedToolJournal,
   SessionManager,
   SettingsManager,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { Type } from "typebox";
+import { expect, it } from "vitest";
 import { deferred, fakeConfig } from "../../../tests/fake-server.ts";
 import { withFileMutationQueue } from "../src/core/tools/pi/file-mutation-queue.ts";
 import { directory } from "./helpers/session-fixture.ts";

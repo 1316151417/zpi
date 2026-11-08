@@ -2,7 +2,7 @@ import { closeSync, openSync, readSync } from "node:fs";
 import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { maxSessionEntryBytes, type SessionEntry } from "zpi-coding-agent";
+import { maxSessionEntryBytes, type SessionEntry } from "@zpi-dev/coding-agent";
 
 /** Relocate artifacts with bounded records; spool IO yields to the main event loop. */
 export async function stageTranscript(

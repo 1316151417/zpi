@@ -1,14 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
-import { type TObject, Type } from "typebox";
-import { Check } from "typebox/value";
 import {
   type AssistantMessage,
   abortable,
   assertSupportedOptions,
   contentText,
   type ImageContent,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -22,8 +20,11 @@ import {
   SettingsManager,
   type ToolContext,
   type ToolDefinition,
-} from "zpi-coding-agent";
-import { bindExternalPlugin, importLocalPlugin } from "zpi-plugin-compat";
+} from "@zpi-dev/coding-agent";
+import { bindExternalPlugin, importLocalPlugin } from "@zpi-dev/plugin-compat";
+import { type TObject, Type } from "typebox";
+import { Check } from "typebox/value";
+import { version as sdkVersion } from "../package.json";
 import { coreHooks, lifecycleHook } from "./hooks.ts";
 import { assistantMessage, emptyUsage, messageText, stableUuid, usage, userMessage } from "./messages.ts";
 import { matchesRule, permissionHook, permissionRules } from "./permissions.ts";
@@ -409,7 +410,7 @@ class AgentQuery implements Query {
       model: this.session.model.id,
       tools: this.session.state.tools.map((tool) => tool.name),
       apiKeySource: options.zpi?.providers || options.zpi?.modelRuntime ? "user" : "env",
-      claude_code_version: "zpi/0.1.60",
+      claude_code_version: `zpi/${sdkVersion}`,
       mcp_servers: [],
       slash_commands: this.session.listCommands().map((command) => command.name),
       output_style: "default",

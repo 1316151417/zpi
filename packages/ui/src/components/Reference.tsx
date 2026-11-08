@@ -1,8 +1,8 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { parseMentions } from "@zpi-dev/coding-agent/input";
 import { Copy, ExternalLink } from "lucide-react";
 import { type CSSProperties, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { parseMentions } from "zpi-coding-agent/input";
 import { selectionIntersects } from "../conversation-selections.ts";
 import { fallbackFileIconSource, fileIconSource } from "../file-icons.ts";
 import type { FileLocation } from "../link-target.ts";

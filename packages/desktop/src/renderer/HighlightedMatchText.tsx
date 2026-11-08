@@ -1,6 +1,7 @@
 // Adapted from ZCode quickpick/HighlightedMatchText (Apache-2.0).
+
+import { buildFindMatches } from "@zpi-dev/ui";
 import type { ReactNode } from "react";
-import { buildFindMatches } from "zpi-ui";
 
 interface TextMatchRange {
   start: number;

@@ -8,7 +8,7 @@ import type {
   ResponsesSessionOptions,
   SimpleStreamOptions,
   TranscriptContext,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   assertSupportedOptions,
   guardModelStream,
@@ -17,8 +17,8 @@ import {
   streamSimple,
   validateReasoningConfig,
   validateThinkingMap,
-} from "zpi-ai";
-import { supportsResponsesWebSocket } from "zpi-ai/api/responses-session";
+} from "@zpi-dev/ai";
+import { supportsResponsesWebSocket } from "@zpi-dev/ai/api/responses-session";
 export interface ProviderChatModelConfig extends Omit<Model, "provider" | "api" | "baseUrl"> {
   type?: "chat";
   api?: Api;

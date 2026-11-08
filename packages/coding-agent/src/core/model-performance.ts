@@ -1,4 +1,4 @@
-import type { AssistantMessage, ModelPerformanceSample } from "zpi-ai";
+import type { AssistantMessage, ModelPerformanceSample } from "@zpi-dev/ai";
 
 export interface ModelPerformance {
   turns?: number;

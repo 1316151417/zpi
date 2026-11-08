@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { MediaBudgetStats, ResponsesSessionDiagnostic } from "zpi-ai";
+import type { MediaBudgetStats, ResponsesSessionDiagnostic } from "@zpi-dev/ai";
 
 export const maxErrorLogBytes = 5 * 1024 * 1024;
 type Context = Record<string, string | number | boolean | undefined | MediaBudgetStats["evictionFrontier"]>;

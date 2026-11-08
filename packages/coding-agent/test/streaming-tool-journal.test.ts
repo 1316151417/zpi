@@ -1,9 +1,8 @@
 import { copyFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
-import type { AssistantMessage, Message, ToolCall } from "zpi-ai";
-import { createAssistantMessageEventStream, emptyAssistant, normalizeContext } from "zpi-ai";
+import type { AssistantMessage, Message, ToolCall } from "@zpi-dev/ai";
+import { createAssistantMessageEventStream, emptyAssistant, normalizeContext } from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
@@ -11,7 +10,8 @@ import {
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { responsesInput } from "../../ai/src/api/openai-responses.ts";
 import { restoreView } from "../../desktop/src/main/projection.ts";

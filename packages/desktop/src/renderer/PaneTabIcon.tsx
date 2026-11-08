@@ -1,3 +1,4 @@
+import { FileIcon } from "@zpi-dev/ui";
 import {
   Activity,
   Bot,
@@ -8,7 +9,6 @@ import {
   MessageSquareText,
   SquareTerminal,
 } from "lucide-react";
-import { FileIcon } from "zpi-ui";
 import type { PaneTab } from "./pane-store.ts";
 export function PaneTabIcon({ tab }: { tab: PaneTab }) {
   if (tab.type === "new-tab") return <File size={14} />;

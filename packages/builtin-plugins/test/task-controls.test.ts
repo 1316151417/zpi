@@ -1,6 +1,6 @@
+import { type TaskBackend, TaskControls } from "@zpi-dev/builtin-plugins/tasks/controls";
+import { assembleSession, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, test, vi } from "vitest";
-import { type TaskBackend, TaskControls } from "zpi-builtin-plugins/tasks/controls";
-import { assembleSession, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 function backend(kind: string, taskId: string): TaskBackend {

@@ -1,6 +1,6 @@
+import { ActionHint } from "@zpi-dev/ui";
 import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
 import { createElement, useCallback, useEffect, useRef, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import type { BrowserState } from "../shared/bridge.ts";
 import { browserAddressAfterNavigation } from "./browser-address.ts";
 import { paneTask } from "./pane-store.ts";

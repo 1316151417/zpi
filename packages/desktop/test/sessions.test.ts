@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 import { expect, it } from "vitest";
-import type { DesktopEventEnvelope } from "zpi-ui";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";

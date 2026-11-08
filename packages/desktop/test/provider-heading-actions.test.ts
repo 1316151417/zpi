@@ -1,4 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import {
   type ChangeEvent,
   Children,
@@ -10,7 +11,6 @@ import {
 } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { ActionHint } from "zpi-ui";
 import {
   ProviderHeadingActions,
   type ProviderHeadingActionsProps,

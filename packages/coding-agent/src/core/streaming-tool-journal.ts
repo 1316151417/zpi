@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { AgentEvent } from "zpi-agent";
-import type { AssistantMessage, JsonValue, Message, ToolCall, ToolResultMessage } from "zpi-ai";
-import { isJsonObject } from "zpi-ai";
+import type { AgentEvent } from "@zpi-dev/agent";
+import type { AssistantMessage, JsonValue, Message, ToolCall, ToolResultMessage } from "@zpi-dev/ai";
+import { isJsonObject } from "@zpi-dev/ai";
 import { validateMessage } from "./record-validation.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 import { getMessageProvenance } from "./transcript-store.ts";

@@ -1,15 +1,15 @@
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test, vi } from "vitest";
 import {
   LongMemoryService,
   type LongMemorySource,
   type LongMemoryState,
   type MemoryRunRequest,
   type MemoryRunResult,
-} from "zpi-builtin-plugins/memory/long-memory";
-import { memoryNotesDirectory } from "zpi-builtin-plugins/memory/workspace";
+} from "@zpi-dev/builtin-plugins/memory/long-memory";
+import { memoryNotesDirectory } from "@zpi-dev/builtin-plugins/memory/workspace";
+import { afterEach, expect, test, vi } from "vitest";
 import { defaultMemorySettings, type MemorySettings } from "../src/memory/types.ts";
 import type { CombinedSelection } from "../src/types.ts";
 

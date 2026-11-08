@@ -1,4 +1,4 @@
-import type { HookInput } from "zpi-coding-agent";
+import type { HookInput } from "@zpi-dev/coding-agent";
 import type { BuiltinPluginPorts } from "./ports.ts";
 
 interface NotificationPorts extends Pick<BuiltinPluginPorts, "closing" | "notify"> {

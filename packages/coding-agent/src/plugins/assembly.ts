@@ -1,6 +1,6 @@
+import type { AgentTool } from "@zpi-dev/agent";
+import { assertSupportedOptions, isJsonObject } from "@zpi-dev/ai";
 import type { TSchema } from "typebox";
-import type { AgentTool } from "zpi-agent";
-import { assertSupportedOptions, isJsonObject } from "zpi-ai";
 import { wrapToolDefinition } from "../core/tools/pi/tool-definition-wrapper.ts";
 import type { ToolContext, ToolDefinition } from "../core/types.ts";
 import { validateHookRegistration } from "./hooks.ts";

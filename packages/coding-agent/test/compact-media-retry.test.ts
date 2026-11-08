@@ -1,10 +1,10 @@
-import { expect, it } from "vitest";
 import {
   createAssistantMessageEventStream,
   emptyAssistant,
   normalizeContext,
   type TranscriptContext,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
+import { expect, it } from "vitest";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { completeSummarization } from "../src/core/compaction.ts";
 

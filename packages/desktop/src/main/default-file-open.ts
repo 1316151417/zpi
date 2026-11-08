@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { FileLocation } from "zpi-ui/links";
+import type { FileLocation } from "@zpi-dev/ui/links";
 
 // Use the associated IDE's launcher for explicit file/line navigation.
 // Keep the system opener as a fallback when that launcher is unavailable.

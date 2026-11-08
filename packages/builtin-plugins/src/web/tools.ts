@@ -1,7 +1,7 @@
+import type { AgentToolResult, AgentToolUpdateCallback } from "@zpi-dev/agent";
+import type { JsonValue } from "@zpi-dev/ai";
+import type { ToolDefinition } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
-import type { AgentToolResult, AgentToolUpdateCallback } from "zpi-agent";
-import type { JsonValue } from "zpi-ai";
-import type { ToolDefinition } from "zpi-coding-agent";
 import type { WebSearchSource, WebToolDetails } from "../types.ts";
 import {
   fetchInput,

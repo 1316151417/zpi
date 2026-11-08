@@ -1,5 +1,5 @@
+import { ChatComposer } from "@zpi-dev/ui";
 import { useState } from "react";
-import { ChatComposer } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { composerShortcutCommand } from "./composer-shortcuts.ts";
 import { ModelPerformance } from "./ModelPerformance.tsx";

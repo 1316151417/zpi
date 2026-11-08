@@ -1,6 +1,6 @@
+import type { ViewBlock } from "@zpi-dev/ui";
 import type { ReactElement, ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { ViewBlock } from "zpi-ui";
 
 type ToolBlock = Extract<ViewBlock, { type: "tool" }>;
 const harness = vi.hoisted(() => ({
@@ -41,7 +41,7 @@ vi.mock("react", async (original) => ({
   useCallback: (callback: unknown) => callback,
   useEffect: () => {},
 }));
-vi.mock("zpi-ui", async () => ({
+vi.mock("@zpi-dev/ui", async () => ({
   ...(await import("../../ui/src/components/use-selection-stable-value.ts")),
   ToolFilePreview: () => null,
   DiffView: () => null,
@@ -52,7 +52,7 @@ vi.mock("../src/renderer/store.ts", () => ({
 vi.mock("../src/renderer/pane-store.ts", () => ({ openFile: vi.fn(), paneTask: vi.fn() }));
 vi.mock("../src/renderer/PreviewHeader.tsx", () => ({ PreviewHeader: () => null }));
 
-import { DiffView, ToolFilePreview } from "zpi-ui";
+import { DiffView, ToolFilePreview } from "@zpi-dev/ui";
 import { ChangesPane } from "../src/renderer/ChangesPane.tsx";
 
 type Element = ReactElement<Record<string, unknown>>;

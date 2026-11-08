@@ -2,8 +2,6 @@
 import * as Context from "@radix-ui/react-context-menu";
 import * as Select from "@radix-ui/react-select";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, ChevronDown, ChevronUp, Copy, FileText, FolderOpen, ListTree, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultCodePreview,
   FileIcon,
@@ -13,7 +11,9 @@ import {
   ReviewDiffViewer,
   reviewFindTargets,
   useTextFind,
-} from "zpi-ui";
+} from "@zpi-dev/ui";
+import { Check, ChevronDown, ChevronUp, Copy, FileText, FolderOpen, ListTree, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DiffItem } from "../shared/bridge.ts";
 import { type ReviewSnapshot, type ReviewSource, reviewPatchStats, reviewSources } from "../shared/review.ts";
 import { openFileManager, paneTask } from "./pane-store.ts";

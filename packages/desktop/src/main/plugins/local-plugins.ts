@@ -1,13 +1,13 @@
 import { join } from "node:path";
-import { parseSubagentMarkdown } from "zpi-builtin-plugins/collaboration/profiles";
-import type { SubagentProfile } from "zpi-builtin-plugins/collaboration/types";
-import type { PluginSnapshot, SessionPlugin } from "zpi-coding-agent";
+import { parseSubagentMarkdown } from "@zpi-dev/builtin-plugins/collaboration/profiles";
+import type { SubagentProfile } from "@zpi-dev/builtin-plugins/collaboration/types";
+import type { PluginSnapshot, SessionPlugin } from "@zpi-dev/coding-agent";
 import {
   assertExternalPlugin,
   bindExternalPlugin,
   importLocalPlugin,
   isExternalPlugin,
-} from "zpi-plugin-compat";
+} from "@zpi-dev/plugin-compat";
 import type { StateStore } from "../state-store.ts";
 
 /** Registered local imports only; project directories never imply executable plugin consent. */

@@ -1,4 +1,4 @@
-import type { PreviewServices } from "zpi-ui";
+import type { PreviewServices } from "@zpi-dev/ui";
 import { openBrowser, openFile } from "./pane-store.ts";
 import { previewLoader } from "./preview-loader.ts";
 import { unwrap } from "./unwrap.ts";

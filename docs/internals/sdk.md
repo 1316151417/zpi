@@ -6,7 +6,7 @@
 
 `packages/agent-sdk` 提供 Claude 风格的 `query`、Options、消息与控制协议。协议适配、标准工具参数、策略、资源发现和打包均在此包实现；底层循环不感知这些兼容名称。构建产物包含私有运行时及独立声明文件，不依赖桌面包。
 
-桌面从 `zpi-agent-sdk/host` 创建原生会话，用 `query` 驱动主会话、标题生成与记忆处理。主会话通过 `zpi.session/sessionManager/modelRuntime/input` 复用已冻结的插件装配、索引存储和已解析输入。SDK 不接管该会话的销毁；原生事件继续用于桌面投影。借用会话时不能传 `canUseTool` 等创建期工具策略，应在原生会话创建阶段统一配置。普通脚本直接使用 `query`，由 SDK 持有并释放会话。
+桌面从 `@zpi-dev/agent-sdk/host` 创建原生会话，用 `query` 驱动主会话、标题生成与记忆处理。主会话通过 `zpi.session/sessionManager/modelRuntime/input` 复用已冻结的插件装配、索引存储和已解析输入。SDK 不接管该会话的销毁；原生事件继续用于桌面投影。借用会话时不能传 `canUseTool` 等创建期工具策略，应在原生会话创建阶段统一配置。普通脚本直接使用 `query`，由 SDK 持有并释放会话。
 
 内核通过完整系统提示、模型请求前检查、动态请求选项、压缩前后事件和资源加载后的工具准备端口与宿主协作，均与外部协议解耦。
 

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
+import { prepareTaskOutputArguments } from "@zpi-dev/builtin-plugins/tasks/controls";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { expect, test } from "vitest";
-import { prepareTaskOutputArguments } from "zpi-builtin-plugins/tasks/controls";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";

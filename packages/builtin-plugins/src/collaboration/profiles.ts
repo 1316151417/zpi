@@ -12,9 +12,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { isJsonObject } from "@zpi-dev/ai";
+import { parseMarkdownFrontmatter } from "@zpi-dev/coding-agent";
 import { stringify } from "yaml";
-import { isJsonObject } from "zpi-ai";
-import { parseMarkdownFrontmatter } from "zpi-coding-agent";
 import type { PluginStorage } from "../ports.ts";
 import type { CombinedSelection } from "../types.ts";
 import { buildExploreAgentPrompt, buildGeneralPurposeSystemPrompt } from "./built-in.ts";

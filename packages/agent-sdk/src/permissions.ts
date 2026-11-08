@@ -1,5 +1,5 @@
 import { isAbsolute, resolve } from "node:path";
-import type { HookRegistration } from "zpi-coding-agent";
+import type { HookRegistration } from "@zpi-dev/coding-agent";
 import type { Options, SDKPermissionDenial } from "./types.ts";
 
 interface Rule {

@@ -1,7 +1,7 @@
+import type { ModelRetryStatus } from "@zpi-dev/ai";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { ModelRetryStatus } from "zpi-ai";
 import { InputNotice } from "../src/components/InputNotice.tsx";
 import { ModelWaitNotice } from "../src/components/ModelWaitNotice.tsx";
 import { Notice } from "../src/components/Notice.tsx";

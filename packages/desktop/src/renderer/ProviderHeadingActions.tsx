@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import { MoreHorizontal } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { ActionHint } from "zpi-ui";
 
 export type ProviderHeadingActionsProps = {
   enabled: boolean;

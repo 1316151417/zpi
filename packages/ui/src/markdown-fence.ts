@@ -1,1 +1,1 @@
-export { type MarkdownFence, markdownFence } from "zpi-coding-agent/input";
+export { type MarkdownFence, markdownFence } from "@zpi-dev/coding-agent/input";

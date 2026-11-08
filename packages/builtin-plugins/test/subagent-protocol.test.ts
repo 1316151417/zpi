@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
+import * as protocol from "@zpi-dev/builtin-plugins/collaboration/protocol";
 import { expect, test } from "vitest";
-import * as protocol from "zpi-builtin-plugins/collaboration/protocol";
 
 // Evaluated from the checked-out ZCode implementations, including the runner's
 // SendMessage success objects. Tests need no access to that checkout.

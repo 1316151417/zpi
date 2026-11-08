@@ -1,8 +1,8 @@
+import { Agent, type AgentTool } from "@zpi-dev/agent";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
+import { UserQuestions } from "@zpi-dev/builtin-plugins/questions";
 import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
-import { Agent, type AgentTool } from "zpi-agent";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { UserQuestions } from "zpi-builtin-plugins/questions";
 import { chunk, deferred, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { projectEvent } from "../src/main/projection.ts";
 import { SessionHost } from "../src/main/session-host.ts";

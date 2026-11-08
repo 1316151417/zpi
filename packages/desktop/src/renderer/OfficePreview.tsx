@@ -1,7 +1,7 @@
 import { setWasmSource, XlsxViewer, type XlsxViewerController } from "@extend-ai/react-xlsx";
 import xlsxWasmUrl from "@extend-ai/react-xlsx/duke_sheets_wasm_bg.wasm?url";
+import { useAppearance } from "@zpi-dev/ui";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
-import { useAppearance } from "zpi-ui";
 import type { FilePreview } from "../shared/bridge.ts";
 import DocxPreview from "./DocxPreview.tsx";
 import { installDocumentLinkSafety } from "./office-preview-model.ts";

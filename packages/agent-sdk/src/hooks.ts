@@ -1,5 +1,5 @@
-import type { HookRegistration } from "zpi-coding-agent";
-import { decodeHookOutput, hookInputPayload } from "zpi-plugin-compat";
+import type { HookRegistration } from "@zpi-dev/coding-agent";
+import { decodeHookOutput, hookInputPayload } from "@zpi-dev/plugin-compat";
 import type { HookEvent, HookInput, Options } from "./types.ts";
 
 export function coreHooks(options: Options, transcript: string): HookRegistration[] {
@@ -64,7 +64,7 @@ export async function lifecycleHook(
       );
       try {
         signal.throwIfAborted();
-        const { abortable } = await import("zpi-ai");
+        const { abortable } = await import("@zpi-dev/ai");
         await abortable(
           callback({ ...input, hook_event_name: event } as HookInput, undefined, {
             signal: controller.signal,

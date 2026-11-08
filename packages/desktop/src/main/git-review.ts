@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { readFileBounded } from "zpi-coding-agent";
+import { readFileBounded } from "@zpi-dev/coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import type { ReviewDiffData, ReviewSnapshot, ReviewSource } from "../shared/review.ts";
 import { isPathInside } from "./path-bounds.ts";

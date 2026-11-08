@@ -1,8 +1,8 @@
 import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createEditTool, type FileChange, type SessionEntry } from "@zpi-dev/coding-agent";
 import { createTwoFilesPatch } from "diff";
 import { expect, test, vi } from "vitest";
-import { createEditTool, type FileChange, type SessionEntry } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { recordFileChange } from "../../coding-agent/src/core/tools/file-change.ts";
 import * as changesModule from "../src/main/file-changes.ts";

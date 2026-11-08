@@ -1,4 +1,4 @@
-import type { ProviderConfigInput } from "zpi-coding-agent";
+import type { ProviderConfigInput } from "@zpi-dev/coding-agent";
 import { resolveModel, type SettingsStore } from "./storage.ts";
 
 export function modelRuntimeConfig(

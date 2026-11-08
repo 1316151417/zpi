@@ -1,5 +1,5 @@
-import { isJsonObject } from "zpi-ai";
-import type { SessionEntry } from "zpi-coding-agent";
+import { isJsonObject } from "@zpi-dev/ai";
+import type { SessionEntry } from "@zpi-dev/coding-agent";
 import { sessionReferenceTranscriptReverse } from "../transcripts.ts";
 
 // Memory reads and writes are derivative material, never fresh preference evidence.

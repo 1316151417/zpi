@@ -4,8 +4,8 @@
  * Shared utilities for compaction and branch summarization.
  */
 
-import type { Message as AgentMessage } from "zpi-ai";
-import { contentText, type Message } from "zpi-ai";
+import type { Message as AgentMessage } from "@zpi-dev/ai";
+import { contentText, type Message } from "@zpi-dev/ai";
 
 // ============================================================================
 // File Operation Tracking

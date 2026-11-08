@@ -1,7 +1,7 @@
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import type { JsonObject } from "zpi-ai";
+import type { JsonObject } from "@zpi-dev/ai";
 import { matchMarkdownFrontmatter, parseMarkdownFrontmatter } from "./markdown.ts";
 import type { ResourceDiagnostic, ResourceLoader } from "./types.ts";
 

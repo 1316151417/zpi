@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createAgentSession, ModelRuntime, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { demoServer, fakeConfig } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 

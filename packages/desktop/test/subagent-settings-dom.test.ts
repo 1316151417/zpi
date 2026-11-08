@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
+import { defaultPluginSettings } from "@zpi-dev/builtin-plugins";
+import type { SubagentCatalog } from "@zpi-dev/builtin-plugins/collaboration/types";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { defaultPluginSettings } from "zpi-builtin-plugins";
-import type { SubagentCatalog } from "zpi-builtin-plugins/collaboration/types";
 import type { Result } from "../src/shared/bridge.ts";
 
 const state = vi.hoisted(() => ({
@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
       version: 2,
       enabled: { "zpi.collaboration": true },
       options: {},
-    } as typeof import("zpi-builtin-plugins").defaultPluginSettings,
+    } as typeof import("@zpi-dev/builtin-plugins").defaultPluginSettings,
   },
   projects: [{ id: "project", name: "Project" }],
   sessions: new Map([["session", { projectId: "project" }]]),

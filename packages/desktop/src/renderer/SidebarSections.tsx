@@ -1,8 +1,8 @@
 // Adapted from ZCode project-sidebar/PurposeSections and WorkspacePurposeSection (Apache-2.0), 3c5b2276.
 import type { Modifier } from "@dnd-kit/core";
+import { SortableList } from "@zpi-dev/ui";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { SortableList } from "zpi-ui";
 
 const verticalAxis: Modifier[] = [({ transform }) => ({ ...transform, x: 0 })];
 const storageKey = "zpi.sidebarSectionOrder";

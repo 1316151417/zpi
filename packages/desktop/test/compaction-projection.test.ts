@@ -1,6 +1,6 @@
+import { SessionManager } from "@zpi-dev/coding-agent";
+import { emptySession, reduceSession } from "@zpi-dev/ui/projection";
 import { expect, it } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
-import { emptySession, reduceSession } from "zpi-ui/projection";
 import { projectEvent, restoreView } from "../src/main/projection.ts";
 
 it("restores compaction lifecycle and turns unfinished operations into interrupted dividers", () => {

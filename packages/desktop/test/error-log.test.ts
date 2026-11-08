@@ -1,8 +1,8 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { ResponsesSession } from "@zpi-dev/ai/api/responses-session";
 import { afterEach, expect, it, vi } from "vitest";
-import { ResponsesSession } from "zpi-ai/api/responses-session";
 import { ErrorLog, maxErrorLogBytes } from "../src/main/error-log.ts";
 
 const directories: string[] = [];

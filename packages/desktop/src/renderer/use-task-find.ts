@@ -1,5 +1,5 @@
+import type { FindRequest, FindState } from "@zpi-dev/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FindRequest, FindState } from "zpi-ui";
 import { openChanges, usePane } from "./pane-store.ts";
 
 const emptyRequest = (): FindRequest => ({ query: "", activeIndex: -1, navigationId: 0 });

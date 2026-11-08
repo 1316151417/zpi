@@ -1,9 +1,9 @@
 import { join } from "node:path";
+import type { ModelPerformanceSample } from "@zpi-dev/ai";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
+import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import type { ModelPerformanceSample } from "zpi-ai";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { createAgentSession, ModelRuntime, SessionManager, SettingsManager } from "zpi-coding-agent";
 import { deferred, fakeConfig } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 

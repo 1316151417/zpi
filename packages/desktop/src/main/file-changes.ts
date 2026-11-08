@@ -2,9 +2,9 @@ import { isUtf8 } from "node:buffer";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Worker } from "node:worker_threads";
-import { isJsonObject } from "zpi-ai";
-import type { FileChange, SessionEntry } from "zpi-coding-agent";
-import { patchLineCounts, readFileBounded } from "zpi-coding-agent";
+import { isJsonObject } from "@zpi-dev/ai";
+import type { FileChange, SessionEntry } from "@zpi-dev/coding-agent";
+import { patchLineCounts, readFileBounded } from "@zpi-dev/coding-agent";
 import type { DiffItem } from "../shared/bridge.ts";
 import { isPathInside } from "./path-bounds.ts";
 

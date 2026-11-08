@@ -2,9 +2,8 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ToolDefinition } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
-
-import type { ToolDefinition } from "zpi-coding-agent";
 import type { TaskBackend, TaskOutputInput } from "../tasks/controls.ts";
 import { assertToolArguments, validateToolArguments } from "../tool-validation.ts";
 import type { CombinedSelection, SubagentTask } from "../types.ts";

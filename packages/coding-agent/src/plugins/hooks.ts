@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
+import type { AgentToolResult } from "@zpi-dev/agent";
+import { abortable, assertSupportedOptions } from "@zpi-dev/ai";
 import { Type } from "typebox";
 import { Check } from "typebox/value";
-import type { AgentToolResult } from "zpi-agent";
-import { abortable, assertSupportedOptions } from "zpi-ai";
 
 export const hookEvents = [
   "SessionStart",

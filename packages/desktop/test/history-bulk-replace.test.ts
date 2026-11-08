@@ -2,8 +2,8 @@ import { fsyncSync, mkdtempSync, openSync, readFileSync, rmSync, writeSync } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { maxSessionEntryBytes, type SessionEntry, SessionManager } from "@zpi-dev/coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
-import { maxSessionEntryBytes, type SessionEntry, SessionManager } from "zpi-coding-agent";
 import { type GenerationHooks, HistoryIndex } from "../src/main/history-index.ts";
 
 vi.mock("node:fs", async (importOriginal) => {

@@ -1,5 +1,5 @@
-import type { JsonObject } from "zpi-ai";
-import type { HookEvent, PluginSnapshot, SessionPlugin } from "zpi-coding-agent";
+import type { JsonObject } from "@zpi-dev/ai";
+import type { HookEvent, PluginSnapshot, SessionPlugin } from "@zpi-dev/coding-agent";
 
 const communicationStyleRules = [
   "Before the first tool call, briefly state your next action; during work, report meaningful findings or changes in direction.",

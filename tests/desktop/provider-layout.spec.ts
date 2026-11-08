@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { providerBaseUrl } from "zpi-ai";
+import { providerBaseUrl } from "@zpi-dev/ai";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";

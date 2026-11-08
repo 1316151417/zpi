@@ -1,19 +1,19 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
 import {
   createAssistantMessageEventStream,
   emptyAssistant,
   type Message,
   type ToolResultMessage,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import {
   applyMicrocompactBoundary,

@@ -1,9 +1,9 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { emptyAssistant } from "@zpi-dev/ai";
+import { sessionReferenceTranscriptReverse } from "@zpi-dev/builtin-plugins/transcripts";
+import { buildSessionMentionMarkdown, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { sessionReferenceTranscriptReverse } from "zpi-builtin-plugins/transcripts";
-import { buildSessionMentionMarkdown, SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";

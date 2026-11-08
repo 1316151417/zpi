@@ -1,4 +1,4 @@
-import { createPreviewLoader } from "zpi-ui";
+import { createPreviewLoader } from "@zpi-dev/ui";
 import { unwrap } from "./unwrap.ts";
 export const previewLoader = createPreviewLoader({
   getChangedPaths: async (id, runId) => {

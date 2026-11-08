@@ -1,6 +1,6 @@
 {
-  "name": "zpi-plugin-compat",
-  "version": "0.1.60",
+  "name": "@zpi-dev/plugin-compat",
+  "version": "0.1.61",
   "private": true,
   "type": "module",
   "exports": {
@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "yaml": "2.9.1",
-    "zpi-ai": "0.1.60",
-    "zpi-coding-agent": "0.1.60"
+    "@zpi-dev/ai": "0.1.61",
+    "@zpi-dev/coding-agent": "0.1.61"
   }
 }

@@ -1,10 +1,15 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentMessage } from "@zpi-dev/agent";
+import { calculateContextTokens, emptyAssistant, type Message } from "@zpi-dev/ai";
+import {
+  createAgentSession,
+  ModelRuntime,
+  SessionManager,
+  StaticResourceLoader,
+} from "@zpi-dev/coding-agent";
 import { afterEach, expect, it } from "vitest";
-import type { AgentMessage } from "zpi-agent";
-import { calculateContextTokens, emptyAssistant, type Message } from "zpi-ai";
-import { createAgentSession, ModelRuntime, SessionManager, StaticResourceLoader } from "zpi-coding-agent";
 import { chunk, done, fakeConfig, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 import {
   calculateContextTokens as compactionContextTokens,

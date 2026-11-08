@@ -1,6 +1,18 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
+  getProviderPreset,
+  type ProviderApi,
+  type ProviderPresetId,
+  presetModels,
+  providerApi,
+  providerApis,
+  providerBaseUrl,
+  providerPresets,
+  usesChatGPTAuth,
+} from "@zpi-dev/ai";
+import { ActionHint, codePreviewThemes, defaultCodePreview, SortableList } from "@zpi-dev/ui";
+import {
   Anchor,
   Archive,
   ArrowLeft,
@@ -26,18 +38,6 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import {
-  getProviderPreset,
-  type ProviderApi,
-  type ProviderPresetId,
-  presetModels,
-  providerApi,
-  providerApis,
-  providerBaseUrl,
-  providerPresets,
-  usesChatGPTAuth,
-} from "zpi-ai";
-import { ActionHint, codePreviewThemes, defaultCodePreview, SortableList } from "zpi-ui";
 import type { InterfacePreferences, ModelSettings, ProviderRecord } from "../shared/bridge.ts";
 import { ArchivedTasks } from "./ArchivedTasks.tsx";
 import { ChatGPTConnection } from "./ChatGPTConnection.tsx";

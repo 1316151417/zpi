@@ -1,7 +1,7 @@
+import { emptyAssistant, type JsonObject } from "@zpi-dev/ai";
+import { memoryEvidence } from "@zpi-dev/builtin-plugins/memory/evidence";
+import { type SessionEntry, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, test } from "vitest";
-import { emptyAssistant, type JsonObject } from "zpi-ai";
-import { memoryEvidence } from "zpi-builtin-plugins/memory/evidence";
-import { type SessionEntry, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 const assistant = emptyAssistant(fakeModel("http://localhost"));

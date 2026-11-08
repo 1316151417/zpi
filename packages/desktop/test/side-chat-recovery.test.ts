@@ -1,7 +1,7 @@
 import { join } from "node:path";
+import { emptyAssistant } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { StreamingToolJournal } from "../../coding-agent/src/core/streaming-tool-journal.ts";
 import { SessionHost } from "../src/main/session-host.ts";

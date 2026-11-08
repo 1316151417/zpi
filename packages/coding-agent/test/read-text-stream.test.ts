@@ -1,8 +1,8 @@
 import { createReadStream } from "node:fs";
 import { open, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createReadToolDefinition, FileReadState } from "@zpi-dev/coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
-import { createReadToolDefinition, FileReadState } from "zpi-coding-agent";
 import { temp } from "./helpers/workspace-fixture.ts";
 
 vi.mock("node:fs", async (importOriginal) => {

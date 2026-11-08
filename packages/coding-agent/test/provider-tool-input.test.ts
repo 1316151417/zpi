@@ -1,13 +1,13 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it } from "vitest";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

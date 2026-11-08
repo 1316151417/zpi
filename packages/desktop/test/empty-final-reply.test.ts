@@ -1,8 +1,8 @@
+import { type AssistantMessage, emptyAssistant, type Message } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { type AssistantMessage, emptyAssistant, type Message } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { RunGroup } from "../../ui/src/components/Conversation.tsx";
 import { runPresentation } from "../../ui/src/components/process-presentation.ts";

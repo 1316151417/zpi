@@ -6,7 +6,7 @@ import {
   type ResourceLoader,
   readFileBounded,
   type SkillList,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 import { sdkHome } from "./runtime.ts";
 import type { Options } from "./types.ts";
 
@@ -107,7 +107,7 @@ async function boundedText(path: string): Promise<string | undefined> {
 
 /** Agent markdown is data; execution still goes through the SDK's registered tools. */
 export function pluginAgents(
-  snapshot: import("zpi-coding-agent").PluginSnapshot,
+  snapshot: import("@zpi-dev/coding-agent").PluginSnapshot,
 ): Record<string, import("./types.ts").AgentDefinition> {
   const result: Record<string, import("./types.ts").AgentDefinition> = {};
   const definitions = snapshot.options?.agents;

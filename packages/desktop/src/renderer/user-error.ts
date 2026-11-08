@@ -1,1 +1,1 @@
-export { attachmentLimitMessage, userErrorMessage } from "zpi-ui/errors";
+export { attachmentLimitMessage, userErrorMessage } from "@zpi-dev/ui/errors";

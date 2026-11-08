@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { AgentTool, ThinkingLevel } from "zpi-agent";
-import type { Context, Model } from "zpi-ai";
-import { assertSupportedOptions, clampThinkingLevel } from "zpi-ai";
+import type { AgentTool, ThinkingLevel } from "@zpi-dev/agent";
+import type { Context, Model } from "@zpi-dev/ai";
+import { assertSupportedOptions, clampThinkingLevel } from "@zpi-dev/ai";
 import { assembleSession, type SessionContributions, validatePluginSnapshot } from "../plugins/assembly.ts";
 import type { HookRegistration } from "../plugins/hooks.ts";
 import { withPluginResources } from "../plugins/resources.ts";
@@ -25,7 +25,7 @@ export interface SystemPromptContext {
 export interface CreateAgentSessionOptions extends SessionContributions {
   /** Build tool definitions and selection once the shared resource catalog is loaded. */
   prepareTools?: (loader: ResourceLoader) => Pick<SessionContributions, "customTools" | "tools">;
-  modelRequestOptions?: () => import("zpi-ai").SimpleStreamOptions;
+  modelRequestOptions?: () => import("@zpi-dev/ai").SimpleStreamOptions;
   onCompaction?: (
     phase: "before" | "after",
     context: { manual: boolean; instructions: string },

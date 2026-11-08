@@ -139,7 +139,7 @@ for (const name of ["ref", "zpi"]) {
         { filter: /^radix-ui$|^class-variance-authority$|^clsx$|^tailwind-merge$/ },
         (args) => ({ path: refRequire.resolve(args.path) }),
       );
-      build.onResolve({ filter: /^zpi-ui$/ }, () => ({ path: "minimal", namespace: "zpi-minimal" }));
+      build.onResolve({ filter: /^@zpi-dev\/ui$/ }, () => ({ path: "minimal", namespace: "zpi-minimal" }));
       build.onLoad({ filter: /.*/, namespace: "zpi-minimal" }, () => ({
         contents: `export {FileIcon} from ${JSON.stringify(resolve("packages/ui/src/components/Reference.tsx"))};export {ActionHint} from ${JSON.stringify(resolve("packages/ui/src/components/MessageActions.tsx"))};`,
         loader: "tsx",

@@ -1,4 +1,4 @@
-import type { DesktopEventEnvelope } from "zpi-ui";
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 import {
   eventBatchIntervalMs,
   eventBatchMaxChars,

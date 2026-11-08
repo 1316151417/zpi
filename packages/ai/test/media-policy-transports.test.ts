@@ -1,5 +1,10 @@
+import {
+  normalizeContext,
+  type SimpleStreamOptions,
+  streamSimple,
+  type TranscriptContext,
+} from "@zpi-dev/ai";
 import { afterEach, expect, it, vi } from "vitest";
-import { normalizeContext, type SimpleStreamOptions, streamSimple, type TranscriptContext } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { streamSimple as anthropic } from "../src/api/anthropic-messages.ts";
 import { stream as completions } from "../src/api/openai-completions.ts";

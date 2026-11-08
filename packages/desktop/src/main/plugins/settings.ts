@@ -1,5 +1,5 @@
-import { isJsonObject } from "zpi-ai";
-import { type defaultPluginSettings, validateBuiltinPluginOptions } from "zpi-builtin-plugins";
+import { isJsonObject } from "@zpi-dev/ai";
+import { type defaultPluginSettings, validateBuiltinPluginOptions } from "@zpi-dev/builtin-plugins";
 
 export function validatePluginSettings(value: unknown): asserts value is typeof defaultPluginSettings {
   if (

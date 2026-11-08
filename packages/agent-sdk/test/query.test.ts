@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAgentSession, SessionManager, StaticResourceLoader } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
 import { afterEach, expect, test, vi } from "vitest";
-import { createAgentSession, SessionManager, StaticResourceLoader } from "zpi-coding-agent";
 import { chunk, done, fakeServer, send } from "../../../tests/fake-server.ts";
 import { forkSession, getSessionMessages, listSessions, query, renameSession } from "../src/index.ts";
 import { runtimeFor } from "../src/runtime.ts";

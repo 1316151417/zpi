@@ -1,6 +1,6 @@
 import { join } from "node:path";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it, vi } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { sessionActivityAt, streamingActivityIntervalMs } from "../src/main/session-activity.ts";
 import { SessionHost } from "../src/main/session-host.ts";
@@ -37,7 +37,7 @@ it("uses the header creation time and persisted conversation activity, excluding
 it("stamps streaming activity at the Host and does not promote metadata or stale status to running", async () => {
   const f = await fixture((_, response) => send(response, chunk({ content: "partial" })));
   const id = (await f.host.createSession(f.a.id)).id;
-  const events: import("zpi-ui").DesktopEventEnvelope[] = [];
+  const events: import("@zpi-dev/ui").DesktopEventEnvelope[] = [];
   f.host.subscribe((e) => events.push(e));
   await f.host.startRun({ sessionId: id, text: "hello" });
   await vi.waitFor(() => expect(events.some((e) => e.event.type === "block_delta")).toBe(true));
@@ -77,7 +77,7 @@ it("delivers every streamed delta without stamping task activity for each token"
     done(response);
   });
   const id = (await f.host.createSession(f.a.id)).id;
-  const events: import("zpi-ui").DesktopEventEnvelope[] = [];
+  const events: import("@zpi-dev/ui").DesktopEventEnvelope[] = [];
   f.host.subscribe((event) => events.push(event));
   const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
   try {

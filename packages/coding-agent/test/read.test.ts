@@ -1,10 +1,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createReadToolDefinition, imageLimits } from "@zpi-dev/coding-agent";
 import sharp from "sharp";
 import { Check } from "typebox/value";
 import { expect, it, vi } from "vitest";
-import { createReadToolDefinition, imageLimits } from "zpi-coding-agent";
 
 it("read rejects invalid line numbers before accessing files, including direct SDK calls", async () => {
   const operations = {

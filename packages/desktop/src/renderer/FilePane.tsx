@@ -1,4 +1,14 @@
 import { File } from "@pierre/diffs/react";
+import {
+  type ConversationSelection,
+  ConversationSelectionMenu,
+  type FileAction,
+  Markdown,
+  MermaidBlock,
+  useAppearance,
+} from "@zpi-dev/ui";
+import { toolCodeLanguage } from "@zpi-dev/ui/code-language";
+import type { FileLocation, WebOpenOptions } from "@zpi-dev/ui/links";
 import { Trash2 } from "lucide-react";
 import {
   lazy,
@@ -11,16 +21,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import {
-  type ConversationSelection,
-  ConversationSelectionMenu,
-  type FileAction,
-  Markdown,
-  MermaidBlock,
-  useAppearance,
-} from "zpi-ui";
-import { toolCodeLanguage } from "zpi-ui/code-language";
-import type { FileLocation, WebOpenOptions } from "zpi-ui/links";
 import type { FilePreview } from "../shared/bridge.ts";
 import { FileCommentEditor } from "./FileCommentEditor.tsx";
 import { FilePreviewBoundary } from "./FilePreviewBoundary.tsx";

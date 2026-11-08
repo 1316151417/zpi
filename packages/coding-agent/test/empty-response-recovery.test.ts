@@ -1,11 +1,11 @@
-import { expect, it } from "vitest";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it } from "vitest";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 
 it.each([false, true])("retries an empty completed response only once, then success=%s", async (recovers) => {

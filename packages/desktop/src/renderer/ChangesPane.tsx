@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   DiffView,
   type FindRequest,
@@ -7,7 +5,9 @@ import {
   ToolFilePreview,
   toolFile,
   useSelectionStableValue,
-} from "zpi-ui";
+} from "@zpi-dev/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { DiffItem } from "../shared/bridge.ts";
 import { PreviewHeader } from "./PreviewHeader.tsx";
 import { openFile, paneTask } from "./pane-store.ts";

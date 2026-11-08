@@ -1,6 +1,6 @@
+import type { Message } from "@zpi-dev/ai";
+import { emptyAssistant } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import type { Message } from "zpi-ai";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { transformMessages } from "../src/api/transform-messages.ts";
 

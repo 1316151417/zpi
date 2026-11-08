@@ -1,10 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fetchProviderModels } from "@zpi-dev/ai";
+import {
+  beginChatGPTLogin,
+  type ChatGPTCredential,
+  verifyChatGPTIdentity,
+} from "@zpi-dev/ai/auth/openai-chatgpt";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, expect, it, vi } from "vitest";
-import { fetchProviderModels } from "zpi-ai";
-import { beginChatGPTLogin, type ChatGPTCredential, verifyChatGPTIdentity } from "zpi-ai/auth/openai-chatgpt";
 import { ChatGPTAuth } from "../src/main/chatgpt-auth.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 

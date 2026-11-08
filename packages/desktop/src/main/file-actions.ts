@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
-import type { FileLocation } from "zpi-ui/links";
+import type { FileLocation } from "@zpi-dev/ui/links";
 import { localFileCandidate, resolveLocalFilePath, validateFileLocation } from "./local-file-path.ts";
 
 interface FileActionServices {

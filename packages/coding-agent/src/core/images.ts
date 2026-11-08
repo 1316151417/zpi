@@ -1,4 +1,4 @@
-import type { ImageContent } from "zpi-ai";
+import type { ImageContent } from "@zpi-dev/ai";
 import { imageLimits } from "./image-limits.ts";
 import { openImage } from "./tools/pi/utils/image-source.ts";
 

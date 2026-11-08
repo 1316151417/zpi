@@ -1,5 +1,5 @@
-import { isJsonObject, type JsonValue } from "zpi-ai";
-import { isSessionEntry, type SessionEntry, type SessionHeader } from "zpi-coding-agent";
+import { isJsonObject, type JsonValue } from "@zpi-dev/ai";
+import { isSessionEntry, type SessionEntry, type SessionHeader } from "@zpi-dev/coding-agent";
 
 export interface TranscriptHeader extends Omit<SessionHeader, "version"> {
   version: 2;

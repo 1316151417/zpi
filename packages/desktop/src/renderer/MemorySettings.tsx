@@ -1,11 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import {
   type MemorySettings as MemorySettingsData,
   type MemoryStatus,
   memorySettingLimits,
-} from "zpi-builtin-plugins/memory/types";
+} from "@zpi-dev/builtin-plugins/memory/types";
+import { X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { CombinedSelection, ProviderRecord } from "../shared/bridge.ts";
 import { defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { memoryMode } from "../shared/plugins.ts";

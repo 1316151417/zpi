@@ -1,7 +1,7 @@
+import type { Conversation } from "@zpi-dev/ui";
 import { type ComponentProps, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
-import type { Conversation } from "zpi-ui";
 
 const f = vi.hoisted(() => ({
   props: undefined as ComponentProps<typeof Conversation> | undefined,
@@ -15,7 +15,7 @@ const f = vi.hoisted(() => ({
     historyLoading: new Set(),
   },
 }));
-vi.mock("zpi-ui", () => ({
+vi.mock("@zpi-dev/ui", () => ({
   Conversation: (props: ComponentProps<typeof Conversation>) => {
     f.props = props;
     return null;

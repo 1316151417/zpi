@@ -11,9 +11,9 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { ThinkingLevel } from "zpi-agent";
-import type { JsonValue, Message, SystemMessage, Usage } from "zpi-ai";
-import { assertSupportedOptions, getCurrentTools, isJsonObject } from "zpi-ai";
+import type { ThinkingLevel } from "@zpi-dev/agent";
+import type { JsonValue, Message, SystemMessage, Usage } from "@zpi-dev/ai";
+import { assertSupportedOptions, getCurrentTools, isJsonObject } from "@zpi-dev/ai";
 import { applyMicrocompactBoundary, microcompactClearedIds } from "./microcompact.ts";
 import {
   isSessionEntry,

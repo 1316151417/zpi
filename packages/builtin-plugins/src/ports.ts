@@ -1,4 +1,4 @@
-import type { ImageContent, Model } from "zpi-ai";
+import type { ImageContent, Model } from "@zpi-dev/ai";
 import type {
   AgentSession,
   IndexedSessionEntry,
@@ -6,7 +6,7 @@ import type {
   PluginSnapshot,
   SessionEntry,
   TranscriptSnapshot,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 import type { SubagentProfile } from "./collaboration/types.ts";
 import type { MemoryInheritance, MemorySettings } from "./memory/types.ts";
 import type {

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { realpath, writeFile } from "node:fs/promises";
-import type { AgentTool, AgentToolResult } from "zpi-agent";
-import type { JsonValue, Model } from "zpi-ai";
+import type { AgentTool, AgentToolResult } from "@zpi-dev/agent";
+import type { JsonValue, Model } from "@zpi-dev/ai";
 import type { ToolContext, ToolDefinition } from "../types.ts";
 import { beforeFile, type FileChange, recordFileChange } from "./file-change.ts";
 import { type BashToolOptions, createBashToolDefinition } from "./pi/bash.ts";

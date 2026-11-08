@@ -8,7 +8,7 @@ import {
   planFileRewind,
   type SessionEntry,
   SessionManager,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 import { assistantMessage, messageText, messageUuids, userMessage } from "./messages.ts";
 import type { Options, RewindFilesResult } from "./types.ts";
 
@@ -183,7 +183,7 @@ export async function forkSession(
         typeof entry.message.details !== "object"
       )
         return entry;
-      const { fileChange: _, ...details } = entry.message.details as import("zpi-ai").JsonObject;
+      const { fileChange: _, ...details } = entry.message.details as import("@zpi-dev/ai").JsonObject;
       return { ...entry, message: { ...entry.message, details } };
     }),
   );

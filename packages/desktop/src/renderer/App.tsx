@@ -1,6 +1,18 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
+  ActionHint,
+  ChatComposer,
+  Conversation,
+  type FileAction,
+  type FileLocation,
+  type FileOpenOrigin,
+  Notice,
+  type SubagentTask,
+  TaskFindBar,
+  type WebOpenOptions,
+} from "@zpi-dev/ui";
+import {
   Ellipsis,
   FileDiff,
   Folder,
@@ -16,18 +28,6 @@ import {
   X,
 } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActionHint,
-  ChatComposer,
-  Conversation,
-  type FileAction,
-  type FileLocation,
-  type FileOpenOrigin,
-  Notice,
-  type SubagentTask,
-  TaskFindBar,
-  type WebOpenOptions,
-} from "zpi-ui";
 import { useShallow } from "zustand/react/shallow";
 import type { EditUserInput, InterfacePreferences, SessionRecord } from "../shared/bridge.ts";
 import { sidebarLimits, taskPinLimit } from "../shared/config.ts";
@@ -361,7 +361,7 @@ export function App() {
   }, []);
   const selected = state.selected;
   const addSelection = useCallback(
-    (reference: import("zpi-ui").ConversationSelection) => addConversationSelection(reference, selected),
+    (reference: import("@zpi-dev/ui").ConversationSelection) => addConversationSelection(reference, selected),
     [selected],
   );
   const workspace = useWorkspace(selected);

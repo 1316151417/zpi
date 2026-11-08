@@ -1,14 +1,14 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Type } from "typebox";
 import {
   createAgentSession,
   createBashToolDefinition,
   ModelRuntime,
   SessionManager,
   type ToolDefinition,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { Type } from "typebox";
 import { demoServer, fakeConfig } from "../tests/fake-server.ts";
 
 const cwd = await mkdtemp(join(tmpdir(), "zpi-example-"));

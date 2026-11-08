@@ -1,7 +1,13 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { discoverProviderCredentials, type Model, presetModels, providerApi, providerBaseUrl } from "zpi-ai";
-import { ModelRuntime } from "zpi-coding-agent";
+import {
+  discoverProviderCredentials,
+  type Model,
+  presetModels,
+  providerApi,
+  providerBaseUrl,
+} from "@zpi-dev/ai";
+import { ModelRuntime } from "@zpi-dev/coding-agent";
 import type { Options } from "./types.ts";
 
 export async function runtimeFor(options: Options): Promise<ModelRuntime> {

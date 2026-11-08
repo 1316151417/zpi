@@ -1,8 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { getCurrentSystemPrompt } from "@zpi-dev/ai";
+import { builtinPlugins } from "@zpi-dev/builtin-plugins";
 import { expect, it } from "vitest";
-import { getCurrentSystemPrompt } from "zpi-ai";
-import { builtinPlugins } from "zpi-builtin-plugins";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { parseInput } from "../src/index.ts";
 import { fixture } from "./helpers/resource-fixture.ts";

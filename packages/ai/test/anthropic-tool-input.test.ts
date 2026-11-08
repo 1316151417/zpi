@@ -1,6 +1,6 @@
+import { normalizeContext } from "@zpi-dev/ai";
+import { stream } from "@zpi-dev/ai/api/anthropic-messages";
 import { expect, it } from "vitest";
-import { normalizeContext } from "zpi-ai";
-import { stream } from "zpi-ai/api/anthropic-messages";
 import { deferred } from "../../../tests/fake-server.ts";
 import { getModel } from "./helpers/anthropic.ts";
 

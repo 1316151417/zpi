@@ -1,5 +1,5 @@
+import { ActionHint } from "@zpi-dev/ui";
 import { CircleHelp } from "lucide-react";
-import { ActionHint } from "zpi-ui";
 
 export function SettingsHelp({ label, text }: { label: string; text: string }) {
   return (

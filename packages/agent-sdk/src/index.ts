@@ -1,4 +1,4 @@
-export { ModelRuntime } from "zpi-coding-agent";
+export { ModelRuntime } from "@zpi-dev/coding-agent";
 export { type QueryParams, query } from "./query.ts";
 export {
   forkSession,

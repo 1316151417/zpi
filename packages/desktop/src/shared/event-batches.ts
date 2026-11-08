@@ -1,4 +1,4 @@
-import type { DesktopEventEnvelope } from "zpi-ui";
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 
 export const eventBatchIntervalMs = 30;
 export const eventBatchMaxEvents = 256;

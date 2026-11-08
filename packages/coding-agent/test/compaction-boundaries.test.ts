@@ -1,18 +1,18 @@
-import { Type } from "typebox";
-import { expect, it } from "vitest";
 import {
   type AssistantMessage,
   createAssistantMessageEventStream,
   emptyAssistant,
   getCurrentSystemPrompt,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { Type } from "typebox";
+import { expect, it } from "vitest";
 import { deferred, fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 
 it.each([

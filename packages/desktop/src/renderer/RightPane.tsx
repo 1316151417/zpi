@@ -1,6 +1,6 @@
+import { ActionHint, type FindRequest, type FindState } from "@zpi-dev/ui";
 import { Maximize2, MessageCircle, Minimize2, Plus } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
-import { ActionHint, type FindRequest, type FindState } from "zpi-ui";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { BackgroundTaskPane } from "./BackgroundTaskPane.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";

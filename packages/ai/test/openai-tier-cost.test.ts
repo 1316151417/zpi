@@ -1,5 +1,5 @@
+import { normalizeContext, streamSimple } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import { normalizeContext, streamSimple } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 it.each(["openai-completions", "openai-responses"] as const)(

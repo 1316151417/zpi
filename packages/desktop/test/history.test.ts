@@ -2,10 +2,10 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { emptyAssistant } from "@zpi-dev/ai";
+import { maxSessionEntryBytes, type SessionEntry } from "@zpi-dev/coding-agent";
+import { mergeHistory } from "@zpi-dev/ui";
 import { afterEach, expect, it, vi } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { maxSessionEntryBytes, type SessionEntry } from "zpi-coding-agent";
-import { mergeHistory } from "zpi-ui";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { HistoryIndex } from "../src/main/history-index.ts";
 import { restoreView } from "../src/main/projection.ts";
@@ -533,7 +533,7 @@ it("persists and replays microcompact facts through the indexed transcript witho
       keptToolCallIds: [],
     },
   });
-  const { SessionManager } = await import("zpi-coding-agent");
+  const { SessionManager } = await import("@zpi-dev/coding-agent");
   const manager = SessionManager.fromStore(index);
   expect(manager.buildSessionContext().messages[1].content).toEqual([
     { type: "text", text: "[Old tool result content cleared]" },

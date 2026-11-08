@@ -1,5 +1,5 @@
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 it("drains a backlog in order while new events arrive and preserves the final result", async () => {

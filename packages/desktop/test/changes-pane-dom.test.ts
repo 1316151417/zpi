@@ -1,7 +1,7 @@
+import type { FindRequest, FindState, RunView, ViewBlock } from "@zpi-dev/ui";
 import { act, type ComponentProps, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { FindRequest, FindState, RunView, ViewBlock } from "zpi-ui";
 import { ChangedFiles } from "../../ui/src/components/ChangedFiles.tsx";
 import { ChangesPane } from "../src/renderer/ChangesPane.tsx";
 import {

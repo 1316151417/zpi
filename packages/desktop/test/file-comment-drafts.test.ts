@@ -1,5 +1,5 @@
+import { ComposerDraftStore } from "@zpi-dev/ui";
 import { expect, test } from "vitest";
-import { ComposerDraftStore } from "zpi-ui";
 import {
   addFileCommentToDraft,
   fileComments,

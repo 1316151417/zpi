@@ -1,6 +1,6 @@
 import type { DiffItem } from "./bridge.ts";
 
-export type { ReviewDiffData } from "zpi-ui";
+export type { ReviewDiffData } from "@zpi-dev/ui";
 
 export const reviewSources = {
   unstaged: "未暂存",

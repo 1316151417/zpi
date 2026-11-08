@@ -1,8 +1,8 @@
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type HookInvocation, HookRunner } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test } from "vitest";
-import { type HookInvocation, HookRunner } from "zpi-coding-agent";
 import { assertExternalPlugin, bindExternalPlugin, importLocalPlugin } from "../src/index.ts";
 
 const directories: string[] = [];

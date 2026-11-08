@@ -1,6 +1,7 @@
 // Adapted from ZCode ConversationStatusPanel.tsx at aac47556 (Apache-2.0).
 import * as Collapsible from "@radix-ui/react-collapsible";
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint, type BackgroundTask, type SubagentTask, subagentStatusLabels } from "@zpi-dev/ui";
 import {
   Activity,
   Bot,
@@ -16,7 +17,6 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
-import { ActionHint, type BackgroundTask, type SubagentTask, subagentStatusLabels } from "zpi-ui";
 import { openBackgroundTask, openSubagent, openTaskDirectory, paneTask } from "./pane-store.ts";
 import { useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";

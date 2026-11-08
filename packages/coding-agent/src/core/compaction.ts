@@ -8,8 +8,8 @@ import { randomUUID } from "node:crypto";
  * and after compaction the session is reloaded.
  */
 
-import type { AgentMessage, StreamFn, ThinkingLevel } from "zpi-agent";
-import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "zpi-ai";
+import type { AgentMessage, StreamFn, ThinkingLevel } from "@zpi-dev/agent";
+import type { AssistantMessage, Model, SimpleStreamOptions, TranscriptContext, Usage } from "@zpi-dev/ai";
 import {
   calculateContextTokens,
   contentText,
@@ -23,7 +23,7 @@ import {
   type RetryPolicy,
   retryAssistantCall,
   streamSimple,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 
 const convertToLlm = (messages: AgentMessage[]) => messages;
 

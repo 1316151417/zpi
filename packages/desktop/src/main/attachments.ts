@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, open, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join } from "node:path";
-import { contentText } from "zpi-ai";
+import { contentText } from "@zpi-dev/ai";
 import {
   type Attachment,
   createReadTool,
@@ -13,8 +13,8 @@ import {
   prepareInlineImage,
   readFileBounded,
   validateImageSource,
-} from "zpi-coding-agent";
-import { attachmentLimitMessage } from "zpi-ui/errors";
+} from "@zpi-dev/coding-agent";
+import { attachmentLimitMessage } from "@zpi-dev/ui/errors";
 import { atomicJson } from "./storage.ts";
 
 type Saved = Attachment & {

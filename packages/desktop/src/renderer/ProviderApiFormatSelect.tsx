@@ -1,5 +1,5 @@
 // Layout and protocol labels follow ZCode ProviderApiFormatSelect (Apache-2.0).
-import { type ProviderApi, providerApis } from "zpi-ai";
+import { type ProviderApi, providerApis } from "@zpi-dev/ai";
 import { SettingsSelect } from "./SettingsSelect.tsx";
 
 const labels: Record<ProviderApi, string> = {

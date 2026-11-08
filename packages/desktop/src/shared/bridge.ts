@@ -1,8 +1,8 @@
-import type { Model, ModelCompat, ModelDiscoveryResult, ProviderApi, ProviderPresetId } from "zpi-ai";
-import type { SaveSubagentInput, SubagentCatalog } from "zpi-builtin-plugins/collaboration/types";
-import type { MemorySettings, MemoryStatus } from "zpi-builtin-plugins/memory/types";
-import type { CombinedSelection } from "zpi-builtin-plugins/types";
-import type { Attachment, DiscoveredSkill, SkillList } from "zpi-coding-agent";
+import type { Model, ModelCompat, ModelDiscoveryResult, ProviderApi, ProviderPresetId } from "@zpi-dev/ai";
+import type { SaveSubagentInput, SubagentCatalog } from "@zpi-dev/builtin-plugins/collaboration/types";
+import type { MemorySettings, MemoryStatus } from "@zpi-dev/builtin-plugins/memory/types";
+import type { CombinedSelection } from "@zpi-dev/builtin-plugins/types";
+import type { Attachment, DiscoveredSkill, SkillList } from "@zpi-dev/coding-agent";
 import type {
   DesktopEventEnvelope,
   FileAction,
@@ -12,8 +12,8 @@ import type {
   SessionMentionSuggestion,
   SessionView,
   WorktreeInfo,
-} from "zpi-ui";
-import type { FileLocation } from "zpi-ui/links";
+} from "@zpi-dev/ui";
+import type { FileLocation } from "@zpi-dev/ui/links";
 import type { CommandImportDiscovery, CommandImportRequest, CommandImportResult } from "./command-import.ts";
 import type {
   CustomCommand,
@@ -28,9 +28,9 @@ import type { HooksCatalog, HookTarget, SaveHookInput } from "./hooks.ts";
 import type { ShortcutCommand, ShortcutSettings } from "./shortcuts.ts";
 import type { WorkspaceFileSearchInput, WorkspaceFileSearchResult } from "./workspace-files.ts";
 
-export type { CombinedSelection, ModelSelection, ReasoningPreset } from "zpi-builtin-plugins/types";
+export type { CombinedSelection, ModelSelection, ReasoningPreset } from "@zpi-dev/builtin-plugins/types";
 
-export type { SessionControls } from "zpi-ui";
+export type { SessionControls } from "@zpi-dev/ui";
 
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
 export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode; message: string } };
@@ -68,7 +68,7 @@ export interface SessionRecord {
   status?: RunStatus;
   /** Runtime evidence supplied by SessionHost, never restored from persisted status. */
   running?: boolean;
-  pendingQuestion?: Pick<import("zpi-ui").UserQuestionRequest, "id" | "autoResolution"> | null;
+  pendingQuestion?: Pick<import("@zpi-dev/ui").UserQuestionRequest, "id" | "autoResolution"> | null;
   activitySeq?: number;
   createdAt: number;
   updatedAt: number;
@@ -112,7 +112,7 @@ export interface ProviderRecord extends Omit<ProviderInput, "apiKey" | "id"> {
   chatgptAccount?: { label: string; connected: boolean };
 }
 export interface InterfacePreferences {
-  codePreview?: import("zpi-ui/code-preview").CodePreviewSettings;
+  codePreview?: import("@zpi-dev/ui/code-preview").CodePreviewSettings;
   theme: "system" | "light" | "dark";
   fontSize: number;
   showContextUsage: boolean;
@@ -142,7 +142,7 @@ export interface PublicSettings {
     credentialsLocked: boolean;
   };
   shortcuts: ShortcutSettings;
-  plugins: typeof import("zpi-builtin-plugins").defaultPluginSettings;
+  plugins: typeof import("@zpi-dev/builtin-plugins").defaultPluginSettings;
   providers: ProviderRecord[];
   lastSelection: CombinedSelection | null;
   interface: InterfacePreferences;
@@ -158,14 +158,14 @@ export interface SessionSnapshot {
 }
 export interface RunInput {
   /** Internal plugin delivery; renderer IPC does not accept this field. */
-  subagentNotification?: import("zpi-builtin-plugins/types").SubagentNotification;
+  subagentNotification?: import("@zpi-dev/builtin-plugins/types").SubagentNotification;
   sessionId: string;
   text: string;
   fileReferences?: string[];
   attachments?: string[];
 }
 export type EditUserInput = Omit<RunInput, "sessionId"> & { workspaceMode?: "preserve" | "rewind" };
-export type EditUserResult = SessionSnapshot | { conflicts: import("zpi-ui").FileRewindConflict[] };
+export type EditUserResult = SessionSnapshot | { conflicts: import("@zpi-dev/ui").FileRewindConflict[] };
 export interface WorkspaceInfo {
   home: string;
   cwd: string;
@@ -207,7 +207,7 @@ export interface SkillSettings {
   directories: string[];
 }
 export interface TextDraft {
-  selections?: import("zpi-ui").ConversationSelection[];
+  selections?: import("@zpi-dev/ui").ConversationSelection[];
   text: string;
   fileReferences: string[];
   selection: [number, number];
@@ -281,20 +281,20 @@ export interface DesktopBridge {
   readBackgroundTask(
     sessionId: string,
     taskId: string,
-  ): Promise<Result<import("zpi-ui").BackgroundTaskOutput>>;
+  ): Promise<Result<import("@zpi-dev/ui").BackgroundTaskOutput>>;
   setPluginEnabled(id: string, enabled: boolean): Promise<Result<PublicSettings>>;
-  getLocalPlugins(): Promise<Result<import("zpi-coding-agent").PluginMetadata[]>>;
+  getLocalPlugins(): Promise<Result<import("@zpi-dev/coding-agent").PluginMetadata[]>>;
   getHooks(projectId: string | null): Promise<Result<HooksCatalog>>;
   saveHook(input: SaveHookInput): Promise<Result<HooksCatalog>>;
   setHookEnabled(target: HookTarget, enabled: boolean): Promise<Result<HooksCatalog>>;
   deleteHook(target: HookTarget): Promise<Result<HooksCatalog>>;
   importLocalPlugin(): Promise<Result<PublicSettings>>;
-  setPluginOptions(id: string, options: import("zpi-ai").JsonObject): Promise<Result<PublicSettings>>;
+  setPluginOptions(id: string, options: import("@zpi-dev/ai").JsonObject): Promise<Result<PublicSettings>>;
   snoozeQuestion(sessionId: string, requestId: string): Promise<Result<void>>;
   respondToQuestion(
     sessionId: string,
     requestId: string,
-    response: import("zpi-ui").UserQuestionResponse,
+    response: import("@zpi-dev/ui").UserQuestionResponse,
   ): Promise<Result<void>>;
   closeSideChat(sessionId: string): Promise<Result<void>>;
   createSideChat(sessionId: string): Promise<Result<SessionRecord>>;

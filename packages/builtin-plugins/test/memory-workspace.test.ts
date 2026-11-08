@@ -3,7 +3,6 @@ import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, expect, test } from "vitest";
 import {
   backupMemorySummary,
   finishMemorySummary,
@@ -13,7 +12,8 @@ import {
   replaceMemoryFile,
   resetMemoryBaseline,
   validateMemoryWorkspace,
-} from "zpi-builtin-plugins/memory/workspace";
+} from "@zpi-dev/builtin-plugins/memory/workspace";
+import { afterEach, expect, test } from "vitest";
 
 const exec = promisify(execFile);
 const paths: string[] = [];

@@ -1,11 +1,11 @@
-import { afterEach, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   emptyAssistant,
   guardModelStream,
   normalizeContext,
   streamSimple,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
+import { afterEach, expect, it, vi } from "vitest";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import {
   closeStreamIterator,

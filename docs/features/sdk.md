@@ -1,11 +1,11 @@
 # 在 TypeScript 中使用 Agent SDK
 
-公开入口是 `zpi-agent-sdk`，ZPI 桌面和独立的 `zpi-quick-chat` 使用同一套查询执行协议。支持范围按 [Claude Agent SDK TypeScript reference](https://code.claude.com/docs/zh-CN/agent-sdk/typescript) 对齐，运行引擎仍由 ZPI 实现。
+公开入口是 `@zpi-dev/agent-sdk`，ZPI 桌面和独立的 `zpi-quick-chat` 使用同一套查询执行协议。支持范围按 [Claude Agent SDK TypeScript reference](https://code.claude.com/docs/zh-CN/agent-sdk/typescript) 对齐，运行引擎仍由 ZPI 实现。
 
 ## 发起查询
 
 ```ts
-import { query } from "zpi-agent-sdk";
+import { query } from "@zpi-dev/agent-sdk";
 
 for await (const message of query({
   prompt: "说明这个项目的入口",
@@ -42,7 +42,7 @@ SDK 不实现权限模式、MCP、LSP、插件 UI、市场、远程会话和 Cla
 
 ```sh
 npm run build:sdk
-npm pack --workspace zpi-agent-sdk
+npm pack --workspace @zpi-dev/agent-sdk
 ```
 
-原生宿主可从 `zpi-agent-sdk/host` 获取 `createAgentSession`，注入索引存储、模型运行时和插件，再用 `query` 驱动会话。宿主负责平台服务与事件订阅；ZPI 将七类插件服务的构造、策略、恢复与清理交给独立的 `BuiltinPluginRuntime`，通过通用接口接入模型、存储与通知。底层 `zpi-coding-agent` 是内部引擎，不再作为应用默认接入入口。内核装配机制见 [SDK 装配](../internals/sdk.md)。
+原生宿主可从 `@zpi-dev/agent-sdk/host` 获取 `createAgentSession`，注入索引存储、模型运行时和插件，再用 `query` 驱动会话。宿主负责平台服务与事件订阅；ZPI 将七类插件服务的构造、策略、恢复与清理交给独立的 `BuiltinPluginRuntime`，通过通用接口接入模型、存储与通知。底层 `@zpi-dev/coding-agent` 是内部引擎，不再作为应用默认接入入口。内核装配机制见 [SDK 装配](../internals/sdk.md)。

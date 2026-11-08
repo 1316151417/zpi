@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { buildSelectionPrompt } from "@zpi-dev/ui/selections";
 import sharp from "sharp";
 import { expect, it, vi } from "vitest";
-import { buildSelectionPrompt } from "zpi-ui/selections";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionInputQueue } from "../src/main/input-queue.ts";
 import { SessionHost } from "../src/main/session-host.ts";

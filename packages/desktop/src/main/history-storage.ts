@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Worker } from "node:worker_threads";
-import type { SessionEntry, SessionHeader } from "zpi-coding-agent";
+import type { SessionEntry, SessionHeader } from "@zpi-dev/coding-agent";
 import { type GenerationHooks, HistoryIndex, type HistoryMetadata } from "./history-index.ts";
 import type { HistoryCommand } from "./history-worker.ts";
 

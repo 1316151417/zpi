@@ -1,9 +1,9 @@
 // Ported from ZCode command-center/CommandCenterDialog and quickPickStyles (Apache-2.0).
 import * as Dialog from "@radix-ui/react-dialog";
+import { FileIcon } from "@zpi-dev/ui";
 import { Command } from "cmdk";
 import { ChevronDown, File, List, MessageSquare, MessagesSquare, Rocket, Search } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { FileIcon } from "zpi-ui";
 import type { ProjectRecord, SessionRecord, TaskSearchChange, TaskSearchResult } from "../shared/bridge.ts";
 import type { TaskSearchSnippet } from "../shared/task-search.ts";
 import { FileSearchStatus } from "./FileSearchStatus.tsx";

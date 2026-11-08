@@ -1,7 +1,7 @@
+import { emptyAssistant } from "@zpi-dev/ai";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { RunGroup } from "../src/components/Conversation.tsx";
 import { emptySession, reduceSession } from "../src/reducer.ts";

@@ -1,8 +1,8 @@
+import { codeRanges } from "@zpi-dev/coding-agent/input";
 import { decodeString } from "micromark-util-decode-string";
-import { codeRanges } from "zpi-coding-agent/input";
 import { type LinkContext, resolveLinkTarget } from "./link-target.ts";
 
-export { codeRanges } from "zpi-coding-agent/input";
+export { codeRanges } from "@zpi-dev/coding-agent/input";
 
 const quotes: Record<string, string> = { '"': '"', "'": "'", "“": "”", "‘": "’" };
 const starts = /(?<!:):{1,3}zcode-file-citation\s*\{/g;

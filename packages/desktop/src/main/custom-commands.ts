@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
-import { builtinPlugins } from "zpi-builtin-plugins";
+import { builtinPlugins } from "@zpi-dev/builtin-plugins";
 import type {
   CustomCommand,
   CustomCommandDelete,

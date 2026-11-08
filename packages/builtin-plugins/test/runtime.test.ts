@@ -2,8 +2,8 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assembleSession, createCodingTools, type PluginSnapshot } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test, vi } from "vitest";
-import { assembleSession, createCodingTools, type PluginSnapshot } from "zpi-coding-agent";
 import { desktopPluginManifests } from "../src/index.ts";
 import { defaultMemorySettings } from "../src/memory/types.ts";
 import type { BuiltinPluginPorts, PluginConfiguration, PluginSessionRecord } from "../src/ports.ts";
@@ -265,7 +265,9 @@ test("builtin implementation graph has no desktop, UI or cross-package relative 
     for (const match of content.matchAll(/(?:from\s*|import\s*\()?["']([^"'\n]+)["']/g)) {
       const specifier = match[1];
       if (!specifier.endsWith(".ts") && !specifier.startsWith("zpi-") && specifier !== "electron") continue;
-      expect(specifier, `${name}: ${specifier}`).not.toMatch(/^(?:zpi-desktop|zpi-ui|electron)(?:\/|$)/);
+      expect(specifier, `${name}: ${specifier}`).not.toMatch(
+        /^(?:@zpi-dev\/(?:desktop|ui)|electron)(?:\/|$)/,
+      );
       if (specifier.startsWith("."))
         expect(relative(source, resolve(dirname(file), specifier)), `${name}: ${specifier}`).not.toMatch(
           /^\.\.(?:\/|$)/,

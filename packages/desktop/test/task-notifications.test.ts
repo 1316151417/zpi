@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
+import { NotificationsPlugin } from "@zpi-dev/builtin-plugins/notifications";
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { NotificationsPlugin } from "zpi-builtin-plugins/notifications";
-import type { DesktopEventEnvelope } from "zpi-ui";
 import { TaskNotifications } from "../src/main/task-notifications.ts";
 import { defaultPreferences } from "../src/shared/config.ts";
 

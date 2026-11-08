@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultMemorySettings, type MemorySettings } from "@zpi-dev/builtin-plugins/memory/types";
 import { afterEach, expect, test, vi } from "vitest";
-import { defaultMemorySettings, type MemorySettings } from "zpi-builtin-plugins/memory/types";
 import { StateStore } from "../src/main/state-store.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 

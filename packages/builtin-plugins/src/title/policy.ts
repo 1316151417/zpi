@@ -1,4 +1,4 @@
-import type { Model } from "zpi-ai";
+import type { Model } from "@zpi-dev/ai";
 import type { PluginModelInput } from "../ports.ts";
 import { generateSessionTitle } from "./generate.ts";
 

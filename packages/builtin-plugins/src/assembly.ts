@@ -3,7 +3,7 @@ import {
   desktopPluginIds,
   desktopPluginManifests,
   validateBuiltinPluginOptions,
-} from "zpi-builtin-plugins";
+} from "@zpi-dev/builtin-plugins";
 import type {
   HookInput,
   HookRegistration,
@@ -11,7 +11,7 @@ import type {
   SessionContributions,
   SessionPlugin,
   ToolDefinition,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 import { agentConcurrencyNote, subagentCommonNotes } from "./collaboration/prompts.ts";
 import type { SubagentProfile } from "./collaboration/types.ts";
 import type { MemoryMode } from "./memory/policy.ts";

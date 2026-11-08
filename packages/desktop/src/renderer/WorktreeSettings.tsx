@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import { Check, ChevronRight, GitBranch, Search, Settings, Shuffle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import type { GitEnvironment, SessionRecord } from "../shared/bridge.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { focusComposer, report, useStore } from "./store.ts";

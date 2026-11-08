@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type PluginSnapshot, SkillCatalog } from "@zpi-dev/coding-agent";
+import { importLocalPlugin } from "@zpi-dev/plugin-compat";
 import { afterEach, expect, test } from "vitest";
-import { type PluginSnapshot, SkillCatalog } from "zpi-coding-agent";
-import { importLocalPlugin } from "zpi-plugin-compat";
 import { pluginAgents, SdkResources } from "../src/resources.ts";
 
 const roots: string[] = [];

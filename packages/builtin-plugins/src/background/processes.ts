@@ -1,7 +1,7 @@
 // ZCode Bash gives process trees 1500 ms to handle SIGTERM before escalating.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { killProcessTree } from "zpi-coding-agent";
+import { killProcessTree } from "@zpi-dev/coding-agent";
 
 export function processGroupAlive(pid: number | undefined) {
   if (!pid || process.platform === "win32") return false;

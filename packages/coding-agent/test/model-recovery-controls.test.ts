@@ -1,19 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   emptyAssistant,
   type ModelRetryStatus,
   type TranscriptContext,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { afterEach, expect, it, vi } from "vitest";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "zpi-agent";
-import { Agent } from "zpi-agent";
+import type { AgentEvent, AgentState, AgentTool, ThinkingLevel } from "@zpi-dev/agent";
+import { Agent } from "@zpi-dev/agent";
 import type {
   ImageContent,
   Message,
@@ -10,7 +10,7 @@ import type {
   SimpleStreamOptions,
   TranscriptContext,
   UserGuide,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   assertSupportedOptions,
   clampThinkingLevel,
@@ -22,8 +22,8 @@ import {
   ModelRequestRetryError,
   retryAttemptLimit,
   retryDelayMs,
-} from "zpi-ai";
-import { ResponsesSession } from "zpi-ai/api/responses-session";
+} from "@zpi-dev/ai";
+import { ResponsesSession } from "@zpi-dev/ai/api/responses-session";
 import { expandPluginCommand } from "../plugins/assembly.ts";
 import type { HookExecution, HookRegistration } from "../plugins/hooks.ts";
 import { SessionHooks } from "../plugins/session-hooks.ts";
@@ -98,8 +98,8 @@ export class AgentSession {
   private pluginCommands: readonly PluginCommand[];
   private hooks: SessionHooks;
   private manager: SessionManager;
-  private steering: import("zpi-ai").UserMessage[] = [];
-  private pendingMessages: import("zpi-ai").UserMessage[] = [];
+  private steering: import("@zpi-dev/ai").UserMessage[] = [];
+  private pendingMessages: import("@zpi-dev/ai").UserMessage[] = [];
   private allTools: Map<string, AgentTool>;
   private listeners = new Set<(event: AgentSessionEvent) => void>();
   private running?: Promise<void>;
@@ -150,7 +150,7 @@ export class AgentSession {
         context: { manual: boolean; instructions: string },
         signal?: AbortSignal,
       ) => Promise<void>;
-      beforeModelRequest?: (model: Model, context: import("zpi-ai").Context) => void;
+      beforeModelRequest?: (model: Model, context: import("@zpi-dev/ai").Context) => void;
       commands?: readonly PluginCommand[];
       hooks?: readonly (HookRegistration & { pluginId?: string })[];
     } = {},

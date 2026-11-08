@@ -1,9 +1,9 @@
 // Adapted from ZCode SidePaneTabOverview and sidePaneTabSearch (Apache-2.0).
 import * as Popover from "@radix-ui/react-popover";
+import { ActionHint } from "@zpi-dev/ui";
 import { Command } from "cmdk";
 import { ChevronsDown, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import { PaneTabIcon } from "./PaneTabIcon.tsx";
 import {
   activatePaneTab,

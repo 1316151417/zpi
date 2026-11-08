@@ -2,8 +2,13 @@ import { randomUUID } from "node:crypto";
 import { closeSync, createReadStream, fsyncSync, openSync, readSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
-import { contentText, isJsonObject } from "zpi-ai";
-import { maxSessionEntryBytes, type SessionEntry, type SessionHeader, syncDirectory } from "zpi-coding-agent";
+import { contentText, isJsonObject } from "@zpi-dev/ai";
+import {
+  maxSessionEntryBytes,
+  type SessionEntry,
+  type SessionHeader,
+  syncDirectory,
+} from "@zpi-dev/coding-agent";
 import type {
   IndexedSessionEntry,
   TranscriptContextPlan,

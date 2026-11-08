@@ -1,11 +1,11 @@
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   defaultMemorySettings,
   type MemorySettings,
   type MemoryStatus,
-} from "zpi-builtin-plugins/memory/types";
+} from "@zpi-dev/builtin-plugins/memory/types";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ProviderRecord } from "../src/shared/bridge.ts";
 
 const fixture = vi.hoisted(() => ({

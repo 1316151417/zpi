@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { JsonObject, Model, ProviderApi } from "@zpi-dev/ai";
+import { ModelRuntime, type ProviderConfigInput } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test, vi } from "vitest";
-import type { JsonObject, Model, ProviderApi } from "zpi-ai";
-import { ModelRuntime, type ProviderConfigInput } from "zpi-coding-agent";
 import { chunk } from "../../../tests/fake-server.ts";
 import { modelRuntimeConfig } from "../src/main/model-runtime-config.ts";
 import { SessionHost } from "../src/main/session-host.ts";

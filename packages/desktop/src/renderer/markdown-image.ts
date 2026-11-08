@@ -1,4 +1,4 @@
-import type { FileLocation } from "zpi-ui/links";
+import type { FileLocation } from "@zpi-dev/ui/links";
 import { unwrap } from "./unwrap.ts";
 
 export async function readMarkdownImage(

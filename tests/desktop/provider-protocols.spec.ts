@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { providerBaseUrl, providerPresets } from "zpi-ai";
+import { providerBaseUrl, providerPresets } from "@zpi-dev/ai";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";

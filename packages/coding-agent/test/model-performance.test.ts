@@ -1,5 +1,5 @@
+import { emptyAssistant } from "@zpi-dev/ai";
 import { afterEach, expect, it, vi } from "vitest";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { SessionPerformance, validPerformanceTotals } from "../src/core/model-performance.ts";
 

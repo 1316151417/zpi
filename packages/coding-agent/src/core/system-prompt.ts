@@ -1,4 +1,4 @@
-import type { AgentTool } from "zpi-agent";
+import type { AgentTool } from "@zpi-dev/agent";
 import { formatSkillsForPrompt } from "./resources.ts";
 import { type ResourceLoader, resourceBaseInstructions, resourceInstructions } from "./types.ts";
 export interface PromptTemplate {

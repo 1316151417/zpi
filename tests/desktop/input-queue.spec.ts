@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { buildSelectionPrompt } from "zpi-ui/selections";
+import { buildSelectionPrompt } from "@zpi-dev/ui/selections";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { clipboardText, select } from "../helpers/composer.ts";

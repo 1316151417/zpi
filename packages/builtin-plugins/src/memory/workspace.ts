@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { syncDirectory } from "zpi-coding-agent";
+import { syncDirectory } from "@zpi-dev/coding-agent";
 import { adHocInstructions } from "./ad-hoc-instructions.ts";
 
 const exec = promisify(execFile);

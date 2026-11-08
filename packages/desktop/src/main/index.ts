@@ -1,7 +1,15 @@
 import { stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  fetchProviderModels,
+  getProviderPreset,
+  type ModelDiscoveryInput,
+  usesChatGPTAuth,
+} from "@zpi-dev/ai";
+import { imageLimits } from "@zpi-dev/coding-agent";
+import { attachmentLimitMessage } from "@zpi-dev/ui/errors";
 import {
   app,
   type BrowserWindow,
@@ -18,9 +26,6 @@ import {
   session,
   shell,
 } from "electron";
-import { fetchProviderModels, getProviderPreset, type ModelDiscoveryInput, usesChatGPTAuth } from "zpi-ai";
-import { imageLimits } from "zpi-coding-agent";
-import { attachmentLimitMessage } from "zpi-ui/errors";
 import { version } from "../../../../package.json";
 import type {
   CombinedSelection,
@@ -97,7 +102,7 @@ function titleBarOverlay(): Electron.TitleBarOverlayOptions {
   };
 }
 // Development shares Preview's data and Keychain identity; production remains separate.
-const dataName = app.isPackaged ? app.getName() : "ZPI Preview";
+const dataName = app.isPackaged ? app.getName() : process.env.ZPI_NPM_LAUNCH === "1" ? "ZPI" : "ZPI Preview";
 app.setName(dataName);
 app.setPath("userData", join(app.getPath("appData"), dataName));
 const dataOverride = (testMode && process.env.ZPI_TEST_DATA_DIR) || process.env.ZPI_DATA_DIR;
@@ -162,7 +167,7 @@ async function launch(): Promise<void> {
     ? join(process.resourcesPath, "icon.png")
     : process.platform === "darwin"
       ? join(dir, "../icon-mac.png")
-      : resolve("icon.png");
+      : join(dir, "../renderer/icon.png");
   app.dock?.setIcon(icon);
   const encryption = testMode
     ? { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => "" }
@@ -649,7 +654,7 @@ async function launch(): Promise<void> {
               "config",
               "scope",
               "sessionId",
-            ]) as unknown as import("zpi-builtin-plugins/collaboration/types").SaveSubagentInput,
+            ]) as unknown as import("@zpi-dev/builtin-plugins/collaboration/types").SaveSubagentInput,
           );
           break;
         case "deleteSubagent":
@@ -734,7 +739,7 @@ async function launch(): Promise<void> {
           break;
         }
         case "setPluginOptions":
-          settings.setPluginOptions(string(0), args[1] as import("zpi-ai").JsonObject);
+          settings.setPluginOptions(string(0), args[1] as import("@zpi-dev/ai").JsonObject);
           await host.refreshPluginSettings();
           value = settings.get();
           break;
@@ -742,7 +747,7 @@ async function launch(): Promise<void> {
           host.plugins.questions.respond(
             string(0),
             string(1),
-            object(2, ["answers", "annotations"]) as unknown as import("zpi-ui").UserQuestionResponse,
+            object(2, ["answers", "annotations"]) as unknown as import("@zpi-dev/ui").UserQuestionResponse,
           );
           break;
         case "snoozeQuestion":
@@ -1277,7 +1282,7 @@ async function launch(): Promise<void> {
           break;
         case "saveMemorySettings":
           value = await host.saveMemorySettings(
-            args[0] as import("zpi-builtin-plugins/memory/types").MemorySettings,
+            args[0] as import("@zpi-dev/builtin-plugins/memory/types").MemorySettings,
           );
           break;
         case "getMemoryStatus":

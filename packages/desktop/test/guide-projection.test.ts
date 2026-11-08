@@ -1,7 +1,7 @@
+import type { Message } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
+import { emptySession, mergeHistory, reduceSession } from "@zpi-dev/ui/projection";
 import { expect, it } from "vitest";
-import type { Message } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
-import { emptySession, mergeHistory, reduceSession } from "zpi-ui/projection";
 import { conversationQueries } from "../../ui/src/conversation-run-partition.ts";
 import { projectEvent, restoreView } from "../src/main/projection.ts";
 

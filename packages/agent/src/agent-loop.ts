@@ -1,5 +1,5 @@
-import type { ToolResultMessage } from "zpi-ai";
-import { emptyAssistant, getCurrentTools, normalizeContext, toToolDeclaration } from "zpi-ai";
+import type { ToolResultMessage } from "@zpi-dev/ai";
+import { emptyAssistant, getCurrentTools, normalizeContext, toToolDeclaration } from "@zpi-dev/ai";
 import { createStreamingToolCoordinator } from "./streaming-tool-coordinator.ts";
 import { createToolExecutor } from "./tool-execution.ts";
 import type { AgentContext, AgentEventSink, AgentLoopConfig, AgentMessage, StreamFn } from "./types.ts";

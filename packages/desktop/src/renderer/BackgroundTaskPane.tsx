@@ -1,5 +1,5 @@
+import type { BackgroundTaskOutput } from "@zpi-dev/ui";
 import { useEffect, useRef, useState } from "react";
-import type { BackgroundTaskOutput } from "zpi-ui";
 import { paneTask } from "./pane-store.ts";
 import { backgroundStatus } from "./TaskActivity.tsx";
 import { unwrap } from "./unwrap.ts";

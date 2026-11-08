@@ -1,8 +1,8 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { builtinPluginMetadata, defaultPluginSettings, desktopPluginIds } from "@zpi-dev/builtin-plugins";
+import type { PluginMetadata } from "@zpi-dev/coding-agent";
 import { ChevronDown, FolderOpen, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { builtinPluginMetadata, defaultPluginSettings, desktopPluginIds } from "zpi-builtin-plugins";
-import type { PluginMetadata } from "zpi-coding-agent";
 import type { PublicSettings, Result } from "../shared/bridge.ts";
 import { memoryMode } from "../shared/plugins.ts";
 import { SettingsSelect } from "./SettingsSelect.tsx";

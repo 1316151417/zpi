@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { abortable } from "@zpi-dev/ai";
+import type { ToolDefinition } from "@zpi-dev/coding-agent";
 import { type TObject, Type } from "typebox";
-import { abortable } from "zpi-ai";
-import type { ToolDefinition } from "zpi-coding-agent";
 
 interface Task {
   id: string;

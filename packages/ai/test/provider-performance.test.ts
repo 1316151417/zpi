@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
+import type { ModelPerformanceSample, ProviderApi } from "@zpi-dev/ai";
+import { normalizeContext, streamSimple } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import type { ModelPerformanceSample, ProviderApi } from "zpi-ai";
-import { normalizeContext, streamSimple } from "zpi-ai";
 import { chunk, fakeModel } from "../../../tests/fake-server.ts";
 import { getModel } from "./helpers/anthropic.ts";
 

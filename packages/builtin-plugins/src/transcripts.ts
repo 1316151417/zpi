@@ -1,5 +1,5 @@
-import { isJsonObject } from "zpi-ai";
-import type { SessionEntry } from "zpi-coding-agent";
+import { isJsonObject } from "@zpi-dev/ai";
+import type { SessionEntry } from "@zpi-dev/coding-agent";
 
 const maxMessageCharacters = 16000;
 const maxTranscriptCharacters = 128000;

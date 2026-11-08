@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { defaultMemorySettings } from "@zpi-dev/builtin-plugins/memory/types";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { expect, test, vi } from "vitest";
-import { defaultMemorySettings } from "zpi-builtin-plugins/memory/types";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, done, fakeModel, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture, run } from "./helpers/context-fixture.ts";

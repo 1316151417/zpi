@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { presetModels, providerApi, providerApis, providerBaseUrl, providerPresets } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import { presetModels, providerApi, providerApis, providerBaseUrl, providerPresets } from "zpi-ai";
 import { SettingsStore } from "../src/main/storage.ts";
 import { draftModel, serializeModel } from "../src/renderer/ModelConfigDialog.tsx";
 import { availablePresets } from "../src/shared/config.ts";

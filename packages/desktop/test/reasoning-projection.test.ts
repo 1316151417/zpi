@@ -1,9 +1,9 @@
+import type { AssistantMessage, Model } from "@zpi-dev/ai";
+import { emptyAssistant, normalizeContext, streamSimple } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
+import type { DesktopEvent } from "@zpi-dev/ui";
+import { emptySession, reduceSession } from "@zpi-dev/ui/projection";
 import { expect, it, vi } from "vitest";
-import type { AssistantMessage, Model } from "zpi-ai";
-import { emptyAssistant, normalizeContext, streamSimple } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
-import type { DesktopEvent } from "zpi-ui";
-import { emptySession, reduceSession } from "zpi-ui/projection";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { runPresentation } from "../../ui/src/components/process-presentation.ts";
 import { projectEvent, restoreView } from "../src/main/projection.ts";

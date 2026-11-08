@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { FileIcon } from "@zpi-dev/ui";
 import { Check, ChevronRight, Copy, Eye, FileCode2, MoreHorizontal } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
-import { FileIcon } from "zpi-ui";
 import { PreviewEditorButton } from "./PreviewEditorButton.tsx";
 import { previewBreadcrumb } from "./preview-breadcrumb.ts";
 import { report } from "./store.ts";

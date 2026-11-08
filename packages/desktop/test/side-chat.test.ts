@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { SessionManager } from "zpi-coding-agent";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { isolatedHistory } from "./helpers/history-reader.ts";

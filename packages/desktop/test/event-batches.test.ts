@@ -1,6 +1,6 @@
+import type { DesktopEvent, DesktopEventEnvelope } from "@zpi-dev/ui";
+import { emptySession, reduceSession } from "@zpi-dev/ui/projection";
 import { afterEach, expect, it, vi } from "vitest";
-import type { DesktopEvent, DesktopEventEnvelope } from "zpi-ui";
-import { emptySession, reduceSession } from "zpi-ui/projection";
 import { EventBatcher } from "../src/main/event-batcher.ts";
 import {
   coalesceSessionEvents,

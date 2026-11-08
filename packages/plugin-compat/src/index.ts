@@ -3,7 +3,7 @@ import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { isJsonObject, type JsonObject } from "zpi-ai";
+import { isJsonObject, type JsonObject } from "@zpi-dev/ai";
 import {
   hookEvents,
   type PluginSkill,
@@ -12,7 +12,7 @@ import {
   pluginSnapshotData,
   type SessionPlugin,
   validatePluginSnapshot,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 
 import { bindCommandHooks, type CommandHook, parseCommandHook } from "./command-hooks.ts";
 

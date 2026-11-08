@@ -1,14 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
-import { clampThinkingLevel, createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
+import { clampThinkingLevel, createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 
@@ -152,7 +152,7 @@ it("chooses explicit, restored, per-model, global and medium reasoning in Pi ord
 
 it("applies provider timeout/retry settings to both normal and summary requests", async () => {
   const cwd = await directory();
-  const requests: import("zpi-ai").SimpleStreamOptions[] = [];
+  const requests: import("@zpi-dev/ai").SimpleStreamOptions[] = [];
   const runtime = await ModelRuntime.create();
   runtime.registerProvider("fake", {
     models: [fakeConfig("")],

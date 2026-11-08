@@ -1,9 +1,9 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import * as Context from "@radix-ui/react-context-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
+import { ActionHint, TaskTitleOverflowText } from "@zpi-dev/ui";
 import { Archive, ArrowUpToLine, ChevronRight, Folder, FolderInput, LoaderIcon, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ActionHint, TaskTitleOverflowText } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { orderedTaskGroups, type TaskGroupState, taskGroupFor } from "../shared/task-groups.ts";
 import { deleteSessionWithPanes } from "./pane-store.ts";

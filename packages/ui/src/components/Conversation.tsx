@@ -1,3 +1,4 @@
+import { buildMentionMarkdown, imageLimits, parseMentions } from "@zpi-dev/coding-agent/input";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,7 +31,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { buildMentionMarkdown, imageLimits, parseMentions } from "zpi-coding-agent/input";
 import { conversationQueries, conversationRunPartition } from "../conversation-run-partition.ts";
 import {
   buildSelectionPrompt,
@@ -1973,7 +1973,7 @@ export function ChatComposer({
     setFileQuery(undefined);
     setInputQuery(undefined);
   };
-  const addAttachments = async (operation: () => Promise<import("zpi-coding-agent").Attachment[]>) => {
+  const addAttachments = async (operation: () => Promise<import("@zpi-dev/coding-agent").Attachment[]>) => {
     const id = sessionId;
     updateValue(id, (old) => ({ ...old, pending: old.pending + 1, error: undefined }));
     try {
@@ -1995,7 +1995,7 @@ export function ChatComposer({
     }
   };
   const importFiles = async (files: File[]) => {
-    const imported: import("zpi-coding-agent").Attachment[] = [];
+    const imported: import("@zpi-dev/coding-agent").Attachment[] = [];
     if (!context) return imported;
     const id = sessionId;
     try {

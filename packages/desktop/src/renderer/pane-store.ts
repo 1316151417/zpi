@@ -1,4 +1,4 @@
-import { type BackgroundTask, type ConversationSelection, type SubagentTask, toolFile } from "zpi-ui";
+import { type BackgroundTask, type ConversationSelection, type SubagentTask, toolFile } from "@zpi-dev/ui";
 import {
   type FileLocation,
   type FileOpenOrigin,
@@ -6,7 +6,7 @@ import {
   resolveLinkTarget,
   type WebOpenOptions,
   webOpenTarget,
-} from "zpi-ui/links";
+} from "@zpi-dev/ui/links";
 import { create } from "zustand";
 import type {
   BrowserState,

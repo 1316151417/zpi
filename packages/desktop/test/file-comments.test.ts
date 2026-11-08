@@ -1,5 +1,5 @@
+import { buildSelectionPrompt, ComposerDraftStore } from "@zpi-dev/ui";
 import { describe, expect, it } from "vitest";
-import { buildSelectionPrompt, ComposerDraftStore } from "zpi-ui";
 import {
   addFileCommentToDraft,
   appendSelection,

@@ -1,8 +1,8 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { builtinPlugins } from "@zpi-dev/builtin-plugins";
 import { Type } from "typebox";
 import { expect, test } from "vitest";
-import { builtinPlugins } from "zpi-builtin-plugins";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import {
   assembleSession,
@@ -263,7 +263,7 @@ test("plugin tools use the SDK tool context and share selection and conflict rul
       args: { text: string },
       _signal: AbortSignal | undefined,
       _update: unknown,
-      context: import("zpi-coding-agent").ToolContext,
+      context: import("@zpi-dev/coding-agent").ToolContext,
     ) => {
       cwd = context.cwd;
       return { content: [{ type: "text" as const, text: args.text }], details: undefined };

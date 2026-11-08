@@ -1,5 +1,5 @@
+import type { JsonObject } from "@zpi-dev/ai";
 import type { TSchema } from "typebox";
-import type { JsonObject } from "zpi-ai";
 import type { ToolDefinition } from "../core/types.ts";
 import type { HookRegistration } from "./hooks.ts";
 

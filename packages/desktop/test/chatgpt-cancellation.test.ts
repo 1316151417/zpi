@@ -2,15 +2,15 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ChatGPTCredential } from "@zpi-dev/ai/auth/openai-chatgpt";
 import { afterEach, expect, it, vi } from "vitest";
-import type { ChatGPTCredential } from "zpi-ai/auth/openai-chatgpt";
 import { deferred } from "../../../tests/fake-server.ts";
 import { ChatGPTAuth } from "../src/main/chatgpt-auth.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
 const login = vi.hoisted(() => ({ wait: vi.fn(), cancel: vi.fn() }));
-vi.mock("zpi-ai/auth/openai-chatgpt", async (original) => ({
-  ...(await original<typeof import("zpi-ai/auth/openai-chatgpt")>()),
+vi.mock("@zpi-dev/ai/auth/openai-chatgpt", async (original) => ({
+  ...(await original<typeof import("@zpi-dev/ai/auth/openai-chatgpt")>()),
   beginChatGPTLogin: async () => ({ ...login, url: "https://example.invalid/login" }),
 }));
 const codec = {

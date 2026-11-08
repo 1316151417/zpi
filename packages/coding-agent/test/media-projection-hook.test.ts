@@ -1,11 +1,11 @@
-import { afterEach, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   emptyAssistant,
   normalizeContext,
   type TranscriptContext,
-} from "zpi-ai";
-import { ModelRuntime } from "zpi-coding-agent";
+} from "@zpi-dev/ai";
+import { ModelRuntime } from "@zpi-dev/coding-agent";
+import { afterEach, expect, it, vi } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import * as mediaPolicy from "../../ai/src/utils/media-policy.ts";
 import { completeSummarization } from "../src/core/compaction.ts";

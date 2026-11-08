@@ -1,3 +1,4 @@
+import { ActionHint } from "@zpi-dev/ui";
 import {
   MessageCirclePlus,
   PanelLeftClose,
@@ -5,7 +6,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
-import { ActionHint } from "zpi-ui";
 import type { ShortcutCommand } from "../shared/shortcuts.ts";
 
 // Adapted from ZCode DesktopTopOverlay and WorkspaceSidePaneToggleButton.

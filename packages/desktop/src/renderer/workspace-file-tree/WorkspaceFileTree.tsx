@@ -1,5 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ActionHint } from "@zpi-dev/ui";
 import {
   AlertCircle,
   Copy,
@@ -13,7 +14,6 @@ import {
   X,
 } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import type { EditorInfo } from "../../shared/editors.ts";
 import { FileSearchStatus } from "../FileSearchStatus.tsx";
 import { paneTask } from "../pane-store.ts";

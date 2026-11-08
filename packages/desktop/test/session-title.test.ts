@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parseSessionTitle } from "@zpi-dev/builtin-plugins/title/generate";
 import { expect, it } from "vitest";
-import { parseSessionTitle } from "zpi-builtin-plugins/title/generate";
 import { chunk, deferred, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, idle, setup } from "./helpers/session-fixture.ts";
@@ -198,8 +198,8 @@ it("manual rename and deletion win over late title responses; title failure is n
 });
 
 it("generates a Responses title using an available effort and the portable structured-output preference", async () => {
-  const { ModelRuntime } = await import("zpi-coding-agent");
-  const { generateSessionTitle } = await import("zpi-builtin-plugins/title/generate");
+  const { ModelRuntime } = await import("@zpi-dev/coding-agent");
+  const { generateSessionTitle } = await import("@zpi-dev/builtin-plugins/title/generate");
   let payload: Record<string, unknown> = {};
   const runtime = await ModelRuntime.create({
     fetch: (async (_url, init) => {

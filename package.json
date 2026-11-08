@@ -1,6 +1,6 @@
 {
-  "name": "zpi",
-  "version": "0.3.3",
+  "name": "@zpi-dev/workspace",
+  "version": "0.3.6",
   "private": true,
   "type": "module",
   "bin": {
@@ -31,7 +31,9 @@
     "test:safety": "node tests/safety-check.ts",
     "test:interactive": "npm run test:safety && npm run build && playwright test --config=playwright.interactive.config.ts",
     "test:cleanup": "npm run test:safety && npm run build && node scripts/verify-test-cleanup.mjs",
-    "build:sdk": "node scripts/build-agent-sdk.mjs"
+    "build:sdk": "node scripts/build-agent-sdk.mjs",
+    "start": "node packages/desktop/bin/cli.mjs",
+    "pack:npm": "node scripts/pack-npm.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

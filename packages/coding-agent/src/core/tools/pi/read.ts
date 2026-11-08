@@ -3,8 +3,8 @@
 
 import { constants, createReadStream } from "node:fs";
 import { access as fsAccess, readFile as fsReadFile } from "node:fs/promises";
+import type { ImageContent, Model, TextContent } from "@zpi-dev/ai";
 import { Type } from "typebox";
-import type { ImageContent, Model, TextContent } from "zpi-ai";
 import { imageLimits } from "../../image-limits.ts";
 import { readFileBounded } from "../../read-file-bounded.ts";
 import type { ToolContext, ToolDefinition } from "../../types.ts";

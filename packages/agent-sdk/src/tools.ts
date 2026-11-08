@@ -2,9 +2,14 @@ import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { promisify } from "node:util";
+import { contentText } from "@zpi-dev/ai";
+import {
+  createBashTool,
+  createCodingTools,
+  type ToolContext,
+  type ToolDefinition,
+} from "@zpi-dev/coding-agent";
 import { type TObject, Type } from "typebox";
-import { contentText } from "zpi-ai";
-import { createBashTool, createCodingTools, type ToolContext, type ToolDefinition } from "zpi-coding-agent";
 import type { Tasks } from "./tasks.ts";
 import type { Options } from "./types.ts";
 

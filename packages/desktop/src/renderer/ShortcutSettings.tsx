@@ -1,8 +1,8 @@
 // Layout and key search adapted from ZCode settings/ShortcutSettingsSection (Apache-2.0).
 import * as Dialog from "@radix-ui/react-dialog";
+import { ActionHint } from "@zpi-dev/ui";
 import { Keyboard, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import {
   defaultShortcuts,
   formatShortcut,

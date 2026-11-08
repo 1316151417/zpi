@@ -1,14 +1,14 @@
 import { readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, it } from "vitest";
-import type { AgentToolResult } from "zpi-agent";
+import type { AgentToolResult } from "@zpi-dev/agent";
 import {
   createCodingTools,
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
   FileReadState,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it } from "vitest";
 import { temp } from "./helpers/workspace-fixture.ts";
 
 function text(result: Pick<AgentToolResult, "content">): string {

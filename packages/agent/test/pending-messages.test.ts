@@ -1,8 +1,8 @@
 import { setImmediate } from "node:timers/promises";
+import { Agent, type AgentMessage, type AgentTool, type StreamFn } from "@zpi-dev/agent";
+import { createAssistantMessageEventStream, emptyAssistant, type Message } from "@zpi-dev/ai";
 import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
-import { Agent, type AgentMessage, type AgentTool, type StreamFn } from "zpi-agent";
-import { createAssistantMessageEventStream, emptyAssistant, type Message } from "zpi-ai";
 import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 
 const model = fakeModel("");

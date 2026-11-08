@@ -1,7 +1,7 @@
+import { ActionHint } from "@zpi-dev/ui";
 import { Children, createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ActionHint } from "zpi-ui";
 import { SidebarTaskRow } from "../src/renderer/SidebarTaskRow.tsx";
 import { formatTaskRelativeTime } from "../src/renderer/sidebar-task-model.ts";
 import type { SessionRecord } from "../src/shared/bridge.ts";

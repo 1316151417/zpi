@@ -1,8 +1,8 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
+import { ActionHint, type SessionView } from "@zpi-dev/ui";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ActionHint, type SessionView } from "zpi-ui";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { accept, focusComposer, refresh, report, useStore } from "./store.ts";

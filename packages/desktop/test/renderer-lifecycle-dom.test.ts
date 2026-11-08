@@ -1,8 +1,8 @@
+import type { SessionView, UserQuestionRequest } from "@zpi-dev/ui";
+import { emptySession } from "@zpi-dev/ui";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { SessionView, UserQuestionRequest } from "zpi-ui";
-import { emptySession } from "zpi-ui";
 import { AppBoundary } from "../src/renderer/AppBoundary.tsx";
 import { BackgroundTaskPane } from "../src/renderer/BackgroundTaskPane.tsx";
 import { logRendererError } from "../src/renderer/error-log.ts";
@@ -29,8 +29,8 @@ vi.mock("../src/renderer/pane-store.ts", () => ({
 }));
 vi.mock("../src/renderer/use-workspace.ts", () => ({ useWorkspace: () => ({ cwd: "/repo" }) }));
 vi.mock("../src/renderer/error-log.ts", () => ({ logRendererError: vi.fn() }));
-vi.mock("zpi-ui", async (original) => ({
-  ...(await original<typeof import("zpi-ui")>()),
+vi.mock("@zpi-dev/ui", async (original) => ({
+  ...(await original<typeof import("@zpi-dev/ui")>()),
   Conversation: vi.fn(() => null),
 }));
 let root: Root;

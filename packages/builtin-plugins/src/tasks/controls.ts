@@ -1,7 +1,8 @@
 // Shared task-control contracts; backends own execution, state and session isolation.
+
+import type { AgentToolResult } from "@zpi-dev/agent";
+import type { ToolDefinition } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
-import type { AgentToolResult } from "zpi-agent";
-import type { ToolDefinition } from "zpi-coding-agent";
 import { validateToolArguments } from "../tool-validation.ts";
 
 export interface TaskOutputInput {

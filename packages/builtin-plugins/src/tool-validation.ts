@@ -1,7 +1,8 @@
 // Flat collaboration-tool input errors follow ZCode's provider-visible validation format.
+
+import { isJsonObject } from "@zpi-dev/ai";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { isJsonObject } from "zpi-ai";
 
 export function validateToolArguments(name: string, schema: TSchema, input: unknown) {
   if (Value.Check(schema, input)) return input;

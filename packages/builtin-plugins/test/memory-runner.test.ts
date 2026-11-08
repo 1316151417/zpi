@@ -2,13 +2,13 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import type { ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { JsonObject } from "@zpi-dev/ai";
+import { consolidationInstructions } from "@zpi-dev/builtin-plugins/memory/consolidation-instructions";
+import { extractionInstructions } from "@zpi-dev/builtin-plugins/memory/extraction-instructions";
+import type { MemoryRunRequest } from "@zpi-dev/builtin-plugins/memory/long-memory";
+import { extractionInput, runMemoryRequest } from "@zpi-dev/builtin-plugins/memory/runner";
+import { ModelRuntime } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test } from "vitest";
-import type { JsonObject } from "zpi-ai";
-import { consolidationInstructions } from "zpi-builtin-plugins/memory/consolidation-instructions";
-import { extractionInstructions } from "zpi-builtin-plugins/memory/extraction-instructions";
-import type { MemoryRunRequest } from "zpi-builtin-plugins/memory/long-memory";
-import { extractionInput, runMemoryRequest } from "zpi-builtin-plugins/memory/runner";
-import { ModelRuntime } from "zpi-coding-agent";
 import { chunk, done, fakeConfig, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 
 const cleanup: (() => Promise<unknown>)[] = [];

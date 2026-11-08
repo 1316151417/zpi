@@ -8,7 +8,7 @@ import type {
   SessionManager,
   SessionPlugin,
   ToolDefinition,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 
 export type UUID = string;
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -273,7 +273,9 @@ export interface SdkPluginConfig {
   path: string;
 }
 export interface ZpiOptions {
-  requestOptions?: import("zpi-ai").SimpleStreamOptions | (() => import("zpi-ai").SimpleStreamOptions);
+  requestOptions?:
+    | import("@zpi-dev/ai").SimpleStreamOptions
+    | (() => import("@zpi-dev/ai").SimpleStreamOptions);
   modelRuntime?: ModelRuntime;
   providers?: Record<string, ProviderConfigInput>;
   fetch?: typeof fetch;

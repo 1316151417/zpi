@@ -1,7 +1,7 @@
 // ZCode DiffsWorkerPoolProvider defaults (Apache-2.0).
 import { useWorkerPool, WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { defaultCodePreview } from "@zpi-dev/ui/code-preview";
 import { type ReactNode, useEffect, useMemo } from "react";
-import { defaultCodePreview } from "zpi-ui/code-preview";
 import { report, useStore } from "./store.ts";
 
 const poolOptions = {

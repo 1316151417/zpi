@@ -1,5 +1,5 @@
+import { isJsonObject, type JsonObject } from "@zpi-dev/ai";
 import { parseDocument } from "yaml";
-import { isJsonObject, type JsonObject } from "zpi-ai";
 
 export interface MarkdownFrontmatter {
   fields: JsonObject;

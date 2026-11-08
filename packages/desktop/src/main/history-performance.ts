@@ -1,5 +1,5 @@
-import { isJsonObject } from "zpi-ai";
-import { type ModelPerformanceTotals, type SessionEntry, SessionPerformance } from "zpi-coding-agent";
+import { isJsonObject } from "@zpi-dev/ai";
+import { type ModelPerformanceTotals, type SessionEntry, SessionPerformance } from "@zpi-dev/coding-agent";
 
 export const sideChatGuard =
   "The preceding conversation was inherited from the parent task for reference only. Do not continue the parent's active work automatically; answer only new questions sent in this side chat. Modify the workspace only when the user explicitly asks you to do so in this side chat.";

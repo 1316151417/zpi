@@ -1,6 +1,6 @@
+import type { AgentLoopConfig, AgentMessage } from "@zpi-dev/agent";
+import { contentText } from "@zpi-dev/ai";
 import { Check } from "typebox/value";
-import type { AgentLoopConfig, AgentMessage } from "zpi-agent";
-import { contentText } from "zpi-ai";
 import {
   type HookEvent,
   type HookExecution,

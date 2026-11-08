@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { Model } from "zpi-ai";
+import type { Model } from "@zpi-dev/ai";
 import {
   anthropicMessagesCompatKeys,
   assertSupportedOptions,
@@ -17,26 +17,26 @@ import {
   usesChatGPTAuth,
   validateReasoningConfig,
   validateThinkingMap,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   type ChatGPTCredential,
   isChatGPTCredential,
   refreshChatGPTCredential,
   verifyRefreshedChatGPTCredential,
-} from "zpi-ai/auth/openai-chatgpt";
+} from "@zpi-dev/ai/auth/openai-chatgpt";
 import {
   builtinPluginCatalog,
   defaultPluginSettings,
   desktopPluginIds,
   validateBuiltinPluginOptions,
-} from "zpi-builtin-plugins";
+} from "@zpi-dev/builtin-plugins";
 import {
   defaultMemorySettings,
   type MemorySettings,
   memorySettingLimits,
-} from "zpi-builtin-plugins/memory/types";
-import { type PromptTemplate, piTemplate, validateTemplate } from "zpi-coding-agent";
-import { isCodePreviewSettings } from "zpi-ui/code-preview";
+} from "@zpi-dev/builtin-plugins/memory/types";
+import { type PromptTemplate, piTemplate, validateTemplate } from "@zpi-dev/coding-agent";
+import { isCodePreviewSettings } from "@zpi-dev/ui/code-preview";
 import type {
   CombinedSelection,
   InterfacePreferences,
@@ -616,7 +616,7 @@ export class SettingsStore {
       plugins: { ...this.data.plugins, enabled: { ...this.data.plugins.enabled, [id]: enabled } },
     });
   }
-  setPluginOptions(id: string, options: import("zpi-ai").JsonObject): PublicSettings {
+  setPluginOptions(id: string, options: import("@zpi-dev/ai").JsonObject): PublicSettings {
     if (!builtinPluginCatalog.some((plugin) => plugin.id === id) || !isJsonObject(options))
       throw new Error("invalid_input: 无效插件配置");
     validateBuiltinPluginOptions(id, options);

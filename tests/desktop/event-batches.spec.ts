@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import type { DesktopEventEnvelope } from "zpi-ui";
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";

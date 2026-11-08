@@ -1,10 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { SubagentProfiles } from "@zpi-dev/builtin-plugins/collaboration/profiles";
+import { SubagentPlugin } from "@zpi-dev/builtin-plugins/collaboration/runtime";
+import { TaskControls } from "@zpi-dev/builtin-plugins/tasks/controls";
+import { SessionManager } from "@zpi-dev/coding-agent";
+import type { SubagentTask } from "@zpi-dev/ui";
 import { afterEach, expect, test, vi } from "vitest";
-import { SubagentProfiles } from "zpi-builtin-plugins/collaboration/profiles";
-import { SubagentPlugin } from "zpi-builtin-plugins/collaboration/runtime";
-import { TaskControls } from "zpi-builtin-plugins/tasks/controls";
-import { SessionManager } from "zpi-coding-agent";
-import type { SubagentTask } from "zpi-ui";
 import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 
 afterEach(() => {

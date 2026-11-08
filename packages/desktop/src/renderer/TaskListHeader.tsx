@@ -1,7 +1,8 @@
 // Adapted from ZCode ProjectSidebarListHeader (Apache-2.0), 3c5b2276.
+
+import { ActionHint } from "@zpi-dev/ui";
 import { Search } from "lucide-react";
 import type { ReactNode } from "react";
-import { ActionHint } from "zpi-ui";
 import type { TaskPreferences } from "./sidebar-task-model.ts";
 import { TaskViewMenu } from "./TaskViewMenu.tsx";
 

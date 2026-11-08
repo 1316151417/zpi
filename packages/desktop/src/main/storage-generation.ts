@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { syncDirectory } from "zpi-coding-agent";
+import { syncDirectory } from "@zpi-dev/coding-agent";
 import { validateStateDatabase } from "./state-store.ts";
 
 export interface StorageGeneration {

@@ -1,8 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readFileBounded } from "@zpi-dev/coding-agent";
 import { afterEach, expect, it } from "vitest";
-import { readFileBounded } from "zpi-coding-agent";
 
 const directories: string[] = [];
 afterEach(async () => {

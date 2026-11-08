@@ -1,5 +1,5 @@
+import { emptyAssistant } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { emptySession, mergeHistory, progressSummary, reduceSession } from "../src/reducer.ts";
 import type { DesktopEvent, RunView, SessionView } from "../src/types.ts";

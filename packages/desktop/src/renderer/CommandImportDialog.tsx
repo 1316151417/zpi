@@ -1,8 +1,8 @@
 // Adapted from ZCode ExternalAgentImportDialog (Apache-2.0), limited to explicit command import.
 import * as Dialog from "@radix-ui/react-dialog";
+import { ActionHint } from "@zpi-dev/ui";
 import { AlertCircle, Check, ChevronRight, LoaderCircle, Minus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import type {
   CommandImportCandidate,
   CommandImportDiscovery,

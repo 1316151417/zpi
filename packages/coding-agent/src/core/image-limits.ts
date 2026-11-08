@@ -20,9 +20,9 @@ export const imageLimits = {
   messagePixels: 80_000_000,
 } as const;
 
-import type { Attachment, ImageAttachment } from "zpi-ai";
+import type { Attachment, ImageAttachment } from "@zpi-dev/ai";
 
-export type { Attachment, FileAttachment, ImageAttachment } from "zpi-ai";
+export type { Attachment, FileAttachment, ImageAttachment } from "@zpi-dev/ai";
 export function isImageAttachment(attachment: Attachment): attachment is ImageAttachment {
   return "width" in attachment;
 }

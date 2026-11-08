@@ -1,4 +1,4 @@
-import { createLocalBashOperations, getShellEnv } from "zpi-coding-agent";
+import { createLocalBashOperations, getShellEnv } from "@zpi-dev/coding-agent";
 
 export interface CustomCommandShellContext {
   cwd: string;

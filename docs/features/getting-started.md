@@ -4,6 +4,8 @@
 
 ## 安装并打开
 
+安装 Node.js 24 后，可以直接执行 `npx @zpi-dev/desktop`。需要固定命令时，执行 `npm install -g @zpi-dev/desktop`，然后运行 `zpi-desktop`。npm 启动与正式版安装包共用 `ZPI` 数据目录。
+
 从[发布页](https://github.com/1316151417/zpi/releases)下载适合当前系统的安装包。源码提供 macOS 和 Windows 打包命令；实际可下载平台以附件为准。从源码启动使用[本地开发](development.md)。
 
 正式版和 Preview 使用不同数据目录。开发启动与 Preview 共用身份及默认目录，试用存储变更前先阅读[备份与恢复](storage.md)。

@@ -9,9 +9,9 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { type Mention, parseMentions } from "@zpi-dev/coding-agent/input";
 import { ArrowUpFromLine, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
-import { type Mention, parseMentions } from "zpi-coding-agent/input";
 import { type ConversationSelection, parseSelectionPrompt } from "../conversation-selections.ts";
 import type { InputQueue, QueuedInput } from "../types.ts";
 import { userErrorMessage } from "../user-error.ts";

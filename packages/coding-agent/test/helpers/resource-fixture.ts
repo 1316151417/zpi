@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAgentSession, ModelRuntime, SessionManager } from "@zpi-dev/coding-agent";
 import { afterEach } from "vitest";
-import { createAgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { fakeConfig, fakeServer } from "../../../../tests/fake-server.ts";
 
 const cleanup: (() => Promise<unknown>)[] = [];
@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 export async function fixture(
   handler: Parameters<typeof fakeServer>[0],
-  options: Pick<import("zpi-coding-agent").CreateAgentSessionOptions, "plugins" | "hooks"> = {},
+  options: Pick<import("@zpi-dev/coding-agent").CreateAgentSessionOptions, "plugins" | "hooks"> = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), "zpi-resources-"));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));

@@ -1,5 +1,5 @@
+import { Conversation } from "@zpi-dev/ui";
 import type { ComponentProps } from "react";
-import { Conversation } from "zpi-ui";
 import { inputContext } from "./composer-context.ts";
 import { openChanges, openFile, openWebLink, paneTask } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";

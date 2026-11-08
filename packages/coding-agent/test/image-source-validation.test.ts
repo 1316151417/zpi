@@ -1,6 +1,6 @@
+import { imageLimits, processImage, validateImageSource } from "@zpi-dev/coding-agent";
 import sharp from "sharp";
 import { expect, it } from "vitest";
-import { imageLimits, processImage, validateImageSource } from "zpi-coding-agent";
 
 it("source validation returns metadata without encoding or replacing original bytes", async () => {
   const original = await sharp({ create: { width: 3, height: 2, channels: 3, background: "red" } })

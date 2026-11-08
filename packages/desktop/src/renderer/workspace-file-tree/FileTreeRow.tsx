@@ -1,8 +1,8 @@
 import * as Context from "@radix-ui/react-context-menu";
+import { buildMentionMarkdown } from "@zpi-dev/coding-agent/input";
+import { ActionHint, FileIcon } from "@zpi-dev/ui";
 import { AlertCircle, ChevronRight, LoaderCircle } from "lucide-react";
 import { type CSSProperties, Fragment, type KeyboardEvent } from "react";
-import { buildMentionMarkdown } from "zpi-coding-agent/input";
-import { ActionHint, FileIcon } from "zpi-ui";
 import type { EditorInfo } from "../../shared/editors.ts";
 import { openBrowser, paneTask } from "../pane-store.ts";
 import { drafts, focusComposer, report } from "../store.ts";

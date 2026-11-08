@@ -1,6 +1,6 @@
+import type { Message } from "@zpi-dev/ai";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import type { Message } from "zpi-ai";
 import type { SessionEntry, SessionHeader } from "./session-manager.ts";
 
 export const maxSessionEntryBytes = 8 * 1024 * 1024;

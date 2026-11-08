@@ -57,7 +57,7 @@ memory、session-title、notifications 均为版本化运行时插件，默认�
 
 ## 本地外部插件
 
-“设置 → 插件”的“已安装”区域显示本地插件数量，顶部提供刷新和“添加 → 从本地文件夹添加”，空状态也提供添加按钮；内置插件单独列出，不提供插件市场。选择根目录后导入并启用。导入只读取、校验和复制文件，不执行 hook、依赖安装或模块入口。实现独立在 `zpi-plugin-compat`，不向 agent/coding-agent 引入 Claude、ZCode 或 Electron 分支。
+“设置 → 插件”的“已安装”区域显示本地插件数量，顶部提供刷新和“添加 → 从本地文件夹添加”，空状态也提供添加按钮；内置插件单独列出，不提供插件市场。选择根目录后导入并启用。导入只读取、校验和复制文件，不执行 hook、依赖安装或模块入口。实现独立在 `@zpi-dev/plugin-compat`，不向 agent/coding-agent 引入 Claude、ZCode 或 Electron 分支。
 
 Manifest 查找顺序：`.zpi-plugin/plugin.json`、`.zcode-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`。支持 name、version、description、字符串数组 instructions，以及标准 commands、skills、agents、hooks 目录；组件路径可使用 manifest 中的相对路径声明。缺省 version 为 unversioned，仍按内容摘要固定版本。
 

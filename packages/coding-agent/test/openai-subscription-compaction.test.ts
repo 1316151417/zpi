@@ -1,5 +1,5 @@
+import { normalizeContext } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import { normalizeContext } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { completeSummarization } from "../src/core/compaction.ts";
 

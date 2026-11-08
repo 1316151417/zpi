@@ -1,13 +1,13 @@
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Type } from "typebox";
-import { expect, it } from "vitest";
 import {
   createAgentSession,
   ModelRuntime,
   projectStreamedToolJournal,
   SessionManager,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { Type } from "typebox";
+import { expect, it } from "vitest";
 import { chunk, deferred, done, fakeConfig, fakeServer, send } from "../../../tests/fake-server.ts";
 import { cleanup, directory } from "./helpers/session-fixture.ts";
 

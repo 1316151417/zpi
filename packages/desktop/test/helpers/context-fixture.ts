@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PromptTemplate } from "@zpi-dev/coding-agent";
 import sharp from "sharp";
 import { afterEach } from "vitest";
-import type { PromptTemplate } from "zpi-coding-agent";
 import { chunk, done, fakeServer, send } from "../../../../tests/fake-server.ts";
 import { runCleanup } from "../../../../tests/helpers/cleanup.ts";
 import { SessionHost } from "../../src/main/session-host.ts";

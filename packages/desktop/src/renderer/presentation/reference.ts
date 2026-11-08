@@ -1,4 +1,4 @@
-import type { ConversationSelection } from "zpi-ui";
+import type { ConversationSelection } from "@zpi-dev/ui";
 import type { PresentationPageElement } from "./types.ts";
 
 export async function fingerprintPresentationBytes(bytes: Uint8Array): Promise<string> {

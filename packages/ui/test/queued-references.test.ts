@@ -1,7 +1,7 @@
+import type { Attachment } from "@zpi-dev/coding-agent";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
-import type { Attachment } from "zpi-coding-agent";
 import { ConversationQueuePanel, type QueueActions } from "../src/components/ConversationQueuePanel.tsx";
 import type { InputQueue } from "../src/types.ts";
 

@@ -1,4 +1,3 @@
-import { afterEach, expect, it, vi } from "vitest";
 import {
   emptyAssistant,
   isRetryableAssistantError,
@@ -7,7 +6,8 @@ import {
   retryAssistantCall,
   retryDelayMs,
   streamSimple,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
+import { afterEach, expect, it, vi } from "vitest";
 import { chunk, fakeModel } from "../../../tests/fake-server.ts";
 import { modelFailure } from "../src/utils/model-retry.ts";
 

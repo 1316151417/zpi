@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { HookRunner } from "@zpi-dev/coding-agent";
 import { expect, test } from "vitest";
-import { HookRunner } from "zpi-coding-agent";
 import { ConfiguredHooks } from "../src/main/plugins/configured-hooks.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import type { HookConfig } from "../src/shared/hooks.ts";

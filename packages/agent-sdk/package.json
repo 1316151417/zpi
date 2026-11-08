@@ -1,6 +1,6 @@
 {
-  "name": "zpi-agent-sdk",
-  "version": "0.1.60",
+  "name": "@zpi-dev/agent-sdk",
+  "version": "0.1.61",
   "type": "module",
   "description": "TypeScript Agent SDK for ZPI with a Claude-compatible public API",
   "exports": {
@@ -26,7 +26,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "node ../../scripts/build-agent-sdk.mjs"
+    "build": "node ../../scripts/build-agent-sdk.mjs",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "sharp": "0.35.5",
@@ -35,10 +36,20 @@
     "@anthropic-ai/sdk": "0.124.0"
   },
   "devDependencies": {
-    "zpi-ai": "0.1.60",
-    "zpi-agent": "0.1.60",
-    "zpi-coding-agent": "0.1.60",
-    "zpi-plugin-compat": "0.1.60",
+    "@zpi-dev/ai": "0.1.61",
+    "@zpi-dev/agent": "0.1.61",
+    "@zpi-dev/coding-agent": "0.1.61",
+    "@zpi-dev/plugin-compat": "0.1.61",
     "yaml": "2.9.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1316151417/zpi.git",
+    "directory": "packages/agent-sdk"
+  },
+  "homepage": "http://101.200.240.206/zpi/docs/features/sdk",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

@@ -1,6 +1,6 @@
+import { normalizeContext } from "@zpi-dev/ai";
+import { streamSimple } from "@zpi-dev/ai/api/openai-completions";
 import { afterEach, expect, it, vi } from "vitest";
-import { normalizeContext } from "zpi-ai";
-import { streamSimple } from "zpi-ai/api/openai-completions";
 import { chunk, done, fakeModel, fakeServer, send } from "../../../tests/fake-server.ts";
 import { modelFailure } from "../src/utils/model-retry.ts";
 import { retryProviderRequest } from "../src/utils/provider-retry.ts";

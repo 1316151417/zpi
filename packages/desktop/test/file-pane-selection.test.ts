@@ -15,12 +15,12 @@ vi.mock("react", async (original) => ({
   useEffect: () => {},
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }));
-vi.mock("zpi-ui", async (original) => ({
-  ...(await original<typeof import("zpi-ui")>()),
+vi.mock("@zpi-dev/ui", async (original) => ({
+  ...(await original<typeof import("@zpi-dev/ui")>()),
   useAppearance: () => ({ theme: "light" }),
 }));
 vi.mock("../src/renderer/store.ts", async () => {
-  const { ComposerDraftStore } = await import("zpi-ui");
+  const { ComposerDraftStore } = await import("@zpi-dev/ui");
   const state = { selected: "main", sessions: new Map(), views: new Map() };
   return {
     drafts: new ComposerDraftStore(),

@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { resolveLinkTarget } from "@zpi-dev/ui/links";
 import { afterEach, expect, test, vi } from "vitest";
-import { resolveLinkTarget } from "zpi-ui/links";
 import { performFileAction } from "../src/main/file-actions.ts";
 
 const directories: string[] = [];

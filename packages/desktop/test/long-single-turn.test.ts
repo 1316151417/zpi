@@ -1,10 +1,10 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { emptyAssistant } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
+import { mergeHistory } from "@zpi-dev/ui";
 import { afterEach, expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
-import { mergeHistory } from "zpi-ui";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { HistoryStorage } from "../src/main/history-storage.ts";
 import { restoreView } from "../src/main/projection.ts";

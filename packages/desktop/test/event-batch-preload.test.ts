@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 import { expect, it, vi } from "vitest";
-import type { DesktopEventEnvelope } from "zpi-ui";
 import type { DesktopBridge } from "../src/shared/bridge.ts";
 
 const electron = vi.hoisted(() => ({ expose: vi.fn() }));

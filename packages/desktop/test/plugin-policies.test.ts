@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { desktopPluginIds } from "@zpi-dev/builtin-plugins";
 import { expect, test, vi } from "vitest";
-import { desktopPluginIds } from "zpi-builtin-plugins";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture, run } from "./helpers/context-fixture.ts";
 

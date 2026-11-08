@@ -1,8 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
-import { adHocInstructions } from "zpi-builtin-plugins/memory/ad-hoc-instructions";
+import { adHocInstructions } from "@zpi-dev/builtin-plugins/memory/ad-hoc-instructions";
 import {
   memoryNotesDirectory,
   memoryNotesInstructions,
@@ -11,7 +10,8 @@ import {
   readMemoryNotes,
   resetMemoryBaseline,
   validateMemoryWorkspace,
-} from "zpi-builtin-plugins/memory/workspace";
+} from "@zpi-dev/builtin-plugins/memory/workspace";
+import { afterEach, expect, test } from "vitest";
 
 const directories: string[] = [];
 afterEach(async () => {

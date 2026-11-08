@@ -1,4 +1,4 @@
-import type { ComposerContext } from "zpi-ui";
+import type { ComposerContext } from "@zpi-dev/ui";
 import { readMarkdownImage } from "./markdown-image.ts";
 import { unwrap } from "./unwrap.ts";
 export const inputContext: ComposerContext = {

@@ -1,5 +1,4 @@
-import { expect, it, vi } from "vitest";
-import { emptyAssistant } from "zpi-ai";
+import { emptyAssistant } from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
@@ -10,7 +9,8 @@ import {
   type TranscriptSnapshot,
   type TranscriptState,
   type TranscriptStore,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { expect, it, vi } from "vitest";
 import { fakeConfig, fakeModel } from "../../../tests/fake-server.ts";
 import { buildSessionContext } from "../src/core/session-manager.ts";
 

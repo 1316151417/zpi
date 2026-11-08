@@ -3,13 +3,17 @@ import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
-import { createAgentSession, queryResult } from "zpi-agent-sdk/host";
-import { assertSupportedOptions, contentText, isJsonObject } from "zpi-ai";
-import type { MemorySettings } from "zpi-builtin-plugins/memory/types";
-import { BuiltinPluginRuntime, type PluginConfiguration, type PluginRun } from "zpi-builtin-plugins/runtime";
-import { sessionReferenceTranscriptReverse } from "zpi-builtin-plugins/transcripts";
-import type { PluginNotification } from "zpi-builtin-plugins/types";
-import { publicWebUrl } from "zpi-builtin-plugins/web/client";
+import { createAgentSession, queryResult } from "@zpi-dev/agent-sdk/host";
+import { assertSupportedOptions, contentText, isJsonObject } from "@zpi-dev/ai";
+import type { MemorySettings } from "@zpi-dev/builtin-plugins/memory/types";
+import {
+  BuiltinPluginRuntime,
+  type PluginConfiguration,
+  type PluginRun,
+} from "@zpi-dev/builtin-plugins/runtime";
+import { sessionReferenceTranscriptReverse } from "@zpi-dev/builtin-plugins/transcripts";
+import type { PluginNotification } from "@zpi-dev/builtin-plugins/types";
+import { publicWebUrl } from "@zpi-dev/builtin-plugins/web/client";
 import {
   type AgentSession,
   assembleSession,
@@ -37,7 +41,7 @@ import {
   validatePluginSnapshot,
   validateTemplate,
   withPluginResources,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 import type {
   DesktopEvent,
   DesktopEventEnvelope,
@@ -45,10 +49,10 @@ import type {
   RunStatus,
   SessionMentionSuggestion,
   SessionView,
-} from "zpi-ui";
-import { splitFileLocation } from "zpi-ui/links";
-import { normalizeWebToolDetails, reduceSession, sessionViewBytes } from "zpi-ui/projection";
-import { parseSelectionPrompt, validSelections } from "zpi-ui/selections";
+} from "@zpi-dev/ui";
+import { splitFileLocation } from "@zpi-dev/ui/links";
+import { normalizeWebToolDetails, reduceSession, sessionViewBytes } from "@zpi-dev/ui/projection";
+import { parseSelectionPrompt, validSelections } from "@zpi-dev/ui/selections";
 import type {
   CombinedSelection,
   DiffItem,
@@ -2315,7 +2319,7 @@ export class SessionHost {
       this.getSessionSnapshot(id);
       if (record.draft) this.configurations.set(id, this.defaultConfiguration(record.projectId));
       const configuration = this.configuration(id);
-      const accept = async (model: import("zpi-ai").Model) => {
+      const accept = async (model: import("@zpi-dev/ai").Model) => {
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         // Cache retention must be durable before accepted facts can survive a crash.
         // An interrupted acceptance may retain unused cache, but must never lose its payload.

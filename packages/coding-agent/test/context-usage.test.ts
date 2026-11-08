@@ -1,6 +1,6 @@
+import { emptyAssistant } from "@zpi-dev/ai";
+import { contextUsage, SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { contextUsage, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 it("includes cache writes in measured context and the cache-hit denominator", () => {

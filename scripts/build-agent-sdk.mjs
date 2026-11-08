@@ -17,7 +17,16 @@ await build({
   sourcemap: true,
   clean: true,
   external: ["sharp", "typebox", "typebox/value"],
-  noExternal: [/^zpi-/, "yaml", "diff", "openai", "ws", "https-proxy-agent", "socks-proxy-agent", "bmp-js"],
+  noExternal: [
+    /^@zpi-dev\//,
+    "yaml",
+    "diff",
+    "openai",
+    "ws",
+    "https-proxy-agent",
+    "socks-proxy-agent",
+    "bmp-js",
+  ],
   banner: {
     js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
   },
@@ -64,8 +73,10 @@ try {
       }
       if (!entry.name.endsWith(".d.ts")) continue;
       const content = (await readFile(path, "utf8"))
-        .replace(/(["'])(zpi-[^"']+)\1/g, (_match, quote, specifier) => {
-          const [name, ...subpath] = specifier.split("/"),
+        .replace(/(["'])(@zpi-dev\/[^"']+)\1/g, (_match, quote, specifier) => {
+          const parts = specifier.split("/"),
+            name = parts.slice(0, 2).join("/"),
+            subpath = parts.slice(2),
             manifest = manifests.get(name);
           if (!manifest) throw new Error(`Unknown SDK type dependency: ${name}`);
           let target = manifest.exports[subpath.length ? `./${subpath.join("/")}` : "."];

@@ -1,4 +1,3 @@
-import { expect, it, vi } from "vitest";
 import {
   type AssistantMessageEvent,
   AssistantMessageEventStream,
@@ -7,8 +6,9 @@ import {
   type Model,
   type SimpleStreamOptions,
   type TranscriptContext,
-} from "zpi-ai";
-import { ModelRuntime } from "zpi-coding-agent";
+} from "@zpi-dev/ai";
+import { ModelRuntime } from "@zpi-dev/coding-agent";
+import { expect, it, vi } from "vitest";
 import { deferred, fakeConfig } from "../../../tests/fake-server.ts";
 
 function fixture(getApiKey: () => Promise<string>) {

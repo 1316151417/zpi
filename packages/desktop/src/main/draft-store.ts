@@ -1,4 +1,4 @@
-import { type ConversationSelection, validSelections } from "zpi-ui/selections";
+import { type ConversationSelection, validSelections } from "@zpi-dev/ui/selections";
 import type { StateStore } from "./state-store.ts";
 export interface TextDraft {
   selections?: ConversationSelection[];

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { piTemplate, SessionManager } from "zpi-coding-agent";
+import { piTemplate, SessionManager } from "@zpi-dev/coding-agent";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { clipboardText } from "../helpers/composer.ts";

@@ -1,8 +1,14 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  fetchProviderModels,
+  normalizeContext,
+  presetModels,
+  providerBaseUrl,
+  streamSimple,
+} from "@zpi-dev/ai";
 import { afterEach, expect, it } from "vitest";
-import { fetchProviderModels, normalizeContext, presetModels, providerBaseUrl, streamSimple } from "zpi-ai";
 import { chunk, done, fakeServer, send } from "../../../tests/fake-server.ts";
 import { reasoningParameters } from "../../ai/src/utils/reasoning.ts";
 import { SessionHost } from "../src/main/session-host.ts";

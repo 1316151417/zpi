@@ -1,5 +1,5 @@
+import type { DesktopEventEnvelope } from "@zpi-dev/ui";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { DesktopEventEnvelope } from "zpi-ui";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 import type { ShortcutCommand } from "../shared/shortcuts.ts";
 

@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { InputQueue } from "@zpi-dev/ui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { InputQueue } from "zpi-ui";
 import {
   STATE_SCHEMA_VERSION,
   StateStore,

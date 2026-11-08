@@ -1,7 +1,7 @@
+import { buildMentionMarkdown } from "@zpi-dev/coding-agent/input";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { buildMentionMarkdown } from "zpi-coding-agent/input";
 import { Conversation, RunGroup } from "../src/components/Conversation.tsx";
 import {
   createConversationFindIndex,

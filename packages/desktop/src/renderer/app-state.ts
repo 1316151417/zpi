@@ -1,4 +1,4 @@
-import type { InputSuggestion } from "zpi-ui";
+import type { InputSuggestion } from "@zpi-dev/ui";
 import type { useStore } from "./store.ts";
 
 type Store = ReturnType<typeof useStore.getState>;

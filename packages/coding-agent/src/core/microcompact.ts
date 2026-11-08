@@ -1,4 +1,4 @@
-import { estimateMessageTokens, type Message } from "zpi-ai";
+import { estimateMessageTokens, type Message } from "@zpi-dev/ai";
 import { getMessageProvenance, setMessageProvenance } from "./transcript-store.ts";
 
 export const MICROCOMPACT_CLEARED_TOOL_RESULT_MESSAGE = "[Old tool result content cleared]";

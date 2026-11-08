@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseShortMemory, readShortMemory } from "@zpi-dev/builtin-plugins/memory/short-memory";
 import { afterEach, expect, test } from "vitest";
-import { parseShortMemory, readShortMemory } from "zpi-builtin-plugins/memory/short-memory";
 
 const temporary: string[] = [];
 afterEach(async () => {

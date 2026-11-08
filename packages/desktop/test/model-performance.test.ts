@@ -1,6 +1,6 @@
 import { join } from "node:path";
+import { emptySession, reduceSession } from "@zpi-dev/ui/projection";
 import { expect, it } from "vitest";
-import { emptySession, reduceSession } from "zpi-ui/projection";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 import {

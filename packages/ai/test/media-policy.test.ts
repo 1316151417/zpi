@@ -1,4 +1,3 @@
-import { expect, it, vi } from "vitest";
 import {
   emptyAssistant,
   mediaRequestBytes,
@@ -7,7 +6,8 @@ import {
   projectContextForModelMediaPolicy,
   projectMessagesForMediaBudget,
   streamSimple,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
+import { expect, it, vi } from "vitest";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { isModelContextExceededMessage, isModelMediaTooLargeMessage } from "../src/utils/overflow.ts";
 

@@ -1,7 +1,7 @@
+import type { FindRequest, FindState } from "@zpi-dev/ui";
 import { FolderOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import type { FindRequest, FindState } from "zpi-ui";
 import { ChangesPane } from "./ChangesPane.tsx";
 import { FilePane } from "./FilePane.tsx";
 import type { FilePaneTab } from "./pane-store.ts";

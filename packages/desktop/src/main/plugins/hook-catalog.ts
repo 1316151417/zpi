@@ -1,6 +1,6 @@
-import { builtinPluginCatalog, builtinPluginHooks, defaultPluginSettings } from "zpi-builtin-plugins";
-import type { HookEvent, PluginSnapshot } from "zpi-coding-agent";
-import type { CommandHook } from "zpi-plugin-compat";
+import { builtinPluginCatalog, builtinPluginHooks, defaultPluginSettings } from "@zpi-dev/builtin-plugins";
+import type { HookEvent, PluginSnapshot } from "@zpi-dev/coding-agent";
+import type { CommandHook } from "@zpi-dev/plugin-compat";
 import type { PublicSettings } from "../../shared/bridge.ts";
 import type { PluginHookGroup } from "../../shared/hooks.ts";
 

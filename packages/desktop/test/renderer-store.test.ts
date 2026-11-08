@@ -1,5 +1,5 @@
+import { type DesktopEventEnvelope, emptySession, reduceSession } from "@zpi-dev/ui";
 import { afterEach, expect, it, vi } from "vitest";
-import { type DesktopEventEnvelope, emptySession, reduceSession } from "zpi-ui";
 import { shallow } from "zustand/shallow";
 import { deferred } from "../../../tests/fake-server.ts";
 import { sessionActivityAt } from "../src/main/session-activity.ts";
@@ -95,7 +95,7 @@ async function setup() {
     })),
     listCommands: vi.fn(async () => ({
       ok: true,
-      value: [] as ReturnType<typeof import("zpi-coding-agent").listCommands>,
+      value: [] as ReturnType<typeof import("@zpi-dev/coding-agent").listCommands>,
     })),
     listSessionSkills: vi.fn(async (_id?: string) => ({ ok: true, value: { skills: [], diagnostics: [] } })),
     onEvents: vi.fn((listener: typeof emit) => {
@@ -171,8 +171,8 @@ it("keeps a late input-scoped failure off a draft changed after submit", async (
 
 it("lists built-in commands without auxiliary slash shortcuts", async () => {
   const f = await setup();
-  const { listCommands } = await import("zpi-coding-agent");
-  const { builtinPlugins } = await import("zpi-builtin-plugins");
+  const { listCommands } = await import("@zpi-dev/coding-agent");
+  const { builtinPlugins } = await import("@zpi-dev/builtin-plugins");
   f.bridge.listCommands.mockResolvedValue({
     ok: true,
     value: listCommands(builtinPlugins.flatMap((plugin) => plugin.commands ?? [])),

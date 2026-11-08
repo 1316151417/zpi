@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Agent } from "@zpi-dev/agent";
+import { createAssistantMessageEventStream, emptyAssistant } from "@zpi-dev/ai";
+import { projectStreamedToolJournal, SessionManager } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { Agent } from "zpi-agent";
-import { createAssistantMessageEventStream, emptyAssistant } from "zpi-ai";
-import { projectStreamedToolJournal, SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { StreamingToolJournal } from "../src/core/streaming-tool-journal.ts";
 import { directory } from "./helpers/session-fixture.ts";

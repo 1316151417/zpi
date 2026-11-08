@@ -1,18 +1,18 @@
-import { Type } from "typebox";
-import { expect, test, vi } from "vitest";
-import { builtinPluginHooks, desktopPluginIds, desktopPluginManifests } from "zpi-builtin-plugins";
+import { builtinPluginHooks, desktopPluginIds, desktopPluginManifests } from "@zpi-dev/builtin-plugins";
 import {
   type BuiltinPluginBindings,
   pluginsForSubagent,
   resolveBuiltinPlugins,
-} from "zpi-builtin-plugins/assembly";
-import type { TaskBackend } from "zpi-builtin-plugins/tasks/controls";
+} from "@zpi-dev/builtin-plugins/assembly";
+import type { TaskBackend } from "@zpi-dev/builtin-plugins/tasks/controls";
 import {
   assembleSession,
   createCodingTools,
   type SessionPlugin,
   type ToolDefinition,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { Type } from "typebox";
+import { expect, test, vi } from "vitest";
 import type { SubagentProfile } from "../src/collaboration/types.ts";
 
 function tool(name: string): ToolDefinition {

@@ -1,9 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { desktopPluginIds } from "@zpi-dev/builtin-plugins";
+import { ActionHint } from "@zpi-dev/ui";
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { desktopPluginIds } from "zpi-builtin-plugins";
-import { ActionHint } from "zpi-ui";
 import { ProviderCredentialInput } from "./ProviderCredentialInput.tsx";
 import { ProviderHeadingActions } from "./ProviderHeadingActions.tsx";
 import { ProviderLogo } from "./ProviderLogo.tsx";

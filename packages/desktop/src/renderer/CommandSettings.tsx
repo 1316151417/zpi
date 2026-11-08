@@ -1,5 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import {
   Check,
   ChevronDown,
@@ -15,7 +16,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActionHint } from "zpi-ui";
 import type { CustomCommand, CustomCommandInput } from "../shared/custom-commands.ts";
 import { CommandImportDialog } from "./CommandImportDialog.tsx";
 import { SettingsBreadcrumb } from "./SettingsBreadcrumb.tsx";

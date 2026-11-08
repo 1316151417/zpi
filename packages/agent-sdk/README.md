@@ -1,9 +1,9 @@
-# zpi-agent-sdk
+# @zpi-dev/agent-sdk
 
 TypeScript SDK for the ZPI agent runtime. Node.js 24 is required. Its supported API follows the [Claude Agent SDK TypeScript reference](https://code.claude.com/docs/zh-CN/agent-sdk/typescript); it runs ZPI directly and does not require Claude Code or an Anthropic subscription.
 
 ```ts
-import { query } from "zpi-agent-sdk";
+import { query } from "@zpi-dev/agent-sdk";
 
 for await (const message of query({
   prompt: "Explain this project",
@@ -48,8 +48,8 @@ Only TypeScript is supported. `permissionMode`, sandbox/permission UI, MCP, LSP,
 
 ## Native desktop host
 
-`zpi-agent-sdk/host` exposes the native session creation port for hosts needing indexed storage, background services and plugin assembly. ZPI desktop creates its sessions there, then drives them through `query` with `zpi.session`, `zpi.sessionManager`, `zpi.modelRuntime` and optional prepared `zpi.input`. The host retains ownership and subscriptions. Configure tool/loop policies at session creation for this mode. Ordinary applications should use `query` alone.
+`@zpi-dev/agent-sdk/host` exposes the native session creation port for hosts needing indexed storage, background services and plugin assembly. ZPI desktop creates its sessions there, then drives them through `query` with `zpi.session`, `zpi.sessionManager`, `zpi.modelRuntime` and optional prepared `zpi.input`. The host retains ownership and subscriptions. Configure tool/loop policies at session creation for this mode. Ordinary applications should use `query` alone.
 
 ## Build and distribution
 
-From the ZPI repository, run `npm run build:sdk`, then `npm pack --workspace zpi-agent-sdk`. Published output bundles the private ZPI runtime and ships rewritten standalone declaration files; consumers do not need the desktop package or private workspace modules. Local builds are not automatically published to npm.
+From the ZPI repository, run `npm run build:sdk`, then `npm pack --workspace @zpi-dev/agent-sdk`. Published output bundles the private ZPI runtime and ships rewritten standalone declaration files; consumers do not need the desktop package or private workspace modules. Local builds are not automatically published to npm.

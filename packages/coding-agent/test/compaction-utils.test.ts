@@ -1,6 +1,6 @@
+import type { AssistantMessage } from "@zpi-dev/ai";
+import { emptyAssistant } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import type { AssistantMessage } from "zpi-ai";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { serializeConversation } from "../src/core/compaction-utils.ts";
 

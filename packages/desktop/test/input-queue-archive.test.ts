@@ -1,5 +1,5 @@
+import type { InputQueue } from "@zpi-dev/ui";
 import { expect, it, vi } from "vitest";
-import type { InputQueue } from "zpi-ui";
 import { deferred } from "../../../tests/fake-server.ts";
 import { SessionInputQueue } from "../src/main/input-queue.ts";
 

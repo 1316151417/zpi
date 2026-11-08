@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "zpi-agent";
-import type { Message, ModelRetryStatus, ModelWaitStatus, ToolCall, ToolResultMessage } from "zpi-ai";
+import type { ThinkingLevel } from "@zpi-dev/agent";
+import type { Message, ModelRetryStatus, ModelWaitStatus, ToolCall, ToolResultMessage } from "@zpi-dev/ai";
 import type {
   BackgroundTask,
   CombinedSelection,
@@ -9,8 +9,8 @@ import type {
   UserQuestionRequest,
   UserQuestionResponse,
   WebToolDetails,
-} from "zpi-builtin-plugins/types";
-import type { Attachment, ContextUsage, ModelPerformance, ResourceDiagnostic } from "zpi-coding-agent";
+} from "@zpi-dev/builtin-plugins/types";
+import type { Attachment, ContextUsage, ModelPerformance, ResourceDiagnostic } from "@zpi-dev/coding-agent";
 import type { FileLocation } from "./link-target.ts";
 
 export type {
@@ -23,7 +23,7 @@ export type {
   UserQuestionResponse,
   WebSearchSource,
   WebToolDetails,
-} from "zpi-builtin-plugins/types";
+} from "@zpi-dev/builtin-plugins/types";
 export interface SessionControls {
   selection: CombinedSelection | null;
   presets: string[];
@@ -103,7 +103,7 @@ export type ViewBlock =
 export interface RunView {
   /** This page starts inside a run; its original input is on an older page. */
   historyContinuation?: boolean;
-  guides?: ({ id: string; afterBlockId?: string } & import("zpi-ai").UserGuide)[];
+  guides?: ({ id: string; afterBlockId?: string } & import("@zpi-dev/ai").UserGuide)[];
   subagentNotification?: SubagentNotification;
   runId: string;
   status: RunStatus;

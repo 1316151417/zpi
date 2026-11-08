@@ -1,4 +1,4 @@
-import type { DesktopEvent } from "zpi-ui";
+import type { DesktopEvent } from "@zpi-dev/ui";
 
 export const streamingActivityIntervalMs = 5_000;
 

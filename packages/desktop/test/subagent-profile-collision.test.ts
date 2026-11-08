@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SubagentProfiles } from "@zpi-dev/builtin-plugins/collaboration/profiles";
 import { afterEach, expect, it } from "vitest";
-import { SubagentProfiles } from "zpi-builtin-plugins/collaboration/profiles";
 import { StateStore } from "../src/main/state-store.ts";
 
 const directories: string[] = [];

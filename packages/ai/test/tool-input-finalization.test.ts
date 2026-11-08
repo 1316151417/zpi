@@ -1,5 +1,5 @@
+import { isRecoverableLength, normalizeContext, streamSimple } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import { isRecoverableLength, normalizeContext, streamSimple } from "zpi-ai";
 import { chunk, fakeModel } from "../../../tests/fake-server.ts";
 import type { Api } from "../src/types.ts";
 

@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { emptyAssistant, type ToolCall } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
+import { emptyAssistant, type ToolCall } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { HistoryIndex } from "../../packages/desktop/src/main/history-index.ts";
 import { StateStore } from "../../packages/desktop/src/main/state-store.ts";
 import { fakeModel } from "../fake-server.ts";

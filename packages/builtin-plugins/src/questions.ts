@@ -1,8 +1,8 @@
 // AskUserQuestion schema and answer semantics follow ZCode (Apache-2.0).
 
+import type { ToolDefinition } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { ToolDefinition } from "zpi-coding-agent";
 import type { UserQuestionRequest, UserQuestionResponse } from "./types.ts";
 
 const parameters = Type.Object(

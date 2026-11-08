@@ -1,7 +1,7 @@
+import { defaultPluginSettings } from "@zpi-dev/builtin-plugins";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { defaultPluginSettings } from "zpi-builtin-plugins";
 import type { PublicSettings, WebSearchSettingsInput } from "../src/shared/bridge.ts";
 
 const mocks = vi.hoisted(() => ({

@@ -1,5 +1,5 @@
+import type { PluginNotification } from "@zpi-dev/builtin-plugins/types";
 import { app, BrowserWindow, Notification } from "electron";
-import type { PluginNotification } from "zpi-builtin-plugins/types";
 import type { InterfacePreferences } from "../shared/bridge.ts";
 
 // Native delivery and window activation adapted from ZCode desktopNotifications.ts.

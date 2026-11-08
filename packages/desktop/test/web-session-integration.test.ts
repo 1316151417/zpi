@@ -1,9 +1,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { JsonObject } from "@zpi-dev/ai";
+import type { SubagentConfig } from "@zpi-dev/builtin-plugins/collaboration/types";
 import { afterEach, expect, test } from "vitest";
-import type { JsonObject } from "zpi-ai";
-import type { SubagentConfig } from "zpi-builtin-plugins/collaboration/types";
 import { chunk } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";

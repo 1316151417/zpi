@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { assertSupportedOptions, isJsonObject } from "zpi-ai";
-import { type PluginSnapshot, type SessionPlugin, validatePluginSnapshot } from "zpi-coding-agent";
-import { bindCommandHooks, type CommandHook, parseCommandHook } from "zpi-plugin-compat";
+import { assertSupportedOptions, isJsonObject } from "@zpi-dev/ai";
+import { type PluginSnapshot, type SessionPlugin, validatePluginSnapshot } from "@zpi-dev/coding-agent";
+import { bindCommandHooks, type CommandHook, parseCommandHook } from "@zpi-dev/plugin-compat";
 import type { ConfiguredHook, HookConfig, HookTarget, SaveHookInput } from "../../shared/hooks.ts";
 import type { StateStore } from "../state-store.ts";
 

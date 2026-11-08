@@ -1,6 +1,6 @@
+import { emptyAssistant } from "@zpi-dev/ai";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { expect, it } from "vitest";
-import { emptyAssistant } from "zpi-ai";
-import { SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { projectEvent, restoreView } from "../src/main/projection.ts";
 

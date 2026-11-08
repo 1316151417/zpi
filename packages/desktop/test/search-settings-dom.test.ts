@@ -1,7 +1,7 @@
+import { defaultPluginSettings } from "@zpi-dev/builtin-plugins";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { defaultPluginSettings } from "zpi-builtin-plugins";
 import { SettingsPage } from "../src/renderer/SettingsPage.tsx";
 import { useStore } from "../src/renderer/store.ts";
 import { TaskSearchDialog } from "../src/renderer/TaskSearchDialog.tsx";

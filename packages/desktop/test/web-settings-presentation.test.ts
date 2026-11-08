@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
+import { defaultPluginSettings } from "@zpi-dev/builtin-plugins";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { defaultPluginSettings } from "zpi-builtin-plugins";
 
 const fixture = vi.hoisted(() => ({
   webSearch: {

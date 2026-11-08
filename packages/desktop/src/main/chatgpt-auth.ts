@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { fetchProviderModels, getProviderPreset } from "zpi-ai";
-import { beginChatGPTLogin, type ChatGPTLogin, revokeChatGPTCredential } from "zpi-ai/auth/openai-chatgpt";
+import { fetchProviderModels, getProviderPreset } from "@zpi-dev/ai";
+import {
+  beginChatGPTLogin,
+  type ChatGPTLogin,
+  revokeChatGPTCredential,
+} from "@zpi-dev/ai/auth/openai-chatgpt";
 import { mergeDiscoveredModels } from "../shared/config.ts";
 import type { ErrorLog } from "./error-log.ts";
 import type { SettingsStore } from "./storage.ts";

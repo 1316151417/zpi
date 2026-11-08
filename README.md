@@ -2,6 +2,8 @@
 
 ZPI 以四工具执行内核和 TypeScript Agent SDK 为基础。提问、联网、子智能体协作、后台命令、记忆、自动标题和任务通知通过系统内置插件按需配置与启停；桌面工作区提供对话、文件、终端与审查界面。
 
+使用 Node.js 24 从 npm 启动桌面应用：`npx @zpi-dev/desktop`。也可以运行 `npm install -g @zpi-dev/desktop` 后使用 `zpi-desktop` 命令。模型账号在应用设置中配置，npm 启动使用正式版 `ZPI` 数据目录。
+
 - [总览设计与模块地图](docs/design.md)
 - [新手向导](docs/features/getting-started.md)
 - [系统内置与本地插件](docs/features/plugins.md)
@@ -37,4 +39,4 @@ ZPI 以四工具执行内核和 TypeScript Agent SDK 为基础。提问、联网
 - [下载发布包](https://github.com/1316151417/zpi/releases)
 - [仓库](https://github.com/1316151417/zpi)
 
-快速对话是独立的 [zpi-quick-chat](https://github.com/1316151417/zpi-quick-chat) CLI 项目，后端与 ZPI 共用 `zpi-agent-sdk`。SDK 使用和支持范围见 [agent-sdk](packages/agent-sdk/README.md)。
+快速对话是独立的 [zpi-quick-chat](https://github.com/1316151417/zpi-quick-chat) CLI 项目，后端与 ZPI 共用 `@zpi-dev/agent-sdk`。SDK 使用和支持范围见 [agent-sdk](packages/agent-sdk/README.md)。

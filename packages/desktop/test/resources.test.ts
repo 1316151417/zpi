@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { builtinPlugins } from "@zpi-dev/builtin-plugins";
+import { buildMentionMarkdown } from "@zpi-dev/coding-agent";
 import { expect, test } from "vitest";
-import { builtinPlugins } from "zpi-builtin-plugins";
-import { buildMentionMarkdown } from "zpi-coding-agent";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { SettingsStore } from "../src/main/storage.ts";

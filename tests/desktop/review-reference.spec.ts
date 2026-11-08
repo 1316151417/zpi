@@ -135,7 +135,7 @@ test("compare actual ZCode and ZPI review components using identical snapshots",
               ["./store.ts", "./use-workspace.ts", "./pane-store.ts"].includes(source))
           )
             return join(site, "stub.ts");
-          if (source === "zpi-ui" && importer?.endsWith("/ReviewPane.tsx")) return join(site, "shim.ts");
+          if (source === "@zpi-dev/ui" && importer?.endsWith("/ReviewPane.tsx")) return join(site, "shim.ts");
           if (source.startsWith("@/")) {
             const path = resolve(reference, source.slice(2));
             return [path, path.replace(/\.js$/, ".ts"), path.replace(/\.js$/, ".tsx")].find(existsSync);

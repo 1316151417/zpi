@@ -1,5 +1,3 @@
-import { Type } from "typebox";
-import { expect, test } from "vitest";
 import {
   createAgentSession,
   createBashToolDefinition,
@@ -9,7 +7,9 @@ import {
   ModelRuntime,
   SessionManager,
   type ToolDefinition,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import { Type } from "typebox";
+import { expect, test } from "vitest";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

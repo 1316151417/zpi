@@ -1,10 +1,10 @@
-import type { ThinkingLevel } from "zpi-agent";
-import { anthropicMessagesCompatKeys, thinkingChoices } from "zpi-ai";
-import { toThinking } from "zpi-builtin-plugins/models";
-import { defaultCodePreview } from "zpi-ui/code-preview";
+import type { ThinkingLevel } from "@zpi-dev/agent";
+import { anthropicMessagesCompatKeys, thinkingChoices } from "@zpi-dev/ai";
+import { toThinking } from "@zpi-dev/builtin-plugins/models";
+import { defaultCodePreview } from "@zpi-dev/ui/code-preview";
 import type { InterfacePreferences, ModelSettings, ReasoningPreset } from "./bridge.ts";
 
-export { toThinking } from "zpi-builtin-plugins/models";
+export { toThinking } from "@zpi-dev/builtin-plugins/models";
 export const modelDefaults = {
   contextWindow: 1000000,
   maxTokens: 128000,
@@ -83,10 +83,10 @@ export function availablePresets(model: ModelSettings): ReasoningPreset[] {
   if (model.reasoningConfig) return choices.map((level) => toPreset(level, model));
   return reasoningPresets.filter((preset) => choices.includes(toThinking(preset)));
 }
-export function reasoningModel(model: ModelSettings, api?: import("zpi-ai").ProviderApi) {
+export function reasoningModel(model: ModelSettings, api?: import("@zpi-dev/ai").ProviderApi) {
   const protocol =
     api ??
-    (model as Partial<import("zpi-ai").Model>).api ??
+    (model as Partial<import("@zpi-dev/ai").Model>).api ??
     (anthropicMessagesCompatKeys.some((key) => model.compat?.[key] !== undefined)
       ? "anthropic-messages"
       : "openai-completions");

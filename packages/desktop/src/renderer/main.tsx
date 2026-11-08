@@ -2,7 +2,7 @@ import { LucideProvider } from "lucide-react";
 import { createRoot } from "react-dom/client";
 import { AppBoundary } from "./AppBoundary.tsx";
 import { startRendererPerformanceDiagnostics } from "./performance-diagnostics.ts";
-import "zpi-ui/styles.css";
+import "@zpi-dev/ui/styles.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing root");

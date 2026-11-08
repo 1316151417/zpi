@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "zpi-agent";
-import type { Message } from "zpi-ai";
+import type { ThinkingLevel } from "@zpi-dev/agent";
+import type { Message } from "@zpi-dev/ai";
 import type { SessionEntry, SessionHeader } from "./session-manager.ts";
 
 /** A fixed generation and inclusive sequence watermark. Sequences start at 1. */

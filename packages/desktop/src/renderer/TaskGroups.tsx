@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import * as Context from "@radix-ui/react-context-menu";
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import {
   Check,
   ChevronDown,
@@ -23,7 +24,6 @@ import {
 } from "lucide-react";
 import { type PointerEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ActionHint } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
 import {
   applyTaskGroupCommand,

@@ -1,7 +1,7 @@
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { isJsonObject } from "zpi-ai";
-import type { AgentSessionEvent, PluginSnapshot, ResourceLoader } from "zpi-coding-agent";
+import { isJsonObject } from "@zpi-dev/ai";
+import type { AgentSessionEvent, PluginSnapshot, ResourceLoader } from "@zpi-dev/coding-agent";
 import {
   type BuiltinPluginBindings,
   collaborationEnabled,

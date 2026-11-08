@@ -1,10 +1,10 @@
 import { mkdtemp, readdir, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentToolUpdateCallback } from "@zpi-dev/agent";
+import { BackgroundTasks } from "@zpi-dev/builtin-plugins/background/tasks";
+import { SessionManager } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test, vi } from "vitest";
-import type { AgentToolUpdateCallback } from "zpi-agent";
-import { BackgroundTasks } from "zpi-builtin-plugins/background/tasks";
-import { SessionManager } from "zpi-coding-agent";
 import { fakeModel } from "../../../tests/fake-server.ts";
 
 const cleanup: (() => Promise<unknown>)[] = [];

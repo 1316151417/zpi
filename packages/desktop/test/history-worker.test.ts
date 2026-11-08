@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Worker } from "node:worker_threads";
+import { type SessionEntry, SessionManager } from "@zpi-dev/coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
-import { type SessionEntry, SessionManager } from "zpi-coding-agent";
 import { HistoryStorage } from "../src/main/history-storage.ts";
 
 const cleanup: (() => unknown)[] = [];

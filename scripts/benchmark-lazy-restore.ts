@@ -21,7 +21,7 @@ import { cpus, platform, release, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
-import { type SessionEntry, SessionManager } from "zpi-coding-agent";
+import { type SessionEntry, SessionManager } from "@zpi-dev/coding-agent";
 import { HistoryIndex } from "../packages/desktop/src/main/history-index.ts";
 import { encodeTranscriptEntry } from "../packages/desktop/src/main/transcript-v2.ts";
 

@@ -1,12 +1,17 @@
 import { createServer, type Server } from "node:http";
 import { type AddressInfo, connect } from "node:net";
 import { setImmediate } from "node:timers/promises";
+import {
+  createAssistantMessageEventStream,
+  emptyAssistant,
+  normalizeContext,
+  streamSimple,
+} from "@zpi-dev/ai";
+import { ResponsesSession } from "@zpi-dev/ai/api/responses-session";
+import { AgentSession, ModelRuntime, SessionManager } from "@zpi-dev/coding-agent";
 import type { ResponsesWS } from "openai/resources/responses/ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { createAssistantMessageEventStream, emptyAssistant, normalizeContext, streamSimple } from "zpi-ai";
-import { ResponsesSession } from "zpi-ai/api/responses-session";
-import { AgentSession, ModelRuntime, SessionManager } from "zpi-coding-agent";
 import { deferred, fakeModel } from "../../../tests/fake-server.ts";
 import type { ResponsesSessionDiagnostic } from "../src/api/responses-session.ts";
 import type { Message, Model, SimpleStreamOptions } from "../src/types.ts";

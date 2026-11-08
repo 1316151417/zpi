@@ -1,7 +1,7 @@
+import type { AgentEvent, AgentTool } from "@zpi-dev/agent";
+import { emptyAssistant } from "@zpi-dev/ai";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import type { AgentEvent, AgentTool } from "zpi-agent";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { createToolExecutor } from "../src/tool-execution.ts";
 
@@ -42,8 +42,8 @@ it("preserves the executed result and emits completion after a progress sink rej
 });
 
 it("settles the tool result before surfacing a progress sink failure and stops further model requests", async () => {
-  const { Agent } = await import("zpi-agent");
-  const { createAssistantMessageEventStream } = await import("zpi-ai");
+  const { Agent } = await import("@zpi-dev/agent");
+  const { createAssistantMessageEventStream } = await import("@zpi-dev/ai");
   const model = fakeModel("");
   let requests = 0;
   const agent = new Agent({

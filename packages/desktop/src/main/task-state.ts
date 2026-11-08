@@ -1,5 +1,5 @@
 import type { SQLOutputValue } from "node:sqlite";
-import { validPerformanceTotals } from "zpi-coding-agent";
+import { validPerformanceTotals } from "@zpi-dev/coding-agent";
 import type { TaskState } from "./state-store.ts";
 
 const object = (value: unknown): value is Record<string, unknown> =>

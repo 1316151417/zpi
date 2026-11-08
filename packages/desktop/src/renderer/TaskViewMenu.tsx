@@ -1,7 +1,7 @@
 // Adapted from ZCode ProjectSidebarListHeader (Apache-2.0), 3c5b2276.
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import { Check, Clock, Folder, Hash, ListFilter } from "lucide-react";
-import { ActionHint } from "zpi-ui";
 import type { TaskPreferences } from "./sidebar-task-model.ts";
 
 export function TaskViewMenu({

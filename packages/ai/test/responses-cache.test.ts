@@ -1,6 +1,6 @@
+import { emptyAssistant, normalizeContext, streamSimple } from "@zpi-dev/ai";
 import type { ResponseInput } from "openai/resources/responses/responses";
 import { expect, it } from "vitest";
-import { emptyAssistant, normalizeContext, streamSimple } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { responsesCache } from "../src/api/responses-cache.ts";
 import type { CacheRetention, Model } from "../src/types.ts";

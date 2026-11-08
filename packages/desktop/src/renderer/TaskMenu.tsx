@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ActionHint } from "@zpi-dev/ui";
 import { MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
-import { ActionHint } from "zpi-ui";
 import type { SessionRecord } from "../shared/bridge.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { useStore } from "./store.ts";

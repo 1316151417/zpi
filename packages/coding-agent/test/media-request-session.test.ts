@@ -1,16 +1,16 @@
 import { randomFillSync } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import sharp from "sharp";
-import { expect, it, vi } from "vitest";
-import { createAssistantMessageEventStream, emptyAssistant, mediaRequestBytes } from "zpi-ai";
+import { createAssistantMessageEventStream, emptyAssistant, mediaRequestBytes } from "@zpi-dev/ai";
 import {
   createAgentSession,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   StaticResourceLoader,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
+import sharp from "sharp";
+import { expect, it, vi } from "vitest";
 import { fakeConfig } from "../../../tests/fake-server.ts";
 import { directory } from "./helpers/session-fixture.ts";
 

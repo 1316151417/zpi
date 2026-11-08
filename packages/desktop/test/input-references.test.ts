@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parseMentions } from "@zpi-dev/coding-agent/input";
 import { expect, it } from "vitest";
-import { parseMentions } from "zpi-coding-agent/input";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { fixture } from "./helpers/host-fixture.ts";
 

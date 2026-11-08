@@ -1,5 +1,5 @@
+import { normalizeContext, streamSimple } from "@zpi-dev/ai";
 import { expect, it, vi } from "vitest";
-import { normalizeContext, streamSimple } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import type { AssistantMessageEvent, Model } from "../src/types.ts";
 

@@ -3,9 +3,9 @@ import { constants, type Dir } from "node:fs";
 import { access, opendir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
+import { fuzzyScore } from "@zpi-dev/ui/fuzzy-search";
+import { splitFileLocation } from "@zpi-dev/ui/links";
 import ignore from "ignore";
-import { fuzzyScore } from "zpi-ui/fuzzy-search";
-import { splitFileLocation } from "zpi-ui/links";
 import type { WorkspaceFileCandidate, WorkspaceFileSearchResult } from "../shared/workspace-files.ts";
 import { isPathInside } from "./path-bounds.ts";
 export const runGit = async (cwd: string, args: string[], signal?: AbortSignal) =>

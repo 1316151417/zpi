@@ -7,17 +7,17 @@ const manifest = (path: string) => JSON.parse(readFileSync(new URL(path, root), 
 describe("project naming", () => {
   it("uses lowercase package names and workspace dependencies in manifests and the lockfile", () => {
     const lock = manifest("package-lock.json");
-    expect(manifest("package.json").name).toBe("zpi");
-    expect(lock.name).toBe("zpi");
-    expect(lock.packages[""].name).toBe("zpi");
+    expect(manifest("package.json").name).toBe("@zpi-dev/workspace");
+    expect(lock.name).toBe("@zpi-dev/workspace");
+    expect(lock.packages[""].name).toBe("@zpi-dev/workspace");
     for (const name of ["ai", "agent", "coding-agent", "desktop", "ui"]) {
       const path = `packages/${name}`;
       const pkg = manifest(`${path}/package.json`);
-      expect(pkg.name).toBe(`zpi-${name}`);
+      expect(pkg.name).toBe(`@zpi-dev/${name}`);
       expect(lock.packages[path].name).toBe(pkg.name);
       expect(lock.packages[`node_modules/${pkg.name}`]).toEqual({ resolved: path, link: true });
       for (const dependency of Object.keys(pkg.dependencies ?? {})) {
-        if (/^zpi-/i.test(dependency)) {
+        if (dependency.startsWith("@zpi-dev/")) {
           expect(dependency).toBe(dependency.toLowerCase());
           expect(lock.packages[path].dependencies[dependency]).toBe(pkg.dependencies[dependency]);
         }

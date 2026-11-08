@@ -1,7 +1,7 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import type { ModelPerformance as Performance } from "@zpi-dev/coding-agent";
 import { Database, Gauge } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
-import type { ModelPerformance as Performance } from "zpi-coding-agent";
 
 const positive = (n: number | undefined): n is number => n !== undefined && Number.isFinite(n) && n > 0;
 export function formatSpeed(n: number): string {

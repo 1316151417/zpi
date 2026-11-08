@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { presetModels } from "zpi-ai";
+import { presetModels } from "@zpi-dev/ai";
 import { availablePresets, modelReasoningLabel } from "../../packages/desktop/src/shared/config.ts";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";

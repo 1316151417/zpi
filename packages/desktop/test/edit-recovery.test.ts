@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { reduceSession } from "@zpi-dev/ui";
 import { expect, test, vi } from "vitest";
-import { reduceSession } from "zpi-ui";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import { cleanup, fixture } from "./helpers/host-fixture.ts";

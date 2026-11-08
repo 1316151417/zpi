@@ -1,4 +1,4 @@
-import { providerApi } from "zpi-ai";
+import { providerApi } from "@zpi-dev/ai";
 import type { ProviderRecord } from "./bridge.ts";
 import { availablePresets } from "./config.ts";
 

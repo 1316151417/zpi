@@ -5,8 +5,8 @@ import {
   isJsonObject,
   type Message,
   type Usage as NativeUsage,
-} from "zpi-ai";
-import type { SessionEntry } from "zpi-coding-agent";
+} from "@zpi-dev/ai";
+import type { SessionEntry } from "@zpi-dev/coding-agent";
 import type { SDKAssistantMessage, SDKUserMessage, Usage } from "./types.ts";
 
 export const emptyUsage = (): Usage => ({

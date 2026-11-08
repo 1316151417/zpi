@@ -1,8 +1,8 @@
 // Adapted from ZCode's ElicitationDialog interaction and layout (Apache-2.0).
 
+import type { UserQuestionRequest, UserQuestionResponse } from "@zpi-dev/ui";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
-import type { UserQuestionRequest, UserQuestionResponse } from "zpi-ui";
 import { type QuestionDraft, questionDrafts, report } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { userErrorMessage } from "./user-error.ts";

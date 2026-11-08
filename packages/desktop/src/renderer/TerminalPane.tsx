@@ -3,7 +3,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { observeAppearance } from "zpi-ui";
+import { observeAppearance } from "@zpi-dev/ui";
 import type { TerminalProfile } from "../shared/bridge.ts";
 import { openBrowser, paneTask, terminalExited, terminalListeners, terminalOutput } from "./pane-store.ts";
 import { report } from "./store.ts";

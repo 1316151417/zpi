@@ -1,6 +1,7 @@
 // Adapted from ZCode project-sidebar/{SortableProjects,ProjectNode} (Apache-2.0), 3c5b2276.
+
+import { type SortableBindings, SortableList } from "@zpi-dev/ui";
 import type { ReactNode } from "react";
-import { type SortableBindings, SortableList } from "zpi-ui";
 import type { ProjectRecord } from "../shared/bridge.ts";
 
 type Bindings = Pick<SortableBindings, "attributes" | "listeners" | "setActivatorNodeRef">;

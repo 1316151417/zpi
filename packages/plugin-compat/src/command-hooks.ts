@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import { isJsonObject } from "zpi-ai";
+import { isJsonObject } from "@zpi-dev/ai";
 import {
   getShellConfig,
   getShellEnv,
@@ -9,7 +9,7 @@ import {
   type HookRegistration,
   hookEvents,
   killProcessTree,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 
 export interface CommandHook {
   event: string;

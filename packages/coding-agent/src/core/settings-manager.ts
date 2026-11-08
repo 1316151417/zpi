@@ -3,13 +3,13 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ThinkingLevel } from "zpi-agent";
+import type { ThinkingLevel } from "@zpi-dev/agent";
 import {
   DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS,
   DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,
   type Model,
   type RetryPolicy,
-} from "zpi-ai";
+} from "@zpi-dev/ai";
 import {
   type CompactionOptions,
   type CompactionSettings,

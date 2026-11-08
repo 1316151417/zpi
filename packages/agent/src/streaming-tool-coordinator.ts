@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolCall, ToolResultMessage } from "zpi-ai";
+import type { AssistantMessage, ToolCall, ToolResultMessage } from "@zpi-dev/ai";
 import { createToolExecutor, finishToolCall, toolFailure, toolResultMessage } from "./tool-execution.ts";
 import type { AgentContext, AgentEventSink, AgentLoopConfig } from "./types.ts";
 

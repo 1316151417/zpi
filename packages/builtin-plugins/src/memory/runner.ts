@@ -1,7 +1,13 @@
 import { lstat, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { createAgentSession, nativeStopReason, queryResult } from "zpi-agent-sdk/host";
-import { type AssistantMessage, contentText, estimateMessageTokens, isJsonObject, type Model } from "zpi-ai";
+import { createAgentSession, nativeStopReason, queryResult } from "@zpi-dev/agent-sdk/host";
+import {
+  type AssistantMessage,
+  contentText,
+  estimateMessageTokens,
+  isJsonObject,
+  type Model,
+} from "@zpi-dev/ai";
 import {
   createEditToolDefinition,
   createReadToolDefinition,
@@ -10,7 +16,7 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
-} from "zpi-coding-agent";
+} from "@zpi-dev/coding-agent";
 import { toThinking } from "../models.ts";
 import type { MemoryRunRequest, MemoryRunResult } from "./long-memory.ts";
 import { replaceMemoryFile, summaryLimit } from "./workspace.ts";

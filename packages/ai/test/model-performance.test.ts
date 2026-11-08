@@ -1,6 +1,6 @@
+import type { AssistantMessageEvent, ModelPerformanceSample } from "@zpi-dev/ai";
+import { emptyAssistant } from "@zpi-dev/ai";
 import { expect, it } from "vitest";
-import type { AssistantMessageEvent, ModelPerformanceSample } from "zpi-ai";
-import { emptyAssistant } from "zpi-ai";
 import { fakeModel } from "../../../tests/fake-server.ts";
 import { MeasuredAssistantStream } from "../src/utils/model-performance.ts";
 

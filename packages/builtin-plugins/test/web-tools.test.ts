@@ -1,13 +1,13 @@
+import type { AgentToolResult, AgentToolUpdateCallback } from "@zpi-dev/agent";
+import type { WebSearchResult } from "@zpi-dev/builtin-plugins/web/client";
+import type { ToolContext } from "@zpi-dev/coding-agent";
+import type { WebToolDetails } from "@zpi-dev/ui";
 import type { TObject } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentToolResult, AgentToolUpdateCallback } from "zpi-agent";
-import type { WebSearchResult } from "zpi-builtin-plugins/web/client";
-import type { ToolContext } from "zpi-coding-agent";
-import type { WebToolDetails } from "zpi-ui";
 
-let WebTools: typeof import("zpi-builtin-plugins/web/tools").WebTools;
-let publicWebUrl: typeof import("zpi-builtin-plugins/web/client").publicWebUrl;
+let WebTools: typeof import("@zpi-dev/builtin-plugins/web/tools").WebTools;
+let publicWebUrl: typeof import("@zpi-dev/builtin-plugins/web/client").publicWebUrl;
 let WEB_RESPONSE_BYTES: number;
 let WEB_DEADLINE_MS: number;
 let WEB_TEXT_LIMIT: number;
@@ -55,8 +55,10 @@ beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-17T00:00:00Z"));
   vi.resetModules();
-  ({ WebTools, WEB_TEXT_LIMIT } = await import("zpi-builtin-plugins/web/tools"));
-  ({ publicWebUrl, WEB_RESPONSE_BYTES, WEB_DEADLINE_MS } = await import("zpi-builtin-plugins/web/client"));
+  ({ WebTools, WEB_TEXT_LIMIT } = await import("@zpi-dev/builtin-plugins/web/tools"));
+  ({ publicWebUrl, WEB_RESPONSE_BYTES, WEB_DEADLINE_MS } = await import(
+    "@zpi-dev/builtin-plugins/web/client"
+  ));
   transport = vi.fn<typeof fetch>().mockImplementation(async () => json({ results: [source()] }));
 });
 afterEach(() => {
