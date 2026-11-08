@@ -2,7 +2,7 @@
 
 ZPI desktop agent workspace with conversations, projects, files, terminals and code review.
 
-Requires Node.js 24. Start the published application with:
+Requires Node.js 24. We recommend starting the published application with npx:
 
 ```sh
 npx @zpi-dev/desktop
@@ -15,13 +15,17 @@ npm install --global @zpi-dev/desktop
 zpi-desktop
 ```
 
-Configure your model provider in the application. The npm launcher uses the production `ZPI` data directory, shared with the ZPI desktop application. `ZPI_DATA_DIR` can select a different absolute data directory.
+Configure your model provider in the application. The npm launcher uses the production `ZPI` data directory. `ZPI_DATA_DIR` can select a different absolute data directory.
 
 Electron, Sharp and the terminal module are installed as runtime dependencies. End users do not need the ZPI source repository or a local build. npm installation must allow the dependencies' installation scripts so Electron's runtime is downloaded.
 
 Source and documentation: [ZPI](https://github.com/1316151417/zpi).
 
-## Development and release
+## Update
+
+Quit the application and back up its data before updating. Run `npx @zpi-dev/desktop@latest`, or update the global command with `npm install --global @zpi-dev/desktop@latest` and run `zpi-desktop`.
+
+## Development and npm publishing
 
 From the repository root:
 

@@ -4,11 +4,30 @@
 
 ## 安装并打开
 
-安装 Node.js 24 后，可以直接执行 `npx @zpi-dev/desktop`。需要固定命令时，执行 `npm install -g @zpi-dev/desktop`，然后运行 `zpi-desktop`。npm 启动与正式版安装包共用 `ZPI` 数据目录。
+安装 Node.js 24 后，推荐通过 npx 直接启动桌面应用：
 
-从[发布页](https://github.com/1316151417/zpi/releases)下载适合当前系统的安装包。源码提供 macOS 和 Windows 打包命令；实际可下载平台以附件为准。从源码启动使用[本地开发](development.md)。
+```sh
+npx @zpi-dev/desktop
+```
+
+需要固定命令时，通过 npm 全局安装后执行：
+
+```sh
+npm install -g @zpi-dev/desktop
+zpi-desktop
+```
+
+Electron、Sharp 和终端模块作为运行依赖自动安装；安装时需允许依赖的安装脚本下载 Electron 运行环境。应用使用正式版 `ZPI` 数据目录，可通过绝对路径 `ZPI_DATA_DIR` 指定其他目录。使用 npm 包无需克隆源码；参与开发见[本地开发](development.md)。
 
 正式版和 Preview 使用不同数据目录。开发启动与 Preview 共用身份及默认目录，试用存储变更前先阅读[备份与恢复](storage.md)。
+
+## 升级
+
+正常退出应用并按[备份与恢复](storage.md)备份数据后，执行 `npx @zpi-dev/desktop@latest` 启动最新版。全局安装的用户重新执行 `npm install -g @zpi-dev/desktop@latest`，然后运行 `zpi-desktop`。
+
+## SDK 与快速对话
+
+在自己的项目中运行 `npm install @zpi-dev/agent-sdk`，即可使用 [TypeScript Agent SDK](sdk.md)。独立快速对话工具需要 Node.js 24 和 Apple Silicon Mac，设置 `DEEPSEEK_API_KEY` 后执行 `npx @zpi-dev/quick-chat`；也可以执行 `npm install -g @zpi-dev/quick-chat` 后使用 `zpi-quick-chat`。详见 [Quick Chat README](https://github.com/1316151417/zpi-quick-chat#readme)。
 
 ## 接入第一个模型
 

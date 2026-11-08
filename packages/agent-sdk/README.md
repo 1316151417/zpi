@@ -2,6 +2,14 @@
 
 TypeScript SDK for the ZPI agent runtime. Node.js 24 is required. Its supported API follows the [Claude Agent SDK TypeScript reference](https://code.claude.com/docs/zh-CN/agent-sdk/typescript); it runs ZPI directly and does not require Claude Code or an Anthropic subscription.
 
+Install the published SDK in your project with npm:
+
+```sh
+npm install @zpi-dev/agent-sdk
+```
+
+Then import it from your TypeScript application:
+
 ```ts
 import { query } from "@zpi-dev/agent-sdk";
 

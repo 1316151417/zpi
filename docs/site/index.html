@@ -54,14 +54,12 @@
             ZPI 是本地运行的 AI 编码桌面客户端。模型读代码、改文件、跑命令；对话、变更、终端与预览留在同一界面。四工具内核保持精简，系统内置插件按需配置与启停。
           </p>
           <div class="actions">
-            <a class="button primary" href="https://github.com/1316151417/zpi/releases"
-              >下载 ZPI <span aria-hidden="true">↗</span></a
-            >
+            <a class="button primary" href="#start">通过 npm 开始 <span aria-hidden="true">↓</span></a>
             <a class="button secondary" href="/zpi/docs/"
               >阅读文档 <span aria-hidden="true">↗</span></a
             >
           </div>
-          <p class="hero-note">没有遥测 · 会话与配置存于本机 · 模型由你选择</p>
+          <p class="hero-note">Node.js 24 · <code>npx @zpi-dev/desktop</code> · 会话与配置存于本机</p>
         </div>
 
         <figure
@@ -501,17 +499,21 @@ for await (const message of query({
           <div>
             <p class="eyebrow">07 / GET STARTED</p>
             <h2 id="start-title">从一个任务开始。</h2>
-            <p>不必先配置一套工具平台。</p>
-            <a class="button primary" href="https://github.com/1316151417/zpi/releases"
-              >前往 Releases <span aria-hidden="true">↗</span></a
+            <p>安装 Node.js 24，用 npx 直接打开工作区。</p>
+            <p><code>npx @zpi-dev/desktop</code></p>
+            <a class="button primary" href="https://www.npmjs.com/package/@zpi-dev/desktop"
+              >查看 npm 包 <span aria-hidden="true">↗</span></a
             >
           </div>
           <ol class="start-steps">
             <li>
               <span>01</span>
               <div>
-                <h3>下载客户端</h3>
-                <p>查看 Releases 中当前发布的安装包。</p>
+                <h3>通过 npm 安装或 npx 启动</h3>
+                <p>
+                  执行 <code>npx @zpi-dev/desktop</code>，或运行
+                  <code>npm install -g @zpi-dev/desktop</code> 后使用 <code>zpi-desktop</code>。
+                </p>
               </div>
             </li>
             <li>
@@ -531,7 +533,15 @@ for await (const message of query({
           </ol>
         </div>
         <p class="platform-note">
-          当前主要在 macOS Apple Silicon 上验证；仓库提供 macOS 与 Windows 打包命令，实际可下载平台以 Releases 附件为准。开发需 Node.js 24 与 npm。
+          使用需 Node.js 24 与 npm，安装时需允许依赖安装脚本下载 Electron 运行环境。当前主要在 macOS Apple Silicon 上验证；升级使用
+          <code>npx @zpi-dev/desktop@latest</code>，或重新执行
+          <code>npm install -g @zpi-dev/desktop@latest</code>。
+        </p>
+        <p class="platform-note">
+          Agent SDK：<code>npm install @zpi-dev/agent-sdk</code>。Quick Chat：设置 <code>DEEPSEEK_API_KEY</code>
+          后执行 <code>npx @zpi-dev/quick-chat</code>，或通过
+          <code>npm install -g @zpi-dev/quick-chat</code> 安装后运行
+          <code>zpi-quick-chat</code>（需 Node.js 24 与 Apple Silicon Mac）。
         </p>
       </section>
 
@@ -614,7 +624,7 @@ for await (const message of query({
       <p>Local-first · Minimal tools · Model freedom</p>
       <div>
         <a href="https://github.com/1316151417/zpi/blob/main/README.md">文档</a
-        ><a href="https://github.com/1316151417/zpi/releases">Releases</a
+        ><a href="https://www.npmjs.com/package/@zpi-dev/desktop">npm</a
         ><a href="https://github.com/1316151417/zpi">GitHub ↗</a>
       </div>
     </footer>

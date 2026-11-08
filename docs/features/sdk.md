@@ -2,6 +2,16 @@
 
 公开入口是 `@zpi-dev/agent-sdk`，ZPI 桌面和独立的 `zpi-quick-chat` 使用同一套查询执行协议。支持范围按 [Claude Agent SDK TypeScript reference](https://code.claude.com/docs/zh-CN/agent-sdk/typescript) 对齐，运行引擎仍由 ZPI 实现。
 
+## 通过 npm 安装
+
+使用 Node.js 24，在自己的项目中安装已发布的 SDK：
+
+```sh
+npm install @zpi-dev/agent-sdk
+```
+
+安装后直接导入 `@zpi-dev/agent-sdk`，无需克隆 ZPI 仓库或构建桌面应用。升级使用 `npm install @zpi-dev/agent-sdk@latest`。
+
 ## 发起查询
 
 ```ts
@@ -66,7 +76,7 @@ npm run example:sdk
 
 ## 构建与原生宿主
 
-构建独立包：
+维护者在 ZPI 源码仓库中构建独立 npm 包：
 
 ```sh
 npm run build:sdk
