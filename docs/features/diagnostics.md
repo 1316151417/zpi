@@ -10,6 +10,7 @@
 | 没有 WebSocket 复用 | 是否官方 Responses 地址，模型/令牌/输入是否变化 | [连接复用](../internals/openai-websocket.md) |
 | 上下文或请求过大 | token 和媒体字节分别检查，尝试压缩或减少当前附件 | [上下文](../internals/context.md) |
 | 文件编辑失败 | 目标文本、外部修改、文件类型、当前 cwd | [工具](../internals/tools.md) |
+| 插件已打开但旧任务没有对应能力 | 首次发送时的插件快照、服务启用状态与凭据 | [插件生效范围](plugins.md#生效范围) |
 | 任务历史打不开 | 数据 generation、schema 和原始日志错误 | [存储](../internals/storage.md) |
 | 界面卡顿或搜索慢 | 主进程/renderer 性能摘要、历史规模、动态内容 | [渲染](../internals/rendering.md) |
 

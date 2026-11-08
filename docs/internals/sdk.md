@@ -24,7 +24,9 @@
 
 ToolContext 提供 cwd、model、thinkingLevel、sessionManager、signal、isIdle、当前系统提示与工具名查询。metadata 声明只读、并发、副作用和交互属性，影响[流式执行资格](agent-loop.md)。outputSchema 属于结果描述元数据，不能替代 execute 中的结果验证。
 
-桌面把提问和子智能体放入 customTools，把持久后台 bash 放入 toolOverrides。核心只提供这些通用接口，不 import Electron、不读取窗口状态，也不依赖桌面 IPC。
+系统内置插件通过 `SessionPlugin.tools` 注册提问、联网与协作工具，通过 `toolOverrides` 显式覆盖后台 bash；共享 TaskControls 只装配一次。BuiltinPluginRuntime 构造服务并将运行时绑定到冻结快照，桌面只注入通用平台接口。核心不 import Electron、不读取窗口状态，也不依赖桌面 IPC。
+
+公共 `query` 的 `Read`、`Write`、`Edit`、`Bash`、`Glob`、`Grep` 由 `agent-sdk` 参数适配器提供；其后台任务由 SDK 自身管理，并非桌面的持久后台插件。公共工具名与底层四工具的边界见[工具接口区别](../features/tools.md#命令工具的接口区别)。
 
 ## 存储和生命周期
 
@@ -34,9 +36,9 @@ SessionManager 可持久化、恢复或仅在内存中工作；内存模式只�
 
 设置由用户级 settings.json 和项目 `.zpi/settings.json` 合并，支持注入内存 SettingsManager。读取坏设置会记录错误；不能静默把用户设置视为成功保存。资源加载器和 customInstructions 是不同层，详见[资源](resources.md)。
 
-订阅事件用于展示和持久化协调。异步事件 sink 失败可能阻止后续执行，不能把它当作无关紧要的打印回调。退出前 abort 当前 run，再 dispose 释放订阅和 Responses 连接；宿主自己创建的外部服务还需由宿主关闭。
+订阅事件用于展示和持久化协调。异步事件 sink 失败可能阻止后续执行，不能把它当作无关紧要的打印回调。退出前 abort 当前 run，再 dispose 释放订阅和 Responses 连接；独立宿主自己创建的外部服务需自行关闭。ZPI 的七类内置服务由 BuiltinPluginRuntime 负责取消、清理与 drain，宿主在会话结束后等待插件收尾。
 
-`plugins` 与 `hooks` 是原生注入入口。HookRunner 校验输出并控制预算、超时和错误策略；SessionHooks 把结果转换为独立的 synthetic 上下文消息，交给循环持久化。Stop 反馈形成真实下一轮输入，不修改最终回答。工具 hook 存在时关闭流式提前执行。事件、迁移和冻结规则见[插件契约](plugins.md)。
+`plugins` 与 `hooks` 是原生注入入口。HookRunner 校验输出并控制预算、超时和错误策略；SessionHooks 把结果转换为独立的 synthetic 上下文消息，交给循环持久化。Stop 反馈形成真实下一轮输入，不修改最终回答。工具 hook 存在时关闭流式提前执行。事件、装配和冻结规则见[插件契约](plugins.md)。
 
 ## 验证入口
 

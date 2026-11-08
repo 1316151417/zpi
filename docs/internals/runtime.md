@@ -12,11 +12,14 @@ main/index.ts 负责应用生命周期、窗口、单实例/存储初始化、�
 
 | 服务 | 持有状态 | 生命周期重点 |
 | --- | --- | --- |
-| SessionHost | 会话、run、能力、队列 | 事实先持久化，停止和关闭有明确边界 |
+| SessionHost | 会话、run、插件快照、队列及事件订阅 | 事实先持久化，维护会话事务与通用服务接口 |
+| BuiltinPluginRuntime | 提问、联网、协作、后台命令、记忆、标题与通知的运行时状态及策略 | 负责装配、恢复、取消与清理，关闭后等待 drain |
 | StateStore/SettingsStore | 业务与设置/凭据 | 单写者锁、schema、generation |
 | History Worker | JSONL 写入和索引 | durable ack、错误传播 |
 | PaneServices | PTY 与浏览器视图 | owner 校验、显示边界、释放 |
 | 通知/快捷键服务 | 系统注册与焦点状态 | 注册回滚和窗口销毁清理 |
+
+插件实现位于独立的 `builtin-plugins` 包，不依赖 Electron、UI 或具体 SQLite 实现。桌面注入模型调用、存储、历史、事件和原生通知等通用接口，详见[插件运行时隔离](plugins.md#内置运行时隔离)。
 
 ## IPC 校验与订阅
 

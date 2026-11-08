@@ -8,11 +8,13 @@
 | --- | ---: |
 | `packages/agent/src` 中的 TS/TSX、CSS、JSON、HTML | 6 |
 | `packages/ai/src` 中的 TS/TSX、CSS、JSON、HTML | 46 |
+| `packages/agent-sdk/src` 中的 TS | 13 |
 | `packages/coding-agent/src` 中的 TS/TSX、CSS、JSON、HTML | 59 |
 | `packages/desktop/src` 中的 TS/TSX、CSS、JSON、HTML | 239 |
 | `packages/ui/src` 中的 TS/TSX、CSS、JSON、HTML | 105 |
 | `packages/builtin-plugins/src` 中的 TS/TSX | 37 |
-| native、scripts、examples 支持文件 | 27 |
+| `packages/plugin-compat/src` 中的 TS | 2 |
+| scripts、examples 支持文件 | 25 |
 
 测试用例按各原理页的回归入口及包内 test 目录维护；测试基础设施见[测试原理](testing.md)。图片、字体、音频、Office fixtures 等资源不逐件列作代码模块，归属见下方资源表。
 
@@ -54,7 +56,8 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `scripts` | [build.mjs](../../scripts/build.mjs) · [desktop-build.d.mts](../../scripts/desktop-build.d.mts) · [desktop-build.mjs](../../scripts/desktop-build.mjs) · [dev-process.ts](../../scripts/dev-process.ts) · [dev.mjs](../../scripts/dev.mjs) |
+| `scripts` | [build.mjs](../../scripts/build.mjs) · [desktop-build.d.mts](../../scripts/desktop-build.d.mts) · [desktop-build.mjs](../../scripts/desktop-build.mjs) · [dev-process.ts](../../scripts/dev-process.ts) · [dev.mjs](../../scripts/dev.mjs) · [docs.mjs](../../scripts/docs.mjs) · [docs-deploy.mjs](../../scripts/docs-deploy.mjs) |
+| `scripts/docs` | [app.js](../../scripts/docs/app.js) · [html.mjs](../../scripts/docs/html.mjs) · [render.mjs](../../scripts/docs/render.mjs) · [style.css](../../scripts/docs/style.css) · [template.mjs](../../scripts/docs/template.mjs) |
 
 ### [错误、性能与用量计量](diagnostics.md)
 
@@ -163,6 +166,7 @@
 | `packages/coding-agent/src/core` | [model-runtime.ts](../../packages/coding-agent/src/core/model-runtime.ts) |
 | `packages/desktop/src/main` | [model-runtime-config.ts](../../packages/desktop/src/main/model-runtime-config.ts) |
 | `packages/desktop/src/renderer` | [ModelConfigAdvanced.tsx](../../packages/desktop/src/renderer/ModelConfigAdvanced.tsx) · [ModelConfigDialog.tsx](../../packages/desktop/src/renderer/ModelConfigDialog.tsx) · [ProviderApiFormatSelect.tsx](../../packages/desktop/src/renderer/ProviderApiFormatSelect.tsx) · [ProviderCredentialInput.tsx](../../packages/desktop/src/renderer/ProviderCredentialInput.tsx) · [ProviderHeadingActions.tsx](../../packages/desktop/src/renderer/ProviderHeadingActions.tsx) · [ProviderLogo.tsx](../../packages/desktop/src/renderer/ProviderLogo.tsx) · [ReasoningLevelEditor.tsx](../../packages/desktop/src/renderer/ReasoningLevelEditor.tsx) |
+| `packages/desktop/src/shared` | [selectable-models.ts](../../packages/desktop/src/shared/selectable-models.ts) |
 
 ### [结构化提问](questions.md)
 
@@ -171,7 +175,6 @@
 | `packages/builtin-plugins/src` | [questions.ts](../../packages/builtin-plugins/src/questions.ts) |
 | `packages/desktop/src/renderer` | [UserQuestionCard.tsx](../../packages/desktop/src/renderer/UserQuestionCard.tsx) |
 | `packages/ui/src/components` | [AskQuestionToolBlock.tsx](../../packages/ui/src/components/AskQuestionToolBlock.tsx) · [user-question-presentation.ts](../../packages/ui/src/components/user-question-presentation.ts) |
-
 
 ### [发送失败、超时与恢复](recovery.md)
 
@@ -187,15 +190,14 @@
 | `packages/desktop/src/main` | [event-batcher.ts](../../packages/desktop/src/main/event-batcher.ts) · [projection.ts](../../packages/desktop/src/main/projection.ts) · [task-notifications.ts](../../packages/desktop/src/main/task-notifications.ts) |
 | `packages/desktop/src/renderer` | [SessionConversation.tsx](../../packages/desktop/src/renderer/SessionConversation.tsx) · [SidebarSections.tsx](../../packages/desktop/src/renderer/SidebarSections.tsx) · [SidebarTaskList.tsx](../../packages/desktop/src/renderer/SidebarTaskList.tsx) · [SidebarTaskRow.tsx](../../packages/desktop/src/renderer/SidebarTaskRow.tsx) · [TaskListHeader.tsx](../../packages/desktop/src/renderer/TaskListHeader.tsx) · [WindowChrome.tsx](../../packages/desktop/src/renderer/WindowChrome.tsx) · [appearance.ts](../../packages/desktop/src/renderer/appearance.ts) · [sidebar-task-model.ts](../../packages/desktop/src/renderer/sidebar-task-model.ts) · [task-notification-sound.ts](../../packages/desktop/src/renderer/task-notification-sound.ts) · [workbench.css](../../packages/desktop/src/renderer/workbench.css) |
 | `packages/desktop/src/shared` | [event-batches.ts](../../packages/desktop/src/shared/event-batches.ts) |
-| `packages/ui/src` | [appearance.ts](../../packages/ui/src/appearance.ts) · [code-language.ts](../../packages/ui/src/code-language.ts) · [index.ts](../../packages/ui/src/index.ts) · [markdown-fence.ts](../../packages/ui/src/markdown-fence.ts) · [markdown-link-nodes.ts](../../packages/ui/src/markdown-link-nodes.ts) · [reading-position.ts](../../packages/ui/src/reading-position.ts) · [reducer.ts](../../packages/ui/src/reducer.ts) · [styles.css](../../packages/ui/src/styles.css) · [tokens.css](../../packages/ui/src/tokens.css) · [types.ts](../../packages/ui/src/types.ts) |
-| `packages/ui/src/components` | [CompactionDivider.tsx](../../packages/ui/src/components/CompactionDivider.tsx) · [Conversation.tsx](../../packages/ui/src/components/Conversation.tsx) · [DraftGreeting.tsx](../../packages/ui/src/components/DraftGreeting.tsx) · [Markdown.tsx](../../packages/ui/src/components/Markdown.tsx) · [MarkdownActions.tsx](../../packages/ui/src/components/MarkdownActions.tsx) · [MarkdownCode.tsx](../../packages/ui/src/components/MarkdownCode.tsx) · [MarkdownImage.tsx](../../packages/ui/src/components/MarkdownImage.tsx) · [MarkdownLink.tsx](../../packages/ui/src/components/MarkdownLink.tsx) · [MarkdownTable.tsx](../../packages/ui/src/components/MarkdownTable.tsx) · [MermaidBlock.tsx](../../packages/ui/src/components/MermaidBlock.tsx) · [MessageActions.tsx](../../packages/ui/src/components/MessageActions.tsx) · [Notice.tsx](../../packages/ui/src/components/Notice.tsx) · [QueuedSummaryContent.tsx](../../packages/ui/src/components/QueuedSummaryContent.tsx) · [SortableList.tsx](../../packages/ui/src/components/SortableList.tsx) · [StreamEntrance.tsx](../../packages/ui/src/components/StreamEntrance.tsx) · [SuggestionOptions.tsx](../../packages/ui/src/components/SuggestionOptions.tsx) · [TaskTitleOverflowText.tsx](../../packages/ui/src/components/TaskTitleOverflowText.tsx) · [ToolBlock.tsx](../../packages/ui/src/components/ToolBlock.tsx) · [ToolFailure.tsx](../../packages/ui/src/components/ToolFailure.tsx) · [ToolGroup.tsx](../../packages/ui/src/components/ToolGroup.tsx) · [ToolLayout.tsx](../../packages/ui/src/components/ToolLayout.tsx) · [ToolOutput.tsx](../../packages/ui/src/components/ToolOutput.tsx) · [UserMessageBody.tsx](../../packages/ui/src/components/UserMessageBody.tsx) · [markdown-configuration.ts](../../packages/ui/src/components/markdown-configuration.ts) · [markdown-math.ts](../../packages/ui/src/components/markdown-math.ts) · [markdown-table-text.ts](../../packages/ui/src/components/markdown-table-text.ts) · [mermaid-budget.ts](../../packages/ui/src/components/mermaid-budget.ts) · [mermaid-language.ts](../../packages/ui/src/components/mermaid-language.ts) · [tool-presentation.ts](../../packages/ui/src/components/tool-presentation.ts) · [use-prefers-reduced-motion.ts](../../packages/ui/src/components/use-prefers-reduced-motion.ts) · [use-selection-stable-value.ts](../../packages/ui/src/components/use-selection-stable-value.ts) |
+| `packages/ui/src` | [appearance.ts](../../packages/ui/src/appearance.ts) · [code-language.ts](../../packages/ui/src/code-language.ts) · [index.ts](../../packages/ui/src/index.ts) · [markdown-fence.ts](../../packages/ui/src/markdown-fence.ts) · [markdown-link-nodes.ts](../../packages/ui/src/markdown-link-nodes.ts) · [reading-position.ts](../../packages/ui/src/reading-position.ts) · [reducer.ts](../../packages/ui/src/reducer.ts) · [styles.css](../../packages/ui/src/styles.css) · [tokens.css](../../packages/ui/src/tokens.css) · [types.ts](../../packages/ui/src/types.ts) · [conversation-run-partition.ts](../../packages/ui/src/conversation-run-partition.ts) |
+| `packages/ui/src/components` | [CompactionDivider.tsx](../../packages/ui/src/components/CompactionDivider.tsx) · [Conversation.tsx](../../packages/ui/src/components/Conversation.tsx) · [DraftGreeting.tsx](../../packages/ui/src/components/DraftGreeting.tsx) · [Markdown.tsx](../../packages/ui/src/components/Markdown.tsx) · [MarkdownActions.tsx](../../packages/ui/src/components/MarkdownActions.tsx) · [MarkdownCode.tsx](../../packages/ui/src/components/MarkdownCode.tsx) · [MarkdownImage.tsx](../../packages/ui/src/components/MarkdownImage.tsx) · [MarkdownLink.tsx](../../packages/ui/src/components/MarkdownLink.tsx) · [MarkdownTable.tsx](../../packages/ui/src/components/MarkdownTable.tsx) · [MermaidBlock.tsx](../../packages/ui/src/components/MermaidBlock.tsx) · [MessageActions.tsx](../../packages/ui/src/components/MessageActions.tsx) · [Notice.tsx](../../packages/ui/src/components/Notice.tsx) · [QueuedSummaryContent.tsx](../../packages/ui/src/components/QueuedSummaryContent.tsx) · [SortableList.tsx](../../packages/ui/src/components/SortableList.tsx) · [StreamEntrance.tsx](../../packages/ui/src/components/StreamEntrance.tsx) · [SuggestionOptions.tsx](../../packages/ui/src/components/SuggestionOptions.tsx) · [TaskTitleOverflowText.tsx](../../packages/ui/src/components/TaskTitleOverflowText.tsx) · [ToolBlock.tsx](../../packages/ui/src/components/ToolBlock.tsx) · [ToolFailure.tsx](../../packages/ui/src/components/ToolFailure.tsx) · [ToolGroup.tsx](../../packages/ui/src/components/ToolGroup.tsx) · [ToolLayout.tsx](../../packages/ui/src/components/ToolLayout.tsx) · [ToolOutput.tsx](../../packages/ui/src/components/ToolOutput.tsx) · [UserMessageBody.tsx](../../packages/ui/src/components/UserMessageBody.tsx) · [markdown-configuration.ts](../../packages/ui/src/components/markdown-configuration.ts) · [markdown-math.ts](../../packages/ui/src/components/markdown-math.ts) · [markdown-table-text.ts](../../packages/ui/src/components/markdown-table-text.ts) · [mermaid-budget.ts](../../packages/ui/src/components/mermaid-budget.ts) · [mermaid-language.ts](../../packages/ui/src/components/mermaid-language.ts) · [tool-presentation.ts](../../packages/ui/src/components/tool-presentation.ts) · [use-prefers-reduced-motion.ts](../../packages/ui/src/components/use-prefers-reduced-motion.ts) · [use-selection-stable-value.ts](../../packages/ui/src/components/use-selection-stable-value.ts) · [ConversationNavigator.tsx](../../packages/ui/src/components/ConversationNavigator.tsx) |
 
 ### [指令、技能与系统提示加载](resources.md)
 
 | 目录 | 文件 |
 | --- | --- |
 | `packages/coding-agent/src/core` | [markdown.ts](../../packages/coding-agent/src/core/markdown.ts) · [resources.ts](../../packages/coding-agent/src/core/resources.ts) · [system-prompt.ts](../../packages/coding-agent/src/core/system-prompt.ts) |
-
 | `packages/desktop/src/renderer` | [ResourceSettings.tsx](../../packages/desktop/src/renderer/ResourceSettings.tsx) |
 
 ### [Git 审查、工具快照与文件回退](review.md)
@@ -215,7 +217,7 @@
 | --- | --- |
 | `packages/desktop/src/main` | [index.ts](../../packages/desktop/src/main/index.ts) · [load-renderer.ts](../../packages/desktop/src/main/load-renderer.ts) |
 | `packages/desktop/src/preload` | [index.ts](../../packages/desktop/src/preload/index.ts) |
-| `packages/desktop/src/renderer` | [App.tsx](../../packages/desktop/src/renderer/App.tsx) · [AppBoundary.tsx](../../packages/desktop/src/renderer/AppBoundary.tsx) · [SettingsHelp.tsx](../../packages/desktop/src/renderer/SettingsHelp.tsx) · [SettingsPage.tsx](../../packages/desktop/src/renderer/SettingsPage.tsx) · [SettingsSelect.tsx](../../packages/desktop/src/renderer/SettingsSelect.tsx) · [app-state.ts](../../packages/desktop/src/renderer/app-state.ts) · [env.d.ts](../../packages/desktop/src/renderer/env.d.ts) · [index.html](../../packages/desktop/src/renderer/index.html) · [main.tsx](../../packages/desktop/src/renderer/main.tsx) · [store.ts](../../packages/desktop/src/renderer/store.ts) · [unwrap.ts](../../packages/desktop/src/renderer/unwrap.ts) |
+| `packages/desktop/src/renderer` | [App.tsx](../../packages/desktop/src/renderer/App.tsx) · [AppBoundary.tsx](../../packages/desktop/src/renderer/AppBoundary.tsx) · [SettingsHelp.tsx](../../packages/desktop/src/renderer/SettingsHelp.tsx) · [SettingsPage.tsx](../../packages/desktop/src/renderer/SettingsPage.tsx) · [SettingsSelect.tsx](../../packages/desktop/src/renderer/SettingsSelect.tsx) · [app-state.ts](../../packages/desktop/src/renderer/app-state.ts) · [env.d.ts](../../packages/desktop/src/renderer/env.d.ts) · [index.html](../../packages/desktop/src/renderer/index.html) · [main.tsx](../../packages/desktop/src/renderer/main.tsx) · [store.ts](../../packages/desktop/src/renderer/store.ts) · [unwrap.ts](../../packages/desktop/src/renderer/unwrap.ts) · [SettingsBreadcrumb.tsx](../../packages/desktop/src/renderer/SettingsBreadcrumb.tsx) |
 | `packages/desktop/src/shared` | [bridge.ts](../../packages/desktop/src/shared/bridge.ts) · [config.ts](../../packages/desktop/src/shared/config.ts) |
 
 ### [SDK 装配与扩展边界](sdk.md)
@@ -224,7 +226,9 @@
 | --- | --- |
 | `examples` | [coding-session.ts](../../examples/coding-session.ts) |
 | `packages/coding-agent/src` | [index.ts](../../packages/coding-agent/src/index.ts) |
-| `packages/coding-agent/src/core` | [sdk.ts](../../packages/coding-agent/src/core/sdk.ts) · [settings-manager.ts](../../packages/coding-agent/src/core/settings-manager.ts) · [types.ts](../../packages/coding-agent/src/core/types.ts) |
+| `packages/coding-agent/src/core` | [sdk.ts](../../packages/coding-agent/src/core/sdk.ts) · [settings-manager.ts](../../packages/coding-agent/src/core/settings-manager.ts) · [types.ts](../../packages/coding-agent/src/core/types.ts) · [fs.ts](../../packages/coding-agent/src/core/fs.ts) |
+| `packages/agent-sdk/src` | [hooks.ts](../../packages/agent-sdk/src/hooks.ts) · [host.ts](../../packages/agent-sdk/src/host.ts) · [index.ts](../../packages/agent-sdk/src/index.ts) · [messages.ts](../../packages/agent-sdk/src/messages.ts) · [permissions.ts](../../packages/agent-sdk/src/permissions.ts) · [query-result.ts](../../packages/agent-sdk/src/query-result.ts) · [query.ts](../../packages/agent-sdk/src/query.ts) · [resources.ts](../../packages/agent-sdk/src/resources.ts) · [runtime.ts](../../packages/agent-sdk/src/runtime.ts) · [sessions.ts](../../packages/agent-sdk/src/sessions.ts) · [tasks.ts](../../packages/agent-sdk/src/tasks.ts) · [tools.ts](../../packages/agent-sdk/src/tools.ts) · [types.ts](../../packages/agent-sdk/src/types.ts) |
+| `scripts` | [build-agent-sdk.mjs](../../scripts/build-agent-sdk.mjs) |
 
 ### [任务、正文、文件和 Diff 查找](search.md)
 
@@ -319,10 +323,6 @@
 | `packages/desktop/src/renderer` | [PluginSettings.tsx](../../packages/desktop/src/renderer/PluginSettings.tsx) · [plugin-settings.css](../../packages/desktop/src/renderer/plugin-settings.css) · [HooksSettings.tsx](../../packages/desktop/src/renderer/HooksSettings.tsx) · [HookForm.tsx](../../packages/desktop/src/renderer/HookForm.tsx) · [hooks-settings.css](../../packages/desktop/src/renderer/hooks-settings.css) |
 | `packages/desktop/src/main/plugins` | [configured-hooks.ts](../../packages/desktop/src/main/plugins/configured-hooks.ts) · [hook-catalog.ts](../../packages/desktop/src/main/plugins/hook-catalog.ts) |
 
-## 维护约定
-
-新增、移动或删除源文件时，同步调整本表和主要说明页。只把新文件加进表格不算完成文档：应说明可见行为、状态归属、输入输出、并发/取消/失败，以及最低合适层的回归依据。数值和协议参数在主要说明页维护，功能页通过链接引用。
-
 ### [内置插件运行时边界](plugins.md)
 
 | 目录 | 文件 |
@@ -330,5 +330,7 @@
 | `packages/builtin-plugins/src` | [runtime.ts](../../packages/builtin-plugins/src/runtime.ts) · [ports.ts](../../packages/builtin-plugins/src/ports.ts) · [types.ts](../../packages/builtin-plugins/src/types.ts) · [models.ts](../../packages/builtin-plugins/src/models.ts) · [notifications.ts](../../packages/builtin-plugins/src/notifications.ts) |
 | `packages/builtin-plugins/src/memory` | [types.ts](../../packages/builtin-plugins/src/memory/types.ts) |
 | `packages/builtin-plugins/src/collaboration` | [types.ts](../../packages/builtin-plugins/src/collaboration/types.ts) · [inbox.ts](../../packages/builtin-plugins/src/collaboration/inbox.ts) |
-| `packages/agent-sdk/src` | [query-result.ts](../../packages/agent-sdk/src/query-result.ts) |
-| `packages/coding-agent/src/core` | [fs.ts](../../packages/coding-agent/src/core/fs.ts) |
+
+## 维护约定
+
+新增、移动或删除源文件时，同步调整本表和主要说明页。只把新文件加进表格不算完成文档：应说明可见行为、状态归属、输入输出、并发/取消/失败，以及最低合适层的回归依据。数值和协议参数在主要说明页维护，功能页通过链接引用。

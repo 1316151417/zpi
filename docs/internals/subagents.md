@@ -2,9 +2,9 @@
 
 使用入口：[协作](../features/collaboration.md)。辅助对话的用户交互入口见[会话](sessions.md)。
 
-## 扩展而非核心分支
+## 插件装配与运行时
 
-桌面 collaboration 插件向父会话注册 Agent、SendMessage，以 UserPromptSubmit hook 准备本轮配置，通过动态指令提供类型列表；子会话的 coordinator 插件注册 RespondToCoordinator。TaskOutput、TaskStop 由共享 TaskControls 装配，协作与后台命令分别注册后端。core 不知道 Electron 或任务面板；父子共享 cwd，各自拥有模型请求、工具集合与历史。
+系统内置 collaboration 插件向父会话注册 Agent、SendMessage，以 UserPromptSubmit hook 准备本轮配置，通过动态指令提供类型列表；子会话的 coordinator 插件注册 RespondToCoordinator。TaskOutput、TaskStop 由共享 TaskControls 装配，协作与后台命令分别注册后端。BuiltinPluginRuntime 持有协作调度与清理，宿主通过通用接口创建、运行和持久化子会话；core 不知道 Electron 或任务面板。父子共享 cwd，各自拥有模型请求、工具集合与历史。设置入口与生效范围见[插件](../features/plugins.md)。
 
 内置 profile 为 general-purpose 和 Explore。配置加载器还处理用户/项目 profile、启用状态、工具范围、模型和指令。名称碰撞必须在加载阶段确定赢家或拒绝歧义，不能等工具执行时随机选择。最终工具 schema 通过声明传给模型，提示文字只说明协作规则，避免重复整个 schema。
 
@@ -12,7 +12,7 @@
 
 协作插件选项 `promptPreset` 默认为 `default`，保留原始 ZPI（ZCode 风格）的 Agent 描述和内置类型说明；`codex` 改用适配 ZPI 能力的 Codex 提示，仅在用户或适用 AGENTS.md/skill 明确要求委派时启动，保留关键路径工作、后台并行、避免重复委派和按文件划分修改范围等指导。类型说明在 Codex 模式下只描述能力，用户自定义 profile 保留原文。子智能体工具参数、权限及调度实现不受此预设影响。
 
-设置随新对话首次发送保存到插件快照；工具描述、模型可见类型列表和提示预览使用同一模式。旧 `codexSubagentPrompt` 在迁移边界转换为插件选项，缺失时按 default 处理。关闭协作插件时预设置灰并保留选择。后台命令插件可以独立启停。
+设置由 `plugins.options["zpi.collaboration"].promptPreset` 保存，随新对话首次发送进入插件快照；工具描述、模型可见类型列表和提示预览使用同一模式。关闭协作插件时预设置灰并保留选择。后台命令插件可以独立启停。
 
 Agent 接收工作描述和 prompt，创建 child session、agent ID、任务 ID 与输出文件关联。同步完成返回结果正文、agentId、工具次数、耗时及已知 tokens；异步启动返回 async_launched 和任务定位信息。
 

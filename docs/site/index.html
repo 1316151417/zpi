@@ -7,12 +7,12 @@
     <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
     <meta
       name="description"
-      content="ZPI 是本地运行的 AI 编码桌面客户端：四个基础工具、多模型自由切换、ChatGPT 套餐授权、辅助对话与子智能体、文件预览和变更审查。没有遥测，会话与配置保存在本机。"
+      content="ZPI 是本地运行的 AI 编码桌面客户端：四工具内核、可选系统插件与共享 TypeScript SDK，集成对话、文件预览和变更审查。没有遥测，会话与配置保存在本机。"
     >
     <meta property="og:title" content="ZPI — 四个工具，一整间工作室">
     <meta
       property="og:description"
-      content="给 Agent 更少的内置工具，给你更完整的编码现场。一个本地优先、模型自由的 AI 编码桌面客户端。"
+      content="四工具内核、按需使用的系统内置插件与共享 TypeScript SDK。一个本地优先、模型自由的 AI 编码桌面客户端。"
     >
     <meta property="og:type" content="website">
     <meta property="og:url" content="http://101.200.240.206/zpi/">
@@ -32,6 +32,7 @@
         >
         <div class="nav-links">
           <a href="#philosophy">理念</a>
+          <a class="nav-optional" href="#plugins">插件</a>
           <a class="nav-optional" href="#models">模型</a>
           <a class="nav-optional" href="#collaboration">协作</a>
           <a href="#workspace">工作区</a>
@@ -50,7 +51,7 @@
           <h1 id="hero-title">四个工具，<br>一整间<span class="accent">工作室。</span></h1>
           <p class="hero-lead">给 Agent 更少的内置工具，<br class="mobile-break">给你更完整的编码现场。</p>
           <p class="hero-description">
-            ZPI 是本地运行的 AI 编码桌面客户端。模型读代码、改文件、跑命令；对话、变更、终端与预览留在同一界面。内核保持精简，能力按需扩展。
+            ZPI 是本地运行的 AI 编码桌面客户端。模型读代码、改文件、跑命令；对话、变更、终端与预览留在同一界面。四工具内核保持精简，系统内置插件按需配置与启停。
           </p>
           <div class="actions">
             <a class="button primary" href="https://github.com/1316151417/zpi/releases"
@@ -131,7 +132,7 @@
         <span>四个基础工具</span><span class="strip-divider" aria-hidden="true">/</span
         ><span>多模型自由切换</span><span class="strip-divider" aria-hidden="true">/</span
         ><span>本地优先</span><span class="strip-divider" aria-hidden="true">/</span
-        ><span>能力按需扩展</span>
+        ><span>内置插件按需使用</span>
       </div>
 
       <section id="philosophy" class="section container" aria-labelledby="philosophy-title">
@@ -159,14 +160,14 @@
             </p>
             <p class="small-note">需要本机具备相应的运行环境和依赖。</p>
           </article>
-          <article class="philosophy-card">
+          <article class="philosophy-card" id="plugins">
             <span class="card-number">03</span>
-            <h3>小内核，按需扩展</h3>
+            <h3>小内核，系统插件按需使用</h3>
             <p>
-              核心与 SDK 默认保留四个基础工具。桌面端通过通用扩展接口提供结构化提问、子智能体、后台命令、联网搜索和记忆。
+              提问、联网搜索、子智能体协作、后台命令、记忆、自动标题和任务通知，由系统内置插件提供。在“设置 → 插件”选择所需能力，无需另外安装。
             </p>
             <p class="small-note">
-              提问、子智能体、联网与记忆在任务首次发送时保存；之后修改全局开关，不会给旧任务追加这些能力。后台命令独立可用。
+              多项插件默认启用，记忆模式与联网默认关闭；联网需配置凭据。新任务首次发送保存插件配置；详见<a href="/zpi/docs/features/plugins">插件与生效范围</a>。
             </p>
           </article>
         </div>
@@ -393,7 +394,7 @@
               <span class="extension-tag">MEMORY</span>
               <h3>短期与长期记忆</h3>
               <p>
-                短期模式维护用户与项目的 MEMORY.md；长期模式从历史会话提取摘要，由后台 Agent 增量整合。两种模式互斥，默认都关闭。
+                记忆插件提供两种互斥模式：短期模式维护用户与项目的 MEMORY.md，长期模式从历史会话提取摘要并由后台 Agent 增量整合。记忆模式默认关闭。
               </p>
               <p class="small-note">当前用户要求与项目指令始终优先。</p>
             </article>
@@ -401,7 +402,7 @@
               <span class="extension-tag">AGENT SDK</span>
               <h3>独立接入你的应用</h3>
               <p>TypeScript Agent SDK 提供查询、流式消息、工具控制、Hook 和会话恢复；ZPI 桌面与外部应用共用同一套执行入口。</p>
-              <p class="small-note">支持的接口按 Claude Agent SDK 命名与协议对齐，高级平台能力保持明确边界。</p>
+              <p class="small-note">只支持 TypeScript；支持的接口按 Claude Agent SDK 命名与协议对齐，应用自行选择工具和插件。</p>
             </article>
           </div>
         </div>
@@ -414,7 +415,7 @@
               <p class="eyebrow light">06 / DEVELOPER</p>
               <h2 id="developer-title">内核独立，<br>界面只是入口。</h2>
               <p>
-                zpi-agent-sdk 提供独立的 TypeScript 接口，不依赖 Electron。桌面端与外部应用共用查询协议，复杂能力通过工具和插件接口接入。
+                zpi-agent-sdk 提供独立的 TypeScript 接口，不依赖 Electron。ZPI 桌面与独立的 zpi-quick-chat 共用查询协议；七类系统插件的运行时独立于桌面宿主，通过通用接口接入模型、存储和通知。
               </p>
               <ul class="check-list light">
                 <li>tools 选择工具，allowedTools 与 canUseTool 控制调用</li>
@@ -423,15 +424,14 @@
                 <li>诊断页汇总错误日志、等待与重试，以及 TTFT、输出速度和 token 用量</li>
               </ul>
               <div class="developer-actions">
-                <a class="button primary inverse" href="https://github.com/1316151417/zpi/blob/main/docs/features/sdk.md"
+                <a class="button primary inverse" href="/zpi/docs/features/sdk"
                   >SDK 文档 <span aria-hidden="true">↗</span></a
                 >
                 <code class="command-chip">npm run example:coding</code>
               </div>
               <p class="developer-note">
                 文档站：<a href="/zpi/docs/">打开文档</a>（也可在仓库内运行
-                <code>npm run docs</code> 或 <code>npx zpi-docs</code>）。60
-                篇中文文档支持全文搜索、Mermaid、源码查看与深浅色主题。
+                <code>npm run docs</code> 或 <code>npx zpi-docs</code>）。中文文档支持全文搜索、Mermaid、源码查看与深浅色主题。
               </p>
             </div>
             <div class="code-card">
@@ -460,7 +460,7 @@ for await (const message of query({
             <div><code>agent</code><span>执行循环与工具调度</span></div>
             <div><code>coding-agent</code><span>会话、四工具与上下文</span></div>
             <div><code>agent-sdk</code><span>公共 TypeScript 协议</span></div>
-            <div><code>builtin-plugins</code><span>可选内置能力</span></div>
+            <div><code>builtin-plugins</code><span>可选系统插件与运行时</span></div>
             <div><code>plugin-compat</code><span>外部插件适配</span></div>
             <div><code>ui</code><span>对话组件与展示模型</span></div>
             <div><code>desktop</code><span>Electron、窗口与 IPC</span></div>
@@ -560,7 +560,13 @@ for await (const message of query({
             <summary>只有四个工具，会不会不够用？</summary>
             <p>
               内核只保留读、写、精确编辑和执行命令，搜索、构建、测试、Git 与网络请求都通过 bash
-              使用已有程序。桌面端再按需注入提问、子智能体、后台命令、联网搜索和记忆；SDK 也支持新增工具或替换内置工具。
+              使用已有程序。七类系统内置插件按需提供提问、联网、协作、后台命令、记忆、标题和通知。公共 SDK 另提供标准工具适配与工具选择接口。
+            </p>
+          </details>
+          <details>
+            <summary>系统内置插件需要安装吗？默认都关闭吗？</summary>
+            <p>
+              内置插件随应用提供，在“设置 → 插件”管理。多项默认启用，记忆模式与联网默认关闭；联网搜索需先配置服务凭据。对应功能页共享同一份设置，新任务在首次发送时保存插件快照。也可从本地文件夹添加支持的 Claude Code/ZCode 插件；使用方法见<a href="/zpi/docs/features/plugins">插件文档</a>。
             </p>
           </details>
           <details>
@@ -573,8 +579,8 @@ for await (const message of query({
           <details>
             <summary>能在脚本里复用 ZPI 的内核吗？</summary>
             <p>
-              可以。仓库提供 zpi-agent-sdk，复用模型运行时、四个工具与会话能力；npm run example:coding
-              会启动本地假模型服务演示完整流程，不需要线上凭据。具体接口见 SDK 文档。
+              可以。zpi-agent-sdk 提供标准工具、查询与流式消息、会话恢复和插件接口。npm run example:coding
+              使用原生宿主接口启动本地假模型服务，无需线上凭据。普通脚本从 query 接入；具体接口见<a href="/zpi/docs/features/sdk">SDK 文档</a>。
             </p>
           </details>
         </div>

@@ -4,7 +4,7 @@
 
 ## 环境与依赖
 
-仓库是 npm workspace，核心与桌面包以内部包名互相引用；可选指令和命令位于独立的 `builtin-plugins` 包。Node 24 提供当前运行时所需能力，尤其 `node:sqlite`。根安装先禁用 lifecycle scripts，再显式安装 Electron 和重建 node-pty，避免原生 ABI 准备被隐含步骤掩盖。
+仓库是 npm workspace，核心与桌面包以内部包名互相引用；系统内置插件的声明、实现和运行时位于独立的 `builtin-plugins` 包，本地外部插件的适配位于 `plugin-compat`。`agent-sdk` 为桌面和独立应用提供统一查询协议。Node 24 提供当前运行时所需能力，尤其 `node:sqlite`。根安装先禁用 lifecycle scripts，再显式安装 Electron 和重建 node-pty，避免原生 ABI 准备被隐含步骤掩盖。
 
 TypeScript 负责类型检查；Biome 负责格式与静态规则。源码采用 ESM，main 构建目标 Node 24，preload 因 Electron 加载方式输出 CJS。代码中的 `.ts` 引用由构建链解析，不要求把整个仓库预先编译成一个公共 dist。
 
@@ -23,6 +23,12 @@ macOS 在 node_modules 缓存目录复制 Electron bundle 并改显示名为 ZPI
 Vite base 为相对路径，生产资源可在文件 URL 下加载。PDF assets 插件复制本地依赖，worker 输出保留必要入口副作用，不能被 tree shaking 删除。源码映射用于本地诊断和包内错误定位。
 
 main bundle 包含 workspace 核心及常用 JS 依赖，Electron、node-pty、Sharp 保持 external；原生依赖由发行包收集。createRequire banner 处理 ESM 与相关 CommonJS 依赖边界。
+
+## 文档与介绍页
+
+`scripts/docs.mjs` 启动本地文档服务。`scripts/docs/render.mjs` 自动发现 README 与 `docs` 下的 Markdown，按 README 链接建立导航顺序，并生成搜索条目；`template.mjs` 维护页面外壳与文档首页介绍。新增功能页需同步 README 索引，无需另建路由配置。
+
+产品介绍页是 `docs/site/index.html`，样式位于同目录 `styles.css`，本地文档服务通过 `/intro/` 提供预览。介绍页与功能、原理页应使用同一份产品边界说明。`scripts/docs-deploy.mjs` 负责发布，修改源码或启动本地预览不会自动更新线上站点。
 
 ## 修改原则
 

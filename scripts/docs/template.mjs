@@ -58,9 +58,10 @@ function heroHtml(site) {
   return `<section class="hero">
   <p class="eyebrow">DOCUMENTATION</p>
   <h1>ZPI 文档</h1>
-  <p class="lede">产品功能、实现原理与开发约定。支持全文搜索、Mermaid 图、源码跳转和深浅色主题。</p>
+  <p class="lede">四工具内核、共享 TypeScript SDK 与按需使用的系统内置插件。查阅功能用法、实现原理和开发约定。</p>
   <div class="hero-actions">
     <a class="button primary" href="${escapeAttr(withBase(site, "/features/getting-started"))}">新手向导</a>
+    <a class="button" href="${escapeAttr(withBase(site, "/features/plugins"))}">插件与能力</a>
     <a class="button" href="${escapeAttr(withBase(site, "/design"))}">总览设计</a>
     <a class="button" href="${escapeAttr(withBase(site, "/internals/module-map"))}">源码地图</a>
   </div>

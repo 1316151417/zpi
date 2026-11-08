@@ -1,6 +1,6 @@
 # read、write、edit、bash 的实现
 
-使用入口：[基础工具](../features/tools.md)。核心只有四个内置工具；桌面能力通过 SDK 扩展接入。
+使用入口：[基础工具](../features/tools.md)。本页描述执行内核的四个原生工具；公共 TypeScript SDK 提供标准工具名与参数适配，桌面通过系统内置插件接入其他能力。
 
 ## 路径与权限
 
@@ -34,14 +34,15 @@ write 自动创建父目录，写入完整 UTF-8 内容。它会覆盖现有文�
 
 ## bash：执行和输出
 
-SDK bash 启动 shell 子进程，可选 timeout 单位为秒，必须为合法正数；默认没有超时。输出累加器保留有界预览，模型通常拿尾部最多 2000 行、50 KiB；完整输出可以落到临时文件。结构化输出还有独立的 1 MiB 边界。
+原生基础 bash 启动 shell 子进程，可选 timeout 单位为秒，必须为合法正数；默认没有超时。输出累加器保留有界预览，模型通常拿尾部最多 2000 行、50 KiB；完整输出可以落到临时文件。结构化输出还有独立的 1 MiB 边界。
 
 进度约每 100 毫秒合并，定制 onData 可返回 Promise 施加背压。取消要终止对应进程树并完成输出收尾，不能用无范围的全局进程清理。
 
-桌面会覆盖 bash，提供后台执行与 TaskOutput/TaskStop；SDK 的 bash 不包含这套调度，见[后台进程](background-terminal.md)。
+公共 SDK 的 `Bash` 将毫秒单位的 timeout 转换后调用原生工具，并用 SDK 自身任务管理器实现 `run_in_background`、`TaskOutput` 和 `TaskStop`。桌面则由后台命令插件覆盖小写 `bash`，提供输出文件、跨轮次执行及桌面恢复与清理策略，见[后台进程](background-terminal.md)。
 
 ## 源码与回归入口
 
 - [工具装配](../../packages/coding-agent/src/core/tools/index.ts)、[read](../../packages/coding-agent/src/core/tools/pi/read.ts)、[edit](../../packages/coding-agent/src/core/tools/pi/edit.ts)、[write](../../packages/coding-agent/src/core/tools/pi/write.ts)、[bash](../../packages/coding-agent/src/core/tools/pi/bash.ts)。
+- [公共 SDK 工具适配](../../packages/agent-sdk/src/tools.ts)、[SDK 任务管理](../../packages/agent-sdk/src/tasks.ts)。
 - [文件读状态](../../packages/coding-agent/src/core/tools/pi/file-read-state.ts)、[变更队列](../../packages/coding-agent/src/core/tools/pi/file-mutation-queue.ts)、[输出累加器](../../packages/coding-agent/src/core/tools/pi/output-accumulator.ts)。
 - [别名并发测试](../../packages/coding-agent/test/mutation-alias.test.ts)、[特殊文件测试](../../packages/coding-agent/test/read-special-files.test.ts)、[背压测试](../../packages/coding-agent/test/bash-output-backpressure.test.ts)、[大编辑持久化](../../packages/desktop/test/large-edit-durability.test.ts)。

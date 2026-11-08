@@ -14,7 +14,9 @@ ZPI 是本地运行的编码桌面客户端。用户选择项目、模型和任�
 
 ## 产品边界
 
-核心内置工具只有 `read`、`write`、`edit`、`bash`。桌面通过通用扩展接口接入提问、子智能体、联网工具和后台命令。核心和 SDK 不依赖 Electron。
+执行内核保留 `read`、`write`、`edit`、`bash` 四个基础工具。提问、联网、子智能体协作、后台命令、记忆、自动标题和任务通知由独立的系统内置插件提供，在“设置 → 插件”按需启停；默认状态与生效范围见[插件](features/plugins.md)。核心和 TypeScript Agent SDK 不依赖 Electron，公共 SDK 在内核之上提供标准工具名与查询协议。
+
+辅助对话、工作树、终端标签、预览和审查等工作区能力由桌面提供。独立应用 `zpi-quick-chat` 与桌面共用 Agent SDK，不随桌面启动。
 
 项目没有内置 MCP、遥测、专用 REPL 或 Agent 浏览器控制工具。浏览器面板由用户操作；Agent 可以经 `bash` 使用工作机器已经具备的脚本和依赖。
 
@@ -25,14 +27,18 @@ ZPI 是本地运行的编码桌面客户端。用户选择项目、模型和任�
 ```mermaid
 flowchart TD
   D[desktop：主进程、preload、renderer] --> SDK[agent-sdk：查询与消息协议]
-  Q[独立应用] --> SDK
+  Q[zpi-quick-chat 等独立应用] --> SDK
   SDK --> C[coding-agent：会话、工具、上下文]
   D --> U[ui：对话组件和展示模型]
   D --> AI[ai：认证、模型协议和流]
   C --> A[agent：执行循环和工具调度]
   C --> AI
   A --> AI
-  D --> B[builtin-plugins：可选指令与命令]
+  D --> B[builtin-plugins：系统插件与运行时]
+  B --> SDK
+  B --> C
+  D --> PC[plugin-compat：本地外部插件适配]
+  PC --> C
 ```
 
 | 包 | 负责 | 入口 |
@@ -41,10 +47,10 @@ flowchart TD
 | `agent` | 请求模型、执行工具、消费排队指令、结束运行 | [agent-loop.ts](../packages/agent/src/agent-loop.ts) |
 | `agent-sdk` | TypeScript 公共查询、控制和消息协议；独立打包与宿主接入 | [公开入口](../packages/agent-sdk/src/index.ts)、[SDK 说明](../packages/agent-sdk/README.md) |
 | `coding-agent` | 会话装配、资源、四工具、历史、压缩、运行设置 | [sdk.ts](../packages/coding-agent/src/core/sdk.ts)、[agent-session.ts](../packages/coding-agent/src/core/agent-session.ts) |
-| `builtin-plugins` | 五类行为指令、项目初始化命令及桌面运行时插件清单，通过通用契约接入 | [插件定义](../packages/builtin-plugins/src/index.ts) · [装配与 hook](internals/plugins.md) |
+| `builtin-plugins` | 五类行为指令、项目初始化命令及七类运行时的实现、策略与生命周期；通过宿主通用接口接入 | [插件定义](../packages/builtin-plugins/src/index.ts)、[运行时](../packages/builtin-plugins/src/runtime.ts)、[宿主接口](../packages/builtin-plugins/src/ports.ts) · [装配与 hook](internals/plugins.md) |
 | `plugin-compat` | 本地 Claude/ZCode 插件的声明适配、文件冻结和命令 hook 子进程，独立于执行核心 | [适配器](../packages/plugin-compat/src/index.ts) · [兼容边界](internals/plugins.md#本地外部插件) |
 | `ui` | 对话、Markdown、输入、工具卡片、查找、预览解析 | [index.ts](../packages/ui/src/index.ts) |
-| `desktop` | 持久状态、会话编排、原生窗口、IPC、桌面界面 | [main/index.ts](../packages/desktop/src/main/index.ts)、[App.tsx](../packages/desktop/src/renderer/App.tsx) |
+| `desktop` | 平台服务、持久状态、会话事务、原生窗口、IPC、桌面界面 | [main/index.ts](../packages/desktop/src/main/index.ts)、[App.tsx](../packages/desktop/src/renderer/App.tsx) |
 
 ## 一次输入如何成为结果
 
@@ -52,13 +58,16 @@ flowchart TD
 sequenceDiagram
   participant U as 用户和输入框
   participant H as SessionHost / 输入队列
+  participant SDK as Agent SDK
   participant S as AgentSession
   participant M as 模型协议层
   participant T as 工具
   participant P as 历史存储和界面投影
   U->>H: 提交文字、引用和附件
   H->>H: 校验、持久化接受状态、准备目录与命令
-  H->>S: 发送准备后的输入
+  H->>H: 首次发送冻结插件并装配运行时
+  H->>SDK: query 驱动已装配的会话
+  SDK->>S: 发送准备后的输入
   S->>S: 刷新指令、投影上下文、检查预算
   S->>M: 获取凭据并生成请求
   M-->>P: 统一的文本、思考、工具调用事件
@@ -67,11 +76,14 @@ sequenceDiagram
   T-->>P: 持久化结果和文件快照
   T-->>S: 配对工具结果
   S->>M: 必要时继续下一步
-  S-->>H: 完成、停止或失败
+  S-->>SDK: 完成、停止或失败
+  SDK-->>H: 执行结果
   H-->>U: 最终状态、变更、通知
 ```
 
 普通工具在完整响应后执行；符合只读并发条件的流式工具可以提前开始，但必须收到显式工具参数结束事件。工具日志先持久化，完成结果只消费一次。详情见[工具调度](internals/agent-loop.md)。
+
+`BuiltinPluginRuntime` 持有插件服务及其恢复、取消和清理；宿主注入模型调用、存储、历史和系统通知等通用接口。提示预览、工具列表与实际会话复用同一份插件装配规则，预览不执行插件。详见[运行时隔离](internals/plugins.md#内置运行时隔离)。
 
 ## 状态归属
 
@@ -82,20 +94,21 @@ sequenceDiagram
 | 历史偏移、搜索和投影索引 | 历史 Worker | 可重建的 `history.sqlite` |
 | API Key 和 OAuth 凭据 | `SettingsStore` | 系统加密文件；加密不可用时留在内存 |
 | 当前执行、取消、WebSocket 续接 | `AgentSession` 和连接管理器 | 进程内存 |
+| 提问等待、子任务调度、后台命令、记忆批次、标题及通知策略 | `BuiltinPluginRuntime` 中各插件 owner | 运行句柄留在内存；可恢复状态经宿主存储接口保存 |
 | 标签、选区、阅读位置和显示状态 | renderer store、pane store、组件 | 按用途使用内存或本地偏好 |
 
 历史、模型上下文和界面时间线是三种视图：完整事实留在 JSONL；模型看到有效上下文；界面分页读取并按需挂载。压缩不等于删除原始对话，界面虚拟化也不等于限制全部历史内存。
 
 ## 功能和原理的覆盖边界
 
-根索引为每个主题提供成对入口。[源码地图](internals/module-map.md)把文件归到原理页面，包括协议转换、缓存、重试、存储迁移、原生桥接和测试设施。
+根索引为每个主题提供成对入口。[源码地图](internals/module-map.md)把文件归到原理页面，包括协议转换、缓存、重试、当前数据格式与恢复、原生桥接和测试设施。
 
 功能页维护入口、步骤、可见行为、作用域和排错。原理页维护调用链、状态归属、协议与数据结构、并发、取消、恢复及源码和测试依据。数值规则由解释其机制的页面维护，其他页面链接过去。
 
 ## 关键取舍
 
-- 小工具集与桌面能力分层，SDK 可独立使用。
-- 主进程掌握文件、进程、网络和持久化能力，preload 提供有限类型接口。
+- 四工具内核、公共 SDK、系统插件与桌面工作区分层，SDK 可独立使用。
+- 平台服务及桌面使用的插件运行时在主进程执行；插件通过通用接口使用持久化与平台能力，preload 提供有限类型接口。
 - 首次发送冻结插件指令、命令、运行时版本与选项；修改选择不重配已经开始的请求。
 - 原始历史和派生索引分离，重建索引不改写事实；业务数据库不能按缓存删除。
 - 模型恢复与工具恢复分开，避免网络重试隐式重放修改和命令。
@@ -105,4 +118,4 @@ sequenceDiagram
 
 文档解释仓库实现。外部模型目录、额度和协议是否可用由实际账号与服务端决定。[测试文档](features/testing.md)区分本地自动化、Electron 和系统/线上验证，历史测试数量不作为当前通过证明。
 
-源码变化时更新对应功能和原理页；新增模块进入源码地图。`AGENTS.md` 后续从实际代码和稳定开发约定重新生成。
+源码变化时更新对应功能和原理页；新增模块进入源码地图。

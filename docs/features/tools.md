@@ -1,6 +1,6 @@
 # 四个基础工具
 
-模型通过工具与工作目录交互。核心与 SDK 的内置工具为 `read`、`write`、`edit`、`bash`，桌面再注入提问、协作和联网能力。
+模型通过工具与工作目录交互。执行内核提供 `read`、`write`、`edit`、`bash` 四个基础工具；桌面的提问、协作、联网和后台执行由[系统内置插件](plugins.md)装配。公共 TypeScript SDK 在内核上提供 `Read`、`Write`、`Edit`、`Bash`、`Glob`、`Grep` 等标准工具，详见[SDK](sdk.md)。本页介绍桌面的基础工具行为。
 
 | 工具 | 用途 | 操作结果 |
 | --- | --- | --- |
@@ -29,6 +29,14 @@
 
 工具运行在当前用户权限下。辅助对话、子智能体的工具白名单和提示词约束具有各自边界；特别是允许 `bash` 时，它仍能通过系统命令读写和联网。
 
-SDK 的 `bash.timeout` 单位为秒；桌面覆盖版单位为毫秒，具有[后台化](background-terminal.md)行为。程序调用者必须使用对应的参数合同。
+## 命令工具的接口区别
+
+| 调用入口 | 工具与超时单位 | 后台行为 |
+| --- | --- | --- |
+| 原生会话的基础工具 | `bash.timeout` 为秒，默认无超时 | 不提供任务调度 |
+| 公共 TypeScript SDK `query` | `Bash.timeout` 为毫秒 | `run_in_background` 使用 SDK 自身的任务管理器，配合 `TaskOutput`、`TaskStop` |
+| 桌面后台命令插件 | 覆盖 `bash`，`timeout` 为毫秒 | 支持显式后台执行、前台等待超时后转后台、输出文件及桌面任务管理 |
+
+三者的参数名、默认值和生命周期应分别使用。桌面插件的清理与重启规则见[后台命令](background-terminal.md)。
 
 实现：[文件和命令工具](../internals/tools.md) · [工具调度](../internals/agent-loop.md)。

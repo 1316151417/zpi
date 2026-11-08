@@ -2,6 +2,8 @@
 
 插件贡献指令、命令、工具及生命周期处理器。`agent` 只提供执行节点；`coding-agent` 负责校验、装配和调度；内置业务规则位于独立的 `builtin-plugins` 包。桌面宿主提供平台服务，不在核心执行循环中判断插件名称。
 
+设置入口、完整内置清单、默认值及用户可见的生效规则见[插件](../features/plugins.md)，命令钩子的配置操作见[钩子](../features/hooks.md)。
+
 ## 装配和状态
 
 - SDK 的 `assembleSession` 是工具选择、插件贡献合并和冲突检查的唯一入口。实际会话、提示预览和工具列表使用相同装配规则；装配与预览不执行 hook。
@@ -13,7 +15,7 @@
 
 ## Hook 契约
 
-首版事件：SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、Stop。输入携带 sessionId、cwd、invocationId；工具事件携带 toolCallId、toolName、有效 toolInput。处理器接收独立输入快照和 AbortSignal。
+循环事件包括 SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、PostToolUseFailure、Stop；四个宿主事件见下方[策略插件与宿主事件](#策略插件与宿主事件)。输入携带 sessionId、cwd、invocationId；工具事件携带 toolCallId、toolName、有效 toolInput。处理器接收独立输入快照和 AbortSignal。
 
 - SessionStart 在会话首次输入前执行一次；失败后可重试，不重复提交已经完成的上下文。
 - UserPromptSubmit 在用户消息写入模型历史前执行，可以拒绝输入或追加独立的 synthetic 用户上下文消息，不改写原始输入。
@@ -30,7 +32,7 @@ communication-style、tool-batching、file-links、file-context-reuse、proactiv
 
 ## 工具运行时插件
 
-- questions、web-search、collaboration、background-tasks 通过版本化 runtime 声明绑定宿主服务，贡献工具、显式内置工具覆盖及动态指令。核心包不识别这些插件的 ID，不导入桌面服务。
+- questions、web-search、collaboration、background-tasks 通过版本化 runtime 声明绑定内置包中的服务实现，贡献工具、显式内置工具覆盖及动态指令。宿主通过通用接口提供平台能力，核心包不识别这些插件的 ID，不导入桌面服务。
 - `plugins` 设置 version 2 包含 enabled 和 options；协作提示预设使用 collaboration 的 `promptPreset`。插件启停和配置是唯一写入入口。
 - 任务首次发送冻结 runtime 标识、版本、选项与静态组件。恢复时必须匹配运行时实现版本，不使用全局开关重配旧任务。联网凭据仍只存在加密凭据存储，移除凭据即时阻止已有任务访问服务。
 - 共享 TaskControls 只依赖 TaskBackend 接口，按照真实任务归属选择后端，不按 ID 前缀猜测。后台命令和协作插件分别注册后端；无后端或多个后端声称同一任务均拒绝操作，后端继续校验会话所有权。TaskOutput/TaskStop 仅装配一次。
@@ -75,7 +77,7 @@ stdin 同时提供原生字段和 hook_event_name、session_id、transcript_path
 
 导入文件限单文件 2 MiB、总量 32 MiB、4000 个条目、16 层目录；拒绝符号链接和特殊文件，跳过 .git、node_modules。hook stdin 限 2 MiB，stdout/stderr 合计 128 KiB，超时上限五分钟；超时或取消终止进程树，回收监听器和计时器。上下文仍受核心 24000 字符预算约束。
 
-缓存位于当前 generation 的 `plugins/cache/<sha256>`；数据位于 `plugins/data/<local.id>`。导入相同 ID 的新内容只影响新会话，旧缓存保留用于已冻结会话；数据目录按插件 ID 保留。恢复和执行前校验缓存内容与冻结声明，缺失、改动或版本不匹配均拒绝执行。记忆后台 Agent 不加载外部插件。市场、安装更新、远程获取和 MCP 留给后续。
+缓存位于当前 generation 的 `plugins/cache/<sha256>`；数据位于 `plugins/data/<local.id>`。导入相同 ID 的新内容只影响新会话，旧缓存保留用于已冻结会话；数据目录按插件 ID 保留。恢复和执行前校验缓存内容与冻结声明，缺失、改动或版本不匹配均拒绝执行。记忆后台 Agent 不加载外部插件。当前不接入市场、自动更新、远程获取或 MCP。
 
 兼容依据：[Claude hook 参考](https://code.claude.com/docs/zh-CN/hooks)与 ZCode 的 `docs/plugin-hooks-compat.md`；这里实现明确的子集，不声明完整协议兼容。
 
@@ -91,7 +93,7 @@ stdin 同时提供原生字段和 hook_event_name、session_id、transcript_path
 
 ## 内置运行时隔离
 
-`builtin-plugins/runtime` 提供 `BuiltinPluginRuntime`，负责七类运行时的构造、装配、恢复、取消与清理。该包不依赖 desktop、UI、Electron 或具体 SQLite 实现；浏览器只加载纯声明、类型和模型选项转换入口。原有桌面运行时文件已删除，没有转发实现或兼容层。
+`builtin-plugins/runtime` 提供 `BuiltinPluginRuntime`，负责七类运行时的构造、装配、恢复、取消与清理。该包不依赖 desktop、UI、Electron 或具体 SQLite 实现；浏览器只加载纯声明、类型和模型选项转换入口。
 
 | 能力 | 内置实现与策略 |
 | --- | --- |

@@ -1,6 +1,6 @@
 # 结构化提问
 
-使用入口：[协作与提问](../features/collaboration.md)。questions 插件复用 UserQuestions 服务，注册 AskUserQuestion 工具，属于当前会话首次发送时确定的插件快照。
+使用入口：[协作与提问](../features/collaboration.md)。系统内置 questions 插件复用同包的 UserQuestions 服务，注册 AskUserQuestion 工具，属于当前会话首次发送时确定的插件快照。服务的构造、等待与取消由 BuiltinPluginRuntime 管理，宿主提供事件发布与会话接口。
 
 ## 参数和返回
 

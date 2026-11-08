@@ -1,7 +1,10 @@
 # ZPI 文档索引
 
+ZPI 以四工具执行内核和 TypeScript Agent SDK 为基础。提问、联网、子智能体协作、后台命令、记忆、自动标题和任务通知通过系统内置插件按需配置与启停；桌面工作区提供对话、文件、终端与审查界面。
+
 - [总览设计与模块地图](docs/design.md)
 - [新手向导](docs/features/getting-started.md)
+- [系统内置与本地插件](docs/features/plugins.md)
 - [源码到文档的完整索引](docs/internals/module-map.md)
 
 | 主题 | 功能讲解 | 原理剖析 |
@@ -22,10 +25,10 @@
 | 快捷键 | [默认键与改键](docs/features/shortcuts.md) | [事件路由和焦点](docs/internals/shortcuts.md) |
 | 界面 | [显示和通知](docs/features/appearance.md) | [流式渲染与阅读位置](docs/internals/rendering.md) |
 | 搜索 | [查找任务和文件](docs/features/search.md) | [索引、分页和高亮](docs/internals/search.md) |
-| 本地数据 | [备份、迁移与恢复](docs/features/storage.md) | [业务存储](docs/internals/storage.md) · [历史与 Worker](docs/internals/history.md) |
+| 本地数据 | [备份与恢复](docs/features/storage.md) | [业务存储](docs/internals/storage.md) · [历史与 Worker](docs/internals/history.md) |
 | 诊断 | [故障排查与用量](docs/features/diagnostics.md) | [错误、日志和计量](docs/internals/diagnostics.md) |
 | SDK | [脚本接入](docs/features/sdk.md) | [装配和扩展接口](docs/internals/sdk.md) |
-| 插件与 Hook | [SDK 与内置插件](docs/features/sdk.md#扩展入口) · [钩子配置](docs/features/hooks.md) | [组件装配、生命周期与配置迁移](docs/internals/plugins.md) |
+| 插件与 Hook | [插件管理与生效范围](docs/features/plugins.md) · [钩子配置](docs/features/hooks.md) | [组件装配、生命周期与运行时隔离](docs/internals/plugins.md) |
 | 开发 | [环境与调试](docs/features/development.md) | [启动与构建链路](docs/internals/development.md) · [Electron 边界](docs/internals/runtime.md) |
 | 测试 | [运行和选择测试](docs/features/testing.md) | [隔离与清理机制](docs/internals/testing.md) |
 | 打包 | [构建安装包](docs/features/packaging.md) | [产物与原生依赖](docs/internals/packaging.md) |
@@ -34,4 +37,4 @@
 - [下载发布包](https://github.com/1316151417/zpi/releases)
 - [仓库](https://github.com/1316151417/zpi)
 
-快速对话已拆分为独立的 `zpi-quick-chat` CLI 项目，后端与 ZPI 共用 `zpi-agent-sdk`。SDK 使用和支持范围见 [agent-sdk](packages/agent-sdk/README.md)。
+快速对话是独立的 [zpi-quick-chat](https://github.com/1316151417/zpi-quick-chat) CLI 项目，后端与 ZPI 共用 `zpi-agent-sdk`。SDK 使用和支持范围见 [agent-sdk](packages/agent-sdk/README.md)。
