@@ -44,7 +44,7 @@ SessionManager 可持久化、恢复或仅在内存中工作；内存模式只�
 
 ## 验证入口
 
-- [SDK 入口](../../packages/coding-agent/src/core/sdk.ts)、[类型](../../packages/coding-agent/src/core/types.ts)、[会话对象](../../packages/coding-agent/src/core/agent-session.ts)、[示例](../../examples/coding-session.ts)。
+- [SDK 入口](../../packages/coding-agent/src/core/sdk.ts)、[类型](../../packages/coding-agent/src/core/types.ts)、[会话对象](../../packages/coding-agent/src/core/agent-session.ts)、[公共 SDK 示例](../../examples/agent-sdk.ts)。
 - [override 测试](../../packages/coding-agent/test/tool-overrides.test.ts)、[运行时测试](../../packages/coding-agent/test/model-runtime.test.ts)、[设置测试](../../packages/coding-agent/test/settings-manager.test.ts)、[会话测试](../../packages/coding-agent/test/session.test.ts)。
 
 ## 2026-11 SDK 契约基线

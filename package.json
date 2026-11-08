@@ -26,7 +26,6 @@
     "package:win": "npm run build && electron-builder --win nsis",
     "package:win:preview": "npm run build && electron-builder --win nsis -c.productName=\"ZPI Preview\" -c.appId=local.zpi.desktop.preview -c.extraMetadata.productName=\"ZPI Preview\"",
     "example:sdk": "tsx --conditions=development examples/agent-sdk.ts",
-    "example:coding": "tsx examples/coding-session.ts",
     "install:electron": "node node_modules/electron/install.js",
     "install:terminal": "electron-rebuild -f -w node-pty && node scripts/prepare-terminal.ts",
     "test:safety": "node tests/safety-check.ts",

@@ -224,7 +224,7 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `examples` | [coding-session.ts](../../examples/coding-session.ts) |
+| `examples` | [agent-sdk.ts](../../examples/agent-sdk.ts) |
 | `packages/coding-agent/src` | [index.ts](../../packages/coding-agent/src/index.ts) |
 | `packages/coding-agent/src/core` | [sdk.ts](../../packages/coding-agent/src/core/sdk.ts) · [settings-manager.ts](../../packages/coding-agent/src/core/settings-manager.ts) · [types.ts](../../packages/coding-agent/src/core/types.ts) · [fs.ts](../../packages/coding-agent/src/core/fs.ts) |
 | `packages/agent-sdk/src` | [hooks.ts](../../packages/agent-sdk/src/hooks.ts) · [host.ts](../../packages/agent-sdk/src/host.ts) · [index.ts](../../packages/agent-sdk/src/index.ts) · [messages.ts](../../packages/agent-sdk/src/messages.ts) · [permissions.ts](../../packages/agent-sdk/src/permissions.ts) · [query-result.ts](../../packages/agent-sdk/src/query-result.ts) · [query.ts](../../packages/agent-sdk/src/query.ts) · [resources.ts](../../packages/agent-sdk/src/resources.ts) · [runtime.ts](../../packages/agent-sdk/src/runtime.ts) · [sessions.ts](../../packages/agent-sdk/src/sessions.ts) · [tasks.ts](../../packages/agent-sdk/src/tasks.ts) · [tools.ts](../../packages/agent-sdk/src/tools.ts) · [types.ts](../../packages/agent-sdk/src/types.ts) |

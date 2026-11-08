@@ -54,7 +54,7 @@ const lookupOrder = defineTool({
 npm run example:sdk
 ```
 
-示例使用真实 DeepSeek 模型，订单状态是工具返回的固定演示数据。原生宿主的离线示例仍可用 `npm run example:coding` 运行。
+示例使用真实 DeepSeek 模型，订单状态是工具返回的固定演示数据。
 
 ## 工具与插件边界
 
