@@ -132,7 +132,6 @@ class AgentQuery implements Query {
   private limit?: Exclude<SDKResultMessage["subtype"], "success">;
   private assistantId: string = randomUUID();
   private unsubscribe?: () => void;
-  private pendingUser?: { uuid: string; text: string };
   private abortListener: () => void;
   constructor(params: QueryParams, childRecord?: ChildRecord, budget?: { cost: number }) {
     this.childRecord = childRecord;
@@ -504,10 +503,8 @@ class AgentQuery implements Query {
       const entry = this.manager.getLastEntry(),
         uuid =
           entry?.type === "message"
-            ? event.message.role === "user" &&
-              this.pendingUser &&
-              messageText(event.message) === this.pendingUser.text
-              ? this.pendingUser.uuid
+            ? event.message.role === "user" && event.message.inputId
+              ? event.message.inputId
               : stableUuid(entry.id)
             : randomUUID();
       if (event.message.role === "assistant") {
@@ -521,7 +518,6 @@ class AgentQuery implements Query {
         stream({ type: "message_stop" });
         this.push(message);
       } else if (event.message.role === "user" || event.message.role === "toolResult") {
-        if (uuid === this.pendingUser?.uuid) this.pendingUser = undefined;
         this.push(userMessage(event.message, sessionId, uuid));
       }
     } else if (
@@ -880,15 +876,15 @@ class AgentQuery implements Query {
     let failure: unknown;
     let structured: unknown;
     try {
-      if (this.owns) {
-        this.pendingUser = { uuid: input.uuid ?? randomUUID(), text };
-        await this.manager.appendCustomEntryAsync("sdk.user", this.pendingUser);
-      }
+      const inputId = input.uuid ?? randomUUID();
       if (this.options.zpi?.input)
-        await this.session.executeInput(this.options.zpi.input.parsed, this.options.zpi.input.context);
+        await this.session.executeInput(this.options.zpi.input.parsed, {
+          ...this.options.zpi.input.context,
+          inputId,
+        });
       else {
         const prepared = await this.session.prepareInput(text, { images });
-        await this.session.executeInput(prepared, { images });
+        await this.session.executeInput(prepared, { images, inputId });
       }
       if (this.options.outputFormat) {
         for (let retry = 0; retry < 3; retry++) {

@@ -506,6 +506,8 @@ function forkEntries(entries: SessionEntry[]): { entries: SessionEntry[]; calls:
       if (entry.type === "message" && entry.message.role === "assistant")
         for (const block of entry.message.content)
           if (block.type === "toolCall") block.id = calls.get(block.id) ?? block.id;
+      // The fork owns fresh identities; the source client's input association must not carry over.
+      if (entry.type === "message" && entry.message.role === "user") delete entry.message.inputId;
       if (entry.type === "message" && entry.message.role === "toolResult") {
         entry.message.toolCallId = calls.get(entry.message.toolCallId) ?? entry.message.toolCallId;
         if (entry.message.details && typeof entry.message.details === "object") {

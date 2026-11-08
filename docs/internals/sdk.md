@@ -87,7 +87,9 @@ SessionStore 公开 append/load、可选 listSessions/listSessionSummaries/delet
 
 resume 首先 load 镜像；null 才回退同一 SDK 本地 ID，错误不回退。非 null transcript 在 SDK 独占临时目录物化，query 结束/失败后清理；可选 listSubkeys 存在时物化子历史，失败明确传播。continue 与基准一样要求 listSessions，按 mtime 选最新主记录；没有记录则新建。所有 helper 显式传 sessionStore 后只访问该后端，不回退默认本地目录。不存在的 info 返回 undefined、messages 返回 []、重复删除成功；需要现存源的修改/分叉报错。limit/offset 为非负安全整数；消息仍是读取后切片。适配器不提供列表/摘要时 info.lastModified 为 0（未知存储时间）；历史 assistant 失败诊断通过 ZPI 的可选 SessionMessage.error 返回。
 
-删除与分叉需要完整子树：外部后端必须实现 listSubkeys；删除还必须实现 delete。ZPI 在缺方法时明确报 unsupported，不沿用官方 delete 的静默 no-op，避免误报已删除。分叉创建新会话和记录 ID、工具 ID，清除旧用户 UUID 与文件检查点；只复制截点前可关联的子历史，不复用旧 session ID。镜像恢复不支持原地 resumeSessionAt 截断，需 forkSession，避免 append-only 后端出现两条主链。
+删除与分叉需要完整子树：外部后端必须实现 listSubkeys；删除还必须实现 delete。ZPI 在缺方法时明确报 unsupported，不沿用官方 delete 的静默 no-op，避免误报已删除。分叉创建新会话和记录 ID、工具 ID，清除旧用户 UUID（含 user 条目上的 inputId）与文件检查点；只复制截点前可关联的子历史，不复用旧 session ID。镜像恢复不支持原地 resumeSessionAt 截断，需 forkSession，避免 append-only 后端出现两条主链。
+
+用户输入的客户端 uuid 通过 `InputContext.inputId` 随输入进入引擎，作为 user 消息条目的 `inputId` 落库并在 message 事件中原样回带；SDK 回显与历史读取按该字段关联身份，不再按文本相等认领。旧 transcript 的 `sdk.user` 边车条目仍按文本匹配回退，仅服务历史数据。`Session.prompt`/`executeInput` 与宿主 `zpi.input` 两条输入路径同样生效；该字段不进入 provider 请求。
 
 `sessionStore` 与 persistSession:false、宿主借用会话、enableFileCheckpointing 互斥，启动前拒绝。原生 TranscriptStore 不受这些镜像限制。SDK 不含云数据库驱动、后台保留策略或凭据管理。
 

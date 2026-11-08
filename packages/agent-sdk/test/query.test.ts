@@ -1360,3 +1360,102 @@ test("cancelled background child keeps its history and emits one linked terminal
   expect(history[0].parent_tool_use_id).toBe("background-child");
   expect(history.some((m) => m.error)).toBe(true);
 });
+
+test("user echoes carry the submitted uuid by identity, not by text matching", async () => {
+  const f = await fixture();
+  // Identical to the synthetic message a UserPromptSubmit hook injects, so content matching cannot
+  // decide which message owns the client uuid; only the persisted inputId association can.
+  const collision = '<hook_context event="UserPromptSubmit">\nCOLLISION\n</hook_context>';
+  async function* input() {
+    yield {
+      type: "user" as const,
+      uuid: "client-uuid-1",
+      parent_tool_use_id: null,
+      message: { role: "user" as const, content: collision },
+    };
+    yield {
+      type: "user" as const,
+      uuid: "client-uuid-2",
+      parent_tool_use_id: null,
+      message: {
+        role: "user" as const,
+        content: [
+          {
+            type: "image" as const,
+            source: { type: "base64" as const, media_type: "image/png" as const, data: "iVBORw0KGgo=" },
+          },
+        ],
+      },
+    };
+  }
+  const messages: SDKMessage[] = [];
+  for await (const message of query({
+    prompt: input(),
+    options: {
+      ...f.options,
+      hooks: {
+        UserPromptSubmit: [
+          {
+            hooks: [
+              async () => ({
+                hookSpecificOutput: {
+                  hookEventName: "UserPromptSubmit" as const,
+                  additionalContext: "COLLISION",
+                },
+              }),
+            ],
+          },
+        ],
+      },
+    },
+  }))
+    messages.push(message);
+  const users = messages.filter((message) => message.type === "user");
+  expect(users).toHaveLength(4);
+  expect(users[0]?.uuid).not.toBe("client-uuid-1");
+  expect(users[1]?.uuid).toBe("client-uuid-1");
+  expect(users[3]?.uuid).toBe("client-uuid-2");
+  expect(JSON.stringify(f.server.requests)).not.toContain("client-uuid-1");
+  const history = await getSessionMessages(result(messages).session_id, { zpi: f.options.zpi });
+  expect(history.filter((message) => message.type === "user").map((message) => message.uuid)).toContain(
+    "client-uuid-1",
+  );
+  expect(history.filter((message) => message.type === "user").map((message) => message.uuid)).toContain(
+    "client-uuid-2",
+  );
+});
+
+test("uuid association survives transcript reopen and resume keeps echoing the stored inputId", async () => {
+  const f = await fixture();
+  async function* input() {
+    yield {
+      type: "user" as const,
+      uuid: "original-input-uuid",
+      parent_tool_use_id: null,
+      message: { role: "user" as const, content: "Hello" },
+    };
+  }
+  const first = result(
+    await (async () => {
+      const messages: SDKMessage[] = [];
+      for await (const message of query({ prompt: input(), options: f.options })) messages.push(message);
+      return messages;
+    })(),
+  );
+  expect(
+    (await getSessionMessages(first.session_id, { zpi: f.options.zpi })).find(
+      (message) => message.type === "user",
+    )?.uuid,
+  ).toBe("original-input-uuid");
+  const resumed: SDKMessage[] = [];
+  for await (const message of query({
+    prompt: "Second turn",
+    options: { ...f.options, resume: first.session_id },
+  }))
+    resumed.push(message);
+  const echo = resumed.filter((message) => message.type === "user");
+  expect(echo.map((message) => message.uuid)).not.toContain("original-input-uuid");
+  expect(
+    (await getSessionMessages(first.session_id, { zpi: f.options.zpi })).map((message) => message.uuid),
+  ).toContain("original-input-uuid");
+});

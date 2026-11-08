@@ -1,6 +1,6 @@
 {
   "name": "@zpi-dev/agent-sdk",
-  "version": "0.1.63",
+  "version": "0.1.64",
   "type": "module",
   "description": "TypeScript Agent SDK for ZPI with a Claude-compatible public API",
   "exports": {
@@ -36,10 +36,10 @@
     "@anthropic-ai/sdk": "0.124.0"
   },
   "devDependencies": {
-    "@zpi-dev/ai": "0.1.63",
-    "@zpi-dev/agent": "0.1.63",
-    "@zpi-dev/coding-agent": "0.1.63",
-    "@zpi-dev/plugin-compat": "0.1.63",
+    "@zpi-dev/ai": "0.1.64",
+    "@zpi-dev/agent": "0.1.64",
+    "@zpi-dev/coding-agent": "0.1.64",
+    "@zpi-dev/plugin-compat": "0.1.64",
     "yaml": "2.9.1"
   },
   "repository": {

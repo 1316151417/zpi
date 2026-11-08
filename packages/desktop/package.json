@@ -31,8 +31,8 @@
     "sharp": "0.35.5"
   },
   "devDependencies": {
-    "@zpi-dev/builtin-plugins": "0.1.63",
-    "@zpi-dev/plugin-compat": "0.1.63",
+    "@zpi-dev/builtin-plugins": "0.1.64",
+    "@zpi-dev/plugin-compat": "0.1.64",
     "@aiden0z/pptx-renderer": "1.2.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
@@ -62,12 +62,12 @@
     "react-resizable-panels": "4.10.0",
     "typebox": "1.3.27",
     "yaml": "2.9.1",
-    "@zpi-dev/agent": "0.1.63",
-    "@zpi-dev/ai": "0.1.63",
-    "@zpi-dev/coding-agent": "0.1.63",
-    "@zpi-dev/ui": "0.1.63",
+    "@zpi-dev/agent": "0.1.64",
+    "@zpi-dev/ai": "0.1.64",
+    "@zpi-dev/coding-agent": "0.1.64",
+    "@zpi-dev/ui": "0.1.64",
     "zustand": "5.0.15",
-    "@zpi-dev/agent-sdk": "0.1.63"
+    "@zpi-dev/agent-sdk": "0.1.64"
   },
   "repository": {
     "type": "git",

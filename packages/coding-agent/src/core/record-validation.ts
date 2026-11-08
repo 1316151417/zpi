@@ -44,6 +44,7 @@ const message = Type.Union([
     role: Type.Literal("user"),
     content: Type.Union([Type.String(), Type.Array(Type.Union([text, image]))]),
     timestamp: Type.Number(),
+    inputId: Type.Optional(Type.String()),
   }),
   Type.Object({
     role: Type.Literal("assistant"),

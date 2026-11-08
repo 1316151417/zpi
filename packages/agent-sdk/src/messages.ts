@@ -108,6 +108,8 @@ export function userMessage(
 }
 export function messageUuids(entries: readonly SessionEntry[]): Map<string, string> {
   const ids = new Map<string, string>();
+  // Legacy transcripts stored the client uuid in sdk.user side entries; inputId on the user
+  // message itself replaces that association and the text match remains only as a fallback.
   let user: { uuid: string; text: string } | undefined;
   for (const entry of entries) {
     if (
@@ -119,9 +121,11 @@ export function messageUuids(entries: readonly SessionEntry[]): Map<string, stri
     )
       user = { uuid: entry.data.uuid, text: entry.data.text };
     if (entry.type === "message") {
-      const isUser = entry.message.role === "user" && user && messageText(entry.message) === user.text;
-      ids.set(entry.id, isUser && user ? user.uuid : stableUuid(entry.id));
-      if (isUser) user = undefined;
+      const declared = entry.message.role === "user" ? entry.message.inputId : undefined;
+      const legacy =
+        !declared && entry.message.role === "user" && user && messageText(entry.message) === user.text;
+      ids.set(entry.id, declared ?? (legacy && user ? user.uuid : stableUuid(entry.id)));
+      if (declared || legacy) user = undefined;
     }
   }
   return ids;

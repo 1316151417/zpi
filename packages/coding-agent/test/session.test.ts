@@ -63,3 +63,37 @@ it("SDK read/write/edit/bash loop persists, reopens and continues", async () => 
   );
   restored.session.dispose();
 });
+
+it("prompt inputId is persisted on user entries, echoed by message events and excluded from provider requests", async () => {
+  const cwd = await directory();
+  const s = await demoServer();
+  cleanup.push(s.close);
+  const runtime = await ModelRuntime.create();
+  runtime.registerProvider("fake", { baseUrl: s.url, models: [fakeConfig(s.url)], apiKey: "local" });
+  const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+  const { session } = await createAgentSession({
+    homeDir: join(cwd, "home"),
+    cwd,
+    agentDir: join(cwd, "agent"),
+    modelRuntime: runtime,
+    sessionManager: manager,
+  });
+  const echoed: (string | undefined)[] = [];
+  session.subscribe((event) => {
+    if (event.type === "message_end" && event.message.role === "user") echoed.push(event.message.inputId);
+  });
+  await session.executeInput(await session.prepareInput("hello"), { inputId: "client-input-1" });
+  expect(echoed).toEqual(["client-input-1"]);
+  expect(manager.getEntries().find((e) => e.type === "message" && e.message.role === "user")).toMatchObject({
+    message: { role: "user", inputId: "client-input-1" },
+  });
+  expect(JSON.stringify(s.requests)).not.toContain("client-input-1");
+  await expect(session.executeInput(await session.prepareInput("again"), { inputId: "" })).rejects.toThrow(
+    "inputId",
+  );
+  session.dispose();
+  const reopened = SessionManager.open(manager.getSessionFile() as string);
+  expect(reopened.getEntries().find((e) => e.type === "message" && e.message.role === "user")).toMatchObject({
+    message: { inputId: "client-input-1" },
+  });
+});

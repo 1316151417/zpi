@@ -55,6 +55,8 @@ import { StreamingToolJournal } from "./streaming-tool-journal.ts";
 import type { SystemContext } from "./system-prompt.ts";
 import type { ResourceDiagnostic, ResourceLoader } from "./types.ts";
 export interface InputContext {
+  /** Client identity for this input; persisted on the user message entry and echoed by message events. */
+  inputId?: string;
   images?: ImageContent[];
   fileReferences?: string[];
 }
@@ -69,6 +71,11 @@ function withReferences(text: string, references?: string[]): string {
 function validateInputContext(input: ParsedInput, context: InputContext): void {
   if ((context.images?.length || context.fileReferences?.length) && input.kind === "compact")
     throw new Error("invalid_input: 此控制命令不接收图片或文件引用");
+  if (
+    context.inputId !== undefined &&
+    (typeof context.inputId !== "string" || !context.inputId || context.inputId.length > 256)
+  )
+    throw new Error("invalid_input: inputId 必须是非空且不超过 256 字符的字符串");
 }
 export type AgentSessionEvent =
   | { type: "hook_execution"; execution: HookExecution }
@@ -421,7 +428,10 @@ export class AgentSession {
     validateInputContext(input, context);
     if (input.kind === "compact") return this.compact(input.args);
     if (input.kind !== "prompt") throw new Error("Input must be prepared before execution");
-    return this.prompt(withReferences(input.text, context.fileReferences), { images: context.images });
+    return this.prompt(withReferences(input.text, context.fileReferences), {
+      images: context.images,
+      ...(context.inputId ? { inputId: context.inputId } : {}),
+    });
   }
   private async syncContext(): Promise<boolean> {
     const current = this.resources?.buildContext();
@@ -854,10 +864,10 @@ export class AgentSession {
     if (this.fault) throw this.fault;
     if (this.active) throw new Error("Session busy");
   }
-  prompt(text: string, options: { images?: ImageContent[] } = {}): Promise<void> {
+  prompt(text: string, options: { images?: ImageContent[]; inputId?: string } = {}): Promise<void> {
     try {
       this.idleCheck();
-      assertSupportedOptions(options, ["images"], "Session.prompt");
+      assertSupportedOptions(options, ["images", "inputId"], "Session.prompt");
       this.validateImages(options.images);
     } catch (e) {
       return Promise.reject(e);
@@ -886,6 +896,7 @@ export class AgentSession {
             role: "user",
             content: options.images?.length ? [{ type: "text", text }, ...options.images] : text,
             timestamp: Date.now(),
+            ...(options.inputId ? { inputId: options.inputId } : {}),
           },
         ]);
         while (!signal?.aborted) {

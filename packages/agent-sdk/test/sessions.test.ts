@@ -6,7 +6,7 @@ import { emptyAssistant, type JsonObject } from "@zpi-dev/ai";
 import { type FileChange, SessionManager } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test } from "vitest";
 import { fakeModel } from "../../../tests/fake-server.ts";
-import { stableUuid } from "../src/messages.ts";
+import { messageUuids, stableUuid } from "../src/messages.ts";
 import { getSessionInfo, getSessionMessages, listSessions, rewindFiles } from "../src/sessions.ts";
 
 const roots: string[] = [];
@@ -241,4 +241,21 @@ test("store-backed pages hydrate only the matching sessions needed for the reque
     { sessionId: "older" },
   ]);
   expect(loaded).toEqual(["foreign", "target", "older"]);
+});
+
+test("message uuids prefer declared inputId over the legacy sdk.user text association", async () => {
+  const f = await fixture();
+  f.target.appendCustomEntry("sdk.user", { uuid: "legacy-uuid", text: "Same text" });
+  f.target.appendMessage({ role: "user", content: "Same text", inputId: "declared-uuid", timestamp: 4 });
+  f.target.appendMessage({ role: "user", content: "Same text", timestamp: 5 });
+  const entries = f.target.getEntries();
+  const ids = messageUuids(entries);
+  const users = entries.filter((e) => e.type === "message" && e.message.role === "user");
+  expect(users).toHaveLength(3);
+  const [first, declared, repeated] = users.map((e) => ids.get(e.id));
+  expect(declared).toBe("declared-uuid");
+  // The declared association consumes the pending legacy record, so a later message with the
+  // same text can no longer inherit the legacy uuid by content equality.
+  expect(repeated).toBe(stableUuid(users[2].id));
+  expect(first).toBe(stableUuid(users[0].id));
 });
