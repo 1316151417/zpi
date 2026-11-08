@@ -49,7 +49,7 @@ import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
 import { redactProviderError } from "../utils/redact-error.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
-import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
+import { renderSystemMessageUpdate } from "../utils/text.ts";
 import {
   contentText,
   getCurrentTools,
@@ -57,7 +57,6 @@ import {
   getInitialSystemMessage,
   hasToolRedefinitions,
   isJsonObject,
-  resolveTranscript,
 } from "../utils/transcript.ts";
 
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
@@ -539,10 +538,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   options?: AnthropicOptions,
 ): AssistantMessageEventStream => {
   const stream = new MeasuredAssistantStream(options);
-  let normalizedContext = resolveTranscript(
-    context,
-    getAnthropicCompat(model).supportsMidConvoSystemMessages,
-  );
+  let normalizedContext = context;
   const currentTools = getCurrentTools(normalizedContext.messages);
 
   (async () => {
@@ -1159,13 +1155,11 @@ function buildParams(
   const { cacheControl } = getCacheControl(model, options?.cacheRetention, options?.env);
   const compat = getAnthropicCompat(model);
   const initialSystemMessage = getInitialSystemMessage(context.messages);
-  const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
+  const initialSystemText = initialSystemMessage ? renderSystemMessageUpdate(initialSystemMessage) : "";
   const initialSystemSegments = initialSystemMessage
     ? [
         contentText(initialSystemMessage.content),
-        Object.values(initialSystemMessage.sections ?? {})
-          .filter((value): value is string => value !== null)
-          .join("\n\n"),
+        renderSystemMessageUpdate({ ...initialSystemMessage, content: "" }),
       ]
         .filter(Boolean)
         .map((text) => ({
@@ -1196,6 +1190,7 @@ function buildParams(
     compat.allowEmptySignature,
     model.compat?.supportsMidConvoEffort === true ? model.provider : undefined,
     nativeToolChanges,
+    compat.supportsMidConvoSystemMessages,
   );
   const activeEffort = options?.effort ?? "high";
   const betaFeatures = getBetaFeatures(model, context, isOAuthToken, nativeToolChanges, options);
@@ -1361,27 +1356,16 @@ function convertMessages(
   allowEmptySignature = false,
   managedProvider?: string,
   nativeToolChanges = false,
+  nativeSystemMessages = false,
 ): ConvertedAnthropicMessages {
   const params: MessageParam[] = [];
   const assistantLevels = new Map<number, AnthropicEffort>();
-  // Later system messages are held back and emitted directly before the next assistant
-  // message (or at the end of the transcript). Anthropic requires `tool_result` blocks to
-  // immediately follow their `tool_use`, so a system message between them is rejected; this
-  // also mirrors where the managed-effort system messages are inserted. As a result an
-  // update placed before a user message in the transcript lands after it on the wire.
-  const pendingSystemMessages: MessageParam[] = [];
-  const flushPendingSystemMessages = (): void => {
-    params.push(...pendingSystemMessages);
-    pendingSystemMessages.length = 0;
-  };
 
   for (let i = 0; i < transformedMessages.length; i++) {
     const msg = transformedMessages[i];
     const firstParamIndex = params.length;
 
     if (msg.role === "system") {
-      // Later system messages only reach this point when the model accepts them natively;
-      // otherwise the transcript was collapsed into the leading message before conversion.
       const text = renderSystemMessageUpdate(msg);
       const blocks: ContentBlockParam[] = [];
       if (text.length > 0) blocks.push({ type: "text", text: sanitizeSurrogates(text) });
@@ -1400,16 +1384,16 @@ function convertMessages(
         }
       }
       if (blocks.length > 0) {
-        const pending: MessageParam = { role: "system", content: blocks };
+        const pending: MessageParam = { role: nativeSystemMessages ? "system" : "user", content: blocks };
         if (msg.cacheControl && cacheControl) markMessageCacheControl(pending, cacheControl);
-        pendingSystemMessages.push(pending);
+        params.push(pending);
       }
     } else if (msg.role === "user") {
       if (typeof msg.content === "string") {
         if (msg.content.trim().length > 0) {
           params.push({
             role: "user",
-            content: sanitizeSurrogates(msg.content),
+            content: [{ type: "text", text: sanitizeSurrogates(msg.content) }],
           });
         }
       } else {
@@ -1443,7 +1427,6 @@ function convertMessages(
         });
       }
     } else if (msg.role === "assistant") {
-      flushPendingSystemMessages();
       const blocks: ContentBlockParam[] = [];
 
       for (const block of msg.content) {
@@ -1534,8 +1517,6 @@ function convertMessages(
     if (msg.role !== "toolResult" && msg.cacheControl && cacheControl && params.length > firstParamIndex)
       markMessageCacheControl(params[params.length - 1], cacheControl);
   }
-
-  flushPendingSystemMessages();
 
   return { messages: params, assistantLevels };
 }

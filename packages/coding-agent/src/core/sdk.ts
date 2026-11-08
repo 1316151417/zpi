@@ -14,13 +14,11 @@ import { FileResourceLoader } from "./resources.ts";
 import { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { recoverCanonicalToolCallsAsync } from "./streaming-tool-journal.ts";
-import { buildSystemPrompt, type PromptTemplate } from "./system-prompt.ts";
+import { buildSystemContext, type PromptTemplate } from "./system-prompt.ts";
 import { createCodingTools, FileReadState } from "./tools/index.ts";
 import type { ResourceLoader, ToolContext } from "./types.ts";
 export interface SystemPromptContext {
   tools: readonly AgentTool[];
-  pluginInstructions: readonly string[];
-  resourceLoader: ResourceLoader;
 }
 export interface CreateAgentSessionOptions extends SessionContributions {
   /** Build tool definitions and selection once the shared resource catalog is loaded. */
@@ -31,7 +29,7 @@ export interface CreateAgentSessionOptions extends SessionContributions {
     context: { manual: boolean; instructions: string },
     signal?: AbortSignal,
   ) => Promise<void>;
-  /** Explicit complete prompt, evaluated again after resource refresh. */
+  /** Base instructions only. SDK resources and plugin context remain independently managed. */
   systemPrompt?: string | ((context: SystemPromptContext) => string);
   /** Host policy checked at each foreground model request, including continuation requests. */
   beforeModelRequest?: (model: Model, context: Context) => void;
@@ -150,18 +148,16 @@ export async function createAgentSession(
   assertSupportedOptions(prepared, ["customTools", "tools"], "prepareTools result");
   const assembly = assembleSession({ ...options, ...prepared, builtinTools: builtin, context: toolContext });
   const { allTools: all, activeTools: active } = assembly;
-  const buildPrompt = () => {
+  const buildContext = () => {
+    let baseInstructions: string | undefined;
     if (options.systemPrompt !== undefined) {
-      const value =
+      baseInstructions =
         typeof options.systemPrompt === "function"
           ? options.systemPrompt({
               tools: session?.state.tools ?? active,
-              pluginInstructions: assembly.getInstructions(),
-              resourceLoader: loader,
             })
           : options.systemPrompt;
-      if (typeof value !== "string") throw new Error("Invalid systemPrompt");
-      return value;
+      if (typeof baseInstructions !== "string") throw new Error("Invalid systemPrompt");
     }
     const instructions =
       typeof options.customInstructions === "function"
@@ -172,14 +168,16 @@ export async function createAgentSession(
       (!Array.isArray(instructions) || instructions.some((part) => typeof part !== "string"))
     )
       throw new Error("invalid_input: customInstructions must be an array of strings");
-    return buildSystemPrompt({
+    const context = buildSystemContext({
       cwd,
       projectName: typeof options.projectName === "function" ? options.projectName() : options.projectName,
       template: options.promptTemplate?.(),
       tools: session?.state.tools ?? active,
       loader,
-      customInstructions: [...assembly.getInstructions(), ...(instructions ?? [])],
+      customInstructions: instructions,
+      baseInstructions,
     });
+    return { ...context, sections: { ...context.sections, ...assembly.getContextSections() } };
   };
   let requestedThinking = options.thinkingLevel;
   if (requestedThinking == null) {
@@ -202,11 +200,11 @@ export async function createAgentSession(
     manager,
     all,
     active,
-    buildPrompt(),
+    buildContext().base,
     thinking,
     {
       loader,
-      buildPrompt,
+      buildContext,
       settingsManager,
     },
     options.modelPerformanceTotals,

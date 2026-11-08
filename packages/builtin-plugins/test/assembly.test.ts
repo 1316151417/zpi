@@ -102,7 +102,7 @@ test("preview and assembly do not prepare agent runs; collaboration owns prepara
   const port = ports();
   const contributions = resolve([desktopPluginIds.collaboration], port);
   const assembly = assembleSession({ ...contributions, builtinTools: [] });
-  expect(assembly.getInstructions().join("\n")).toContain("preview agents");
+  expect(Object.values(assembly.getContextSections()).join("\n")).toContain("preview agents");
   expect(port.collaboration.prepare).not.toHaveBeenCalled();
   const hook = (contributions.plugins as SessionPlugin[])[0].hooks?.[0];
   if (!hook) throw new Error("Missing collaboration hook");

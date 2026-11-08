@@ -58,6 +58,7 @@ export type SessionEntry = EntryBase &
         details?: { readFiles: string[]; modifiedFiles: string[] };
         usage?: Usage;
         systemMessage?: SystemMessage;
+        contextMessage?: SystemMessage;
       }
   );
 export interface SessionContext {
@@ -413,10 +414,16 @@ export class SessionManager {
       start = boundary.seq;
     }
     const retainedCalls = new Set<string>();
+    let contextRestored = false;
     for (const { seq, entry } of this.store.readRange(start, view.endSeq, view, [
       "message",
       "microcompact",
     ])) {
+      if (compaction && seq >= compaction.seq && !contextRestored) {
+        if (compaction.entry.type === "compaction" && compaction.entry.contextMessage)
+          messages.push(compaction.entry.contextMessage);
+        contextRestored = true;
+      }
       if (entry.type !== "message") {
         const projected = applyMicrocompactBoundary(messages, microcompactClearedIds(entry));
         messages.splice(0, messages.length, ...projected);
@@ -434,6 +441,13 @@ export class SessionManager {
       setMessageProvenance(entry.message, { entryId: entry.id, seq, kind: "message" });
       messages.push(entry.message);
     }
+    if (
+      compaction &&
+      !contextRestored &&
+      compaction.entry.type === "compaction" &&
+      compaction.entry.contextMessage
+    )
+      messages.push(compaction.entry.contextMessage);
     const context = {
       messages,
       model: state.model,
@@ -499,7 +513,7 @@ export class SessionManager {
     if (!summary.trim() || !this.readEntryById(firstKeptEntryId))
       throw new Error("Invalid compaction boundary or summary");
     const current = this.buildSessionContext().messages;
-    const systemMessage = collapseSystemMessages(current, Date.now());
+    const snapshot = systemSnapshot(current, Date.now());
     return {
       type: "compaction",
       summary,
@@ -507,7 +521,7 @@ export class SessionManager {
       tokensBefore,
       details,
       usage,
-      systemMessage,
+      ...snapshot,
     };
   }
   private createEntry(fields: SessionEntryInput): SessionEntry {
@@ -550,22 +564,40 @@ export type CompactionEntry = Extract<SessionEntry, { type: "compaction" }>;
 export function sessionEntryToContextMessages(entry: SessionEntry): Message[] {
   return entry.type === "message" ? [entry.message] : [];
 }
-function collapseSystemMessages(messages: Message[], timestamp: number): SystemMessage {
-  const system: SystemMessage = {
+function systemSnapshot(
+  messages: Message[],
+  timestamp: number,
+): {
+  systemMessage: SystemMessage;
+  contextMessage?: SystemMessage;
+} {
+  const initial = messages[0]?.role === "system" ? messages[0] : undefined;
+  const systemMessage: SystemMessage = {
+    ...initial,
     role: "system",
-    content: "",
-    sections: {},
+    content: initial?.content ?? "",
     toolsAdded: getCurrentTools(messages),
+    toolsRemoved: undefined,
     timestamp,
   };
-  for (const message of messages) {
+  const sections: Record<string, string | null> = Object.create(null);
+  const content: string[] = [];
+  for (const message of messages.slice(initial ? 1 : 0)) {
     if (message.role !== "system") continue;
-    const content =
+    const text =
       typeof message.content === "string" ? message.content : message.content.map((c) => c.text).join("\n");
-    if (content) system.content += `${content}\n\n`;
-    Object.assign(system.sections ?? {}, message.sections);
+    if (text) content.push(text);
+    // Keep tombstones: summaries and retained text must not revive withdrawn blocks.
+    Object.assign(sections, message.sections);
   }
-  return system;
+  return {
+    systemMessage,
+    ...(content.length || Object.keys(sections).length
+      ? {
+          contextMessage: { role: "system", content: content.join("\n\n"), sections, timestamp },
+        }
+      : {}),
+  };
 }
 export function buildSessionContext(entries: SessionEntry[]): SessionContext {
   const context: SessionContext = {
@@ -596,14 +628,11 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
   const keepIndex = entries.findIndex((e) => e.id === compaction.firstKeptEntryId);
   if (keepIndex < 0 || keepIndex >= compactionIndex) throw new Error("Invalid compaction boundary");
   const timestamp = Date.parse(compaction.timestamp);
-  const system =
-    compaction.systemMessage ??
-    collapseSystemMessages(
-      entries.slice(0, compactionIndex).flatMap(sessionEntryToContextMessages),
-      timestamp,
-    );
+  const snapshot = compaction.systemMessage
+    ? { systemMessage: compaction.systemMessage, contextMessage: compaction.contextMessage }
+    : systemSnapshot(entries.slice(0, compactionIndex).flatMap(sessionEntryToContextMessages), timestamp);
   context.messages = [
-    system,
+    snapshot.systemMessage,
     {
       role: "user",
       synthetic: true,
@@ -614,6 +643,7 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
       .slice(keepIndex, compactionIndex)
       .flatMap(sessionEntryToContextMessages)
       .filter((m) => m.role !== "system"),
+    ...(snapshot.contextMessage ? [snapshot.contextMessage] : []),
     ...entries.slice(compactionIndex + 1).flatMap(sessionEntryToContextMessages),
   ];
   context.messages = replayMicrocompact(context.messages, entries);

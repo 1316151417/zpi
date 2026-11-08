@@ -225,7 +225,7 @@ function expectPairs(request: Request) {
 
 function historyText(request: Request): string {
   const items = (request.responses ? request.body.input : request.body.messages) as Item[];
-  return JSON.stringify(items.filter((item) => item.role !== "system"));
+  return JSON.stringify(items.filter((item) => item.role !== "system" && item.role !== "developer"));
 }
 
 it.each([

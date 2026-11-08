@@ -215,13 +215,16 @@ function xml(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 }
-export function formatSkillsForPrompt(skills: SkillMetadata[], tool: "read" | "bash" = "read"): string {
+export function formatSkillsForPrompt(
+  skills: SkillMetadata[],
+  tool: "read" | "bash" | "Read" | "Bash" | "Skill" = "read",
+): string {
   return [
     "<skills>",
     "The following skills provide specialized instructions for specific tasks.",
-    tool === "read"
-      ? "Use the read tool to load a skill's file when the task matches its description."
-      : "Use bash to load a skill's file when the task matches its description.",
+    tool === "Skill"
+      ? "Use the Skill tool with the skill name to load its instructions when the task matches its description."
+      : `Use the ${tool} tool to load a skill's file when the task matches its description.`,
     "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
     "",
     "<available_skills>",

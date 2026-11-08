@@ -101,7 +101,7 @@ describe("Anthropic mid-conversation effort", () => {
     );
 
     expect(first.payload.messages).toEqual([
-      { role: "user", content: "one" },
+      { role: "user", content: [{ type: "text", text: "one" }] },
       { role: "system", content: [], output_config: { effort: "low" } },
     ]);
     expect(second.payload.messages.slice(0, first.payload.messages.length)).toEqual(first.payload.messages);
@@ -159,7 +159,7 @@ describe("Anthropic mid-conversation effort", () => {
     const model = managedModel();
     model.compat = { forceAdaptiveThinking: true };
     const { payload, message } = await capture(model, { messages: [user("one", 1)] }, "low");
-    expect(payload.messages).toEqual([{ role: "user", content: "one" }]);
+    expect(payload.messages).toEqual([{ role: "user", content: [{ type: "text", text: "one" }] }]);
     expect(payload.output_config).toEqual({ effort: "low" });
     expect(payload.thinking).toEqual({ type: "adaptive", display: "summarized" });
     expect(message.providerThinkingLevel).toBeUndefined();

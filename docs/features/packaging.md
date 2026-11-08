@@ -35,6 +35,36 @@ npx electron-builder --mac dir
 
 使用[打包测试](testing.md)验证历史、终端和隔离机制，再做真实系统权限、焦点、文件打开与账号验证。开发环境依赖存在不能证明包内资源完整。
 
+## 发布到 npm
+
+首次发布前创建 npm 账号、启用 2FA，并加入 `zpi-dev` 组织。日常发布先升级版本号、同步内部包依赖与锁文件，再提交并推送 Git。根项目和桌面包使用相同的应用版本，内部运行时包使用各自的 SDK 版本；npm 不允许覆盖已经发布过的包名和版本。
+
+在 ZPI 仓库根目录执行：
+
+```sh
+npm whoami --registry=https://registry.npmjs.org/
+npm run check
+npm run test:unit
+npm publish --workspace=@zpi-dev/agent-sdk --access=public
+npm publish --workspace=@zpi-dev/desktop --access=public
+```
+
+两个包的 `prepack` 会自动构建 JS、类型声明和桌面资源。需要先检查安装包内容时，运行 `npm run pack:npm`，产物位于 `release/npm/`。发布按提示完成浏览器中的通行密钥认证，然后用 `npm view @zpi-dev/agent-sdk version` 和 `npm view @zpi-dev/desktop version` 确认版本已经公开；发布命令返回后，索引更新可能仍需要等待。
+
+SDK 公开后，在独立的 `zpi-quick-chat` 仓库更新依赖并发布：
+
+```sh
+npm install @zpi-dev/agent-sdk@latest --save-exact
+npm run check
+npm test
+npm run build
+npm run test:desktop
+# 提交并推送更新后的 package.json 和 package-lock.json
+npm publish --access=public
+```
+
+quick-chat 必须先升级自身版本号，当前发布构建需要 Node.js 24、Apple Silicon Mac 和 Xcode Command Line Tools。网络不通时，可在配置了代理函数的终端先执行 `proxy on`。最后在源码仓库之外执行 `npx @zpi-dev/desktop --version` 和 `npx @zpi-dev/quick-chat --version` 验证 npm 入口。
+
 ## 升级
 
 应用数据版本与应用版本分别管理。升级前备份，未知新 schema 不会被旧程序自动降级。Preview 和正式版数据不同，开发与 Preview 默认相同。

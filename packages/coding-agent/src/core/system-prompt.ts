@@ -40,7 +40,11 @@ export function renderTemplate(
     (_, key: keyof typeof context) => context[key],
   );
 }
-export function buildSystemPrompt(options: {
+export interface SystemContext {
+  base: string;
+  sections: Record<string, string>;
+}
+export function buildSystemContext(options: {
   cwd: string;
   projectName?: string;
   platform?: string;
@@ -49,7 +53,8 @@ export function buildSystemPrompt(options: {
   loader?: ResourceLoader;
   /** Literal instructions appended after resources, before the skill catalog and working directory. */
   customInstructions?: readonly string[];
-}): string {
+  baseInstructions?: string;
+}): SystemContext {
   if (
     options.customInstructions !== undefined &&
     (!Array.isArray(options.customInstructions) ||
@@ -70,26 +75,42 @@ export function buildSystemPrompt(options: {
   )
     rules.push("Use bash for file operations like ls, rg, find");
   for (const tool of options.tools) rules.push(...(tool.promptGuidelines ?? []));
-  rules.push(
-    ...renderTemplate(template.rules, context)
-      .split("\n")
-      .map((line) => line.replace(/^\s*-\s*/, ""))
-      .filter(Boolean),
-  );
+  const baseRules = renderTemplate(template.rules, context)
+    .split("\n")
+    .map((line) => line.replace(/^\s*-\s*/, ""))
+    .filter(Boolean);
   const toolSnippets = options.tools
     .filter((tool) => ["read", "write", "edit", "bash"].includes(tool.name) && tool.promptSnippet)
     .map((tool) => `- ${tool.name}: ${tool.promptSnippet}`);
   const skills = options.loader?.listSkills?.().skills ?? [];
-  const sections = [
-    resourceBaseInstructions(options.loader) ?? renderTemplate(template.preamble, context),
-    ...(toolSnippets.length ? [`<tools>\n${toolSnippets.join("\n")}\n</tools>`] : []),
-    `<rules>\n${[...new Set(rules)].map((r) => `- ${r}`).join("\n")}\n</rules>`,
-    ...resourceInstructions(options.loader).filter((part) => !part.startsWith("<skills>")),
-    ...(options.customInstructions ?? []),
-    ...(skills.length && options.tools.some((t) => ["read", "bash"].includes(t.name))
-      ? [formatSkillsForPrompt(skills, options.tools.some((t) => t.name === "read") ? "read" : "bash")]
-      : []),
-    `<cwd>\n${options.cwd.replace(/\\/g, "/")}\n</cwd>`,
-  ];
-  return sections.filter(Boolean).join("\n\n");
+  const skillTool = (["read", "Read", "Skill", "bash", "Bash"] as const).find((name) =>
+    options.tools.some((tool) => tool.name === name),
+  );
+  const base =
+    options.baseInstructions ??
+    [
+      resourceBaseInstructions(options.loader) ?? renderTemplate(template.preamble, context),
+      `<rules>\n${[...new Set(baseRules)].map((r) => `- ${r}`).join("\n")}\n</rules>`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  const sections: Record<string, string> = {
+    "zpi.tools": toolSnippets.length ? `<tools>\n${toolSnippets.join("\n")}\n</tools>` : "",
+    "zpi.tool-rules": rules.length
+      ? `<rules>\n${[...new Set(rules)].map((r) => `- ${r}`).join("\n")}\n</rules>`
+      : "",
+    "zpi.resources": resourceInstructions(options.loader)
+      .filter((part) => !part.startsWith("<skills>"))
+      .join("\n\n"),
+    "zpi.custom": (options.customInstructions ?? []).join("\n\n"),
+    "zpi.skills": skills.length && skillTool ? formatSkillsForPrompt(skills, skillTool) : "",
+    "zpi.environment": `<cwd>\n${options.cwd.replace(/\\/g, "/")}\n</cwd>`,
+  };
+  return { base, sections };
+}
+
+/** Human-readable preview; model requests use the independently managed blocks. */
+export function buildSystemPrompt(options: Parameters<typeof buildSystemContext>[0]): string {
+  const { base, sections } = buildSystemContext(options);
+  return [base, ...Object.values(sections)].filter(Boolean).join("\n\n");
 }

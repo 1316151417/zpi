@@ -8,7 +8,7 @@ import type {
   TranscriptContext,
   Usage,
 } from "../types.ts";
-import { getSystemMessageText } from "./text.ts";
+import { renderSystemMessageUpdate } from "./text.ts";
 
 export interface ContextUsageEstimate {
   /** Estimated total context tokens. */
@@ -60,7 +60,7 @@ export function estimateMessageTokens(message: Message): number {
 
   if (message.role === "system") {
     return (
-      estimateTextTokens(getSystemMessageText(message)) +
+      estimateTextTokens(renderSystemMessageUpdate(message)) +
       estimateToolsTokens(message.toolsAdded) +
       estimateToolsTokens(message.toolsRemoved)
     );

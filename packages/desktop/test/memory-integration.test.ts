@@ -46,13 +46,17 @@ test.each([
   },
 );
 
-test("loads the bound worktree project file, excludes project files without a project, and exposes diagnostics", async () => {
+test("default short memory loads user and bound worktree files, excludes unbound project files, and exposes diagnostics", async () => {
   const f = await fixture();
-  await f.host.saveMemorySettings({ ...defaultMemorySettings, short: true });
+  await mkdir(join(f.resources, ".zpi"), { recursive: true });
+  await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [language] DEFAULT_USER_MEMORY\n");
+  const check = vi.spyOn(f.host.plugins.longMemory, "check").mockResolvedValue();
   await mkdir(join(f.workspace, ".zpi"), { recursive: true });
   await writeFile(join(f.workspace, ".zpi", "MEMORY.md"), "# Memory\n- [root] MAIN_CHECKOUT_MEMORY\n");
   await run(f, "projectless");
+  expect(f.host.sessions.get(f.session.id)?.systemPrompt).toContain("DEFAULT_USER_MEMORY");
   expect(f.host.sessions.get(f.session.id)?.systemPrompt).not.toContain("MAIN_CHECKOUT_MEMORY");
+  expect(check).not.toHaveBeenCalled();
   const project = await f.host.addProject(f.workspace);
   const worktree = join(f.dir, "worktree");
   await mkdir(join(worktree, ".zpi"), { recursive: true });
@@ -159,7 +163,7 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   const task = f.settings.state.getTask(sourceId);
   if (!task) throw new Error("missing source");
   f.settings.state.upsertTask({ ...task, updatedAt: Date.now() - 7 * 3600_000 });
-  f.settings.saveMemorySettings({ ...defaultMemorySettings, long: true });
+  f.settings.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
   const host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
   cleanup.push(() => host.close());
   await host.init();
@@ -193,13 +197,13 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   await host.plugins.checkMemoryNow(trigger.id);
   await vi.waitFor(() => expect(host.plugins.longMemory.status().running).toBe(false));
   expect(f.server.requests.length).toBe(before);
-  await host.saveMemorySettings({ ...defaultMemorySettings, long: true, generate: false });
+  await host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true, generate: false });
   expect(host.plugins.longMemory.status().status).toBe("paused");
   await host.startRun({ sessionId: trigger.id, text: "while paused" });
   await host.activeRuns.get(trigger.id)?.done;
   expect(host.sessions.get(trigger.id)?.systemPrompt).toContain("SUMMARY_ONLY_MARKER");
   await host.plugins.clearLongMemory();
-  await host.saveMemorySettings({ ...defaultMemorySettings, long: true });
+  await host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
   await host.plugins.checkMemoryNow(trigger.id);
   await vi.waitFor(() => expect(host.plugins.longMemory.status().running).toBe(false));
   expect(host.plugins.longMemory.status().sources).toEqual([]);
@@ -212,6 +216,7 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   );
   await host.saveMemorySettings({
     ...defaultMemorySettings,
+    short: false,
     long: true,
     modelMode: "manual",
     selection: { provider: "missing-provider", modelId: "missing-model", reasoning: "none" },
@@ -311,7 +316,7 @@ test("the main agent appends separate notes and the real consolidation runner re
   library = join(f.dir, "memories_v2");
   await mkdir(join(f.resources, ".zpi"), { recursive: true });
   await writeFile(join(f.resources, ".zpi", "MEMORY.md"), "- [old] SHORT_MEMORY_MUST_STAY_OUT\n");
-  await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true, generate: false });
+  await f.host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true, generate: false });
   await run(f, "NOTE_REQUEST_A");
   await run(f, "NOTE_REQUEST_B");
   const notePath = (name: string) => join(library, "extensions/ad_hoc/notes", name);
@@ -321,7 +326,7 @@ test("the main agent appends separate notes and the real consolidation runner re
   expect(before).toContain("separate, uniquely named note");
   expect(before).not.toContain("NOTE_A_BODY");
   expect(before).not.toContain("SHORT_MEMORY_MUST_STAY_OUT");
-  await f.host.saveMemorySettings({ ...defaultMemorySettings, long: true });
+  await f.host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
   await f.host.plugins.checkMemoryNow(f.session.id);
   // Consolidation performs six model/tool steps; allow the same budget as the test above under suite load.
   await vi.waitFor(() => expect(f.host.plugins.longMemory.status().status).toBe("success"), {

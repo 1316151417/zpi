@@ -56,7 +56,10 @@ test("session resources remain bound to the project root after bash changes dire
   );
   for (const request of f.server.requests) {
     const messages = request.messages as unknown as { role: string; content: string }[];
-    const prompt = messages.find((message) => message.role === "system")?.content;
+    const prompt = messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n");
     expect(prompt).toContain("ROOT POLICY");
     expect(prompt).toContain("<name>root-only</name>");
     expect(prompt).not.toContain("NESTED POLICY");
@@ -89,6 +92,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
   ]) {
     const f = await fixture(undefined, template);
     f.settings.setPluginEnabled("zpi.collaboration", false);
+    f.settings.setPluginEnabled("zpi.memory", false);
     const assertLinks = (prompt: string) => {
       expect(prompt).toContain("Return web URLs as Markdown links");
       expect(prompt).toContain("return local file references as Markdown links");
@@ -97,7 +101,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
       expect(prompt).toContain("outside inline code and code blocks");
       expect(prompt).toContain("Prefer Markdown links for ordinary file references");
       expect(prompt).not.toContain("To cite a local file in your answer, use ::zcode-file-citation");
-      expect(prompt).toContain(defaultInstructions);
+      for (const part of defaultInstructions.split("\n\n")) expect(prompt).toContain(part);
       if (template) expect(prompt).toContain("CUSTOM RULE");
     };
     const preview = await f.host.previewPrompt();
@@ -109,11 +113,14 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
     await run(f, "list files and the preview URL");
     const requestPrompt = (index: number) => {
       const messages = f.server.requests[index].messages as unknown as { role: string; content: string }[];
-      return messages.find((message) => message.role === "system")?.content ?? "";
+      return messages
+        .filter((message) => message.role === "system")
+        .map((message) => message.content)
+        .join("\n\n");
     };
     const systemPrompt = requestPrompt(0);
     assertLinks(systemPrompt);
-    expect(systemPrompt).toBe(preview.prompt);
+    for (const part of preview.prompt.split("\n\n")) expect(systemPrompt).toContain(part);
     expect(systemPrompt.split("return local file references as Markdown links")).toHaveLength(2);
     await f.host.close();
     const restarted = new SessionHost(

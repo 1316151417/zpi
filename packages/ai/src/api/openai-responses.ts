@@ -14,12 +14,13 @@ import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameters } from "../utils/reasoning.ts";
 import { redactProviderError } from "../utils/redact-error.ts";
+import { renderSystemMessageUpdate } from "../utils/text.ts";
 import {
   assertSupportedOptions,
   contentText,
   emptyAssistant,
-  getCurrentSystemPrompt,
   getCurrentTools,
+  getInitialSystemMessage,
   isJsonObject,
 } from "../utils/transcript.ts";
 import { responsesCache } from "./responses-cache.ts";
@@ -28,8 +29,14 @@ import { transformMessages } from "./transform-messages.ts";
 
 export function responsesInput(model: Model, context: TranscriptContext): ResponseInput {
   const input: ResponseInput = [];
-  for (const message of transformMessages(context.messages, model)) {
-    if (message.role === "system") continue;
+  for (const [index, message] of transformMessages(context.messages, model).entries()) {
+    if (message.role === "system") {
+      if (index > 0) {
+        const text = renderSystemMessageUpdate(message);
+        if (text) input.push({ role: "developer", content: text });
+      }
+      continue;
+    }
     if (message.role === "user") {
       input.push({
         role: "user",
@@ -185,10 +192,11 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       : typeof effort === "string"
         ? { effort, summary: "auto" }
         : undefined;
+    const initialSystem = getInitialSystemMessage(context.messages);
     let payload: unknown = {
       model: model.id,
       ...responsesCache(model, options, responsesInput(model, context)),
-      instructions: getCurrentSystemPrompt(context.messages),
+      instructions: initialSystem ? renderSystemMessageUpdate(initialSystem) : "",
       store: false,
       stream: true,
       include: ["reasoning.encrypted_content"],

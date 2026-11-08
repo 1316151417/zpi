@@ -103,15 +103,16 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-test("mutually exclusive default-off switches keep the page compact", async () => {
+test("short memory defaults on and mutually exclusive switches keep the page compact", async () => {
   await render();
-  expect(toggle("短记忆").checked).toBe(false);
+  expect(toggle("短记忆").checked).toBe(true);
   expect(toggle("长期记忆").checked).toBe(false);
   expect(container.textContent).not.toContain("0 / 20 条");
   expect(container.textContent).not.toContain("/home/test/.zpi/MEMORY.md");
   expect(container.querySelector('[aria-label="短记忆说明"]')).not.toBeNull();
+  expect(saveMemorySettings).not.toHaveBeenCalled();
   await click(toggle("短记忆"));
-  expect(saveMemorySettings).toHaveBeenLastCalledWith({ ...defaultMemorySettings, short: true });
+  expect(saveMemorySettings).toHaveBeenLastCalledWith({ ...defaultMemorySettings, short: false });
   await click(toggle("长期记忆"));
   expect(settings).toMatchObject({ short: false, long: true });
   await click(toggle("短记忆"));
@@ -122,6 +123,7 @@ test("mutually exclusive default-off switches keep the page compact", async () =
 });
 
 test("pausing generation keeps long memory enabled and blocks immediate updates", async () => {
+  settings.short = false;
   settings.long = true;
   await render();
   expect(button("立即检查更新").disabled).toBe(false);

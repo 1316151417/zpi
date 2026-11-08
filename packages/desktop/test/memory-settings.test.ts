@@ -37,14 +37,15 @@ async function fixture() {
   return { settings, state, open };
 }
 
-test("memory defaults are off and do not create data or inherit the conversation model", async () => {
-  const { settings, state } = await fixture();
+test("memory defaults to short without saving pipeline settings or inheriting the conversation model", async () => {
+  const { settings, state, open } = await fixture();
   settings.rememberSelection({ provider: "provider", modelId: "thinking", reasoning: "high" });
   expect(settings.getMemorySettings()).toEqual(defaultMemorySettings);
+  expect(open().getMemorySettings()).toMatchObject({ short: true, long: false });
   expect(state.getSetting("memory.settings")).toBeUndefined();
   const copy = settings.getMemorySettings();
-  copy.short = true;
-  expect(settings.getMemorySettings().short).toBe(false);
+  copy.short = false;
+  expect(settings.getMemorySettings().short).toBe(true);
 });
 
 test.each([
@@ -85,7 +86,7 @@ test("keeps missing model selection visible for a runtime diagnostic and permits
     missing,
   );
   const selection = { provider: "provider", modelId: "thinking", reasoning: "high" };
-  settings.saveMemorySettings({ ...defaultMemorySettings, long: true, selection });
+  settings.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true, selection });
   const provider = settings.snapshot("provider");
   settings.saveProvider({
     ...provider,
@@ -135,6 +136,8 @@ test("failed durable writes leave the previous setting available", async () => {
   vi.spyOn(state, "setSetting").mockImplementationOnce(() => {
     throw new Error("disk full");
   });
-  expect(() => settings.saveMemorySettings({ ...defaultMemorySettings, long: true })).toThrow("disk full");
+  expect(() => settings.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true })).toThrow(
+    "disk full",
+  );
   expect(open().getMemorySettings()).toEqual({ ...defaultMemorySettings, short: true });
 });

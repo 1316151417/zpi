@@ -1589,7 +1589,7 @@ export class SessionHost {
       template: config.template,
       tools: assembly.activeTools,
     };
-    const pluginInstructions = assembly.getInstructions();
+    const pluginInstructions = Object.values(assembly.getContextSections());
     return {
       ...info,
       basePrompt: buildSystemPrompt({ ...options, loader }),

@@ -48,7 +48,7 @@ export async function fakeServer(
         return (
           (row.role === "system" || row.role === "developer") &&
           typeof row.content === "string" &&
-          row.content.startsWith("ZPI_SESSION_TITLE:")
+          row.content.includes("ZPI_SESSION_TITLE:")
         );
       });
     const index = isTitle ? -1 : requests.push(body) - 1;

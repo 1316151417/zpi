@@ -259,14 +259,6 @@ export class SettingsStore {
     const data = {
       ...this.data,
       ...(input.enabled !== undefined ? { webSearchEnabled: input.enabled } : {}),
-      ...((input.enabled ?? this.data.webSearchEnabled) && webApiKey
-        ? {}
-        : {
-            plugins: {
-              ...this.data.plugins,
-              enabled: { ...this.data.plugins.enabled, [desktopPluginIds.web]: false },
-            },
-          }),
     };
     if (input.apiKey === undefined) return this.savePublic(data);
     this.persist(data, this.credentials, webApiKey);
@@ -606,11 +598,6 @@ export class SettingsStore {
       typeof enabled !== "boolean"
     )
       throw new Error("invalid_input: 无效插件");
-    if (id === desktopPluginIds.web && enabled) {
-      if (this.unreadCredentials) throw new Error("configuration: 保存的联网搜索凭据尚未解锁");
-      if (!this.data.webSearchEnabled || !this.webApiKey)
-        throw new Error("configuration: 请先配置并启用一个联网搜索提供商");
-    }
     return this.savePublic({
       ...this.data,
       plugins: { ...this.data.plugins, enabled: { ...this.data.plugins.enabled, [id]: enabled } },

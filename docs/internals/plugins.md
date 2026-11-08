@@ -47,13 +47,15 @@ communication-style、tool-batching、file-links、file-context-reuse、proactiv
 
 ## 策略插件与宿主事件
 
-memory、session-title、notifications 均为版本化运行时插件，默认启用。记忆模式默认 off，存放在 `plugins.options["zpi.memory"].mode`，可选 short/long；记忆页与插件页读写同一份选项，模型选择、周期和预算继续由记忆服务设置管理。会话使用 pluginsVersion 3 的冻结插件选项，不使用当前全局模式重配已有任务。
+memory、session-title、notifications 均为版本化运行时插件，默认启用。记忆模式默认 short，可通过 `plugins.options["zpi.memory"].mode` 设置 off/short/long；记忆页与插件页读写同一份选项，模型选择、周期和预算继续由记忆服务设置管理。会话使用 pluginsVersion 3 的冻结插件选项，不使用当前全局模式重配已有任务。
 
 - memory 在 UserPromptSubmit 选择本轮上下文，在成功的 read 后记录来源使用，在 RunEnd 释放根任务选择；批次调度、模型快照与使用状态由 MemoryPolicy 持有。子智能体只继承父任务已选上下文，不能自行启动记忆整理。清空、历史修改和删除仍通过现有持久化边界撤销旧来源。
 - session-title 在 InputAccepted 提供临时标题，在 RunStart 启动独立辅助请求。TitlePolicy 持有任务、取消和收尾；手动改名与删除优先于晚到结果，失败不重试，不改变前台请求结果。
 - notifications 处理 Notification 事件，通过宿主注入的通知发送接口调用系统服务；根任务范围、归档、聚焦、通知偏好和去重仍生效。通知失败不影响结算。常规页的任务通知与插件页的任务通知是同一个 `plugins.enabled` 开关，PublicSettings.interface.notificationEnabled 仅为派生视图，持久化不再保存第二份总开关。关闭会即时抑制系统通知，声音偏好独立保存；会话中的 hook 装配仍按快照冻结，未装配通知插件的旧会话不会因开启全局开关而获得 hook。
 
 四个通用宿主事件使用同一个 HookRunner：InputAccepted（输入接受准备）、RunStart（接受完成、模型执行前）、RunEnd（成功/取消/失败均触发）、Notification（结算完成后）。SDK 自动调度原有六个循环事件；桌面负责这四个宿主事件，独立 SDK 宿主可以使用导出的 HookRunner 调度。宿主事件不修改输入、工具或历史；需要拒绝输入的插件应使用 UserPromptSubmit。Stop 仍只表示模型正常最终回答，不能用于替代失败和取消清理。关闭时取消宿主 hook 及子进程。
+
+SDK 插件的 `contextInstructions()` 返回以本地块名为键的当前字符串字典，例如 `{ agents: listing, memory: text }`。SDK 负责插件命名空间、比较、去重和缺失块的撤销，不再把它们与基础提示拼成一整份更新。该接口直接使用当前字典形式，不保留旧数组接口；详见[动态上下文和最终请求结构](context.md#基础提示与动态上下文)。
 
 ## 本地外部插件
 

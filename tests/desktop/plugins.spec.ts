@@ -93,8 +93,8 @@ test("plugin settings and feature tabs share memory, notification and collaborat
     const short = page.getByRole("switch", { name: "短记忆", exact: true });
     await tab("设置");
     await tab("插件");
-    await mode.click();
-    await page.getByRole("option", { name: "短记忆", exact: true }).click();
+    await expect(plugin("记忆策略")).toBeChecked();
+    await expect(mode).toHaveText("短记忆");
     await expect(mode).toBeEnabled();
     await tab("记忆");
     await expect(short).toBeChecked();

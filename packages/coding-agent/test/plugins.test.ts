@@ -63,7 +63,7 @@ test("assembly lists plugin commands and instructions without executing hooks an
     ],
   });
   expect(calls).toBe(0);
-  expect(assembly.instructions.join("\n")).toContain("Before the first tool call");
+  expect(Object.values(assembly.getContextSections()).join("\n")).toContain("Before the first tool call");
   expect(listCommands(assembly.commands).map((command) => command.name)).toEqual(["init", "compact"]);
   expect(listCommands().map((command) => command.name)).toEqual(["compact"]);
   expect(parseInput("/init")).toEqual({ kind: "prompt", text: "/init" });
@@ -324,7 +324,7 @@ test("prompt hooks prepare dynamic plugin instructions before each model request
   const contribution = plugin({
     contextInstructions: () => {
       evaluations++;
-      return [`prepared context revision ${revision}`];
+      return { prepared: `prepared context revision ${revision}` };
     },
     hooks: [
       {

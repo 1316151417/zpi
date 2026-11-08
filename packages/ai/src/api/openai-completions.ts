@@ -21,11 +21,11 @@ import { modelFailure } from "../utils/model-retry.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { reasoningParameterKeys, reasoningParameters } from "../utils/reasoning.ts";
 import { redactProviderError } from "../utils/redact-error.ts";
+import { renderSystemMessageUpdate } from "../utils/text.ts";
 import {
   assertSupportedOptions,
   contentText,
   emptyAssistant,
-  getCurrentSystemPrompt,
   getCurrentTools,
   isJsonObject,
 } from "../utils/transcript.ts";
@@ -65,11 +65,14 @@ function serialize(context: TranscriptContext, model: Model): ChatCompletionMess
     messages.push(...toolImages);
     toolImages.length = 0;
   };
-  const prompt = getCurrentSystemPrompt(context.messages);
-  if (prompt)
-    messages.push({ role: model.compat?.supportsDeveloperRole ? "developer" : "system", content: prompt });
   for (const m of transformMessages(context.messages, model)) {
-    if (m.role === "system") continue;
+    if (m.role === "system") {
+      flushToolImages();
+      const text = renderSystemMessageUpdate(m);
+      if (text)
+        messages.push({ role: model.compat?.supportsDeveloperRole ? "developer" : "system", content: text });
+      continue;
+    }
     if (m.role !== "toolResult") flushToolImages();
     if (m.role === "user") {
       messages.push({

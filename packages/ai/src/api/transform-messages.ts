@@ -73,5 +73,21 @@ export function transformMessages(
     if (content.length) result.push({ ...message, content });
   }
   interrupted();
-  return result;
+  // System updates cannot split a tool call/result batch on provider protocols.
+  // Delay only such updates; preserve their order before the next user/assistant input.
+  const ordered: Message[] = [];
+  const updates: Message[] = [];
+  const calls = new Set<string>();
+  for (const message of result) {
+    if (message.role === "system" && calls.size) {
+      updates.push(message);
+      continue;
+    }
+    ordered.push(message);
+    if (message.role === "assistant")
+      for (const block of message.content) if (block.type === "toolCall") calls.add(block.id);
+    if (message.role === "toolResult") calls.delete(message.toolCallId);
+    if (!calls.size) ordered.push(...updates.splice(0));
+  }
+  return ordered;
 }

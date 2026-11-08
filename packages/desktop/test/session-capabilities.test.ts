@@ -29,6 +29,7 @@ test.each(
   async (communicationStyle, toolBatching, fileLinks, fileContextReuse, proactiveExecution) => {
     const f = await fixture();
     f.settings.setPluginEnabled("zpi.collaboration", false);
+    f.settings.setPluginEnabled("zpi.memory", false);
     const basePrompt = (await f.host.previewPrompt()).basePrompt;
     f.settings.setPluginEnabled("zpi.communication-style", communicationStyle);
     f.settings.setPluginEnabled("zpi.tool-batching", toolBatching);
@@ -75,10 +76,11 @@ test.each(
       expect(preview.customInstructions).not.toContain("not watching in real time");
     }
     await run(f, "show files");
-    const prompt = (f.server.requests[0].messages as { role: string; content: string }[]).find(
-      (message) => message.role === "system",
-    )?.content;
-    expect(prompt).toBe(preview.prompt);
+    const prompt = (f.server.requests[0].messages as { role: string; content: string }[])
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n");
+    for (const part of preview.prompt.split("\n\n")) expect(prompt).toContain(part);
     if (!communicationStyle && !toolBatching && !fileLinks && !fileContextReuse && !proactiveExecution) {
       expect(preview.customInstructions).toBe("");
       expect(preview.prompt).toBe(preview.basePrompt);
@@ -105,9 +107,10 @@ test("snapshots custom instructions on first send and keeps them when global set
   await host.startRun({ sessionId: f.session.id, text: "old conversation" });
   await host.activeRuns.get(f.session.id)?.done;
   const system = () =>
-    ((f.server.requests.at(-1)?.messages ?? []) as { role: string; content: string }[]).find(
-      (message) => message.role === "system",
-    )?.content ?? "";
+    ((f.server.requests.at(-1)?.messages ?? []) as { role: string; content: string }[])
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n") ?? "";
   expect(system()).not.toContain("Before the first tool call");
   expect(system()).toContain("Independent tool calls");
   expect(system()).not.toContain("return local file references as Markdown links");
@@ -129,7 +132,7 @@ test("instruction and tool plugins persist through the same settings contract", 
   expect(f.settings.get().plugins.enabled).toMatchObject({
     "zpi.questions": true,
     "zpi.collaboration": true,
-    "zpi.web-search": false,
+    "zpi.web-search": true,
   });
   f.settings.setPluginEnabled("zpi.questions", false);
   f.settings.setPluginEnabled("zpi.communication-style", false);

@@ -128,7 +128,7 @@ export const desktopPluginManifests: readonly PluginSnapshot[] = [
     version: "1",
     name: "记忆策略",
     description: "按选定模式注入记忆、记录使用情况并调度记忆整理。",
-    options: { mode: "off" },
+    options: { mode: "short" },
   },
   {
     id: desktopPluginIds.title,
@@ -197,9 +197,7 @@ export function builtinPluginHooks(plugin: PluginSnapshot): BuiltinHookDeclarati
 }
 export const defaultPluginSettings = {
   version: 2 as const,
-  enabled: Object.fromEntries(
-    builtinPluginCatalog.map((plugin) => [plugin.id, plugin.id !== desktopPluginIds.web]),
-  ),
+  enabled: Object.fromEntries(builtinPluginCatalog.map((plugin) => [plugin.id, true])),
   options: {} as Record<string, JsonObject>,
 };
 export function validateBuiltinPluginOptions(id: string, options: JsonObject): void {

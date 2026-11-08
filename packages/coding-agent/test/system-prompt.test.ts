@@ -64,7 +64,7 @@ test("custom instructions follow resource instructions and preserve literal base
     loader: new StaticResourceLoader({ baseInstructions, instructions }),
     customInstructions: additions,
   });
-  expect(current.startsWith("Literal {{cwd}}\n\n<tools>")).toBe(true);
+  expect(current.startsWith("Literal {{cwd}}\n\n<rules>")).toBe(true);
   expect(current.indexOf("PROJECT")).toBeLessThan(current.indexOf("DESKTOP"));
   expect(current.indexOf("CHILD {{cwd}}")).toBeLessThan(current.indexOf("<cwd>"));
 });

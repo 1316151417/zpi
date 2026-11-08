@@ -107,7 +107,11 @@ it("title is independent, snapshot-bound, once-only and preserves the complete f
     response_format: { type: "json_schema" },
   });
   expect(server.titleRequests[0].tools).toBeUndefined();
-  expect(server.titleRequests[0].messages as unknown[]).toHaveLength(2);
+  expect(
+    (server.titleRequests[0].messages as { role: string; content: string }[]).filter(
+      (message) => message.role === "user",
+    ),
+  ).toEqual([{ role: "user", content: text }]);
   const changed = settings.snapshot("custom");
   settings.saveProvider({ ...changed, baseUrl: "http://127.0.0.1:1/v1" });
   gate.resolve();

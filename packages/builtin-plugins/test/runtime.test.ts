@@ -115,7 +115,7 @@ test("all seven runtimes assemble with generic ports and preview performs no exe
     ]),
   );
   expect(tools.filter((name) => name === "TaskOutput")).toHaveLength(1);
-  expect(assembly.getInstructions().join("\n")).toContain("Available agent types");
+  expect(Object.values(assembly.getContextSections()).join("\n")).toContain("Available agent types");
   expect(ports.models.create).not.toHaveBeenCalled();
   expect(ports.fetch).not.toHaveBeenCalled();
   expect(ports.sessions.run).not.toHaveBeenCalled();
@@ -133,12 +133,12 @@ test("imported Agent definitions are loaded only when collaboration requests the
     context,
     external,
   );
-  assembleSession({ ...disabled, builtinTools: createCodingTools(directory) }).getInstructions();
+  assembleSession({ ...disabled, builtinTools: createCodingTools(directory) }).getContextSections();
   expect(agents).not.toHaveBeenCalled();
 
   const enabled = runtime.contributions(snapshots, context, external);
   expect(agents).not.toHaveBeenCalled();
-  assembleSession({ ...enabled, builtinTools: createCodingTools(directory) }).getInstructions();
+  assembleSession({ ...enabled, builtinTools: createCodingTools(directory) }).getContextSections();
   expect(agents).toHaveBeenCalledOnce();
 });
 

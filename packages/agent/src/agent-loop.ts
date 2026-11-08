@@ -31,7 +31,7 @@ export async function runAgentLoopContinue(
   streamFn: StreamFn,
 ): Promise<AgentMessage[]> {
   const converted = await config.convertToLlm(context.messages);
-  const last = converted.at(-1);
+  const last = converted.findLast((message) => message.role !== "system");
   if (!last || (last.role !== "user" && last.role !== "toolResult"))
     throw new Error("Cannot continue: last message must be user or toolResult");
   return run(declareTools(context), context, config, emit, signal, streamFn);
