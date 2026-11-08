@@ -85,7 +85,7 @@ Only TypeScript is supported. `permissionMode`, sandbox/permission UI, MCP, LSP,
 
 ## Native desktop host
 
-`@zpi-dev/agent-sdk/host` exposes the native session creation port for hosts needing indexed storage, background services and plugin assembly. ZPI desktop creates its sessions there, then drives them through `query` with `zpi.session`, `zpi.sessionManager`, `zpi.modelRuntime` and optional prepared `zpi.input`. The host retains ownership and subscriptions. Configure tool/loop policies at session creation for this mode. Ordinary applications should use `query` alone.
+`@zpi-dev/agent-sdk/host` exposes the native session creation port for external hosts needing indexed storage, background services and plugin assembly. External hosts create sessions there, then drive them through `query` with `zpi.session`, `zpi.sessionManager`, `zpi.modelRuntime` and optional prepared `zpi.input`; the host retains ownership and subscriptions, and tool/loop policies are configured at session creation. Ordinary applications should use `query` alone. ZPI's own desktop and builtin plugins do not import this package: they consume the engine directly (`createAgentSession` plus `runSessionInput`/`runModelExchange` from `@zpi-dev/coding-agent`), keeping `agent-sdk` out of the product dependency graph.
 
 ## Build and distribution
 

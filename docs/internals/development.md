@@ -4,7 +4,7 @@
 
 ## 环境与依赖
 
-仓库是 npm workspace，核心与桌面包以内部包名互相引用；系统内置插件的声明、实现和运行时位于独立的 `builtin-plugins` 包，本地外部插件的适配位于 `plugin-compat`。`agent-sdk` 为桌面和独立应用提供统一查询协议。Node 24 提供当前运行时所需能力，尤其 `node:sqlite`。根安装先禁用 lifecycle scripts，再显式安装 Electron 和重建 node-pty，避免原生 ABI 准备被隐含步骤掩盖。
+仓库是 npm workspace，核心与桌面包以内部包名互相引用；系统内置插件的声明、实现和运行时位于独立的 `builtin-plugins` 包，本地外部插件的适配位于 `plugin-compat`。`agent-sdk` 为外部独立应用提供查询协议，桌面与内置插件直接依赖 `coding-agent` 引擎。Node 24 提供当前运行时所需能力，尤其 `node:sqlite`。根安装先禁用 lifecycle scripts，再显式安装 Electron 和重建 node-pty，避免原生 ABI 准备被隐含步骤掩盖。
 
 TypeScript 负责类型检查；Biome 负责格式与静态规则。源码采用 ESM，main 构建目标 Node 24，preload 因 Electron 加载方式输出 CJS。代码中的 `.ts` 引用由构建链解析，不要求把整个仓库预先编译成一个公共 dist。
 

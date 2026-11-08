@@ -1,6 +1,5 @@
 import { lstat, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
-import { createAgentSession, nativeStopReason, queryResult } from "@zpi-dev/agent-sdk/host";
 import {
   type AssistantMessage,
   contentText,
@@ -9,11 +8,14 @@ import {
   type Model,
 } from "@zpi-dev/ai";
 import {
+  createAgentSession,
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
   FileReadState,
   ModelRuntime,
+  runModelExchange,
+  runSessionInput,
   SessionManager,
   SettingsManager,
 } from "@zpi-dev/coding-agent";
@@ -118,47 +120,32 @@ export async function runMemoryRequest(
     },
   });
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
-  let abort = () => {};
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(new Error("记忆后台任务超过 15 分钟上限。")), workerTimeout);
   const signal = AbortSignal.any([request.signal, timeout.signal]);
   try {
     if (request.stage === "extract") {
-      const controller = new AbortController();
-      const cancel = () => controller.abort(signal.reason);
-      signal.addEventListener("abort", cancel, { once: true });
-      try {
-        signal.throwIfAborted();
-        const result = await queryResult({
-          prompt: extractionInput(request, model),
-          options: {
-            model: `${model.provider}/${model.id}`,
-            systemPrompt: request.instructions,
-            tools: [],
-            maxTurns: 1,
-            persistSession: false,
-            abortController: controller,
-            zpi: {
-              modelRuntime: workerRuntime,
-              requestOptions: {
-                reasoning: toThinking(request.model.reasoning, model),
-                maxTokens: model.maxTokens,
-                maxRetries: 0,
-                timeoutMs: 300_000,
-                onPayload: extractionPayload,
-              },
-            },
-          },
-        });
-        if (result.stop_reason !== "end_turn")
-          throw new Error(
-            `provider: 记忆提取未完成：${nativeStopReason(result.stop_reason)}；模型 ${model.provider}/${model.id}，配置输出上限 ${model.maxTokens}`,
-          );
-        signal.throwIfAborted();
-        return { text: result.result, usage };
-      } finally {
-        signal.removeEventListener("abort", cancel);
-      }
+      const { message, error } = await runModelExchange({
+        runtime: workerRuntime,
+        model,
+        systemPrompt: request.instructions,
+        prompt: extractionInput(request, model),
+        signal,
+        requestOptions: {
+          reasoning: toThinking(request.model.reasoning, model),
+          maxTokens: model.maxTokens,
+          maxRetries: 0,
+          timeoutMs: 300_000,
+          onPayload: extractionPayload,
+        },
+      });
+      if (error) throw error;
+      if (!message || message.stopReason !== "stop")
+        throw new Error(
+          `provider: 记忆提取未完成：${message?.stopReason ?? "无结果"}；模型 ${model.provider}/${model.id}，配置输出上限 ${model.maxTokens}`,
+        );
+      signal.throwIfAborted();
+      return { text: contentText(message.content, ""), usage };
     }
     const directory = request.directory;
     if (!directory) throw new Error("缺少记忆整合工作目录。");
@@ -234,22 +221,11 @@ export async function runMemoryRequest(
         }),
       ],
     }));
-    abort = () => {
-      void session?.abort();
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    signal.throwIfAborted();
-    await queryResult({
-      prompt: request.prompt,
-      options: {
-        cwd: root,
-        zpi: {
-          session,
-          sessionManager: manager,
-          modelRuntime: workerRuntime,
-          input: { parsed: { kind: "prompt", text: request.prompt }, context: {} },
-        },
-      },
+    await runSessionInput({
+      session,
+      sessionManager: manager,
+      input: { parsed: { kind: "prompt", text: request.prompt }, context: {} },
+      signal,
     });
     signal.throwIfAborted();
     if (truncated)
@@ -268,7 +244,6 @@ export async function runMemoryRequest(
     throw Object.assign(error instanceof Error ? error : new Error(String(error)), { usage });
   } finally {
     clearTimeout(timer);
-    signal.removeEventListener("abort", abort);
     await session?.abort();
     session?.dispose();
   }

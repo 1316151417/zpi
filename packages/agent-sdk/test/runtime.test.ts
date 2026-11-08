@@ -56,3 +56,12 @@ test("environment discovery skips blank or control-bearing credentials and tries
   }
   expect(headers?.get("x-api-key")).toBe("valid-coding-key");
 });
+
+test("the host entry keeps re-exporting the native session port for external hosts", async () => {
+  const host = await import("../src/host.ts");
+  expect(typeof host.createAgentSession).toBe("function");
+  expect(typeof host.SessionManager).toBe("function");
+  expect(typeof host.SettingsManager).toBe("function");
+  expect(typeof host.queryResult).toBe("function");
+  expect(typeof host.nativeStopReason).toBe("function");
+});

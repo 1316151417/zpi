@@ -1,6 +1,6 @@
 {
   "name": "@zpi-dev/ui",
-  "version": "0.1.64",
+  "version": "0.1.65",
   "private": true,
   "type": "module",
   "exports": {
@@ -44,9 +44,9 @@
     "shiki": "4.5.0",
     "streamdown": "2.7.0",
     "unified": "11.0.5",
-    "@zpi-dev/agent": "0.1.64",
-    "@zpi-dev/ai": "0.1.64",
-    "@zpi-dev/coding-agent": "0.1.64",
-    "@zpi-dev/builtin-plugins": "0.1.64"
+    "@zpi-dev/agent": "0.1.65",
+    "@zpi-dev/ai": "0.1.65",
+    "@zpi-dev/coding-agent": "0.1.65",
+    "@zpi-dev/builtin-plugins": "0.1.65"
   }
 }

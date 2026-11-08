@@ -17,7 +17,6 @@ export const mainBuild = {
   splitting: false,
   sourcemap: true,
   noExternal: [
-    "@zpi-dev/agent-sdk",
     "@zpi-dev/ai",
     "@zpi-dev/agent",
     "@zpi-dev/coding-agent",

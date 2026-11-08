@@ -73,7 +73,7 @@ test("SDK host adapter shares real backend ownership, emits a single terminal, a
   const bash = backend("local_bash", "agent-looking-id"),
     agent = backend("local_agent", "bash-looking-id");
   const port = new SdkTaskControl([bash, agent], () => []),
-    events: import("@zpi-dev/agent-sdk").SDKTaskMessage[] = [];
+    events: import("@zpi-dev/coding-agent").SDKTaskMessage[] = [];
   const unsubscribe = port.subscribe("owner", (event) => events.push(event));
   const task = {
     taskId: "agent-looking-id",

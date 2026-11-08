@@ -548,7 +548,6 @@ it.each([false, true])(
 );
 
 it("public host storage convenience preserves the manager and current state ownership", async () => {
-  const { createAgentSession: createHostSession } = await import("@zpi-dev/agent-sdk/host");
   const runtime = await ModelRuntime.create();
   const model = fakeModel("http://local");
   runtime.registerProvider("fake", { apiKey: "local", models: [fakeConfig("http://local")] });
@@ -563,7 +562,7 @@ it("public host storage convenience preserves the manager and current state owne
     setThinkingLevel: vi.fn(),
     setName: vi.fn(),
   };
-  const created = await createHostSession({
+  const created = await createAgentSession({
     storage: { transcript: index.store, currentState: state },
     modelRuntime: runtime,
     model,
@@ -576,7 +575,7 @@ it("public host storage convenience preserves the manager and current state owne
   expect(created.session.messages.some((m) => m.role === "user" && m.content === "retained")).toBe(true);
   created.session.dispose();
   const injected = SessionManager.inMemory("/tmp");
-  const second = await createHostSession({
+  const second = await createAgentSession({
     sessionManager: injected,
     modelRuntime: runtime,
     model,

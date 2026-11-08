@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { HostTaskControl, SDKTaskMessage } from "@zpi-dev/agent-sdk";
+import type { HostTaskControl, SDKTaskMessage } from "@zpi-dev/coding-agent";
 import type { BackgroundTask, SubagentTask } from "../types.ts";
 import { type TaskBackend, TaskControls } from "./controls.ts";
 

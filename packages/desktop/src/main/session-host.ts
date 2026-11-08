@@ -3,7 +3,6 @@ import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
-import { createAgentSession, queryResult } from "@zpi-dev/agent-sdk/host";
 import { assertSupportedOptions, contentText, isJsonObject } from "@zpi-dev/ai";
 import type { MemorySettings } from "@zpi-dev/builtin-plugins/memory/types";
 import {
@@ -20,6 +19,7 @@ import {
   buildSessionMentionMarkdown,
   buildSystemPrompt,
   contextUsage,
+  createAgentSession,
   createCodingTools,
   extractSessionReferences,
   type FileChange,
@@ -34,6 +34,7 @@ import {
   parseInput,
   parseMentions,
   patchLineCounts,
+  runSessionInput,
   type SessionContributions,
   SessionManager,
   snapshotPlugins,
@@ -2590,19 +2591,11 @@ export class SessionHost {
           const projected = projectEvent(e, `${run.runId}:${run.ordinal}`);
           if (projected) this.emit(id, run.runId, projected);
         });
-        const execution = queryResult({
-          prompt: prepared.kind === "prompt" ? prepared.text : `/compact ${prepared.args}`,
-          options: {
-            cwd: this.cwd(record),
-            abortController: run.preparationAbort,
-            zpi: {
-              session,
-              sessionManager: manager,
-              modelRuntime: runtime,
-              taskControl: this.plugins.taskControl,
-              input: { parsed: prepared, context: inputContext },
-            },
-          },
+        const execution = runSessionInput({
+          session,
+          sessionManager: manager,
+          input: { parsed: prepared, context: inputContext },
+          signal: run.preparationAbort.signal,
         });
         void execution
           .then(

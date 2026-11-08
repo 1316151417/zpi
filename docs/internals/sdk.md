@@ -6,7 +6,7 @@
 
 `packages/agent-sdk` 提供 Claude 风格的 `query`、Options、消息与控制协议。协议适配、标准工具参数、策略、资源发现和打包均在此包实现；底层循环不感知这些兼容名称。构建产物包含私有运行时及独立声明文件，不依赖桌面包。
 
-桌面从 `@zpi-dev/agent-sdk/host` 创建原生会话，用 `query` 驱动主会话、标题生成与记忆处理。主会话通过 `zpi.session/sessionManager/modelRuntime/input` 复用已冻结的插件装配、索引存储和已解析输入。SDK 不接管该会话的销毁；原生事件继续用于桌面投影。借用会话时不能传 `canUseTool` 等创建期工具策略，应在原生会话创建阶段统一配置。普通脚本直接使用 `query`，由 SDK 持有并释放会话。
+桌面与内置插件直接依赖引擎 `@zpi-dev/coding-agent`：主会话用 `createAgentSession` 创建，回合由引擎的 `runSessionInput` 驱动，标题生成与记忆处理用 `runModelExchange` 完成无工具单次交互；后台任务端口类型（`HostTaskControl`、`SDKTaskMessage`）也定义在引擎并由本包 re-export。`@zpi-dev/agent-sdk/host` 仅作为外部原生宿主的稳定入口（`createAgentSession`、`queryResult` 等），本仓产品代码不再依赖本包。借用会话时不能传 `canUseTool` 等创建期工具策略，应在原生会话创建阶段统一配置。普通脚本直接使用 `query`，由 SDK 持有并释放会话。
 
 内核通过完整系统提示、模型请求前检查、动态请求选项、压缩前后事件和资源加载后的工具准备端口与宿主协作，均与外部协议解耦。
 
@@ -103,3 +103,11 @@ resume 首先 load 镜像；null 才回退同一 SDK 本地 ID，错误不回退
 - `npm run build:sdk`：独立 JS 与声明构建通过。将 tgz 安装到隔离消费项目，用严格类型检查（skipLibCheck:false）及 fake provider 验证普通 query、镜像恢复/会话操作、公开原生存储注入。
 - quick-chat 隔离副本：替换为该 tgz 后，类型检查、构建、13 项单测、CLI 入口与现有隐藏隔离启动测试（1 项）通过；原仓库源码、锁文件、node_modules 和用户设置保持原状。
 - 桌面没有新增渲染或 IPC 交互；历史写屏障、替换恢复、子代理、后台任务与冻结插件沿用单测回归。没有发布 npm、部署站点或向真实模型发请求。
+
+
+### 产品侧脱离 agent-sdk 依赖（2026-11-08）
+
+引擎新增 `runSessionInput`（借用会话的回合执行：中止/错误分类与 SDK 回合循环一致，含 "Query interrupted" 语义）与 `runModelExchange`（隔离内存会话的无工具单次交互：结果对 `{message, error}`，护栏阻止幻觉工具调用引发的后续请求，引擎簿记的 error/aborted 消息不遮蔽真实响应）。桌面主循环、记忆提取/整合与标题生成改用引擎助手；`HostTaskControl`/`SDKTaskMessage` 端口类型移入引擎并由 SDK re-export，公开类型面不变。`/host` 保留为外部宿主入口。
+
+- `npm run check` 与 `npm run test:unit`：除主干既有的 naming 测试失败（缺 `package:win:preview` 脚本，与本次无关）外全部通过；新增 `coding-agent/test/host-run.test.ts` 覆盖执行、中止、护栏与 provider 失败分类。
+- 桌面主进程产物中 SDK 兼容层标记（`SDK_INVALID_PERMISSION_RESULT` 等）归零；`packages/desktop` 与 `builtin-plugins` 的依赖表不再包含 `@zpi-dev/agent-sdk`，锁文件同步。

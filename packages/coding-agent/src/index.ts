@@ -11,6 +11,13 @@ export {
   planFileRewind,
 } from "./core/file-rewind.ts";
 export { syncDirectory } from "./core/fs.ts";
+export {
+  type ModelExchangeOptions,
+  type ModelExchangeResult,
+  runModelExchange,
+  runSessionInput,
+  type SessionInputRun,
+} from "./core/host-run.ts";
 export * from "./core/image-limits.ts";
 export * from "./core/images.ts";
 export { type MarkdownFrontmatter, parseMarkdownFrontmatter } from "./core/markdown.ts";
@@ -68,8 +75,14 @@ export {
 export { getShellConfig, getShellEnv, killProcessTree } from "./core/tools/pi/utils/shell.ts";
 export * from "./core/transcript-store.ts";
 export type {
+  HostTaskControl,
   ResourceDiagnostic,
   ResourceLoader,
+  SDKTaskMessage,
+  SDKTaskNotificationMessage,
+  SDKTaskProgressMessage,
+  SDKTaskStartedMessage,
+  TaskUsage,
   ToolContext,
   ToolDefinition,
 } from "./core/types.ts";
