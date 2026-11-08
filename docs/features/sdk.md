@@ -30,6 +30,32 @@ for await (const message of query({
 
 SDK 不实现权限模式、MCP、LSP、插件 UI、市场、远程会话和 Claude Code 的企业/账户服务。不支持的接口明确报错。`claude_code` 提示预设使用 ZPI 的编码提示词，不能复制 Anthropic 的专有提示词。环境变量预置模型价格为零；需要金额预算时显式提供模型价格。
 
+## 极简自定义工具示例
+
+仓库中的 [examples/agent-sdk.ts](../../examples/agent-sdk.ts) 使用 `query()` 和 `defineTool()` 查询演示订单。工具参数从 TypeBox schema 自动推导，返回的 JSON 对象由 SDK 包装为文本结果；`persistSession: false` 让会话仅保存在内存中。
+
+```ts
+import { defineTool } from "@zpi-dev/agent-sdk";
+import { Type } from "typebox";
+
+const lookupOrder = defineTool({
+  name: "lookup_order",
+  description: "查询演示订单的状态",
+  parameters: Type.Object({ orderId: Type.String() }),
+  execute({ orderId }) {
+    return { orderId, status: "已发货" };
+  },
+});
+```
+
+在仓库根目录设置 `DEEPSEEK_API_KEY` 后运行：
+
+```sh
+npm run example:sdk
+```
+
+示例使用真实 DeepSeek 模型，订单状态是工具返回的固定演示数据。原生宿主的离线示例仍可用 `npm run example:coding` 运行。
+
 ## 工具与插件边界
 
 公共 `query` 提供 `Read`、`Write`、`Edit`、`Bash` 和任务控制工具；有相应技能或 Agent 定义时再装配 `Skill`、`Agent`。`Bash.timeout` 使用毫秒，`run_in_background` 由 SDK 的任务管理器执行。底层原生会话的四个小写工具与桌面后台命令插件有各自参数和生命周期，参见[工具接口区别](tools.md#命令工具的接口区别)。

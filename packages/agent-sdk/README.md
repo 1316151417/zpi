@@ -45,6 +45,8 @@ Pricing is provider configuration. Environment-based presets use zero prices unt
 
 ## Simple custom tools
 
+See the runnable [examples/agent-sdk.ts](https://github.com/1316151417/zpi/blob/main/examples/agent-sdk.ts). Set `DEEPSEEK_API_KEY` and run `npm run example:sdk` from the repository root; it uses `query()`, `defineTool()` and an in-memory session to look up a demo order.
+
 ```ts
 import { defineTool, query } from "@zpi-dev/agent-sdk";
 import { Type } from "typebox";

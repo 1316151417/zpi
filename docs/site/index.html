@@ -420,15 +420,18 @@
               <ul class="check-list light">
                 <li>tools 选择工具，allowedTools 与 canUseTool 控制调用</li>
                 <li>内存、文件或自定义会话存储</li>
-                <li>仓库原生宿主示例使用本地假模型，无需线上凭据</li>
+                <li>用 defineTool 定义工具，参数类型自动推导，返回文本或 JSON</li>
                 <li>诊断页汇总错误日志、等待与重试，以及 TTFT、输出速度和 token 用量</li>
               </ul>
               <div class="developer-actions">
                 <a class="button primary inverse" href="/zpi/docs/features/sdk"
                   >SDK 文档 <span aria-hidden="true">↗</span></a
                 >
-                <code class="command-chip">npm run example:coding</code>
+                <code class="command-chip">npm run example:sdk</code>
               </div>
+              <p class="developer-note">
+                SDK 示例需要 Node.js 24 和 <code>DEEPSEEK_API_KEY</code>，会话仅保存在内存中。公共 SDK 的 <code>Glob</code>、<code>Grep</code> 暂不支持。
+              </p>
               <p class="developer-note">
                 文档站：<a href="/zpi/docs/">打开文档</a>（也可在仓库内运行
                 <code>npm run docs</code> 或 <code>npx zpi-docs</code>）。中文文档支持全文搜索、Mermaid、源码查看与深浅色主题。
@@ -436,19 +439,29 @@
             </div>
             <div class="code-card">
               <div class="code-head"><span>@zpi-dev/agent-sdk</span><span>TypeScript</span></div>
-              <pre><code>import { query } from "@zpi-dev/agent-sdk";
+              <pre><code>import { defineTool, query } from "@zpi-dev/agent-sdk";
+import { Type } from "typebox";
+
+const lookupOrder = defineTool({
+  name: "lookup_order",
+  description: "查询演示订单的状态",
+  parameters: Type.Object({ orderId: Type.String() }),
+  execute({ orderId }) {
+    return { orderId, status: "已发货" };
+  },
+});
 
 for await (const message of query({
-  prompt: "阅读 package.json 并说明项目入口。",
+  prompt: "请调用 lookup_order 查询订单 42 的状态。",
   options: {
     model: "deepseek",
-    cwd: "/absolute/project",
-    tools: ["Read"],
-    allowedTools: ["Read"],
-    maxTurns: 8,
+    persistSession: false,
+    tools: [lookupOrder.name],
+    zpi: { customTools: [lookupOrder] },
   },
 })) {
-  if (message.type === "result" &amp;&amp; message.subtype === "success") {
+  if (message.type === "result") {
+    if (message.subtype !== "success") throw new Error(message.errors.join("\n"));
     console.log(message.result);
   }
 }</code></pre>
