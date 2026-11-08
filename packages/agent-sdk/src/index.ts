@@ -1,4 +1,5 @@
 export { ModelRuntime } from "@zpi-dev/coding-agent";
+export { type DefineToolOptions, defineTool } from "./define-tool.ts";
 export { type QueryParams, query } from "./query.ts";
 export type {
   SessionKey,

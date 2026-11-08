@@ -26,6 +26,7 @@ import { type TObject, Type } from "typebox";
 import { Check } from "typebox/value";
 import { version as sdkVersion } from "../package.json";
 import { Accounting } from "./accounting.ts";
+import { defineTool } from "./define-tool.ts";
 import { coreHooks, lifecycleHook } from "./hooks.ts";
 import { assistantMessage, messageText, stableUuid, userMessage } from "./messages.ts";
 import { matchesRule, permissionHook, permissionRules } from "./permissions.ts";
@@ -280,25 +281,18 @@ class AgentQuery implements Query {
           ...(options.zpi?.customTools ?? []),
         ];
         if (this.loader.listSkills?.().skills.length)
-          tools.push({
-            name: "Skill",
-            label: "Skill",
-            description: "Load a skill by name and follow its instructions.",
-            parameters: Type.Object({ skill: Type.String(), args: Type.Optional(Type.String()) }),
-            execute: async (_id, input: Record<string, unknown>) => {
-              const skill = await this.loader?.loadSkill?.(String(input.skill));
-              if (!skill) throw new Error("Unknown skill");
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `${skill.body}\n\nSkill directory: ${skill.baseDir}\nArguments: ${input.args ?? ""}`,
-                  },
-                ],
-                details: undefined,
-              };
-            },
-          });
+          tools.push(
+            defineTool({
+              name: "Skill",
+              description: "Load a skill by name and follow its instructions.",
+              parameters: Type.Object({ skill: Type.String(), args: Type.Optional(Type.String()) }),
+              execute: async (input) => {
+                const skill = await this.loader?.loadSkill?.(input.skill);
+                if (!skill) throw new Error("Unknown skill");
+                return `${skill.body}\n\nSkill directory: ${skill.baseDir}\nArguments: ${input.args ?? ""}`;
+              },
+            }),
+          );
         if (Object.keys(options.agents ?? {}).length) tools.push(this.agentTool());
         const declared = [
           ...tools.map((tool) => tool.name),

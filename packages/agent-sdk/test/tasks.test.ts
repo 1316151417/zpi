@@ -1,3 +1,4 @@
+import { contentText } from "@zpi-dev/ai";
 import { expect, test } from "vitest";
 import { Tasks } from "../src/tasks.ts";
 
@@ -37,10 +38,11 @@ test("API and tool stops share cancellation, retain completed output and emit on
     { toolUseId: "call", description: "work" },
   );
   await Promise.resolve();
-  await Promise.all([
+  const [, stopped] = await Promise.all([
     tasks.stop(id),
     tasks.tools()[1].execute("stop", { task_id: id }, undefined, undefined, undefined as never),
   ]);
+  expect(stopped).toEqual({ content: [{ type: "text", text: `Stopped ${id}` }], details: undefined });
   await tasks.stop(id);
   expect(events.map((e) => e.phase)).toEqual(["started", "progress", "terminal"]);
   expect(events[2]).toMatchObject({ id, status: "stopped", toolUseId: "call", output: "stopped output" });
@@ -69,6 +71,9 @@ test("cancelled stop cannot affect a running task; failures have one terminal", 
   const controller = new AbortController();
   controller.abort();
   await expect(tasks.stop(id, controller.signal)).rejects.toThrow();
+  await expect(
+    tasks.tools()[1].execute("stop", { task_id: id }, controller.signal, undefined, undefined as never),
+  ).rejects.toThrow();
   release();
   const output = await tasks
     .tools()[0]
@@ -77,4 +82,41 @@ test("cancelled stop cannot affect a running task; failures have one terminal", 
   expect(events.filter((e) => e.phase === "terminal")).toMatchObject([{ status: "failed" }]);
   await tasks.stop(id);
   await tasks.close();
+});
+
+test("TaskOutput preserves nonblocking reads, timeout, cancellation and completed JSON output", async () => {
+  const tasks = new Tasks();
+  let finish!: (value: string) => void;
+  const id = tasks.start(async (_signal, progress) => {
+    progress("partial");
+    return new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+  });
+  await Promise.resolve();
+  const output = tasks.tools()[0];
+  const read = async (options: { block?: boolean; timeout?: number } = {}, signal?: AbortSignal) => {
+    const result = await output.execute(
+      "read",
+      { task_id: id, ...options },
+      signal,
+      undefined,
+      undefined as never,
+    );
+    expect(result.details).toBeUndefined();
+    return JSON.parse(contentText(result.content));
+  };
+  try {
+    expect(await read({ block: false })).toEqual({ task_id: id, status: "running", output: "partial" });
+    expect(await read({ timeout: 1 })).toEqual({ task_id: id, status: "running", output: "partial" });
+    const controller = new AbortController();
+    const cancelled = read({}, controller.signal);
+    controller.abort(new Error("cancelled read"));
+    await expect(cancelled).rejects.toThrow("cancelled read");
+    finish("finished");
+    expect(await read()).toEqual({ task_id: id, status: "completed", output: "finished" });
+  } finally {
+    finish("cleanup");
+    await tasks.close();
+  }
 });

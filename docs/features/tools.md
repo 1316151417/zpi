@@ -1,6 +1,6 @@
 # 四个基础工具
 
-模型通过工具与工作目录交互。执行内核提供 `read`、`write`、`edit`、`bash` 四个基础工具；桌面的提问、协作、联网和后台执行由[系统内置插件](plugins.md)装配。公共 TypeScript SDK 在内核上提供 `Read`、`Write`、`Edit`、`Bash`、`Glob`、`Grep` 等标准工具，详见[SDK](sdk.md)。本页介绍桌面的基础工具行为。
+模型通过工具与工作目录交互。执行内核提供 `read`、`write`、`edit`、`bash` 四个基础工具；桌面的提问、协作、联网和后台执行由[系统内置插件](plugins.md)装配。公共 TypeScript SDK 在内核上提供 `Read`、`Write`、`Edit`、`Bash` 等标准工具；`Glob`、`Grep` 仅保留占位定义，暂不支持，详见[SDK](sdk.md)。本页介绍桌面的基础工具行为。
 
 | 工具 | 用途 | 操作结果 |
 | --- | --- | --- |

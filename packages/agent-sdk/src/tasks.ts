@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { abortable } from "@zpi-dev/ai";
 import type { ToolDefinition } from "@zpi-dev/coding-agent";
 import { type TObject, Type } from "typebox";
+import { defineTool } from "./define-tool.ts";
 
 export interface TaskMetadata {
   description?: string;
@@ -95,47 +96,37 @@ export class Tasks {
   }
   tools(): ToolDefinition<TObject>[] {
     return [
-      {
+      defineTool({
         name: "TaskOutput",
-        label: "TaskOutput",
         description: "Read a background task's output. Optionally wait for completion.",
         parameters: Type.Object({
           task_id: Type.String(),
           block: Type.Optional(Type.Boolean()),
           timeout: Type.Optional(Type.Integer({ minimum: 0, maximum: 600000 })),
         }),
-        execute: async (_id, input, signal) => {
-          const task = this.tasks.get(input.task_id as string);
+        execute: async (input, { signal }) => {
+          const task = this.tasks.get(input.task_id);
           if (!task) throw new Error("Unknown task_id");
           if (input.block !== false && task.status === "running") {
-            const timer = AbortSignal.timeout(Number(input.timeout ?? 30000));
+            const timer = AbortSignal.timeout(input.timeout ?? 30000);
             try {
               await abortable(task.done, signal ? AbortSignal.any([timer, signal]) : timer);
             } catch (error) {
               if (signal?.aborted) throw error;
             }
           }
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ task_id: task.id, status: task.status, output: task.output }),
-              },
-            ],
-            details: undefined,
-          };
+          return { task_id: task.id, status: task.status, output: task.output };
         },
-      },
-      {
+      }),
+      defineTool({
         name: "TaskStop",
-        label: "TaskStop",
         description: "Stop a background task owned by this query.",
         parameters: Type.Object({ task_id: Type.String() }),
-        execute: async (_id, input, signal) => {
-          await this.stop(input.task_id as string, signal);
-          return { content: [{ type: "text", text: `Stopped ${input.task_id}` }], details: undefined };
+        execute: async (input, { signal }) => {
+          await this.stop(input.task_id, signal);
+          return `Stopped ${input.task_id}`;
         },
-      },
+      }),
     ];
   }
   async close(): Promise<void> {

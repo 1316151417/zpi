@@ -26,7 +26,7 @@ ToolContext 提供 cwd、model、thinkingLevel、sessionManager、signal、isIdl
 
 系统内置插件通过 `SessionPlugin.tools` 注册提问、联网与协作工具，通过 `toolOverrides` 显式覆盖后台 bash；共享 TaskControls 只装配一次。BuiltinPluginRuntime 构造服务并将运行时绑定到冻结快照，桌面只注入通用平台接口。核心不 import Electron、不读取窗口状态，也不依赖桌面 IPC。
 
-公共 `query` 的 `Read`、`Write`、`Edit`、`Bash`、`Glob`、`Grep` 由 `agent-sdk` 参数适配器提供；其后台任务由 SDK 自身管理，并非桌面的持久后台插件。公共工具名与底层四工具的边界见[工具接口区别](../features/tools.md#命令工具的接口区别)。
+公共 `query` 的 `Read`、`Write`、`Edit`、`Bash` 由 `agent-sdk` 参数适配器提供；其后台任务由 SDK 自身管理，并非桌面的持久后台插件。`Glob`、`Grep` 暂不支持，保留 schema 的 `defineTool` 占位执行直接抛出“暂不支持”；`Skill`、`TaskOutput`、`TaskStop` 也用 `defineTool` 生成原生定义，业务行为与结果含义不变。公共工具名与底层四工具的边界见[工具接口区别](../features/tools.md#命令工具的接口区别)。
 
 ## 存储和生命周期
 

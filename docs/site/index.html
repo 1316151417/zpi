@@ -439,12 +439,12 @@
               <pre><code>import { query } from "@zpi-dev/agent-sdk";
 
 for await (const message of query({
-  prompt: "说明项目入口，先不修改文件。",
+  prompt: "阅读 package.json 并说明项目入口。",
   options: {
     model: "deepseek",
     cwd: "/absolute/project",
-    tools: ["Read", "Glob", "Grep"],
-    allowedTools: ["Read", "Glob", "Grep"],
+    tools: ["Read"],
+    allowedTools: ["Read"],
     maxTurns: 8,
   },
 })) {

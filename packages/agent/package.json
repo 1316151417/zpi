@@ -1,13 +1,13 @@
 {
   "name": "@zpi-dev/agent",
-  "version": "0.1.62",
+  "version": "0.1.63",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@zpi-dev/ai": "0.1.62",
+    "@zpi-dev/ai": "0.1.63",
     "typebox": "1.3.27"
   }
 }

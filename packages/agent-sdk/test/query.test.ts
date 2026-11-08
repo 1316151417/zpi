@@ -580,7 +580,7 @@ test("local plugins expose canonical commands, skills and Agent definitions", as
   );
   await writeFile(
     join(plugin, "agents", "translator.md"),
-    "---\nname: translator\ndescription: Translate text\ntools: Read, Grep\n---\nTranslate carefully.",
+    "---\nname: translator\ndescription: Translate text\ntools: Read\n---\nTranslate carefully.",
   );
   await writeFile(
     join(plugin, "commands", "greet.md"),
@@ -699,7 +699,7 @@ test("one resource catalog serves initialization, Skill execution and later relo
               index: 0,
               id: "skill",
               type: "function",
-              function: { name: "Skill", arguments: '{"skill":"translate"}' },
+              function: { name: "Skill", arguments: '{"skill":"translate","args":"formal"}' },
             },
           ],
         }),
@@ -752,7 +752,10 @@ test("one resource catalog serves initialization, Skill execution and later relo
   expect(initialMessages.findLast((message) => message.role === "system")?.content).toContain(
     "RESOURCE_REVISION_2",
   );
-  expect(JSON.stringify(server.requests[1].messages)).toContain("FROZEN_TRANSLATION_SKILL");
+  const followup = server.requests[1].messages as { role: string; content: string }[];
+  expect(followup.find((message) => message.role === "tool")?.content).toBe(
+    "FROZEN_TRANSLATION_SKILL\n\nSkill directory: /virtual\nArguments: formal",
+  );
 });
 
 test("context controls initialize without a model request and protect active session deletion", async () => {

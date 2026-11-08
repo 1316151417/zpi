@@ -6,11 +6,11 @@ TypeScript SDK for the ZPI agent runtime. Node.js 24 is required. Its supported 
 import { query } from "@zpi-dev/agent-sdk";
 
 for await (const message of query({
-  prompt: "Explain this project",
+  prompt: "Read package.json and explain this project",
   options: {
     model: "deepseek",
-    tools: ["Read", "Glob", "Grep"],
-    allowedTools: ["Read", "Glob", "Grep"],
+    tools: ["Read"],
+    allowedTools: ["Read"],
     maxTurns: 8,
   },
 })) {
@@ -28,7 +28,8 @@ Set `DEEPSEEK_API_KEY` for the example. `model` accepts a registered provider, m
 | --- | --- |
 | Query | `query({ prompt, options })`, string or `AsyncIterable<SDKUserMessage>` input; `system`, `user`, `assistant`, `stream_event`, `result` messages |
 | Conversation | In-memory or persisted sessions; `resume`, `continue`, `forkSession`, `resumeSessionAt`, session listing/history/title/tag APIs |
-| Tools | `tools`, `allowedTools`, `disallowedTools`, `canUseTool`; canonical `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`, `Skill`, `Agent`, `TaskOutput`, `TaskStop` |
+| Tools | `tools`, `allowedTools`, `disallowedTools`, `canUseTool`; canonical `Read`, `Write`, `Edit`, `Bash`, `Skill`, `Agent`, `TaskOutput`, `TaskStop` |
+| Reserved tools | `Glob` and `Grep` retain their names and parameter schemas; execution throws `Error("暂不支持")` until implemented |
 | Controls | `interrupt`, `close`, `setModel`, `setMaxThinkingTokens`, supported command/model/agent discovery, initialization result |
 | Limits | `maxTurns`, `maxBudgetUsd`, `thinking`, `effort`, `maxThinkingTokens`, abort signals |
 | Output | Partial streaming, usage/cost/model totals, JSON schema validation with up to three attempts |
@@ -36,11 +37,37 @@ Set `DEEPSEEK_API_KEY` for the example. `model` accepts a registered provider, m
 | Resources | Explicit local plugins: command hooks, prompt commands, skills, Agent markdown definitions. `settingSources` explicitly opts into user/project/local instruction and skill discovery |
 | Files | Opt-in `enableFileCheckpointing` and `rewindFiles`, with external edit checks |
 
-`tools` chooses which tools the model sees. `allowedTools` pre-approves matching calls; it does not hide other tools. `disallowedTools` wins over allow rules. A bare deny removes a tool from the model's context; an argument-qualified deny checks calls. Other calls go to `canUseTool`, or execute directly when no callback is configured. This embedded runtime has no interactive permission dialog and is not a sandbox. Configure `tools: []` for text/image chat without local capabilities. `Grep` requires `rg` on PATH. Tool results use canonical parameter names such as `file_path` and `tool_use_id`.
+`tools` chooses which tools the model sees. `allowedTools` pre-approves matching calls; it does not hide other tools. `disallowedTools` wins over allow rules. A bare deny removes a tool from the model's context; an argument-qualified deny checks calls. Other calls go to `canUseTool`, or execute directly when no callback is configured. This embedded runtime has no interactive permission dialog and is not a sandbox. Configure `tools: []` for text/image chat without local capabilities. Tool results use canonical parameter names such as `file_path` and `tool_use_id`.
 
 `systemPrompt` replaces the default base instructions. Resources, skill catalogs and plugin context are managed independently as named blocks; changes append replacement or withdrawal notices at their conversation position. The `claude_code` preset selects ZPI's coding assistant prompt, not Anthropic's proprietary prompt. Default `settingSources` is empty. Only explicitly supplied local plugins execute command hooks; adding a plugin authorizes its code in the host process environment. Agent model aliases must resolve to registered models. `forwardSubagentText` defaults to false. Background tasks belong to their parent Query and are cancelled when it closes.
 
 Pricing is provider configuration. Environment-based presets use zero prices until accurate pricing is supplied through `zpi.providers`; `maxBudgetUsd` requires those prices to enforce a useful monetary budget. Token usage is reported independently of pricing. `rewindFiles` covers SDK Write/Edit checkpoints, not arbitrary shell side effects or external edits. Forks start a new checkpoint history.
+
+## Simple custom tools
+
+```ts
+import { defineTool, query } from "@zpi-dev/agent-sdk";
+import { Type } from "typebox";
+
+const lookupOrder = defineTool({
+  name: "lookup_order",
+  description: "Look up an order by ID",
+  parameters: Type.Object({ orderId: Type.String() }),
+  async execute({ orderId }, { signal }) {
+    // orderId is inferred as string; orderService is your application's service.
+    return orderService.get(orderId, { signal });
+  },
+});
+
+for await (const message of query({
+  prompt: "Look up order 42",
+  options: { model: "deepseek", tools: [lookupOrder.name], zpi: { customTools: [lookupOrder] } },
+})) {
+  if (message.type === "result" && message.subtype === "success") console.log(message.result);
+}
+```
+
+`execute(params, { signal, toolCallId })` can return a string or a JSON-serializable object, synchronously or asynchronously. Objects become JSON text; native result `details` is undefined. `label` defaults to `name`. The returned native `ToolDefinition` uses the existing argument validation, permissions, cancellation and error handling through `zpi.customTools`. The public SDK also uses this helper for `Skill`, `TaskOutput`, `TaskStop` and the unsupported `Glob`/`Grep` placeholders. For progress updates, images or custom details, use the original `ToolDefinition` from `@zpi-dev/agent-sdk/host` or the existing plugin interface.
 
 ## Deliberately omitted
 
