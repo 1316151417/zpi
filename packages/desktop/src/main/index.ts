@@ -92,15 +92,6 @@ const requestFetch: typeof fetch = (input, init) =>
 const responsesProxy = async (url: string) =>
   responsesProxyUrl(await session.defaultSession.resolveProxy(url));
 let ending = false;
-// 与渲染端 --color-window-bg / --color-tooltip-foreground 保持一致的窗口按钮配色。
-function titleBarOverlay(): Electron.TitleBarOverlayOptions {
-  const dark = nativeTheme.shouldUseDarkColors;
-  return {
-    color: dark ? "#2b2b2b" : "#ececee",
-    symbolColor: dark ? "#f8f8f8" : "#0d0d0d",
-    height: 48,
-  };
-}
 // Development shares Preview's data and Keychain identity; production remains separate.
 const dataName = app.isPackaged ? app.getName() : process.env.ZPI_NPM_LAUNCH === "1" ? "ZPI" : "ZPI Preview";
 app.setName(dataName);
@@ -247,11 +238,7 @@ async function launch(): Promise<void> {
   if (testMode || process.platform !== "darwin") Menu.setApplicationMenu(null);
   // Match ZCode's inset panels to the native window corners (Tahoe uses larger corners).
   const workspacePanelRadius =
-    process.platform === "win32"
-      ? 5
-      : process.platform === "darwin" && Number.parseInt(process.getSystemVersion?.() ?? "", 10) < 26
-        ? 6
-        : 12;
+    process.platform === "darwin" && Number.parseInt(process.getSystemVersion?.() ?? "", 10) < 26 ? 6 : 12;
   const window = createDesktopWindow({
     width: Math.min(1200, display.width),
     height: Math.min(800, display.height),
@@ -261,9 +248,7 @@ async function launch(): Promise<void> {
     backgroundColor: "#f8f8f8",
     icon,
     // 与 ZCode 的 macOS 顶栏一致：隐藏原生标题栏，让窗口控件与侧栏开关位于同一排。
-    // Windows 由系统绘制右上角的最小化/最大化/关闭按钮，配色跟随主题。
     titleBarStyle: process.platform === "linux" ? "default" : "hidden",
-    ...(process.platform === "win32" ? { titleBarOverlay: titleBarOverlay() } : {}),
     ...(process.platform === "darwin"
       ? {
           backgroundColor: "#00000000",
@@ -286,10 +271,6 @@ async function launch(): Promise<void> {
     if (details.level === "error")
       errors.write("renderer.console", details.message, { file: details.sourceId, line: details.lineNumber });
   });
-  if (process.platform === "win32")
-    nativeTheme.on("updated", () => {
-      if (!window.isDestroyed()) window.setTitleBarOverlay(titleBarOverlay());
-    });
   ipcMain.on("zpi:error", (event, error: unknown) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return;
     if (!error || typeof error !== "object") return;

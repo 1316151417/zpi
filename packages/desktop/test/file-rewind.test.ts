@@ -80,48 +80,45 @@ it("file reset rolls back all files if transcript commit fails, and rechecks con
 });
 
 for (const kind of ["modified", "created", "deleted", "directory", "symlink"] as const) {
-  it.skipIf(kind === "symlink" && process.platform === "win32")(
-    `preserves a concurrent ${kind} file on commit failure and still rolls back unrelated files`,
-    async () => {
-      const f = await fixture();
-      const path = join(f.workspace, "changed.txt"),
-        other = join(f.workspace, "other.txt");
-      const target = join(f.workspace, "target.txt");
-      await writeFile(path, "agent");
-      await writeFile(other, "other agent");
-      await writeFile(target, "external target");
-      const plan = {
-        conflicts: [],
-        files: [
-          {
-            path: other,
-            current: Buffer.from("other agent"),
-            before: Buffer.from("other original"),
-            mode: 0o600,
-          },
-          {
-            path,
-            current: Buffer.from("agent"),
-            before: kind === "created" ? null : Buffer.from("original"),
-            mode: 0o600,
-          },
-        ],
-      };
-      await expect(
-        applyFileRewind(plan, async () => {
-          if (kind === "deleted" || kind === "directory" || kind === "symlink") await rm(path);
-          if (kind === "directory") await mkdir(path);
-          else if (kind === "symlink") await symlink(target, path);
-          else if (kind !== "deleted") await writeFile(path, "concurrent edit");
-          throw new Error("transcript commit failed");
-        }),
-      ).rejects.toThrow(`部分文件未回滚：${path}`);
-      expect(await readFile(other, "utf8")).toBe("other agent");
-      expect(await readFile(target, "utf8")).toBe("external target");
-      if (kind === "deleted") expect(existsSync(path)).toBe(false);
-      else if (kind === "directory") expect((await lstat(path)).isDirectory()).toBe(true);
-      else if (kind === "symlink") expect((await lstat(path)).isSymbolicLink()).toBe(true);
-      else expect(await readFile(path, "utf8")).toBe("concurrent edit");
-    },
-  );
+  it(`preserves a concurrent ${kind} file on commit failure and still rolls back unrelated files`, async () => {
+    const f = await fixture();
+    const path = join(f.workspace, "changed.txt"),
+      other = join(f.workspace, "other.txt");
+    const target = join(f.workspace, "target.txt");
+    await writeFile(path, "agent");
+    await writeFile(other, "other agent");
+    await writeFile(target, "external target");
+    const plan = {
+      conflicts: [],
+      files: [
+        {
+          path: other,
+          current: Buffer.from("other agent"),
+          before: Buffer.from("other original"),
+          mode: 0o600,
+        },
+        {
+          path,
+          current: Buffer.from("agent"),
+          before: kind === "created" ? null : Buffer.from("original"),
+          mode: 0o600,
+        },
+      ],
+    };
+    await expect(
+      applyFileRewind(plan, async () => {
+        if (kind === "deleted" || kind === "directory" || kind === "symlink") await rm(path);
+        if (kind === "directory") await mkdir(path);
+        else if (kind === "symlink") await symlink(target, path);
+        else if (kind !== "deleted") await writeFile(path, "concurrent edit");
+        throw new Error("transcript commit failed");
+      }),
+    ).rejects.toThrow(`部分文件未回滚：${path}`);
+    expect(await readFile(other, "utf8")).toBe("other agent");
+    expect(await readFile(target, "utf8")).toBe("external target");
+    if (kind === "deleted") expect(existsSync(path)).toBe(false);
+    else if (kind === "directory") expect((await lstat(path)).isDirectory()).toBe(true);
+    else if (kind === "symlink") expect((await lstat(path)).isSymbolicLink()).toBe(true);
+    else expect(await readFile(path, "utf8")).toBe("concurrent edit");
+  });
 }

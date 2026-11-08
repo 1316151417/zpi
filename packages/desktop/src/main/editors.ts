@@ -71,7 +71,6 @@ export function getInstalledEditors(): Promise<EditorInfo[]> {
 }
 
 export interface EditorOpenServices {
-  platform: string;
   definitions: EditorDef[];
   resolveApp(definition: EditorDef): Promise<string | null>;
   launch(command: string, args: string[]): Promise<void>;
@@ -94,7 +93,7 @@ export async function openWorkspaceEditor(
   const path = await resolveLocalFilePath(cwd, target);
   const info = await stat(path);
   if (!info.isFile() && !info.isDirectory()) throw new Error("invalid_input: 仅支持文件及文件夹");
-  if (editorId === "finder" || editorId === "explorer") {
+  if (editorId === "finder") {
     if (info.isFile()) services.reveal(path);
     else {
       const error = await services.openPath(path);
@@ -110,24 +109,20 @@ export async function openWorkspaceEditor(
       // ZCode 的 CLI 失败回退到同一个应用，不切换到系统默认编辑器。
     }
   }
-  await services.launch(
-    services.platform === "win32" ? appPath : "/usr/bin/open",
-    services.platform === "win32" ? [path] : ["-a", appPath, path],
-  );
+  await services.launch("/usr/bin/open", ["-a", appPath, path]);
 }
 
 export function openInEditor(cwd: string, path: string, editorId: string): Promise<void> {
   if (process.env.ZPI_TEST_MODE === "1")
     return Promise.reject(new Error("Desktop test blocked external editor launch"));
   return openWorkspaceEditor(cwd, path, editorId, {
-    platform: process.platform,
     definitions: getEditorDefsForCurrentPlatform(),
     resolveApp: resolveEditorDefAppPath,
     launch: async (command, args) => {
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
       delete env.NODE_OPTIONS;
-      await exec(command, args, { env, windowsHide: true });
+      await exec(command, args, { env });
     },
     openPath: (target) => shell.openPath(target),
     reveal: (target) => shell.showItemInFolder(target),

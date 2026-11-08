@@ -105,7 +105,7 @@ async function resolvePreviewPath(cwd: string, target: string, input?: unknown):
   if (!target || target.includes("\0") || target.length > 8192)
     throw new Error("invalid_input: 文件路径无效");
   const location = validateFileLocation(input);
-  if (process.platform !== "win32" && /^(?:[a-z]:[\\/]|\\\\|\/\/)/i.test(target))
+  if (/^(?:[a-z]:[\\/]|\\\\|\/\/)/i.test(target))
     throw new Error("invalid_input: 当前系统无法打开 Windows 文件路径");
   let path = target;
   if (/^file:/i.test(target)) {

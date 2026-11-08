@@ -14,7 +14,7 @@ describe("shortcut search", () => {
     expect(matchesShortcutSearch("模型", "Shift+Command+L", "", "Command+L", "darwin")).toBe(false);
     expect(matchesShortcutSearch("模型", null, "", "Command+L", "darwin")).toBe(false);
     expect(matchesShortcutSearch("模型", null, "未设置", null, "darwin")).toBe(true);
-    expect(matchesShortcutSearch("模型", "Control+L", "ctrl+l", null, "win32")).toBe(true);
+    expect(matchesShortcutSearch("模型", "Control+L", "ctrl+l", null, "linux")).toBe(true);
     expect(shortcutLabelParts("Control+Alt+Shift+Command+L", "darwin")).toEqual(["⌃", "⌥", "⇧", "⌘", "L"]);
   });
 });

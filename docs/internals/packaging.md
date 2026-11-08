@@ -28,7 +28,9 @@ npm 启动使用正式版 `ZPI` 数据目录，正式 appId 为 local.zpi.deskto
 
 ## 当前限制与验收
 
-npm 包能安装不代表每种架构的 native、焦点、权限、shell 与系统打开行为已验证。Quick Chat 当前仅支持 macOS arm64；桌面端的原生依赖和运行行为需在目标平台验收。
+桌面端不支持 Windows：npm 包通过 `os: ["!win32"]` 拒绝 Windows 安装，CLI 在加载 Electron 前拒绝 Windows 启动，源码不再提供 Windows 打包目标。当前主要在 macOS Apple Silicon 上验证，其他平台的原生依赖和运行行为仍需验收。Quick Chat 当前仅支持 macOS arm64。
+
+此限制仅作用于桌面端。Agent SDK 保持跨平台，Windows 的 Bash 查找、路径归一化与进程清理保留在共享运行时中；共享 UI 的外来路径识别、BMP/ICO 解析也不因桌面端平台限制而移除。
 
 发布前检查 npm 包内容并执行适用桌面测试。版本号、数据 schema、transcript version 分别管理；旧程序遇到未知新 schema 应拒绝，而非自动降级覆盖数据。
 

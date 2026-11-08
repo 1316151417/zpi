@@ -4,7 +4,7 @@ import { browserUrl } from "../src/main/browser-url.ts";
 
 describe("browserUrl", () => {
   test("converts absolute filesystem paths to file URLs", () => {
-    const path = process.platform === "win32" ? "C:\\a\\b.html" : "/tmp/a/b.html";
+    const path = "/tmp/a/b.html";
     expect(browserUrl(path)).toBe(pathToFileURL(path).href);
   });
 

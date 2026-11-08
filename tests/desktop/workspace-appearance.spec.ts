@@ -120,11 +120,7 @@ test("workspace has independent rounded panels, transparent gutters and ZCode la
     await expect(page.locator(".right-pane")).toHaveCSS("transition-duration", "0s");
     await expect(page.locator(".composer")).toHaveCSS("transition-duration", "0.15s, 0.15s");
     const panelRadius = await app.evaluate(() =>
-      process.platform === "win32"
-        ? 5
-        : process.platform === "darwin" && Number.parseInt(process.getSystemVersion(), 10) < 26
-          ? 6
-          : 12,
+      process.platform === "darwin" && Number.parseInt(process.getSystemVersion(), 10) < 26 ? 6 : 12,
     );
     if (mac) {
       // Electron's getter normalizes the transparent native background to RGB.

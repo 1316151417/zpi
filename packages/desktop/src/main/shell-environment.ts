@@ -3,7 +3,6 @@ import { userInfo } from "node:os";
 
 // Finder launches do not inherit variables exported by shell profiles.
 export async function shellEnvironment(base: NodeJS.ProcessEnv = process.env): Promise<NodeJS.ProcessEnv> {
-  if (process.platform === "win32") return base;
   const shell = base.SHELL || userInfo().shell || "/bin/sh";
   const start = "__ZPI_ENV_START__\0";
   const end = "__ZPI_ENV_END__\0";

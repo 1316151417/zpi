@@ -18,7 +18,6 @@ export async function desktopScope({ interactive = false } = {}) {
     {
       stdio: ["pipe", "pipe", "inherit"],
       detached: true,
-      windowsHide: true,
     },
   );
   const exited = once(guardian, "exit");

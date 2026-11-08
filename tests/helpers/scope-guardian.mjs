@@ -1,12 +1,9 @@
 // Independent of the Playwright worker: EOF also arrives after a crash/SIGKILL.
 // Only descendants observed under that worker are owned; never kill by name or old PID alone.
-import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { promisify } from "node:util";
 import { processSnapshot as snapshot } from "./process-snapshot.ts";
 
-const execute = promisify(execFile);
 const root = process.argv[2];
 const owner = Number(process.argv[3]);
 const owned = new Map();
@@ -37,9 +34,7 @@ async function signal(kind) {
   for (const [pid, born] of [...owned].reverse()) {
     if (processes.get(pid)?.born !== born) continue;
     try {
-      if (process.platform === "win32")
-        await execute("taskkill", ["/PID", String(pid), "/F"], { windowsHide: true });
-      else process.kill(pid, kind);
+      process.kill(pid, kind);
     } catch (error) {
       if (error.code !== "ESRCH") throw error;
     }

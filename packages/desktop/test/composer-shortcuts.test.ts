@@ -44,7 +44,7 @@ describe("composer shortcut routing", () => {
       ).toBeUndefined();
   });
 
-  it.each(["darwin", "win32", "linux"])("keeps model selection local and repeat-safe on %s", (platform) => {
+  it.each(["darwin", "linux"])("keeps model selection local and repeat-safe on %s", (platform) => {
     const settings = defaultShortcuts(platform);
     const modelEvent = event({
       key: "L",

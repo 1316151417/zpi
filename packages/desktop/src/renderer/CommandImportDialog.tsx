@@ -382,7 +382,7 @@ export function CommandImportDialog({
                         className="command-import-mode-tooltip"
                         description={
                           mode === "symlink"
-                            ? "创建指向外部 Agent 命令文件的链接，跟随来源后续变更。来源路径须持续可用；编辑会在确认后修改来源文件。Windows 环境需要允许创建软链；不支持时可选择直接复制。"
+                            ? "创建指向外部 Agent 命令文件的链接，跟随来源后续变更。来源路径须持续可用；编辑会在确认后修改来源文件。"
                             : "将命令文件复制到 ZPI。外部 Agent 文件后续变更不会自动同步。"
                         }
                       >

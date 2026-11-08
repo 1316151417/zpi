@@ -55,7 +55,6 @@ interface FileSnapshot {
 export interface CommandImportOptions {
   homeDirectory: string;
   targetDirectory: string;
-  platform?: NodeJS.Platform;
   workspaceDirectory?: string;
 }
 function code(error: unknown): string | undefined {
@@ -76,7 +75,6 @@ export class CommandImportService {
   private readonly home: string;
   private readonly target: string;
   private readonly workspace?: string;
-  private readonly platform: NodeJS.Platform;
   private readonly scans = new Map<string, Map<string, ImportSnapshot>>();
   private mutation: Promise<unknown> = Promise.resolve();
 
@@ -86,7 +84,6 @@ export class CommandImportService {
     }
     this.home = resolve(options.homeDirectory);
     this.target = resolve(options.targetDirectory);
-    this.platform = options.platform ?? process.platform;
     if (options.workspaceDirectory && !isAbsolute(options.workspaceDirectory)) {
       throw new Error("项目命令导入需要明确的绝对目录路径。");
     }
@@ -408,14 +405,7 @@ export class CommandImportService {
         await this.directories(dirname(target), true);
         const method = request.mode;
         if (method === "symlink") {
-          try {
-            await symlink(candidate.sourcePath, target, "file");
-          } catch (error) {
-            if (this.platform === "win32" && (code(error) === "EPERM" || code(error) === "EACCES")) {
-              throw new Error("当前 Windows 环境不允许创建软链。请选择“直接复制”后重试。");
-            }
-            throw error;
-          }
+          await symlink(candidate.sourcePath, target, "file");
           links.set(candidate.relativePath, candidate.sourcePath);
           try {
             const current = await this.snapshot(candidate.sourcePath, candidate.sourceRoot);

@@ -13,8 +13,7 @@ export async function checkPreviewFiles(
   return Promise.all(
     input.map(async (path: string) => {
       try {
-        if (process.platform !== "win32" && /^(?:[a-z]:[\\/]|\\\\|\/\/)/i.test(path))
-          return { path, exists: false };
+        if (/^(?:[a-z]:[\\/]|\\\\|\/\/)/i.test(path)) return { path, exists: false };
         return { path, exists: (await stat(await resolveLocalFilePath(cwd, path))).isFile() };
       } catch {
         return { path, exists: false };

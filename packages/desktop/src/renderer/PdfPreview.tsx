@@ -317,7 +317,7 @@ export function PdfViewer({ source, labels, onLoadError, className, ...props }: 
 
     const zoomWithAppleModifier = isAppleKeyboardPlatform();
     const handleWheelZoom = (event: WheelEvent) => {
-      // macOS 绑定 command，其余平台（Windows/Linux）绑定 ctrl
+      // macOS 绑定 command，其他平台绑定 ctrl
       const zoomModifierPressed = zoomWithAppleModifier ? event.metaKey : event.ctrlKey;
       if (!zoomModifierPressed) {
         return;

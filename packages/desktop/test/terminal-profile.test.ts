@@ -68,15 +68,12 @@ it("caches missing profiles while keeping different homes independent", async ()
   expect(execFile).not.toHaveBeenCalled();
 });
 
-it.each(["win32", "linux", "freebsd"] as const)(
-  "does not inspect system profiles on %s",
-  async (platform) => {
-    expect(await readTerminalProfile(platform, { HOME: home })).toBeUndefined();
-    expect(access).not.toHaveBeenCalled();
-    expect(execFile).not.toHaveBeenCalled();
-    expect(homedir).not.toHaveBeenCalled();
-  },
-);
+it.each(["linux", "freebsd"] as const)("does not inspect system profiles on %s", async (platform) => {
+  expect(await readTerminalProfile(platform, { HOME: home })).toBeUndefined();
+  expect(access).not.toHaveBeenCalled();
+  expect(execFile).not.toHaveBeenCalled();
+  expect(homedir).not.toHaveBeenCalled();
+});
 
 it("inherits the marked iTerm default profile font, size, ANSI and selection but never base colors", async () => {
   files.set(itermPath, {
@@ -103,7 +100,7 @@ it("inherits the marked iTerm default profile font, size, ANSI and selection but
   expect(execFile).toHaveBeenCalledExactlyOnceWith(
     "/usr/bin/plutil",
     ["-convert", "json", "-o", "-", itermPath],
-    { encoding: "utf8", shell: false, windowsHide: true, timeout: 2_000, maxBuffer: 2 * 1024 * 1024 },
+    { encoding: "utf8", shell: false, timeout: 2_000, maxBuffer: 2 * 1024 * 1024 },
     expect.any(Function),
   );
   expect(access).toHaveBeenCalledTimes(1);

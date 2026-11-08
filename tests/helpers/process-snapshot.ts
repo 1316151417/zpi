@@ -7,24 +7,6 @@ export interface ProcessIdentity {
   born: string;
 }
 export async function processSnapshot(): Promise<Map<number, ProcessIdentity>> {
-  if (process.platform === "win32") {
-    const { stdout } = await execute(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate | ConvertTo-Json -Compress",
-      ],
-      { windowsHide: true, timeout: 3000 },
-    );
-    const entries = JSON.parse(stdout) as {
-      ProcessId: number;
-      ParentProcessId: number;
-      CreationDate: string;
-    }[];
-    return new Map(entries.map((p) => [p.ProcessId, { parent: p.ParentProcessId, born: p.CreationDate }]));
-  }
   const { stdout } = await execute("ps", ["-axo", "pid=,ppid=,lstart="], { timeout: 3000 });
   return new Map(
     stdout

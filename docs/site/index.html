@@ -533,12 +533,12 @@ for await (const message of query({
           </ol>
         </div>
         <p class="platform-note">
-          使用需 Node.js 24 与 npm，安装时需允许依赖安装脚本下载 Electron 运行环境。当前主要在 macOS Apple Silicon 上验证；升级使用
+          桌面端不支持 Windows，当前主要在 macOS Apple Silicon 上验证。使用需 Node.js 24 与 npm，安装时需允许依赖安装脚本下载 Electron 运行环境；升级使用
           <code>npx @zpi-dev/desktop@latest</code>，或重新执行
           <code>npm install -g @zpi-dev/desktop@latest</code>。
         </p>
         <p class="platform-note">
-          Agent SDK：<code>npm install @zpi-dev/agent-sdk</code>。Quick Chat：设置 <code>DEEPSEEK_API_KEY</code>
+          Agent SDK 保持跨平台，包含 Windows 支持：<code>npm install @zpi-dev/agent-sdk</code>。Quick Chat：设置 <code>DEEPSEEK_API_KEY</code>
           后执行 <code>npx @zpi-dev/quick-chat</code>，或通过
           <code>npm install -g @zpi-dev/quick-chat</code> 安装后运行
           <code>zpi-quick-chat</code>（需 Node.js 24 与 Apple Silicon Mac）。
@@ -551,6 +551,13 @@ for await (const message of query({
           <h2 id="faq-title">把边界也说清楚。</h2>
         </div>
         <div class="faq-list">
+          <details>
+            <summary>ZPI 桌面端支持 Windows 吗？</summary>
+            <p>
+              不支持。桌面端的 Windows 专用实现和测试已移除，npm 安装和 CLI 启动会拒绝 Windows。
+              独立的 <code>@zpi-dev/agent-sdk</code> 保持跨平台，包含 Windows 支持；SDK 的 Bash 工具需要系统中有可用的 Bash。
+            </p>
+          </details>
           <details>
             <summary>没有遥测，是否意味着所有内容都不出本机？</summary>
             <p>

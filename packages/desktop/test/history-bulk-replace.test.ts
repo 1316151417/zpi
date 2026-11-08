@@ -86,7 +86,7 @@ it("streams each entry through one file handle and one index commit before publi
   expect(openSync).toHaveBeenCalledWith(index.path, "wx", 0o600);
   expect(vi.mocked(openSync).mock.calls.filter((call) => call[1] === "wx")).toHaveLength(1);
   expect(vi.mocked(openSync).mock.calls.filter((call) => call[1] === "a")).toHaveLength(0);
-  expect(fsyncSync).toHaveBeenCalledTimes(process.platform === "win32" ? 1 : 2);
+  expect(fsyncSync).toHaveBeenCalledTimes(2);
   expect(flush).toHaveBeenCalledOnce();
   expect(exec.mock.calls.filter(([sql]) => sql === "SAVEPOINT transcript_write")).toHaveLength(2);
   expect(commit).toHaveBeenCalledExactlyOnceWith(path, index.path, index.getHeader(), index.data.size);
@@ -139,7 +139,6 @@ for (const failure of [
         throw new Error("injected fsync failure");
       });
     if (failure === "directory-sync") {
-      if (process.platform === "win32") return;
       vi.mocked(fsyncSync)
         .mockImplementationOnce(fs.fsyncSync)
         .mockImplementationOnce(() => {

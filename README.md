@@ -2,7 +2,7 @@
 
 ZPI 以四工具执行内核和 TypeScript Agent SDK 为基础。提问、联网、子智能体协作、后台命令、记忆、自动标题和任务通知通过系统内置插件按需配置与启停；桌面工作区提供对话、文件、终端与审查界面。
 
-推荐使用 Node.js 24，通过 `npx @zpi-dev/desktop` 启动桌面应用。需要固定命令时，运行 `npm install -g @zpi-dev/desktop`，然后使用 `zpi-desktop`。模型账号在应用设置中配置，应用使用正式版 `ZPI` 数据目录。
+桌面端不支持 Windows，当前主要在 macOS Apple Silicon 上验证。推荐使用 Node.js 24，通过 `npx @zpi-dev/desktop` 启动桌面应用。需要固定命令时，运行 `npm install -g @zpi-dev/desktop`，然后使用 `zpi-desktop`。模型账号在应用设置中配置，应用使用正式版 `ZPI` 数据目录。
 
 - [总览设计与模块地图](docs/design.md)
 - [新手向导](docs/features/getting-started.md)
@@ -39,4 +39,4 @@ ZPI 以四工具执行内核和 TypeScript Agent SDK 为基础。提问、联网
 - [npm 桌面包](https://www.npmjs.com/package/@zpi-dev/desktop)
 - [仓库](https://github.com/1316151417/zpi)
 
-快速对话是独立的 [zpi-quick-chat](https://github.com/1316151417/zpi-quick-chat) CLI 项目，设置 `DEEPSEEK_API_KEY` 后通过 `npx @zpi-dev/quick-chat` 启动，需要 Node.js 24 和 Apple Silicon Mac。后端与 ZPI 共用 `@zpi-dev/agent-sdk`，可通过 `npm install @zpi-dev/agent-sdk` 接入自己的项目。SDK 使用和支持范围见 [agent-sdk](packages/agent-sdk/README.md)。
+快速对话是独立的 [zpi-quick-chat](https://github.com/1316151417/zpi-quick-chat) CLI 项目，设置 `DEEPSEEK_API_KEY` 后通过 `npx @zpi-dev/quick-chat` 启动，需要 Node.js 24 和 Apple Silicon Mac。后端与 ZPI 共用 `@zpi-dev/agent-sdk`，可通过 `npm install @zpi-dev/agent-sdk` 接入自己的项目。Agent SDK 保持跨平台，包含 Windows 支持，不受桌面端的平台限制。SDK 使用和支持范围见 [agent-sdk](packages/agent-sdk/README.md)。

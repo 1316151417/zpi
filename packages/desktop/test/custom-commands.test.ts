@@ -419,7 +419,7 @@ Original prompt`,
     expect(await fs.readFile(original.filePath, "utf8")).toBe("Original");
     expect(await fs.readFile(other.filePath, "utf8")).toBe("Other");
   });
-  it.skipIf(process.platform === "darwin" || process.platform === "win32")(
+  it.skipIf(process.platform === "darwin")(
     "selects one casefold duplicate deterministically and diagnoses it without changing files",
     async () => {
       await put("review.md", "Lowercase");

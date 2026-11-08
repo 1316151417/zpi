@@ -157,7 +157,7 @@ async function readPlist(path: string): Promise<RecordValue | undefined> {
       execFile(
         "/usr/bin/plutil",
         ["-convert", "json", "-o", "-", path],
-        { encoding: "utf8", shell: false, windowsHide: true, timeout: 2_000, maxBuffer: 2 * 1024 * 1024 },
+        { encoding: "utf8", shell: false, timeout: 2_000, maxBuffer: 2 * 1024 * 1024 },
         (error, stdout) => (error ? reject(error) : resolve(stdout)),
       );
     });

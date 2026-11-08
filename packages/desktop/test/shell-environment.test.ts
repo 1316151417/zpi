@@ -6,7 +6,6 @@ import { shellEnvironment } from "../src/main/shell-environment.ts";
 import { SettingsStore } from "../src/main/storage.ts";
 
 it("GUI launches recover profile credentials and PATH without overriding explicit credentials or saved models", async () => {
-  if (process.platform === "win32") return;
   const dir = await mkdtemp(join(tmpdir(), "zpi-shell-env-"));
   try {
     await writeFile(
@@ -43,7 +42,6 @@ it("GUI launches recover profile credentials and PATH without overriding explici
 });
 
 it("commenting a profile export leaves inherited MiniMax credentials available for automatic discovery", async () => {
-  if (process.platform === "win32") return;
   const dir = await mkdtemp(join(tmpdir(), "zpi-inherited-env-"));
   try {
     await writeFile(join(dir, ".zshrc"), "# export MINIMAX_API_KEY='old-profile-key'\n");

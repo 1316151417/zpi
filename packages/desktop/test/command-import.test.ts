@@ -28,7 +28,7 @@ afterEach(async () => {
   vi.clearAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-async function fixture(project = false, platform?: NodeJS.Platform) {
+async function fixture(project = false) {
   const root = await mkdtemp(join(tmpdir(), "zpi-command-import-"));
   roots.push(root);
   const home = join(root, "home");
@@ -39,7 +39,6 @@ async function fixture(project = false, platform?: NodeJS.Platform) {
     homeDirectory: home,
     targetDirectory: target,
     ...(project ? { workspaceDirectory: workspace } : {}),
-    ...(platform ? { platform } : {}),
   });
   const put = async (relative: string, content = "Prompt") => {
     const path = join(home, relative);
@@ -379,22 +378,8 @@ describe("explicit linked imports", () => {
     await expect(service.registeredLinkTargets()).rejects.toThrow("普通 Markdown");
   });
 
-  it("reports Windows symlink permission failure without substituting a hard link or copy", async () => {
-    const { target, service, put } = await fixture(false, "win32");
-    await put(".claude/commands/review.md");
-    const input = request(await service.discover(), "symlink");
-    vi.mocked(symlink).mockRejectedValueOnce(
-      Object.assign(new Error("privilege required"), { code: "EPERM" }),
-    );
-    const result = await service.importSelected(input);
-    expect(result).toMatchObject({ importedCount: 0, skippedCount: 0, failedCount: 1 });
-    expect(result.items[0].error).toContain("直接复制");
-    expect(await readdir(target)).toEqual([]);
-    expect(vi.mocked(link)).not.toHaveBeenCalled();
-  });
-
-  it("uses an actual approved symlink on Windows instead of an untracked hard link", async () => {
-    const { target, service, put } = await fixture(false, "win32");
+  it("uses an actual approved symlink instead of an untracked hard link", async () => {
+    const { target, service, put } = await fixture();
     const source = await put(".claude/commands/review.md", "Before");
     const result = await service.importSelected(request(await service.discover(), "symlink"));
     expect(result.items[0]).toMatchObject({ status: "imported", method: "symlink" });

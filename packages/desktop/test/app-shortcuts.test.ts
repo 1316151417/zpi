@@ -135,7 +135,7 @@ describe.each(["darwin", "linux"])("focus composer capture on %s", (platform) =>
   });
 });
 
-describe.each(["darwin", "linux", "win32"])("pinned shortcut hints on %s", (platform) => {
+describe.each(["darwin", "linux"])("pinned shortcut hints on %s", (platform) => {
   it("uses the actual configured bindings for only the first five displayed tasks", () => {
     const settings = defaultShortcuts(platform);
     for (let index = 0; index < 5; index++) {

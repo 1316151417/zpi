@@ -6,7 +6,7 @@ export interface EditorInfo {
 
 // ZCode pins file managers before code editors, without changing the stored preference.
 export function sortEditors(editors: EditorInfo[]): EditorInfo[] {
-  const pinned = ["finder", "qspace", "qspace-pro", "explorer"];
+  const pinned = ["finder", "qspace", "qspace-pro"];
   return [
     ...pinned.flatMap((id) => editors.filter((editor) => editor.id === id)),
     ...editors.filter((editor) => !pinned.includes(editor.id)),

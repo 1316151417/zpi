@@ -10,7 +10,7 @@
 npm install @zpi-dev/agent-sdk
 ```
 
-安装后直接导入 `@zpi-dev/agent-sdk`，无需克隆 ZPI 仓库或构建桌面应用。升级使用 `npm install @zpi-dev/agent-sdk@latest`。
+安装后直接导入 `@zpi-dev/agent-sdk`，无需克隆 ZPI 仓库或构建桌面应用。SDK 保持跨平台，包含 Windows 支持；桌面端不支持 Windows 的限制不影响 SDK。Windows 上执行 Bash 工具需要可用的 Bash，例如 Git for Windows 提供的 Git Bash。升级使用 `npm install @zpi-dev/agent-sdk@latest`。
 
 ## 发起查询
 

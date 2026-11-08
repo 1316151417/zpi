@@ -4,7 +4,7 @@
 
 ## 安装并打开
 
-安装 Node.js 24 后，推荐通过 npx 直接启动桌面应用：
+桌面端不支持 Windows，当前主要在 macOS Apple Silicon 上验证。安装 Node.js 24 后，推荐通过 npx 直接启动桌面应用：
 
 ```sh
 npx @zpi-dev/desktop
@@ -27,7 +27,7 @@ Electron、Sharp 和终端模块作为运行依赖自动安装；安装时需允
 
 ## SDK 与快速对话
 
-在自己的项目中运行 `npm install @zpi-dev/agent-sdk`，即可使用 [TypeScript Agent SDK](sdk.md)。独立快速对话工具需要 Node.js 24 和 Apple Silicon Mac，设置 `DEEPSEEK_API_KEY` 后执行 `npx @zpi-dev/quick-chat`；也可以执行 `npm install -g @zpi-dev/quick-chat` 后使用 `zpi-quick-chat`。详见 [Quick Chat README](https://github.com/1316151417/zpi-quick-chat#readme)。
+在自己的项目中运行 `npm install @zpi-dev/agent-sdk`，即可使用 [TypeScript Agent SDK](sdk.md)。SDK 保持跨平台，包含 Windows 支持，不受桌面端的平台限制。独立快速对话工具需要 Node.js 24 和 Apple Silicon Mac，设置 `DEEPSEEK_API_KEY` 后执行 `npx @zpi-dev/quick-chat`；也可以执行 `npm install -g @zpi-dev/quick-chat` 后使用 `zpi-quick-chat`。详见 [Quick Chat README](https://github.com/1316151417/zpi-quick-chat#readme)。
 
 ## 接入第一个模型
 

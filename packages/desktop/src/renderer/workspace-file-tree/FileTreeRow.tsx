@@ -15,11 +15,7 @@ import {
 } from "./model.ts";
 import { useWorkspaceFileTreeRowDragState } from "./use-row-drag.ts";
 
-export const fileManagerLabel = /mac/i.test(navigator.userAgent)
-  ? "在 Finder 中打开"
-  : /windows/i.test(navigator.userAgent)
-    ? "在文件资源管理器中打开"
-    : "在文件管理器中打开";
+export const fileManagerLabel = /mac/i.test(navigator.userAgent) ? "在 Finder 中打开" : "在文件管理器中打开";
 const letters = { modified: "M", added: "A", deleted: "D", renamed: "R", untracked: "U", ignored: "" };
 const labels = {
   modified: "修改",

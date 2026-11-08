@@ -47,16 +47,13 @@ async function boundedRead(path: string, reading: Promise<unknown>) {
   }
 }
 
-test.skipIf(process.platform === "win32").each(readers)(
-  "%s rejects a FIFO without a writer",
-  async (_, read) => {
-    const path = join(root, "pipe.pdf");
-    await mkfifo(path);
-    await expect(boundedRead(path, read(path))).rejects.toThrow("普通文件");
-  },
-);
+test.each(readers)("%s rejects a FIFO without a writer", async (_, read) => {
+  const path = join(root, "pipe.pdf");
+  await mkfifo(path);
+  await expect(boundedRead(path, read(path))).rejects.toThrow("普通文件");
+});
 
-test.skipIf(process.platform === "win32").each(readers)(
+test.each(readers)(
   "%s rejects a regular file replaced by a FIFO before open and closes its descriptor",
   async (_, read) => {
     const path = join(root, "changed.pdf");
@@ -74,19 +71,16 @@ test.skipIf(process.platform === "win32").each(readers)(
   },
 );
 
-test.skipIf(process.platform === "win32").each(readers)(
-  "%s refuses a symlink substituted after path resolution",
-  async (_, read) => {
-    const path = join(root, "changed.pdf");
-    const other = join(root, "other.pdf");
-    await writeFile(path, "%PDF-original");
-    await writeFile(other, "%PDF-other");
-    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-    vi.mocked(open).mockImplementationOnce(async (...args) => {
-      await unlink(path);
-      await symlink(other, path);
-      return actual.open(...args);
-    });
-    await expect(read(path)).rejects.toMatchObject({ code: "ELOOP" });
-  },
-);
+test.each(readers)("%s refuses a symlink substituted after path resolution", async (_, read) => {
+  const path = join(root, "changed.pdf");
+  const other = join(root, "other.pdf");
+  await writeFile(path, "%PDF-original");
+  await writeFile(other, "%PDF-other");
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  vi.mocked(open).mockImplementationOnce(async (...args) => {
+    await unlink(path);
+    await symlink(other, path);
+    return actual.open(...args);
+  });
+  await expect(read(path)).rejects.toMatchObject({ code: "ELOOP" });
+});

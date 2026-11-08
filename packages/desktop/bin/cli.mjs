@@ -10,6 +10,10 @@ if (args.includes("--version") || args.includes("-v")) {
 } else if (args.includes("--help") || args.includes("-h")) {
   console.log("Usage: zpi-desktop [--version] [--help]\n\nStart the ZPI desktop workspace.");
 } else {
+  if (process.platform === "win32") {
+    console.error("zpi-desktop does not support Windows. The Agent SDK remains cross-platform.");
+    process.exit(1);
+  }
   const require = createRequire(import.meta.url);
   const env = { ...process.env, ZPI_NPM_LAUNCH: "1" };
   delete env.ELECTRON_RUN_AS_NODE;

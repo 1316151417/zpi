@@ -109,7 +109,6 @@ test("launchers must exist and be executable before starting", async () => {
   const dir = await fixture();
   const command = join(dir, "idea");
   await expect(launchEditor(command, [])).rejects.toThrow("ENOENT");
-  if (process.platform === "win32") return;
   await writeFile(command, "#!/bin/sh\nexit 0\n");
   await chmod(command, 0o600);
   await expect(launchEditor(command, [])).rejects.toThrow("EACCES");
@@ -145,7 +144,7 @@ test("a long-lived editor is not killed and opening does not wait for it to clos
 });
 
 test("non-macOS opening does not inspect macOS associations or launchers", async () => {
-  const native = { ...services(), platform: "win32" };
+  const native = { ...services(), platform: "linux" };
   await openDefaultFile("C:/workspace/Main.java", { line: 3 }, native);
   expect(native.openPath).toHaveBeenCalledWith("C:/workspace/Main.java");
   expect(native.defaultApplication).not.toHaveBeenCalled();

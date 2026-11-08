@@ -172,7 +172,7 @@ describe("native shortcut modifier hints", () => {
     f.host.emit("blur");
     expect(f.send).not.toHaveBeenCalled();
   });
-  it.each(["linux", "win32"])("tracks only Control on %s", (platform) => {
+  it.each(["linux"])("tracks only Control on %s", (platform) => {
     const f = setup(platform);
     f.emit(input());
     expect(f.send).not.toHaveBeenCalled();

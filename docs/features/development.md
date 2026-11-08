@@ -1,6 +1,6 @@
 # 本地开发和调试
 
-开发使用 Node.js 24、npm 和 Electron。macOS 原生模块需要 Xcode Command Line Tools。
+桌面端不支持 Windows，当前主要在 macOS Apple Silicon 上开发与验证。开发使用 Node.js 24、npm 和 Electron，macOS 原生模块需要 Xcode Command Line Tools。独立 Agent SDK 的跨平台支持不受影响。
 
 ## 首次安装
 

@@ -2,7 +2,9 @@
 
 ZPI desktop agent workspace with conversations, projects, files, terminals and code review.
 
-Requires Node.js 24. We recommend starting the published application with npx:
+Requires Node.js 24. Windows is not supported; the desktop application is primarily validated on macOS Apple Silicon. This restriction applies to the desktop package only; `@zpi-dev/agent-sdk` remains cross-platform, including Windows.
+
+We recommend starting the published application with npx:
 
 ```sh
 npx @zpi-dev/desktop

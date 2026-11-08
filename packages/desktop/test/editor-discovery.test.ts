@@ -22,11 +22,11 @@ afterEach(() => {
 });
 test("discovery excludes absent applications and missing icons, caching the same safe public records", async () => {
   vi.stubEnv("ZPI_TEST_MODE", "0");
-  Object.defineProperty(process, "platform", { value: "win32" });
+  Object.defineProperty(process, "platform", { value: "linux" });
   fakes.definitions.mockReturnValue([
-    { id: "vscode", name: "VS Code", appPath: "C:/Code.exe", command: "code" },
-    { id: "missing", name: "Missing", appPath: "C:/Missing.exe", command: null },
-    { id: "no-icon", name: "No Icon", appPath: "C:/NoIcon.exe", command: null },
+    { id: "vscode", name: "VS Code", appPath: "/opt/Code", command: "code" },
+    { id: "missing", name: "Missing", appPath: "/opt/Missing", command: null },
+    { id: "no-icon", name: "No Icon", appPath: "/opt/NoIcon", command: null },
   ]);
   fakes.resolveApp.mockImplementation(async (def) => (def.id === "missing" ? null : def.appPath));
   fakes.icon.mockImplementation(async (path) => {
@@ -43,7 +43,7 @@ test("discovery excludes absent applications and missing icons, caching the same
   expect(await getInstalledEditors()).toEqual(await first);
   expect(fakes.definitions).toHaveBeenCalledTimes(1);
   expect(fakes.icon).toHaveBeenCalledTimes(2);
-  expect(fakes.icon).toHaveBeenCalledWith("C:/Code.exe", { size: "normal" });
+  expect(fakes.icon).toHaveBeenCalledWith("/opt/Code", { size: "normal" });
 });
 test("unsupported platforms with no editor definitions leave controls unavailable", async () => {
   fakes.definitions.mockReturnValue([]);

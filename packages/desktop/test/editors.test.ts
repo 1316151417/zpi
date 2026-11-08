@@ -20,17 +20,15 @@ async function fixture() {
   await writeFile(path, "text");
   return { dir, path };
 }
-function services(platform = "darwin"): EditorOpenServices & {
+function services(): EditorOpenServices & {
   launch: ReturnType<typeof vi.fn<EditorOpenServices["launch"]>>;
   openPath: ReturnType<typeof vi.fn<EditorOpenServices["openPath"]>>;
   reveal: ReturnType<typeof vi.fn<EditorOpenServices["reveal"]>>;
 } {
   return {
-    platform,
     definitions: [
       { id: "vscode", name: "VS Code", appPath: "/Applications/Visual Studio Code.app", command: "code" },
       { id: "finder", name: "Finder", appPath: "/System/Finder.app", command: null },
-      { id: "explorer", name: "Explorer", appPath: "C:/Windows/explorer.exe", command: null },
       { id: "qspace", name: "QSpace", appPath: "/Applications/QSpace.app", command: null },
     ],
     resolveApp: async (def) => def.appPath,
@@ -46,20 +44,18 @@ test("passes literal absolute file paths as one CLI argument", async () => {
   expect(native.launch).toHaveBeenCalledExactlyOnceWith("code", [path]);
   expect(native.openPath).not.toHaveBeenCalled();
 });
-test.each(["darwin", "win32"])(
-  "CLI failure falls back to the same selected application on %s",
-  async (platform) => {
-    const { dir, path } = await fixture();
-    const native = services(platform);
-    native.launch.mockRejectedValueOnce(new Error("CLI unavailable"));
-    await openWorkspaceEditor(dir, path, "vscode", native);
-    expect(native.launch).toHaveBeenLastCalledWith(
-      platform === "darwin" ? "/usr/bin/open" : "/Applications/Visual Studio Code.app",
-      platform === "darwin" ? ["-a", "/Applications/Visual Studio Code.app", path] : [path],
-    );
-    expect(native.openPath).not.toHaveBeenCalled();
-  },
-);
+test("CLI failure falls back to the same selected application", async () => {
+  const { dir, path } = await fixture();
+  const native = services();
+  native.launch.mockRejectedValueOnce(new Error("CLI unavailable"));
+  await openWorkspaceEditor(dir, path, "vscode", native);
+  expect(native.launch).toHaveBeenLastCalledWith("/usr/bin/open", [
+    "-a",
+    "/Applications/Visual Studio Code.app",
+    path,
+  ]);
+  expect(native.openPath).not.toHaveBeenCalled();
+});
 test("a failed selected application never silently opens the system default", async () => {
   const { dir, path } = await fixture();
   const native = services();
@@ -67,12 +63,12 @@ test("a failed selected application never silently opens the system default", as
   await expect(openWorkspaceEditor(dir, path, "vscode", native)).rejects.toThrow("launch failed");
   expect(native.openPath).not.toHaveBeenCalled();
 });
-test.each(["finder", "explorer"])("%s reveals files and opens directories", async (id) => {
+test("Finder reveals files and opens directories", async () => {
   const { dir, path } = await fixture();
   const native = services();
-  await openWorkspaceEditor(dir, path, id, native);
+  await openWorkspaceEditor(dir, path, "finder", native);
   expect(native.reveal).toHaveBeenCalledExactlyOnceWith(path);
-  await openWorkspaceEditor(dir, ".", id, native);
+  await openWorkspaceEditor(dir, ".", "finder", native);
   expect(native.openPath).toHaveBeenCalledExactlyOnceWith(dir);
   expect(native.launch).not.toHaveBeenCalled();
 });
@@ -121,12 +117,11 @@ test("each open awaits a fresh installation check and rejects an editor removed 
 });
 const editor = (id: string): EditorInfo => ({ id, name: id, iconDataUrl: "data:image/png;base64,test" });
 test("pins file managers in reference order and respects an available preference", () => {
-  const installed = ["vscode", "explorer", "qspace-pro", "finder", "cursor", "qspace"].map(editor);
+  const installed = ["vscode", "qspace-pro", "finder", "cursor", "qspace"].map(editor);
   expect(sortEditors(installed).map((item) => item.id)).toEqual([
     "finder",
     "qspace",
     "qspace-pro",
-    "explorer",
     "vscode",
     "cursor",
   ]);

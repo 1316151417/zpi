@@ -39,7 +39,7 @@ it("appends JSON records beside sessions and preserves earlier errors across res
   });
   expect(Number.isNaN(Date.parse(records[0].time))).toBe(false);
   expect(records[1]).toMatchObject({ source: "main.startup", message: "failed again" });
-  if (process.platform !== "win32") expect((await stat(log.path)).mode & 0o777).toBe(0o600);
+  expect((await stat(log.path)).mode & 0o777).toBe(0o600);
 });
 
 it("redacts common credentials from error messages, stacks and diagnostic context", async () => {

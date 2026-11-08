@@ -10,7 +10,7 @@ npm 分发包使用 `npm run pack:npm` 构建，SDK 和桌面应用的 `.tgz` �
 npm run pack:npm
 ```
 
-两个包的 `prepack` 会自动构建各自的发布资源。桌面端使用 Node.js 24，通过 `npx @zpi-dev/desktop` 启动；全局命令使用 `npm install -g @zpi-dev/desktop` 安装后执行 `zpi-desktop`。SDK 使用 `npm install @zpi-dev/agent-sdk` 安装。
+两个包的 `prepack` 会自动构建各自的发布资源。桌面端不支持 Windows，使用 Node.js 24，通过 `npx @zpi-dev/desktop` 启动；全局命令使用 `npm install -g @zpi-dev/desktop` 安装后执行 `zpi-desktop`。SDK 保持跨平台，包含 Windows 支持，使用 `npm install @zpi-dev/agent-sdk` 安装。
 
 ## 产物检查
 
