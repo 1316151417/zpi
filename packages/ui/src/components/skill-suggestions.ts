@@ -7,10 +7,22 @@ export function scoreMentionMatch(text: string, query: string): number {
 }
 
 export function filterSkillSuggestions(suggestions: InputSuggestion[], query: string): InputSuggestion[] {
-  const skills = suggestions.filter((suggestion) => suggestion.group === "Skill");
+  return filterMentionSuggestions(suggestions, query, "Skill");
+}
+
+export function filterSubagentSuggestions(suggestions: InputSuggestion[], query: string): InputSuggestion[] {
+  return filterMentionSuggestions(suggestions, query, "子智能体");
+}
+
+function filterMentionSuggestions(
+  suggestions: InputSuggestion[],
+  query: string,
+  group: InputSuggestion["group"],
+): InputSuggestion[] {
+  const items = suggestions.filter((suggestion) => suggestion.group === group);
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return skills.slice(0, 1000);
-  return skills
+  if (!normalized) return items.slice(0, 1000);
+  return items
     .map((suggestion, index) => ({
       suggestion,
       index,

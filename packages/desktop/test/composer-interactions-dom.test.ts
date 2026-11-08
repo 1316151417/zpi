@@ -291,6 +291,48 @@ it.each([true, false])(
   },
 );
 
+it("bot suggestions work without a file service and ignore IME Enter until selection is committed", async () => {
+  const drafts = new ComposerDraftStore();
+  const onSubmit = vi.fn(async () => {});
+  await act(async () =>
+    root.render(
+      createElement(ChatComposer, {
+        sessionId: "bot-mention",
+        busy: false,
+        draftStorage: drafts,
+        suggestions: [{ name: "reviewer", description: "检查代码", insert: "@reviewer ", group: "子智能体" }],
+        onSubmit,
+        onStop() {},
+      }),
+    ),
+  );
+  await frame();
+  const editor = element(".mention-editor");
+  await act(async () => {
+    editor.textContent = "@rev";
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+  expect(element('[role="option"]').textContent).toBe("reviewer检查代码");
+  await act(async () => {
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+  });
+  expect(drafts.get("bot-mention")?.text).toBe("@rev");
+  expect(onSubmit).not.toHaveBeenCalled();
+  await act(async () => {
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  });
+  expect(drafts.get("bot-mention")?.text).toBe("@reviewer ");
+  expect(drafts.get("bot-mention")?.fileReferences).toEqual([]);
+  expect(container.querySelector('[role="listbox"]')).toBeNull();
+  expect(element(".inline-mention.subagent").dataset.markdown).toBe("@reviewer");
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 it("normal chat keeps warning timers while typing and clears warnings on expiry or send", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const drafts = new ComposerDraftStore();

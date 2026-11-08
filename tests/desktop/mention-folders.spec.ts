@@ -32,7 +32,7 @@ test("folder mentions share ZCode file search, parent paths, icons, keyboard scr
     let page = await app.firstWindow();
     await select(page, id);
     let editor = page.getByLabel("消息", { exact: true });
-    const panel = page.getByRole("listbox", { name: "引用文件" });
+    const panel = page.getByRole("listbox", { name: "引用上下文" });
     for (const prefix of ["帮我看看", "参考：", "看看，", "\n"]) {
       await editor.fill(prefix);
       await editor.press("End");
@@ -52,7 +52,7 @@ test("folder mentions share ZCode file search, parent paths, icons, keyboard scr
     await expect(editor).toHaveText("帮我看看know-base-update ");
     await expect(editor.locator(".inline-mention.file")).toHaveText("know-base-update");
     await editor.fill("@update");
-    await expect(panel.getByRole("option")).toHaveCount(43);
+    await expect(panel.locator(".file-option")).toHaveCount(43);
     await expect(panel.locator("h3")).toHaveCount(0);
     const option = panel.getByRole("option", { name: "know-base-update skills/", exact: true });
     await expect(option.locator("img")).toHaveAttribute("src", /material-icons\/folder\.svg$/);
@@ -95,7 +95,7 @@ test("folder mentions share ZCode file search, parent paths, icons, keyboard scr
     await editor.fill("@kbupd");
     await expect(page.getByRole("option", { name: "know-base-update skills/", exact: true })).toBeVisible();
     await editor.press("Escape");
-    await expect(page.getByRole("listbox", { name: "引用文件" })).toHaveCount(0);
+    await expect(page.getByRole("listbox", { name: "引用上下文" })).toHaveCount(0);
     await expect(editor).toHaveText("@kbupd");
   } finally {
     await runCleanup([

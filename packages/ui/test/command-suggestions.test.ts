@@ -7,6 +7,7 @@ import {
   subagentNames,
 } from "../src/components/command-suggestions.ts";
 import { displayReferences, referenceStyle } from "../src/components/Reference.tsx";
+import { filterSubagentSuggestions } from "../src/components/skill-suggestions.ts";
 import type { InputSuggestion } from "../src/types.ts";
 
 const command = (name: string, description = "", customCommand = true): InputSuggestion => ({
@@ -83,6 +84,28 @@ const agent = (name: string, description = "Workspace · Code review"): InputSug
   description,
   insert: `@${name} `,
   group: "子智能体",
+});
+
+it("at mentions search only agents, rank names before descriptions and keep all agents for an empty query", () => {
+  const agents = [
+    agent("other", "Review sources"),
+    agent("code-review", ""),
+    agent("review-code", ""),
+    agent("review-docs", ""),
+  ];
+  const catalog = [command("review"), skill("review"), ...agents];
+  expect(filterSubagentSuggestions(catalog, "")).toEqual(agents);
+  expect(filterSubagentSuggestions(catalog, " REVIEW ").map((item) => item.name)).toEqual([
+    "review-code",
+    "review-docs",
+    "code-review",
+    "other",
+  ]);
+  expect(filterSubagentSuggestions(catalog, "crvw").map((item) => item.name)).toEqual(["code-review"]);
+  expect(filterSubagentSuggestions(catalog, "missing")).toEqual([]);
+  const chinese = [agent("browser", "浏览器操作")];
+  expect(filterSubagentSuggestions(chinese, "浏览器")).toEqual(chinese);
+  expect(filterSubagentSuggestions(chinese, "浏器")).toEqual([]);
 });
 
 it("keeps Commands, Skills and Subagents sections in order, including empty sections", () => {

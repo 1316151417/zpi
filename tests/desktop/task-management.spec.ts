@@ -181,7 +181,7 @@ test("running task menu, directory actions, Escape dismissal/IME priority and ar
     await expect(page.getByRole("listbox")).toHaveCount(0);
     await expect(run).toHaveAttribute("data-status", "running");
     await editor(page).fill("@file");
-    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toBeVisible();
+    await expect(page.getByRole("listbox", { name: "引用上下文", exact: true })).toBeVisible();
     await editor(page).press("Escape");
     await expect(run).toHaveAttribute("data-status", "running");
     await editor(page).fill("");

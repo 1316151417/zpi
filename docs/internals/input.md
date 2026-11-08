@@ -8,6 +8,8 @@ renderer 保存编辑状态和附件引用，通过 preload 提交 RunInput。�
 
 图片由主进程管理导入、所有权和持久化路径，IPC 传递受控 ID。文件引用可携带行号或评论；会话引用由宿主读取目标会话可用内容，不让 renderer 自己拼绝对数据路径。命令 shell 展开在实际执行阶段发生，入队校验不会执行 shell。
 
+`ChatComposer` 的 `@` 面板合并文件搜索结果与当前会话 suggestions 中的子智能体，和 `/` 共用宿主已过滤启用状态、作用域及重名覆盖的目录。机器人名称、描述沿用 ZCode 的前缀、子串和英文子序列排序，中文查询只匹配连续文字；空查询保留目录顺序。两组候选共用键盘索引和滚动容器，机器人选择复用文本插入与光标恢复，不写入 `fileReferences`。`+` 添加面板继续只提供附件和文件。
+
 ## 每个会话独立串行
 
 `SessionInputQueue` 为每个 session 建立 Promise 链，防止发送、删除、排序、立即发送同时修改队列。commit 顺序为 save → 内存状态 → publish；保存失败时不能先显示已成功。
@@ -37,3 +39,4 @@ renderer 保存编辑状态和附件引用，通过 preload 提交 RunInput。�
 - [队列](../../packages/desktop/src/main/input-queue.ts)、[附件](../../packages/desktop/src/main/attachments.ts)、[会话引用](../../packages/builtin-plugins/src/transcripts.ts)、[草稿](../../packages/desktop/src/main/draft-store.ts)、[引用解析](../../packages/coding-agent/src/core/mentions.ts)。
 - [队列测试](../../packages/desktop/test/input-queue.test.ts)、[归档测试](../../packages/desktop/test/input-queue-archive.test.ts)、[引用测试](../../packages/desktop/test/input-references.test.ts)、[附件测试](../../packages/desktop/test/attachments.test.ts)。
 - [主辅对话立即发送回归](../../tests/desktop/immediate-send.spec.ts)、[快捷键回归](../../tests/desktop/composer-shortcuts.spec.ts)。
+- [机器人 @ 候选、编辑和草稿恢复回归](../../tests/desktop/subagent-mentions.spec.ts)、[输入法与无文件服务场景](../../packages/desktop/test/composer-interactions-dom.test.ts)。

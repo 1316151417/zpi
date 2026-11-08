@@ -1667,6 +1667,17 @@ small {
 .slash-panel button:active:not(:disabled) {
   transform: none;
 }
+.subagent-option > svg,
+.subagent-option > strong {
+  flex-shrink: 0;
+}
+.subagent-option > strong {
+  max-width: 40%;
+}
+.subagent-option > span {
+  min-width: 0;
+  font-size: var(--text-xs);
+}
 /* ZCode skills rows keep the name intact; only the secondary description can shrink. */
 .skill-panel {
   border-radius: var(--radius-dialog);

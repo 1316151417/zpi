@@ -1,6 +1,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
   Brain,
   ChevronRight,
   FileClock,
@@ -105,7 +106,7 @@ import { StreamEntrance } from "./StreamEntrance.tsx";
 import { SubagentContext } from "./SubagentToolBlock.tsx";
 import { SuggestionOptions } from "./SuggestionOptions.tsx";
 import { filterSessionSuggestions } from "./session-suggestions.ts";
-import { filterSkillSuggestions } from "./skill-suggestions.ts";
+import { filterSkillSuggestions, filterSubagentSuggestions } from "./skill-suggestions.ts";
 import { ToolBlock } from "./ToolBlock.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import { type ProcessItem, processItems } from "./tool-presentation.ts";
@@ -1884,9 +1885,15 @@ export function ChatComposer({
   const [fileMatches, setFileMatches] = useState<Awaited<ReturnType<ComposerContext["searchFiles"]>>>([]);
   const [fileError, setFileError] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
+  // @ 原先只路由到文件搜索，完整名称却会被编辑器渲染为机器人标签，导致候选与展示脱节。
+  // 与 / 共用当前会话的有效目录；+ 添加面板仍只提供附件和文件。
+  const agentMatches = useMemo(
+    () => (fileQuery && !fileQuery.explicit ? filterSubagentSuggestions(suggestions, fileQuery.query) : []),
+    [suggestions, fileQuery],
+  );
   const fileOptions = useMemo(
-    () => (fileQuery?.explicit ? [null, ...fileMatches] : fileMatches),
-    [fileQuery?.explicit, fileMatches],
+    () => (fileQuery?.explicit ? [null, ...fileMatches] : [...fileMatches, ...agentMatches]),
+    [fileQuery?.explicit, fileMatches, agentMatches],
   );
   useLayoutEffect(() => {
     if (!fileQuery?.explicit) return;
@@ -2010,8 +2017,10 @@ export function ChatComposer({
   };
   const chooseFileOption = () => {
     const option = fileOptions[highlighted] ?? fileOptions[0];
-    if (option) chooseFile(option);
-    else if (option === null) chooseAttachment();
+    if (option) {
+      if ("insert" in option) chooseAgent(option);
+      else chooseFile(option);
+    } else if (option === null) chooseAttachment();
   };
   const currentSession = useRef(sessionId);
   const [highlighted, setHighlighted] = useState(0);
@@ -2039,6 +2048,16 @@ export function ChatComposer({
     if (inputQuery?.trigger === "/") setHighlighted(slash.selectedIndex);
   }, [inputQuery?.trigger, slash]);
   const menuOpen = Boolean(inputQuery);
+  const insertAt = (suggestion: InputSuggestion, start: number, end: number) => {
+    const inserted = suggestion.insert;
+    updateDraft(draft.slice(0, start) + inserted + draft.slice(end));
+    setInputQuery(undefined);
+    setFileQuery(undefined);
+    dismissedInput.current = undefined;
+    // The editor applies this caret when it renders the new text, before another user selection.
+    textarea.current?.focus();
+    textarea.current?.setSelectionRange(start + inserted.length, start + inserted.length);
+  };
   const insert = (suggestion: InputSuggestion) => {
     if (!inputQuery) return;
     const { start } = inputQuery;
@@ -2046,13 +2065,15 @@ export function ChatComposer({
       inputQuery.trigger === "/"
         ? slashTokenEnd(draft, inputQuery.end, inputQuery.query, suggestion.name)
         : inputQuery.end;
-    const inserted = suggestion.insert;
-    updateDraft(draft.slice(0, start) + inserted + draft.slice(end));
-    setInputQuery(undefined);
-    dismissedInput.current = undefined;
-    // The editor applies this caret when it renders the new text, before another user selection.
-    textarea.current?.focus();
-    textarea.current?.setSelectionRange(start + inserted.length, start + inserted.length);
+    insertAt(suggestion, start, end);
+  };
+  const chooseAgent = (suggestion: InputSuggestion) => {
+    if (!fileQuery || fileQuery.explicit) return;
+    insertAt(
+      suggestion,
+      fileQuery.start,
+      slashTokenEnd(draft, fileQuery.end, fileQuery.query, suggestion.name),
+    );
   };
   useLayoutEffect(() => {
     currentSession.current = sessionId;
@@ -2413,7 +2434,7 @@ export function ChatComposer({
             id={filePanelId}
             className={`command-panel${fileQuery.explicit ? " composer-add-panel" : ""}`}
             role="listbox"
-            aria-label={fileQuery.explicit ? "添加上下文" : "引用文件"}
+            aria-label={fileQuery.explicit ? "添加上下文" : "引用上下文"}
             tabIndex={-1}
             ref={filePanel}
             onKeyDown={(e) => {
@@ -2451,6 +2472,9 @@ export function ChatComposer({
               )}
               {fileError && <p role="alert">{fileError}</p>}
               {fileLoading && <p role="status">正在搜索…</p>}
+              {!fileQuery.explicit && fileMatches.length > 0 && (
+                <div className="command-section-title">文件</div>
+              )}
               {fileMatches.map((file, i) => (
                 <button
                   type="button"
@@ -2468,7 +2492,25 @@ export function ChatComposer({
                   )}
                 </button>
               ))}
-              {!fileMatches.length && !fileError && !fileLoading && <p>暂无匹配文件</p>}
+              {agentMatches.length > 0 && <div className="command-section-title">子智能体</div>}
+              {agentMatches.map((suggestion, index) => (
+                <button
+                  key={suggestion.insert}
+                  className="subagent-option"
+                  type="button"
+                  role="option"
+                  aria-selected={fileMatches.length + index === highlighted}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => chooseAgent(suggestion)}
+                >
+                  <Bot size={14} aria-hidden="true" />
+                  <strong>{suggestion.name}</strong>
+                  <span>{suggestion.description}</span>
+                </button>
+              ))}
+              {!fileMatches.length && !agentMatches.length && !fileError && !fileLoading && (
+                <p>{fileQuery.explicit ? "暂无匹配文件" : "暂无匹配文件或子智能体"}</p>
+              )}
             </SuggestionOptions>
             {fileQuery.explicit ? (
               <div className="composer-add-hint">
@@ -2490,7 +2532,7 @@ export function ChatComposer({
             ) : !fileQuery.query ? (
               <div className="command-hint">
                 <Info size={16} aria-hidden="true" />
-                在输入框中输入 @ 搜索文件
+                在输入框中输入 @ 搜索文件或子智能体
               </div>
             ) : null}
           </div>
@@ -2613,7 +2655,7 @@ export function ChatComposer({
               selection: [caret, caret],
             }));
             const prefix = text.slice(0, caret);
-            setFileQuery(context ? fileMentionQuery(prefix) : undefined);
+            setFileQuery(context || agentNames.length ? fileMentionQuery(prefix) : undefined);
             const command =
               /(?:^|\s)(\/)([^\s@$#¥￥]*)$/.exec(prefix) ?? /(?:^|\s)([$#¥￥])([^\s/@$#¥￥]*)$/.exec(prefix);
             const signature = command ? `${command[1]}:${command[2]}` : undefined;

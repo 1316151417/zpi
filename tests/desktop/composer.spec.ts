@@ -93,17 +93,17 @@ test("add panel shares the composer width, lists files and preserves the inserti
     await editor.click();
     await expect(panel).toHaveCount(0);
     await editor.fill("@main");
-    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toBeVisible();
-    await expect(page.getByRole("option")).toHaveCount(1);
+    await expect(page.getByRole("listbox", { name: "引用上下文", exact: true })).toBeVisible();
+    await expect(page.locator(".file-option")).toHaveCount(1);
     await page.getByRole("option", { name: "main.ts src/", exact: true }).click();
     await expect(editor).toBeFocused();
     await page.keyboard.type("Y");
     await expect(editor).toHaveText("main.ts Y");
     await editor.fill("@main");
-    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toBeVisible();
+    await expect(page.getByRole("listbox", { name: "引用上下文", exact: true })).toBeVisible();
     await add.click();
     await expect(panel).toBeVisible();
-    await expect(page.getByRole("listbox", { name: "引用文件", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("listbox", { name: "引用上下文", exact: true })).toHaveCount(0);
     await page.locator(".topbar-title").click();
     await expect(panel).toHaveCount(0);
     for (let i = 0; i < 12; i++) await writeFile(join(project, `file-${i}.txt`), "file");
@@ -687,7 +687,7 @@ test("empty prefix suggestions allow Enter to send while matching suggestions st
     );
     await expect(editor).toHaveText("");
     await editor.fill("@main");
-    await expect(page.getByRole("option")).toHaveCount(1);
+    await expect(page.locator(".file-option")).toHaveCount(1);
     await editor.press("Tab");
     await expect(editor.locator(".inline-mention.file")).toHaveText("main.txt");
     expect(server.requests).toHaveLength(count + 1);
@@ -1016,7 +1016,7 @@ test("sidebar expansion, distinct composer entries and equal-width pane tabs", a
       /\[\$review\]\(.*SKILL\.md\)/,
     );
     await editor.fill("@main");
-    await expect(page.getByRole("option")).toHaveCount(1);
+    await expect(page.locator(".file-option")).toHaveCount(1);
     await page.getByRole("option", { name: /main.txt/ }).click();
     await expect(editor.locator(".inline-mention.file")).toHaveText("main.txt");
     await editor.fill("");
