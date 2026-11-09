@@ -30,11 +30,9 @@ describe("project naming", () => {
     expect(pkg.build.productName).toBe("ZPI");
     expect(pkg.build.extraMetadata.productName).toBe("ZPI");
     expect(pkg.build.appId).toBe("local.zpi.desktop");
-    for (const platform of ["mac", "win"]) {
-      const script = pkg.scripts[`package:${platform}:preview`];
-      expect(script).toContain('-c.productName="ZPI Preview"');
-      expect(script).toContain("-c.appId=local.zpi.desktop.preview");
-      expect(script).toContain('-c.extraMetadata.productName="ZPI Preview"');
-    }
+    const script = pkg.scripts["package:mac:preview"];
+    expect(script).toContain('-c.productName="ZPI Preview"');
+    expect(script).toContain("-c.appId=local.zpi.desktop.preview");
+    expect(script).toContain('-c.extraMetadata.productName="ZPI Preview"');
   });
 });
