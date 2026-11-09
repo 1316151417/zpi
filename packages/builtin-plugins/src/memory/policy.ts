@@ -12,7 +12,6 @@ interface MemoryContext extends MemoryInheritance {
   cwd: string;
   workspace?: string;
   child: boolean;
-  parentId?: string;
 }
 /** Owns selection and usage policy; durable memory generation remains in LongMemoryService. */
 type MemoryPort = {
@@ -24,14 +23,12 @@ type MemoryPort = {
   homeDir: string;
   longMemory: LongMemoryService;
   context(id: string): MemoryContext;
-  updateInheritance(id: string, value: MemoryInheritance): void;
 };
 export class MemoryPolicy {
   private batch?: Promise<void>;
   private models = new Map<string, { runtime: ModelRuntime; model: Model } | Error>();
   private snapshots = new Map<string, SessionMemorySnapshot>();
   private used = new Map<string, MemorySource[]>();
-  private selected = new Set<string>();
   private readonly port: MemoryPort;
   constructor(port: MemoryPort) {
     this.port = port;
@@ -86,27 +83,16 @@ export class MemoryPolicy {
   async wait(): Promise<void> {
     await this.batch;
   }
-  async prepare(id: string, mode: MemoryMode, signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted();
-    // 桌面会话使用持久资源快照；后续输入不再重读共享记忆文件。
-    if (this.snapshots.has(id)) {
-      this.used.set(id, []);
-      if (mode === "long") this.selected.add(id);
-      return;
-    }
+  /** Called only when the host captures the first input's injected resources. */
+  async capture(id: string, mode: MemoryMode): Promise<void> {
+    if (this.snapshots.has(id)) return;
     const context = this.port.context(id);
-    if (context.child) {
-      this.refreshChild(id);
-      return;
-    }
+    if (context.child) return;
     const short =
       mode === "short"
         ? await readShortMemory({ homeDir: this.port.homeDir, workspace: context.workspace })
         : { instructions: [], diagnostics: [] };
     const long = mode === "long" ? await this.port.longMemory.context() : { instructions: [], sources: [] };
-    signal?.throwIfAborted();
-    if (mode === "long") this.selected.add(id);
-    else this.selected.delete(id);
     this.used.set(id, []);
     this.snapshots.set(id, {
       instructions: [...short.instructions, ...long.instructions],
@@ -128,32 +114,16 @@ export class MemoryPolicy {
   restore(id: string, snapshot: SessionMemorySnapshot): void {
     this.snapshots.set(id, structuredClone(snapshot));
   }
-  inherit(childId: string, parentId: string): MemoryInheritance {
+  /** Per-turn bookkeeping only: never discovers or reads memory files. */
+  beginTurn(id: string): void {
+    this.used.set(id, []);
+  }
+  inherit(parentId: string): MemoryInheritance {
     const snapshot = this.snapshots.get(parentId);
-    if (this.selected.has(parentId)) this.selected.add(childId);
     return {
       memoryInstructions: structuredClone(snapshot?.instructions ?? []),
       memoryShortInstructions: structuredClone(snapshot?.shortInstructions ?? []),
     };
-  }
-  refreshChild(id: string): void {
-    const context = this.port.context(id);
-    if (!context.child) return;
-    if (context.memoryInstructions !== undefined) return;
-    const parent = context.parentId ? this.snapshots.get(context.parentId) : undefined;
-    if (parent && context.parentId && this.selected.has(context.parentId)) {
-      this.selected.add(id);
-      this.port.updateInheritance(id, {
-        memoryInstructions: [...parent.instructions],
-        memoryShortInstructions: [...parent.shortInstructions],
-      });
-    } else if (!this.selected.has(id)) {
-      const short = parent?.shortInstructions ?? context.memoryShortInstructions ?? [];
-      this.port.updateInheritance(id, {
-        memoryInstructions: [...short],
-        memoryShortInstructions: [...short],
-      });
-    }
   }
   instructions(id: string): string[] {
     const context = this.port.context(id);
@@ -181,30 +151,8 @@ export class MemoryPolicy {
   usedSources(id: string) {
     return structuredClone(this.used.get(id) ?? []);
   }
-  settled(id: string): void {
-    if (!this.port.context(id).child) this.selected.delete(id);
-  }
-  withdraw(ids: Iterable<string>): void {
-    for (const snapshot of this.snapshots.values()) {
-      snapshot.instructions = [...snapshot.shortInstructions];
-      snapshot.sources = [];
-    }
-    this.used.clear();
-    this.selected.clear();
-    for (const id of ids) {
-      const context = this.port.context(id);
-      if (!context.child) continue;
-      this.port.updateInheritance(id, {
-        memoryInstructions: [...(context.memoryShortInstructions ?? [])],
-      });
-    }
-  }
   forget(id: string): void {
     this.snapshots.delete(id);
     this.used.delete(id);
-    this.selected.delete(id);
-  }
-  close(): void {
-    this.selected.clear();
   }
 }

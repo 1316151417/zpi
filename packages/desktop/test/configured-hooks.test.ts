@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { HookRunner } from "@zpi-dev/coding-agent";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { ConfiguredHooks } from "../src/main/plugins/configured-hooks.ts";
 import { SessionHost } from "../src/main/session-host.ts";
 import type { HookConfig } from "../src/shared/hooks.ts";
@@ -153,6 +153,20 @@ test("malformed stored hook lists fail closed", async () => {
   f.settings.state.setSetting("hooks.config", [null]);
   const hooks = new ConfiguredHooks(f.dir, f.settings.state);
   expect(() => hooks.snapshot(null)).toThrow("无效钩子记录");
+});
+
+test("collaboration exposes no input preparation hook and ordinary sends do not reparse Agent definitions", async () => {
+  const f = await fixture();
+  expect(f.host.getHooks(null).plugins.some((plugin) => plugin.id === "zpi.collaboration")).toBe(false);
+  await run(f, "Initialize the session catalog");
+  const agents = vi.spyOn(f.host.localPlugins, "agents");
+  try {
+    await run(f, "Ordinary follow-up");
+    await f.host.listSessionCustomCommands(f.session.id);
+    expect(agents).not.toHaveBeenCalled();
+  } finally {
+    agents.mockRestore();
+  }
 });
 
 test("external plugin hooks are shown separately and follow their plugin state", async () => {

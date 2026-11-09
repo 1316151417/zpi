@@ -98,12 +98,10 @@ export class BuiltinPluginRuntime {
           cwd: sessions.cwd(id),
           workspace: record?.projectId ? sessions.cwd(id) : undefined,
           child: !!config.subagentProfile,
-          parentId: record?.parentSessionId,
           memoryInstructions: config.memoryInstructions,
           memoryShortInstructions: config.memoryShortInstructions,
         };
       },
-      updateInheritance: (id, value) => sessions.configure(id, value),
     });
     this.titles = new TitlePolicy({
       state: (id) => sessions.state(id),
@@ -172,7 +170,7 @@ export class BuiltinPluginRuntime {
               plugins: pluginsForSubagent(parent.plugins),
               subagentProfile: structuredClone(profile),
               subagentInstructions: structuredClone(this.parentInstructions.get(id) ?? []),
-              ...this.memory.inherit(child, id),
+              ...this.memory.inherit(id),
             });
             sessions.select(child, selection);
             sessions.update(child, { titleState: "manual", title: description, draft: false });
@@ -184,7 +182,6 @@ export class BuiltinPluginRuntime {
         },
         run: async (id, prompt) => {
           if (sessions.get(id)?.archivedAt != null) throw new Error("busy: 子智能体已归档");
-          this.memory.refreshChild(id);
           await sessions.run({ sessionId: id, text: prompt }, true);
           while (sessions.active(id)) await sessions.active(id)?.done;
         },
@@ -253,13 +250,12 @@ export class BuiltinPluginRuntime {
     return resolveBuiltinPlugins(snapshots, context, {
       external,
       memory: {
-        prepare: (id, mode, signal) => this.memory.prepare(id, mode, signal),
+        beginTurn: (id) => this.memory.beginTurn(id),
         instructions: (id) => this.memory.instructions(id),
         read: (id, path) => this.memory.recordRead(id, path),
         schedule: (id) => {
           if (!this.ports.sessions.get(id)?.parentSessionId) this.memory.schedule(id);
         },
-        settled: (id) => this.memory.settled(id),
       },
       titles: {
         fallback: (id, text) => this.titles.fallback(id, text),
@@ -276,7 +272,6 @@ export class BuiltinPluginRuntime {
         tools: (id, codex) => this.collaboration.tools(id, codex, external.agents),
         childTools: (id) => this.collaboration.childTools(id),
         taskBackend: () => this.collaboration.taskBackend(),
-        prepare: (id, codex) => this.collaboration.prepare(id, codex, external.agents()),
         listing: (id) => this.collaboration.listing(id),
         previewListing: (cwd, codex) => this.collaboration.previewListing(cwd, codex, external.agents()),
       },
@@ -393,7 +388,7 @@ export class BuiltinPluginRuntime {
     ];
     const mode =
       config.plugins.find((plugin) => plugin.id === desktopPluginIds.memory)?.options?.mode ?? "off";
-    await this.memory.prepare(id, mode as import("./memory/policy.ts").MemoryMode);
+    await this.memory.capture(id, mode as import("./memory/policy.ts").MemoryMode);
     return { agents, memory: this.memory.snapshot(id), diagnostics: catalog.diagnostics };
   }
   restoreResources(id: string, resources?: SessionBuiltinResources): void {
@@ -646,7 +641,6 @@ export class BuiltinPluginRuntime {
     if (errors.length > 1) throw new AggregateError(errors, "Failed to close builtin plugin runtimes");
   }
   async drain(): Promise<void> {
-    this.memory.close();
     await this.longMemory.drain();
   }
 }

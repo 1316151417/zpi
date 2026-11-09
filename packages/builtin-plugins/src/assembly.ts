@@ -26,11 +26,10 @@ export interface PluginContext {
 export interface BuiltinPluginBindings {
   external?: { validate(snapshot: PluginSnapshot): void; bind(snapshot: PluginSnapshot): SessionPlugin };
   memory: {
-    prepare(sessionId: string, mode: MemoryMode, signal: AbortSignal): Promise<void>;
+    beginTurn(sessionId: string): void;
     instructions(sessionId: string): string[];
     read(sessionId: string, path: string): void;
     schedule(sessionId: string): void;
-    settled(sessionId: string): void;
   };
   titles: { fallback(sessionId: string, prompt: string): void; start(sessionId: string): void };
   notifications: {
@@ -45,7 +44,6 @@ export interface BuiltinPluginBindings {
   collaboration: {
     tools(sessionId: string, codex: boolean): ToolDefinition[];
     childTools(sessionId: string): ToolDefinition[];
-    prepare(sessionId: string, codex: boolean): void;
     listing(sessionId: string): string;
     previewListing(cwd: string, codex: boolean): string;
     taskBackend(): TaskBackend;
@@ -126,18 +124,6 @@ export function resolveBuiltinPlugins(
               agentConcurrencyNote +
               "\n</system-reminder>",
           }),
-          hooks: bindBuiltinHooks(snapshot, {
-            prepare: () => {
-              try {
-                ports.collaboration.prepare(context.sessionId, codex);
-              } catch (error) {
-                return {
-                  block: true,
-                  reason: error instanceof Error ? error.message : "Agent profiles could not be prepared",
-                };
-              }
-            },
-          }),
         },
         backend: ports.collaboration.taskBackend(),
       };
@@ -153,31 +139,29 @@ export function resolveBuiltinPlugins(
           ...snapshot,
           contextInstructions: (): Record<string, string> =>
             context.preview ? {} : { memory: ports.memory.instructions(context.sessionId).join("\n\n") },
-          hooks: context.preview
-            ? []
-            : bindBuiltinHooks(snapshot, {
-                prepare: async (_input, signal) => {
-                  await ports.memory.prepare(context.sessionId, mode, signal);
-                  if (!scheduled && !context.profile && mode === "long") {
-                    scheduled = true;
-                    ports.memory.schedule(context.sessionId);
-                  }
-                },
-                read: (input) => {
-                  if (
-                    !context.profile &&
-                    "toolInput" in input &&
-                    input.toolInput &&
-                    typeof input.toolInput === "object" &&
-                    "path" in input.toolInput &&
-                    typeof input.toolInput.path === "string"
-                  )
-                    ports.memory.read(context.sessionId, input.toolInput.path);
-                },
-                settled: () => {
-                  ports.memory.settled(context.sessionId);
-                },
-              }).filter((hook) => !context.profile || hook.event !== "PostToolUse"),
+          hooks:
+            context.preview || context.profile || mode !== "long"
+              ? []
+              : bindBuiltinHooks(snapshot, {
+                  begin: () => {
+                    ports.memory.beginTurn(context.sessionId);
+                    if (!scheduled) {
+                      scheduled = true;
+                      ports.memory.schedule(context.sessionId);
+                    }
+                  },
+                  read: (input) => {
+                    if (
+                      !context.profile &&
+                      "toolInput" in input &&
+                      input.toolInput &&
+                      typeof input.toolInput === "object" &&
+                      "path" in input.toolInput &&
+                      typeof input.toolInput.path === "string"
+                    )
+                      ports.memory.read(context.sessionId, input.toolInput.path);
+                  },
+                }),
         },
       };
     },

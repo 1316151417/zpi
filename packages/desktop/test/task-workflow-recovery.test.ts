@@ -129,7 +129,6 @@ it.each([false, true])(
     expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
     expect(host.getSessionSnapshot(sideChat.id).session.archivedAt).toEqual(expect.any(Number));
     await expect(host.closeSideChat(task.childSessionId)).rejects.toThrow("不是辅助对话");
-    host.plugins.collaboration.prepare(f.session.id);
     const followup = host.plugins.collaboration
       .tools(f.session.id)
       .find((tool) => tool.name === "SendMessage");

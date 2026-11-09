@@ -120,13 +120,6 @@ export class SubagentPlugin {
     const agents = this.profiles.list(cwd, codexSubagentPrompt).agents.filter((agent) => agent.enabled);
     return structuredClone([...new Map([...agents, ...extra].map((agent) => [agent.name, agent])).values()]);
   }
-  prepare(parentId: string, codexSubagentPrompt = false, extra: readonly SubagentProfile[] = []) {
-    if (this.catalog.has(parentId)) return;
-    this.restoreCatalog(
-      parentId,
-      this.availableProfiles(this.port.cwd(parentId), codexSubagentPrompt, extra).map(summarizeSubagent),
-    );
-  }
   restoreCatalog(parentId: string, agents: readonly SubagentSummary[]) {
     this.catalog.set(
       parentId,

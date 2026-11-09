@@ -5,12 +5,7 @@ import {
   resolveBuiltinPlugins,
 } from "@zpi-dev/builtin-plugins/assembly";
 import type { TaskBackend } from "@zpi-dev/builtin-plugins/tasks/controls";
-import {
-  assembleSession,
-  createCodingTools,
-  type SessionPlugin,
-  type ToolDefinition,
-} from "@zpi-dev/coding-agent";
+import { assembleSession, createCodingTools, type ToolDefinition } from "@zpi-dev/coding-agent";
 import { Type } from "typebox";
 import { expect, test, vi } from "vitest";
 import type { SubagentProfile } from "../src/collaboration/types.ts";
@@ -35,11 +30,10 @@ function backend(kind: string): TaskBackend {
 function ports(): BuiltinPluginBindings {
   return {
     memory: {
-      prepare: async () => {},
+      beginTurn: vi.fn(),
       instructions: () => [],
       read: () => {},
-      schedule: () => {},
-      settled: () => {},
+      schedule: vi.fn(),
     },
     titles: { fallback: () => {}, start: () => {} },
     notifications: { send: () => {} },
@@ -49,7 +43,6 @@ function ports(): BuiltinPluginBindings {
     collaboration: {
       tools: vi.fn(() => [tool("Agent"), tool("SendMessage")]),
       childTools: vi.fn(() => [tool("RespondToCoordinator")]),
-      prepare: vi.fn(),
       listing: () => "live agents",
       previewListing: () => "preview agents",
       taskBackend: () => backend("agent"),
@@ -98,21 +91,72 @@ test.each([
   );
 });
 
-test("preview and assembly do not prepare agent runs; collaboration owns preparation and dynamic context", async () => {
+test.each([true, false])(
+  "collaboration consumes its catalog without a per-input preparation hook (preview=%s)",
+  (preview) => {
+    const port = ports();
+    const snapshots = desktopPluginManifests.filter((plugin) => plugin.id === desktopPluginIds.collaboration);
+    const contributions = resolveBuiltinPlugins(
+      snapshots,
+      { sessionId: "owner", cwd: "/tmp", preview },
+      port,
+    );
+    const assembly = assembleSession({ ...contributions, builtinTools: [] });
+    expect(Object.values(assembly.getContextSections()).join("\n")).toContain(
+      preview ? "preview agents" : "live agents",
+    );
+    expect(contributions.plugins?.[0].hooks ?? []).toEqual([]);
+    expect(builtinPluginHooks(snapshots[0])).toEqual([]);
+    expect(port.webTools).not.toHaveBeenCalled();
+    expect(port.questionTool).not.toHaveBeenCalled();
+  },
+);
+
+test.each(["off", "short"])("%s memory has no per-input or run-end preparation hooks", (mode) => {
+  const base = desktopPluginManifests.find((plugin) => plugin.id === desktopPluginIds.memory);
+  if (!base) throw new Error("Missing memory plugin");
+  const snapshot = { ...base, options: { mode } };
+  expect(builtinPluginHooks(snapshot)).toEqual([]);
+  const contributions = resolveBuiltinPlugins([snapshot], { sessionId: "owner", cwd: "/tmp" }, ports());
+  expect(contributions.plugins?.[0].hooks ?? []).toEqual([]);
+});
+
+test("long memory begins usage tracking per turn and schedules generation once without a capture hook", async () => {
+  const base = desktopPluginManifests.find((plugin) => plugin.id === desktopPluginIds.memory);
+  if (!base) throw new Error("Missing memory plugin");
+  const snapshot = { ...base, options: { mode: "long" } };
   const port = ports();
-  const contributions = resolve([desktopPluginIds.collaboration], port);
-  const assembly = assembleSession({ ...contributions, builtinTools: [] });
-  expect(Object.values(assembly.getContextSections()).join("\n")).toContain("preview agents");
-  expect(port.collaboration.prepare).not.toHaveBeenCalled();
-  const hook = (contributions.plugins as SessionPlugin[])[0].hooks?.[0];
-  if (!hook) throw new Error("Missing collaboration hook");
-  await hook.handler(
-    { event: "UserPromptSubmit", sessionId: "owner", cwd: "/tmp", invocationId: "turn", prompt: "delegate" },
-    new AbortController().signal,
-  );
-  expect(port.collaboration.prepare).toHaveBeenCalledWith("owner", false);
-  expect(port.webTools).not.toHaveBeenCalled();
-  expect(port.questionTool).not.toHaveBeenCalled();
+  const contributions = resolveBuiltinPlugins([snapshot], { sessionId: "owner", cwd: "/tmp" }, port);
+  const hooks = contributions.plugins?.[0].hooks ?? [];
+  expect(hooks.map((hook) => hook.event)).toEqual(["UserPromptSubmit", "PostToolUse"]);
+  for (let turn = 0; turn < 2; turn++) {
+    await hooks[0].handler(
+      {
+        event: "UserPromptSubmit",
+        sessionId: "owner",
+        cwd: "/tmp",
+        invocationId: `turn-${turn}`,
+        prompt: "continue",
+      },
+      new AbortController().signal,
+    );
+  }
+  expect(port.memory.beginTurn).toHaveBeenCalledTimes(2);
+  expect(port.memory.schedule).toHaveBeenCalledExactlyOnceWith("owner");
+  const profile: SubagentProfile = {
+    id: "child",
+    name: "child",
+    description: "Child",
+    systemPrompt: "Work",
+    color: "blue",
+    scope: "built-in",
+    enabled: true,
+    injectAgentsMd: false,
+  };
+  expect(
+    resolveBuiltinPlugins([snapshot], { sessionId: "child", cwd: "/tmp", profile }, port).plugins?.[0]
+      .hooks ?? [],
+  ).toEqual([]);
 });
 
 test("child plugins keep the coordinator channel and apply profile permissions without recursive agents", () => {

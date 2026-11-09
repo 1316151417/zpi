@@ -51,7 +51,7 @@ function fixture(toolNames?: string[]) {
     notify: vi.fn(async () => {}),
   };
   const plugin = new SubagentPlugin(profiles, port);
-  plugin.prepare("parent");
+  plugin.restoreCatalog("parent", profiles.list("/workspace").agents);
   const invoke = (name: string, params: unknown, signal?: AbortSignal, parent = "parent") => {
     const tool = [...plugin.tools(parent), ...new TaskControls([plugin.taskBackend()]).tools(parent)].find(
       (tool) => tool.name === name,

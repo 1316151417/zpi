@@ -201,6 +201,9 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   expect(
     (await host.plugins.getMemoryStatus(consumer.id)).usedSources?.map((item) => item.sessionId),
   ).toEqual([sourceId]);
+  await host.startRun({ sessionId: consumer.id, text: "Start a new turn without reading memory sources" });
+  await host.activeRuns.get(consumer.id)?.done;
+  expect((await host.plugins.getMemoryStatus(consumer.id)).usedSources).toEqual([]);
   const before = f.server.requests.length;
   await host.plugins.checkMemoryNow(trigger.id);
   await vi.waitFor(() => expect(host.plugins.longMemory.status().running).toBe(false));

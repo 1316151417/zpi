@@ -162,28 +162,23 @@ export interface BuiltinHookDeclaration {
 /** One declaration feeds runtime binding and the read-only settings projection. */
 export function builtinPluginHooks(plugin: PluginSnapshot): BuiltinHookDeclaration[] {
   switch (plugin.id) {
-    case desktopPluginIds.collaboration:
-      return [{ key: "prepare", event: "UserPromptSubmit", description: "准备本轮可委派的子智能体定义" }];
     case desktopPluginIds.memory:
-      return [
-        {
-          key: "prepare",
-          event: "UserPromptSubmit",
-          description: "按记忆模式准备本轮上下文",
-          onError: "block",
-        },
-        ...(plugin.options?.mode === "long"
-          ? [
-              {
-                key: "read",
-                event: "PostToolUse" as const,
-                matcher: "^read$",
-                description: "记录长期记忆来源的读取",
-              },
-            ]
-          : []),
-        { key: "settled", event: "RunEnd", description: "释放本轮记忆选择" },
-      ];
+      return plugin.options?.mode === "long"
+        ? [
+            {
+              key: "begin",
+              event: "UserPromptSubmit",
+              description: "重置本轮记忆来源记录，并按需调度后台整理",
+              onError: "block",
+            },
+            {
+              key: "read",
+              event: "PostToolUse",
+              matcher: "^read$",
+              description: "记录长期记忆来源的读取",
+            },
+          ]
+        : [];
     case desktopPluginIds.title:
       return [
         { key: "fallback", event: "InputAccepted", description: "设置任务的临时标题" },

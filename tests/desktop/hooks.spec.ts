@@ -40,6 +40,9 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(page.getByRole("region", { name: "会话标题钩子", exact: true })).toContainText(
         "InputAccepted",
       );
+      await expect(page.getByRole("region", { name: "子智能体协作钩子", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "记忆策略钩子", exact: true })).toHaveCount(0);
+      await expect(page.getByText("准备本轮可委派的子智能体定义", { exact: true })).toHaveCount(0);
       await expect(page.locator(".hook-plugin-state").first()).toContainText("系统内置插件");
       for (const width of [1280, 800, 640]) {
         await page.setViewportSize({ width, height: 900 });
@@ -53,10 +56,9 @@ for (const colorScheme of ["light", "dark"] as const) {
         path: test.info().outputPath(`hooks-${colorScheme}.png`),
         animations: "disabled",
       });
-      await page.getByLabel("搜索钩子", { exact: true }).fill("记忆策略");
-      await expect(page.getByRole("region", { name: "记忆策略钩子", exact: true })).toBeVisible();
+      await page.getByLabel("搜索钩子", { exact: true }).fill("会话标题");
+      await expect(page.getByRole("region", { name: "会话标题钩子", exact: true })).toBeVisible();
       await expect(installed()).toHaveCount(0);
-      await expect(page.getByRole("region", { name: "会话标题钩子", exact: true })).toHaveCount(0);
       await page.getByLabel("搜索钩子", { exact: true }).fill("not-a-hook");
       await expect(installed()).toContainText("未找到匹配的钩子");
       await page.getByRole("button", { name: "新建", exact: true }).click();

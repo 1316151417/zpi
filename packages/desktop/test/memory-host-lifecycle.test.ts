@@ -218,6 +218,14 @@ test.each(["clear", "restart"])(
     let host = f.host;
     if (action === "clear") await host.plugins.clearLongMemory();
     else {
+      // A legacy child must retain historical memory without reconstructing missing inheritance fields.
+      const saved = f.settings.state.getTask(task.childSessionId);
+      if (!saved) throw new Error("Missing child state");
+      const config = structuredClone(saved.frozenConfiguration) as Record<string, unknown>;
+      delete config.resources;
+      delete config.memoryInstructions;
+      delete config.memoryShortInstructions;
+      f.settings.state.upsertTask({ ...saved, frozenConfiguration: config });
       await host.close();
       host = new SessionHost(f.dir, f.settings, f.resources, f.workspace);
       cleanup.push(() => host.close());
@@ -227,7 +235,6 @@ test.each(["clear", "restart"])(
     context.mockClear();
     const checks = vi.spyOn(host.plugins.longMemory, "check").mockResolvedValue();
     checks.mockClear();
-    host.plugins.collaboration.prepare(f.session.id);
     const sendMessage = host.plugins.collaboration
       .tools(f.session.id)
       .find((tool) => tool.name === "SendMessage");
@@ -255,6 +262,14 @@ test.each(["clear", "restart"])(
     expect(prompt).toContain("STALE_LONG_MEMORY");
     expect(context).not.toHaveBeenCalled();
     expect(checks).not.toHaveBeenCalled();
+    if (action === "restart") {
+      const saved = f.settings.state.getTask(task.childSessionId)?.frozenConfiguration as
+        | Record<string, unknown>
+        | undefined;
+      expect(saved?.resources).toBeUndefined();
+      expect(saved?.memoryInstructions).toBeUndefined();
+      expect(saved?.memoryShortInstructions).toBeUndefined();
+    }
     await host.plugins.collaboration.stop(f.session.id, task.agentId);
   },
 );
