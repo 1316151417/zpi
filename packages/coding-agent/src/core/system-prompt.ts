@@ -44,6 +44,25 @@ export interface SystemContext {
   base: string;
   sections: Record<string, string>;
 }
+type SkillPromptTool = Parameters<typeof formatSkillsForPrompt>[1];
+const immutableResourceSections = new WeakMap<
+  ResourceLoader,
+  { tool: SkillPromptTool; resources: string; skills: string }
+>();
+function resourceSections(loader: ResourceLoader | undefined, tool: SkillPromptTool) {
+  const cached = loader?.immutable ? immutableResourceSections.get(loader) : undefined;
+  if (cached && cached.tool === tool) return cached;
+  const skills = loader?.listSkills?.().skills ?? [];
+  const sections = {
+    tool,
+    resources: resourceInstructions(loader)
+      .filter((part) => !part.startsWith("<skills>"))
+      .join("\n\n"),
+    skills: skills.length && tool ? formatSkillsForPrompt(skills, tool) : "",
+  };
+  if (loader?.immutable) immutableResourceSections.set(loader, sections);
+  return sections;
+}
 export function buildSystemContext(options: {
   cwd: string;
   projectName?: string;
@@ -82,10 +101,10 @@ export function buildSystemContext(options: {
   const toolSnippets = options.tools
     .filter((tool) => ["read", "write", "edit", "bash"].includes(tool.name) && tool.promptSnippet)
     .map((tool) => `- ${tool.name}: ${tool.promptSnippet}`);
-  const skills = options.loader?.listSkills?.().skills ?? [];
   const skillTool = (["read", "Read", "Skill", "bash", "Bash"] as const).find((name) =>
     options.tools.some((tool) => tool.name === name),
   );
+  const resources = resourceSections(options.loader, skillTool);
   const base =
     options.baseInstructions ??
     [
@@ -99,11 +118,9 @@ export function buildSystemContext(options: {
     "zpi.tool-rules": rules.length
       ? `<rules>\n${[...new Set(rules)].map((r) => `- ${r}`).join("\n")}\n</rules>`
       : "",
-    "zpi.resources": resourceInstructions(options.loader)
-      .filter((part) => !part.startsWith("<skills>"))
-      .join("\n\n"),
+    "zpi.resources": resources.resources,
     "zpi.custom": (options.customInstructions ?? []).join("\n\n"),
-    "zpi.skills": skills.length && skillTool ? formatSkillsForPrompt(skills, skillTool) : "",
+    "zpi.skills": resources.skills,
     "zpi.environment": `<cwd>\n${options.cwd.replace(/\\/g, "/")}\n</cwd>`,
   };
   return { base, sections };

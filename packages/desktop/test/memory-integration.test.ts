@@ -11,7 +11,7 @@ test.each([
   [true, false],
   [false, true],
 ])(
-  "freezes exclusive short=%s long=%s switches and refreshes content only at user boundaries",
+  "freezes exclusive short=%s long=%s switches and injected content for the complete session",
   async (short, long) => {
     const f = await fixture();
     await mkdir(join(f.resources, ".zpi"), { recursive: true });
@@ -34,8 +34,8 @@ test.each([
     await writeFile(path, "# Memory\n- [language] USER_MEMORY_SECOND\n");
     expect(system().includes("USER_MEMORY_SECOND")).toBe(false);
     await run(f, "second");
-    expect(system().includes("USER_MEMORY_SECOND")).toBe(short);
-    expect(system().includes("USER_MEMORY_FIRST")).toBe(false);
+    expect(system().includes("USER_MEMORY_SECOND")).toBe(false);
+    expect(system().includes("USER_MEMORY_FIRST")).toBe(short);
     expect(system().includes("LONG_SUMMARY_MARKER")).toBe(long);
     const next = await f.host.createSession(null);
     await f.host.startRun({ sessionId: next.id, text: "new session" });
@@ -70,10 +70,14 @@ test("default short memory loads user and bound worktree files, excludes unbound
   await writeFile(path, `# Memory\n- [bad] ${"长".repeat(2001)}`);
   await f.host.startRun({ sessionId: session.id, text: "refresh" });
   await f.host.activeRuns.get(session.id)?.done;
-  expect(f.host.sessions.get(session.id)?.systemPrompt).not.toContain("WORKTREE_MEMORY");
+  expect(f.host.sessions.get(session.id)?.systemPrompt).toContain("WORKTREE_MEMORY");
+  const next = await f.host.createSession(project.id, { cwd: worktree });
+  await f.host.startRun({ sessionId: next.id, text: "new conversation reads current memory" });
+  await f.host.activeRuns.get(next.id)?.done;
+  expect(f.host.sessions.get(next.id)?.systemPrompt).not.toContain("WORKTREE_MEMORY");
   expect(
     f.host.sessions
-      .get(session.id)
+      .get(next.id)
       ?.getResourceDiagnostics()
       .some((item) => item.path === path),
   ).toBe(true);
@@ -184,24 +188,28 @@ test("runs both stages through a frozen model, publishes source snapshots and in
   expect(summary).toContain("evidence_path:");
   const evidencePath = JSON.parse(/evidence_path: (.+)/.exec(summary)?.[1] ?? '""') as string;
   expect(await readFile(evidencePath, "utf8")).toContain("Remember the reusable project procedure");
-  await host.startRun({ sessionId: trigger.id, text: "continue" });
+  await host.startRun({ sessionId: trigger.id, text: "continue existing snapshot" });
   await host.activeRuns.get(trigger.id)?.done;
-  expect(host.sessions.get(trigger.id)?.systemPrompt).toContain("SUMMARY_ONLY_MARKER");
-  expect(host.sessions.get(trigger.id)?.systemPrompt).not.toContain("DETAIL_ONLY_MARKER");
-  await host.startRun({ sessionId: trigger.id, text: `READ_MEMORY:${status.sources[0].summaryPath}` });
-  await host.activeRuns.get(trigger.id)?.done;
-  expect((await host.plugins.getMemoryStatus(trigger.id)).usedSources?.map((item) => item.sessionId)).toEqual(
-    [sourceId],
-  );
+  expect(host.sessions.get(trigger.id)?.systemPrompt).not.toContain("SUMMARY_ONLY_MARKER");
+  const consumer = await host.createSession(null);
+  await host.startRun({ sessionId: consumer.id, text: "use the published memory in a new conversation" });
+  await host.activeRuns.get(consumer.id)?.done;
+  expect(host.sessions.get(consumer.id)?.systemPrompt).toContain("SUMMARY_ONLY_MARKER");
+  expect(host.sessions.get(consumer.id)?.systemPrompt).not.toContain("DETAIL_ONLY_MARKER");
+  await host.startRun({ sessionId: consumer.id, text: `READ_MEMORY:${status.sources[0].summaryPath}` });
+  await host.activeRuns.get(consumer.id)?.done;
+  expect(
+    (await host.plugins.getMemoryStatus(consumer.id)).usedSources?.map((item) => item.sessionId),
+  ).toEqual([sourceId]);
   const before = f.server.requests.length;
   await host.plugins.checkMemoryNow(trigger.id);
   await vi.waitFor(() => expect(host.plugins.longMemory.status().running).toBe(false));
   expect(f.server.requests.length).toBe(before);
   await host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true, generate: false });
   expect(host.plugins.longMemory.status().status).toBe("paused");
-  await host.startRun({ sessionId: trigger.id, text: "while paused" });
-  await host.activeRuns.get(trigger.id)?.done;
-  expect(host.sessions.get(trigger.id)?.systemPrompt).toContain("SUMMARY_ONLY_MARKER");
+  await host.startRun({ sessionId: consumer.id, text: "while paused" });
+  await host.activeRuns.get(consumer.id)?.done;
+  expect(host.sessions.get(consumer.id)?.systemPrompt).toContain("SUMMARY_ONLY_MARKER");
   await host.plugins.clearLongMemory();
   await host.saveMemorySettings({ ...defaultMemorySettings, short: false, long: true });
   await host.plugins.checkMemoryNow(trigger.id);
@@ -336,7 +344,13 @@ test("the main agent appends separate notes and the real consolidation runner re
   expect(await readFile(notePath("remember.md"), "utf8")).toBe(noteA);
   expect(await readFile(notePath("correct.md"), "utf8")).toBe(noteB);
   await run(f, "USE_MEMORY");
-  const after = f.host.sessions.get(f.session.id)?.systemPrompt;
+  expect(f.host.sessions.get(f.session.id)?.systemPrompt).not.toContain(
+    "English responses for project A. [ad-hoc note]",
+  );
+  const updated = await f.host.createSession(null);
+  await f.host.startRun({ sessionId: updated.id, text: "USE_MEMORY" });
+  await f.host.activeRuns.get(updated.id)?.done;
+  const after = f.host.sessions.get(updated.id)?.systemPrompt;
   expect(after).toContain("English responses for project A. [ad-hoc note]");
   expect(after).not.toContain("NOTE_A_BODY");
   expect(after).not.toContain("NOTE_B_BODY");

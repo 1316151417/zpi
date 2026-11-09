@@ -217,7 +217,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
                 已安装{" "}
                 <SettingsHelp
                   label="技能"
-                  text={`技能开关在新任务首次发送时生效，已有任务保留原配置。\n全局技能目录：${skills?.directories.join("、") || "正在读取…"}`}
+                  text={`技能目录和开关在新任务首次发送时固定；正文和引用文件按需读取原路径的当前内容。\n全局技能目录：${skills?.directories.join("、") || "正在读取…"}`}
                 />
               </span>{" "}
               <span>{skills?.skills.length ?? 0}</span>

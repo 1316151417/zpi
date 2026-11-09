@@ -128,7 +128,7 @@ it("nullable ownership uses the real workspace for AGENTS, skills, init and tool
     JSON.stringify(request).includes("$inspect inspect"),
   );
   expect(JSON.stringify(skillRequest)).toContain(
-    join(String(s.cwd), ".zpi", "skills", "inspect", "SKILL.md"),
+    (await f.host.listSessionSkills(s.id)).skills.find((skill) => skill.name === "inspect")?.path,
   );
   expect(JSON.stringify(skillRequest)).not.toContain("WORKSPACE SKILL");
   expect(JSON.stringify(f.server.requests.at(-1))).toContain("WORKSPACE SKILL");

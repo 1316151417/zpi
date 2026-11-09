@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { join } from "node:path";
 import { AgentSession, SessionManager } from "@zpi-dev/coding-agent";
@@ -913,7 +913,7 @@ test("guidance at child settlement keeps the foreground caller waiting for the f
   }
 });
 
-test("freezes agent definitions and inherited AGENTS.md for the complete parent turn", async () => {
+test("keeps injected parent policy and directory metadata but reads the current role on explicit launch", async () => {
   const started = deferred();
   let parentResponse: ServerResponse | undefined;
   const f = await fixture((body, response) => {
@@ -941,7 +941,13 @@ test("freezes agent definitions and inherited AGENTS.md for the complete parent 
   await started.promise;
   f.host.plugins.saveSubagent({
     id: profile.id,
-    config: { ...custom, systemPrompt: "MODIFIED ROLE" },
+    config: {
+      ...custom,
+      description: "MODIFIED DESCRIPTION",
+      systemPrompt: "MODIFIED ROLE",
+      modelSelection: model,
+      tools: ["read", "bash"],
+    },
     scope: "user",
     sessionId: null,
   });
@@ -950,10 +956,82 @@ test("freezes agent definitions and inherited AGENTS.md for the complete parent 
   call(parentResponse, { subagent_type: custom.name, description: "Frozen task", prompt: "Inspect" });
   await f.host.activeRuns.get(f.session.id)?.done;
   const child = f.server.requests.find((body) => !tools(body).includes("Agent"));
-  expect(JSON.stringify(child)).toContain("CUSTOM ROLE");
+  expect(child?.model).toBe("plain");
+  expect(JSON.stringify(child)).toContain("MODIFIED ROLE");
+  expect(JSON.stringify(child?.tools)).toContain('"name":"bash"');
   expect(JSON.stringify(child)).toContain("INITIAL WORKSPACE POLICY");
-  expect(JSON.stringify(child)).not.toContain("MODIFIED ROLE");
+  expect(JSON.stringify(child)).not.toContain("CUSTOM ROLE");
+  expect(JSON.stringify(f.server.requests.filter((body) => tools(body).includes("Agent")))).not.toContain(
+    "MODIFIED DESCRIPTION",
+  );
   expect(JSON.stringify(child)).not.toContain("MODIFIED WORKSPACE POLICY");
+});
+
+test("cold parent launch reads one current definition by its original path, while deletion fails without discovery", async () => {
+  let launchNext = false;
+  const f = await fixture((body, response) => {
+    if (tools(body).includes("Agent") && launchNext) {
+      launchNext = false;
+      call(response, { subagent_type: custom.name, description: "Explicit task", prompt: "Inspect" });
+    } else {
+      send(response, chunk({ content: "Done" }));
+      done(response);
+    }
+  });
+  const profile = f.host.plugins
+    .saveSubagent({ config: custom, scope: "user", sessionId: null })
+    .agents.find((agent) => agent.name === custom.name);
+  assert(profile?.path);
+  await run(f, "Initial directory injection");
+  const saved = JSON.stringify(f.settings.state.getTask(f.session.id)?.frozenConfiguration);
+  expect(saved).toContain(profile.path);
+  expect(saved).not.toContain("CUSTOM ROLE");
+  f.host.plugins.saveSubagent({
+    id: profile.id,
+    config: {
+      ...custom,
+      description: "LATEST DESCRIPTION",
+      systemPrompt: "LATEST ROLE",
+      modelSelection: model,
+    },
+    scope: "user",
+    sessionId: null,
+  });
+  f.host.plugins.collaboration.profiles.enable(profile.id, false);
+  await f.host.close();
+  const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
+  cleanup.push(() => restored.close());
+  const profiles = restored.plugins.collaboration.profiles;
+  const scan = vi.spyOn(profiles, "list");
+  const asyncScan = vi.spyOn(profiles, "listAsync");
+  const load = vi.spyOn(profiles, "load");
+  try {
+    await restored.init();
+    const suggestions = (await restored.listSessionCustomCommands(f.session.id)).subagents;
+    expect(suggestions).toContainEqual({ name: custom.name, description: custom.description });
+    launchNext = true;
+    await run({ ...f, host: restored }, "Start this agent now");
+    const child = f.server.requests.find((body) => !tools(body).includes("Agent"));
+    expect(child?.model).toBe("plain");
+    expect(JSON.stringify(child)).toContain("LATEST ROLE");
+    expect(JSON.stringify(child)).not.toContain("CUSTOM ROLE");
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(restored.plugins.collaboration.list(f.session.id)).toHaveLength(1);
+    const parent = f.server.requests.filter((body) => tools(body).includes("Agent"));
+    expect(JSON.stringify(parent)).not.toContain("LATEST DESCRIPTION");
+    await rm(profile.path);
+    launchNext = true;
+    await run({ ...f, host: restored }, "Try starting the deleted definition");
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(restored.plugins.collaboration.list(f.session.id)).toHaveLength(1);
+    expect(JSON.stringify(f.server.requests.at(-1))).toContain("ENOENT");
+    expect(scan).not.toHaveBeenCalled();
+    expect(asyncScan).not.toHaveBeenCalled();
+  } finally {
+    scan.mockRestore();
+    asyncScan.mockRestore();
+    load.mockRestore();
+  }
 });
 
 test("reads canonical Markdown selections, BOM/Markdown suffixes and preserves extra profile fields on edit", async () => {
@@ -997,7 +1075,7 @@ test("reads canonical Markdown selections, BOM/Markdown suffixes and preserves e
   expect(await readFile(inherited.path, "utf8")).not.toContain("thoughtLevel:");
 });
 
-test("terminal resume uses the refreshed definition/model while retaining child identity, then rejects a disabled profile", async () => {
+test("terminal cold resume retains child context/model after its source definition is edited, disabled and removed", async () => {
   let parentSteps = 0;
   let disabledAttempt = false;
   let agentId: string;
@@ -1040,8 +1118,9 @@ test("terminal resume uses the refreshed definition/model while retaining child 
   await expect.poll(() => f.host.plugins.collaboration.list(f.session.id)[0].result).toBe("Updated findings");
   await f.host.activeRuns.get(f.session.id)?.done;
   const requests = f.server.requests.filter((body) => !tools(body).includes("Agent"));
-  expect(requests[1].model).toBe("plain");
-  expect(JSON.stringify(requests[1])).toContain("UPDATED ROLE");
+  expect(requests[1].model).toBe("vision");
+  expect(JSON.stringify(requests[1])).toContain("CUSTOM ROLE");
+  expect(JSON.stringify(requests[1])).not.toContain("UPDATED ROLE");
   expect(JSON.stringify(requests[1])).toContain("Initial findings");
   expect(f.host.plugins.collaboration.list(f.session.id)[0]).toMatchObject({
     agentId,
@@ -1050,19 +1129,24 @@ test("terminal resume uses the refreshed definition/model while retaining child 
   });
   expect(f.host.getSessionSnapshot(original.childSessionId).view.runs).toHaveLength(2);
   f.host.plugins.collaboration.profiles.enable(profile.id, false);
+  assert(profile.path);
+  await rm(profile.path);
+  await f.host.close();
+  const restored = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
+  cleanup.push(() => restored.close());
+  await restored.init();
+  const load = vi.spyOn(restored.plugins.collaboration.profiles, "load");
   // Completion may be consumed at the same boundary or in a model-only turn; start from a fresh ordinary turn.
   disabledAttempt = true;
   parentSteps = 4;
-  await run(f, "Try resuming disabled child");
-  expect(f.host.getSessionSnapshot(f.session.id).view.runs.at(-1)?.orderedBlocks).toContainEqual(
-    expect.objectContaining({
-      name: "SendMessage",
-      status: "completed",
-      output: expect.stringContaining("is unavailable."),
-    }),
+  await run({ ...f, host: restored }, "Try resuming disabled child");
+  await expect.poll(() => f.server.requests.filter((body) => !tools(body).includes("Agent")).length).toBe(3);
+  expect(JSON.stringify(f.server.requests.filter((body) => !tools(body).includes("Agent")).at(-1))).toContain(
+    "CUSTOM ROLE",
   );
-  expect(f.server.requests.filter((body) => !tools(body).includes("Agent"))).toHaveLength(2);
-  expect(f.host.plugins.collaboration.list(f.session.id)).toHaveLength(1);
+  expect(restored.plugins.collaboration.list(f.session.id)).toHaveLength(1);
+  expect(load).not.toHaveBeenCalled();
+  load.mockRestore();
 });
 
 test.each(["continue", "stop", "error"])(

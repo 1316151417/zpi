@@ -98,12 +98,16 @@ import { pluginHookGroups } from "./plugins/hook-catalog.ts";
 import { LocalPlugins } from "./plugins/local-plugins.ts";
 import { projectEvent, restoreView } from "./projection.ts";
 import { sessionActivityAt } from "./session-activity.ts";
+import {
+  captureSessionResources,
+  type SessionResources,
+  sessionResourceLoader,
+} from "./session-resources.ts";
 import type { StorageIntent, TaskState } from "./state-store.ts";
 import type { SettingsStore } from "./storage.ts";
 import { retryStorageCleanup } from "./storage-cleanup.ts";
 import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
-
 import { WorkspaceFileSearches } from "./workspace-file-searches.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
 import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
@@ -116,6 +120,7 @@ interface SessionConfiguration extends PluginConfiguration {
   pluginsVersion: 3;
   template: PromptTemplate;
   disabledSkillPaths: string[];
+  resources?: SessionResources;
 }
 interface ActiveRun extends PluginRun {
   finish: () => void;
@@ -184,6 +189,8 @@ export class SessionHost {
   private requestFetch?: typeof fetch;
   private readonly responsesProxy?: (url: string) => Promise<string | undefined>;
   private configurations = new Map<string, SessionConfiguration>();
+  private resourceFlights = new Map<string, Promise<void>>();
+  private restoredResources = new Set<string>();
   private searches = new Map<string, AbortController>();
   readonly workspaceFileSearches = new WorkspaceFileSearches();
   private errors: ErrorLog;
@@ -565,7 +572,8 @@ export class SessionHost {
     // Validate saved configuration before exposing restored sessions.
     for (const id of this.records.keys()) {
       try {
-        this.configuration(id);
+        const config = this.configuration(id);
+        await Promise.all(config.plugins.map((plugin) => this.localPlugins.verify(plugin)));
       } catch (error) {
         if (!this.blocked.has(id)) this.errors.write("session.restore", error, { sessionId: id });
         this.blocked.set(id, `storage: ${String(error)}`);
@@ -616,6 +624,7 @@ export class SessionHost {
         "plugins",
         "template",
         "disabledSkillPaths",
+        "resources",
         "subagentProfile",
         "subagentInstructions",
         "memoryInstructions",
@@ -638,6 +647,19 @@ export class SessionHost {
       config.disabledSkillPaths.some((p) => typeof p !== "string")
     )
       throw new Error("Invalid session configuration");
+    if (
+      config.resources !== undefined &&
+      (!isJsonObject(config.resources) ||
+        !Array.isArray(config.resources.instructions) ||
+        !Array.isArray(config.resources.skills) ||
+        !Array.isArray(config.resources.diagnostics) ||
+        !isJsonObject(config.resources.builtin) ||
+        !Array.isArray(config.resources.builtin.agents) ||
+        !isJsonObject(config.resources.builtin.memory) ||
+        !isJsonObject(config.resources.commands) ||
+        !Array.isArray(config.resources.commands.commands))
+    )
+      throw new Error("Invalid session resources");
     this.configurations.set(id, config);
     return config;
   }
@@ -983,9 +1005,45 @@ export class SessionHost {
   private sessionResourceLoader(
     id: string | null,
     config: SessionConfiguration,
-    loader = this.resourceLoader(id),
+    loader = config.resources || (id && !this.record(id).draft)
+      ? sessionResourceLoader(config.resources)
+      : this.resourceLoader(id),
   ) {
     return this.plugins.resourceLoader(id, config, loader);
+  }
+  private async ensureSessionResources(
+    id: string,
+    config = this.configuration(id),
+    firstInput = this.record(id).draft,
+  ): Promise<void> {
+    const pending = this.resourceFlights.get(id);
+    if (pending) return pending;
+    if (this.restoredResources.has(id)) return;
+    const flight = (async () => {
+      if (!config.resources && firstInput) {
+        const loader = this.resourceLoader(id);
+        // Settle all discovery work before retry cleanup can forget partially prepared state.
+        const [builtin, commands, loaded] = await Promise.allSettled([
+          this.plugins.captureResources(id, config, this.localPlugins.agents(config.plugins)),
+          this.discoverSessionCustomCommands(id, false),
+          loader.reload(),
+        ]);
+        if (builtin.status === "rejected") throw builtin.reason;
+        if (commands.status === "rejected") throw commands.reason;
+        if (loaded.status === "rejected") throw loaded.reason;
+        config.resources = captureSessionResources(loader, builtin.value, commands.value);
+        // 工作树首发可能已接受输入；此时补存该次首发发现的目录，而非恢复时扫描。
+        if (!this.record(id).draft) this.saveTask(id, { frozenConfiguration: config });
+      }
+      this.plugins.restoreResources(id, config.resources?.builtin);
+      this.restoredResources.add(id);
+    })();
+    this.resourceFlights.set(id, flight);
+    try {
+      await flight;
+    } finally {
+      this.resourceFlights.delete(id);
+    }
   }
   async createSideChat(id: string): Promise<SessionRecord> {
     const parent = this.record(id);
@@ -998,6 +1056,7 @@ export class SessionHost {
       this.deleting.has(id)
     )
       throw new Error("busy: 此会话无法创建辅助对话");
+    await this.ensureSessionResources(id);
     this.manager(id); // Recover durable tool facts before taking the stable inherited snapshot.
     const source = this.indexes.get(id);
     if (!source) throw new Error("storage: Missing transcript index");
@@ -1404,6 +1463,28 @@ export class SessionHost {
     return this.plugins.commandSubagents(id, () => this.localPlugins.agents(this.configuration(id).plugins));
   }
   async listSessionCustomCommands(id: string) {
+    if (!this.record(id).draft || this.configuration(id).resources) {
+      await this.ensureSessionResources(id);
+      const config = this.configuration(id);
+      const commands = config.resources?.commands ?? { commands: [], diagnostics: [], directoryPath: "" };
+      return {
+        ...structuredClone(commands),
+        subagents: this.commandSubagents(id).map(({ name, description }) => ({ name, description })),
+      };
+    }
+    return this.discoverSessionCustomCommands(id);
+  }
+  private async readSessionCustomCommand(id: string, name: string) {
+    const catalog = await this.listSessionCustomCommands(id);
+    const command = catalog.commands.find((item) => item.name.slice(1).toLowerCase() === name);
+    if (!command) return;
+    if (!command.enabled) throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
+    const user = this.customCommands;
+    const project = this.commandServicesForDirectory(this.cwd(this.record(id))).commands;
+    const store = command.filePath === join(user.rootDirectory, command.id) ? user : project;
+    return store.readForSession(command);
+  }
+  private async discoverSessionCustomCommands(id: string, includeSubagents = true) {
     const record = this.record(id);
     const [project, user] = await Promise.all([
       this.commandServicesForDirectory(this.cwd(record)).commands.list(),
@@ -1420,7 +1501,9 @@ export class SessionHost {
       commands,
       diagnostics: [...project.diagnostics, ...user.diagnostics],
       directoryPath: project.directoryPath,
-      subagents: this.commandSubagents(id).map(({ name, description }) => ({ name, description })),
+      subagents: includeSubagents
+        ? this.commandSubagents(id).map(({ name, description }) => ({ name, description }))
+        : [],
     };
   }
   async listSkills(projectId: string) {
@@ -1433,8 +1516,13 @@ export class SessionHost {
     return { ...loader.listSkills(), diagnostics: loader.getDiagnostics() };
   }
   async listSessionSkills(id: string) {
-    const loader = this.resourceLoader(id);
-    await loader.reload();
+    if (!this.record(id).draft) await this.ensureSessionResources(id);
+    const config = this.configuration(id);
+    const loader =
+      config.resources || !this.record(id).draft
+        ? sessionResourceLoader(config.resources)
+        : this.resourceLoader(id);
+    await loader.reload?.();
     const resources = withPluginResources(
       loader,
       this.configuration(id).plugins.flatMap((plugin) => [...(plugin.skills ?? [])]),
@@ -1536,6 +1624,8 @@ export class SessionHost {
         // Reuse bindings, while rechecking imported files before every model run.
         this.plugins.validate(configuration.plugins, (plugin) => this.validateCustomPlugin(plugin));
       }
+      if (input.event === "RunStart")
+        await Promise.all(configuration.plugins.map((plugin) => this.localPlugins.verify(plugin)));
       await runner.run({ ...input, sessionId: id, cwd: this.cwd(this.record(id)) }, currentSignal);
     } catch (error) {
       if (input.event === "InputAccepted" || input.event === "RunStart") throw error;
@@ -1838,6 +1928,7 @@ export class SessionHost {
       this.plugins.forget(id);
       if (this.visibleSessionId === id) this.visibleSessionId = undefined;
       this.configurations.delete(id);
+      this.restoredResources.delete(id);
       this.views.delete(id);
       this.indexes.delete(id);
       this.cursors.delete(id);
@@ -2008,6 +2099,7 @@ export class SessionHost {
         status = entry.data.status as RunStatus;
     }
     if (!hasAnswer) throw new Error("invalid_input: 此回复没有可分叉的完整正文");
+    await this.ensureSessionResources(id);
     const inherited = index.getStateAt(snapshot);
     const child = await this.createSession(parent.projectId, { cwd: this.cwd(parent) });
     const operationId = randomUUID();
@@ -2281,6 +2373,11 @@ export class SessionHost {
       const manager = this.manager(id);
       const loadedInput = await this.loadInput(input);
       const { references, loaded, parsed } = loadedInput;
+      const firstInput = record.draft;
+      if (firstInput) this.configurations.set(id, this.defaultConfiguration(record.projectId));
+      const configuration = this.configuration(id);
+      // 同一份会话资源配置同时服务命令解析、候选目录和运行时；工作树必须先确定实际目录。
+      if (!needsWorktree) await this.ensureSessionResources(id, configuration, firstInput);
       const explicitUserInput = !internalSubagent && !input.subagentNotification;
       const pluginInvocation = /^\s*\/(\S+)/.exec(text)?.[1];
       const pluginCommand =
@@ -2288,9 +2385,7 @@ export class SessionHost {
       const customInvocation =
         explicitUserInput && !pluginCommand ? parseCustomCommandInvocation(text) : undefined;
       const initialCustom = customInvocation
-        ? (await this.listSessionCustomCommands(id)).commands.find(
-            (item) => item.name.slice(1).toLowerCase() === customInvocation.name,
-          )
+        ? await this.readSessionCustomCommand(id, customInvocation.name)
         : undefined;
       if (initialCustom && !initialCustom.enabled)
         throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
@@ -2318,8 +2413,6 @@ export class SessionHost {
           "configuration: 当前模型不支持图片，请选择图片模型或移除附件；有效历史中的图片也需要图片模型",
         );
       this.getSessionSnapshot(id);
-      if (record.draft) this.configurations.set(id, this.defaultConfiguration(record.projectId));
-      const configuration = this.configuration(id);
       const accept = async (model: import("@zpi-dev/ai").Model) => {
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
         // Cache retention must be durable before accepted facts can survive a crash.
@@ -2433,6 +2526,7 @@ export class SessionHost {
           inputReferences = await this.resolveInputReferences(id, references);
         }
         if (this.closing || run.aborted) throw new Error("busy: 请求已停止或应用正在关闭");
+        await this.ensureSessionResources(id, configuration, firstInput);
         const runtime =
           this.runtimes.get(id) ??
           (await ModelRuntime.create({
@@ -2456,6 +2550,8 @@ export class SessionHost {
               cwd: this.cwd(record),
               agentDir: join(this.dir, "agent"),
               resourceLoader: this.sessionResourceLoader(id, configuration),
+              preserveSystemContext:
+                !configuration.resources && context.messages.some((message) => message.role === "system"),
               customInstructions: () => this.plugins.customInstructions(configuration),
               promptTemplate: () => configuration.template,
               projectName: () => this.workspaceInfo(id).projectName,
@@ -2474,10 +2570,7 @@ export class SessionHost {
         const inputContext = { images: loaded.images, fileReferences: inputReferences };
         let commandText = text;
         if (customInvocation) {
-          const catalog = await this.listSessionCustomCommands(id);
-          const command = catalog.commands.find(
-            (item) => item.name.slice(1).toLowerCase() === customInvocation.name,
-          );
+          const command = await this.readSessionCustomCommand(id, customInvocation.name);
           if (
             Boolean(initialCustom) !== Boolean(command) ||
             (initialCustom && command?.revision !== initialCustom.revision)
@@ -2487,8 +2580,7 @@ export class SessionHost {
             if (!command.enabled) throw new Error("invalid_input: 此命令已禁用，请在设置中启用后重试");
             const skillContext: string[] = [];
             if (command.skills?.length) {
-              const resources = this.resourceLoader(id);
-              await resources.reload();
+              const resources = this.sessionResourceLoader(id, configuration);
               for (const name of command.skills) {
                 const skill = await resources.loadSkill(name);
                 skillContext.push(
@@ -2628,6 +2720,8 @@ export class SessionHost {
       if (record.draft) {
         this.configurations.delete(id);
         this.sessions.delete(id);
+        this.restoredResources.delete(id);
+        this.plugins.forget(id);
       }
       if (this.activeRuns.get(id) === run) this.activeRuns.delete(id);
       run.finish();

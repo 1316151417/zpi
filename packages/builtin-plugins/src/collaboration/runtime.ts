@@ -27,7 +27,7 @@ import {
   type SendMessageOutput,
   type TaskOutputResult,
 } from "./protocol.ts";
-import type { SubagentProfile } from "./types.ts";
+import { type SubagentProfile, type SubagentSummary, summarizeSubagent } from "./types.ts";
 
 interface SubagentPort {
   cwd(parentId: string): string;
@@ -38,12 +38,7 @@ interface SubagentPort {
     selection: CombinedSelection,
     description: string,
   ): Promise<string>;
-  run(
-    childId: string,
-    prompt: string,
-    profile?: SubagentProfile,
-    selection?: CombinedSelection,
-  ): Promise<void>;
+  run(childId: string, prompt: string): Promise<void>;
   steer(childId: string, prompt: string): boolean;
   stop(childId: string): Promise<void>;
   publish(task: SubagentTask): void;
@@ -108,7 +103,7 @@ export class SubagentPlugin {
   private notified = new WeakSet<SubagentTask>();
   private closing = false;
   private cancellations = new Map<string, number>();
-  private definitions = new Map<string, SubagentProfile[]>();
+  private catalog = new Map<string, SubagentSummary[]>();
   readonly profiles: SubagentProfiles;
   private port: SubagentPort;
   private artifacts: SubagentArtifacts;
@@ -126,27 +121,35 @@ export class SubagentPlugin {
     return structuredClone([...new Map([...agents, ...extra].map((agent) => [agent.name, agent])).values()]);
   }
   prepare(parentId: string, codexSubagentPrompt = false, extra: readonly SubagentProfile[] = []) {
-    this.definitions.set(
+    if (this.catalog.has(parentId)) return;
+    this.restoreCatalog(
       parentId,
-      this.availableProfiles(this.port.cwd(parentId), codexSubagentPrompt, extra),
+      this.availableProfiles(this.port.cwd(parentId), codexSubagentPrompt, extra).map(summarizeSubagent),
     );
+  }
+  restoreCatalog(parentId: string, agents: readonly SubagentSummary[]) {
+    this.catalog.set(
+      parentId,
+      agents.map((agent) => structuredClone(summarizeSubagent(agent))),
+    );
+  }
+  catalogFor(parentId: string): SubagentSummary[] | undefined {
+    const agents = this.catalog.get(parentId);
+    return agents ? structuredClone(agents) : undefined;
   }
   previewListing(cwd: string, codexSubagentPrompt = false, extra: readonly SubagentProfile[] = []) {
     return this.formatListing(this.availableProfiles(cwd, codexSubagentPrompt, extra));
   }
   listing(parentId: string) {
-    return this.formatListing(this.definitions.get(parentId) ?? []);
+    return this.formatListing((this.catalog.get(parentId) ?? []).filter((agent) => agent.enabled));
   }
-  private formatListing(agents: readonly SubagentProfile[]) {
+  private formatListing(agents: readonly SubagentSummary[]) {
     return agents
-      .map(
-        (agent) =>
-          `- ${agent.name}: ${agent.description}${agent.tools ? ` (Tools: ${agent.tools.filter((tool) => !agent.disallowedTools?.includes(tool)).join(", ")})` : ""}`,
-      )
+      .map((agent) => `- ${agent.name}: ${agent.description}${agent.path ? ` (Source: ${agent.path})` : ""}`)
       .join("\n");
   }
-  private profile(parentId: string, name: string) {
-    const profiles = this.definitions.get(parentId) ?? [];
+  private profile(parentId: string, name: string): SubagentSummary {
+    const profiles = (this.catalog.get(parentId) ?? []).filter((agent) => agent.enabled);
     const normalize = (value: string) =>
       value
         .trim()
@@ -238,7 +241,7 @@ export class SubagentPlugin {
     return id ? this.tasks.get(id) : undefined;
   }
   forgetSession(id: string) {
-    this.definitions.delete(id);
+    this.catalog.delete(id);
     for (const task of this.tasks.values())
       if (task.childSessionId === id || task.parentSessionId === id) {
         this.tasks.delete(task.agentId);
@@ -342,11 +345,7 @@ export class SubagentPlugin {
     );
     await Promise.allSettled([...this.jobs.values()]);
   }
-  private begin(
-    task: SubagentTask,
-    prompt: string,
-    resume?: { profile: SubagentProfile; selection: CombinedSelection },
-  ) {
+  private begin(task: SubagentTask, prompt: string, resume = false) {
     const previous = this.jobs.get(task.agentId);
     const generation = this.cancellations.get(task.agentId) ?? 0;
     if (resume) {
@@ -379,9 +378,8 @@ export class SubagentPlugin {
       )
         return;
       try {
-        const current = this.tasks.get(task.agentId) ?? task;
-        if (resume) await this.artifacts.metadata(current, resume.profile);
-        await this.port.run(task.childSessionId, prompt, resume?.profile, resume?.selection);
+        if (resume) await this.artifacts.metadata(this.tasks.get(task.agentId) ?? task);
+        await this.port.run(task.childSessionId, prompt);
       } catch (error) {
         if (this.tasks.get(task.agentId)?.status !== "aborted")
           this.update(task.agentId, {
@@ -514,7 +512,11 @@ export class SubagentPlugin {
     };
     return this.artifacts.result(parentId, _id, "TaskStop", JSON.stringify(output), output);
   }
-  tools(parentId: string, codexSubagentPrompt = false): ToolDefinition[] {
+  tools(
+    parentId: string,
+    codexSubagentPrompt = false,
+    imported: () => SubagentProfile[] = () => [],
+  ): ToolDefinition[] {
     const tools: ToolDefinition[] = [
       {
         name: "Agent",
@@ -526,7 +528,13 @@ export class SubagentPlugin {
           signal?.throwIfAborted();
           if (this.closing) throw new Error("busy: 子智能体插件正在关闭");
           const name = params.subagent_type ?? "general-purpose";
-          const profile = this.profile(parentId, name);
+          const entry = this.profile(parentId, name);
+          const profile =
+            entry.scope === "plugin"
+              ? imported().find((profile) => profile.id === entry.id)
+              : await this.profiles.load(entry);
+          if (!profile) throw new Error(`not_found: 子智能体不存在：${entry.name}`);
+          signal?.throwIfAborted();
           const selection = profile.modelSelection ?? this.port.selection(parentId);
           const childSessionId = await this.port.create(parentId, profile, selection, params.description);
           const agentId = `agent_${randomUUID()}`;
@@ -643,9 +651,7 @@ export class SubagentPlugin {
               // ZCode retains the message for the next tool round when steering rejects.
             }
             if (!steered) {
-              const profile = this.profile(parentId, task.agentType);
-              const selection = profile.modelSelection ?? this.port.selection(parentId);
-              void this.begin(task, formatCoordinatorSteer(prompt), { profile, selection }).catch(() => {});
+              void this.begin(task, formatCoordinatorSteer(prompt), true).catch(() => {});
               task = this.owned(parentId, params.to);
             }
             delivery = steered ? "steered" : "queued";
@@ -653,23 +659,14 @@ export class SubagentPlugin {
               ? `Message ${messageId} was sent to its active turn for local agent ${task.agentId}.`
               : `Message queued for delivery to ${task.agentId} at its next tool round.`;
           } else {
-            let profile: SubagentProfile;
-            try {
-              profile = this.profile(parentId, task.agentType);
-            } catch {
-              return failure(
-                `Cannot resume local agent ${task.agentId}: profile ${task.agentType} is unavailable.`,
-              );
-            }
             if (!task.childSessionId)
               return failure(`Cannot resume local agent ${task.agentId}: missing child session id.`);
-            const selection = profile.modelSelection ?? this.port.selection(parentId);
             const status = providerTaskStatus(task);
             this.update(task.agentId, {
               description: params.summary || task.description,
               parentToolCallId: _id,
             });
-            void this.begin(task, params.message, { profile, selection }).catch(() => {});
+            void this.begin(task, params.message, true).catch(() => {});
             task = this.owned(parentId, params.to);
             delivery = "resumed_background";
             message = `Agent "${task.agentId}" was stopped (${status}); resumed it in the background with your message. You'll be notified when it finishes. Output: ${task.outputFile}`;

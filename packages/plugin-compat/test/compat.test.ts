@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type HookInvocation, HookRunner } from "@zpi-dev/coding-agent";
 import { afterEach, expect, test } from "vitest";
-import { assertExternalPlugin, bindExternalPlugin, importLocalPlugin } from "../src/index.ts";
+import {
+  assertExternalPlugin,
+  bindExternalPlugin,
+  importLocalPlugin,
+  verifyExternalPlugin,
+} from "../src/index.ts";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -46,6 +51,17 @@ async function fixture(script: string, event = "SessionStart", extras: Record<st
 function runner(snapshot: Awaited<ReturnType<typeof importLocalPlugin>>, storage: string) {
   return new HookRunner(bindExternalPlugin(snapshot, { storage }).hooks ?? []);
 }
+
+test("overlapping asynchronous verifications do not cache success across later file edits", async () => {
+  const f = await fixture("console.log('{}')");
+  const snapshot = await f.import();
+  await Promise.all([
+    verifyExternalPlugin(snapshot, f.storage),
+    verifyExternalPlugin(structuredClone(snapshot), f.storage),
+  ]);
+  await writeFile(join(String(snapshot.options?.root), "hook.mjs"), "throw new Error('changed')");
+  await expect(verifyExternalPlugin(snapshot, f.storage)).rejects.toThrow("缓存内容已改变");
+});
 const stdin =
   "let text = ''; for await (const chunk of process.stdin) text += chunk; const input = JSON.parse(text);\n";
 

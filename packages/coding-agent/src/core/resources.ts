@@ -132,11 +132,15 @@ export class SkillCatalog {
       throw new Error(`invalid_input: Skill disabled: ${name}`);
     const skill = this.catalog.skills.find((s) => s.name === name);
     if (!skill) throw new Error(`invalid_input: Skill not found: ${name}`);
-    const text = await readFile(skill.path, "utf8");
-    const parsed = skillMarkdown(text);
-    const current = parseMetadata(skill.path, skill.source, parsed.fields);
-    return { ...current, name: skill.name, body: parsed.body };
+    return loadSkillFile(skill);
   }
+}
+/** Read only this catalog entry's current file; does not rediscover skills or refresh policy. */
+export async function loadSkillFile(skill: SkillMetadata): Promise<LoadedSkill> {
+  const text = await readFile(skill.path, "utf8");
+  const parsed = skillMarkdown(text);
+  const current = parseMetadata(skill.path, skill.source, parsed.fields);
+  return { ...current, name: skill.name, body: parsed.body };
 }
 export class FileResourceLoader implements ResourceLoader {
   private options: SkillPolicyOptions;

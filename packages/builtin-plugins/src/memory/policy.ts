@@ -5,7 +5,7 @@ import type { CombinedSelection } from "../types.ts";
 import type { LongMemoryService, MemoryRunRequest } from "./long-memory.ts";
 import { runMemoryRequest } from "./runner.ts";
 import { readShortMemory } from "./short-memory.ts";
-import type { MemoryInheritance, MemorySettings, MemorySource } from "./types.ts";
+import type { MemoryInheritance, MemorySettings, MemorySource, SessionMemorySnapshot } from "./types.ts";
 
 export type MemoryMode = "off" | "short" | "long";
 interface MemoryContext extends MemoryInheritance {
@@ -29,15 +29,7 @@ type MemoryPort = {
 export class MemoryPolicy {
   private batch?: Promise<void>;
   private models = new Map<string, { runtime: ModelRuntime; model: Model } | Error>();
-  private snapshots = new Map<
-    string,
-    {
-      instructions: string[];
-      shortInstructions: string[];
-      sources: MemorySource[];
-      diagnostics: { path: string; message: string }[];
-    }
-  >();
+  private snapshots = new Map<string, SessionMemorySnapshot>();
   private used = new Map<string, MemorySource[]>();
   private selected = new Set<string>();
   private readonly port: MemoryPort;
@@ -96,6 +88,12 @@ export class MemoryPolicy {
   }
   async prepare(id: string, mode: MemoryMode, signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
+    // 桌面会话使用持久资源快照；后续输入不再重读共享记忆文件。
+    if (this.snapshots.has(id)) {
+      this.used.set(id, []);
+      if (mode === "long") this.selected.add(id);
+      return;
+    }
     const context = this.port.context(id);
     if (context.child) {
       this.refreshChild(id);
@@ -117,6 +115,19 @@ export class MemoryPolicy {
       diagnostics: short.diagnostics,
     });
   }
+  snapshot(id: string): SessionMemorySnapshot {
+    return structuredClone(
+      this.snapshots.get(id) ?? {
+        instructions: [],
+        shortInstructions: [],
+        sources: [],
+        diagnostics: [],
+      },
+    );
+  }
+  restore(id: string, snapshot: SessionMemorySnapshot): void {
+    this.snapshots.set(id, structuredClone(snapshot));
+  }
   inherit(childId: string, parentId: string): MemoryInheritance {
     const snapshot = this.snapshots.get(parentId);
     if (this.selected.has(parentId)) this.selected.add(childId);
@@ -128,6 +139,7 @@ export class MemoryPolicy {
   refreshChild(id: string): void {
     const context = this.port.context(id);
     if (!context.child) return;
+    if (context.memoryInstructions !== undefined) return;
     const parent = context.parentId ? this.snapshots.get(context.parentId) : undefined;
     if (parent && context.parentId && this.selected.has(context.parentId)) {
       this.selected.add(id);

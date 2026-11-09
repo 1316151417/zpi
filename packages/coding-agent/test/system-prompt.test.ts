@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   buildSystemPrompt,
   createCodingTools,
@@ -11,6 +11,35 @@ import {
   validateTemplate,
 } from "../src/index.ts";
 import { temp } from "./helpers/workspace-fixture.ts";
+
+test("immutable resource formatting is reused while base, custom instructions and environment remain dynamic", () => {
+  const loader = {
+    immutable: true,
+    getInstructions: vi.fn(() => ["FROZEN POLICY"]),
+    listSkills: vi.fn(() => ({ skills: [], diagnostics: [] })),
+  };
+  const first = buildSystemPrompt({
+    cwd: "/one",
+    tools: [],
+    loader,
+    baseInstructions: "BASE ONE",
+    customInstructions: ["CUSTOM ONE"],
+  });
+  const second = buildSystemPrompt({
+    cwd: "/two",
+    tools: [],
+    loader,
+    baseInstructions: "BASE TWO",
+    customInstructions: ["CUSTOM TWO"],
+  });
+  expect(first).toContain("BASE ONE");
+  expect(second).toContain("BASE TWO");
+  expect(second).toContain("CUSTOM TWO");
+  expect(second).toContain("/two");
+  expect(second).toContain("FROZEN POLICY");
+  expect(loader.getInstructions).toHaveBeenCalledTimes(1);
+  expect(loader.listSkills).toHaveBeenCalledTimes(1);
+});
 
 test("Pi prompt facts, literal nonrecursive variables, custom rules replace default, dynamic project sources", async () => {
   const cwd = await temp(),

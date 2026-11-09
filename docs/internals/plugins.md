@@ -79,7 +79,7 @@ stdin 同时提供原生字段和 hook_event_name、session_id、transcript_path
 
 导入文件限单文件 2 MiB、总量 32 MiB、4000 个条目、16 层目录；拒绝符号链接和特殊文件，跳过 .git、node_modules。hook stdin 限 2 MiB，stdout/stderr 合计 128 KiB，超时上限五分钟；超时或取消终止进程树，回收监听器和计时器。上下文仍受核心 24000 字符预算约束。
 
-缓存位于当前 generation 的 `plugins/cache/<sha256>`；数据位于 `plugins/data/<local.id>`。导入相同 ID 的新内容只影响新会话，旧缓存保留用于已冻结会话；数据目录按插件 ID 保留。恢复和执行前校验缓存内容与冻结声明，缺失、改动或版本不匹配均拒绝执行。记忆后台 Agent 不加载外部插件。当前不接入市场、自动更新、远程获取或 MCP。
+缓存位于当前 generation 的 `plugins/cache/<sha256>`；数据位于 `plugins/data/<local.id>`。导入相同 ID 的新内容只影响新会话，旧缓存保留用于已冻结会话；数据目录按插件 ID 保留。恢复和执行前异步校验缓存内容与冻结声明；同时发生的同版本读取合并，后一次执行仍重新校验。缺失、改动或版本不匹配均拒绝执行。记忆后台 Agent 不加载外部插件。当前不接入市场、自动更新、远程获取或 MCP。
 
 兼容依据：[Claude hook 参考](https://code.claude.com/docs/zh-CN/hooks)与 ZCode 的 `docs/plugin-hooks-compat.md`；这里实现明确的子集，不声明完整协议兼容。
 

@@ -278,7 +278,7 @@ export function MemorySettings({ onNavigate }: { onNavigate?: () => void }) {
                 <strong>启用短记忆</strong>
                 <SettingsHelp
                   label="短记忆"
-                  text="与长期记忆互斥，开启时自动关闭长期记忆。保存明确偏好与可复用约束，由主 Agent 维护用户和当前项目的 MEMORY.md。每个文件最多 20 条、正文共 2,000 个 Unicode 字符；异常文件不加载。开关在新对话首次发送时生效，已有对话保留原配置；文件内容在安全轮次刷新。关闭保留数据。"
+                  text="与长期记忆互斥，开启时自动关闭长期记忆。保存明确偏好与可复用约束，由主 Agent 维护用户和当前项目的 MEMORY.md。每个文件最多 20 条、正文共 2,000 个 Unicode 字符；异常文件不加载。开关在新对话首次发送时生效，已有对话保留原配置；注入内容同样固定，更新在新对话生效。关闭保留数据。"
                 />
               </span>
               <span className="settings-switch">

@@ -7,6 +7,7 @@ import {
   bindExternalPlugin,
   importLocalPlugin,
   isExternalPlugin,
+  verifyExternalPlugin,
 } from "@zpi-dev/plugin-compat";
 import type { StateStore } from "../state-store.ts";
 
@@ -36,7 +37,10 @@ export class LocalPlugins {
     return this.list().filter((plugin) => enabled[plugin.id] === true);
   }
   validate(snapshot: PluginSnapshot): void {
-    assertExternalPlugin(snapshot, this.directory, true);
+    assertExternalPlugin(snapshot, this.directory);
+  }
+  async verify(snapshot: PluginSnapshot): Promise<void> {
+    if (isExternalPlugin(snapshot)) await verifyExternalPlugin(snapshot, this.directory);
   }
   bind(snapshot: PluginSnapshot, transcriptPath?: string): SessionPlugin {
     return bindExternalPlugin(snapshot, { storage: this.directory, transcriptPath });

@@ -163,7 +163,7 @@ test.each(["delete-child", "close-app"])(
 );
 
 test.each(["clear", "restart"])(
-  "resuming a child after %s withdraws stale long memory without loading short memory",
+  "resuming a child after %s retains its frozen long memory without loading shared memory",
   async (action) => {
     const f = await fixture((body, response) => {
       const tools = body.tools as { function: { name: string } }[] | undefined;
@@ -248,11 +248,11 @@ test.each(["clear", "restart"])(
     await vi.waitFor(() => {
       expect(host.activeRuns.has(task.childSessionId)).toBe(true);
       expect(host.sessions.get(task.childSessionId)?.systemPrompt).not.toContain("RETAINED_SHORT_MEMORY");
-      expect(host.sessions.get(task.childSessionId)?.systemPrompt).not.toContain("STALE_LONG_MEMORY");
+      expect(host.sessions.get(task.childSessionId)?.systemPrompt).toContain("STALE_LONG_MEMORY");
     });
     const prompt = host.sessions.get(task.childSessionId)?.systemPrompt;
     expect(prompt).not.toContain("RETAINED_SHORT_MEMORY");
-    expect(prompt).not.toContain("STALE_LONG_MEMORY");
+    expect(prompt).toContain("STALE_LONG_MEMORY");
     expect(context).not.toHaveBeenCalled();
     expect(checks).not.toHaveBeenCalled();
     await host.plugins.collaboration.stop(f.session.id, task.agentId);

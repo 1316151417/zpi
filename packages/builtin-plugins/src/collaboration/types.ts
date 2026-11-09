@@ -18,6 +18,15 @@ export interface SubagentProfile extends SubagentConfig {
   enabled: boolean;
   path?: string;
 }
+/** Only directory information exposed to the parent, never an unread role prompt or launch configuration. */
+export type SubagentSummary = Pick<
+  SubagentProfile,
+  "id" | "name" | "description" | "scope" | "enabled" | "path"
+>;
+export function summarizeSubagent(profile: SubagentSummary): SubagentSummary {
+  const { id, name, description, scope, enabled, path } = profile;
+  return { id, name, description, scope, enabled, path };
+}
 export interface SubagentCatalog {
   agents: SubagentProfile[];
   diagnostics: { path: string; message: string }[];

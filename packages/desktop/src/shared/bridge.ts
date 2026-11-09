@@ -20,6 +20,7 @@ import type {
   CustomCommandDelete,
   CustomCommandInput,
   CustomCommandSetEnabled,
+  CustomCommandSummary,
   CustomCommandsList,
   CustomCommandUpdate,
 } from "./custom-commands.ts";
@@ -491,7 +492,7 @@ export interface DesktopBridge {
   setSessionSelection(sessionId: string, selection: CombinedSelection): Promise<Result<SessionSnapshot>>;
   listSessionSkills(sessionId: string): Promise<Result<SkillList>>;
   listCommands(sessionId?: string): Promise<Result<{ name: string; description: string }[]>>;
-  listSessionCustomCommands(sessionId: string): Promise<Result<CustomCommandsList>>;
+  listSessionCustomCommands(sessionId: string): Promise<Result<CustomCommandsList<CustomCommandSummary>>>;
   getCustomCommands(projectId?: string): Promise<Result<CustomCommandsList>>;
   createCustomCommand(input: CustomCommandInput, projectId?: string): Promise<Result<CustomCommand>>;
   updateCustomCommand(input: CustomCommandUpdate, projectId?: string): Promise<Result<CustomCommand>>;

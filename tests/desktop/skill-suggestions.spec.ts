@@ -2,12 +2,10 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
-import { done, fakeServer } from "../fake-server.ts";
+import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
-import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
-import { seedHistory } from "../history-fixture.ts";
 
 test("skills preserve names beside long descriptions and match ZCode icons, search and insertion", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-skill-suggestions-"));
@@ -27,14 +25,30 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     join(dir, ".zpi", "skills", "ke-db", "SKILL.md"),
     "---\ndescription: User version\n---\nUser body",
   );
-  const id = seedHistory(dir, cwd, 1).id;
-  const server = await fakeServer((_, response) => done(response));
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "Directory initialized" }));
+    done(response);
+  });
   let app: ElectronApplication | undefined;
   try {
-    app = await launchDesktop({ dir, url: server.url });
+    app = await launchDesktop({ dir, project: cwd, url: server.url });
     let page = await app.firstWindow();
-    await select(page, id);
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await page.getByRole("button", { name: "收起项目 workspace", exact: true }).hover();
+    await page.getByRole("button", { name: "新建任务 workspace", exact: true }).click();
+    const id = await page.evaluate(async () => {
+      const projects = await window.zpi.listProjects();
+      if (!projects.ok) throw new Error(projects.error.message);
+      const sessions = await window.zpi.listSessions(projects.value[0].id);
+      if (!sessions.ok) throw new Error(sessions.error.message);
+      return sessions.value[0].id;
+    });
     let editor = page.getByLabel("消息", { exact: true });
+    // A real first send saves the catalog; legacy histories intentionally never discover one on resume.
+    await editor.fill("Initialize the resource directory");
+    await editor.press("Enter");
+    await expect(page.getByText("Directory initialized", { exact: true })).toBeVisible();
+    expect(server.requests).toHaveLength(1);
     await editor.fill("$");
     let panel = page.getByRole("listbox", { name: "技能", exact: true });
     await expect(panel.getByRole("option")).toHaveCount(names.length);
@@ -110,13 +124,23 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
       await page.keyboard.type("后文");
       await expect(editor).toHaveText("前文 ke-db 后文");
     }
-    const canonical = `前文 [$ke-db](${await realpath(join(root, "ke-db", "SKILL.md"))}) 后文`;
+    const originalPath = await page.evaluate(async (id) => {
+      const result = await window.zpi.listSessionSkills(id);
+      if (!result.ok) throw new Error(result.error.message);
+      const skill = result.value.skills.find((skill) => skill.name === "ke-db");
+      if (!skill) throw new Error("Missing skill");
+      return skill.path;
+    }, id);
+    expect(originalPath).toBe(await realpath(join(root, "ke-db", "SKILL.md")));
+    const canonical = `前文 [$ke-db](${originalPath}) 后文`;
     await expect
       .poll(() => page.evaluate((id) => window.zpi.getDraft(id), id))
       .toMatchObject({
         ok: true,
         value: { text: canonical },
       });
+    // Existing conversations keep the same picker and skill paths after source removal and cold resume.
+    await rm(root, { recursive: true });
     await app.close();
     app = await launchDesktop({ dir, url: server.url });
     page = await app.firstWindow();
@@ -125,7 +149,14 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     await expect(editor.locator(".inline-mention.skill")).toHaveText("ke-db");
     await expect(editor.locator(".inline-mention.skill")).toHaveCSS("--mention-mask", /skill\.svg/);
     await expect(editor).toHaveText("前文 ke-db 后文");
-    expect(server.requests).toHaveLength(0);
+    await editor.fill("$只读查库");
+    await expect(panel.locator("strong")).toHaveText("ke-db");
+    await editor.press("Tab");
+    await expect(editor.locator(".inline-mention.skill")).toHaveAttribute(
+      "data-markdown",
+      `[$ke-db](${originalPath})`,
+    );
+    expect(server.requests).toHaveLength(1);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

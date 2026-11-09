@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
-import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { isJsonObject, type JsonObject } from "@zpi-dev/ai";
@@ -10,6 +10,7 @@ import {
   type PluginSnapshot,
   parseMarkdownFrontmatter,
   pluginSnapshotData,
+  readFileBounded,
   type SessionPlugin,
   validatePluginSnapshot,
 } from "@zpi-dev/coding-agent";
@@ -79,6 +80,57 @@ function digest(files: FileEntry[]): string {
     hash.update(file.bytes);
   }
   return hash.digest("hex");
+}
+
+const verificationFlights = new Map<string, Promise<FileEntry[]>>();
+async function asyncTree(root: string): Promise<FileEntry[]> {
+  const files: FileEntry[] = [];
+  let bytes = 0,
+    entries = 0;
+  const walk = async (directory: string, depth: number): Promise<void> => {
+    if (depth > 16) fail("目录层级超过 16");
+    for (const name of (await readdir(directory)).sort()) {
+      if ([".git", "node_modules"].includes(name)) continue;
+      if (++entries > 4000) fail("文件数量超过 4000");
+      const path = join(directory, name),
+        info = await lstat(path);
+      if (info.isSymbolicLink()) fail(`不接受符号链接：${relative(root, path)}`);
+      if (info.isDirectory()) {
+        await walk(path, depth + 1);
+        continue;
+      }
+      if (!info.isFile() || info.size > maxFileBytes) fail(`文件类型或大小无效：${relative(root, path)}`);
+      const content = await readFileBounded(path, maxFileBytes);
+      bytes += content.length;
+      if (bytes > maxTreeBytes) fail("文件内容超过读取上限");
+      files.push({
+        path: relative(root, path).split(sep).join("/"),
+        bytes: content,
+        executable: !!(info.mode & 0o111),
+      });
+    }
+  };
+  if (!(await lstat(root)).isDirectory()) fail("请选择插件根目录");
+  await walk(root, 0);
+  return files;
+}
+
+/** Only overlapping reads share work; the next execution always verifies current bytes again. */
+export async function verifyExternalPlugin(snapshot: PluginSnapshot, storage: string): Promise<void> {
+  assertExternalPlugin(snapshot, storage);
+  const root = String(snapshot.options?.root);
+  let flight = verificationFlights.get(root);
+  if (!flight) {
+    flight = asyncTree(root);
+    verificationFlights.set(root, flight);
+    void flight.finally(() => verificationFlights.delete(root)).catch(() => {});
+  }
+  const files = await flight;
+  const treeDigest = digest(files);
+  if (treeDigest !== snapshot.options?.digest) fail("缓存内容已改变，请重新导入插件");
+  const expected = compilePlugin(files, storage, treeDigest);
+  if (!isDeepStrictEqual(pluginSnapshotData(snapshot), pluginSnapshotData(expected)))
+    fail("冻结快照与插件内容不一致");
 }
 function json(bytes: Buffer, path: string): JsonObject {
   try {
@@ -283,7 +335,7 @@ function compilePlugin(files: FileEntry[], storage: string, treeDigest?: string)
 
 /** Import reads data only. No module import, installation scripts or hooks run here. */
 export async function importLocalPlugin(source: string, storage: string): Promise<PluginSnapshot> {
-  const files = tree(resolve(source));
+  const files = await asyncTree(resolve(source));
   const snapshot = compilePlugin(files, storage);
   const root = String(snapshot.options?.root);
   const temporary = join(resolve(storage), `import-${randomUUID()}`);
@@ -306,7 +358,7 @@ export async function importLocalPlugin(source: string, storage: string): Promis
     } catch (error) {
       if (!["EEXIST", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
     }
-    assertExternalPlugin(snapshot, storage, true);
+    await verifyExternalPlugin(snapshot, storage);
     return snapshot;
   } finally {
     await rm(temporary, { recursive: true, force: true });
@@ -377,7 +429,7 @@ export function bindExternalPlugin(
       name: data.name,
       transcriptPath: options.transcriptPath,
       env: options.env,
-      validate: () => assertExternalPlugin(snapshot, options.storage, true),
+      validate: () => verifyExternalPlugin(snapshot, options.storage),
     }),
   };
 }

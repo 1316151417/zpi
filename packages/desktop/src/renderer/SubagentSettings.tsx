@@ -326,7 +326,7 @@ export function SubagentSettings() {
               <h1>子智能体</h1>
               <SettingsHelp
                 label="子智能体"
-                text="允许助手委派任务。开关在新对话首次发送时生效，已有对话保留原配置；关闭后仍可管理智能体。"
+                text="允许助手委派任务。目录信息和开关在首次发送时固定；新启动读取原路径的当前定义，已有子会话沿用自己的配置和历史。关闭后仍可管理智能体。"
               />
             </div>
             <label className="settings-enable">

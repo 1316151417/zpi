@@ -6,6 +6,8 @@ import type { SessionManager } from "./session-manager.ts";
 import type { ImageResizeOptions } from "./tools/pi/utils/image-resize-core.ts";
 /** Resource discovery is separate from explicit customInstructions. */
 export interface ResourceLoader {
+  /** Stable catalog and injected instructions; allows caching prompt sections. Skill files may still be read live. */
+  readonly immutable?: boolean;
   getBaseInstructions?(): string | undefined;
   getInstructions?(): readonly string[];
   reload?(): Promise<void>;

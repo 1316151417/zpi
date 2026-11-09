@@ -122,7 +122,7 @@ export class AgentSession {
   private responsesWarmupController?: AbortController;
   private resources?: {
     loader: ResourceLoader;
-    buildContext: () => SystemContext;
+    buildContext?: () => SystemContext;
     settingsManager?: SettingsManager;
   };
   private compactController?: AbortController;
@@ -148,7 +148,7 @@ export class AgentSession {
     thinkingLevel: ThinkingLevel,
     resources?: {
       loader: ResourceLoader;
-      buildContext: () => SystemContext;
+      buildContext?: () => SystemContext;
       settingsManager?: SettingsManager;
     },
     performanceTotals?: ModelPerformanceTotals,
@@ -189,7 +189,7 @@ export class AgentSession {
       manager,
       activeTools,
       systemPrompt,
-      resources?.buildContext(),
+      resources?.buildContext?.(),
     ))
       manager.appendMessage(message);
     this.lastAssistantCompletedAtMs = manager
@@ -347,7 +347,7 @@ export class AgentSession {
       manager,
       activeTools,
       systemPrompt,
-      resources?.buildContext(),
+      resources?.buildContext?.(),
     ))
       await manager.appendEntryAsync({ type: "message", message });
     return new AgentSession(...args);
@@ -434,7 +434,7 @@ export class AgentSession {
     });
   }
   private async syncContext(): Promise<boolean> {
-    const current = this.resources?.buildContext();
+    const current = this.resources?.buildContext?.();
     if (!current) return false;
     const update = contextUpdate(this.manager.buildSessionContext().messages, {
       "zpi.base": current.base,

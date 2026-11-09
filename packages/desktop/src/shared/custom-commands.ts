@@ -42,9 +42,12 @@ export interface CustomCommandDiagnostic {
   message: string;
   path?: string;
 }
-export interface CustomCommandsList {
+/** Session discovery keeps metadata and policy; template text is read only on invocation. */
+export type CustomCommandSummary = Omit<CustomCommand, "prompt" | "revision" | "skills">;
+
+export interface CustomCommandsList<T = CustomCommand> {
   subagents?: { name: string; description: string }[];
-  commands: CustomCommand[];
+  commands: T[];
   diagnostics: CustomCommandDiagnostic[];
   directoryPath: string;
 }

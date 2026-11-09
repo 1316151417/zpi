@@ -40,9 +40,10 @@ test("title, notification and memory policies follow frozen plugin enablement ac
   restored.setNotificationSink(notify);
   await restored.startRun({ sessionId: f.session.id, text: "Continue frozen policy" });
   await restored.activeRuns.get(f.session.id)?.done;
-  expect(restoredMemory).toHaveBeenCalled();
+  expect(restoredMemory).not.toHaveBeenCalled();
   expect(notify).toHaveBeenCalledTimes(1);
-  expect(restored.sessions.get(f.session.id)?.systemPrompt).toContain("RESTORED_FROZEN_MEMORY");
+  expect(restored.sessions.get(f.session.id)?.systemPrompt).toContain("FROZEN_MEMORY");
+  expect(restored.sessions.get(f.session.id)?.systemPrompt).not.toContain("RESTORED_FROZEN_MEMORY");
 });
 
 test("local plugins share command and prompt assembly, keep imported versions, and contribute agents and skills", async () => {
@@ -121,5 +122,10 @@ test("disabled local plugins remain manageable when their cached files are missi
   expect(f.host.localPlugins.list().map((entry) => entry.id)).toContain(plugin.id);
   expect(() => f.host.listCommands()).not.toThrow();
   f.settings.setPluginEnabled(plugin.id, true);
-  expect(() => f.host.listCommands()).toThrow("缓存内容已改变");
+  // 候选只读声明；完整文件校验在实际执行前异步完成，避免预览阻塞主进程。
+  expect(() => f.host.listCommands()).not.toThrow();
+  await expect(f.host.startRun({ sessionId: f.session.id, text: "verify before execution" })).rejects.toThrow(
+    "缓存内容已改变",
+  );
+  expect(f.server.requests).toHaveLength(0);
 });

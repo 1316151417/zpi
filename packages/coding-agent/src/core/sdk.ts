@@ -44,6 +44,8 @@ export interface CreateAgentSessionOptions extends SessionContributions {
   /** Literal additions, recomputed after resource reload when supplied as a function. */
   customInstructions?: readonly string[] | (() => readonly string[]);
   resourceLoader?: ResourceLoader;
+  /** Keep existing injected system context without rebuilding or withdrawing sections on resume. */
+  preserveSystemContext?: boolean;
   sessionManager?: SessionManager;
   /** Indexed transcript and explicit current product choices. Mutually exclusive with sessionManager. */
   storage?: { transcript: TranscriptStore; currentState: SessionCurrentState };
@@ -82,6 +84,7 @@ export async function createAgentSession(
       "customInstructions",
       "toolOverrides",
       "resourceLoader",
+      "preserveSystemContext",
       "sessionManager",
       "storage",
       "homeDir",
@@ -93,6 +96,8 @@ export async function createAgentSession(
     ],
     "createAgentSession",
   );
+  if (options.preserveSystemContext !== undefined && typeof options.preserveSystemContext !== "boolean")
+    throw new Error("preserveSystemContext must be boolean");
   if (options.storage !== undefined) {
     assertSupportedOptions(options.storage, ["transcript", "currentState"], "storage");
     if (options.sessionManager) throw new Error("storage and sessionManager are mutually exclusive");
@@ -244,7 +249,7 @@ export async function createAgentSession(
     thinking,
     {
       loader,
-      buildContext,
+      buildContext: options.preserveSystemContext ? undefined : buildContext,
       settingsManager,
     },
     options.modelPerformanceTotals,

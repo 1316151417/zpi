@@ -5,6 +5,13 @@ export interface MemoryInheritance {
   memoryShortInstructions?: string[];
 }
 
+export interface SessionMemorySnapshot {
+  instructions: string[];
+  shortInstructions: string[];
+  sources: MemorySource[];
+  diagnostics: { path: string; message: string }[];
+}
+
 export interface MemorySettings {
   short: boolean;
   long: boolean;

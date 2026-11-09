@@ -26,7 +26,7 @@ export interface CommandHookContext {
   name: string;
   transcriptPath?: string;
   env?: Record<string, string | undefined>;
-  validate?: () => void;
+  validate?: () => void | Promise<void>;
 }
 const maxFileBytes = 2 * 1024 * 1024;
 const maxOutputBytes = 128 * 1024;
@@ -263,7 +263,7 @@ export function bindCommandHooks(
     timeoutMs: Math.min(hook.timeoutMs + 1000, 300000),
     onError: "block",
     handler: async (input, signal) => {
-      context.validate?.();
+      await context.validate?.();
       return commandHook(hook, input, context, signal);
     },
   }));

@@ -14,13 +14,13 @@ import { BackgroundTasks } from "./background/tasks.ts";
 import { CollaborationInbox } from "./collaboration/inbox.ts";
 import { SubagentProfiles } from "./collaboration/profiles.ts";
 import { SubagentPlugin } from "./collaboration/runtime.ts";
-import type { SubagentProfile } from "./collaboration/types.ts";
+import { type SubagentProfile, type SubagentSummary, summarizeSubagent } from "./collaboration/types.ts";
 import { desktopPluginIds, enabledBuiltinPlugins } from "./index.ts";
 import { LongMemoryService, type LongMemoryState } from "./memory/long-memory.ts";
 import { MemoryPolicy } from "./memory/policy.ts";
 import { readShortMemory } from "./memory/short-memory.ts";
 import { memorySources } from "./memory/sources.ts";
-import type { MemoryStatus } from "./memory/types.ts";
+import type { MemoryStatus, SessionMemorySnapshot } from "./memory/types.ts";
 import { NotificationsPlugin } from "./notifications.ts";
 import type {
   BuiltinPluginPorts,
@@ -36,6 +36,11 @@ import type { BackgroundTask, SubagentTask } from "./types.ts";
 import { WebTools } from "./web/tools.ts";
 
 export type { BuiltinPluginPorts, PluginConfiguration, PluginRun } from "./ports.ts";
+export interface SessionBuiltinResources {
+  agents: SubagentSummary[];
+  memory: SessionMemorySnapshot;
+  diagnostics: { path: string; message: string }[];
+}
 
 interface Continuation {
   input: PluginInput;
@@ -177,17 +182,8 @@ export class BuiltinPluginRuntime {
             throw error;
           }
         },
-        run: async (id, prompt, profile, selection) => {
-          if (profile && selection) {
-            if (sessions.get(id)?.archivedAt != null) throw new Error("busy: 子智能体已归档");
-            if (!ports.models.valid(selection)) throw new Error("configuration: 子智能体模型不可用");
-            sessions.configure(id, {
-              subagentProfile: structuredClone(profile),
-              subagentInstructions:
-                this.parentInstructions.get(sessions.get(id)?.parentSessionId ?? "") ?? [],
-            });
-            sessions.select(id, selection);
-          }
+        run: async (id, prompt) => {
+          if (sessions.get(id)?.archivedAt != null) throw new Error("busy: 子智能体已归档");
           this.memory.refreshChild(id);
           await sessions.run({ sessionId: id, text: prompt }, true);
           while (sessions.active(id)) await sessions.active(id)?.done;
@@ -277,7 +273,7 @@ export class BuiltinPluginRuntime {
       webTools: () => this.web.tools(),
       background: this.background,
       collaboration: {
-        tools: (id, codex) => this.collaboration.tools(id, codex),
+        tools: (id, codex) => this.collaboration.tools(id, codex, external.agents),
         childTools: (id) => this.collaboration.childTools(id),
         taskBackend: () => this.collaboration.taskBackend(),
         prepare: (id, codex) => this.collaboration.prepare(id, codex, external.agents()),
@@ -308,13 +304,7 @@ export class BuiltinPluginRuntime {
   async clearLongMemory(): Promise<MemoryStatus> {
     await this.longMemory.clear();
     await this.memory.wait();
-    // Withdraw inherited long-memory copies too. Active model requests stay stable; subsequent
-    // child prompts read this owner again instead of a stale createAgentSession configuration closure.
-    this.memory.withdraw(
-      [...this.ports.sessions.records()]
-        .filter((record) => record.parentSessionId && !this.ports.sessions.blocked(record.id))
-        .map((record) => record.id),
-    );
+    // 清理共享库只影响新对话；已有会话与冷恢复继续使用持久化的注入内容。
     return this.getMemoryStatus(null);
   }
   async openMemoryFile(
@@ -356,8 +346,13 @@ export class BuiltinPluginRuntime {
       throw error;
     }
   }
-  resourceLoader(id: string | null, config: PluginConfiguration, loader: Required<ResourceLoader>) {
+  resourceLoader(
+    id: string | null,
+    config: PluginConfiguration,
+    loader: Required<Omit<ResourceLoader, "immutable">> & ResourceLoader,
+  ) {
     return {
+      immutable: loader.immutable,
       listSkills: () => loader.listSkills(),
       loadSkill: (name: string) => loader.loadSkill(name),
       getDiagnostics: () => [...loader.getDiagnostics(), ...(id ? this.memory.diagnostics(id) : [])],
@@ -378,6 +373,41 @@ export class BuiltinPluginRuntime {
   }
   customInstructions(config: PluginConfiguration): string[] {
     return config.subagentProfile?.injectAgentsMd ? [...(config.subagentInstructions ?? [])] : [];
+  }
+  async captureResources(
+    id: string,
+    config: PluginConfiguration,
+    imported: SubagentProfile[],
+  ): Promise<SessionBuiltinResources> {
+    const collaboration = config.plugins.find((plugin) => plugin.id === desktopPluginIds.collaboration);
+    const catalog = !config.subagentProfile
+      ? await this.collaboration.profiles.listAsync(
+          this.ports.sessions.cwd(id),
+          collaboration?.options?.promptPreset === "codex",
+        )
+      : { agents: [], diagnostics: [] };
+    const agents = [
+      ...new Map(
+        [...catalog.agents, ...imported].map((agent) => [agent.name, summarizeSubagent(agent)]),
+      ).values(),
+    ];
+    const mode =
+      config.plugins.find((plugin) => plugin.id === desktopPluginIds.memory)?.options?.mode ?? "off";
+    await this.memory.prepare(id, mode as import("./memory/policy.ts").MemoryMode);
+    return { agents, memory: this.memory.snapshot(id), diagnostics: catalog.diagnostics };
+  }
+  restoreResources(id: string, resources?: SessionBuiltinResources): void {
+    // Missing legacy configuration must not trigger discovery in later prompt hooks.
+    this.collaboration.restoreCatalog(id, resources?.agents ?? []);
+    this.memory.restore(
+      id,
+      resources?.memory ?? {
+        instructions: [],
+        shortInstructions: [],
+        sources: [],
+        diagnostics: [],
+      },
+    );
   }
   observe(id: string, run: PluginRun, e: AgentSessionEvent): void {
     if (e.type === "agent_start") this.inbox.offer(id, run);
@@ -535,7 +565,9 @@ export class BuiltinPluginRuntime {
   commandSubagents(id: string, imported: () => SubagentProfile[]) {
     const config = this.ports.sessions.configuration(id);
     if (!collaborationEnabled(config.plugins) || config.subagentProfile) return [];
-    const enabled = this.listSubagents(id, imported()).agents.filter((agent) => agent.enabled);
+    const enabled = (this.collaboration.catalogFor(id) ?? this.listSubagents(id, imported()).agents).filter(
+      (agent) => agent.enabled,
+    );
     return [...new Map(enabled.map((agent) => [agent.name.toLowerCase(), agent])).values()];
   }
   agentRequest(
@@ -545,15 +577,14 @@ export class BuiltinPluginRuntime {
   ): { agent: string; prompt?: string } | undefined {
     const mention = /^@([^\s@/]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
     if (!mention) return;
-    const agents = imported();
-    const declared = this.listSubagents(id, agents).agents.find(
-      (agent) => agent.name.toLowerCase() === mention[1].toLowerCase(),
-    );
+    const agents = this.collaboration.catalogFor(id) ?? this.listSubagents(id, imported()).agents;
+    const declared = agents.find((agent) => agent.name.toLowerCase() === mention[1].toLowerCase());
     if (!declared) return;
+    const config = this.ports.sessions.configuration(id);
     if (
-      !this.commandSubagents(id, () => agents).some(
-        (agent) => agent.name.toLowerCase() === declared.name.toLowerCase(),
-      )
+      !collaborationEnabled(config.plugins) ||
+      config.subagentProfile ||
+      !agents.some((agent) => agent.enabled && agent.name.toLowerCase() === declared.name.toLowerCase())
     )
       throw new Error("invalid_input: 此会话未启用该子智能体");
     return { agent: declared.name, prompt: mention[2]?.trim() };

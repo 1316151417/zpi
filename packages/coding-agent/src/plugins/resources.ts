@@ -7,6 +7,7 @@ export function withPluginResources(loader: ResourceLoader, skills: readonly Plu
   if (!skills.length) return loader;
   const metadata = skills.map(({ body: _body, ...skill }) => ({ ...skill, source: "plugin" as const }));
   return {
+    immutable: loader.immutable,
     reload: () => loader.reload?.() ?? Promise.resolve(),
     getBaseInstructions: () => loader.getBaseInstructions?.(),
     getInstructions: () => loader.getInstructions?.() ?? [],

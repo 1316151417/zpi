@@ -11,6 +11,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { isJsonObject } from "@zpi-dev/ai";
 import { parseMarkdownFrontmatter } from "@zpi-dev/coding-agent";
@@ -18,7 +19,7 @@ import { stringify } from "yaml";
 import type { PluginStorage } from "../ports.ts";
 import type { CombinedSelection } from "../types.ts";
 import { buildExploreAgentPrompt, buildGeneralPurposeSystemPrompt } from "./built-in.ts";
-import type { SubagentCatalog, SubagentConfig, SubagentProfile } from "./types.ts";
+import type { SubagentCatalog, SubagentConfig, SubagentProfile, SubagentSummary } from "./types.ts";
 import { agentColors } from "./types.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -154,6 +155,64 @@ export class SubagentProfiles {
     return scope === "workspace" ? join(cwd as string, ".zpi", "agents") : join(this.root, "agents");
   }
   list(cwd?: string, codexSubagentPrompt = false): SubagentCatalog {
+    return this.catalog(cwd, codexSubagentPrompt, true);
+  }
+  async listAsync(cwd?: string, codexSubagentPrompt = false): Promise<SubagentCatalog> {
+    const catalog = this.catalog(cwd, codexSubagentPrompt, false);
+    for (const scope of ["user", ...(cwd ? (["workspace"] as const) : [])] as const) {
+      const dir = this.directory(scope, cwd);
+      let files: string[];
+      try {
+        files = await readdir(dir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      for (const file of files.sort()) {
+        if (!/\.(md|markdown)$/i.test(file)) continue;
+        const path = join(dir, file);
+        try {
+          const info = await stat(path);
+          if (!info.isFile()) continue;
+          if (info.size > 512000) throw new Error("配置文件过大");
+          const text = await readFile(path, "utf8");
+          if (text.length > 128000) throw new Error("配置文件过大");
+          const config = parseSubagentMarkdown(text);
+          const id = `${scope}:${file.replace(/\.(md|markdown)$/i, "")}`;
+          catalog.agents.push({ ...config, id, path, scope, enabled: !this.state.disabled.includes(id) });
+        } catch (error) {
+          catalog.diagnostics.push({ path, message: String(error) });
+        }
+      }
+    }
+    return catalog;
+  }
+  /** Explicit launch resolves one recorded file or a built-in identity, never a directory scan. */
+  async load(entry: SubagentSummary): Promise<SubagentProfile> {
+    let config: SubagentConfig;
+    if (entry.path) {
+      const info = await stat(entry.path);
+      if (!info.isFile()) throw new Error("子智能体配置必须为普通文件");
+      if (info.size > 512000) throw new Error("配置文件过大");
+      const text = await readFile(entry.path, "utf8");
+      if (text.length > 128000) throw new Error("配置文件过大");
+      config = parseSubagentMarkdown(text);
+    } else {
+      const builtin = this.catalog(undefined, false, false).agents.find((agent) => agent.id === entry.id);
+      if (!builtin) throw new Error(`not_found: 子智能体不存在：${entry.name}`);
+      config = builtin;
+    }
+    return {
+      ...config,
+      id: entry.id,
+      name: entry.name,
+      description: entry.description,
+      scope: entry.scope,
+      enabled: entry.enabled,
+      path: entry.path,
+    };
+  }
+  private catalog(cwd: string | undefined, codexSubagentPrompt: boolean, scan: boolean): SubagentCatalog {
     this.reloadState();
     const agents: SubagentProfile[] = (
       [
@@ -186,6 +245,7 @@ export class SubagentProfiles {
       ] satisfies SubagentProfile[]
     ).map((agent) => ({ ...agent, modelSelection: this.state.overrides[agent.id] }));
     const diagnostics: SubagentCatalog["diagnostics"] = [];
+    if (!scan) return { agents, diagnostics };
     for (const scope of ["user", ...(cwd ? (["workspace"] as const) : [])] as const) {
       const dir = this.directory(scope, cwd);
       if (!existsSync(dir)) continue;

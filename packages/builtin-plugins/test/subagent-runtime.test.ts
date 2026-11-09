@@ -17,7 +17,7 @@ function fixture(toolNames?: string[]) {
   vi.spyOn(profiles, "list").mockReturnValue({
     agents: [
       {
-        id: "general-purpose",
+        id: "built-in:general-purpose",
         name: "general-purpose",
         description: "General",
         systemPrompt: "Work",
@@ -487,12 +487,7 @@ test("SendMessage uses the runner's active, queued, resumed and failure results"
     },
   ]);
   await vi.waitFor(() => expect(f.port.run).toHaveBeenCalledTimes(2));
-  expect(f.port.run).toHaveBeenLastCalledWith(
-    task.childSessionId,
-    "Only this prompt",
-    expect.any(Object),
-    expect.any(Object),
-  );
+  expect(f.port.run).toHaveBeenLastCalledWith(task.childSessionId, "Only this prompt");
   expect(f.plugin.list("parent")[0]).toMatchObject({ description: "Follow up", parentToolCallId: "call" });
   vi.mocked(f.port.steer).mockReturnValue(false);
   const queued = await f.invoke("SendMessage", {

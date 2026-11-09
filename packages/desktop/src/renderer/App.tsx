@@ -317,10 +317,10 @@ export function App() {
   useEffect(() => {
     const refreshCommands = () => {
       const state = useStore.getState();
-      for (const id of state.suggestions.keys()) {
-        if (state.sessions.has(id))
-          void refreshSuggestions(id, () => useStore.getState().sessions.has(id)).catch(report);
-      }
+      const id = state.selected;
+      // 已发送会话的候选属于持久快照；获焦只刷新当前草稿，避免按浏览过的会话数重复扫描。
+      if (id && state.sessions.get(id)?.draft)
+        void refreshSuggestions(id, () => useStore.getState().sessions.has(id)).catch(report);
     };
     window.addEventListener("zpi:commands-changed", refreshCommands);
     window.addEventListener("focus", refreshCommands);

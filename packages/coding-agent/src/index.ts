@@ -40,7 +40,7 @@ export {
   parseSessionTranscript,
 } from "./core/record-validation.ts";
 export type { DiscoveredSkill, LoadedSkill, SkillList, SkillMetadata } from "./core/resources.ts";
-export { FileResourceLoader, SkillCatalog } from "./core/resources.ts";
+export { FileResourceLoader, loadSkillFile, SkillCatalog } from "./core/resources.ts";
 export type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./core/sdk.ts";
 export { createAgentSession } from "./core/sdk.ts";
 export type { SessionContext, SessionEntry, SessionHeader } from "./core/session-manager.ts";

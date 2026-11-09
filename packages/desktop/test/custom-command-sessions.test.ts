@@ -33,7 +33,6 @@ it("uses the submitting session project before user commands and preserves origi
   host.activateSession(sessionB.id);
   const commandsA = await host.listSessionCustomCommands(sessionA.id);
   expect(commandsA.commands.filter((command) => command.name === "/review")).toHaveLength(1);
-  expect(commandsA.commands[0].prompt).toBe("PROJECT A $1");
   await host.startRun({ sessionId: sessionA.id, text: '/review "first file"' });
   await host.activeRuns.get(sessionA.id)?.done;
   const messages = JSON.stringify(server.requests[0].messages);
@@ -311,8 +310,10 @@ it("a command appearing during preparation cannot introduce unaccepted shell sid
   });
   const session = await host.createSession(a.id);
   try {
-    await expect(host.startRun({ sessionId: session.id, text: "/late" })).rejects.toThrow("准备期间已更改");
-    expect(server.requests).toHaveLength(0);
+    await host.startRun({ sessionId: session.id, text: "/late" });
+    await host.activeRuns.get(session.id)?.done;
+    expect(server.requests).toHaveLength(1);
+    expect(JSON.stringify(server.requests[0].messages)).not.toContain("fixture-never-run");
     expect(shell).not.toHaveBeenCalled();
   } finally {
     spy.mockRestore();
@@ -320,16 +321,16 @@ it("a command appearing during preparation cannot introduce unaccepted shell sid
 });
 
 it.each(["edited", "deleted", "disabled"])(
-  "revalidates a command %s between both preparation catalog reads",
+  "revalidates current command content but keeps session enable policy when %s during preparation",
   async (change) => {
     const shell = vi.fn(async () => "MOCK SHELL");
     const { host, a, server } = await fixture((_, response) => done(response), shell);
-    const command = await host.customCommands.create({ name: "race", prompt: "!`fixture-never-run`" });
+    const command = await host.customCommands.create({ name: "race", prompt: "!`fixture-original`" });
     const original = host.listSessionCustomCommands.bind(host);
     let reads = 0;
     const spy = vi.spyOn(host, "listSessionCustomCommands").mockImplementation(async (id) => {
       if (++reads === 2) {
-        if (change === "edited") await writeFile(command.filePath, "Changed !`fixture-never-run`");
+        if (change === "edited") await writeFile(command.filePath, "Changed !`fixture-changed`");
         else if (change === "deleted") await unlink(command.filePath);
         else await host.customCommands.setEnabled({ id: command.id, enabled: false });
       }
@@ -340,11 +341,17 @@ it.each(["edited", "deleted", "disabled"])(
       await host.startRun({ sessionId: session.id, text: "/race" });
       await host.activeRuns.get(session.id)?.done;
       const run = host.getSessionSnapshot(session.id).view.runs[0];
-      expect(run.status).toBe("error");
-      expect(JSON.stringify(run)).toContain(change === "disabled" ? "禁用" : "准备期间已更改");
       expect(reads).toBe(2);
-      expect(server.requests).toHaveLength(0);
-      expect(shell).not.toHaveBeenCalled();
+      if (change === "disabled") {
+        expect(run.status).toBe("completed");
+        expect(server.requests).toHaveLength(1);
+        expect(shell).toHaveBeenCalledExactlyOnceWith("fixture-original", expect.anything());
+      } else {
+        expect(run.status).toBe("error");
+        expect(JSON.stringify(run)).toContain(change === "edited" ? "准备期间已更改" : "ENOENT");
+        expect(server.requests).toHaveLength(0);
+        expect(shell).not.toHaveBeenCalled();
+      }
     } finally {
       spy.mockRestore();
     }
