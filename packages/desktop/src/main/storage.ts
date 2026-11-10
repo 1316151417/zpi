@@ -158,7 +158,7 @@ export class SettingsStore {
       const raw = this.state.getSetting<SettingsData>("app");
       if (raw !== undefined) {
         this.validateData(raw);
-        this.data = raw;
+        this.data = { ...raw, shortcuts: normalizeShortcuts(raw.shortcuts, process.platform) };
       }
       if (existsSync(creds)) {
         if (!encryption.isEncryptionAvailable()) this.unreadCredentials = true;

@@ -56,7 +56,9 @@ describe("composer shortcut routing", () => {
     expect(composerShortcutCommand(modelEvent, platform, settings)).toBe("select-model");
     expect(composerShortcutCommand({ ...modelEvent, repeat: true }, platform, settings)).toBe("select-model");
     expect(composerShortcutCommand({ ...modelEvent, isComposing: true }, platform, settings)).toBeUndefined();
-    expect(composerShortcutCommand({ ...modelEvent, shiftKey: true }, platform, settings)).toBeUndefined();
+    expect(composerShortcutCommand({ ...modelEvent, shiftKey: true }, platform, settings)).toBe(
+      "toggle-fast-mode",
+    );
   });
 
   it("does not scan overlay layout for ordinary, disabled, or unmatched input", () => {
@@ -67,6 +69,25 @@ describe("composer shortcut routing", () => {
     expect(composerShortcutCommand(event(), "linux", { ...settings, enabled: false })).toBeUndefined();
     expect(composerShortcutCommand(event({ key: "b", code: "KeyB" }), "linux", settings)).toBeUndefined();
     expect(querySelectorAll).not.toHaveBeenCalled();
+  });
+
+  it("respects clearing, remapping and disabling the acceleration shortcut", () => {
+    const settings = defaultShortcuts("linux");
+    const toggle = event({ key: "L", code: "KeyL", shiftKey: true });
+    expect(composerShortcutCommand(toggle, "linux", settings)).toBe("toggle-fast-mode");
+    settings.bindings["toggle-fast-mode"] = null;
+    expect(composerShortcutCommand(toggle, "linux", settings)).toBeUndefined();
+    settings.bindings["toggle-fast-mode"] = "Control+Shift+B";
+    expect(composerShortcutCommand(toggle, "linux", settings)).toBeUndefined();
+    expect(composerShortcutCommand({ ...toggle, key: "B", code: "KeyB" }, "linux", settings)).toBe(
+      "toggle-fast-mode",
+    );
+    expect(
+      composerShortcutCommand({ ...toggle, key: "B", code: "KeyB" }, "linux", {
+        ...settings,
+        enabled: false,
+      }),
+    ).toBeUndefined();
   });
 
   it("recognizes repeats for consumption without allowing them to fall through as normal Enter", () => {

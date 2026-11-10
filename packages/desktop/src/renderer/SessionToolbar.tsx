@@ -1,11 +1,11 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { ActionHint, type SessionView } from "@zpi-dev/ui";
-import { Check, ChevronDown, ChevronRight, Zap } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { supportsFastMode } from "../shared/fast-mode.ts";
-import { formatShortcut } from "../shared/shortcuts.ts";
+import { formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
 import { accept, focusComposer, refresh, report, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
 import { useOverlayShortcut } from "./use-overlay-shortcut.ts";
@@ -37,6 +37,10 @@ export function SessionToolbar({
   const menuBoundary = toolbar?.closest("main");
   const [active, setActive] = useState<string>();
   const [updating, setUpdating] = useState(false);
+  const shortcut = (command: ShortcutCommand) => {
+    const binding = settings?.shortcuts.enabled && settings.shortcuts.bindings[command];
+    return binding ? formatShortcut(binding, window.zpi.platform) : undefined;
+  };
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => {
@@ -175,16 +179,8 @@ export function SessionToolbar({
       >
         <ActionHint
           appearance="control"
-          label={
-            chosen
-              ? `${provider?.name?.trim() || chosen.provider}/${configured?.name || chosen.modelId}`
-              : "模型选择"
-          }
-          shortcut={
-            settings?.shortcuts.enabled && settings.shortcuts.bindings["select-model"]
-              ? formatShortcut(settings.shortcuts.bindings["select-model"], window.zpi.platform)
-              : undefined
-          }
+          label="切换模型"
+          shortcut={shortcut("select-model")}
           open={open ? false : undefined}
         >
           <Menu.Trigger className="model-trigger" aria-label="模型选择" disabled={updating}>
@@ -198,7 +194,7 @@ export function SessionToolbar({
             {chosen && configured && controls?.selectionValid && chosen.reasoning !== "none" && (
               <span className="model-reasoning">{modelReasoningLabel(configured, chosen.reasoning)}</span>
             )}
-            <ChevronDown size={14} />
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </Menu.Trigger>
         </ActionHint>
         <Menu.Portal>
@@ -321,12 +317,13 @@ export function SessionToolbar({
           <ActionHint
             appearance="control"
             openOnFocus
-            label={chosen.fastMode ? "加速已开启" : "开启加速"}
-            description={`${provider.preset === "openai-chatgpt" ? "订阅额度消耗更高" : "API 费用更高"} · 本会话下一次请求生效`}
+            label={chosen.fastMode ? "关闭加速" : "开启加速"}
+            shortcut={shortcut("toggle-fast-mode")}
           >
             <button
               type="button"
               className="fast-mode-toggle"
+              data-composer-command="toggle-fast-mode"
               aria-label="加速模式"
               aria-pressed={chosen.fastMode === true}
               disabled={updating}

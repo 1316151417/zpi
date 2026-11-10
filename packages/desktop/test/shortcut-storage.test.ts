@@ -69,3 +69,42 @@ it("uses current menu defaults and preserves explicitly restored old keys or cle
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it.each([false, true])(
+  "opens existing shortcut settings without resetting user bindings (default occupied=%s)",
+  async (occupied) => {
+    const dir = await mkdtemp(join(tmpdir(), "zpi-shortcut-fast-mode-"));
+    const store = new SettingsStore(dir, encryption);
+    try {
+      store.updatePreferences({ theme: "dark" });
+      const raw = store.state.getSetting<SettingsData>("app");
+      if (!raw) throw new Error("Missing saved settings");
+      const { "toggle-fast-mode": _newAction, ...bindings } = raw.shortcuts.bindings;
+      Object.assign(bindings, {
+        "select-model": null,
+        "toggle-pane": occupied ? "CmdOrCtrl+Shift+L" : "CmdOrCtrl+Shift+T",
+      });
+      const previous = { enabled: false, bindings };
+      store.state.setSetting("app", { ...raw, shortcuts: previous });
+      const reopened = new SettingsStore(dir, encryption, store.state);
+      const actual = reopened.get().shortcuts;
+      expect(actual.enabled).toBe(false);
+      expect(actual.bindings["select-model"]).toBeNull();
+      expect(actual.bindings["toggle-pane"]).toBe(
+        occupied
+          ? defaultShortcuts(process.platform).bindings["toggle-fast-mode"]
+          : process.platform === "darwin"
+            ? "Shift+Command+T"
+            : "Control+Shift+T",
+      );
+      expect(actual.bindings["toggle-fast-mode"]).toBe(
+        occupied ? null : defaultShortcuts(process.platform).bindings["toggle-fast-mode"],
+      );
+      reopened.updateShortcuts(actual);
+      expect(new SettingsStore(dir, encryption, store.state).get().shortcuts).toEqual(actual);
+    } finally {
+      store.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);

@@ -47,7 +47,9 @@ test("shortcut search, capture, cancel, clear, reset confirmation and failure fe
     await search.fill("选择模型");
     await expect(rows).toHaveCount(1);
     await search.fill(process.platform === "darwin" ? "cmd+l" : "ctrl+l");
-    await expect(rows).toHaveAttribute("data-shortcut-command", "select-model");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toHaveAttribute("data-shortcut-command", "select-model");
+    await expect(rows.nth(1)).toHaveAttribute("data-shortcut-command", "toggle-fast-mode");
     await search.fill("不存在的命令");
     await expect(page.getByText("没有匹配的命令或快捷键")).toBeVisible();
     await page.getByRole("button", { name: "清空搜索", exact: true }).click();

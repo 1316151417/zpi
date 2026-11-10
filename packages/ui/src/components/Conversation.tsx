@@ -1769,7 +1769,7 @@ export function ChatComposer({
 }: {
   shortcutCommand?: (
     event: KeyboardEvent,
-  ) => "send-next" | "select-model" | "configure-environment" | undefined;
+  ) => "send-next" | "select-model" | "toggle-fast-mode" | "configure-environment" | undefined;
   onSelectModel?: () => void;
   onConfigureEnvironment?: () => void;
   onCancel?: () => void;
@@ -2293,6 +2293,10 @@ export function ChatComposer({
         if (event.repeat) return;
         if (command === "select-model") onSelectModel?.();
         else if (command === "configure-environment") onConfigureEnvironment?.();
+        else if (command === "toggle-fast-mode")
+          root.current
+            .querySelector<HTMLButtonElement>('[data-composer-command="toggle-fast-mode"]')
+            ?.click();
         else if (hasDraft) void submit(undefined, undefined, true);
         else {
           const first = queue?.items[0];

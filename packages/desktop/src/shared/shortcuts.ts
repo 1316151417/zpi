@@ -8,6 +8,7 @@ export const shortcutCommands = [
   { id: "send-next", label: "立即发送消息", scope: "composer" },
   { id: "configure-environment", label: "配置本地环境", scope: "draft-composer" },
   { id: "select-model", label: "选择模型", scope: "composer" },
+  { id: "toggle-fast-mode", label: "开启或关闭加速", scope: "composer" },
   { id: "task-menu", label: "打开或关闭任务菜单", scope: "task" },
   { id: "pin-1", label: "切换到置顶任务 1", scope: "app" },
   { id: "pin-2", label: "切换到置顶任务 2", scope: "app" },
@@ -130,6 +131,7 @@ export function defaultShortcuts(platform: string): ShortcutSettings {
       "send-next": `${primary}+Enter`,
       "configure-environment": `${primary}+J`,
       "select-model": `${primary}+L`,
+      "toggle-fast-mode": platform === "darwin" ? "Shift+Command+L" : "Control+Shift+L",
       "task-menu": `${primary}+U`,
       "pin-1": `${primary}+1`,
       "pin-2": `${primary}+2`,
@@ -298,6 +300,8 @@ export function validateShortcuts(input: unknown, platform: string): string | un
   const seen = new Map<string, string>();
   for (const { id, label } of shortcutCommands) {
     const value = settings.bindings[id];
+    // Existing shortcut maps predate this additive action; keep all earlier actions strict.
+    if (id === "toggle-fast-mode" && !Object.hasOwn(settings.bindings, id)) continue;
     if (value === null) continue;
     if (typeof value !== "string") return `${label}：快捷键无效`;
     const binding = normalizeShortcut(value, platform);
@@ -313,12 +317,21 @@ export function validateShortcuts(input: unknown, platform: string): string | un
 export function normalizeShortcuts(settings: ShortcutSettings, platform: string): ShortcutSettings {
   const error = validateShortcuts(settings, platform);
   if (error) throw new Error(`invalid_input: ${error}`);
+  const bindings = { ...settings.bindings };
+  if (!Object.hasOwn(bindings, "toggle-fast-mode")) {
+    const fallback = defaultShortcuts(platform).bindings["toggle-fast-mode"];
+    bindings["toggle-fast-mode"] = Object.values(bindings).some(
+      (binding) => binding !== null && normalizeShortcut(binding, platform) === fallback,
+    )
+      ? null
+      : fallback;
+  }
   return {
     enabled: settings.enabled,
     bindings: Object.fromEntries(
       shortcutCommands.map(({ id }) => [
         id,
-        settings.bindings[id] === null ? null : normalizeShortcut(settings.bindings[id], platform),
+        bindings[id] === null ? null : normalizeShortcut(bindings[id], platform),
       ]),
     ) as ShortcutSettings["bindings"],
   };

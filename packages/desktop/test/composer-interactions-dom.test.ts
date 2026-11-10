@@ -148,6 +148,70 @@ async function commentChip() {
   );
   return element("[data-file-comment-count]");
 }
+
+it("routes acceleration to only the focused composer's enabled control without submitting or altering drafts", async () => {
+  const drafts = new ComposerDraftStore();
+  const toggles = [vi.fn(), vi.fn()];
+  const shortcutCommand = vi.fn(() => "toggle-fast-mode" as const);
+  const submit = vi.fn(async () => {});
+  for (const id of ["main-fast", "side-fast"])
+    drafts.set(id, { text: `${id} draft`, attachments: [], fileReferences: [], pending: 0 });
+  await act(async () =>
+    root.render(
+      createElement(
+        "div",
+        null,
+        ...["main-fast", "side-fast"].map((id, index) =>
+          createElement(ChatComposer, {
+            key: id,
+            sessionId: id,
+            busy: false,
+            draftStorage: drafts,
+            onSubmit: submit,
+            onStop() {},
+            shortcutCommand,
+            toolbar: createElement(
+              "button",
+              { type: "button", "data-composer-command": "toggle-fast-mode", onClick: toggles[index] },
+              "加速",
+            ),
+          }),
+        ),
+      ),
+    ),
+  );
+  const editors = container.querySelectorAll<HTMLElement>(".mention-editor");
+  const dispatch = (flags: KeyboardEventInit = {}) =>
+    act(async () => {
+      editors[1].focus();
+      editors[1].dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "L",
+          shiftKey: true,
+          metaKey: true,
+          ...flags,
+        }),
+      );
+    });
+  await dispatch();
+  expect(document.activeElement).toBe(editors[1]);
+  expect(shortcutCommand).toHaveBeenCalledOnce();
+  expect(toggles[0]).not.toHaveBeenCalled();
+  expect(toggles[1]).toHaveBeenCalledOnce();
+  for (const flags of [{ repeat: true }, { isComposing: true }, { keyCode: 229 }]) await dispatch(flags);
+  expect(toggles[1]).toHaveBeenCalledOnce();
+  const buttons = container.querySelectorAll<HTMLButtonElement>('[data-composer-command="toggle-fast-mode"]');
+  buttons[1].disabled = true;
+  await dispatch();
+  expect(toggles[1]).toHaveBeenCalledOnce();
+  buttons[1].remove();
+  await dispatch();
+  expect(submit).not.toHaveBeenCalled();
+  expect(drafts.get("main-fast")?.text).toBe("main-fast draft");
+  expect(drafts.get("side-fast")?.text).toBe("side-fast draft");
+});
 async function hover(pill: HTMLElement) {
   await act(async () => {
     pill.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));

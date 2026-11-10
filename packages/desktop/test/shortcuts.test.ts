@@ -26,6 +26,7 @@ describe("shortcut contract", () => {
       search: `${primary}+K`,
       "configure-environment": `${primary}+J`,
       "select-model": `${primary}+L`,
+      "toggle-fast-mode": platform === "darwin" ? "Shift+Command+L" : "Control+Shift+L",
       "focus-composer": `${primary}+I`,
     });
     settings.bindings["toggle-sidebar"] = null;

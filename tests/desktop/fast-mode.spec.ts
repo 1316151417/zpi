@@ -28,7 +28,7 @@ test("composer lightning toggles a durable per-session speed, preserves reasonin
       const provider = settings.value.providers[0];
       const result = await window.zpi.saveProvider({
         id: provider.id,
-        name: provider.name,
+        name: "OpenAI（ChatGPT） · preview@example.test",
         baseUrl: provider.baseUrl,
         ...(provider.api ? { api: provider.api } : {}),
         apiKey: "isolated-key",
@@ -43,15 +43,33 @@ test("composer lightning toggles a durable per-session speed, preserves reasonin
     const fast = page.getByRole("button", { name: "加速模式", exact: true });
     const model = page.getByLabel("模型选择", { exact: true });
     const editor = page.getByLabel("消息", { exact: true });
+    const hint = page.locator('[role="tooltip"]:not([data-state="closed"])');
+    const primary = process.platform === "darwin" ? "Meta" : "Control";
+    const fastKey = `${primary}+Shift+l`;
+    const keyLabel = process.platform === "darwin" ? "⇧⌘L" : "Ctrl+Shift+L";
+    await model.hover();
+    await expect(hint).toHaveText(process.platform === "darwin" ? "切换模型⌘L" : "切换模型Ctrl+L");
+    await editor.hover();
+    await fast.hover();
+    await expect(hint).toHaveText(`开启加速${keyLabel}`);
     await expect(fast).toHaveAttribute("aria-pressed", "false");
     const offWidth = (await fast.boundingBox())?.width;
     await fast.click();
     await expect(fast).toHaveAttribute("aria-pressed", "true");
     await expect(editor).toBeFocused();
     expect((await fast.boundingBox())?.width).toBe(offWidth);
-    await editor.hover();
+    await editor.fill("保留草稿");
+    await editor.press(fastKey);
+    await expect(fast).toHaveAttribute("aria-pressed", "false");
+    await expect(fast).toBeEnabled();
+    await editor.press(fastKey);
+    await expect(fast).toHaveAttribute("aria-pressed", "true");
+    await expect(fast).toBeEnabled();
+    await expect(editor).toHaveText("保留草稿");
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await fast.hover();
-    await expect(page.getByRole("tooltip")).toContainText("API 费用更高");
+    await expect(hint).toHaveText(`关闭加速${keyLabel}`);
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate(async (theme) => {
         const result = await window.zpi.updatePreferences({ theme });
@@ -62,12 +80,15 @@ test("composer lightning toggles a durable per-session speed, preserves reasonin
       await expect(fast).toHaveAttribute("aria-pressed", "true");
       await expect(fast).toHaveCSS("color", await model.evaluate((el) => getComputedStyle(el).color));
       await fast.hover();
-      await expect(page.getByRole("tooltip")).toHaveCSS("opacity", "1");
+      await expect(hint).toHaveCSS("opacity", "1");
       await page.screenshot({ path: `test-results/fast-mode-${theme}.png` });
     }
     await model.click();
+    await expect(model).toHaveAttribute("aria-expanded", "true");
+    await expect(model.locator(".lucide-chevron-up")).toBeVisible();
     await page.getByRole("menuitem", { name: "fake", exact: true }).hover();
     await page.getByRole("menuitem", { name: "高", exact: true }).click();
+    await expect(model.locator(".lucide-chevron-down")).toBeVisible();
     await expect(fast).toHaveAttribute("aria-pressed", "true");
     await editor.fill("fast request");
     await editor.press("Enter");
@@ -89,6 +110,28 @@ test("composer lightning toggles a durable per-session speed, preserves reasonin
     await model.click();
     await page.getByRole("menuitem", { name: "fake", exact: true }).click();
     await expect(fast).toHaveAttribute("aria-pressed", "false");
+    await model.click();
+    await expect(model.locator(".lucide-chevron-up")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(model.locator(".lucide-chevron-down")).toBeVisible();
+    await expect(editor).toBeFocused();
+    await page.evaluate(async () => {
+      const current = await window.zpi.getSettings();
+      if (!current.ok) throw new Error(current.error.message);
+      const saved = await window.zpi.updateShortcuts({
+        ...current.value.shortcuts,
+        bindings: { ...current.value.shortcuts.bindings, "toggle-fast-mode": "CmdOrCtrl+Shift+B" },
+      });
+      if (!saved.ok) throw new Error(saved.error.message);
+    });
+    await page.reload();
+    await editor.fill("remapped shortcut draft");
+    await editor.press(fastKey);
+    await expect(fast).toHaveAttribute("aria-pressed", "false");
+    await editor.press(`${primary}+Shift+b`);
+    await expect(fast).toHaveAttribute("aria-pressed", "true");
+    await expect(editor).toHaveText("remapped shortcut draft");
+    await expect(page.getByTestId("run")).toHaveCount(2);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
