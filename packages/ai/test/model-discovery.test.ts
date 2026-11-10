@@ -8,6 +8,21 @@ import {
 } from "../src/index.ts";
 
 it.each([
+  { metadata: { service_tiers: [{ id: "priority", name: "Fast" }] }, expected: ["priority"] },
+  { metadata: { additional_speed_tiers: ["fast"] }, expected: ["priority"] },
+  { metadata: { service_tiers: [] }, expected: [] },
+  { metadata: { service_tiers: ["ultrafast"] }, expected: ["ultrafast"] },
+])(
+  "respects account speed-tier metadata $metadata over preset capabilities",
+  async ({ metadata, expected }) => {
+    const result = await fetchProviderModels({ preset: "openai-chatgpt", apiKey: "fake" }, async () =>
+      Response.json({ models: [{ slug: "gpt-6.1-sol", visibility: "list", ...metadata }] }),
+    );
+    expect(result.models.find((model) => model.id === "gpt-6.1-sol")?.serviceTiers).toEqual(expected);
+  },
+);
+
+it.each([
   { api: "anthropic-messages" as const, key: "fake-api-key", path: "/v1/models", header: "x-api-key" },
   { api: "anthropic-messages" as const, key: "sk-ant-oat-fake", path: "/v1/models", header: "authorization" },
   { api: "openai-completions" as const, key: "fake-api-key", path: "/models", header: "authorization" },

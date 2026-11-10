@@ -111,6 +111,36 @@ async function fixture(
 }
 
 it.each([false, true])(
+  "carries fast mode on WebSocket and resets continuation when switching to standard (subscription=%s)",
+  async (subscription) => {
+    const f = await fixture();
+    const model = {
+      ...f.model,
+      ...(subscription ? { auth: "chatgpt" as const } : {}),
+      samplingParams: { service_tier: "priority" },
+    };
+    const messages = [user("first")];
+    const first = await f.run(messages, {}, model);
+    expect(first.stopReason).toBe("stop");
+    expect(f.requests[0].body.service_tier).toBe("priority");
+    const continuation = [...messages, first, user("same speed")];
+    const second = await f.run(continuation, {}, model);
+    expect(f.requests[1].body.previous_response_id).toBe("resp_1");
+    expect(
+      (
+        await f.run(
+          [...continuation, second, user("next")],
+          {},
+          { ...model, samplingParams: { service_tier: "default" } },
+        )
+      ).stopReason,
+    ).toBe("stop");
+    expect(f.requests[2].body.service_tier).toBe("default");
+    expect(f.requests[2].body.previous_response_id).toBeUndefined();
+  },
+);
+
+it.each([false, true])(
   "warms up and continues the same authenticated socket (subscription=%s)",
   async (subscription) => {
     const f = await fixture();

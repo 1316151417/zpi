@@ -156,6 +156,8 @@ export interface Model<TApi extends Api = Api> {
   reasoningConfig?: ReasoningConfig;
   defaultThinkingLevel?: "off" | ThinkingLevel;
   samplingParams?: Record<string, unknown>;
+  /** Advertised processing tiers. An empty list explicitly disables accelerated tiers. */
+  serviceTiers?: string[];
 }
 export interface TextContent {
   type: "text";

@@ -30,13 +30,13 @@ export function mergeDiscoveredModels<T extends ModelSettings>(
   return [
     ...discovered.map((model) => {
       const old = previous.get(model.id);
-      return old?.useRecommendedConfig === false
-        ? old
-        : {
-            ...model,
-            useRecommendedConfig: true,
-            ...(old?.enabled !== undefined ? { enabled: old.enabled } : {}),
-          };
+      if (old?.useRecommendedConfig === false)
+        return model.serviceTiers !== undefined ? { ...old, serviceTiers: model.serviceTiers } : old;
+      return {
+        ...model,
+        useRecommendedConfig: true,
+        ...(old?.enabled !== undefined ? { enabled: old.enabled } : {}),
+      };
     }),
     ...current.filter(
       (model) => model.id && model.useRecommendedConfig === false && !discoveredIds.has(model.id),

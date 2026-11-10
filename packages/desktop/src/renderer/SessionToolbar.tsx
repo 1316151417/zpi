@@ -1,9 +1,10 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { ActionHint, type SessionView } from "@zpi-dev/ui";
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
+import { supportsFastMode } from "../shared/fast-mode.ts";
 import { formatShortcut } from "../shared/shortcuts.ts";
 import { accept, focusComposer, refresh, report, useStore } from "./store.ts";
 import { unwrap } from "./unwrap.ts";
@@ -45,12 +46,22 @@ export function SessionToolbar({
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
-  const select = (provider: string, modelId: string, reasoning: string) => {
+  const select = (
+    provider: string,
+    modelId: string,
+    reasoning: string,
+    fastMode = chosen?.provider === provider && chosen.modelId === modelId ? chosen.fastMode : undefined,
+  ) => {
     if (selectionLock.current) return;
     selectionLock.current = true;
     setUpdating(true);
     void window.zpi
-      .setSessionSelection(view.sessionId, { provider, modelId, reasoning })
+      .setSessionSelection(view.sessionId, {
+        provider,
+        modelId,
+        reasoning,
+        ...(fastMode !== undefined ? { fastMode } : {}),
+      })
       .then(unwrap)
       .then(async (snapshot) => {
         accept(snapshot);
@@ -302,6 +313,29 @@ export function SessionToolbar({
           </Menu.Content>
         </Menu.Portal>
       </Menu.Root>
+      {chosen &&
+        provider &&
+        configured &&
+        controls?.selectionValid &&
+        supportsFastMode(provider, configured) && (
+          <ActionHint
+            appearance="control"
+            openOnFocus
+            label={chosen.fastMode ? "加速已开启" : "开启加速"}
+            description={`${provider.preset === "openai-chatgpt" ? "订阅额度消耗更高" : "API 费用更高"} · 本会话下一次请求生效`}
+          >
+            <button
+              type="button"
+              className="fast-mode-toggle"
+              aria-label="加速模式"
+              aria-pressed={chosen.fastMode === true}
+              disabled={updating}
+              onClick={() => select(chosen.provider, chosen.modelId, chosen.reasoning, !chosen.fastMode)}
+            >
+              <Zap size={14} fill={chosen.fastMode ? "currentColor" : "none"} />
+            </button>
+          </ActionHint>
+        )}
     </div>
   );
 }

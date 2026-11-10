@@ -56,7 +56,12 @@ export function validateTask(value: unknown, id: string): asserts value is TaskS
     status: (v) =>
       ["running", "completed", "aborted", "error", "interrupted"].includes(String(v)) && string(v),
     lastThinkingLevel: nonempty,
-    currentSelection: (v) => object(v) && nonempty(v.provider) && nonempty(v.modelId) && string(v.reasoning),
+    currentSelection: (v) =>
+      object(v) &&
+      nonempty(v.provider) &&
+      nonempty(v.modelId) &&
+      string(v.reasoning) &&
+      (v.fastMode === undefined || typeof v.fastMode === "boolean"),
     fork: (v) => object(v) && nonempty(v.sessionId) && nonempty(v.runId),
     worktree: (v) =>
       object(v) &&

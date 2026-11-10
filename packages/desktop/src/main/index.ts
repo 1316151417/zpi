@@ -1155,7 +1155,7 @@ async function launch(): Promise<void> {
         case "setSessionSelection":
           value = await host.setSessionSelection(
             string(0),
-            object(1, ["provider", "modelId", "reasoning"]) as unknown as CombinedSelection,
+            object(1, ["provider", "modelId", "reasoning", "fastMode"]) as unknown as CombinedSelection,
           );
           break;
         case "listSessionSkills":

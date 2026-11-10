@@ -10,6 +10,7 @@ export interface PluginNotification {
 export type ReasoningPreset = string;
 export interface CombinedSelection extends ModelSelection {
   reasoning: ReasoningPreset;
+  fastMode?: boolean;
 }
 
 export interface WebSearchSource {

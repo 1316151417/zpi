@@ -15,6 +15,7 @@ export {
   discoverProviderCredentials,
   getProviderPreset,
   isLegacyOpenAIModel,
+  modelServiceTiers,
   presetModels,
   providerApi,
   providerApis,
@@ -50,6 +51,7 @@ export {
   validateThinkingMap,
 } from "./utils/reasoning.ts";
 export * from "./utils/retry.ts";
+export { fastServiceTier } from "./utils/service-tier.ts";
 export {
   DEFAULT_MODEL_FIRST_RESPONSE_TIMEOUT_MS,
   DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,

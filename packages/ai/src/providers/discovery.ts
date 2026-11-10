@@ -49,6 +49,16 @@ function normalizeModel(
         compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
       };
   model.id = id;
+  const tiers = item.service_tiers ?? item.additional_speed_tiers;
+  if (Array.isArray(tiers))
+    model.serviceTiers = [
+      ...new Set(
+        tiers.flatMap((value) => {
+          const tier = typeof value === "string" ? value : isJsonObject(value) ? value.id : undefined;
+          return typeof tier === "string" && tier.trim() ? [tier === "fast" ? "priority" : tier] : [];
+        }),
+      ),
+    ];
   const name = item.display_name ?? item.name;
   if (!(openai && known) && typeof name === "string" && name.trim()) model.name = name.slice(0, 200);
   const contextWindow = positive(item.context_window ?? item.contextWindow ?? item.context_length);

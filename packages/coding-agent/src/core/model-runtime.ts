@@ -122,6 +122,7 @@ export class ModelRuntime {
           "reasoningConfig",
           "defaultThinkingLevel",
           "samplingParams",
+          "serviceTiers",
         ],
         "model",
       );

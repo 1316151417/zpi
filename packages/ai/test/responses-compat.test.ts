@@ -32,6 +32,25 @@ const sse = (events: unknown[]) =>
     headers: { "content-type": "text/event-stream" },
   });
 
+it.each([false, true])(
+  "preserves the selected service tier on HTTP Responses (subscription=%s)",
+  async (subscription) => {
+    for (const service_tier of ["priority", "default"]) {
+      const fetcher = vi.fn<typeof fetch>(async () =>
+        sse([{ type: "response.completed", response: response([message("ok")]) }]),
+      );
+      const stream = streamSimple(
+        { ...model, ...(subscription ? { auth: "chatgpt" as const } : {}), samplingParams: { service_tier } },
+        normalizeContext({ messages: [] }),
+        { apiKey: "fake", fetch: fetcher },
+      );
+      expect((await stream.result()).stopReason).toBe("stop");
+      const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+      expect(request.service_tier).toBe(service_tier);
+    }
+  },
+);
+
 it.each([
   ["Hello", "Hello world"],
   ["Wrong prefix", "Correct text"],

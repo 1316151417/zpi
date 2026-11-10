@@ -69,6 +69,7 @@ import type {
   TaskSearchResult,
 } from "../shared/bridge.ts";
 import { availablePresets, taskPinLimit, toPreset, toThinking } from "../shared/config.ts";
+import { supportsFastMode, withFastMode } from "../shared/fast-mode.ts";
 import type { HooksCatalog, HookTarget, SaveHookInput } from "../shared/hooks.ts";
 import { type ReviewDiffData, reviewPatchStats } from "../shared/review.ts";
 import { buildTaskSearchSnippets } from "../shared/task-search.ts";
@@ -332,6 +333,10 @@ export class SessionHost {
                 provider: session.model.provider,
                 modelId: session.model.id,
                 reasoning: toPreset(session.thinkingLevel, session.model),
+                ...(session.model.samplingParams?.service_tier === "priority" ||
+                session.model.samplingParams?.service_tier === "fast"
+                  ? { fastMode: true }
+                  : {}),
               }
             : id
               ? this.getControls(id).selection
@@ -344,7 +349,7 @@ export class SessionHost {
           this.configure(runtime, selection.provider, settings.snapshot(selection.provider));
           const model = runtime.getModel(selection.provider, selection.modelId);
           if (!model) throw new Error("configuration: 模型不存在");
-          return { runtime, model };
+          return { runtime, model: withFastMode(model, selection.fastMode) };
         },
       },
       sessions: {
@@ -1294,7 +1299,16 @@ export class SessionHost {
         setModel: (provider, modelId) => {
           const current = this.settings.state.getTask(id)?.currentSelection;
           this.saveTask(id, {
-            currentSelection: { provider, modelId, reasoning: current?.reasoning ?? "off" },
+            currentSelection: {
+              provider,
+              modelId,
+              reasoning: current?.reasoning ?? "off",
+              ...(current?.provider === provider &&
+              current.modelId === modelId &&
+              current.fastMode !== undefined
+                ? { fastMode: current.fastMode }
+                : {}),
+            },
           });
         },
         setThinkingLevel: (level) => {
@@ -1876,6 +1890,10 @@ export class SessionHost {
     if (this.blocked.has(id)) throw new Error(`storage: ${this.blocked.get(id)}`);
     if (!selection || !this.settings.isSelectionValid(selection))
       throw new Error("configuration: 模型已删除、关闭或思考程度不可用，请重新选择");
+    const provider = this.settings.get().providers.find((entry) => entry.id === selection.provider);
+    const model = provider?.models.find((entry) => entry.id === selection.modelId);
+    if (selection.fastMode && (!provider || !model || !supportsFastMode(provider, model)))
+      throw new Error("configuration: 当前模型不支持加速模式");
     // Composer selection is independent of the current SDK run's immutable configuration.
     const level = toThinking(selection.reasoning, this.settings.getModel(selection));
     this.saveTask(id, {
@@ -2542,6 +2560,7 @@ export class SessionHost {
         this.runtimes.set(id, runtime);
         const model = runtime.getModel(selected.provider, selected.modelId);
         if (!model) throw new Error("configuration: 模型不存在");
+        const runModel = withFastMode(model, selection.fastMode);
         let session = this.sessions.get(id);
         const sessionCreated = !session;
         if (!session) {
@@ -2556,14 +2575,14 @@ export class SessionHost {
               promptTemplate: () => configuration.template,
               projectName: () => this.workspaceInfo(id).projectName,
               modelRuntime: runtime,
-              model,
+              model: runModel,
               sessionManager: manager,
               modelPerformanceTotals: this.performanceTotals(id),
               ...this.sessionContributions(id, configuration),
             })
           ).session;
           this.sessions.set(id, session);
-        } else await session.setModel(model);
+        } else await session.setModel(runModel);
         if (session.state.thinkingLevel !== toThinking(selection.reasoning, model))
           session.setThinkingLevel(toThinking(selection.reasoning, model));
         run.session = session;

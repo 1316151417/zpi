@@ -96,6 +96,7 @@ export interface ModelSettings {
   defaultThinkingLevel?: Model["defaultThinkingLevel"];
   availability?: "listed" | "unverified";
   samplingParams?: Model["samplingParams"];
+  serviceTiers?: Model["serviceTiers"];
 }
 export interface ProviderInput {
   api?: ProviderApi;

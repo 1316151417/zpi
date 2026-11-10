@@ -9,6 +9,7 @@ import {
   discoverProviderCredentials,
   getProviderPreset,
   isJsonObject,
+  modelServiceTiers,
   openAICompletionsCompatKeys,
   presetModels,
   providerApi,
@@ -100,6 +101,7 @@ export interface SettingsData {
 }
 const { notificationEnabled: _notificationEnabled, ...defaultStoredPreferences } = defaultPreferences;
 export function resolveModel(provider: ProviderData, input: ModelSettings): Model {
+  const serviceTiers = modelServiceTiers(provider.preset, input);
   const model: Model = {
     id: input.id,
     name: input.name?.trim() || input.id,
@@ -118,6 +120,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
     ...(input.thinkingLevelMap ? { thinkingLevelMap: structuredClone(input.thinkingLevelMap) } : {}),
     ...(input.defaultThinkingLevel ? { defaultThinkingLevel: input.defaultThinkingLevel } : {}),
     ...(input.samplingParams ? { samplingParams: structuredClone(input.samplingParams) } : {}),
+    ...(serviceTiers ? { serviceTiers: [...serviceTiers] } : {}),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
   model.defaultThinkingLevel = toThinking(defaultPreset(model), model);
@@ -368,6 +371,7 @@ export class SettingsStore {
     const model = this.getModel(selection);
     return Boolean(
       model &&
+        (selection.fastMode === undefined || typeof selection.fastMode === "boolean") &&
         typeof selection.reasoning === "string" &&
         canControlThinking(model, toThinking(selection.reasoning, model)),
     );
@@ -562,7 +566,8 @@ export class SettingsStore {
   }
   rememberSelection(selection: CombinedSelection): void {
     if (!this.isSelectionValid(selection)) throw new Error("configuration: 请重新选择有效模型与思考程度");
-    const data = { ...this.data, lastSelection: { ...selection } };
+    const { fastMode: _fastMode, ...lastSelection } = selection;
+    const data = { ...this.data, lastSelection };
     this.state.setSetting("app", data);
     this.data = data;
   }
@@ -738,6 +743,7 @@ export class SettingsStore {
         typeof selection.provider !== "string" ||
         typeof selection.modelId !== "string" ||
         typeof selection.reasoning !== "string" ||
+        (selection.fastMode !== undefined && typeof selection.fastMode !== "boolean") ||
         !selection.reasoning.trim() ||
         selection.reasoning.length > 128)
     )
@@ -829,6 +835,7 @@ export class SettingsStore {
           "defaultThinkingLevel",
           "availability",
           "samplingParams",
+          "serviceTiers",
         ],
         "model settings",
       );
@@ -908,6 +915,12 @@ export class SettingsStore {
         throw new Error("configuration: 无效模型可用性");
       if (m.samplingParams !== undefined && !isJsonObject(m.samplingParams))
         throw new Error("configuration: samplingParams 必须为 JSON 对象");
+      if (
+        m.serviceTiers !== undefined &&
+        (!Array.isArray(m.serviceTiers) ||
+          m.serviceTiers.some((tier) => typeof tier !== "string" || !tier.trim() || tier.length > 128))
+      )
+        throw new Error("configuration: 无效服务档位");
     }
     if (new Set(p.models.map((m) => m.id)).size !== p.models.length)
       throw new Error("configuration: 重复 Model ID");

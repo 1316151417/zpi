@@ -13,6 +13,7 @@ export interface DiscoveredModel {
   defaultThinkingLevel?: Model["defaultThinkingLevel"];
   availability?: "listed" | "unverified";
   samplingParams?: Model["samplingParams"];
+  serviceTiers?: Model["serviceTiers"];
   metadataSource?: "remote" | "catalog" | "defaults";
 }
 export const providerPresets = [
@@ -115,6 +116,14 @@ export function presetModels(id: string, api: ProviderApi = "openai-completions"
 }
 export function usesChatGPTAuth(preset?: string): boolean {
   return preset === "openai-chatgpt";
+}
+export function modelServiceTiers(
+  preset: string | undefined,
+  model: { id: string; serviceTiers?: string[] },
+): string[] | undefined {
+  return (
+    model.serviceTiers ?? presetModels(preset ?? "").find((entry) => entry.id === model.id)?.serviceTiers
+  );
 }
 export function isLegacyOpenAIModel(id: string): boolean {
   return ["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].includes(id);

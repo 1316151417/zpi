@@ -2,6 +2,7 @@
   "openai-chatgpt": [
     {
       "id": "gpt-6.1-terra",
+      "serviceTiers": ["priority"],
       "name": "GPT-6.1 Terra",
       "input": ["text", "image"],
       "reasoning": true,
@@ -25,6 +26,7 @@
     },
     {
       "id": "gpt-6.1-sol",
+      "serviceTiers": ["priority"],
       "name": "GPT-6.1 Sol",
       "input": ["text", "image"],
       "reasoning": true,
@@ -48,6 +50,7 @@
     },
     {
       "id": "gpt-6-luna",
+      "serviceTiers": ["priority"],
       "name": "GPT-6 Luna",
       "input": ["text", "image"],
       "reasoning": true,
@@ -71,6 +74,7 @@
     },
     {
       "id": "gpt-6-astra",
+      "serviceTiers": ["priority"],
       "name": "GPT-6 Astra",
       "input": ["text", "image"],
       "reasoning": true,
