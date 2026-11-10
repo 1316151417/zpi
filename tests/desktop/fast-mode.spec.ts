@@ -60,7 +60,7 @@ test("composer lightning toggles a durable per-session speed, preserves reasonin
       await page.reload();
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(fast).toHaveAttribute("aria-pressed", "true");
-      await expect(fast).toHaveCSS("color", theme === "dark" ? "rgb(227, 196, 119)" : "rgb(118, 87, 22)");
+      await expect(fast).toHaveCSS("color", await model.evaluate((el) => getComputedStyle(el).color));
       await fast.hover();
       await expect(page.getByRole("tooltip")).toHaveCSS("opacity", "1");
       await page.screenshot({ path: `test-results/fast-mode-${theme}.png` });

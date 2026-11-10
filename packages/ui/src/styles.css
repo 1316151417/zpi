@@ -1870,16 +1870,14 @@ small {
   height: 28px;
   border-radius: var(--radius-nested);
   color: var(--color-text-muted);
+  background: transparent;
 }
 .fast-mode-toggle:hover:not(:disabled) {
-  background: var(--color-hover);
+  color: var(--color-text);
+  background: transparent;
 }
 .fast-mode-toggle[aria-pressed="true"] {
-  color: var(--color-waiting);
-  background: var(--color-warning-surface);
-}
-.fast-mode-toggle[aria-pressed="true"]:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--color-warning-surface) 80%, var(--color-warning));
+  color: var(--color-text);
 }
 .selection-menu {
   background: var(--color-popover);
