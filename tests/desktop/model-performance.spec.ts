@@ -69,6 +69,7 @@ test("fits cumulative metrics below the composer without changing the bottom hei
 
     // Run another task while A is still streaming; its missing usage must not inherit A's speed.
     await page.getByLabel("新建任务", { exact: true }).first().click();
+    await expect(page.locator("main.draft-main .conversation")).toBeAttached();
     await expect(indicator).toHaveCount(0);
     await editor.fill("性能任务 B");
     await page.getByLabel("发送", { exact: true }).click();
@@ -82,14 +83,18 @@ test("fits cumulative metrics below the composer without changing the bottom hei
     await expect(indicator).toContainText("185 tok");
     await expect(indicator).toContainText("缓存命中 80%");
     expect(await composer.boundingBox()).toEqual(initialBox);
+    await expect(indicator).not.toContainText("tok/s");
     const live = (await indicator.textContent()) ?? "";
     await indicator.getByRole("button", { name: "会话统计", exact: true }).click();
     const stats = page.getByRole("dialog", { name: "会话统计", exact: true });
-    await expect(stats).toContainText("模型用时");
+    await expect(stats).toContainText("模型累计用时");
     await expect(stats).toContainText("轮数1");
     await expect(stats).toContainText("步数1");
-    await expect(stats).toContainText("首 token 平均（TTFT）");
-    await expect(stats).toContainText("输出速度（TPS）");
+    await expect(stats).toContainText("最近成功请求耗时");
+    await expect(stats).toContainText("首段内容等待");
+    await expect(stats).toContainText("正文开始等待");
+    await expect(stats).toContainText("本次估算输出速度—");
+    await expect(stats).toContainText("合格速度样本0");
     await page.keyboard.press("Escape");
     await expect(stats).toHaveCount(0);
     await indicator.getByRole("button", { name: "Token 用量", exact: true }).click();

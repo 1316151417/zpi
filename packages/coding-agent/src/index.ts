@@ -23,7 +23,12 @@ export * from "./core/images.ts";
 export { type MarkdownFrontmatter, parseMarkdownFrontmatter } from "./core/markdown.ts";
 export * from "./core/mentions.ts";
 export type { ModelPerformance, ModelPerformanceTotals } from "./core/model-performance.ts";
-export { modelPerformance, SessionPerformance, validPerformanceTotals } from "./core/model-performance.ts";
+export {
+  modelPerformance,
+  performanceScope,
+  SessionPerformance,
+  validPerformanceTotals,
+} from "./core/model-performance.ts";
 export type {
   MediaProjectionContext,
   ModelRuntimeOptions,

@@ -315,12 +315,19 @@ export interface Context {
 }
 declare const transcriptBrand: unique symbol;
 export type TranscriptContext = { messages: Message[]; readonly [transcriptBrand]: true };
-/** A provider-reported token count paired with its own content interval, never wall-clock elapsed time. */
+/** Producer-side observations for one request attempt; token usage and delivery timing have separate meanings. */
 export interface ModelPerformanceSample {
   requestMs?: number;
   ttftMs?: number;
   outputTokens?: number;
   generationMs?: number;
+  firstTextMs?: number;
+  textGenerationMs?: number;
+  textChunks?: number;
+  textChars?: number;
+  largestTextChunk?: number;
+  hasThinking?: boolean;
+  hasToolCalls?: boolean;
 }
 export interface StreamOptions {
   /** Request-local media omission statistics; omitted when the request fits. Never sent to the provider. */

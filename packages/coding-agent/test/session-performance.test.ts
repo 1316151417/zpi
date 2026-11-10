@@ -20,11 +20,14 @@ it("measures the whole prompt through tools/retries, discards cancellation and r
     streamSimple(model, _context, options) {
       const stream = createAssistantMessageEventStream();
       const message = emptyAssistant(model);
-      message.content = [{ type: "text", text: "ok" }];
+      message.content = [{ type: "text", text: "ok".repeat(200) }];
+      message.usageAvailable = true;
+      message.usage.reasoning = 0;
+      message.usage.output = calls === 2 ? 115 : 85;
       options?.onPerformance?.({});
       calls++;
       if (calls === 1) {
-        options?.onPerformance?.({ ttftMs: 800, outputTokens: 85, generationMs: 1000 });
+        options?.onPerformance?.({ ttftMs: 800, requestMs: 1800, outputTokens: 85, hasToolCalls: true });
         message.content = [{ type: "toolCall", id: "wait-1", name: "wait", arguments: {} }];
         message.stopReason = "toolUse";
       } else if (calls === 2) {
@@ -33,14 +36,23 @@ it("measures the whole prompt through tools/retries, discards cancellation and r
         message.errorMessage = "server error";
         message.errorDetails = { retryable: true, status: 503 };
       } else if (calls === 3) {
-        options?.onPerformance?.({ ttftMs: 1200, outputTokens: 115, generationMs: 3000 });
+        options?.onPerformance?.({
+          ttftMs: 1200,
+          requestMs: 4300,
+          firstTextMs: 1200,
+          textGenerationMs: 3000,
+          outputTokens: 115,
+          textChunks: 4,
+          textChars: 400,
+          largestTextChunk: 100,
+        });
       } else if (calls === 4) {
         late = options?.onPerformance;
         late?.({ ttftMs: 9999, outputTokens: 9999, generationMs: 1 });
         cancelledStarted.resolve();
         return stream; // The watchdog/abort path must discard this sample.
       } else {
-        // Custom providers without measurements must not change the prior speed.
+        // An unmeasured request must not fabricate another qualified speed sample.
         late?.({ ttftMs: 9999 });
       }
       stream.end(message);
@@ -74,17 +86,31 @@ it("measures the whole prompt through tools/retries, discards cancellation and r
   });
   const running = session.prompt("go");
   await toolStarted.promise;
-  expect(session.modelPerformance).toMatchObject({ ttftMs: 800, tokensPerSecond: 85 });
+  expect(session.modelPerformance).toMatchObject({ ttftMs: 800, speedSampleCount: 0 });
+  expect(session.modelPerformance.tokensPerSecond).toBeUndefined();
   toolRelease.resolve();
   await running;
   expect(calls).toBe(3);
-  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
+  expect(session.modelPerformance).toMatchObject({
+    ttftMs: 1200,
+    tokensPerSecond: 115 / 3,
+    speedSampleCount: 1,
+  });
   const cancelled = session.prompt("cancel");
-  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
+  expect(session.modelPerformance).toMatchObject({
+    ttftMs: 1200,
+    tokensPerSecond: 115 / 3,
+    speedSampleCount: 1,
+  });
   await cancelledStarted.promise;
   await session.abort();
   await cancelled;
-  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
+  expect(session.modelPerformance).toMatchObject({
+    ttftMs: 1200,
+    tokensPerSecond: 115 / 3,
+    speedSampleCount: 1,
+  });
   await session.prompt("again");
-  expect(session.modelPerformance).toMatchObject({ ttftMs: 1000, tokensPerSecond: 50 });
+  expect(session.modelPerformance).toMatchObject({ tokensPerSecond: 115 / 3, speedSampleCount: 1 });
+  expect(session.modelPerformance.ttftMs).toBeUndefined();
 });

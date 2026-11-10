@@ -169,7 +169,7 @@ export type DesktopEvent =
   | { type: "history_reset"; view: SessionView }
   | { type: "queue_changed"; queue: InputQueue }
   | { type: "session_changed"; title: string }
-  | { type: "controls_changed"; controls: SessionControls }
+  | { type: "controls_changed"; controls: SessionControls; modelPerformance?: ModelPerformance }
   | { type: "notice"; text: string }
   | { type: "block_end"; messageId: string; contentIndex: number; timestamp?: number }
   | {

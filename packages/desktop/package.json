@@ -1,6 +1,6 @@
 {
   "name": "@zpi-dev/desktop",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "type": "module",
   "description": "ZPI desktop agent workspace, launched from the command line",
   "main": "./dist/main/index.js",

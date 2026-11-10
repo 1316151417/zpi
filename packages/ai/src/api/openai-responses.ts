@@ -353,7 +353,7 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       if (text.startsWith(current)) append(key, "text", text.slice(current.length));
       else if (block?.type === "text") {
         block.text = text;
-        events.generated();
+        events.generated("text", text.length);
       }
     }
     function itemAdded(item: ResponseOutputItem) {
