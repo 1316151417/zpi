@@ -2792,7 +2792,13 @@ export class SessionHost {
           throw new Error("storage: Generation intent mismatch");
         this.settings.state.putIntent({ ...operation, stage: "durable", watermark });
         this.settings.state.completeIntent(operation.operationId, () => {
-          this.saveTask(header.id, { sessionFile: relative(this.dir, newPath), cwd: header.cwd });
+          // Publish the new history and invalidate its derived totals atomically, including crash recovery.
+          // The next snapshot rebuilds them before a replacement run can inherit stale counts or usage.
+          this.saveTask(header.id, {
+            sessionFile: relative(this.dir, newPath),
+            cwd: header.cwd,
+            modelPerformanceTotals: undefined,
+          });
           this.settings.state.enqueueCleanup("transcript", header.id, relative(this.dir, oldPath));
         });
         operation = undefined;

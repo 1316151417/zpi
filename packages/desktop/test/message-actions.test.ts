@@ -209,6 +209,7 @@ it("file reset rejects external changes without pruning history, restores origin
   await writeFile(existing, "original\n");
   const first = await f.host.startRun({ sessionId: parent.id, text: "change files" });
   await f.host.activeRuns.get(parent.id)?.done;
+  const totals = f.host.getSessionSnapshot(parent.id).view.modelPerformance;
   const child = await f.host.forkSession(parent.id, first.runId);
   const changes = await f.host.getChanges(child.id, null);
   expect(changes).toHaveLength(2);
@@ -220,6 +221,7 @@ it("file reset rejects external changes without pruning history, restores origin
   });
   expect(result).toMatchObject({ conflicts: [{ path: existing, reason: "当前文件已被外部修改" }] });
   expect(f.host.getSessionSnapshot(parent.id).view.runs[0].userMessage).toBe("change files");
+  expect(f.host.getSessionSnapshot(parent.id).view.modelPerformance).toEqual(totals);
   expect(await readFile(existing, "utf8")).toBe("external\n");
   expect(existsSync(created)).toBe(true);
   await writeFile(existing, "agent\n");
@@ -228,6 +230,7 @@ it("file reset rejects external changes without pruning history, restores origin
   expect(await readFile(existing, "utf8")).toBe("original\n");
   expect(existsSync(created)).toBe(false);
   expect(f.host.getSessionSnapshot(parent.id).view.runs.map((turn) => turn.userMessage)).toEqual(["retry"]);
+  expect(f.host.getSessionSnapshot(parent.id).view.modelPerformance).toMatchObject({ turns: 1, steps: 1 });
   await f.host.deleteSession(parent.id);
   expect(await f.host.getChanges(child.id, null)).toEqual(changes);
 });

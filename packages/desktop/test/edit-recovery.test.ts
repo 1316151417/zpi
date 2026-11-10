@@ -22,6 +22,7 @@ test.each([false, true])(
     const path = f.host.sessionPath(session.id);
     const before = await readFile(path);
     const queue = f.host.inputQueue.get(session.id);
+    const totals = f.settings.state.getTask(session.id)?.modelPerformanceTotals;
     await expect(f.host.editUserMessage(session.id, run.runId, { text: "/compact" })).rejects.toThrow(
       "历史消息不能替换为 /compact",
     );
@@ -31,8 +32,81 @@ test.each([false, true])(
       "original input",
     ]);
     expect(f.host.inputQueue.get(session.id)).toEqual(queue);
+    expect(f.settings.state.getTask(session.id)?.modelPerformanceTotals).toEqual(totals);
     expect(f.host.activeRuns.has(session.id)).toBe(active);
     expect(f.server.requests).toHaveLength(1);
+  },
+);
+
+test.each([0, 1])(
+  "editing recomputes counts and usage with %s retained turns, including side chats and restart",
+  async (retained) => {
+    const f = await fixture((body, response) => {
+      const discarded = JSON.stringify(body.messages).includes("discarded");
+      const scale = discarded ? 10 : 1;
+      send(response, chunk({ content: "answer" }));
+      send(response, {
+        ...chunk({}),
+        choices: [],
+        usage: {
+          prompt_tokens: 100 * scale,
+          completion_tokens: 10 * scale,
+          total_tokens: 110 * scale,
+          prompt_tokens_details: { cached_tokens: 20 * scale },
+        },
+      });
+      done(response);
+    });
+    const task = await f.host.createSession(f.a.id);
+    if (retained) {
+      await f.host.startRun({ sessionId: task.id, text: "retained question" });
+      await f.host.activeRuns.get(task.id)?.done;
+    }
+    let run = await f.host.startRun({ sessionId: task.id, text: "discarded question" });
+    await f.host.activeRuns.get(task.id)?.done;
+    expect(f.host.getSessionSnapshot(task.id).view.modelPerformance).toMatchObject({
+      turns: retained + 1,
+      steps: retained + 1,
+      inputTokens: 80 * (retained + 10),
+    });
+    const expected = {
+      turns: retained + 1,
+      steps: retained + 1,
+      inputTokens: 80 * (retained + 1),
+      outputTokens: 10 * (retained + 1),
+      cacheReadTokens: 20 * (retained + 1),
+    };
+    for (const text of ["replacement question", "edited again"]) {
+      await f.host.editUserMessage(task.id, run.runId, { text });
+      await f.host.activeRuns.get(task.id)?.done;
+      const view = f.host.getSessionSnapshot(task.id).view;
+      expect(view.runs.map((item) => item.userMessage)).toEqual([
+        ...(retained ? ["retained question"] : []),
+        text,
+      ]);
+      expect(view.modelPerformance).toMatchObject(expected);
+      expect(f.settings.state.getTask(task.id)?.modelPerformanceTotals).toMatchObject(expected);
+      const latest = view.runs.at(-1);
+      if (!latest) throw new Error("Missing replacement run");
+      run = { runId: latest.runId };
+    }
+    const child = await f.host.createSideChat(task.id);
+    expect(f.host.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject(expected);
+    await f.host.close();
+    const reopened = new SessionHost(f.dir, f.settings, f.dir);
+    cleanup.push(() => reopened.close());
+    await reopened.init();
+    expect(reopened.getSessionSnapshot(task.id).view.modelPerformance).toMatchObject(expected);
+    expect(reopened.getSessionSnapshot(child.id).view.modelPerformance).toMatchObject(expected);
+    await reopened.startRun({ sessionId: task.id, text: "next question" });
+    await reopened.activeRuns.get(task.id)?.done;
+    expect(reopened.getSessionSnapshot(task.id).view.modelPerformance).toMatchObject({
+      turns: retained + 2,
+      steps: retained + 2,
+      inputTokens: 80 * (retained + 2),
+      outputTokens: 10 * (retained + 2),
+      cacheReadTokens: 20 * (retained + 2),
+    });
   },
 );
 
@@ -98,6 +172,8 @@ test("editing keeps the replacement input recoverable if interrupted after histo
   });
   expect(f.host.sessionPath(task.id)).not.toBe(oldPath);
   expect(await readFile(oldPath)).toEqual(oldBytes);
+  expect(f.host.getSessionSnapshot(task.id).view.modelPerformance).toEqual({});
+  expect(f.settings.state.getTask(task.id)?.modelPerformanceTotals).toMatchObject({ turns: 0, steps: 0 });
   await f.host.close();
   const reopened = new SessionHost(f.dir, f.settings, f.dir);
   await reopened.init();
@@ -106,6 +182,7 @@ test("editing keeps the replacement input recoverable if interrupted after histo
     autoDrain: false,
     items: [{ text: "replacement never lost", state: "queued" }],
   });
+  expect(reopened.getSessionSnapshot(task.id).view.modelPerformance).toEqual({});
   expect(f.server.requests).toHaveLength(1);
 });
 
