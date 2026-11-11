@@ -1,8 +1,9 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { ActionHint, type SessionView } from "@zpi-dev/ui";
+import { ActionHint, type SessionView, useComposerCommand } from "@zpi-dev/ui";
 import { Check, ChevronDown, ChevronRight, ChevronUp, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { ProviderRecord } from "../shared/bridge.ts";
 import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
 import { supportsFastMode } from "../shared/fast-mode.ts";
 import { formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
@@ -37,6 +38,14 @@ export function SessionToolbar({
   const menuBoundary = toolbar?.closest("main");
   const [active, setActive] = useState<string>();
   const [updating, setUpdating] = useState(false);
+  const fastSupported = Boolean(
+    chosen &&
+      provider &&
+      (provider.preset === "openai-chatgpt" || provider.preset === "openai-api") &&
+      configured &&
+      controls?.selectionValid &&
+      supportsFastMode(provider, configured),
+  );
   const shortcut = (command: ShortcutCommand) => {
     const binding = settings?.shortcuts.enabled && settings.shortcuts.bindings[command];
     return binding ? formatShortcut(binding, window.zpi.platform) : undefined;
@@ -55,6 +64,7 @@ export function SessionToolbar({
     modelId: string,
     reasoning: string,
     fastMode = chosen?.provider === provider && chosen.modelId === modelId ? chosen.fastMode : undefined,
+    keepMenuOpen = false,
   ) => {
     if (selectionLock.current) return;
     selectionLock.current = true;
@@ -70,6 +80,7 @@ export function SessionToolbar({
       .then(async (snapshot) => {
         accept(snapshot);
         await refresh();
+        if (keepMenuOpen) return;
         if (mainMenu.current) {
           setActive(undefined);
           onOpenChange(false);
@@ -81,6 +92,12 @@ export function SessionToolbar({
         setUpdating(false);
       });
   };
+  useComposerCommand(
+    "toggle-fast-mode",
+    fastSupported && !updating && chosen
+      ? () => select(chosen.provider, chosen.modelId, chosen.reasoning, !chosen.fastMode)
+      : undefined,
+  );
   const usage = controls?.usage,
     percent = usage?.percent;
   const breakdown = usage?.breakdown ?? [];
@@ -170,30 +187,6 @@ export function SessionToolbar({
           </Tooltip.Root>
         </Tooltip.Provider>
       )}
-      {chosen &&
-        provider &&
-        configured &&
-        controls?.selectionValid &&
-        supportsFastMode(provider, configured) && (
-          <ActionHint
-            appearance="control"
-            openOnFocus
-            label={chosen.fastMode ? "关闭加速" : "开启加速"}
-            shortcut={shortcut("toggle-fast-mode")}
-          >
-            <button
-              type="button"
-              className="fast-mode-toggle"
-              data-composer-command="toggle-fast-mode"
-              aria-label="加速模式"
-              aria-pressed={chosen.fastMode === true}
-              disabled={updating}
-              onClick={() => select(chosen.provider, chosen.modelId, chosen.reasoning, !chosen.fastMode)}
-            >
-              <Zap size={14} fill={chosen.fastMode ? "currentColor" : "none"} />
-            </button>
-          </ActionHint>
-        )}
       <Menu.Root
         open={open}
         onOpenChange={(next) => {
@@ -215,6 +208,15 @@ export function SessionToolbar({
                   ? "重新选择模型"
                   : "模型选择"}
             </span>
+            {fastSupported && chosen?.fastMode && (
+              <Zap
+                className="model-fast-indicator"
+                size={12}
+                fill="currentColor"
+                role="img"
+                aria-label="加速已开启"
+              />
+            )}
             {chosen && configured && controls?.selectionValid && chosen.reasoning !== "none" && (
               <span className="model-reasoning">{modelReasoningLabel(configured, chosen.reasoning)}</span>
             )}
@@ -250,7 +252,37 @@ export function SessionToolbar({
               .filter((p) => p.enabled !== false && p.models.some((m) => m.enabled !== false))
               .map((p) => (
                 <Menu.Group key={p.id}>
-                  <Menu.Label className="menu-label">{p.name}</Menu.Label>
+                  <div className="model-provider-heading">
+                    <Menu.Label className="menu-label model-provider-label">{providerLabel(p)}</Menu.Label>
+                    {fastSupported && chosen?.provider === p.id && (
+                      <ActionHint
+                        appearance="control"
+                        openOnFocus
+                        label={chosen.fastMode ? "关闭加速" : "开启加速"}
+                        shortcut={shortcut("toggle-fast-mode")}
+                      >
+                        <Menu.CheckboxItem
+                          className="menu-item model-fast-toggle"
+                          aria-label="加速"
+                          checked={chosen.fastMode === true}
+                          disabled={updating}
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            setActive(undefined);
+                          }}
+                          onCheckedChange={(enabled) =>
+                            select(chosen.provider, chosen.modelId, chosen.reasoning, enabled === true, true)
+                          }
+                        >
+                          <Zap
+                            size={14}
+                            fill={chosen.fastMode ? "currentColor" : "none"}
+                            aria-hidden="true"
+                          />
+                        </Menu.CheckboxItem>
+                      </ActionHint>
+                    )}
+                  </div>
                   {p.models
                     .filter((m) => m.enabled !== false)
                     .map((m) => {
@@ -335,4 +367,12 @@ export function SessionToolbar({
       </Menu.Root>
     </div>
   );
+}
+
+function providerLabel(provider: ProviderRecord): string {
+  if (provider.preset !== "openai-chatgpt") return provider.name;
+  const email = (provider.chatgptAccount?.label ?? provider.name).match(/([^\s@·]+)@([^\s@·]+)/);
+  return email
+    ? `OpenAI · ${email[1].slice(0, 6)}${email[1].length > 6 ? "***" : ""}@${email[2].split(".")[0]}`
+    : "OpenAI";
 }

@@ -83,6 +83,7 @@ import {
   slashTokenEnd,
   subagentNames,
 } from "./command-suggestions.ts";
+import { ComposerCommandsContext } from "./composer-commands.ts";
 import { useConversationFindTargets } from "./conversation-find.ts";
 import { DraftGreeting } from "./DraftGreeting.tsx";
 import { FileRewindConflictDialog } from "./FileRewindConflictDialog.tsx";
@@ -1827,6 +1828,7 @@ export function ChatComposer({
   const composing = useRef(false);
   const textarea = useRef<MentionEditorHandle>(null);
   const root = useRef<HTMLFieldSetElement>(null);
+  const commands = useRef(new Map<string, () => void>());
   const addButton = useRef<HTMLButtonElement>(null);
   const filePanel = useRef<HTMLDivElement>(null);
   const filePanelId = useId();
@@ -2293,10 +2295,7 @@ export function ChatComposer({
         if (event.repeat) return;
         if (command === "select-model") onSelectModel?.();
         else if (command === "configure-environment") onConfigureEnvironment?.();
-        else if (command === "toggle-fast-mode")
-          root.current
-            .querySelector<HTMLButtonElement>('[data-composer-command="toggle-fast-mode"]')
-            ?.click();
+        else if (command === "toggle-fast-mode") commands.current.get(command)?.();
         else if (hasDraft) void submit(undefined, undefined, true);
         else {
           const first = queue?.items[0];
@@ -2787,7 +2786,9 @@ export function ChatComposer({
             </button>
           </ActionHint>
           <div className="composer-actions">
-            {toolbar}
+            <ComposerCommandsContext.Provider value={commands.current}>
+              {toolbar}
+            </ComposerCommandsContext.Provider>
             {value.error && (
               <InputNotice
                 key={`${sessionId}:${drafts.current.errorVersion(sessionId)}`}

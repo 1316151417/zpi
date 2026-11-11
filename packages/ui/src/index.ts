@@ -3,6 +3,7 @@ export { toolCodeLanguage } from "./code-language.ts";
 export { type CodePreviewSettings, codePreviewThemes, defaultCodePreview } from "./code-preview.ts";
 export { ChatComposer, Conversation, RunGroup } from "./components/Conversation.tsx";
 export { ConversationSelectionMenu } from "./components/ConversationSelections.tsx";
+export { useComposerCommand } from "./components/composer-commands.ts";
 export type { DiffEntry } from "./components/DiffView.tsx";
 export { DiffView } from "./components/DiffView.tsx";
 export type { ComposerContext, ComposerDraft } from "./components/InputContext.tsx";

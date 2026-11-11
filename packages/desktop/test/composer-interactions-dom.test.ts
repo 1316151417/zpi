@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ChatComposer, Conversation } from "../../ui/src/components/Conversation.tsx";
 import { SelectionReferenceChip } from "../../ui/src/components/ConversationSelections.tsx";
+import { useComposerCommand } from "../../ui/src/components/composer-commands.ts";
 import { ComposerDraftStore } from "../../ui/src/components/InputContext.tsx";
 import { ActionHint } from "../../ui/src/components/MessageActions.tsx";
 import { UserQuestionCard } from "../src/renderer/UserQuestionCard.tsx";
@@ -149,37 +150,39 @@ async function commentChip() {
   return element("[data-file-comment-count]");
 }
 
-it("routes acceleration to only the focused composer's enabled control without submitting or altering drafts", async () => {
+it("routes acceleration to only the focused composer's registered action without submitting or altering drafts", async () => {
   const drafts = new ComposerDraftStore();
   const toggles = [vi.fn(), vi.fn()];
   const shortcutCommand = vi.fn(() => "toggle-fast-mode" as const);
   const submit = vi.fn(async () => {});
+  function FastAction({ index, enabled }: { index: number; enabled: boolean }) {
+    useComposerCommand("toggle-fast-mode", enabled ? toggles[index] : undefined);
+    return null;
+  }
   for (const id of ["main-fast", "side-fast"])
     drafts.set(id, { text: `${id} draft`, attachments: [], fileReferences: [], pending: 0 });
-  await act(async () =>
-    root.render(
-      createElement(
-        "div",
-        null,
-        ...["main-fast", "side-fast"].map((id, index) =>
-          createElement(ChatComposer, {
-            key: id,
-            sessionId: id,
-            busy: false,
-            draftStorage: drafts,
-            onSubmit: submit,
-            onStop() {},
-            shortcutCommand,
-            toolbar: createElement(
-              "button",
-              { type: "button", "data-composer-command": "toggle-fast-mode", onClick: toggles[index] },
-              "加速",
-            ),
-          }),
+  const render = (enabled = true, present = true) =>
+    act(async () =>
+      root.render(
+        createElement(
+          "div",
+          null,
+          ...["main-fast", "side-fast"].map((id, index) =>
+            createElement(ChatComposer, {
+              key: id,
+              sessionId: id,
+              busy: false,
+              draftStorage: drafts,
+              onSubmit: submit,
+              onStop() {},
+              shortcutCommand,
+              toolbar: index === 1 && !present ? null : createElement(FastAction, { index, enabled }),
+            }),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  await render();
   const editors = container.querySelectorAll<HTMLElement>(".mention-editor");
   const dispatch = (flags: KeyboardEventInit = {}) =>
     act(async () => {
@@ -202,11 +205,10 @@ it("routes acceleration to only the focused composer's enabled control without s
   expect(toggles[1]).toHaveBeenCalledOnce();
   for (const flags of [{ repeat: true }, { isComposing: true }, { keyCode: 229 }]) await dispatch(flags);
   expect(toggles[1]).toHaveBeenCalledOnce();
-  const buttons = container.querySelectorAll<HTMLButtonElement>('[data-composer-command="toggle-fast-mode"]');
-  buttons[1].disabled = true;
+  await render(false);
   await dispatch();
   expect(toggles[1]).toHaveBeenCalledOnce();
-  buttons[1].remove();
+  await render(true, false);
   await dispatch();
   expect(submit).not.toHaveBeenCalled();
   expect(drafts.get("main-fast")?.text).toBe("main-fast draft");
