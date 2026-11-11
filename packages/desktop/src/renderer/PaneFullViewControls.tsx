@@ -213,6 +213,7 @@ export function PaneFullViewControls({ value, sessionId }: { value: PaneFullView
           <button
             className="pane-header-action"
             aria-label={value.floating === "expanded" ? "收起消息" : "展开消息"}
+            title={value.floating === "expanded" ? "收起消息" : "展开消息"}
             aria-expanded={value.floating === "expanded"}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => floating(value.floating === "expanded" ? "collapsed" : "expanded")}

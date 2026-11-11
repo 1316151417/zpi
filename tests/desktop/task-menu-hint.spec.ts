@@ -93,6 +93,7 @@ test("task-menu shortcuts stay disabled throughout full view and recover on exit
     await expect(page.locator(".shell")).toHaveClass(/pane-full-conversation/);
     await expectTaskMenuDisabled();
     await page.getByRole("tab", { name: "新标签页", exact: true }).click();
+    await page.getByLabel("展开编辑器", { exact: true }).click();
     await editor.focus();
     await page.getByLabel("展开消息", { exact: true }).click();
     await expect(page.locator(".shell")).toHaveClass(/pane-float-expanded/);

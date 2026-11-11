@@ -286,10 +286,18 @@
   font-size: var(--ui-font-size);
   color: var(--color-text-subtle);
 }
+/* 与 ZCode 浮窗的 ghost / icon-sm 对齐；面板 tab 栏按钮保留原尺寸。 */
+.pane-full-view-controls > .pane-header-action {
+  width: 24px;
+  height: 24px;
+}
 .pane-floating-grip {
   margin-left: auto;
   cursor: grab;
   touch-action: none;
+}
+.pane-floating-grip[data-state="open"] {
+  background: var(--color-active);
 }
 .pane-floating-menu {
   width: 208px;
@@ -315,6 +323,9 @@
   border-radius: 9999px;
   touch-action: none;
   color: var(--color-text-subtle);
+}
+.pane-floating-restore:hover {
+  background: var(--color-fill-hover);
 }
 .pane-floating-answer {
   position: absolute;

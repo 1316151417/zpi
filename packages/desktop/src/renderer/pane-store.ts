@@ -772,7 +772,7 @@ export function updatePaneFullView(fullView: PaneFullView | null) {
 export function togglePaneFullView() {
   const state = usePane.getState();
   if (!state.open) setPaneOpen(true);
-  updatePaneFullView(state.fullView ? null : { surface: "side-pane", floating: "collapsed" });
+  updatePaneFullView(state.fullView ? null : { surface: "side-pane", floating: "minimized" });
 }
 export async function closePaneTabs(except?: string) {
   const tabs = visiblePaneTabs(useStore.getState().selected);

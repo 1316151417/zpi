@@ -907,7 +907,10 @@ it("full view belongs to its owner, restores its surface and floating mode, and 
   const review = usePane.getState().active;
   const ratio = usePane.getState().ratio;
   togglePaneFullView();
-  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "collapsed" });
+  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "minimized" });
+  select("B");
+  select("A");
+  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "minimized" });
   updatePaneFullView({ surface: "conversation", floating: "expanded" });
   select("B");
   expect(usePane.getState().fullView).toBeNull();
@@ -920,5 +923,12 @@ it("full view belongs to its owner, restores its surface and floating mode, and 
   setPaneOpen(false);
   setPaneOpen(true);
   expect(usePane.getState().fullView).toBeNull();
+  togglePaneFullView();
+  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "minimized" });
+  updatePaneFullView({ surface: "side-pane", floating: "expanded" });
+  togglePaneFullView();
+  expect(usePane.getState().fullView).toBeNull();
+  togglePaneFullView();
+  expect(usePane.getState().fullView).toEqual({ surface: "side-pane", floating: "minimized" });
   expect(usePane.getState().ratio).toBe(ratio);
 });

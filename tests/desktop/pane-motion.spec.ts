@@ -27,6 +27,7 @@ test("switching sidebar tasks restores full-view geometry without pane opening t
       if (title === "Full view task") {
         await page.getByTestId("right-sidebar-toggle").click();
         await page.getByLabel("进入完整视图", { exact: true }).click();
+        await page.getByLabel("展开编辑器", { exact: true }).click();
         await page.getByLabel("消息", { exact: true }).fill("Keep this draft");
       }
     }

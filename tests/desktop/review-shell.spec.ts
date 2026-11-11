@@ -39,6 +39,8 @@ test("review tabs support overview, closure restoration and complete-view conver
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     const composer = page.getByLabel("消息", { exact: true });
+    // 等待项目草稿初始化完成；迟到的快照会覆盖过早填写的测试输入。
+    await expect(composer).toBeFocused();
     await composer.fill("review shell");
     await composer.press("Enter");
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
@@ -57,12 +59,23 @@ test("review tabs support overview, closure restoration and complete-view conver
     expect(await pane.locator(".review-change-list").evaluate((element) => element.scrollTop)).toBe(150);
     await page.getByRole("button", { name: "进入完整视图", exact: true }).click();
     await expect(page.locator(".shell")).toHaveClass(/pane-full-floating/);
+    await expect(page.locator(".shell")).toHaveClass(/pane-float-minimized/);
+    await expect(composer).toBeHidden();
+    const restore = page.getByRole("button", { name: "展开编辑器", exact: true });
+    await expect(restore).toHaveCSS("width", "48px");
+    await expect(restore).toHaveCSS("height", "48px");
+    await page.screenshot({ path: testInfo.outputPath("full-view-default-minimized.png") });
+    await restore.click();
+    await expect(composer).toBeFocused();
+    // 恢复后失焦收起操作栏，继续验证输入框本身的布局。
+    await pane.getByRole("combobox", { name: "审查来源", exact: true }).focus();
     await expect(page.locator(".sidebar")).toBeVisible();
     expect(await page.locator(".sidebar").boundingBox()).toEqual(sidebar);
     expect((await page.locator(".right-pane").boundingBox())?.x).toBe((sidebar?.width ?? 0) + 4);
     expect((await page.locator(".right-pane").boundingBox())?.width).toBeGreaterThan(initial?.width ?? 0);
     const input = page.locator(".main .composer");
     await expect(input).toHaveCSS("height", "46px");
+    await expect(page.locator(".main")).toHaveCSS("height", "46px");
     await expect(input.getByRole("button")).toHaveCount(2);
     await expect(input.getByRole("button", { name: "发送", exact: true })).toBeVisible();
     const plus = input.getByRole("button", { name: "添加上下文", exact: true });
@@ -104,6 +117,11 @@ test("review tabs support overview, closure restoration and complete-view conver
     await expect(page.getByRole("tooltip")).toBeHidden();
     await expect(page.locator(".main")).toHaveCSS("height", "86px");
     await page.mouse.move(700, 100);
+    const expand = page.getByRole("button", { name: "展开消息", exact: true });
+    await expect(expand).toHaveCSS("width", "24px");
+    await expect(expand).toHaveCSS("height", "24px");
+    await expect(expand).toHaveCSS("border-radius", "6px");
+    await expect(expand.locator("svg")).toHaveAttribute("width", "16");
     await page.screenshot({ path: testInfo.outputPath("full-view-focused-light.png") });
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(input).toHaveCSS("background-color", "rgb(43, 43, 43)");
@@ -207,7 +225,9 @@ test("review tabs support overview, closure restoration and complete-view conver
     await composer.focus();
     await composer.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
     await expect(page.locator(".shell")).toHaveClass(/pane-full-view/);
-    await composer.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
+    await expect(page.locator(".shell")).toHaveClass(/pane-float-minimized/);
+    await expect(composer).toBeHidden();
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+f`);
     await expect(page.locator(".shell")).not.toHaveClass(/pane-full-view/);
     await page.getByRole("button", { name: "进入完整视图", exact: true }).click();
     await expect(page.locator(".sidebar")).toBeVisible();
@@ -215,6 +235,7 @@ test("review tabs support overview, closure restoration and complete-view conver
     await expect(page.locator(".sidebar")).toBeHidden();
     expect((await page.locator(".right-pane").boundingBox())?.x).toBe(4);
     await expect(page.getByTestId("model-performance")).toBeHidden();
+    await page.getByRole("button", { name: "展开编辑器", exact: true }).click();
     await composer.fill("another answer in full view");
     await composer.press("Enter");
     await expect(page.locator(".pane-floating-answer")).toContainText("Completed review shell reply.");
@@ -231,7 +252,7 @@ test("review tabs support overview, closure restoration and complete-view conver
     await runCleanup([
       () => app?.close(),
       () => server.close(),
-      () => rm(dir, { recursive: true, force: true }),
+      () => rm(dir, { recursive: true, force: true, maxRetries: 3 }),
     ]);
   }
 });
@@ -255,10 +276,13 @@ test("full view keeps an unsent draft docked through expansion and attachments a
     await page.getByRole("button", { name: "添加项目", exact: true }).click();
     const editor = page.getByLabel("消息", { exact: true });
     const input = page.locator(".main .composer");
+    await expect(editor).toBeFocused();
     await editor.fill("unsent draft");
     const originalEditor = await editor.elementHandle();
     await page.getByTestId("right-sidebar-toggle").click();
     await page.getByRole("button", { name: "进入完整视图", exact: true }).click();
+    await expect(editor).toBeHidden();
+    await page.getByRole("button", { name: "展开编辑器", exact: true }).click();
     await expect(page.locator(".draft-composer-header")).toBeHidden();
     await expect(input).toHaveCSS("height", "46px");
     const expectBottomDock = async () => {
