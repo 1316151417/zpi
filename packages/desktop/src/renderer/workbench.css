@@ -653,12 +653,21 @@
 }
 .model-menu,
 .reasoning-menu {
-  min-width: min(180px, var(--radix-dropdown-menu-content-available-width));
   max-width: min(320px, var(--radix-dropdown-menu-content-available-width), calc(100vw - 24px));
 }
 .model-menu {
+  min-width: min(180px, var(--radix-dropdown-menu-content-available-width));
   /* Leave room for the reasoning submenu inside the chat boundary. */
   max-width: min(320px, calc(var(--radix-dropdown-menu-content-available-width) - 180px));
+}
+.reasoning-menu {
+  width: max-content;
+  min-width: 0;
+  white-space: nowrap;
+}
+.reasoning-menu .menu-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px;
 }
 @media (max-width: 1099px) {
   /* 窄窗侧栏沿用覆盖方式，顶栏为三个动作保留侧栏左侧的位置。 */
