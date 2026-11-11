@@ -734,6 +734,10 @@ small {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tool-file-directory {
+  /* Allocate remaining space to directories so long paths cannot squeeze short filenames. */
+  flex: 1 1 0;
+}
 .tool-message-target {
   display: inline-flex;
   min-width: 0;

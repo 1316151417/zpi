@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
@@ -12,6 +12,87 @@ const call = (id: string, name: string, args: Record<string, unknown>, index = 0
   id,
   type: "function",
   function: { name, arguments: JSON.stringify(args) },
+});
+
+test("tool file summaries preserve short filenames before long directories", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-tool-file-layout-"));
+  const project = join(dir, "project");
+  await mkdir(project);
+  const paths = [
+    join(dir, "premium-rent-cleanup-scripts".repeat(5), "db.py"),
+    `src/${"long-file-name-".repeat(15)}.py`,
+    "local.py",
+  ];
+  const finish = deferred();
+  const server = await fakeServer(async (_, response, index) => {
+    if (index === 0) {
+      send(
+        response,
+        chunk({
+          tool_calls: paths.map((path, index) =>
+            call(`write-${index}`, "write", { path, content: "print('done')\n".repeat(79) }, index),
+          ),
+        }),
+      );
+      done(response, "tool_calls");
+    } else {
+      await finish.promise;
+      send(response, chunk({ content: "完成。" }));
+      done(response);
+    }
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project, url: server.url });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
+    await page.getByLabel("消息", { exact: true }).fill("写入文件并检查文件名展示");
+    await page.getByLabel("发送", { exact: true }).click();
+    const summaries = page.locator('[data-tool-name="write"] .tool-summary-row');
+    await expect(summaries).toHaveCount(3);
+    for (const summary of await summaries.all()) {
+      await expect(summary.locator(".tool-diff-counts")).toHaveText("+79");
+    }
+    for (const width of [700, 430, 350, 240]) {
+      await page.locator(".conversation").evaluate((el, width) => {
+        (el as HTMLElement).style.width = `${width}px`;
+      }, width);
+      const shortName = summaries.first().locator(".tool-file-chip > span");
+      await expect(shortName).toHaveText("db.py");
+      await expect.poll(() => shortName.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+      for (const summary of await summaries.all()) {
+        const bounds = await summary.evaluate((el) => {
+          const row = el.getBoundingClientRect();
+          const counts = el.querySelector(".tool-diff-counts")?.getBoundingClientRect();
+          if (!counts) throw new Error("Missing diff counts");
+          return { overflow: el.scrollWidth - el.clientWidth, right: row.right - counts.right };
+        });
+        expect(bounds.overflow).toBeLessThanOrEqual(1);
+        expect(bounds.right).toBeGreaterThanOrEqual(0);
+      }
+      if (width === 430) {
+        await expect
+          .poll(() =>
+            summaries
+              .first()
+              .locator(".tool-file-directory")
+              .evaluate((el) => el.scrollWidth - el.clientWidth),
+          )
+          .toBeGreaterThan(0);
+        await page.screenshot({ path: "test-results/tool-file-layout.png" });
+      }
+    }
+    finish.resolve();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+  } finally {
+    finish.resolve();
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
 });
 
 test("long grouped commands keep the running label separate while rolling and at narrow widths", async () => {
@@ -52,6 +133,7 @@ test("long grouped commands keep the running label separate while rolling and at
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     await page.getByLabel("消息", { exact: true }).fill("检查长命令摘要间距");
     await page.getByLabel("发送", { exact: true }).click();
     for (const [kind, command] of [
@@ -197,6 +279,7 @@ test("ZCode tool summaries group by phase, preserve expansion and open per-opera
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     await page.getByLabel("消息", { exact: true }).fill("验证工具摘要");
     await page.getByLabel("发送", { exact: true }).click();
     const tools = page.getByTestId("tool-block");
@@ -336,7 +419,7 @@ test("terminal output follows live data, freezes while reading and preserves com
           tool_calls: [
             call("output", "bash", {
               command:
-                "for i in $(seq 1 40); do echo line-$i; sleep 0.15; done; while [ ! -f release ]; do sleep 0.1; done; echo final-line",
+                "for i in $(seq 1 12); do echo line-$i; done; while [ ! -f release ]; do sleep 0.05; done; for i in $(seq 13 40); do echo line-$i; done; echo final-line",
             }),
           ],
         }),
@@ -353,6 +436,7 @@ test("terminal output follows live data, freezes while reading and preserves com
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     await page.getByLabel("消息", { exact: true }).fill("输出多行");
     await page.getByLabel("发送", { exact: true }).click();
     const tool = page.getByTestId("tool-block");
@@ -368,7 +452,7 @@ test("terminal output follows live data, freezes while reading and preserves com
     });
     await expect(viewport).toHaveAttribute("data-following", "false");
     const frozen = await viewport.textContent();
-    // The command finishes emitting its first batch while the reader stays at the top.
+    // Release the remaining output only after the reader has frozen the first batch.
     await writeFile(join(project, "release"), "");
     await expect.poll(() => server.requests.length).toBe(2);
     await expect(viewport).toHaveText(frozen ?? "");
@@ -411,7 +495,7 @@ test("terminal output follows live data, freezes while reading and preserves com
   }
 });
 
-test("write previews load large per-operation patches and failed edits retain readable parameters", async () => {
+test("write previews load large per-operation patches and failed edits retain diffs and errors", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-tool-file-preview-"));
   const project = join(dir, "project");
   await mkdir(project);
@@ -439,6 +523,7 @@ test("write previews load large per-operation patches and failed edits retain re
     app = await launchDesktop({ dir, project, url: server.url });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "选择项目", exact: true })).toHaveText("project");
     await page.getByLabel("消息", { exact: true }).fill("写入并尝试编辑");
     await page.getByLabel("发送", { exact: true }).click();
     await expect.poll(() => server.requests.length).toBe(3);
@@ -456,11 +541,12 @@ test("write previews load large per-operation patches and failed edits retain re
     await expect(edit.getByTestId("tool-summary")).toContainText("执行失败");
     await expect(edit.getByTestId("tool-summary")).toHaveAttribute("aria-expanded", "false");
     await edit.locator(".tool-kind-label").click();
-    await expect(edit.locator(".tool-parameters h4")).toHaveText("Parameters");
-    await expect(edit.locator(".tool-parameters h4")).toHaveCSS("text-transform", "uppercase");
-    await expect(edit.locator(".tool-input-code")).toContainText("absent-original");
+    await expect(edit.locator(".tool-diff-line.removed code")).toHaveText("absent-original");
+    await expect(edit.locator(".tool-diff-line.added code")).toHaveText("replacement");
+    await expect(edit.locator(".tool-parameters")).toHaveCount(0);
     await expect(edit.locator(".tool-detail-error")).toContainText("Error");
     await expect(edit.locator(".tool-detail-error")).toContainText("Could not find");
+    expect(await readFile(join(project, "large.ts"), "utf8")).toBe(content);
     await page.screenshot({ path: "test-results/tool-file-failure.png" });
     finish.resolve();
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
