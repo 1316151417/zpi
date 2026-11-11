@@ -315,18 +315,24 @@ export function App() {
     };
   }, []);
   useEffect(() => {
-    const refreshCommands = () => {
+    const refreshCandidates = () => {
       const state = useStore.getState();
-      const id = state.selected;
-      // 已发送会话的候选属于持久快照；获焦只刷新当前草稿，避免按浏览过的会话数重复扫描。
-      if (id && state.sessions.get(id)?.draft)
-        void refreshSuggestions(id, () => useStore.getState().sessions.has(id)).catch(report);
+      const pane = usePane.getState();
+      const active = pane.open && pane.tabs.find((tab) => tab.id === pane.active);
+      const ids = new Set([
+        state.selected,
+        active && active.type === "side-chat" ? active.childSessionId : undefined,
+      ]);
+      for (const id of ids)
+        if (id) void refreshSuggestions(id, () => useStore.getState().sessions.has(id)).catch(report);
     };
-    window.addEventListener("zpi:commands-changed", refreshCommands);
-    window.addEventListener("focus", refreshCommands);
+    window.addEventListener("zpi:commands-changed", refreshCandidates);
+    window.addEventListener("zpi:skills-changed", refreshCandidates);
+    window.addEventListener("focus", refreshCandidates);
     return () => {
-      window.removeEventListener("zpi:commands-changed", refreshCommands);
-      window.removeEventListener("focus", refreshCommands);
+      window.removeEventListener("zpi:commands-changed", refreshCandidates);
+      window.removeEventListener("zpi:skills-changed", refreshCandidates);
+      window.removeEventListener("focus", refreshCandidates);
     };
   }, []);
   useEffect(() => {

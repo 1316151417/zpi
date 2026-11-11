@@ -217,7 +217,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
                 已安装{" "}
                 <SettingsHelp
                   label="技能"
-                  text={`技能目录和开关在新任务首次发送时固定；正文和引用文件按需读取原路径的当前内容。\n全局技能目录：${skills?.directories.join("、") || "正在读取…"}`}
+                  text={`输入框候选按当前技能目录和开关更新；已注入的会话上下文保持不变，正文和引用文件按需读取原路径的当前内容。\n全局技能目录：${skills?.directories.join("、") || "正在读取…"}`}
                 />
               </span>{" "}
               <span>{skills?.skills.length ?? 0}</span>
@@ -227,7 +227,10 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
               type="button"
               aria-label="刷新技能"
               title="刷新技能"
-              onClick={() => setRevision((r) => r + 1)}
+              onClick={() => {
+                setRevision((r) => r + 1);
+                window.dispatchEvent(new Event("zpi:skills-changed"));
+              }}
             >
               <RefreshCcw size={16} />
             </button>
@@ -264,6 +267,7 @@ export function ResourceSettings({ page }: { page: "prompt" | "tools" | "skills"
                       const enabled = e.target.checked;
                       void action(async () => {
                         adopt(unwrap(await window.zpi.setSkillEnabled(s.path, enabled)));
+                        window.dispatchEvent(new Event("zpi:skills-changed"));
                         await refresh();
                       });
                     }}

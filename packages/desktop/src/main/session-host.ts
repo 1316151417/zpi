@@ -37,6 +37,7 @@ import {
   runSessionInput,
   type SessionContributions,
   SessionManager,
+  SkillCatalog,
   snapshotPlugins,
   supportedThinkingLevels,
   validatePluginSnapshot,
@@ -1530,18 +1531,17 @@ export class SessionHost {
     return { ...loader.listSkills(), diagnostics: loader.getDiagnostics() };
   }
   async listSessionSkills(id: string) {
-    if (!this.record(id).draft) await this.ensureSessionResources(id);
-    const config = this.configuration(id);
-    const loader =
-      config.resources || !this.record(id).draft
-        ? sessionResourceLoader(config.resources)
-        : this.resourceLoader(id);
-    await loader.reload?.();
+    const catalog = new SkillCatalog({
+      projectDir: this.workspaceInfo(id).cwd,
+      homeDir: this.homeDir,
+      isSkillEnabled: (path) => this.settings.isSkillEnabled(path),
+    });
+    await catalog.reload();
     const resources = withPluginResources(
-      loader,
+      catalog,
       this.configuration(id).plugins.flatMap((plugin) => [...(plugin.skills ?? [])]),
     );
-    return { ...(resources.listSkills?.() ?? loader.listSkills()), diagnostics: loader.getDiagnostics() };
+    return resources.listSkills?.() ?? catalog.listSkills();
   }
   workspaceInfo(id: string | null) {
     const record = id === null ? undefined : this.record(id);

@@ -138,7 +138,7 @@ test("desktop link instructions reach prompt previews, new runs and restored cus
   }
 });
 
-test("prompt snapshots and skill defaults survive restart; the read-only preview omits project context", async () => {
+test("prompt snapshots survive live skill settings and restart; the read-only preview omits project context", async () => {
   const f = await fixture(undefined, {
     id: "mine",
     name: "Mine",
@@ -165,7 +165,7 @@ test("prompt snapshots and skill defaults survive restart; the read-only preview
   expect(JSON.stringify(f.server.requests[0])).toContain("PROJECT POLICY");
   const path = (await f.host.getSkillSettings()).skills[0].path;
   await f.host.setSkillEnabled(path, false);
-  expect((await f.host.listSessionSkills(configured.id)).skills).toHaveLength(1);
+  expect((await f.host.listSessionSkills(configured.id)).skills).toHaveLength(0);
   await run(f, "$review task");
   expect(JSON.stringify(f.server.requests[1])).toContain("MY RULE");
   expect(JSON.stringify(f.server.requests[1])).not.toContain("BODY");

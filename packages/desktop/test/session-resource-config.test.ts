@@ -85,9 +85,15 @@ test("persists discovery and injected text in session configuration without resc
     expect(
       (await f.host.listSessionCustomCommands(f.session.id)).commands.map((command) => command.name),
     ).toEqual(["/review"]);
-    expect((await f.host.listSessionSkills(f.session.id)).skills[0].description).toBe("Frozen review");
+    expect((await f.host.listSessionSkills(f.session.id)).skills).toEqual([]);
     expect(await readFile(join(root, "references", "guide.md"), "utf8")).toBe("CHANGED GUIDE");
-    expect((await f.host.listSessionSkills(f.session.id)).skills[0].path).toBe(skill.path);
+    const config = f.settings.state.getTask(f.session.id)?.frozenConfiguration as {
+      resources: SessionResources;
+    };
+    expect(sessionResourceLoader(config.resources).listSkills().skills[0]).toMatchObject({
+      description: "Frozen review",
+      path: skill.path,
+    });
     expect(reload).not.toHaveBeenCalled();
     expect(agents).not.toHaveBeenCalled();
     expect(commandScans).not.toHaveBeenCalled();
@@ -95,7 +101,7 @@ test("persists discovery and injected text in session configuration without resc
     const restarted = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
     cleanup.push(() => restarted.close());
     await restarted.init();
-    expect((await restarted.listSessionSkills(f.session.id)).skills[0].path).toBe(skill.path);
+    expect((await restarted.listSessionSkills(f.session.id)).skills).toEqual([]);
     await restarted.startRun({ sessionId: f.session.id, text: "/review after restart" });
     await restarted.activeRuns.get(f.session.id)?.done;
     expect(JSON.stringify(f.server.requests.at(-1))).toContain("ORIGINAL MEMORY");
@@ -106,7 +112,7 @@ test("persists discovery and injected text in session configuration without resc
     await rm(root, { recursive: true });
     await restarted.startRun({ sessionId: f.session.id, text: "ordinary input after source deletion" });
     await restarted.activeRuns.get(f.session.id)?.done;
-    expect((await restarted.listSessionSkills(f.session.id)).skills[0].path).toBe(skill.path);
+    expect((await restarted.listSessionSkills(f.session.id)).skills).toEqual([]);
     await expect(
       restarted.startRun({ sessionId: f.session.id, text: "/review missing skill" }),
     ).rejects.toThrow("ENOENT");
@@ -123,6 +129,43 @@ test("persists discovery and injected text in session configuration without resc
     agents.mockRestore();
     commandScans.mockRestore();
   }
+});
+
+test("skill suggestions track current files and switches without changing captured context", async () => {
+  const f = await fixture();
+  const root = join(f.resources, ".agents", "skills", "review");
+  const path = join(root, "SKILL.md");
+  await mkdir(root, { recursive: true });
+  await writeFile(path, "---\ndescription: Original review\n---\nORIGINAL BODY");
+  await f.host.setSkillEnabled(path, false);
+  await run(f, "capture disabled skill");
+  const frozen = structuredClone(f.settings.state.getTask(f.session.id)?.frozenConfiguration);
+  expect((await f.host.listSessionSkills(f.session.id)).skills).toEqual([]);
+  await f.host.setSkillEnabled(path, true);
+  await writeFile(path, "---\ndescription: Updated review\n---\nUPDATED BODY");
+  expect((await f.host.listSessionSkills(f.session.id)).skills).toMatchObject([
+    { name: "review", description: "Updated review" },
+  ]);
+  const late = join(f.workspace, ".agents", "skills", "late");
+  await mkdir(late, { recursive: true });
+  await writeFile(join(late, "SKILL.md"), "---\ndescription: Newly installed\n---\nLATE BODY");
+  expect((await f.host.listSessionSkills(f.session.id)).skills.map((skill) => skill.name)).toEqual([
+    "review",
+    "late",
+  ]);
+  await f.host.setSkillEnabled(path, false);
+  expect((await f.host.listSessionSkills(f.session.id)).skills.map((skill) => skill.name)).toEqual(["late"]);
+  await rm(late, { recursive: true });
+  expect((await f.host.listSessionSkills(f.session.id)).skills).toEqual([]);
+  await f.host.setSkillEnabled(path, true);
+  await rm(root, { recursive: true });
+  expect((await f.host.listSessionSkills(f.session.id)).skills).toEqual([]);
+  expect(f.settings.state.getTask(f.session.id)?.frozenConfiguration).toEqual(frozen);
+  await run(f, "continue with original context");
+  const request = JSON.stringify(f.server.requests.at(-1));
+  expect(request).not.toContain("available_skills");
+  expect(request).not.toContain("Updated review");
+  expect(request).not.toContain("Newly installed");
 });
 
 test("forks and side chats inherit injected instructions without rediscovering removed sources", async () => {
@@ -172,7 +215,7 @@ test("a failed first input leaves the draft free to capture updated resources on
 });
 
 test.each([true, false])(
-  "legacy resume keeps only its existing context without discovery (historical resources: %s)",
+  "legacy resume preserves context while the picker discovers current skills (historical resources: %s)",
   async (injected) => {
     const f = await fixture();
     if (injected) {
@@ -206,7 +249,9 @@ test.each([true, false])(
     const memory = vi.spyOn(restored.plugins.longMemory, "context");
     try {
       await restored.init();
-      expect((await restored.listSessionSkills(f.session.id)).skills).toEqual([]);
+      expect((await restored.listSessionSkills(f.session.id)).skills).toMatchObject([
+        { name: "late", description: "CURRENT DISK SKILL" },
+      ]);
       expect((await restored.listSessionCustomCommands(f.session.id)).commands).toEqual([]);
       await restored.startRun({ sessionId: f.session.id, text: "continue" });
       await restored.activeRuns.get(f.session.id)?.done;

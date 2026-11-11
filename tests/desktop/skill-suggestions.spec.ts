@@ -7,6 +7,75 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+test("existing conversation skill suggestions follow live switches and files without replacing context", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-live-skill-suggestions-"));
+  const cwd = join(dir, "workspace");
+  const root = join(dir, ".agents", "skills");
+  await mkdir(cwd);
+  await mkdir(join(root, "review"), { recursive: true });
+  await writeFile(join(root, "review", "SKILL.md"), "---\ndescription: Original review\n---\nReview body");
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "Ready" }));
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, project: cwd, url: server.url });
+    const page = await app.firstWindow();
+    const editor = page.getByLabel("消息", { exact: true });
+    const panel = page.getByRole("listbox", { name: "技能", exact: true });
+    await editor.fill("Capture initial context");
+    await editor.press("Enter");
+    await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+    await editor.fill("$review");
+    await expect(panel.locator("strong")).toHaveText("review");
+    await editor.press("Escape");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "技能", exact: true }).click();
+    const toggle = page.getByRole("checkbox", { name: "启用技能 review user" });
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
+    await page.getByLabel("关闭设置").click();
+    await editor.fill("$review");
+    await expect(panel).toHaveText("暂无匹配技能");
+    await editor.press("Escape");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "技能", exact: true }).click();
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await page.getByLabel("关闭设置").click();
+    await editor.fill("$review");
+    await expect(panel.locator("strong")).toHaveText("review");
+    await mkdir(join(root, "late"));
+    await writeFile(join(root, "late", "SKILL.md"), "---\ndescription: Newly installed\n---\nLate body");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await editor.fill("$late");
+    await expect(panel.locator("strong")).toHaveText("late");
+    await rm(join(root, "late"), { recursive: true });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(panel).toHaveText("暂无匹配技能");
+    await editor.fill("Continue with captured context");
+    await editor.press("Enter");
+    await expect(page.getByTestId("run")).toHaveCount(2);
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    expect(server.requests).toHaveLength(2);
+    const systems = server.requests.map((request) =>
+      (request.messages as unknown as { role: string; content: unknown }[]).filter(
+        (message) => message.role === "system",
+      ),
+    );
+    expect(systems[1]).toEqual(systems[0]);
+    expect(JSON.stringify(systems[1])).toContain("Original review");
+    expect(JSON.stringify(systems[1])).not.toContain("Newly installed");
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("skills preserve names beside long descriptions and match ZCode icons, search and insertion", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-skill-suggestions-"));
   const cwd = join(dir, "workspace");
@@ -44,7 +113,7 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
       return sessions.value[0].id;
     });
     let editor = page.getByLabel("消息", { exact: true });
-    // A real first send saves the catalog; legacy histories intentionally never discover one on resume.
+    // Capture the model context before exercising the independently refreshed picker.
     await editor.fill("Initialize the resource directory");
     await editor.press("Enter");
     await expect(page.getByText("Directory initialized", { exact: true })).toBeVisible();
@@ -139,7 +208,7 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
         ok: true,
         value: { text: canonical },
       });
-    // Existing conversations keep the same picker and skill paths after source removal and cold resume.
+    // Draft mentions retain their paths, but the picker discovers current sources after cold resume.
     await rm(root, { recursive: true });
     await app.close();
     app = await launchDesktop({ dir, url: server.url });
@@ -149,12 +218,19 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     await expect(editor.locator(".inline-mention.skill")).toHaveText("ke-db");
     await expect(editor.locator(".inline-mention.skill")).toHaveCSS("--mention-mask", /skill\.svg/);
     await expect(editor).toHaveText("前文 ke-db 后文");
-    await editor.fill("$只读查库");
-    await expect(panel.locator("strong")).toHaveText("ke-db");
-    await editor.press("Tab");
     await expect(editor.locator(".inline-mention.skill")).toHaveAttribute(
       "data-markdown",
       `[$ke-db](${originalPath})`,
+    );
+    await editor.fill("$只读查库");
+    await expect(panel.getByRole("option")).toHaveCount(0);
+    await expect(panel).toHaveText("暂无匹配技能");
+    await editor.fill("$ke-db");
+    await expect(panel.getByRole("option", { name: /^ke-db 用户 · User version/ })).toBeVisible();
+    await editor.press("Tab");
+    await expect(editor.locator(".inline-mention.skill")).toHaveAttribute(
+      "data-markdown",
+      `[$ke-db](${await realpath(join(dir, ".zpi", "skills", "ke-db", "SKILL.md"))})`,
     );
     expect(server.requests).toHaveLength(1);
   } finally {

@@ -185,16 +185,24 @@ test("read-only resource settings, skill defaults, file changes and compaction u
     await page.screenshot({ path: "test-results/desktop-resource-settings-prompt.png" });
     await page.getByLabel("关闭设置").click();
     await page.getByLabel("消息", { exact: true }).fill("$");
+    await expect(page.getByRole("option", { name: /^review/ })).toHaveCount(0);
+    await expect(page.getByRole("listbox", { name: "技能", exact: true })).toHaveText("暂无匹配技能");
+    await page.getByLabel("消息", { exact: true }).press("Escape");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "技能", exact: true }).click();
+    await page.getByRole("checkbox", { name: "启用技能 review user" }).click();
+    await expect(page.getByRole("checkbox", { name: "启用技能 review user" })).toBeChecked();
+    await page.getByLabel("关闭设置").click();
+    await page.getByLabel("消息", { exact: true }).fill("$review");
     await page.getByRole("option", { name: /^review/ }).click();
     await expect(page.getByLabel("消息", { exact: true }).locator(".inline-mention.skill")).toHaveText(
       "review",
     );
-    expect(
-      await page
-        .getByLabel("消息", { exact: true })
-        .locator(".inline-mention.skill")
-        .getAttribute("data-markdown"),
-    ).toContain("[$review](");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "技能", exact: true }).click();
+    await page.getByRole("checkbox", { name: "启用技能 review user" }).click();
+    await expect(page.getByRole("checkbox", { name: "启用技能 review user" })).not.toBeChecked();
+    await page.getByLabel("关闭设置").click();
     await page.locator(".project-title").hover();
     await page.getByRole("button", { name: "新建任务 project", exact: true }).click();
     await page.getByLabel("消息", { exact: true }).fill("$");
