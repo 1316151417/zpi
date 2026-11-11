@@ -73,6 +73,91 @@ it("fresh disk content is used at invocation without scanning other framework di
   expect(await readFile(join(ignored, "secret.md"), "utf8")).toBe("DO NOT DISCOVER");
 });
 
+it("existing sessions discover new commands, current templates and switches without persisting a catalog", async () => {
+  const { host, a, settings, server } = await fixture((_, response) => done(response));
+  const session = await host.createSession(a.id);
+  const run = async (text: string) => {
+    await host.startRun({ sessionId: session.id, text });
+    await host.activeRuns.get(session.id)?.done;
+  };
+  await run("capture context");
+  const frozen = structuredClone(settings.state.getTask(session.id)?.frozenConfiguration);
+  const command = await host.customCommands.create({ name: "live", prompt: "FIRST $ARGUMENTS" });
+  const scan = vi.spyOn(host.plugins.collaboration.profiles, "listAsync");
+  try {
+    await run("/live one");
+    expect(scan).not.toHaveBeenCalled();
+  } finally {
+    scan.mockRestore();
+  }
+  expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("FIRST one");
+  const suggestion = (await host.listSessionCustomCommands(session.id)).commands[0];
+  for (const field of ["prompt", "revision", "skills"]) expect(suggestion).not.toHaveProperty(field);
+  await writeFile(command.filePath, "---\ndescription: Updated\n---\nLATEST $ARGUMENTS");
+  expect((await host.listSessionCustomCommands(session.id)).commands[0].description).toBe("Updated");
+  await run("/live two");
+  expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("LATEST two");
+  await host.customCommands.setEnabled({ id: command.id, enabled: false });
+  expect((await host.listSessionCustomCommands(session.id)).commands[0].enabled).toBe(false);
+  await expect(host.startRun({ sessionId: session.id, text: "/live blocked" })).rejects.toThrow("禁用");
+  expect(server.requests).toHaveLength(3);
+  const enabled = await host.customCommands.setEnabled({ id: command.id, enabled: true });
+  await run("/live three");
+  expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("LATEST three");
+  await host.customCommands.delete({ id: command.id, expectedRevision: enabled.revision });
+  expect((await host.listSessionCustomCommands(session.id)).commands).toEqual([]);
+  expect(settings.state.getTask(session.id)?.frozenConfiguration).toEqual(frozen);
+  const systems = server.requests.map((request) =>
+    (request.messages as unknown as { role: string }[]).filter((message) => message.role === "system"),
+  );
+  for (const system of systems) expect(system).toEqual(systems[0]);
+});
+
+it("current project commands override user commands even when added or disabled after the first turn", async () => {
+  const { host, a, server } = await fixture((_, response) => done(response));
+  await host.customCommands.create({ name: "review", prompt: "USER" });
+  const session = await host.createSession(a.id);
+  await host.startRun({ sessionId: session.id, text: "first" });
+  await host.activeRuns.get(session.id)?.done;
+  const project = host.commandServices(a.id).commands;
+  const command = await project.create({ name: "review", prompt: "PROJECT" });
+  await host.startRun({ sessionId: session.id, text: "/review" });
+  await host.activeRuns.get(session.id)?.done;
+  expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("PROJECT");
+  const disabled = await project.setEnabled({ id: command.id, enabled: false });
+  await expect(host.startRun({ sessionId: session.id, text: "/review" })).rejects.toThrow("禁用");
+  expect(server.requests).toHaveLength(2);
+  await project.delete({ id: command.id, expectedRevision: disabled.revision });
+  await host.startRun({ sessionId: session.id, text: "/review" });
+  await host.activeRuns.get(session.id)?.done;
+  const messages = (server.requests.at(-1)?.messages ?? []) as unknown as { role: string; content: string }[];
+  expect(messages.at(-1)?.content).toContain("USER");
+});
+
+it("updated commands resolve new skill dependencies with current enable settings before running shell", async () => {
+  const shell = vi.fn(async () => "MOCK SHELL");
+  const { host, a, settings, server } = await fixture((_, response) => done(response), shell);
+  const command = await host.customCommands.create({ name: "review", prompt: "REVIEW" });
+  const session = await host.createSession(a.id);
+  await host.startRun({ sessionId: session.id, text: "capture without skills" });
+  await host.activeRuns.get(session.id)?.done;
+  const directory = join(a.path, ".agents", "skills", "late");
+  const path = join(directory, "SKILL.md");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path, "---\ndescription: New skill\n---\nLATEST SKILL BODY");
+  await writeFile(command.filePath, "---\nskills: late\n---\nREVIEW !`fixture`");
+  await host.startRun({ sessionId: session.id, text: "/review" });
+  await host.activeRuns.get(session.id)?.done;
+  expect(JSON.stringify(server.requests.at(-1)?.messages)).toContain("LATEST SKILL BODY");
+  expect(shell).toHaveBeenCalledTimes(1);
+  settings.setSkillEnabled(path, false);
+  await host.startRun({ sessionId: session.id, text: "/review" });
+  await host.activeRuns.get(session.id)?.done;
+  expect(host.getSessionSnapshot(session.id).view.runs.at(-1)).toMatchObject({ status: "error" });
+  expect(server.requests).toHaveLength(2);
+  expect(shell).toHaveBeenCalledTimes(1);
+});
+
 it("built-in init remains authoritative over a conflicting custom command", async () => {
   const { host, a, server } = await fixture((_, response) => done(response));
   await mkdir(host.customCommands.rootDirectory, { recursive: true });
@@ -301,19 +386,17 @@ it("a readonly Agent delegation cannot run command shell templates", async () =>
 it("a command appearing during preparation cannot introduce unaccepted shell side effects", async () => {
   const shell = vi.fn(async () => "MOCK SHELL");
   const { host, a, server } = await fixture((_, response) => done(response), shell);
-  const original = host.listSessionCustomCommands.bind(host);
+  const original = host.customCommands.list.bind(host.customCommands);
   let reads = 0;
-  const spy = vi.spyOn(host, "listSessionCustomCommands").mockImplementation(async (id) => {
+  const spy = vi.spyOn(host.customCommands, "list").mockImplementation(async () => {
     reads++;
     if (reads === 2) await host.customCommands.create({ name: "late", prompt: "!`fixture-never-run`" });
-    return original(id);
+    return original();
   });
   const session = await host.createSession(a.id);
   try {
-    await host.startRun({ sessionId: session.id, text: "/late" });
-    await host.activeRuns.get(session.id)?.done;
-    expect(server.requests).toHaveLength(1);
-    expect(JSON.stringify(server.requests[0].messages)).not.toContain("fixture-never-run");
+    await expect(host.startRun({ sessionId: session.id, text: "/late" })).rejects.toThrow("准备期间已更改");
+    expect(server.requests).toHaveLength(0);
     expect(shell).not.toHaveBeenCalled();
   } finally {
     spy.mockRestore();
@@ -321,20 +404,20 @@ it("a command appearing during preparation cannot introduce unaccepted shell sid
 });
 
 it.each(["edited", "deleted", "disabled"])(
-  "revalidates current command content but keeps session enable policy when %s during preparation",
+  "rejects a command %s during preparation before any shell side effects",
   async (change) => {
     const shell = vi.fn(async () => "MOCK SHELL");
     const { host, a, server } = await fixture((_, response) => done(response), shell);
     const command = await host.customCommands.create({ name: "race", prompt: "!`fixture-original`" });
-    const original = host.listSessionCustomCommands.bind(host);
+    const original = host.customCommands.list.bind(host.customCommands);
     let reads = 0;
-    const spy = vi.spyOn(host, "listSessionCustomCommands").mockImplementation(async (id) => {
+    const spy = vi.spyOn(host.customCommands, "list").mockImplementation(async () => {
       if (++reads === 2) {
         if (change === "edited") await writeFile(command.filePath, "Changed !`fixture-changed`");
         else if (change === "deleted") await unlink(command.filePath);
         else await host.customCommands.setEnabled({ id: command.id, enabled: false });
       }
-      return original(id);
+      return original();
     });
     const session = await host.createSession(a.id);
     try {
@@ -342,16 +425,10 @@ it.each(["edited", "deleted", "disabled"])(
       await host.activeRuns.get(session.id)?.done;
       const run = host.getSessionSnapshot(session.id).view.runs[0];
       expect(reads).toBe(2);
-      if (change === "disabled") {
-        expect(run.status).toBe("completed");
-        expect(server.requests).toHaveLength(1);
-        expect(shell).toHaveBeenCalledExactlyOnceWith("fixture-original", expect.anything());
-      } else {
-        expect(run.status).toBe("error");
-        expect(JSON.stringify(run)).toContain(change === "edited" ? "准备期间已更改" : "ENOENT");
-        expect(server.requests).toHaveLength(0);
-        expect(shell).not.toHaveBeenCalled();
-      }
+      expect(run.status).toBe("error");
+      expect(JSON.stringify(run)).toContain(change === "disabled" ? "禁用" : "准备期间已更改");
+      expect(server.requests).toHaveLength(0);
+      expect(shell).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }

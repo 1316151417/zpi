@@ -123,6 +123,31 @@ test("all seven runtimes assemble with generic ports and preview performs no exe
   expect(await readdir(directory)).toEqual([]);
 });
 
+test("memory snapshots and child inheritance keep one copy of injected instructions", async () => {
+  const { runtime } = await fixture();
+  const legacy = {
+    instructions: ["INJECTED MEMORY"],
+    shortInstructions: ["INJECTED MEMORY"],
+    sources: [],
+    diagnostics: [],
+  };
+  runtime.memory.restore("owner", legacy);
+  expect(runtime.memory.snapshot("owner")).toEqual({
+    instructions: ["INJECTED MEMORY"],
+    sources: [],
+    diagnostics: [],
+  });
+  expect(runtime.memory.inherit("owner")).toEqual({ memoryInstructions: ["INJECTED MEMORY"] });
+  legacy.instructions.push("LATER CHANGE");
+  expect(runtime.memory.instructions("owner")).toEqual(["INJECTED MEMORY"]);
+  runtime.restoreResources("legacy-without-resources");
+  expect(runtime.memory.snapshot("legacy-without-resources")).toEqual({
+    instructions: [],
+    sources: [],
+    diagnostics: [],
+  });
+});
+
 test("imported Agent definitions are loaded only when collaboration requests them", async () => {
   const { runtime, snapshots, directory } = await fixture();
   const agents = vi.fn(() => []);
@@ -142,15 +167,41 @@ test("imported Agent definitions are loaded only when collaboration requests the
   expect(agents).toHaveBeenCalledOnce();
 });
 
+test("parallel profile discovery preserves user-before-workspace ordering and workspace precedence", async () => {
+  const { runtime, directory } = await fixture();
+  const config = {
+    name: "reviewer",
+    description: "User reviewer",
+    systemPrompt: "USER ROLE",
+    color: "blue" as const,
+    injectAgentsMd: false,
+  };
+  runtime.saveSubagent({ config, scope: "user", sessionId: null });
+  runtime.saveSubagent({
+    config: { ...config, description: "Workspace reviewer", systemPrompt: "WORKSPACE ROLE" },
+    scope: "workspace",
+    sessionId: "owner",
+  });
+  const catalog = await runtime.collaboration.profiles.listAsync(directory);
+  expect(catalog.agents.filter((agent) => agent.name === "reviewer").map((agent) => agent.scope)).toEqual([
+    "user",
+    "workspace",
+  ]);
+  const current = await runtime.collaboration.currentProfiles("owner");
+  expect(current.filter((agent) => agent.name === "reviewer")).toMatchObject([
+    { scope: "workspace", systemPrompt: "WORKSPACE ROLE" },
+  ]);
+});
+
 test("ordinary messages skip Agent parsing while mentions still resolve", async () => {
   const { runtime } = await fixture();
   const imported = vi.fn(() => []);
-  expect(runtime.agentRequest("owner", "An ordinary user message", imported)).toBeUndefined();
+  expect(await runtime.agentRequest("owner", "An ordinary user message", imported)).toBeUndefined();
   expect(imported).not.toHaveBeenCalled();
 
   const agent = runtime.listSubagents("owner", []).agents[0];
   if (!agent) throw new Error("Missing builtin agent");
-  expect(runtime.agentRequest("owner", `@${agent.name} Inspect the task`, imported)).toEqual({
+  expect(await runtime.agentRequest("owner", `@${agent.name} Inspect the task`, imported)).toEqual({
     agent: agent.name,
     prompt: "Inspect the task",
   });
@@ -170,11 +221,11 @@ test.each(["disabled", "child"])(
         mode === "disabled" ? { ...original, plugins: [] } : { ...original, subagentProfile: profile },
       );
     const imported = vi.fn(() => []);
-    expect(runtime.commandSubagents("owner", imported)).toEqual([]);
+    expect(await runtime.commandSubagents("owner", imported)).toEqual([]);
     expect(imported).not.toHaveBeenCalled();
 
     configuration.mockReturnValue(original);
-    expect(runtime.commandSubagents("owner", imported)).toContainEqual(profile);
+    expect(await runtime.commandSubagents("owner", imported)).toContainEqual(profile);
     expect(imported).toHaveBeenCalledOnce();
   },
 );

@@ -145,6 +145,54 @@ it("reports friendly error copy while retaining diagnostics and replacing identi
   f.unsubscribe();
 });
 
+it.each([false, true])(
+  "keeps the latest suggestions when an older refresh finishes last (error=%s)",
+  async (fail) => {
+    const f = await setup();
+    const gate = deferred();
+    f.bridge.listCommands
+      .mockImplementationOnce(async () => {
+        await gate.promise;
+        if (fail) throw new Error("outdated lookup failed");
+        return { ok: true, value: [{ name: "old", description: "Outdated" }] };
+      })
+      .mockResolvedValueOnce({ ok: true, value: [{ name: "new", description: "Current" }] });
+    const first = f.store.refreshSuggestions(f.session.id);
+    await f.store.refreshSuggestions(f.session.id);
+    gate.resolve();
+    await expect(first).resolves.toBeUndefined();
+    expect(
+      f.store.useStore
+        .getState()
+        .suggestions.get(f.session.id)
+        ?.map((item) => item.name),
+    ).toEqual(["new"]);
+    f.unsubscribe();
+  },
+);
+
+it("suggestion refreshes are isolated by session and can retry after the latest failure", async () => {
+  const f = await setup();
+  const gate = deferred();
+  f.bridge.listCommands
+    .mockImplementationOnce(async () => {
+      await gate.promise;
+      return { ok: true, value: [{ name: "first", description: "First session" }] };
+    })
+    .mockResolvedValueOnce({ ok: true, value: [{ name: "second", description: "Second session" }] });
+  const first = f.store.refreshSuggestions(f.session.id);
+  await f.store.refreshSuggestions("another-session");
+  gate.resolve();
+  await first;
+  expect(f.store.useStore.getState().suggestions.get(f.session.id)?.[0].name).toBe("first");
+  expect(f.store.useStore.getState().suggestions.get("another-session")?.[0].name).toBe("second");
+  f.bridge.listCommands.mockRejectedValueOnce(new Error("latest lookup failed"));
+  await expect(f.store.refreshSuggestions(f.session.id)).rejects.toThrow("latest lookup failed");
+  await f.store.refreshSuggestions(f.session.id);
+  expect(f.store.useStore.getState().suggestions.get(f.session.id)).toEqual([]);
+  f.unsubscribe();
+});
+
 it("keeps a late input-scoped failure off a draft changed after submit", async () => {
   const f = await setup();
   f.store.useStore.setState({ selected: f.session.id });

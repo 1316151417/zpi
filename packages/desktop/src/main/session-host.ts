@@ -121,7 +121,6 @@ type HostHookInput = WithoutSession<
 interface SessionConfiguration extends PluginConfiguration {
   pluginsVersion: 3;
   template: PromptTemplate;
-  disabledSkillPaths: string[];
   resources?: SessionResources;
 }
 interface ActiveRun extends PluginRun {
@@ -606,7 +605,6 @@ export class SessionHost {
     const settings = this.settings.get();
     return {
       template: this.settings.getTemplate(),
-      disabledSkillPaths: settings.disabledSkillPaths,
       pluginsVersion: 3,
       plugins: snapshotPlugins([
         ...this.configuredHooks.snapshot(projectId),
@@ -629,11 +627,12 @@ export class SessionHost {
         "pluginsVersion",
         "plugins",
         "template",
-        "disabledSkillPaths",
         "resources",
         "subagentProfile",
         "subagentInstructions",
         "memoryInstructions",
+        // Obsolete fields remain accepted so older session snapshots can still be opened.
+        "disabledSkillPaths",
         "memoryShortInstructions",
       ],
       "session configuration",
@@ -649,11 +648,6 @@ export class SessionHost {
     this.plugins.validate(config.plugins, (plugin) => this.validateCustomPlugin(plugin));
     validateTemplate(config.template);
     if (
-      !Array.isArray(config.disabledSkillPaths) ||
-      config.disabledSkillPaths.some((p) => typeof p !== "string")
-    )
-      throw new Error("Invalid session configuration");
-    if (
       config.resources !== undefined &&
       (!isJsonObject(config.resources) ||
         !Array.isArray(config.resources.instructions) ||
@@ -661,9 +655,7 @@ export class SessionHost {
         !Array.isArray(config.resources.diagnostics) ||
         !isJsonObject(config.resources.builtin) ||
         !Array.isArray(config.resources.builtin.agents) ||
-        !isJsonObject(config.resources.builtin.memory) ||
-        !isJsonObject(config.resources.commands) ||
-        !Array.isArray(config.resources.commands.commands))
+        !isJsonObject(config.resources.builtin.memory))
     )
       throw new Error("Invalid session resources");
     this.configurations.set(id, config);
@@ -1029,15 +1021,13 @@ export class SessionHost {
       if (!config.resources && firstInput) {
         const loader = this.resourceLoader(id);
         // Settle all discovery work before retry cleanup can forget partially prepared state.
-        const [builtin, commands, loaded] = await Promise.allSettled([
+        const [builtin, loaded] = await Promise.allSettled([
           this.plugins.captureResources(id, config, this.localPlugins.agents(config.plugins)),
-          this.discoverSessionCustomCommands(id, false),
           loader.reload(),
         ]);
         if (builtin.status === "rejected") throw builtin.reason;
-        if (commands.status === "rejected") throw commands.reason;
         if (loaded.status === "rejected") throw loaded.reason;
-        config.resources = captureSessionResources(loader, builtin.value, commands.value);
+        config.resources = captureSessionResources(loader, builtin.value);
         // 工作树首发可能已接受输入；此时补存该次首发发现的目录，而非恢复时扫描。
         if (!this.record(id).draft) this.saveTask(id, { frozenConfiguration: config });
       }
@@ -1477,29 +1467,14 @@ export class SessionHost {
   private commandSubagents(id: string) {
     return this.plugins.commandSubagents(id, () => this.localPlugins.agents(this.configuration(id).plugins));
   }
-  async listSessionCustomCommands(id: string) {
-    if (!this.record(id).draft || this.configuration(id).resources) {
-      await this.ensureSessionResources(id);
-      const config = this.configuration(id);
-      const commands = config.resources?.commands ?? { commands: [], diagnostics: [], directoryPath: "" };
-      return {
-        ...structuredClone(commands),
-        subagents: this.commandSubagents(id).map(({ name, description }) => ({ name, description })),
-      };
-    }
-    return this.discoverSessionCustomCommands(id);
-  }
   private async readSessionCustomCommand(id: string, name: string) {
-    const catalog = await this.listSessionCustomCommands(id);
+    const catalog = await this.currentCustomCommands(id);
     const command = catalog.commands.find((item) => item.name.slice(1).toLowerCase() === name);
-    if (!command) return;
-    if (!command.enabled) throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
-    const user = this.customCommands;
-    const project = this.commandServicesForDirectory(this.cwd(this.record(id))).commands;
-    const store = command.filePath === join(user.rootDirectory, command.id) ? user : project;
-    return store.readForSession(command);
+    if (command && !command.enabled)
+      throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
+    return command;
   }
-  private async discoverSessionCustomCommands(id: string, includeSubagents = true) {
+  private async currentCustomCommands(id: string) {
     const record = this.record(id);
     const [project, user] = await Promise.all([
       this.commandServicesForDirectory(this.cwd(record)).commands.list(),
@@ -1516,32 +1491,35 @@ export class SessionHost {
       commands,
       diagnostics: [...project.diagnostics, ...user.diagnostics],
       directoryPath: project.directoryPath,
-      subagents: includeSubagents
-        ? this.commandSubagents(id).map(({ name, description }) => ({ name, description }))
-        : [],
     };
   }
-  async listSkills(projectId: string) {
-    const loader = new FileResourceLoader({
-      projectDir: this.project(projectId).path,
-      homeDir: this.homeDir,
-      isSkillEnabled: (path) => this.settings.isSkillEnabled(path),
-    });
-    await loader.reload();
-    return { ...loader.listSkills(), diagnostics: loader.getDiagnostics() };
+  async listSessionCustomCommands(id: string) {
+    const [catalog, subagents] = await Promise.all([
+      this.currentCustomCommands(id),
+      this.commandSubagents(id),
+    ]);
+    return {
+      ...catalog,
+      commands: catalog.commands.map(
+        ({ prompt: _, revision: _revision, skills: _skills, ...metadata }) => metadata,
+      ),
+      subagents: subagents.map(({ name, description }) => ({ name, description })),
+    };
   }
-  async listSessionSkills(id: string) {
+  private async currentSkillResources(id: string) {
     const catalog = new SkillCatalog({
       projectDir: this.workspaceInfo(id).cwd,
       homeDir: this.homeDir,
       isSkillEnabled: (path) => this.settings.isSkillEnabled(path),
     });
     await catalog.reload();
-    const resources = withPluginResources(
+    return withPluginResources(
       catalog,
       this.configuration(id).plugins.flatMap((plugin) => [...(plugin.skills ?? [])]),
     );
-    return resources.listSkills?.() ?? catalog.listSkills();
+  }
+  async listSessionSkills(id: string) {
+    return (await this.currentSkillResources(id)).listSkills();
   }
   workspaceInfo(id: string | null) {
     const record = id === null ? undefined : this.record(id);
@@ -1561,12 +1539,11 @@ export class SessionHost {
     await this.plugins.configure();
   }
   private resourceLoader(id: string | null) {
-    const config = id ? this.configuration(id) : this.defaultConfiguration();
     return new FileResourceLoader({
       projectDir: this.workspaceInfo(id).cwd,
       homeDir: this.homeDir,
       projectResources: id !== null,
-      isSkillEnabled: (path) => !config.disabledSkillPaths.includes(path),
+      isSkillEnabled: (path) => this.settings.isSkillEnabled(path),
     });
   }
   async referencedFile(id: string, path: string) {
@@ -2394,7 +2371,7 @@ export class SessionHost {
       const firstInput = record.draft;
       if (firstInput) this.configurations.set(id, this.defaultConfiguration(record.projectId));
       const configuration = this.configuration(id);
-      // 同一份会话资源配置同时服务命令解析、候选目录和运行时；工作树必须先确定实际目录。
+      // 工作树必须先确定实际目录，再捕获会话上下文资源。
       if (!needsWorktree) await this.ensureSessionResources(id, configuration, firstInput);
       const explicitUserInput = !internalSubagent && !input.subagentNotification;
       const pluginInvocation = /^\s*\/(\S+)/.exec(text)?.[1];
@@ -2405,10 +2382,10 @@ export class SessionHost {
       const initialCustom = customInvocation
         ? await this.readSessionCustomCommand(id, customInvocation.name)
         : undefined;
-      if (initialCustom && !initialCustom.enabled)
-        throw new Error("invalid_input: 此命令已禁用或不可读取，请在设置中检查后重试");
       const agentRequest = explicitUserInput
-        ? this.plugins.agentRequest(id, text, () => this.localPlugins.agents(this.configuration(id).plugins))
+        ? await this.plugins.agentRequest(id, text, () =>
+            this.localPlugins.agents(this.configuration(id).plugins),
+          )
         : undefined;
       const commandNeedsShell =
         initialCustom && customInvocation
@@ -2589,6 +2566,14 @@ export class SessionHost {
         const inputContext = { images: loaded.images, fileReferences: inputReferences };
         let commandText = text;
         if (customInvocation) {
+          const skillContext: string[] = [];
+          if (initialCustom?.skills?.length) {
+            const resources = await this.currentSkillResources(id);
+            for (const name of initialCustom.skills) {
+              const skill = await resources.loadSkill(name);
+              skillContext.push(`Required skill: ${skill.name}\nSkill source: ${skill.path}\n${skill.body}`);
+            }
+          }
           const command = await this.readSessionCustomCommand(id, customInvocation.name);
           if (
             Boolean(initialCustom) !== Boolean(command) ||
@@ -2596,17 +2581,6 @@ export class SessionHost {
           )
             throw new Error("invalid_input: 命令文件在准备期间已更改或删除，请确认最新内容后重试");
           if (command) {
-            if (!command.enabled) throw new Error("invalid_input: 此命令已禁用，请在设置中启用后重试");
-            const skillContext: string[] = [];
-            if (command.skills?.length) {
-              const resources = this.sessionResourceLoader(id, configuration);
-              for (const name of command.skills) {
-                const skill = await resources.loadSkill(name);
-                skillContext.push(
-                  `Required skill: ${skill.name}\nSkill source: ${skill.path}\n${skill.body}`,
-                );
-              }
-            }
             const source = command.filePath.startsWith(join(this.homeDir, ".zpi", "commands"))
               ? "user/zpi"
               : "project/zpi";
@@ -2625,7 +2599,7 @@ export class SessionHost {
           }
         }
         if (agentRequest)
-          commandText = this.plugins.agentPrompt(id, agentRequest, () =>
+          commandText = await this.plugins.agentPrompt(id, agentRequest, () =>
             this.localPlugins.agents(configuration.plugins),
           );
         const prepared = await session.prepareInput(commandText, inputContext);

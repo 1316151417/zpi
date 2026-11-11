@@ -215,6 +215,13 @@ export function listenPanes() {
     }
     if (state.selected !== previous.selected) restorePane();
   });
+  const offActive = usePane.subscribe((state, previous) => {
+    if (!state.open || (state.open === previous.open && state.active === previous.active)) return;
+    const tab = state.tabs.find((tab) => tab.id === state.active);
+    if (tab?.type !== "side-chat" || !retainedSessionViews.has(tab.childSessionId)) return;
+    const id = tab.childSessionId;
+    void refreshSuggestions(id, () => retainedSessionViews.has(id)).catch(report);
+  });
   const offEvents = window.zpi.onPaneEvent((event) => {
     if (event.type === "terminal") {
       terminalOutput.set(event.id, ((terminalOutput.get(event.id) ?? "") + event.data).slice(-524288));
@@ -233,6 +240,7 @@ export function listenPanes() {
   });
   return () => {
     offSelection();
+    offActive();
     offEvents();
   };
 }

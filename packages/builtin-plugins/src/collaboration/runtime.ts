@@ -112,13 +112,16 @@ export class SubagentPlugin {
     this.profiles = profiles;
     this.port = port;
   }
-  private availableProfiles(
-    cwd: string,
-    codexSubagentPrompt: boolean,
+  private mergeProfiles(agents: readonly SubagentProfile[]): SubagentProfile[] {
+    return [...new Map(agents.map((agent) => [agent.name.toLowerCase(), agent])).values()];
+  }
+  async currentProfiles(
+    parentId: string,
+    codexSubagentPrompt = false,
     extra: readonly SubagentProfile[] = [],
   ) {
-    const agents = this.profiles.list(cwd, codexSubagentPrompt).agents.filter((agent) => agent.enabled);
-    return structuredClone([...new Map([...agents, ...extra].map((agent) => [agent.name, agent])).values()]);
+    const catalog = await this.profiles.listAsync(this.port.cwd(parentId), codexSubagentPrompt);
+    return this.mergeProfiles([...catalog.agents, ...extra]);
   }
   restoreCatalog(parentId: string, agents: readonly SubagentSummary[]) {
     this.catalog.set(
@@ -126,12 +129,12 @@ export class SubagentPlugin {
       agents.map((agent) => structuredClone(summarizeSubagent(agent))),
     );
   }
-  catalogFor(parentId: string): SubagentSummary[] | undefined {
-    const agents = this.catalog.get(parentId);
-    return agents ? structuredClone(agents) : undefined;
-  }
   previewListing(cwd: string, codexSubagentPrompt = false, extra: readonly SubagentProfile[] = []) {
-    return this.formatListing(this.availableProfiles(cwd, codexSubagentPrompt, extra));
+    return this.formatListing(
+      this.mergeProfiles([...this.profiles.list(cwd, codexSubagentPrompt).agents, ...extra]).filter(
+        (agent) => agent.enabled,
+      ),
+    );
   }
   listing(parentId: string) {
     return this.formatListing((this.catalog.get(parentId) ?? []).filter((agent) => agent.enabled));
@@ -141,8 +144,8 @@ export class SubagentPlugin {
       .map((agent) => `- ${agent.name}: ${agent.description}${agent.path ? ` (Source: ${agent.path})` : ""}`)
       .join("\n");
   }
-  private profile(parentId: string, name: string): SubagentSummary {
-    const profiles = (this.catalog.get(parentId) ?? []).filter((agent) => agent.enabled);
+  private profile(candidates: SubagentProfile[], name: string): SubagentProfile {
+    const profiles = candidates.filter((agent) => agent.enabled);
     const normalize = (value: string) =>
       value
         .trim()
@@ -521,12 +524,10 @@ export class SubagentPlugin {
           signal?.throwIfAborted();
           if (this.closing) throw new Error("busy: 子智能体插件正在关闭");
           const name = params.subagent_type ?? "general-purpose";
-          const entry = this.profile(parentId, name);
-          const profile =
-            entry.scope === "plugin"
-              ? imported().find((profile) => profile.id === entry.id)
-              : await this.profiles.load(entry);
-          if (!profile) throw new Error(`not_found: 子智能体不存在：${entry.name}`);
+          const profile = this.profile(
+            await this.currentProfiles(parentId, codexSubagentPrompt, imported()),
+            name,
+          );
           signal?.throwIfAborted();
           const selection = profile.modelSelection ?? this.port.selection(parentId);
           const childSessionId = await this.port.create(parentId, profile, selection, params.description);

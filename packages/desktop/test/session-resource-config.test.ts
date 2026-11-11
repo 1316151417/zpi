@@ -9,7 +9,7 @@ import { type SessionResources, sessionResourceLoader } from "../src/main/sessio
 import { SettingsStore } from "../src/main/storage.ts";
 import { cleanup, codec, fixture, run } from "./helpers/context-fixture.ts";
 
-test("persists discovery and injected text in session configuration without rescanning on sends or cold resume", async () => {
+test("keeps injected context fixed while commands and their skill dependencies read current files", async () => {
   const f = await fixture();
   const root = join(f.resources, ".agents", "skills", "review");
   const commands = join(f.resources, ".zpi", "commands");
@@ -47,6 +47,9 @@ test("persists discovery and injected text in session configuration without resc
     const [skill] = (await f.host.listSessionSkills(f.session.id)).skills;
     expect(skill.path).toBe(await realpath(join(root, "SKILL.md")));
     const saved = JSON.stringify(f.settings.state.getTask(f.session.id)?.frozenConfiguration);
+    expect(f.settings.state.getTask(f.session.id)?.frozenConfiguration).not.toHaveProperty(
+      "disabledSkillPaths",
+    );
     expect(saved).toContain("ORIGINAL POLICY");
     expect(saved).toContain("ORIGINAL MEMORY");
     expect(saved).not.toContain("ORIGINAL SKILL");
@@ -54,7 +57,14 @@ test("persists discovery and injected text in session configuration without resc
     expect(saved).not.toContain("ORIGINAL COMMAND");
     expect(saved).not.toContain("Original role");
     expect(saved).not.toContain('"systemPrompt"');
-    expect(commandScans).toHaveBeenCalledTimes(2);
+    expect(commandScans).not.toHaveBeenCalled();
+    expect(
+      (
+        f.settings.state.getTask(f.session.id)?.frozenConfiguration as
+          | { resources: SessionResources }
+          | undefined
+      )?.resources,
+    ).not.toHaveProperty("commands");
     await run(f, "/review first-read");
     expect(JSON.stringify(f.server.requests.at(-1))).toContain("ORIGINAL SKILL");
     await writeFile(join(f.workspace, "AGENTS.md"), "CHANGED POLICY");
@@ -63,6 +73,10 @@ test("persists discovery and injected text in session configuration without resc
     await writeFile(join(root, "SKILL.md"), "---\ndescription: Changed description\n---\nCHANGED SKILL");
     await writeFile(join(root, "references", "guide.md"), "CHANGED GUIDE");
     await f.host.setSkillEnabled(join(root, "SKILL.md"), false);
+    await expect(
+      f.host.startRun({ sessionId: f.session.id, text: "/review disabled skill" }),
+    ).rejects.toThrow("Skill disabled");
+    await f.host.setSkillEnabled(join(root, "SKILL.md"), true);
     await f.host.customCommands.create({ name: "late", prompt: "LATE COMMAND" });
     reload.mockClear();
     agents.mockClear();
@@ -84,8 +98,8 @@ test("persists discovery and injected text in session configuration without resc
     expect(request).not.toContain("CHANGED MEMORY");
     expect(
       (await f.host.listSessionCustomCommands(f.session.id)).commands.map((command) => command.name),
-    ).toEqual(["/review"]);
-    expect((await f.host.listSessionSkills(f.session.id)).skills).toEqual([]);
+    ).toEqual(["/late", "/review"]);
+    expect((await f.host.listSessionSkills(f.session.id)).skills[0].description).toBe("Changed description");
     expect(await readFile(join(root, "references", "guide.md"), "utf8")).toBe("CHANGED GUIDE");
     const config = f.settings.state.getTask(f.session.id)?.frozenConfiguration as {
       resources: SessionResources;
@@ -95,29 +109,35 @@ test("persists discovery and injected text in session configuration without resc
       path: skill.path,
     });
     expect(reload).not.toHaveBeenCalled();
-    expect(agents).not.toHaveBeenCalled();
-    expect(commandScans).not.toHaveBeenCalled();
+    expect(agents).toHaveBeenCalledTimes(1);
+    expect(commandScans).toHaveBeenCalledTimes(6);
+    commandScans.mockClear();
+    agents.mockClear();
     await f.host.close();
     const restarted = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
     cleanup.push(() => restarted.close());
     await restarted.init();
-    expect((await restarted.listSessionSkills(f.session.id)).skills).toEqual([]);
+    expect((await restarted.listSessionSkills(f.session.id)).skills[0].description).toBe(
+      "Changed description",
+    );
     await restarted.startRun({ sessionId: f.session.id, text: "/review after restart" });
     await restarted.activeRuns.get(f.session.id)?.done;
     expect(JSON.stringify(f.server.requests.at(-1))).toContain("ORIGINAL MEMORY");
     expect(JSON.stringify(f.server.requests.at(-1))).toContain("CHANGED COMMAND after restart");
     expect(reload).not.toHaveBeenCalled();
     expect(agents).not.toHaveBeenCalled();
-    expect(commandScans).not.toHaveBeenCalled();
+    expect(commandScans).toHaveBeenCalledTimes(4);
+    commandScans.mockClear();
     await rm(root, { recursive: true });
     await restarted.startRun({ sessionId: f.session.id, text: "ordinary input after source deletion" });
     await restarted.activeRuns.get(f.session.id)?.done;
     expect((await restarted.listSessionSkills(f.session.id)).skills).toEqual([]);
+    expect(commandScans).not.toHaveBeenCalled();
     await expect(
       restarted.startRun({ sessionId: f.session.id, text: "/review missing skill" }),
-    ).rejects.toThrow("ENOENT");
+    ).rejects.toThrow("Skill not found");
     expect(reload).not.toHaveBeenCalled();
-    expect(commandScans).not.toHaveBeenCalled();
+    expect(commandScans).toHaveBeenCalledTimes(2);
     const next = await restarted.createSession(null, { cwd: f.workspace });
     await restarted.startRun({ sessionId: next.id, text: "new conversation" });
     await restarted.activeRuns.get(next.id)?.done;
@@ -129,6 +149,36 @@ test("persists discovery and injected text in session configuration without resc
     agents.mockRestore();
     commandScans.mockRestore();
   }
+});
+
+test("historical command catalogs are ignored on restart without migrating session context", async () => {
+  const f = await fixture();
+  const old = await f.host.customCommands.create({ name: "old", prompt: "OLD TEMPLATE" });
+  await run(f, "capture context");
+  await f.host.customCommands.delete({ id: old.id, expectedRevision: old.revision });
+  await f.host.customCommands.create({ name: "live", prompt: "CURRENT TEMPLATE" });
+  const state = f.settings.state.getTask(f.session.id);
+  if (!state) throw new Error("Missing task");
+  const config = structuredClone(state.frozenConfiguration) as {
+    resources: SessionResources & { commands?: unknown };
+  };
+  config.resources.commands = {
+    commands: [old],
+    diagnostics: [],
+    directoryPath: f.host.customCommands.rootDirectory,
+  };
+  f.settings.state.upsertTask({ ...state, frozenConfiguration: config });
+  await f.host.close();
+  const restarted = new SessionHost(f.dir, new SettingsStore(f.dir, codec), f.resources, f.workspace);
+  cleanup.push(() => restarted.close());
+  await restarted.init();
+  expect(
+    (await restarted.listSessionCustomCommands(f.session.id)).commands.map((command) => command.name),
+  ).toEqual(["/live"]);
+  await restarted.startRun({ sessionId: f.session.id, text: "/live" });
+  await restarted.activeRuns.get(f.session.id)?.done;
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).toContain("CURRENT TEMPLATE");
+  expect(JSON.stringify(f.server.requests.at(-1)?.messages)).not.toContain("OLD TEMPLATE");
 });
 
 test("skill suggestions track current files and switches without changing captured context", async () => {
@@ -252,7 +302,9 @@ test.each([true, false])(
       expect((await restored.listSessionSkills(f.session.id)).skills).toMatchObject([
         { name: "late", description: "CURRENT DISK SKILL" },
       ]);
-      expect((await restored.listSessionCustomCommands(f.session.id)).commands).toEqual([]);
+      expect(
+        (await restored.listSessionCustomCommands(f.session.id)).commands.map((command) => command.name),
+      ).toEqual(["/late"]);
       await restored.startRun({ sessionId: f.session.id, text: "continue" });
       await restored.activeRuns.get(f.session.id)?.done;
       expect(
@@ -277,10 +329,16 @@ test.each([true, false])(
         expect(JSON.stringify(f.server.requests.at(-1))).not.toContain("CURRENT DISK");
       }
       expect(reload).not.toHaveBeenCalled();
-      expect(agents).not.toHaveBeenCalled();
+      expect(agents).toHaveBeenCalledTimes(1);
       expect(syncAgents).not.toHaveBeenCalled();
-      expect(commands).not.toHaveBeenCalled();
+      expect(commands).toHaveBeenCalledTimes(2);
       expect(memory).not.toHaveBeenCalled();
+      await restored.startRun({ sessionId: f.session.id, text: "/late" });
+      await restored.activeRuns.get(f.session.id)?.done;
+      const commandRequest = JSON.stringify(f.server.requests.at(-1));
+      expect(commandRequest).toContain("CURRENT DISK COMMAND");
+      expect(commandRequest).not.toContain("CURRENT DISK POLICY");
+      expect(commandRequest).not.toContain("CURRENT DISK MEMORY");
     } finally {
       reload.mockRestore();
       agents.mockRestore();

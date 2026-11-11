@@ -2,7 +2,14 @@ import type { LoadedSkill } from "../core/resources.ts";
 import type { ResourceLoader } from "../core/types.ts";
 import type { PluginSkill } from "./types.ts";
 
+type SkillResourceLoader = ResourceLoader & Required<Pick<ResourceLoader, "listSkills" | "loadSkill">>;
+
 /** Adds explicit frozen plugin skills without changing filesystem discovery. */
+export function withPluginResources(
+  loader: SkillResourceLoader,
+  skills: readonly PluginSkill[],
+): SkillResourceLoader;
+export function withPluginResources(loader: ResourceLoader, skills: readonly PluginSkill[]): ResourceLoader;
 export function withPluginResources(loader: ResourceLoader, skills: readonly PluginSkill[]): ResourceLoader {
   if (!skills.length) return loader;
   const metadata = skills.map(({ body: _body, ...skill }) => ({ ...skill, source: "plugin" as const }));

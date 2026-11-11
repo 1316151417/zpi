@@ -27,6 +27,7 @@ test("existing conversation skill suggestions follow live switches and files wit
     await editor.fill("Capture initial context");
     await editor.press("Enter");
     await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await editor.fill("$review");
     await expect(panel.locator("strong")).toHaveText("review");
     await editor.press("Escape");
@@ -35,6 +36,7 @@ test("existing conversation skill suggestions follow live switches and files wit
     const toggle = page.getByRole("checkbox", { name: "启用技能 review user" });
     await toggle.click();
     await expect(toggle).not.toBeChecked();
+    await expect(toggle).toBeEnabled();
     await page.getByLabel("关闭设置").click();
     await editor.fill("$review");
     await expect(panel).toHaveText("暂无匹配技能");
@@ -43,6 +45,7 @@ test("existing conversation skill suggestions follow live switches and files wit
     await page.getByRole("button", { name: "技能", exact: true }).click();
     await toggle.click();
     await expect(toggle).toBeChecked();
+    await expect(toggle).toBeEnabled();
     await page.getByLabel("关闭设置").click();
     await editor.fill("$review");
     await expect(panel.locator("strong")).toHaveText("review");
@@ -105,13 +108,18 @@ test("skills preserve names beside long descriptions and match ZCode icons, sear
     await page.getByRole("button", { name: "添加项目", exact: true }).first().click();
     await page.getByRole("button", { name: "收起项目 workspace", exact: true }).hover();
     await page.getByRole("button", { name: "新建任务 workspace", exact: true }).click();
-    const id = await page.evaluate(async () => {
-      const projects = await window.zpi.listProjects();
-      if (!projects.ok) throw new Error(projects.error.message);
-      const sessions = await window.zpi.listSessions(projects.value[0].id);
-      if (!sessions.ok) throw new Error(sessions.error.message);
-      return sessions.value[0].id;
-    });
+    const sessionId = () =>
+      page.evaluate(async () => {
+        const projects = await window.zpi.listProjects();
+        if (!projects.ok) throw new Error(projects.error.message);
+        const project = projects.value[0];
+        if (!project) return "";
+        const sessions = await window.zpi.listSessions(project.id);
+        if (!sessions.ok) throw new Error(sessions.error.message);
+        return sessions.value[0]?.id ?? "";
+      });
+    await expect.poll(sessionId).not.toBe("");
+    const id = await sessionId();
     let editor = page.getByLabel("消息", { exact: true });
     // Capture the model context before exercising the independently refreshed picker.
     await editor.fill("Initialize the resource directory");

@@ -9,7 +9,6 @@ import type {
   CustomCommandDiagnostic,
   CustomCommandInput,
   CustomCommandSetEnabled,
-  CustomCommandSummary,
   CustomCommandsList,
   CustomCommandUpdate,
 } from "../shared/custom-commands.ts";
@@ -482,15 +481,6 @@ export class CustomCommandsStore {
   private assertSize(content: string): void {
     if (Buffer.byteLength(content) > this.limits.maxFileBytes)
       fail("file_limit", "Command exceeds the byte limit");
-  }
-  /** Explicit invocation reads one known path, retaining the session's enable policy. */
-  readForSession(command: CustomCommandSummary): Promise<CustomCommand> {
-    return this.serialize(async () => {
-      if (command.filePath !== this.path(command.id))
-        fail("unsafe_path", "Command path differs from its catalog entry");
-      const disabled = new Set(command.enabled ? [] : [command.id]);
-      return (await this.readCommand(command.id, disabled)).command;
-    });
   }
   list(): Promise<CustomCommandsList> {
     return this.serialize(async () => {

@@ -96,7 +96,6 @@ export class MemoryPolicy {
     this.used.set(id, []);
     this.snapshots.set(id, {
       instructions: [...short.instructions, ...long.instructions],
-      shortInstructions: short.instructions,
       sources: long.sources,
       diagnostics: short.diagnostics,
     });
@@ -105,14 +104,20 @@ export class MemoryPolicy {
     return structuredClone(
       this.snapshots.get(id) ?? {
         instructions: [],
-        shortInstructions: [],
         sources: [],
         diagnostics: [],
       },
     );
   }
-  restore(id: string, snapshot: SessionMemorySnapshot): void {
-    this.snapshots.set(id, structuredClone(snapshot));
+  restore(id: string, snapshot?: SessionMemorySnapshot): void {
+    this.snapshots.set(
+      id,
+      structuredClone({
+        instructions: snapshot?.instructions ?? [],
+        sources: snapshot?.sources ?? [],
+        diagnostics: snapshot?.diagnostics ?? [],
+      }),
+    );
   }
   /** Per-turn bookkeeping only: never discovers or reads memory files. */
   beginTurn(id: string): void {
@@ -122,7 +127,6 @@ export class MemoryPolicy {
     const snapshot = this.snapshots.get(parentId);
     return {
       memoryInstructions: structuredClone(snapshot?.instructions ?? []),
-      memoryShortInstructions: structuredClone(snapshot?.shortInstructions ?? []),
     };
   }
   instructions(id: string): string[] {

@@ -3,7 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, test } from "vitest";
 import { chunk, done, send } from "../../../tests/fake-server.ts";
-import { buildMentionMarkdown, createAgentSession, FileResourceLoader, SkillCatalog } from "../src/index.ts";
+import {
+  buildMentionMarkdown,
+  createAgentSession,
+  FileResourceLoader,
+  SkillCatalog,
+  withPluginResources,
+} from "../src/index.ts";
 import { fixture as resourceFixture, skill as writeSkill } from "./helpers/resource-fixture.ts";
 
 const cleanup: (() => Promise<unknown>)[] = [];
@@ -47,6 +53,28 @@ test("shared agents skills are discovered, ZPI overrides duplicates, and global 
   expect(catalog.listSkills().skills.map((s) => s.name)).toEqual(["shared"]);
   expect(catalog.listDiscoveredSkills().filter((s) => s.name === "review")).toHaveLength(2);
 });
+test("plugin skill decoration preserves required catalog methods without host adapters", async () => {
+  const cwd = await temp();
+  await writeSkill(join(cwd, ".agents", "skills"), "local", "Local skill", "LOCAL BODY");
+  const catalog = new SkillCatalog({ projectDir: cwd, homeDir: join(cwd, "home") });
+  await catalog.reload();
+  const plain = withPluginResources(catalog, []);
+  expect(plain).toBe(catalog);
+  expect((await plain.loadSkill("local")).body).toBe("LOCAL BODY");
+  const decorated = withPluginResources(catalog, [
+    {
+      name: "plugin",
+      description: "Plugin skill",
+      path: join(cwd, "plugin", "SKILL.md"),
+      baseDir: join(cwd, "plugin"),
+      body: "PLUGIN BODY",
+    },
+  ]);
+  expect(decorated.listSkills().skills.map((skill) => skill.name)).toEqual(["local", "plugin"]);
+  expect((await decorated.loadSkill("local")).body).toBe("LOCAL BODY");
+  expect((await decorated.loadSkill("plugin")).body).toBe("PLUGIN BODY");
+});
+
 it.each(["name: other", "name: React Best Practices", "name: 123", `name: ${"a".repeat(65)}`, ""])(
   "uses the skill directory name without diagnostics for frontmatter %j",
   async (name) => {

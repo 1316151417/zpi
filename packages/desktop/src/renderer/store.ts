@@ -364,52 +364,65 @@ export function subscribeEvents(): () => void {
     off();
   };
 }
+const suggestionRequests = new Map<string, object>();
 export async function refreshSuggestions(id: string, current = () => true): Promise<void> {
-  const [commands, catalog, custom] = await Promise.all([
-    window.zpi.listCommands(id).then(unwrap),
-    window.zpi.listSessionSkills(id).then(unwrap),
-    window.zpi.listSessionCustomCommands(id).then(unwrap),
-  ]);
-  if (!current()) return;
-  const state = useStore.getState();
-  const resourceDiagnostics = new Map(state.resourceDiagnostics),
-    suggestions = new Map(state.suggestions);
-  resourceDiagnostics.set(id, [
-    ...catalog.diagnostics,
-    ...custom.diagnostics.map((item) => ({ path: item.path ?? custom.directoryPath, message: item.message })),
-  ]);
-  suggestions.set(id, [
-    ...commands.map((c) => ({ ...c, insert: `/${c.name} `, group: "命令" as const })),
-    ...custom.commands
-      .filter(
-        (command) =>
-          command.enabled &&
-          !command.disableNonInteractive &&
-          /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(command.name.slice(1)) &&
-          !commands.some((builtin) => builtin.name.toLowerCase() === command.name.slice(1).toLowerCase()),
-      )
-      .map((command) => ({
-        name: command.name.slice(1),
-        description: command.description ?? "",
-        argumentHint: command.argumentHint,
-        customCommand: true,
-        insert: `${command.name} `,
-        group: "命令" as const,
+  const request = {};
+  suggestionRequests.set(id, request);
+  const active = () => suggestionRequests.get(id) === request && current();
+  try {
+    const [commands, catalog, custom] = await Promise.all([
+      window.zpi.listCommands(id).then(unwrap),
+      window.zpi.listSessionSkills(id).then(unwrap),
+      window.zpi.listSessionCustomCommands(id).then(unwrap),
+    ]);
+    if (!active()) return;
+    const state = useStore.getState();
+    const resourceDiagnostics = new Map(state.resourceDiagnostics),
+      suggestions = new Map(state.suggestions);
+    resourceDiagnostics.set(id, [
+      ...catalog.diagnostics,
+      ...custom.diagnostics.map((item) => ({
+        path: item.path ?? custom.directoryPath,
+        message: item.message,
       })),
-    ...catalog.skills.map((s) => ({
-      name: s.name,
-      description: `${s.source === "project" ? "工作区" : s.source === "user" ? "用户" : "附加"} · ${s.description}`,
-      insert: `${buildMentionMarkdown(`$${s.name}`, s.path)} `,
-      group: "Skill" as const,
-    })),
-    ...(custom.subagents ?? []).map((agent) => ({
-      name: agent.name,
-      description: agent.description,
-      insert: `@${agent.name} `,
-      group: "子智能体" as const,
-    })),
-  ]);
-  useStore.setState({ resourceDiagnostics, suggestions });
+    ]);
+    suggestions.set(id, [
+      ...commands.map((c) => ({ ...c, insert: `/${c.name} `, group: "命令" as const })),
+      ...custom.commands
+        .filter(
+          (command) =>
+            command.enabled &&
+            !command.disableNonInteractive &&
+            /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(command.name.slice(1)) &&
+            !commands.some((builtin) => builtin.name.toLowerCase() === command.name.slice(1).toLowerCase()),
+        )
+        .map((command) => ({
+          name: command.name.slice(1),
+          description: command.description ?? "",
+          argumentHint: command.argumentHint,
+          customCommand: true,
+          insert: `${command.name} `,
+          group: "命令" as const,
+        })),
+      ...catalog.skills.map((s) => ({
+        name: s.name,
+        description: `${s.source === "project" ? "工作区" : s.source === "user" ? "用户" : "附加"} · ${s.description}`,
+        insert: `${buildMentionMarkdown(`$${s.name}`, s.path)} `,
+        group: "Skill" as const,
+      })),
+      ...(custom.subagents ?? []).map((agent) => ({
+        name: agent.name,
+        description: agent.description,
+        insert: `@${agent.name} `,
+        group: "子智能体" as const,
+      })),
+    ]);
+    useStore.setState({ resourceDiagnostics, suggestions });
+  } catch (error) {
+    if (active()) throw error;
+  } finally {
+    if (suggestionRequests.get(id) === request) suggestionRequests.delete(id);
+  }
 }
 let appliedTaskGroupRequest = 0;
 export async function refresh(): Promise<void> {

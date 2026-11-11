@@ -328,10 +328,12 @@ export function App() {
     };
     window.addEventListener("zpi:commands-changed", refreshCandidates);
     window.addEventListener("zpi:skills-changed", refreshCandidates);
+    window.addEventListener("zpi:subagents-changed", refreshCandidates);
     window.addEventListener("focus", refreshCandidates);
     return () => {
       window.removeEventListener("zpi:commands-changed", refreshCandidates);
       window.removeEventListener("zpi:skills-changed", refreshCandidates);
+      window.removeEventListener("zpi:subagents-changed", refreshCandidates);
       window.removeEventListener("focus", refreshCandidates);
     };
   }, []);

@@ -155,15 +155,16 @@ test("malformed stored hook lists fail closed", async () => {
   expect(() => hooks.snapshot(null)).toThrow("无效钩子记录");
 });
 
-test("collaboration exposes no input preparation hook and ordinary sends do not reparse Agent definitions", async () => {
+test("collaboration has no preparation hook; only live picker queries reparse Agent definitions", async () => {
   const f = await fixture();
   expect(f.host.getHooks(null).plugins.some((plugin) => plugin.id === "zpi.collaboration")).toBe(false);
   await run(f, "Initialize the session catalog");
   const agents = vi.spyOn(f.host.localPlugins, "agents");
   try {
     await run(f, "Ordinary follow-up");
-    await f.host.listSessionCustomCommands(f.session.id);
     expect(agents).not.toHaveBeenCalled();
+    await f.host.listSessionCustomCommands(f.session.id);
+    expect(agents).toHaveBeenCalledTimes(1);
   } finally {
     agents.mockRestore();
   }

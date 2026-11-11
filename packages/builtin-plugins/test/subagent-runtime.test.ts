@@ -29,6 +29,7 @@ function fixture(toolNames?: string[]) {
     ],
     diagnostics: [],
   });
+  vi.spyOn(profiles, "listAsync").mockImplementation(async () => profiles.list());
   const turns = new Map<string, ReturnType<typeof deferred<void>>>();
   let child = 0;
   const port: ConstructorParameters<typeof SubagentPlugin>[1] = {

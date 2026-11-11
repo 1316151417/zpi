@@ -112,6 +112,63 @@ test("project commands appear in slash picker, insert without sending, and execu
     await expect.poll(() => server.requests.length).toBe(1);
     expect(JSON.stringify(server.requests[0].messages)).toContain("PROJECT REVIEW file.ts");
     await expect(page.getByText("reviewed", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    const projectId = await page.evaluate(async () => {
+      const result = await window.zpi.listProjects();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value[0].id;
+    });
+    await writeFile(
+      join(project, ".zpi", "commands", "review.md"),
+      "---\ndescription: Updated project review\n---\nLATEST REVIEW $ARGUMENTS",
+    );
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await editor.fill("/rev");
+    await expect(page.getByRole("option").filter({ hasText: "/review" })).toContainText(
+      "Updated project review",
+    );
+    await editor.fill("/review changed.ts");
+    await editor.press("Enter");
+    await expect(page.getByTestId("run")).toHaveCount(2);
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    expect(JSON.stringify(server.requests[1].messages)).toContain("LATEST REVIEW changed.ts");
+    for (const enabled of [false, true]) {
+      await page.evaluate(
+        async ({ projectId, enabled }) => {
+          const result = await window.zpi.setCustomCommandEnabled({ id: "review.md", enabled }, projectId);
+          if (!result.ok) throw new Error(result.error.message);
+          window.dispatchEvent(new Event("zpi:commands-changed"));
+        },
+        { projectId, enabled },
+      );
+      await editor.fill("/rev");
+      await expect(page.getByRole("option").filter({ hasText: "/review" })).toHaveCount(enabled ? 1 : 0);
+    }
+    await page.evaluate(async (projectId) => {
+      const catalog = await window.zpi.getCustomCommands(projectId);
+      if (!catalog.ok) throw new Error(catalog.error.message);
+      const review = catalog.value.commands.find((command) => command.id === "review.md");
+      if (!review) throw new Error("Missing review command");
+      const deleted = await window.zpi.deleteCustomCommand(
+        { id: review.id, expectedRevision: review.revision },
+        projectId,
+      );
+      if (!deleted.ok) throw new Error(deleted.error.message);
+      const created = await window.zpi.createCustomCommand(
+        { name: "late", prompt: "NEW COMMAND $ARGUMENTS" },
+        projectId,
+      );
+      if (!created.ok) throw new Error(created.error.message);
+      window.dispatchEvent(new Event("zpi:commands-changed"));
+    }, projectId);
+    await expect(page.getByRole("option").filter({ hasText: "/review" })).toHaveCount(0);
+    await editor.fill("/late");
+    await expect(page.getByRole("option").filter({ hasText: "/late" })).toBeVisible();
+    await editor.fill("/late current.ts");
+    await editor.press("Enter");
+    await expect(page.getByTestId("run")).toHaveCount(3);
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    expect(JSON.stringify(server.requests[2].messages)).toContain("NEW COMMAND current.ts");
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),
@@ -202,6 +259,22 @@ test("subagent slash selection inserts a canonical chip without sending or spawn
     await expect(slash).toBeVisible();
     await expect(option).toHaveCount(0);
     expect(server.requests).toHaveLength(0);
+    await editor.fill("Capture type descriptions with this profile disabled");
+    await editor.press("Enter");
+    await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    for (const enabled of [true, false, true]) {
+      await page.getByRole("button", { name: "设置", exact: true }).click();
+      await page.getByRole("button", { name: "子智能体", exact: true }).click();
+      const toggle = page.getByRole("checkbox", { name: "切换 Fixture-reviewer", exact: true });
+      await toggle.click();
+      await expect(toggle).toBeChecked({ checked: enabled });
+      await page.getByLabel("关闭设置").click();
+      await editor.fill("@Fixture");
+      await expect(page.locator(".subagent-option").filter({ hasText: "Fixture-reviewer" })).toHaveCount(
+        enabled ? 1 : 0,
+      );
+    }
+    expect(server.requests).toHaveLength(1);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

@@ -5,7 +5,6 @@ import {
   type ResourceLoader,
   type SkillMetadata,
 } from "@zpi-dev/coding-agent";
-import type { CustomCommandSummary, CustomCommandsList } from "../shared/custom-commands.ts";
 
 /** Discovery results and injected text, persisted with the existing session configuration. */
 export interface SessionResources {
@@ -13,25 +12,17 @@ export interface SessionResources {
   skills: SkillMetadata[];
   diagnostics: { path: string; message: string }[];
   builtin: SessionBuiltinResources;
-  commands: CustomCommandsList<CustomCommandSummary>;
 }
 
 export function captureSessionResources(
   loader: FileResourceLoader,
   builtin: SessionBuiltinResources,
-  commands: CustomCommandsList,
 ): SessionResources {
   return {
     instructions: loader.getInstructions().filter((part) => !part.startsWith("<skills>")),
     skills: loader.listSkills().skills,
     diagnostics: [...loader.getDiagnostics(), ...builtin.diagnostics],
     builtin,
-    commands: {
-      ...commands,
-      commands: commands.commands.map(
-        ({ prompt: _, revision: _revision, skills: _skills, ...metadata }) => metadata,
-      ),
-    },
   };
 }
 

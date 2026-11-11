@@ -126,6 +126,26 @@ test("at mentions search files and all enabled bots, insert canonical chips and 
       "@zebra-review",
     );
     await expect(editor.locator(".inline-mention.file")).toHaveCount(0);
+    await rm(join(agents, "zebra-review.md"));
+    await writeFile(
+      join(agents, "late-review.md"),
+      "---\nname: late-review\ndescription: 最新配置\n---\nUse the latest role.",
+    );
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await editor.fill("@late-review");
+    await expect(panel.getByRole("option", { name: /^late-review 最新配置/ })).toBeVisible();
+    await editor.press("Tab");
+    await expect(editor.locator(".inline-mention.subagent")).toHaveAttribute("data-markdown", "@late-review");
+    await editor.press("Enter");
+    await expect.poll(() => server.requests.length).toBe(2);
+    await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    expect(JSON.stringify(server.requests[1].messages)).toContain('subagent_type \\"late-review\\"');
+    await editor.fill("@zebra-review");
+    await expect(panel.locator(".subagent-option")).toHaveCount(0);
+    await rm(join(agents, "late-review.md"));
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await editor.fill("@late-review");
+    await expect(panel.getByRole("option", { name: /^late-review/ })).toHaveCount(0);
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

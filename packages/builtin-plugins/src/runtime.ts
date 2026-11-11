@@ -99,7 +99,6 @@ export class BuiltinPluginRuntime {
           workspace: record?.projectId ? sessions.cwd(id) : undefined,
           child: !!config.subagentProfile,
           memoryInstructions: config.memoryInstructions,
-          memoryShortInstructions: config.memoryShortInstructions,
         };
       },
     });
@@ -394,15 +393,7 @@ export class BuiltinPluginRuntime {
   restoreResources(id: string, resources?: SessionBuiltinResources): void {
     // Missing legacy configuration must not trigger discovery in later prompt hooks.
     this.collaboration.restoreCatalog(id, resources?.agents ?? []);
-    this.memory.restore(
-      id,
-      resources?.memory ?? {
-        instructions: [],
-        shortInstructions: [],
-        sources: [],
-        diagnostics: [],
-      },
-    );
+    this.memory.restore(id, resources?.memory);
   }
   observe(id: string, run: PluginRun, e: AgentSessionEvent): void {
     if (e.type === "agent_start") this.inbox.offer(id, run);
@@ -557,40 +548,33 @@ export class BuiltinPluginRuntime {
     if (this.ports.sessions.active(id)) await this.ports.sessions.stop(id);
     if (child) await this.background.stopAll(id);
   }
-  commandSubagents(id: string, imported: () => SubagentProfile[]) {
+  async commandSubagents(id: string, imported: () => SubagentProfile[]) {
     const config = this.ports.sessions.configuration(id);
     if (!collaborationEnabled(config.plugins) || config.subagentProfile) return [];
-    const enabled = (this.collaboration.catalogFor(id) ?? this.listSubagents(id, imported()).agents).filter(
-      (agent) => agent.enabled,
-    );
-    return [...new Map(enabled.map((agent) => [agent.name.toLowerCase(), agent])).values()];
+    return (await this.collaboration.currentProfiles(id, false, imported())).filter((agent) => agent.enabled);
   }
-  agentRequest(
+  async agentRequest(
     id: string,
     text: string,
     imported: () => SubagentProfile[],
-  ): { agent: string; prompt?: string } | undefined {
+  ): Promise<{ agent: string; prompt?: string } | undefined> {
     const mention = /^@([^\s@/]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
     if (!mention) return;
-    const agents = this.collaboration.catalogFor(id) ?? this.listSubagents(id, imported()).agents;
+    const agents = await this.collaboration.currentProfiles(id, false, imported());
     const declared = agents.find((agent) => agent.name.toLowerCase() === mention[1].toLowerCase());
     if (!declared) return;
     const config = this.ports.sessions.configuration(id);
-    if (
-      !collaborationEnabled(config.plugins) ||
-      config.subagentProfile ||
-      !agents.some((agent) => agent.enabled && agent.name.toLowerCase() === declared.name.toLowerCase())
-    )
+    if (!collaborationEnabled(config.plugins) || config.subagentProfile || !declared.enabled)
       throw new Error("invalid_input: 此会话未启用该子智能体");
     return { agent: declared.name, prompt: mention[2]?.trim() };
   }
-  agentPrompt(
+  async agentPrompt(
     id: string,
     request: { agent: string; prompt?: string },
     imported: () => SubagentProfile[],
-  ): string {
+  ): Promise<string> {
     if (
-      !this.commandSubagents(id, imported).some(
+      !(await this.commandSubagents(id, imported)).some(
         (agent) => agent.name.toLowerCase() === request.agent.toLowerCase(),
       )
     )

@@ -152,7 +152,6 @@ export function resolveBuiltinPlugins(
                   },
                   read: (input) => {
                     if (
-                      !context.profile &&
                       "toolInput" in input &&
                       input.toolInput &&
                       typeof input.toolInput === "object" &&

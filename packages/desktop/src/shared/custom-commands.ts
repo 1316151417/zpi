@@ -42,7 +42,7 @@ export interface CustomCommandDiagnostic {
   message: string;
   path?: string;
 }
-/** Session discovery keeps metadata and policy; template text is read only on invocation. */
+/** Composer metadata; templates are expanded only on invocation. */
 export type CustomCommandSummary = Omit<CustomCommand, "prompt" | "revision" | "skills">;
 
 export interface CustomCommandsList<T = CustomCommand> {

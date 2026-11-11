@@ -253,6 +253,7 @@ export function SubagentSettings() {
     setError("");
     try {
       setCatalog(unwrap(await action()));
+      window.dispatchEvent(new Event("zpi:subagents-changed"));
       if (close) setEditing(undefined);
       return true;
     } catch (error) {
@@ -326,7 +327,7 @@ export function SubagentSettings() {
               <h1>子智能体</h1>
               <SettingsHelp
                 label="子智能体"
-                text="允许助手委派任务。目录信息和开关在首次发送时固定；新启动读取原路径的当前定义，已有子会话沿用自己的配置和历史。关闭后仍可管理智能体。"
+                text="允许助手委派任务。首次注入的类型说明保持不变；输入候选和新启动读取当前配置与开关，已有子会话沿用自己的配置和历史。关闭后仍可管理智能体。"
               />
             </div>
             <label className="settings-enable">

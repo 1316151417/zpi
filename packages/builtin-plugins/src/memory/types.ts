@@ -2,12 +2,10 @@ import type { CombinedSelection } from "../types.ts";
 
 export interface MemoryInheritance {
   memoryInstructions?: string[];
-  memoryShortInstructions?: string[];
 }
 
 export interface SessionMemorySnapshot {
   instructions: string[];
-  shortInstructions: string[];
   sources: MemorySource[];
   diagnostics: { path: string; message: string }[];
 }

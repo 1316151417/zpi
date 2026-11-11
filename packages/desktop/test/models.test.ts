@@ -134,7 +134,7 @@ it("session models and thinking persist on both lazy and live SDK paths; deleted
     a = await host.createSession(project.id),
     b = await host.createSession(project.id);
   await mkdir(join(dir, "agent", ".zpi", "AGENTS.md"), { recursive: true });
-  expect((await host.listSkills(project.id)).diagnostics).toContainEqual({
+  expect((await host.getSkillSettings()).diagnostics).toContainEqual({
     path: join(dir, "agent", ".zpi", "AGENTS.md"),
     message: expect.stringContaining("regular file"),
   });

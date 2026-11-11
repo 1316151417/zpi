@@ -97,6 +97,26 @@ it("shows a shell immediately, deduplicates clicks, and waits for the draft but 
   f.off();
 });
 
+it("refreshes live suggestions when a retained side chat is reopened or reactivated without reloading its history", async () => {
+  const f = await setup();
+  await f.pane.openSideChat(f.parent.id);
+  await vi.waitFor(() => expect(f.bridge.listSessionSkills).toHaveBeenCalledTimes(1));
+  const id = f.pane.usePane.getState().active;
+  expect(id).toBeDefined();
+  f.bridge.listSessionSkills.mockClear();
+  f.pane.setPaneOpen(false);
+  expect(f.bridge.listSessionSkills).not.toHaveBeenCalled();
+  f.pane.setPaneOpen(true);
+  await vi.waitFor(() => expect(f.bridge.listSessionSkills).toHaveBeenCalledTimes(1));
+  f.pane.openNewPaneTab();
+  expect(f.bridge.listSessionSkills).toHaveBeenCalledTimes(1);
+  f.pane.activatePaneTab(id as string);
+  await vi.waitFor(() => expect(f.bridge.listSessionSkills).toHaveBeenCalledTimes(2));
+  expect(f.bridge.getSessionSnapshot).toHaveBeenCalledTimes(1);
+  expect(f.bridge.getDraft).toHaveBeenCalledTimes(1);
+  f.off();
+});
+
 it.each(["collapse", "switch", "other-tab"])("does not reopen or steal focus after %s", async (action) => {
   const f = await setup();
   const created = Promise.withResolvers<Result<SessionRecord>>();
