@@ -6,14 +6,6 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
   private started?: number;
   private first?: number;
   private last?: number;
-  private firstText?: number;
-  private lastText?: number;
-  private textChunks = 0;
-  private textChars = 0;
-  private currentTextChunk = 0;
-  private largestTextChunk = 0;
-  private hasThinking = false;
-  private hasToolCalls = false;
   private contentVersion = 0;
   private receivedAt?: number;
   private usageVersion = -1;
@@ -29,9 +21,6 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
     this.started = this.now();
     this.receivedAt = undefined;
     this.first = this.last = undefined;
-    this.firstText = this.lastText = undefined;
-    this.textChunks = this.textChars = this.currentTextChunk = this.largestTextChunk = 0;
-    this.hasThinking = this.hasToolCalls = false;
     this.contentVersion = 0;
     this.usageVersion = -1;
     this.sample = {};
@@ -41,23 +30,10 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
   received(): void {
     this.receivedAt = this.now();
   }
-  generated(kind: "text" | "thinking" | "tool" = "tool", chars = 0): void {
+  generated(): void {
     if (this.started === undefined) return;
     this.last = this.receivedAt ?? this.now();
     this.contentVersion++;
-    if (kind === "tool") this.hasToolCalls = true;
-    if (kind === "thinking") this.hasThinking = true;
-    if (kind === "text" && chars > 0) {
-      if (this.lastText !== this.last) {
-        this.textChunks++;
-        this.currentTextChunk = 0;
-      }
-      this.currentTextChunk += chars;
-      this.largestTextChunk = Math.max(this.largestTextChunk, this.currentTextChunk);
-      this.textChars += chars;
-      this.firstText ??= this.last;
-      this.lastText = this.last;
-    }
     if (this.first !== undefined) return;
     this.first = this.last;
     const ttftMs = this.first - this.started;
@@ -81,10 +57,7 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
       (event.type === "text_delta" || event.type === "thinking_delta" || event.type === "toolcall_delta") &&
       event.delta.length > 0
     )
-      this.generated(
-        event.type === "text_delta" ? "text" : event.type === "thinking_delta" ? "thinking" : "tool",
-        event.delta.length,
-      );
+      this.generated();
     else if (
       event.type === "text_start" ||
       event.type === "thinking_start" ||
@@ -96,11 +69,7 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
         (block?.type === "thinking" && !block.redacted && block.thinking.length > 0) ||
         (block?.type === "toolCall" && block.name.length > 0)
       )
-        this.generated(
-          block.type === "text" ? "text" : block.type === "thinking" ? "thinking" : "tool",
-          block.type === "text" ? block.text.length : 0,
-        );
-      if (block?.type === "thinking") this.hasThinking = true;
+        this.generated();
     }
     if (event.type === "done") {
       if (this.usageVersion !== this.contentVersion) {
@@ -108,18 +77,6 @@ export class MeasuredAssistantStream extends AssistantMessageEventStream {
         this.sample = { ttftMs: this.sample.ttftMs };
       }
       this.sample.requestMs = this.started === undefined ? undefined : this.now() - this.started;
-      if (this.started !== undefined) {
-        this.sample.firstTextMs = this.firstText === undefined ? undefined : this.firstText - this.started;
-        this.sample.textGenerationMs =
-          this.firstText === undefined || this.lastText === undefined
-            ? undefined
-            : this.lastText - this.firstText;
-        this.sample.textChunks = this.textChunks;
-        this.sample.textChars = this.textChars;
-        this.sample.largestTextChunk = this.largestTextChunk;
-        this.sample.hasThinking = this.hasThinking;
-        this.sample.hasToolCalls = this.hasToolCalls;
-      }
       this.publish();
     }
     super.push(event);

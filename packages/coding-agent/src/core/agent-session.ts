@@ -43,8 +43,6 @@ import { buildDefaultMicrocompactThreshold, maybeMicrocompact } from "./microcom
 import {
   type ModelPerformance,
   type ModelPerformanceTotals,
-  modelPerformance,
-  performanceScope,
   SessionPerformance,
 } from "./model-performance.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
@@ -138,7 +136,7 @@ export class AgentSession {
   private recoveredCalls = new WeakSet<object>();
   private performance: SessionPerformance;
   get modelPerformance(): ModelPerformance {
-    return modelPerformance(this.performance.snapshot, performanceScope(this.model, this.thinkingLevel));
+    return this.performance.value;
   }
   constructor(
     model: Model,
@@ -761,7 +759,7 @@ export class AgentSession {
   }
   private measuredStream(model: Model, context: TranscriptContext, options: SimpleStreamOptions) {
     const output = createAssistantMessageEventStream();
-    const request = this.performance.request(model, options.reasoning);
+    const request = this.performance.request();
     const retry = new AbortController();
     const retryNow = () => {
       if (retry.signal.aborted || options.signal?.aborted) return false;

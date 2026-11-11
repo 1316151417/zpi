@@ -34,7 +34,6 @@ import {
   parseInput,
   parseMentions,
   patchLineCounts,
-  performanceScope,
   runSessionInput,
   type SessionContributions,
   SessionManager,
@@ -1359,15 +1358,6 @@ export class SessionHost {
     this.saveTask(id, { modelPerformanceTotals: totals });
     return totals;
   }
-  private performanceView(id: string, totals = this.performanceTotals(id)) {
-    const selection = this.settings.state.getTask(id)?.currentSelection;
-    const model = selection ? this.settings.getModel(selection) : undefined;
-    const scope =
-      model && selection
-        ? performanceScope(withFastMode(model, selection.fastMode), toThinking(selection.reasoning, model))
-        : null;
-    return modelPerformance(totals, scope);
-  }
   getSessionSnapshot(id: string): SessionSnapshot {
     const record = this.record(id),
       index = this.indexes.get(id);
@@ -1390,7 +1380,7 @@ export class SessionHost {
       ...view,
       title: record.title,
       controls,
-      modelPerformance: this.performanceView(id, totals),
+      modelPerformance: modelPerformance(totals),
       queue: this.inputQueue.get(id),
       forkOrigin,
       ...this.plugins.view(id),
@@ -1912,11 +1902,7 @@ export class SessionHost {
     });
     this.settings.rememberSelection(selection);
     this.getSessionSnapshot(id);
-    this.emit(id, "controls", {
-      type: "controls_changed",
-      controls: this.getControls(id),
-      modelPerformance: this.performanceView(id),
-    });
+    this.emit(id, "controls", { type: "controls_changed", controls: this.getControls(id) });
     return this.getSessionSnapshot(id);
   }
 
@@ -2687,14 +2673,7 @@ export class SessionHost {
                 .catch((error) => this.errors.write("guide.attachments", error, { sessionId: id }));
             }
           }
-          if (e.type === "model_performance") {
-            this.saveTask(id, { modelPerformanceTotals: e.totals });
-            this.emit(id, run.runId, {
-              type: "model_performance",
-              performance: this.performanceView(id, e.totals),
-            });
-            return;
-          }
+          if (e.type === "model_performance") this.saveTask(id, { modelPerformanceTotals: e.totals });
           if (e.type === "agent_start" || e.type === "agent_end")
             void manager
               .appendCustomEntryAsync("zpi.agent_call", {

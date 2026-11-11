@@ -66,13 +66,7 @@ export function reduceSession(view: SessionView, envelope: DesktopEventEnvelope)
   }
   if (event.type === "history_reset") return { ...normalizeWebHistory(event.view), seq };
   if (event.type === "session_changed") return { ...view, seq, title: event.title };
-  if (event.type === "controls_changed")
-    return {
-      ...view,
-      seq,
-      controls: event.controls,
-      ...(event.modelPerformance !== undefined ? { modelPerformance: event.modelPerformance } : {}),
-    };
+  if (event.type === "controls_changed") return { ...view, seq, controls: event.controls };
   if (event.type === "queue_changed") return { ...view, seq, queue: event.queue };
   if (event.type === "question_changed") return { ...view, seq, question: event.question };
   if (event.type === "environment_changed") return { ...view, seq };

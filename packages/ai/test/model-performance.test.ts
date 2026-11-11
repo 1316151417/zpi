@@ -38,12 +38,7 @@ it.each(["text_delta", "thinking_delta", "toolcall_delta"] as const)(
     f.at(10000, { type: "text_end", contentIndex: 0, content: "firstx", partial: f.message });
     f.stream.recordUsage(170);
     f.stream.end(f.message);
-    expect(f.samples.at(-1)).toMatchObject({
-      ttftMs: 800,
-      outputTokens: 170,
-      generationMs: 2000,
-      requestMs: 9900,
-    });
+    expect(f.samples.at(-1)).toEqual({ ttftMs: 800, outputTokens: 170, generationMs: 2000, requestMs: 9900 });
   },
 );
 
@@ -84,7 +79,7 @@ it("does not invent speed for one wire event or reuse a partial count as final u
   f.stream.recordUsage(85);
   f.delta(2900);
   f.stream.end(f.message);
-  expect(f.samples.at(-1)).toMatchObject({ ttftMs: 800, requestMs: 2800 });
+  expect(f.samples.at(-1)).toEqual({ ttftMs: 800, requestMs: 2800 });
 });
 
 it("starts each HTTP attempt afresh and ignores redacted placeholders", () => {
@@ -98,45 +93,4 @@ it("starts each HTTP attempt afresh and ignores redacted placeholders", () => {
   expect(f.samples.at(-1)).toEqual({});
   f.delta(20800);
   expect(f.samples.at(-1)).toEqual({ ttftMs: 800 });
-});
-
-it("separates first content from first text and counts delivery chunks at their wire arrival times", () => {
-  const f = fixture();
-  f.at(1000, { type: "thinking_delta", contentIndex: 0, delta: "summary", partial: f.message });
-  f.delta(2000, "a");
-  // Two text deltas decoded from the same wire event count as one arrival.
-  f.stream.push({ type: "text_delta", contentIndex: 0, delta: "b", partial: f.message });
-  f.delta(2300, "cd");
-  f.delta(2600, "ef");
-  f.stream.recordUsage(100);
-  f.at(2800);
-  f.stream.end(f.message);
-  expect(f.samples.at(-1)).toMatchObject({
-    ttftMs: 900,
-    firstTextMs: 1900,
-    textGenerationMs: 600,
-    textChunks: 3,
-    textChars: 6,
-    largestTextChunk: 2,
-    hasThinking: true,
-    hasToolCalls: false,
-    requestMs: 2700,
-  });
-  const g = fixture();
-  g.at(2000, { type: "thinking_delta", contentIndex: 0, delta: "old summary", partial: g.message });
-  g.at(3000);
-  g.stream.startRequest();
-  g.delta(3500, "reset");
-  g.stream.recordUsage(20);
-  g.stream.end(g.message);
-  expect(g.samples.at(-1)).toMatchObject({
-    ttftMs: 500,
-    firstTextMs: 500,
-    textGenerationMs: 0,
-    textChunks: 1,
-    textChars: 5,
-    largestTextChunk: 5,
-    hasThinking: false,
-    hasToolCalls: false,
-  });
 });

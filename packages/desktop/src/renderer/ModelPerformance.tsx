@@ -95,25 +95,13 @@ const joined = (a: string, b?: string) => (
 );
 export function ModelPerformance({ value }: { value?: Performance }) {
   if (!value) return null;
+  const speed = positive(value.tokensPerSecond) ? formatSpeed(value.tokensPerSecond) : undefined;
   const activity: [string, string][] = [["步数", String(value.steps ?? 0)]];
   if (value.turns !== undefined) activity.unshift(["轮数", String(value.turns)]);
-  if (positive(value.llmMs)) activity.push(["模型累计用时", formatDuration(value.llmMs)]);
-  if (positive(value.toolMs)) activity.push(["工具累计用时", formatDuration(value.toolMs)]);
-  if (value.modelLabel) {
-    activity.push(["统计模型", value.modelLabel]);
-    activity.push(["最近成功请求耗时", positive(value.requestMs) ? formatDuration(value.requestMs) : "—"]);
-    activity.push(["首段内容等待", positive(value.ttftMs) ? formatDuration(value.ttftMs) : "—"]);
-    activity.push(["正文开始等待", positive(value.firstTextMs) ? formatDuration(value.firstTextMs) : "—"]);
-    activity.push([
-      "本次估算输出速度",
-      positive(value.requestTokensPerSecond) ? formatSpeed(value.requestTokensPerSecond) : "—",
-    ]);
-    activity.push([
-      "同模型平均输出速度",
-      positive(value.tokensPerSecond) ? formatSpeed(value.tokensPerSecond) : "—",
-    ]);
-    activity.push(["合格速度样本", String(value.speedSampleCount ?? 0)]);
-  }
+  if (positive(value.llmMs)) activity.push(["模型用时", formatDuration(value.llmMs)]);
+  if (positive(value.toolMs)) activity.push(["工具调用用时", formatDuration(value.toolMs)]);
+  if (positive(value.ttftMs)) activity.push(["首 token 平均（TTFT）", formatDuration(value.ttftMs)]);
+  if (speed) activity.push(["输出速度（TPS）", speed]);
   const total =
     (value.inputTokens ?? 0) +
     (value.outputTokens ?? 0) +
@@ -140,7 +128,7 @@ export function ModelPerformance({ value }: { value?: Performance }) {
         <StatPill
           icon={<Gauge aria-hidden="true" />}
           title="会话统计"
-          label={`${value.turns === undefined ? "" : `${value.turns} 轮 `}${value.steps} 步`}
+          label={joined(`${value.turns === undefined ? "" : `${value.turns} 轮 `}${value.steps} 步`, speed)}
           rows={activity}
         />
       )}
