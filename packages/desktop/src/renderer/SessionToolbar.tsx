@@ -170,6 +170,30 @@ export function SessionToolbar({
           </Tooltip.Root>
         </Tooltip.Provider>
       )}
+      {chosen &&
+        provider &&
+        configured &&
+        controls?.selectionValid &&
+        supportsFastMode(provider, configured) && (
+          <ActionHint
+            appearance="control"
+            openOnFocus
+            label={chosen.fastMode ? "关闭加速" : "开启加速"}
+            shortcut={shortcut("toggle-fast-mode")}
+          >
+            <button
+              type="button"
+              className="fast-mode-toggle"
+              data-composer-command="toggle-fast-mode"
+              aria-label="加速模式"
+              aria-pressed={chosen.fastMode === true}
+              disabled={updating}
+              onClick={() => select(chosen.provider, chosen.modelId, chosen.reasoning, !chosen.fastMode)}
+            >
+              <Zap size={14} fill={chosen.fastMode ? "currentColor" : "none"} />
+            </button>
+          </ActionHint>
+        )}
       <Menu.Root
         open={open}
         onOpenChange={(next) => {
@@ -309,30 +333,6 @@ export function SessionToolbar({
           </Menu.Content>
         </Menu.Portal>
       </Menu.Root>
-      {chosen &&
-        provider &&
-        configured &&
-        controls?.selectionValid &&
-        supportsFastMode(provider, configured) && (
-          <ActionHint
-            appearance="control"
-            openOnFocus
-            label={chosen.fastMode ? "关闭加速" : "开启加速"}
-            shortcut={shortcut("toggle-fast-mode")}
-          >
-            <button
-              type="button"
-              className="fast-mode-toggle"
-              data-composer-command="toggle-fast-mode"
-              aria-label="加速模式"
-              aria-pressed={chosen.fastMode === true}
-              disabled={updating}
-              onClick={() => select(chosen.provider, chosen.modelId, chosen.reasoning, !chosen.fastMode)}
-            >
-              <Zap size={14} fill={chosen.fastMode ? "currentColor" : "none"} />
-            </button>
-          </ActionHint>
-        )}
     </div>
   );
 }

@@ -1874,7 +1874,6 @@ small {
 }
 .fast-mode-toggle:hover:not(:disabled) {
   color: var(--color-text);
-  background: transparent;
 }
 .fast-mode-toggle[aria-pressed="true"] {
   color: var(--color-text);
