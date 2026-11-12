@@ -32,7 +32,7 @@ const questions = [
   },
 ];
 
-test("question paging preserves keyboard focus, IME input, skipped answers and failed question records", async () => {
+test("question paging preserves keyboard focus, multiline and IME input, skipped answers and failed question records", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-question-keyboard-"));
   const server = await fakeServer((_, response, index) => {
     if (index % 2 === 0) {
@@ -79,14 +79,28 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
     await selected.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(card).toContainText("2 / 2");
+    await card.getByRole("button", { name: "上一题" }).click();
+    const custom = card.getByLabel("自定义回答", { exact: true });
+    await custom.fill("第一题回答");
+    await custom.press("Shift+Enter");
+    await custom.pressSequentially("补充说明");
+    await expect(custom).toHaveValue("第一题回答\n补充说明");
+    await expect(custom).toBeFocused();
+    await expect(card).toContainText("1 / 2");
+    await custom.press("Enter");
+    await expect(card).toContainText("2 / 2");
     await card.press("Tab");
     await page.keyboard.press("Space");
     await expect(card.getByRole("checkbox", { name: "读文件 查看代码" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    const custom = card.getByLabel("自定义回答", { exact: true });
     await custom.fill("中文回答");
+    await custom.press("Shift+Enter");
+    await custom.pressSequentially("第二题补充");
+    await expect(custom).toHaveValue("中文回答\n第二题补充");
+    await expect(custom).toBeFocused();
+    await expect(card).toContainText("2 / 2");
     await custom.dispatchEvent("compositionstart");
     await custom.press("Enter");
     await expect(card).toBeVisible();
@@ -94,8 +108,10 @@ test("question paging preserves keyboard focus, IME input, skipped answers and f
     await custom.press("Enter");
     await expect(card).toHaveCount(0);
     await expect(page.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
-    expect(JSON.stringify(server.requests[1].messages)).toContain("中文回答");
-    expect(JSON.stringify(server.requests[1].messages)).toContain("B");
+    const messages = server.requests[1].messages as { role: string; content: string }[];
+    const toolAnswer = messages.find((message) => message.role === "tool");
+    expect(toolAnswer?.content).toContain(JSON.stringify("第一题回答\n补充说明"));
+    expect(toolAnswer?.content).toContain(JSON.stringify("读文件, 中文回答\n第二题补充"));
     await editor.fill("跳过");
     await editor.press("Enter");
     await card.getByRole("button", { name: "忽略", exact: true }).click();

@@ -189,6 +189,8 @@ export function UserQuestionCard({
       event.preventDefault();
       navigate(event.shiftKey || ["ArrowUp", "ArrowLeft"].includes(event.key) ? -1 : 1);
     } else if (event.key === "Enter" && (custom || !event.shiftKey)) {
+      // 自定义回答的 Shift+Enter 保留 textarea 原生换行，避免误切题或提交。
+      if (custom && event.shiftKey && !event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       if (custom && (event.ctrlKey || event.metaKey)) {
         snooze();
