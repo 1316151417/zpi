@@ -566,8 +566,7 @@ export class SettingsStore {
   }
   rememberSelection(selection: CombinedSelection): void {
     if (!this.isSelectionValid(selection)) throw new Error("configuration: 请重新选择有效模型与思考程度");
-    const { fastMode: _fastMode, ...lastSelection } = selection;
-    const data = { ...this.data, lastSelection };
+    const data = { ...this.data, lastSelection: { ...selection } };
     this.state.setSetting("app", data);
     this.data = data;
   }

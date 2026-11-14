@@ -244,11 +244,11 @@ test("model menu acceleration stays open, persists, and shares its action with t
     const sideModel = side.getByLabel("模型选择", { exact: true });
     await expect(sideModel).toContainText("GPT-6.1 Sol");
     const sideIndicator = sideModel.getByRole("img", { name: "加速已开启", exact: true });
-    const sideWasOn = (await sideIndicator.count()) > 0;
+    await expect(sideIndicator).toBeVisible();
     const sideEditor = side.getByLabel("消息", { exact: true });
     await sideEditor.fill("side shortcut draft");
     await sideEditor.press(`${primary}+Shift+b`);
-    await expect(sideIndicator).toHaveCount(sideWasOn ? 0 : 1);
+    await expect(sideIndicator).toHaveCount(0);
     await expect(indicator).toBeVisible();
     await expect(editor).toHaveText("remapped shortcut draft");
     await expect(sideEditor).toHaveText("side shortcut draft");

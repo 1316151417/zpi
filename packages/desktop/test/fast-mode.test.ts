@@ -36,7 +36,7 @@ it("applies standard explicitly, preserves other request parameters, and never m
   expect(withFastMode({ ...model, serviceTiers: [] }, true).samplingParams).toBe(model.samplingParams);
 });
 
-it("persists fast mode per conversation through restart without enabling it in other or new conversations", async () => {
+it("remembers fast mode for new conversations through restart while preserving existing conversations", async () => {
   const f = await fixture((_, response) => {
     send(response, chunk({ content: "ok" }));
     done(response);
@@ -61,8 +61,13 @@ it("persists fast mode per conversation through restart without enabling it in o
   expect(f.server.requests.at(-1)?.service_tier).toBe("priority");
   expect(f.host.getSessionSnapshot(a.id).controls.selection?.fastMode).toBe(true);
   expect(f.host.getSessionSnapshot(b.id).controls.selection?.fastMode).toBeUndefined();
-  const c = await f.host.createSession(f.a.id);
-  expect(f.host.getSessionSnapshot(c.id).controls.selection?.fastMode).toBeUndefined();
+  const c = await f.host.createSession(f.b.id);
+  expect(f.host.getSessionSnapshot(c.id).controls.selection).toEqual({
+    provider: "custom",
+    modelId: "fake",
+    reasoning: "none",
+    fastMode: true,
+  });
   await expect(
     f.host.setSessionSelection(a.id, {
       provider: "custom",
@@ -81,6 +86,9 @@ it("persists fast mode per conversation through restart without enabling it in o
   cleanup.push(() => restored.close());
   await restored.init();
   expect(restored.getSessionSnapshot(a.id).controls.selection?.fastMode).toBe(true);
+  expect(restored.getSessionSnapshot(b.id).controls.selection?.fastMode).toBeUndefined();
+  const d = await restored.createSession(null);
+  expect(restored.getSessionSnapshot(d.id).controls.selection?.fastMode).toBe(true);
   await restored.setSessionSelection(a.id, {
     provider: "custom",
     modelId: "fake",
@@ -90,7 +98,52 @@ it("persists fast mode per conversation through restart without enabling it in o
   await restored.startRun({ sessionId: a.id, text: "standard" });
   await restored.activeRuns.get(a.id)?.done;
   expect(f.server.requests.at(-1)?.service_tier).toBe("default");
+  const e = await restored.createSession(f.a.id);
+  expect(restored.getSessionSnapshot(e.id).controls.selection?.fastMode).toBe(false);
+  expect(restored.getSessionSnapshot(c.id).controls.selection?.fastMode).toBe(true);
+  expect(restored.getSessionSnapshot(d.id).controls.selection?.fastMode).toBe(true);
+  const reloadedSettings = new SettingsStore(f.dir, {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.alloc(0),
+    decryptString: () => "",
+  });
+  expect(reloadedSettings.get().lastSelection?.fastMode).toBe(false);
 });
+
+it.each([true, false])(
+  "inherits fast mode %s from the parent into independent side chats",
+  async (fastMode) => {
+    const f = await fixture((_, response) => {
+      send(response, chunk({ content: "ok" }));
+      done(response);
+    });
+    f.settings.saveProvider({
+      ...f.settings.snapshot(),
+      models: [{ id: "fake", reasoning: false, serviceTiers: ["priority"] }],
+    });
+    const parent = await f.host.createSession(f.a.id);
+    const selection = { provider: "custom", modelId: "fake", reasoning: "none", fastMode };
+    // Deliberately leave history and global defaults at the opposite speed to the parent's composer.
+    await f.host.setSessionSelection(parent.id, { ...selection, fastMode: !fastMode });
+    await f.host.startRun({ sessionId: parent.id, text: "parent" });
+    await f.host.activeRuns.get(parent.id)?.done;
+    await f.host.setSessionSelection(parent.id, selection);
+    const other = await f.host.createSession(f.b.id);
+    await f.host.setSessionSelection(other.id, { ...selection, fastMode: !fastMode });
+
+    const child = await f.host.createSideChat(parent.id);
+    expect(f.host.getSessionSnapshot(child.id).controls.selection).toEqual(selection);
+    await f.host.startRun({ sessionId: child.id, text: "side chat" });
+    await f.host.activeRuns.get(child.id)?.done;
+    expect(f.server.requests.at(-1)?.service_tier).toBe(fastMode ? "priority" : "default");
+    await f.host.setSessionSelection(child.id, { ...selection, fastMode: !fastMode });
+    expect(f.host.getSessionSnapshot(parent.id).controls.selection).toEqual(selection);
+    const next = await f.host.createSession(f.a.id);
+    expect(f.host.getSessionSnapshot(next.id).controls.selection?.fastMode).toBe(!fastMode);
+    const sibling = await f.host.createSideChat(parent.id);
+    expect(f.host.getSessionSnapshot(sibling.id).controls.selection).toEqual(selection);
+  },
+);
 
 it("keeps every tool request in an active run at its original speed after the composer toggle changes", async () => {
   const started = deferred();
