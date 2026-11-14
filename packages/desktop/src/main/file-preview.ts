@@ -88,12 +88,28 @@ export async function readFilePreview(cwd: string, target: string, input?: unkno
         bytes: new Uint8Array(data),
         ...(partialPdf ? { totalBytes: info.size } : {}),
       };
-    if (data.includes(0)) return { path, location, kind: "unsupported" };
+    let text: string;
+    if (data.includes(0)) {
+      // Extracted document text can contain stray NULs. Only recover mostly textual,
+      // valid UTF-8; dense control bytes and malformed encoding still indicate binary data.
+      let controls = 0;
+      for (const byte of data) {
+        if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) controls++;
+      }
+      if (controls / data.length > 0.01) return { path, location, kind: "unsupported" };
+      try {
+        text = new TextDecoder("utf-8", { fatal: true })
+          .decode(data, { stream: info.size > bytesRead })
+          .replaceAll("\0", "\uFFFD");
+      } catch {
+        return { path, location, kind: "unsupported" };
+      }
+    } else text = new TextDecoder().decode(data);
     return {
       path,
       location,
       kind: "text",
-      text: new TextDecoder().decode(data),
+      text,
       truncated: info.size > bytesRead,
     };
   } finally {

@@ -47,6 +47,35 @@ test("keeps SVG and HTML source available and does not pretend legacy PPT is sup
   await writeFile(join(root, "old.ppt"), new Uint8Array([1, 0, 2]));
   expect(await readFilePreview(root, "old.ppt")).toMatchObject({ kind: "unsupported" });
 });
+test("previews UTF-8 Markdown containing sparse NULs without changing the file", async () => {
+  const text = `# 会话记录\n${"从文档提取的正文。\n".repeat(100)}user\0\0\0@example.com\n`;
+  const path = join(root, "session.md");
+  await writeFile(path, text);
+  expect(await readFilePreview(root, "session.md")).toMatchObject({
+    kind: "text",
+    text: text.replaceAll("\0", "\uFFFD"),
+    truncated: false,
+  });
+  expect(await readFile(path, "utf8")).toBe(text);
+});
+test.each([
+  Buffer.from([1, 0, 2]),
+  Buffer.alloc(1000),
+  Buffer.concat([Buffer.from("text ".repeat(100)), Buffer.from([0, 0xff])]),
+  Buffer.from(`${"text ".repeat(100)}\0${"\x01".repeat(100)}`),
+])("still rejects binary content named Markdown (%#)", async (bytes) => {
+  await writeFile(join(root, "binary.md"), bytes);
+  expect(await readFilePreview(root, "binary.md")).toMatchObject({ kind: "unsupported" });
+});
+test("tolerates a truncated UTF-8 character when previewing Markdown with sparse NULs", async () => {
+  const prefix = `# 会话\n\0${"a".repeat(2 * 1024 * 1024 - Buffer.byteLength("# 会话\n\0") - 1)}`;
+  await writeFile(join(root, "large.md"), `${prefix}中`);
+  expect(await readFilePreview(root, "large.md")).toMatchObject({
+    kind: "text",
+    text: prefix.replaceAll("\0", "\uFFFD"),
+    truncated: true,
+  });
+});
 test("large PDFs load only their first chunk, then bounded ranges", async () => {
   const bytes = new Uint8Array(3 * 1024 * 1024).fill(17);
   await writeFile(join(root, "large.pdf"), bytes);
