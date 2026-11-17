@@ -218,13 +218,28 @@ test("workspace empty-state creation keeps the selected scope", async () => {
   expect(saveSubagent).not.toHaveBeenCalled();
 });
 
-test("Codex prompts default off, save independently, and retain their choice while subagents are disabled", async () => {
+test.each([
+  [undefined, true],
+  ["default", false],
+  ["codex", true],
+] as const)("Codex prompt preset %s displays checked=%s", async (preset, checked) => {
+  if (preset) state.settings.plugins.options["zpi.collaboration"] = { promptPreset: preset };
+  await render();
+  expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').checked).toBe(checked);
+  expect(setPluginOptions).not.toHaveBeenCalled();
+});
+
+test("Codex prompts default on, save independently, and retain their choice while subagents are disabled", async () => {
   await render();
   const toggle = () => query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]');
-  expect(toggle().checked).toBe(false);
+  expect(toggle().checked).toBe(true);
   expect(toggle().disabled).toBe(false);
   await click(toggle());
-  expect(setPluginOptions).toHaveBeenCalledWith("zpi.collaboration", { promptPreset: "codex" });
+  expect(setPluginOptions).toHaveBeenLastCalledWith("zpi.collaboration", { promptPreset: "default" });
+  await render();
+  expect(toggle().checked).toBe(false);
+  await click(toggle());
+  expect(setPluginOptions).toHaveBeenLastCalledWith("zpi.collaboration", { promptPreset: "codex" });
   await render();
   expect(toggle().checked).toBe(true);
   await click(query('[aria-label="启用子智能体"]'));
@@ -233,7 +248,7 @@ test("Codex prompts default off, save independently, and retain their choice whi
   expect(toggle().disabled).toBe(true);
   expect(toggle().checked).toBe(true);
   await click(toggle());
-  expect(setPluginOptions).toHaveBeenCalledTimes(1);
+  expect(setPluginOptions).toHaveBeenCalledTimes(2);
   expect(setPluginEnabled).toHaveBeenCalledTimes(1);
   await click(query('[aria-label="启用子智能体"]'));
   await render();
@@ -245,7 +260,7 @@ test("failed Codex prompt saves preserve the previous choice and show the error"
   await render();
   setPluginOptions.mockRejectedValueOnce(new Error("save failed"));
   await click(query('[aria-label="Codex 子智能体提示"]'));
-  expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').checked).toBe(false);
+  expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').checked).toBe(true);
   expect(query('[role="alert"]').textContent).toContain("操作失败");
   expect(query<HTMLInputElement>('[aria-label="Codex 子智能体提示"]').disabled).toBe(false);
 });

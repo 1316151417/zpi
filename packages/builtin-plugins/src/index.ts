@@ -113,7 +113,7 @@ export const desktopPluginManifests: readonly PluginSnapshot[] = [
     version: "1",
     name: "子智能体协作",
     description: "派生子智能体、发送消息并收取结果。",
-    options: { promptPreset: "default" },
+    options: { promptPreset: "codex" },
   },
   {
     id: desktopPluginIds.background,

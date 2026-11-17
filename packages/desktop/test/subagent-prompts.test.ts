@@ -182,6 +182,22 @@ test("TaskOutput applies ZCode runtime defaults and semantic booleans without ac
   expect(prepareTaskOutputArguments({ task_id: "id", timeout: null })).toMatchObject({ timeout: null });
 });
 
+test("new installations use Codex guidance without a saved preset", async () => {
+  const f = await fixture();
+  expect(f.settings.get().plugins.options["zpi.collaboration"]?.promptPreset).toBeUndefined();
+  expect(f.host.listTools().find((tool) => tool.name === "Agent")?.description).toContain(
+    "Do not launch subagents unless",
+  );
+  expect((await f.host.previewPrompt()).prompt).toContain(
+    "Read-only codebase exploration for a bounded question",
+  );
+  await run(f, "use the default subagent mode");
+  const tools = f.server.requests.at(-1)?.tools as { function: { name: string; description: string } }[];
+  expect(tools.find((tool) => tool.function.name === "Agent")?.function.description).toContain(
+    "Do not launch subagents unless",
+  );
+});
+
 test("persists Codex guidance and snapshots its mode on first send, including restored sessions", async () => {
   const f = await fixture();
   const description = () => {
@@ -189,7 +205,7 @@ test("persists Codex guidance and snapshots its mode on first send, including re
     return tools.find((tool) => tool.function.name === "Agent")?.function.description ?? "";
   };
   const codexRule = "Do not launch subagents unless";
-  expect(f.settings.get().plugins.options["zpi.collaboration"]?.promptPreset === "codex").toBe(false);
+  f.settings.setPluginOptions("zpi.collaboration", { promptPreset: "default" });
   await run(f, "original chat");
   expect(description()).toBe(adapt(reference.agent));
   const draft = await f.host.createSession(null);

@@ -1,7 +1,7 @@
 // Adapted from ZCode settings/SubagentsSection.tsx; uses the same Lucide Bot and identity colors.
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { desktopPluginIds } from "@zpi-dev/builtin-plugins";
+import { desktopPluginIds, desktopPluginManifests } from "@zpi-dev/builtin-plugins";
 import {
   agentColors,
   type SaveSubagentInput,
@@ -218,7 +218,10 @@ export function SubagentSettings() {
     (state) => state.settings?.plugins?.enabled[desktopPluginIds.collaboration] ?? true,
   );
   const codexSubagentPrompt = useStore(
-    (state) => state.settings?.plugins?.options[desktopPluginIds.collaboration]?.promptPreset === "codex",
+    (state) =>
+      (state.settings?.plugins?.options[desktopPluginIds.collaboration]?.promptPreset ??
+        desktopPluginManifests.find((plugin) => plugin.id === desktopPluginIds.collaboration)?.options
+          ?.promptPreset) === "codex",
   );
   const [deleteTarget, setDeleteTarget] = useState<SubagentProfile>();
   const [listScope, setListScope] = useState<SaveSubagentInput["scope"]>("user");
