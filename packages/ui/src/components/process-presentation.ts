@@ -3,6 +3,15 @@
 // See licenses/third-party-notices.txt for provenance.
 import type { RunView, ViewBlock } from "../types.ts";
 
+export function runFinalAnswer(run: RunView) {
+  if (run.status === "running") return undefined;
+  // 与轮尾展示共用判定：后续思考不遮挡答复，工具收尾或未标记的过程正文不能冒充最终答复。
+  const tail = run.orderedBlocks.findLast(
+    (block) => block.type === "tool" || (block.type === "text" && block.text.trim()),
+  );
+  return tail?.type === "text" && run.finalAnswerBlockIds.includes(tail.id) ? tail : undefined;
+}
+
 export function runPresentation(run: RunView) {
   const merged: (ViewBlock & { lastBlockId?: string })[] = [];
   const boundaries = new Set(run.compactions?.map((marker) => marker.afterBlockId));
@@ -27,14 +36,9 @@ export function runPresentation(run: RunView) {
     } else merged.push(block);
   }
   const visible = merged.filter((block) => block.type === "tool" || block.text.trim());
-  // 后续通知可能只生成思考；它仍属于工作过程，不能挡住已有的最终正文。
-  const tail = visible.findLast((block) => block.type !== "thinking");
   // ZCode 运行中把正文和思考、工具按原序放在工作区；终态只把末段正文移到折叠区外。
   // 不能按 finalAnswerBlockIds 提前抽走全部正文，否则工具开始后正文会跳位，早期段落也会外露。
-  const answer =
-    run.status !== "running" && tail?.type === "text" && run.finalAnswerBlockIds.includes(tail.id)
-      ? tail
-      : undefined;
+  const answer = runFinalAnswer(run);
   return {
     process: visible.filter((block) => block !== answer),
     answer,

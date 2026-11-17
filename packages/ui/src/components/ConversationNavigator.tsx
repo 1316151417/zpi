@@ -4,6 +4,7 @@ import { memo, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useS
 import type { ConversationQuery } from "../conversation-run-partition.ts";
 import { parseSelectionPrompt } from "../conversation-selections.ts";
 import type { RunView } from "../types.ts";
+import { runFinalAnswer } from "./process-presentation.ts";
 
 // Keep previews bounded even when a run contains a very long assistant response.
 function previewText(blocks: RunView["orderedBlocks"]): string {
@@ -199,14 +200,14 @@ const NavigatorItem = memo(function NavigatorItem({
   setActiveId: (id: string) => void;
 }) {
   const { run } = item;
-  const { user, assistant } = useMemo(
-    () => ({
+  const { user, assistant } = useMemo(() => {
+    const answer = runFinalAnswer(run);
+    return {
       user: parseSelectionPrompt(item.text).text.trim() || "用户输入",
       assistant:
-        previewText(run.orderedBlocks) || (run.status === "running" ? "助手仍在工作" : "暂无助手正文"),
-    }),
-    [run, item.text],
-  );
+        run.status === "running" ? "助手仍在工作" : (answer && previewText([answer])) || "暂无助手正文",
+    };
+  }, [run, item.text]);
   return (
     <HoverCard.Root openDelay={120} closeDelay={80}>
       <HoverCard.Trigger asChild>

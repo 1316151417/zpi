@@ -1,6 +1,6 @@
 import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ConversationNavigator } from "../src/components/ConversationNavigator.tsx";
 import { conversationQueries } from "../src/conversation-run-partition.ts";
 import type { RunView } from "../src/types.ts";
@@ -13,17 +13,21 @@ const run = (id: string): RunView => ({
   orderedBlocks: [],
   finalAnswerBlockIds: [],
 });
-const container = document.createElement("div");
-document.body.append(container);
-const root = createRoot(container);
-vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-vi.stubGlobal(
-  "ResizeObserver",
-  class {
-    observe() {}
-    disconnect() {}
-  },
-);
+let container: HTMLDivElement, root: Root;
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
@@ -62,4 +66,44 @@ it("jumps to the selected run and windows a long rail", async () => {
   expect(buttons[1]?.getAttribute("aria-current")).toBe("location");
   await act(async () => buttons[1]?.click());
   expect(onJump).toHaveBeenCalledWith("1", "1:user");
+});
+
+it("shows the working placeholder until settled, then the same final answer as the message body", async () => {
+  const text = (id: string, value: string) => ({ id, messageId: id, type: "text" as const, text: value });
+  const intro = text("intro", "我先读取方案并核对配置。");
+  const answer = text("answer", "已更新方案。\n\n确认三个问题。\n\n第三段不展示。");
+  const view: RunView = {
+    ...run("current"),
+    status: "running",
+    orderedBlocks: [intro, answer],
+    finalAnswerBlockIds: [intro.id, answer.id],
+  };
+  const render = async (current: RunView) =>
+    act(async () =>
+      root.render(
+        createElement(ConversationNavigator, {
+          history: [run("older"), current].flatMap(conversationQueries),
+          onJump: vi.fn(),
+          busy: false,
+          scrollRoot: { current: null },
+        }),
+      ),
+    );
+  await render(view);
+  const button = container.querySelectorAll("button")[1];
+  if (!button) throw new Error("Missing current query navigator item");
+  await act(async () => {
+    button.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+    await new Promise((resolve) => setTimeout(resolve, 180));
+  });
+  const preview = () => document.querySelector(".conversation-navigator-answer")?.textContent;
+  expect(preview()).toBe("助手仍在工作");
+  await render({ ...view, status: "completed" });
+  expect(preview()).toBe("已更新方案。\n确认三个问题。");
+  await render({ ...view, status: "completed", finalAnswerBlockIds: [] });
+  expect(preview()).toBe("暂无助手正文");
+  await render({ ...view, status: "completed", orderedBlocks: [intro, text("answer", "结".repeat(230))] });
+  expect(preview()).toBe(`${"结".repeat(217)}...`);
+  await render({ ...view, status: "running" });
+  expect(preview()).toBe("助手仍在工作");
 });
