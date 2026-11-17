@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { basename } from "node:path";
+import { basename, isAbsolute, relative } from "node:path";
 import { type BrowserWindow, session, type WebContents, type WebPreferences, webContents } from "electron";
 import type { IPty } from "node-pty";
 import type { BrowserState, PaneEvent } from "../shared/bridge.ts";
@@ -12,6 +12,7 @@ export class PaneServices {
   private disposed = false;
   private epoch = 0;
   private terminals = new Map<string, IPty>();
+  private terminalDirectories = new Map<string, string>();
   private browsers = new Map<
     string,
     { content?: WebContents; url: string; visible: boolean; error?: string }
@@ -52,11 +53,13 @@ export class PaneServices {
     });
     const id = randomUUID();
     this.terminals.set(id, pty);
+    this.terminalDirectories.set(id, cwd);
     pty.onData((data) => {
       if (this.terminals.has(id)) this.emit({ type: "terminal", id, data });
     });
     pty.onExit(({ exitCode }) => {
       if (!this.terminals.delete(id)) return;
+      this.terminalDirectories.delete(id);
       this.emit({ type: "terminal", id, data: `\r\n[终端已退出 ${exitCode}]\r\n`, exited: true });
     });
     return { id, shell: basename(shell), profile };
@@ -83,7 +86,14 @@ export class PaneServices {
   closeTerminal(id: string) {
     const pty = this.terminals.get(id);
     this.terminals.delete(id);
+    this.terminalDirectories.delete(id);
     pty?.kill();
+  }
+  hasTerminalInDirectory(directory: string): boolean {
+    return [...this.terminalDirectories.values()].some((cwd) => {
+      const path = relative(directory, cwd);
+      return path === "" || (!path.startsWith("..") && !isAbsolute(path));
+    });
   }
   createBrowser(input: string): BrowserState {
     if (this.disposed) throw new Error("not_found: 窗口已关闭");

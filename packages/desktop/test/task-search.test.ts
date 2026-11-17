@@ -106,7 +106,7 @@ describe("task list search", () => {
     expect(host.searchTasks("  NEEDLE  ")[0]).toMatchObject({ id: seed.id, title: "Needle task" });
     await host.archiveSession(seed.id);
     expect(host.searchTasks("needle")).toEqual([]);
-    host.restoreSession(seed.id);
+    await host.restoreSession(seed.id);
     expect(host.searchTasks("needle")[0].id).toBe(seed.id);
     await host.close();
     cache.exec("DELETE FROM transcript_state");

@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { assertSupportedOptions, contentText, isJsonObject } from "@zpi-dev/ai";
 import type { MemorySettings } from "@zpi-dev/builtin-plugins/memory/types";
 import {
@@ -55,6 +56,7 @@ import type {
 import { splitFileLocation } from "@zpi-dev/ui/links";
 import { normalizeWebToolDetails, reduceSession, sessionViewBytes } from "@zpi-dev/ui/projection";
 import { parseSelectionPrompt, validSelections } from "@zpi-dev/ui/selections";
+import type { AutoArchiveResult } from "../shared/auto-archive.ts";
 import type {
   CombinedSelection,
   DiffItem,
@@ -112,7 +114,14 @@ import { TaskGroupsStore } from "./task-groups.ts";
 import { stageTranscript } from "./transcript-copy.ts";
 import { WorkspaceFileSearches } from "./workspace-file-searches.ts";
 import { searchFiles, validatedReference } from "./workspace-files.ts";
-import { createWorktree, gitEnvironment, resolveWorktreeBase } from "./worktrees.ts";
+import {
+  createWorktree,
+  gitEnvironment,
+  releaseArchivedWorktree,
+  removeWorktree,
+  resolveWorktreeBase,
+  restoreWorktree,
+} from "./worktrees.ts";
 
 type WithoutSession<T> = T extends unknown ? Omit<T, "sessionId" | "cwd"> : never;
 type HostHookInput = WithoutSession<
@@ -166,6 +175,11 @@ export class SessionHost {
   readonly drafts: DraftStore;
   private records = new Map<string, SessionRecord>();
   private visibleSessionId?: string;
+  private readonly taskListeners = new Set<() => void>();
+  private autoArchiveTimer?: ReturnType<typeof setInterval>;
+  private autoArchiveScan?: Promise<AutoArchiveResult>;
+  private taskChangesPending = false;
+  private workspaceInUse = (_cwd: string) => false;
   private projects: ProjectRecord[] = [];
   private dir: string;
   private settings: SettingsStore;
@@ -176,6 +190,7 @@ export class SessionHost {
   private readonly diffJobs = new Set<Promise<DiffItem[]>>();
   private deleting = new Set<string>();
   private updating = new Set<string>();
+  private workspaceReaders = new Map<string, number>();
   private closingChildren = new Set<string>();
   private homeDir: string;
   private defaultWorkspace: string;
@@ -589,12 +604,15 @@ export class SessionHost {
     return retryStorageCleanup(
       this.settings.state,
       this.dir,
-      async (taskId) => {
+      async (taskId, task) => {
         await this.historyStorage.forgetTask(taskId);
         await this.attachments.deleteSession(taskId);
         await rm(join(this.dir, "agent", "tool-output", taskId), { recursive: true, force: true });
         await this.plugins.deleteArtifacts(taskId);
         await rm(join(this.dir, "agent", "session-context", taskId), { recursive: true, force: true });
+        // 删除提交后再释放恢复引用；Git 故障由同一持久清理队列在下次启动重试。
+        if (task.worktree && task.archivedWorktreeHead)
+          await releaseArchivedWorktree(task.worktree, this.worktreeRoot, task.archivedWorktreeHead);
       },
       (error, taskId) => this.errors.write("session.delete.cleanup", error, { sessionId: taskId }),
       id,
@@ -913,6 +931,14 @@ export class SessionHost {
     projectId: string | null,
     options: { cwd?: string; parentSessionId?: string; groupId?: string | null } = {},
   ): Promise<SessionRecord> {
+    if (options.parentSessionId)
+      return this.readWorkspace(options.parentSessionId, () => this.createSessionState(projectId, options));
+    return this.createSessionState(projectId, options);
+  }
+  private async createSessionState(
+    projectId: string | null,
+    options: { cwd?: string; parentSessionId?: string; groupId?: string | null },
+  ): Promise<SessionRecord> {
     if (this.closing) throw new Error("busy: 应用正在关闭");
     const id = randomUUID();
     const cwd =
@@ -1042,6 +1068,9 @@ export class SessionHost {
     }
   }
   async createSideChat(id: string): Promise<SessionRecord> {
+    return this.readWorkspace(id, () => this.createSideChatState(id));
+  }
+  private async createSideChatState(id: string): Promise<SessionRecord> {
     const parent = this.record(id);
     if (parent.newWorktree && !parent.worktree) throw new Error("busy: 工作树尚未创建，请稍后打开辅助对话");
     if (
@@ -1202,14 +1231,22 @@ export class SessionHost {
   }
   activateSession(id: string): SessionRecord {
     const record = this.record(id);
-    if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
+    if (this.closing || this.deleting.has(id) || this.updating.has(id))
+      throw new Error("busy: 任务正在关闭、删除或归档");
+    if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
     if (record.unreadAt !== undefined) this.saveUnread(id, undefined);
     this.visibleSessionId = id;
     return structuredClone(record);
   }
   setSessionUnread(id: string): void {
     const record = this.record(id);
-    if (record.parentSessionId || record.archivedAt != null || this.closing || this.deleting.has(id))
+    if (
+      record.parentSessionId ||
+      record.archivedAt != null ||
+      this.closing ||
+      this.deleting.has(id) ||
+      this.updating.has(id)
+    )
       throw new Error("busy: 任务不可修改");
     this.saveUnread(id, Date.now());
   }
@@ -1219,7 +1256,8 @@ export class SessionHost {
   }
   setSessionPinned(id: string, pinned: boolean): SessionRecord {
     if (typeof pinned !== "boolean") throw new Error("invalid_input: 无效置顶操作");
-    if (this.closing || this.deleting.has(id) || this.blocked.has(id)) throw new Error("busy: 会话不可修改");
+    if (this.closing || this.deleting.has(id) || this.blocked.has(id) || this.updating.has(id))
+      throw new Error("busy: 会话不可修改");
     const record = this.record(id);
     if ((record.pinnedAt != null) !== pinned) {
       if (
@@ -1237,36 +1275,267 @@ export class SessionHost {
     }
     return structuredClone(record);
   }
-  async archiveSession(id: string): Promise<void> {
+  onTasksChanged(listener: () => void): () => void {
+    this.taskListeners.add(listener);
+    return () => this.taskListeners.delete(listener);
+  }
+  private tasksChanged(): void {
+    if (this.autoArchiveScan) {
+      this.taskChangesPending = true;
+      return;
+    }
+    this.taskChangesPending = false;
+    for (const listener of this.taskListeners) {
+      try {
+        listener();
+      } catch {
+        /* A transport cannot change the committed outcome. */
+      }
+    }
+  }
+  setWorkspaceInUse(check: (cwd: string) => boolean): void {
+    this.workspaceInUse = check;
+  }
+  withWorkspace<T>(id: string, use: (cwd: string) => Promise<T>): Promise<T> {
+    return this.readWorkspace(id, () => use(this.cwd(this.record(id))));
+  }
+  startAutoArchive(): void {
+    if (this.autoArchiveTimer || this.closing) return;
+    this.scheduleAutoArchiveScan();
+    this.autoArchiveTimer = setInterval(() => this.scheduleAutoArchiveScan(), 5 * 60 * 1000);
+    this.autoArchiveTimer.unref?.();
+  }
+  scheduleAutoArchiveScan(): void {
+    // 配置变更可能落在旧策略扫描期间，结束后补扫；列表读取和点击不触发归档。
+    void (this.autoArchiveScan ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this.runAutoArchive())
+      .catch((error) => this.errors.write("auto-archive.scan", error));
+  }
+  runAutoArchive(manual = false): Promise<AutoArchiveResult> {
+    if (this.autoArchiveScan) return this.autoArchiveScan;
+    const scan = async (): Promise<AutoArchiveResult> => {
+      const result: AutoArchiveResult = { archived: 0, skipped: 0, details: [] };
+      if (this.closing || (!manual && !this.settings.getAutoArchive().enabled)) return result;
+      // 仅捕获身份，每项进入队列锁后重新读取时间和保护状态，不加载会话正文或模型。
+      const ids = [...this.records.keys()];
+      for (const [index, id] of ids.entries()) {
+        // 归档在后台分批让出主线程，历史任务很多时仍允许窗口和新输入及时响应。
+        if (index % 25 === 0) await yieldToEventLoop();
+        if (this.closing || (!manual && !this.settings.getAutoArchive().enabled)) break;
+        const record = this.records.get(id);
+        if (!record) continue;
+        try {
+          if (this.autoArchiveProtection(record, manual)) continue;
+          await this.archiveSession(id, manual ? "manual-scan" : "automatic");
+          result.archived++;
+        } catch (error) {
+          result.skipped++;
+          result.details.push({
+            sessionId: id,
+            title: record.title,
+            reason: (error instanceof Error ? error.message : String(error)).replace(/^\w+:\s*/, ""),
+          });
+          this.errors.write("auto-archive.task", error, { sessionId: id });
+        }
+      }
+      return result;
+    };
+    this.autoArchiveScan = scan().finally(() => {
+      this.autoArchiveScan = undefined;
+      if (this.taskChangesPending) this.tasksChanged();
+    });
+    return this.autoArchiveScan;
+  }
+  private autoArchiveProtection(record: SessionRecord, manual: boolean): string | undefined {
+    const policy = this.settings.getAutoArchive();
+    if (!manual && !policy.enabled) return "自动归档已关闭";
+    if (
+      record.parentSessionId ||
+      record.archivedAt != null ||
+      record.draft ||
+      record.diagnostic ||
+      this.blocked.has(record.id) ||
+      record.pinnedAt != null ||
+      record.unreadAt != null ||
+      record.updatedAt >= Date.now() - policy.olderThanDays * 86400000
+    )
+      return "任务不符合归档条件";
+    if (this.visibleSessionId === record.id) return "任务正在打开";
+    if (this.activeRuns.has(record.id) || this.deleting.has(record.id)) return "任务正在运行或删除";
+    const family = [...this.records.values()].filter(
+      (candidate) => candidate.id === record.id || this.isDescendant(candidate, record.id),
+    );
+    for (const member of family) {
+      const draft = this.drafts.get(member.id);
+      const plugin = this.plugins.view(member.id);
+      if (
+        this.activeRuns.has(member.id) ||
+        this.workspaceReaders.has(member.id) ||
+        (member.id !== record.id && this.updating.has(member.id)) ||
+        this.inputQueue.get(member.id).items.length ||
+        draft.text.trim() ||
+        draft.fileReferences.length ||
+        draft.selections?.length ||
+        plugin.question ||
+        plugin.backgroundTasks.some((task) => task.status === "running") ||
+        plugin.subagents.some((task) => task.status === "running")
+      )
+        return "任务或子任务仍有运行、待发送消息或草稿";
+    }
+    return undefined;
+  }
+  private isDescendant(record: SessionRecord, parentId: string): boolean {
+    const seen = new Set<string>();
+    while (record.parentSessionId && !seen.has(record.id)) {
+      if (record.parentSessionId === parentId) return true;
+      seen.add(record.id);
+      const parent = this.records.get(record.parentSessionId);
+      if (!parent) break;
+      record = parent;
+    }
+    return false;
+  }
+  private async readWorkspace<T>(id: string, read: () => Promise<T>): Promise<T> {
     const record = this.record(id);
-    if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
+    this.checkAncestors(id);
+    if (this.closing || this.updating.has(id) || this.deleting.has(id) || record.archivedAt != null)
+      throw new Error("busy: 任务正在关闭或归档");
+    const ids = [id];
+    let parent = record.parentSessionId;
+    while (parent && !ids.includes(parent)) {
+      ids.push(parent);
+      parent = this.record(parent).parentSessionId;
+    }
+    for (const key of ids) this.workspaceReaders.set(key, (this.workspaceReaders.get(key) ?? 0) + 1);
+    try {
+      return await read();
+    } finally {
+      for (const key of ids) {
+        const remaining = (this.workspaceReaders.get(key) ?? 1) - 1;
+        if (remaining) this.workspaceReaders.set(key, remaining);
+        else this.workspaceReaders.delete(key);
+      }
+    }
+  }
+  private checkAncestors(id: string): void {
+    let record = this.record(id);
+    const seen = new Set<string>();
+    while (record.parentSessionId && !seen.has(record.id)) {
+      seen.add(record.id);
+      record = this.record(record.parentSessionId);
+      if (
+        record.archivedAt != null ||
+        this.updating.has(record.id) ||
+        this.deleting.has(record.id) ||
+        this.closingChildren.has(record.id)
+      )
+        throw new Error("busy: 父任务正在关闭或归档");
+    }
+  }
+  private checkWorktreeUse(record: SessionRecord): void {
+    const path = record.worktree?.path;
+    if (!path) return;
+    if (this.workspaceInUse(path)) throw new Error("busy: 工作树仍有打开的终端，请先关闭");
+    for (const other of this.records.values()) {
+      if (other.id === record.id || this.isDescendant(other, record.id)) continue;
+      const cwd =
+        other.cwd ??
+        (other.projectId === null
+          ? this.defaultWorkspace
+          : this.projects.find((project) => project.id === other.projectId)?.path);
+      if (!cwd) continue;
+      const paths = [cwd, other.worktree?.sourceCwd].filter((value) => value !== undefined);
+      if (
+        paths.some((otherPath) => {
+          const nested = relative(path, otherPath);
+          return nested === "" || (!nested.startsWith("..") && !isAbsolute(nested));
+        })
+      )
+        throw new Error("busy: 工作树仍被其他任务引用");
+    }
+  }
+  async archiveSession(id: string, mode?: "automatic" | "manual-scan"): Promise<void> {
+    const record = this.record(id);
+    if (record.archivedAt != null) return;
+    if (this.activeRuns.has(id) || this.updating.has(id) || this.workspaceReaders.has(id))
+      throw new Error("busy: 请先停止运行或等待工作目录操作完成");
     await this.inputQueue.archive(id, async () => {
+      const recheck = () => {
+        if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
+        if (this.workspaceReaders.has(id)) throw new Error("busy: 工作目录仍在使用中");
+        if (mode) {
+          const protection = this.autoArchiveProtection(record, mode === "manual-scan");
+          if (protection) throw new Error(`busy: ${protection}`);
+        }
+        this.checkWorktreeUse(record);
+      };
+      recheck();
       this.updating.add(id);
       try {
         await this.plugins.archive(id);
         for (const child of this.records.values())
           if (child.parentSessionId === id) await this.closeChildSession(child.id);
+        if (record.worktree && !record.parentSessionId) {
+          try {
+            await removeWorktree(record.worktree, this.worktreeRoot, (head, branch) => {
+              recheck();
+              // 先保存重建位置再释放目录；崩溃后仍可按原 cwd 恢复，不能迁移会话所有权。
+              this.saveTask(id, {
+                archivedWorktreeHead: head,
+                archivedWorktreeBranch: branch ?? record.archivedWorktreeBranch,
+              });
+            });
+          } catch (error) {
+            // Git 拒绝清理时，原目录仍完整存在，不应把下一次正常 checkout 误判成恢复冲突。
+            if (existsSync(record.worktree.path))
+              this.saveTask(id, {
+                archivedWorktreeHead: undefined,
+                archivedWorktreeBranch: undefined,
+              });
+            throw error;
+          }
+          this.sessions.get(id)?.dispose();
+          this.sessions.delete(id);
+          this.runtimes.delete(id);
+          this.restoredResources.delete(id);
+        }
         const archivedAt = Date.now();
         this.saveTask(id, { archivedAt, pinnedAt: null });
         Object.assign(record, { archivedAt, pinnedAt: null });
         if (this.visibleSessionId === id) this.visibleSessionId = undefined;
+        this.tasksChanged();
       } finally {
         this.updating.delete(id);
       }
     });
   }
-  restoreSession(id: string): SessionRecord {
-    return this.restoreSessionState(id);
-  }
-
-  private restoreSessionState(id: string): SessionRecord {
+  async restoreSession(id: string): Promise<SessionRecord> {
     const record = this.record(id);
     if (this.activeRuns.has(id) || this.updating.has(id)) throw new Error("busy: 请先停止运行");
     if (this.closing || this.deleting.has(id)) throw new Error("busy: 任务正在关闭或删除");
     if (record.diagnostic || this.blocked.has(id)) throw new Error("storage: 无法读取的任务只能删除");
-    this.saveTask(id, { pinnedAt: null, archivedAt: null });
-    Object.assign(record, { archivedAt: null, pinnedAt: null });
-    return structuredClone(record);
+    this.updating.add(id);
+    try {
+      if (record.worktree && record.archivedWorktreeHead)
+        await restoreWorktree(
+          record.worktree,
+          this.worktreeRoot,
+          record.archivedWorktreeHead,
+          record.archivedWorktreeBranch,
+        );
+      this.saveTask(id, {
+        pinnedAt: null,
+        archivedAt: null,
+        archivedWorktreeHead: undefined,
+        archivedWorktreeBranch: undefined,
+      });
+      Object.assign(record, { archivedAt: null, pinnedAt: null });
+      this.tasksChanged();
+      return structuredClone(record);
+    } finally {
+      this.updating.delete(id);
+    }
   }
   private manager(id: string): SessionManager {
     let manager = this.managers.get(id);
@@ -2057,6 +2326,7 @@ export class SessionHost {
   }
   submitInput(input: RunInput, disposition?: "keep" | "clear", immediate = false) {
     this.record(input.sessionId);
+    this.checkAncestors(input.sessionId);
     if (this.configuration(input.sessionId).subagentProfile)
       throw new Error("invalid_input: 子智能体会话只读");
     return this.inputQueue.submit(input, disposition, immediate);
@@ -2071,6 +2341,9 @@ export class SessionHost {
     return { index, run, start, end };
   }
   async forkSession(id: string, runId: string): Promise<SessionRecord> {
+    return this.readWorkspace(id, () => this.forkSessionState(id, runId));
+  }
+  private async forkSessionState(id: string, runId: string): Promise<SessionRecord> {
     const parent = this.record(id);
     if (parent.parentSessionId) throw new Error("invalid_input: 辅助对话不支持分叉");
     if (this.closing || this.deleting.has(id) || this.updating.has(id)) throw new Error("busy: 任务正在更新");
@@ -2334,6 +2607,7 @@ export class SessionHost {
   ): Promise<{ runId: string }> {
     const { sessionId: id, text } = input;
     const record = this.record(id);
+    this.checkAncestors(id);
     if (this.configuration(id).subagentProfile && !internalSubagent)
       throw new Error("invalid_input: 子智能体会话只读");
     if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
@@ -2365,6 +2639,16 @@ export class SessionHost {
     let started = false;
     let acceptance: StorageIntent | undefined;
     try {
+      // 清理成功、归档提交前若进程退出，保留的 HEAD 允许仍可见的任务重建原目录。
+      if (record.worktree && record.archivedWorktreeHead) {
+        await restoreWorktree(
+          record.worktree,
+          this.worktreeRoot,
+          record.archivedWorktreeHead,
+          record.archivedWorktreeBranch,
+        );
+        this.saveTask(id, { archivedWorktreeHead: undefined, archivedWorktreeBranch: undefined });
+      }
       const manager = this.manager(id);
       const loadedInput = await this.loadInput(input);
       const { references, loaded, parsed } = loadedInput;
@@ -2946,6 +3230,9 @@ export class SessionHost {
   }
   private async closeResources(): Promise<void> {
     this.closing = true;
+    if (this.autoArchiveTimer) clearInterval(this.autoArchiveTimer);
+    this.autoArchiveTimer = undefined;
+    await this.autoArchiveScan?.catch(() => {});
     this.pluginLifetime.abort();
     for (const controller of this.searches.values()) controller.abort();
     await this.workspaceFileSearches.close();

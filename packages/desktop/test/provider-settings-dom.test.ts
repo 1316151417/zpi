@@ -32,6 +32,7 @@ const click = async (element: HTMLElement) => {
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   settings = {
+    autoArchive: { enabled: false, olderThanDays: 30 },
     providers: [],
     lastSelection: null,
 

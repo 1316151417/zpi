@@ -288,6 +288,10 @@ async function launch(): Promise<void> {
   const settingsReady = new Promise<void>((resolveReady) =>
     window.webContents.once("did-finish-load", () => resolveReady()),
   );
+  host.onTasksChanged(() => {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed())
+      window.webContents.send("zpi:tasks-changed");
+  });
   for (const id of discovered) {
     const original = settings.snapshot(id);
     void fetchProviderModels(
@@ -383,6 +387,7 @@ async function launch(): Promise<void> {
     },
     shortcutModifier,
   );
+  host.setWorkspaceInUse((cwd) => panes.hasTerminalInDirectory(cwd));
   window.webContents.on("will-attach-webview", (event, preferences, params) => {
     if (!panes.prepareBrowserGuest(preferences, params)) event.preventDefault();
   });
@@ -511,6 +516,9 @@ async function launch(): Promise<void> {
         setNewWorktree: 3,
         activateSession: 1,
         archiveSession: 1,
+        updateAutoArchive: 1,
+        runAutoArchive: 0,
+        startAutoArchive: 0,
         listArchivedSessions: 0,
         restoreSession: 1,
         openDirectory: 1,
@@ -749,11 +757,26 @@ async function launch(): Promise<void> {
         case "archiveSession":
           await host.archiveSession(string(0));
           break;
+        case "updateAutoArchive":
+          value = settings.updateAutoArchive(
+            object(0, [
+              "enabled",
+              "olderThanDays",
+            ]) as unknown as import("../shared/bridge.ts").AutoArchiveSettings,
+          );
+          host.scheduleAutoArchiveScan();
+          break;
+        case "runAutoArchive":
+          value = await host.runAutoArchive(true);
+          break;
+        case "startAutoArchive":
+          host.startAutoArchive();
+          break;
         case "listArchivedSessions":
           value = host.listArchivedSessions();
           break;
         case "restoreSession":
-          value = host.restoreSession(string(0));
+          value = await host.restoreSession(string(0));
           break;
         case "openDirectory": {
           const path = string(0);
@@ -764,7 +787,7 @@ async function launch(): Promise<void> {
           break;
         }
         case "createTerminal":
-          value = await panes.createTerminal(host.workspaceInfo(string(0)).cwd);
+          value = await host.withWorkspace(string(0), (cwd) => panes.createTerminal(cwd));
           break;
         case "terminalInput":
           panes.terminalInput(string(0), string(1));
@@ -1367,6 +1390,7 @@ async function launch(): Promise<void> {
       if (
         [
           "updateShortcuts",
+          "updateAutoArchive",
           "updatePreferences",
           "saveWebSearch",
           "saveProvider",

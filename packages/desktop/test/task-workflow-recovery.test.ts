@@ -125,7 +125,7 @@ it.each([false, true])(
       cleanup.push(() => host.close());
       await host.init();
     }
-    host.restoreSession(f.session.id);
+    await host.restoreSession(f.session.id);
     expect(host.getSessionSnapshot(task.childSessionId).session.archivedAt ?? null).toBeNull();
     expect(host.getSessionSnapshot(sideChat.id).session.archivedAt).toEqual(expect.any(Number));
     await expect(host.closeSideChat(task.childSessionId)).rejects.toThrow("不是辅助对话");
@@ -193,7 +193,7 @@ it("restoring a parent preserves a child's explicitly archived state", async () 
   const task = await launchCompletedChild(f);
   await f.host.archiveSession(f.session.id);
   await f.host.archiveSession(task.childSessionId);
-  f.host.restoreSession(f.session.id);
+  await f.host.restoreSession(f.session.id);
   expect(f.host.getSessionSnapshot(f.session.id).session.archivedAt).toBeNull();
   expect(f.host.getSessionSnapshot(task.childSessionId).session.archivedAt).toEqual(expect.any(Number));
 });

@@ -21,7 +21,7 @@ it("keeps cross-project membership through pin/archive/restore and restart, then
   host.updateTaskGroups({ type: "taskTop", id: third.id });
   expect(host.getTaskGroups().members[group.id]).toEqual([first.id, second.id]);
   host.setSessionPinned(first.id, false);
-  host.restoreSession(second.id);
+  await host.restoreSession(second.id);
   await host.close();
   const reopened = new SessionHost(dir, settings, join(dir, "agent"));
   cleanup.push(() => reopened.close());

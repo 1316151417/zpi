@@ -14,6 +14,7 @@ import type {
   WorktreeInfo,
 } from "@zpi-dev/ui";
 import type { FileLocation } from "@zpi-dev/ui/links";
+import type { AutoArchiveResult, AutoArchiveSettings } from "./auto-archive.ts";
 import type { CommandImportDiscovery, CommandImportRequest, CommandImportResult } from "./command-import.ts";
 import type {
   CustomCommand,
@@ -32,6 +33,7 @@ import type { WorkspaceFileSearchInput, WorkspaceFileSearchResult } from "./work
 export type { CombinedSelection, ModelSelection, ReasoningPreset } from "@zpi-dev/builtin-plugins/types";
 
 export type { SessionControls } from "@zpi-dev/ui";
+export type { AutoArchiveResult, AutoArchiveSettings } from "./auto-archive.ts";
 
 export type ErrorCode = "configuration" | "busy" | "not_found" | "provider" | "storage" | "invalid_input";
 export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode; message: string } };
@@ -63,6 +65,8 @@ export interface SessionRecord {
   cwd?: string;
   pinnedAt?: number | null;
   archivedAt?: number | null;
+  archivedWorktreeHead?: string;
+  archivedWorktreeBranch?: string;
   unreadAt?: number;
   diagnostic?: string;
   title: string;
@@ -135,6 +139,7 @@ export interface WebSearchSettingsInput {
   apiKey?: string;
 }
 export interface PublicSettings {
+  autoArchive: AutoArchiveSettings;
   webSearch: {
     provider: "deepseek";
     enabled: boolean;
@@ -309,6 +314,10 @@ export interface DesktopBridge {
   onTaskNotificationClick(listener: (sessionId: string) => void): () => void;
   onTaskNotificationSound(listener: () => void): () => void;
   archiveSession(id: string): Promise<Result<void>>;
+  updateAutoArchive(input: AutoArchiveSettings): Promise<Result<PublicSettings>>;
+  runAutoArchive(): Promise<Result<AutoArchiveResult>>;
+  startAutoArchive(): Promise<Result<void>>;
+  onTasksChanged(listener: () => void): () => void;
   listArchivedSessions(): Promise<Result<(SessionRecord & { projectName: string })[]>>;
   restoreSession(id: string): Promise<Result<SessionRecord>>;
   openDirectory(path: string): Promise<Result<void>>;
@@ -542,6 +551,9 @@ export const methods = [
   "cancelChatGPTLogin",
   "disconnectChatGPT",
   "archiveSession",
+  "updateAutoArchive",
+  "runAutoArchive",
+  "startAutoArchive",
   "listArchivedSessions",
   "restoreSession",
   "openDirectory",

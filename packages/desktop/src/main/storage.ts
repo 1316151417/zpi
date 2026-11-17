@@ -38,6 +38,11 @@ import {
 } from "@zpi-dev/builtin-plugins/memory/types";
 import { type PromptTemplate, piTemplate, validateTemplate } from "@zpi-dev/coding-agent";
 import { isCodePreviewSettings } from "@zpi-dev/ui/code-preview";
+import {
+  type AutoArchiveSettings,
+  defaultAutoArchiveSettings,
+  isAutoArchiveSettings,
+} from "../shared/auto-archive.ts";
 import type {
   CombinedSelection,
   InterfacePreferences,
@@ -88,6 +93,7 @@ interface Credentials {
   chatgpt?: ChatGPTCredential;
 }
 export interface SettingsData {
+  autoArchive?: AutoArchiveSettings;
   shortcuts: ShortcutSettings;
   plugins: PublicSettings["plugins"];
   webSearchEnabled: boolean;
@@ -128,6 +134,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
 }
 export class SettingsStore {
   private data: SettingsData = {
+    autoArchive: structuredClone(defaultAutoArchiveSettings),
     shortcuts: defaultShortcuts(process.platform),
     plugins: structuredClone(defaultPluginSettings),
     webSearchEnabled: false,
@@ -158,7 +165,11 @@ export class SettingsStore {
       const raw = this.state.getSetting<SettingsData>("app");
       if (raw !== undefined) {
         this.validateData(raw);
-        this.data = { ...raw, shortcuts: normalizeShortcuts(raw.shortcuts, process.platform) };
+        this.data = {
+          ...raw,
+          autoArchive: structuredClone(raw.autoArchive ?? defaultAutoArchiveSettings),
+          shortcuts: normalizeShortcuts(raw.shortcuts, process.platform),
+        };
       }
       if (existsSync(creds)) {
         if (!encryption.isEncryptionAvailable()) this.unreadCredentials = true;
@@ -199,6 +210,7 @@ export class SettingsStore {
   }
   get(): PublicSettings {
     return {
+      autoArchive: structuredClone(this.data.autoArchive ?? defaultAutoArchiveSettings),
       webSearch: {
         provider: "deepseek",
         enabled: this.data.webSearchEnabled,
@@ -573,6 +585,13 @@ export class SettingsStore {
   updateShortcuts(input: ShortcutSettings): PublicSettings {
     return this.savePublic({ ...this.data, shortcuts: normalizeShortcuts(input, process.platform) });
   }
+  updateAutoArchive(input: AutoArchiveSettings): PublicSettings {
+    if (!isAutoArchiveSettings(input)) throw new Error("invalid_input: 无效自动归档设置");
+    return this.savePublic({ ...this.data, autoArchive: structuredClone(input) });
+  }
+  getAutoArchive(): AutoArchiveSettings {
+    return { ...(this.data.autoArchive ?? defaultAutoArchiveSettings) };
+  }
   updatePreferences(input: Partial<InterfacePreferences>): PublicSettings {
     if (Object.hasOwn(input, "notificationEnabled") && typeof input.notificationEnabled !== "boolean")
       throw new Error("configuration: 无效通知设置");
@@ -710,9 +729,12 @@ export class SettingsStore {
         "plugins",
         "webSearchEnabled",
         "shortcuts",
+        "autoArchive",
       ],
       "settings",
     );
+    if (data.autoArchive !== undefined && !isAutoArchiveSettings(data.autoArchive))
+      throw new Error("storage: Invalid auto archive settings");
     const shortcutError = validateShortcuts(data.shortcuts, process.platform);
     if (shortcutError) throw new Error(`storage: ${shortcutError}`);
     if (data.version !== 5 || !Array.isArray(data.providers)) throw new Error("storage: Invalid settings");

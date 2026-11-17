@@ -45,6 +45,8 @@ export function validateTask(value: unknown, id: string): asserts value is TaskS
     sessionFile: nonempty,
     titleState: string,
     worktreeBaseRef: string,
+    archivedWorktreeHead: (v) => string(v) && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(String(v)),
+    archivedWorktreeBranch: (v) => string(v) && String(v).startsWith("refs/heads/"),
     diagnostic: string,
     newWorktree: (v) => typeof v === "boolean",
     draft: (v) => typeof v === "boolean",

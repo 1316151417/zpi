@@ -45,7 +45,7 @@ it("running tasks reject archive/restore/delete while metadata rename and pin pr
   expect(f.host.getSessionSnapshot(id).view.runs).toEqual(before);
   expect(await readFile(file, "utf8")).toEqual(context);
   await expect(f.host.archiveSession(id)).rejects.toThrow("请先停止运行");
-  expect(() => f.host.restoreSession(id)).toThrow("请先停止运行");
+  await expect(f.host.restoreSession(id)).rejects.toThrow("请先停止运行");
   await expect(f.host.deleteSession(id)).rejects.toThrow("请先停止运行");
   expect(f.host.listRecentSessions()[0]).toMatchObject({ id, title: "手动任务名", status: "running" });
   await f.host.abortRun({ sessionId: id, runId: first.runId });
@@ -89,7 +89,7 @@ it("archive discards pending messages and restores task ownership without revivi
   const reopened = new SessionHost(f.dir, f.settings, join(f.dir, "agent"), undefined, undefined);
   await reopened.init();
   cleanup.push(() => reopened.close());
-  reopened.restoreSession(id);
+  await reopened.restoreSession(id);
   expect(reopened.listSessions(f.a.id)[0].id).toBe(id);
   expect(reopened.listProjects().some((p) => p.id === f.a.id)).toBe(false);
   expect(reopened.getSessionSnapshot(id).session.projectId).toBe(f.a.id);
@@ -116,7 +116,7 @@ it("damaged tasks are listed for deletion, cannot restore, and deletion removes 
   cleanup.push(() => reopened.close());
   const record = reopened.listArchivedSessions().find((r) => r.id === id);
   expect(record?.diagnostic).toBeTruthy();
-  expect(() => reopened.restoreSession(id)).toThrow("只能删除");
+  await expect(reopened.restoreSession(id)).rejects.toThrow("只能删除");
   reopened.saveDraft(id, { text: "draft", selection: [1, 1], fileReferences: [], revision: 1 });
   await writeFile(join(attachments, "orphan.png"), "image");
   await reopened.deleteSession(id);

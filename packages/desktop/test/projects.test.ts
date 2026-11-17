@@ -208,7 +208,7 @@ it("keeps hidden project ownership and cwd when an archived task is restored", a
   const task = await f.host.createSession(project.id);
   await f.host.archiveSession(task.id);
   f.host.removeProject(project.id);
-  const restored = f.host.restoreSession(task.id);
+  const restored = await f.host.restoreSession(task.id);
   expect(restored).toMatchObject({ projectId: project.id, cwd: f.dir, archivedAt: null });
   expect(f.host.listProjects()).toEqual([]);
   expect(f.host.listRecentSessions().find((record) => record.id === task.id)?.projectId).toBe(project.id);

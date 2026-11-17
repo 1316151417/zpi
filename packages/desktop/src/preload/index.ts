@@ -83,6 +83,14 @@ const bridge: DesktopBridge = {
     return () => ipcRenderer.removeListener("zpi:task-notification-sound", handler);
   },
   archiveSession: (id) => call("archiveSession", id),
+  updateAutoArchive: (input) => call("updateAutoArchive", input),
+  runAutoArchive: () => call("runAutoArchive"),
+  startAutoArchive: () => call("startAutoArchive"),
+  onTasksChanged(listener) {
+    const handler = () => listener();
+    ipcRenderer.on("zpi:tasks-changed", handler);
+    return () => ipcRenderer.removeListener("zpi:tasks-changed", handler);
+  },
   listArchivedSessions: () => call("listArchivedSessions"),
   restoreSession: (id) => call("restoreSession", id),
   openDirectory: (path) => call("openDirectory", path),

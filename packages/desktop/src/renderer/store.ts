@@ -321,6 +321,7 @@ export function report(error: unknown, scope: ReportScope = "window"): void {
 export function subscribeEvents(): () => void {
   const flush = () => void flushDrafts().catch(report);
   const offBeforeQuit = window.zpi.onBeforeQuit(flushDrafts);
+  const offTasks = window.zpi.onTasksChanged?.(() => void refresh().catch(report));
   window.addEventListener("beforeunload", flush);
   const flushEvents = () => {
     if (frame) cancelAnimationFrame(frame);
@@ -359,6 +360,7 @@ export function subscribeEvents(): () => void {
     flushEvents();
     flush();
     offBeforeQuit();
+    offTasks?.();
     window.removeEventListener("beforeunload", flush);
     document.removeEventListener("visibilitychange", visibility);
     off();
@@ -766,6 +768,9 @@ export async function initialize(): Promise<void> {
     const first = records.find((r) => r.id === saved) ?? records[0];
     if (first) await selectSession(first.id);
     else await newSession();
+    // 恢复上次打开的任务后才启动后台归档，避免冷启时先归档、后选中同一旧任务。
+    const startArchive = window.zpi.startAutoArchive?.();
+    if (startArchive) void startArchive.then(unwrap).catch(report);
   } catch (error) {
     report(error);
   } finally {

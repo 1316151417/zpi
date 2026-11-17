@@ -80,6 +80,8 @@ const taskAuditFields = [
   "newWorktree",
   "worktreeBaseRef",
   "worktree",
+  "archivedWorktreeHead",
+  "archivedWorktreeBranch",
   "draft",
   "cwd",
   "pinnedAt",

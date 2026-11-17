@@ -1,6 +1,6 @@
 import { lstat, open, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type { StateStore } from "./state-store.ts";
+import type { StateStore, TaskState } from "./state-store.ts";
 import { taskFromRow } from "./task-state.ts";
 import { canonicalTranscriptPath } from "./transcript-schema.ts";
 import { validateTranscriptHeader } from "./transcript-v2.ts";
@@ -53,7 +53,7 @@ async function assertOwner(file: string, taskId: string, declaredDeletedFile: bo
 export async function retryStorageCleanup(
   state: StateStore,
   directory: string,
-  deleteResources: (id: string) => Promise<void>,
+  deleteResources: (id: string, task: TaskState) => Promise<void>,
   report: (error: unknown, id: string) => void,
   onlyTask?: string,
   deleteIndex?: (file: string) => Promise<void>,
@@ -95,7 +95,7 @@ export async function retryStorageCleanup(
       if (!row) throw new Error("storage: cleanup requires a deleted task");
       const task = taskFromRow(row);
       if (task.sessionFile) state.enqueueCleanup("transcript", task.id, key(task.sessionFile));
-      await deleteResources(task.id);
+      await deleteResources(task.id, task);
       finish(job.kind, job.taskId, job.path);
     });
   }

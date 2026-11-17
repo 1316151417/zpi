@@ -47,6 +47,62 @@ const provider = {
   apiKey: "secret",
 };
 
+it("defaults auto archive off and restores a saved policy without changing credentials", async () => {
+  const f = await fixture();
+  const store = f.open();
+  expect(store.get().autoArchive).toEqual({ enabled: false, olderThanDays: 30 });
+  store.saveProvider(provider);
+  const credentials = await readFile(join(f.dir, "credentials.enc"));
+  f.lock();
+  const locked = f.open();
+  expect(locked.updateAutoArchive({ enabled: true, olderThanDays: 7 }).autoArchive).toEqual({
+    enabled: true,
+    olderThanDays: 7,
+  });
+  expect(f.open().get().autoArchive).toEqual({ enabled: true, olderThanDays: 7 });
+  expect(await readFile(join(f.dir, "credentials.enc"))).toEqual(credentials);
+});
+
+it("reads older settings without auto archive and preserves existing preferences", async () => {
+  const f = await fixture();
+  f.open().updatePreferences({ theme: "dark" });
+  const previous = f.state.getSetting<Record<string, unknown>>("app");
+  if (!previous) throw new Error("missing persisted settings");
+  delete previous.autoArchive;
+  f.state.setSetting("app", previous);
+  const store = f.open();
+  expect(store.get().autoArchive).toEqual({ enabled: false, olderThanDays: 30 });
+  expect(store.get().interface.theme).toBe("dark");
+  store.updateAutoArchive({ enabled: false, olderThanDays: 14 });
+  expect(f.open().get().autoArchive).toEqual({ enabled: false, olderThanDays: 14 });
+});
+
+it.each([
+  null,
+  [],
+  {},
+  { enabled: "true", olderThanDays: 7 },
+  { enabled: true, olderThanDays: 0 },
+  { enabled: true, olderThanDays: 365 },
+  { enabled: true, olderThanDays: "7" },
+  { enabled: true, olderThanDays: 7, force: true },
+])("rejects invalid auto archive policy %j without saving it", async (policy) => {
+  const f = await fixture();
+  const store = f.open();
+  expect(() => store.updateAutoArchive(policy as never)).toThrow("无效自动归档设置");
+  expect(store.get().autoArchive).toEqual({ enabled: false, olderThanDays: 30 });
+  expect(f.state.getSetting("app")).toBeUndefined();
+});
+
+it("rejects a malformed persisted auto archive policy", async () => {
+  const f = await fixture();
+  f.open().updatePreferences({ theme: "dark" });
+  const previous = f.state.getSetting<Record<string, unknown>>("app");
+  if (!previous) throw new Error("missing persisted settings");
+  f.state.setSetting("app", { ...previous, autoArchive: { enabled: true, olderThanDays: -1 } });
+  expect(() => f.open()).toThrow("Invalid auto archive settings");
+});
+
 it("notification preferences and plugin settings share one persisted switch", async () => {
   const f = await fixture();
   const store = f.open();

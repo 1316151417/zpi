@@ -40,6 +40,7 @@ async function fill(label: string, text: string) {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const settings: PublicSettings = {
+    autoArchive: { enabled: false, olderThanDays: 30 },
     providers: ["first", "second"].map((id) => ({
       id,
       name: id,

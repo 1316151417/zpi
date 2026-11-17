@@ -17,6 +17,7 @@ const domTests = [
   "packages/desktop/test/web-settings-actions.test.ts",
   "packages/desktop/test/provider-settings-dom.test.ts",
   "packages/desktop/test/memory-settings-dom.test.ts",
+  "packages/desktop/test/auto-archive-settings-dom.test.ts",
   "packages/desktop/test/workspace-editor-dom.test.ts",
   "packages/desktop/test/subagent-settings-dom.test.ts",
   "packages/desktop/test/changes-pane-dom.test.ts",

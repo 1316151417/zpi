@@ -1,0 +1,91 @@
+.auto-archive-settings {
+  margin-bottom: 24px;
+}
+.auto-archive-card {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+.auto-archive-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+}
+.auto-archive-row + .auto-archive-row {
+  border-top: 1px solid var(--color-border);
+}
+.auto-archive-copy {
+  min-width: 0;
+  font-size: var(--text-body);
+}
+.auto-archive-copy strong {
+  font-weight: 500;
+}
+.auto-archive-control {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.auto-archive-control .settings-select-trigger {
+  width: 100%;
+}
+.auto-archive-switch,
+.auto-archive-switch > span {
+  width: 32px;
+  height: 18px;
+}
+.auto-archive-switch > span {
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-primary) 30%, transparent);
+}
+.auto-archive-switch > span::after {
+  width: 16px;
+  height: 16px;
+  margin: 1px;
+}
+.auto-archive-switch input:checked + span::after {
+  transform: translateX(14px);
+}
+.auto-archive-run {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  font-size: var(--text-body);
+  white-space: nowrap;
+}
+.auto-archive-run:hover:not(:disabled) {
+  background: var(--color-active);
+}
+.auto-archive-result {
+  margin-top: 12px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-body);
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.auto-archive-result p {
+  margin: 0;
+}
+.auto-archive-result ul {
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.archived-tasks .archived-heading h2 {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: 500;
+  line-height: 24px;
+}
+@media (max-width: 639px) {
+  .auto-archive-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
