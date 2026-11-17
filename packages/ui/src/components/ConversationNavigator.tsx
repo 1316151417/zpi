@@ -201,11 +201,15 @@ const NavigatorItem = memo(function NavigatorItem({
 }) {
   const { run } = item;
   const { user, assistant } = useMemo(() => {
-    const answer = runFinalAnswer(run);
+    // 运行中只预览首段正文，后续进度不替换它；终态再切到消息区的最终答复。
+    const answer =
+      run.status === "running"
+        ? run.orderedBlocks.find((block) => block.type === "text" && block.text.trim())
+        : runFinalAnswer(run);
     return {
       user: parseSelectionPrompt(item.text).text.trim() || "用户输入",
       assistant:
-        run.status === "running" ? "助手仍在工作" : (answer && previewText([answer])) || "暂无助手正文",
+        (answer && previewText([answer])) || (run.status === "running" ? "助手仍在工作" : "暂无助手正文"),
     };
   }, [run, item.text]);
   return (

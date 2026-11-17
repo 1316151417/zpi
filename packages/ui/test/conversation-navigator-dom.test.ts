@@ -68,7 +68,7 @@ it("jumps to the selected run and windows a long rail", async () => {
   expect(onJump).toHaveBeenCalledWith("1", "1:user");
 });
 
-it("shows the working placeholder until settled, then the same final answer as the message body", async () => {
+it("previews only the first running reply, then switches to the final answer when settled", async () => {
   const text = (id: string, value: string) => ({ id, messageId: id, type: "text" as const, text: value });
   const intro = text("intro", "我先读取方案并核对配置。");
   const answer = text("answer", "已更新方案。\n\n确认三个问题。\n\n第三段不展示。");
@@ -89,7 +89,8 @@ it("shows the working placeholder until settled, then the same final answer as t
         }),
       ),
     );
-  await render(view);
+  const prelude = [{ ...text("thinking", "正在思考方案"), type: "thinking" as const }, text("empty", " \n ")];
+  await render({ ...view, orderedBlocks: prelude });
   const button = container.querySelectorAll("button")[1];
   if (!button) throw new Error("Missing current query navigator item");
   await act(async () => {
@@ -98,6 +99,15 @@ it("shows the working placeholder until settled, then the same final answer as t
   });
   const preview = () => document.querySelector(".conversation-navigator-answer")?.textContent;
   expect(preview()).toBe("助手仍在工作");
+  await render({ ...view, orderedBlocks: [...prelude, { ...intro, text: "我先读取", streaming: true }] });
+  expect(preview()).toBe("我先读取");
+  await render({ ...view, orderedBlocks: [...prelude, intro] });
+  expect(preview()).toBe(intro.text);
+  await render({
+    ...view,
+    orderedBlocks: [...prelude, intro, text("progress", "已核对配置，继续更新方案。"), answer],
+  });
+  expect(preview()).toBe(intro.text);
   await render({ ...view, status: "completed" });
   expect(preview()).toBe("已更新方案。\n确认三个问题。");
   await render({ ...view, status: "completed", finalAnswerBlockIds: [] });
@@ -105,5 +115,7 @@ it("shows the working placeholder until settled, then the same final answer as t
   await render({ ...view, status: "completed", orderedBlocks: [intro, text("answer", "结".repeat(230))] });
   expect(preview()).toBe(`${"结".repeat(217)}...`);
   await render({ ...view, status: "running" });
+  expect(preview()).toBe(intro.text);
+  await render({ ...view, orderedBlocks: [] });
   expect(preview()).toBe("助手仍在工作");
 });
