@@ -1,5 +1,5 @@
 // Adapted from ZCode path.ts (Apache-2.0), commit 872ad960.
-// See licenses/third-party-notices.txt and docs/internals/previews.md.
+// See licenses/third-party-notices.txt and https://github.com/1316151417/zpi-website/blob/main/backup/zpi/docs/internals/previews.md.
 const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:[\\/]/;
 const UNC_PATH_RE = /^\\\\/;
 const URI_ESCAPE_RE = /%[0-9A-Fa-f]{2}/;

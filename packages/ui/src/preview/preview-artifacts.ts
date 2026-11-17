@@ -1,5 +1,5 @@
 // Adapted from ZCode conversation-preview-artifacts.ts (Apache-2.0), commit 872ad960.
-// See licenses/third-party-notices.txt and docs/internals/previews.md.
+// See licenses/third-party-notices.txt and https://github.com/1316151417/zpi-website/blob/main/backup/zpi/docs/internals/previews.md.
 import { MEDIA_PREVIEW_FORMATS } from "./media-preview.ts";
 import {
   getPathLeaf,

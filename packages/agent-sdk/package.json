@@ -19,7 +19,6 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md",
     "NOTICE"
   ],
   "engines": {
