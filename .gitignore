@@ -1,4 +1,8 @@
 node_modules/
+.vscode/
+.claude/
+.agents/
+.zpi/
 **/dist/
 release/
 test-results/
