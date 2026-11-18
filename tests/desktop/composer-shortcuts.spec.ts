@@ -76,7 +76,7 @@ test("model shortcut navigates models and supported reasoning levels, confirms e
   const dir = await mkdtemp(join(tmpdir(), "zpi-model-shortcut-"));
   const server = await fakeServer((_, response) => done(response));
   const models = presetModels("openai-chatgpt")
-    .filter((model) => model.name === "GPT-6.1 Sol" || model.name === "GPT-6 Astra")
+    .filter((model) => model.name === "GPT-6.2 Sol" || model.name === "GPT-6.2 Astra")
     .map((model) => ({ ...model, defaultThinkingLevel: "low" }));
   expect(models).toHaveLength(2);
   let app: ElectronApplication | undefined;

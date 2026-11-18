@@ -88,7 +88,7 @@ test.each([true, false])(
     discoverModels.mockImplementation(async (input) => ({
       ok: true,
       value: await fetchProviderModels({ ...input, apiKey: input.apiKey ?? "" }, async () =>
-        online ? Response.json({ data: [{ id: "gpt-6.1-sol" }] }) : new Response(null, { status: 503 }),
+        online ? Response.json({ data: [{ id: "gpt-6.2-sol" }] }) : new Response(null, { status: 503 }),
       ),
     }));
     expect(button("OpenAI（ChatGPT）")).toBeDefined();

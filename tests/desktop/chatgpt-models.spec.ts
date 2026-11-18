@@ -135,9 +135,9 @@ test("ChatGPT OAuth settings hide API keys, accept callbacks, auto-discover and 
       await page
         .locator(".provider-model-row")
         .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-model-id"))),
-    ).toEqual(["gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra", "account-model"]);
+    ).toEqual(["gpt-6.1-terra", "gpt-6.2-sol", "gpt-6-luna", "gpt-6.2-astra", "account-model"]);
     await expect(page.locator('[data-model-id="gpt-6.1-terra"]')).toContainText("GPT-6.1 Terra");
-    await expect(page.locator('[data-model-id="gpt-6.1-sol"]')).toContainText("GPT-6.1 Sol");
+    await expect(page.locator('[data-model-id="gpt-6.2-sol"]')).toContainText("GPT-6.2 Sol");
     await expect(page.locator(".provider-model-row").filter({ hasText: "待验证" })).toHaveCount(0);
     await expect(page.locator(".chatgpt-connection")).toContainText("test@example.com");
     await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);

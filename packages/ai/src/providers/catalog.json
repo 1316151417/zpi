@@ -25,9 +25,9 @@
       "metadataSource": "catalog"
     },
     {
-      "id": "gpt-6.1-sol",
+      "id": "gpt-6.2-sol",
       "serviceTiers": ["priority"],
-      "name": "GPT-6.1 Sol",
+      "name": "GPT-6.2 Sol",
       "input": ["text", "image"],
       "reasoning": true,
       "contextWindow": 500000,
@@ -73,9 +73,9 @@
       "metadataSource": "catalog"
     },
     {
-      "id": "gpt-6-astra",
+      "id": "gpt-6.2-astra",
       "serviceTiers": ["priority"],
-      "name": "GPT-6 Astra",
+      "name": "GPT-6.2 Astra",
       "input": ["text", "image"],
       "reasoning": true,
       "contextWindow": 500000,

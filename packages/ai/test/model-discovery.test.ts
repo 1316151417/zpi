@@ -16,9 +16,9 @@ it.each([
   "respects account speed-tier metadata $metadata over preset capabilities",
   async ({ metadata, expected }) => {
     const result = await fetchProviderModels({ preset: "openai-chatgpt", apiKey: "fake" }, async () =>
-      Response.json({ models: [{ slug: "gpt-6.1-sol", visibility: "list", ...metadata }] }),
+      Response.json({ models: [{ slug: "gpt-6.2-sol", visibility: "list", ...metadata }] }),
     );
-    expect(result.models.find((model) => model.id === "gpt-6.1-sol")?.serviceTiers).toEqual(expected);
+    expect(result.models.find((model) => model.id === "gpt-6.2-sol")?.serviceTiers).toEqual(expected);
   },
 );
 
@@ -74,7 +74,7 @@ it("reads the account catalog without cache, uses slugs, and keeps new models di
     return Response.json({
       data: [{ id: "stale-api-catalog" }],
       models: [
-        { id: "internal-id", slug: "gpt-6-astra", visibility: "list", context_window: 300000 },
+        { id: "internal-id", slug: "gpt-6.2-astra", visibility: "list", context_window: 300000 },
         { slug: "gpt-6-luna", visibility: "hide" },
         {
           slug: "new-account-model",
@@ -86,8 +86,8 @@ it("reads the account catalog without cache, uses slugs, and keeps new models di
   }) as typeof fetch);
   expect(result.models.map((model) => model.id)).toEqual([
     "gpt-6.1-terra",
-    "gpt-6.1-sol",
-    "gpt-6-astra",
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
     "new-account-model",
   ]);
   expect(result.models[2]).toMatchObject({ availability: "listed", contextWindow: 500000 });
@@ -105,9 +105,9 @@ it("orders GPT presets Terra, Sol, Luna, Astra and provides Terra's default capa
   const models = presetModels("openai-chatgpt");
   expect(models.map((model) => model.id)).toEqual([
     "gpt-6.1-terra",
-    "gpt-6.1-sol",
+    "gpt-6.2-sol",
     "gpt-6-luna",
-    "gpt-6-astra",
+    "gpt-6.2-astra",
   ]);
   expect(models[0]).toMatchObject({
     name: "GPT-6.1 Terra",
@@ -132,9 +132,9 @@ it.each(["openai-chatgpt", "openai-api"] as const)(
     const models = presetModels(preset);
     expect(models.map((model) => model.name)).toEqual([
       "GPT-6.1 Terra",
-      "GPT-6.1 Sol",
+      "GPT-6.2 Sol",
       "GPT-6 Luna",
-      "GPT-6 Astra",
+      "GPT-6.2 Astra",
     ]);
     const entries = [
       ...models.map((model, index) => ({
@@ -215,9 +215,9 @@ it("discovers official API models with a bearer key, filters non-agent models an
       expect(options?.cache).toBe("no-store");
       return Response.json({
         data: [
-          { id: "gpt-6-astra" },
+          { id: "gpt-6.2-astra" },
           { id: "text-embedding-3-small" },
-          { id: "gpt-6.1-sol" },
+          { id: "gpt-6.2-sol" },
           { id: "gpt-image-1" },
         ],
       });
@@ -245,7 +245,7 @@ it("uses all four API presets when discovery fails, is empty or lists no matchin
     Response.json({
       data: [
         ...Array.from({ length: 500 }, (_, index) => ({ id: `embedding-${index}` })),
-        { id: "gpt-6.1-sol" },
+        { id: "gpt-6.2-sol" },
       ],
     }),
   ]) {

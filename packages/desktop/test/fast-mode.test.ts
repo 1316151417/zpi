@@ -9,10 +9,10 @@ import { cleanup, fixture } from "./helpers/host-fixture.ts";
 
 it("uses preset capabilities for existing configurations and respects explicit account restrictions", () => {
   for (const preset of ["openai-api", "openai-chatgpt"] as const) {
-    expect(supportsFastMode({ preset }, { id: "gpt-6.1-sol" })).toBe(true);
-    expect(supportsFastMode({ preset }, { id: "gpt-6.1-sol", serviceTiers: [] })).toBe(false);
+    expect(supportsFastMode({ preset }, { id: "gpt-6.2-sol" })).toBe(true);
+    expect(supportsFastMode({ preset }, { id: "gpt-6.2-sol", serviceTiers: [] })).toBe(false);
   }
-  expect(supportsFastMode({}, { id: "gpt-6.1-sol" })).toBe(false);
+  expect(supportsFastMode({}, { id: "gpt-6.2-sol" })).toBe(false);
   expect(supportsFastMode({ api: "anthropic-messages" }, { id: "custom", serviceTiers: ["priority"] })).toBe(
     false,
   );
