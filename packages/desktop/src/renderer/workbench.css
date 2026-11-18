@@ -3682,9 +3682,6 @@
   flex: 1;
   min-height: 0;
 }
-.side-chat-pane .composer-container {
-  padding: 12px;
-}
 .side-chat-pane .conversation-inner {
   padding-left: 20px;
   padding-right: 20px;
@@ -6115,10 +6112,6 @@
   line-height: 12px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-}
-.side-chat-pane .model-performance {
-  inset-inline: 12px;
-  bottom: 0;
 }
 .model-stat-pill {
   display: inline-flex;

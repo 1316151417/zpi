@@ -202,6 +202,8 @@ test("side chats fit narrow panes, add references to their own draft and copy on
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
     const side = page.getByRole("region", { name: "辅助对话", exact: true });
     await expect(side).toBeVisible();
+    const sideComposer = side.locator(".composer");
+    const composers = main.locator(".composer").or(sideComposer);
     for (const size of [
       [1200, 800],
       [900, 640],
@@ -215,8 +217,16 @@ test("side chats fit narrow panes, add references to their own draft and copy on
         .poll(() => side.locator(".conversation").evaluate((el) => el.scrollWidth - el.clientWidth))
         .toBe(0);
       await expect(side.getByLabel("消息", { exact: true })).toBeInViewport();
+      await expect
+        .poll(() =>
+          composers.evaluateAll(([mainInput, sideInput]) =>
+            mainInput && sideInput
+              ? sideInput.getBoundingClientRect().bottom - mainInput.getBoundingClientRect().bottom
+              : null,
+          ),
+        )
+        .toBe(0);
     }
-    const sideComposer = side.locator(".composer");
     const withoutMetrics = await sideComposer.boundingBox();
     await side.getByLabel("消息", { exact: true }).fill("辅助问题");
     await side.getByLabel("发送", { exact: true }).click();
