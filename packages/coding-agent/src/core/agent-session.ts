@@ -13,15 +13,14 @@ import type {
 } from "@zpi-dev/ai";
 import {
   assertSupportedOptions,
+  assistantRetryPlan,
+  CHATGPT_OVERLOAD_RECOVERY_LIMIT_MESSAGE,
   clampThinkingLevel,
   createAssistantMessageEventStream,
   emptyAssistant,
   isContextOverflowMessage,
   isRecoverableLength,
-  isRetryableAssistantError,
   ModelRequestRetryError,
-  retryAttemptLimit,
-  retryDelayMs,
 } from "@zpi-dev/ai";
 import { ResponsesSession } from "@zpi-dev/ai/api/responses-session";
 import { expandPluginCommand } from "../plugins/assembly.ts";
@@ -129,7 +128,7 @@ export class AgentSession {
   readonly settingsManager: SettingsManager;
   private overflowRecoveryAttempted = false;
   private retryAttempt = 0;
-  private recoveryStartedAt?: number;
+  private recovery?: { startedAt: number; deadlineMs?: number };
   private retryCurrentRequest?: () => boolean;
   private lastAssistantCompletedAtMs?: number;
   private microcompactProjection = new WeakMap<Message, Message>();
@@ -269,7 +268,7 @@ export class AgentSession {
           if (event.message.stopReason !== "error") {
             this.notify({ type: "model_retry", status: null });
             this.retryAttempt = 0;
-            this.recoveryStartedAt = undefined;
+            this.recovery = undefined;
           }
         }
         if (event.type === "message_end") {
@@ -288,7 +287,7 @@ export class AgentSession {
         event.type === "agent_end"
           ? {
               ...event,
-              willRetry: last?.role === "assistant" && this.canRetry(last),
+              willRetry: last?.role === "assistant" && this.retryPlan(last).kind === "retry",
             }
           : event,
       );
@@ -528,35 +527,39 @@ export class AgentSession {
     message: Extract<AgentState["messages"][number], { role: "assistant" }>,
     signal?: AbortSignal,
   ): Promise<boolean> {
-    if (!this.canRetry(message)) return false;
-    const settings = this.settingsManager.getRetrySettings();
+    const settings = this.settingsManager.getRetrySettings(this.model);
     const manualRetry = message.errorDetails?.code === "MODEL_REQUEST_RETRY";
-    if (manualRetry) {
-      this.retryAttempt = 0;
-      this.recoveryStartedAt = Date.now();
-    } else this.recoveryStartedAt ??= Date.now();
+    const now = Date.now();
+    const startedAt = manualRetry ? now : (this.recovery?.startedAt ?? now);
+    const plan = this.retryPlan(message, settings, startedAt, now);
+    if (plan.kind !== "retry") {
+      if (plan.kind === "overload_deadline") message.errorMessage = CHATGPT_OVERLOAD_RECOVERY_LIMIT_MESSAGE;
+      return false;
+    }
+    this.recovery = { startedAt, deadlineMs: plan.deadlineMs };
+    if (manualRetry) this.retryAttempt = 0;
     this.dropFailedAssistant();
     this.retryAttempt++;
-    const delay = manualRetry
-      ? 0
-      : retryDelayMs(settings, this.retryAttempt, message.errorDetails?.retryAfterMs);
     this.notify({
       type: "model_retry",
       status: {
         origin: manualRetry ? "manual" : "auto",
         attempt: this.retryAttempt,
         maxRetries: settings.maxRetries,
-        retryDelayMs: delay,
+        retryDelayMs: plan.delayMs,
         errorStatus: message.errorDetails?.status ?? null,
+        ...(plan.serverRetryAt !== undefined ? { serverRetryAt: plan.serverRetryAt } : {}),
       },
     });
-    if (await this.waitForRetryDelay(delay, signal)) {
-      this.recoveryStartedAt = Date.now();
+    if (await this.waitForRetryDelay(plan.delayMs, signal, plan.serverRetryAt)) {
+      const startedAt = Date.now();
+      const limit = settings.maxElapsedMs;
+      this.recovery = { startedAt, deadlineMs: limit && limit > 0 ? startedAt + limit : undefined };
       this.retryAttempt = 1;
     }
     return true;
   }
-  private waitForRetryDelay(delay: number, signal?: AbortSignal): Promise<boolean> {
+  private waitForRetryDelay(delay: number, signal?: AbortSignal, serverRetryAt?: number): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       const cleanup = () => {
         clearTimeout(timer);
@@ -572,35 +575,31 @@ export class AgentSession {
         cleanup();
         reject(new DOMException("Request aborted", "AbortError"));
       };
-      const timer = setTimeout(() => {
-        cleanup();
-        resolve(false);
-      }, delay);
-      this.retryCurrentRequest = retryNow;
+      const timer = setTimeout(
+        () => {
+          cleanup();
+          resolve(false);
+        },
+        serverRetryAt === undefined ? delay : Math.max(0, serverRetryAt - Date.now()),
+      );
+      this.retryCurrentRequest = serverRetryAt === undefined ? retryNow : undefined;
       if (signal?.aborted) abort();
       else signal?.addEventListener("abort", abort, { once: true });
     });
   }
-  private canRetry(message: Extract<AgentState["messages"][number], { role: "assistant" }>): boolean {
-    const settings = this.settingsManager.getRetrySettings();
-    if (!this.abortRequested && message.errorDetails?.code === "MODEL_REQUEST_RETRY") return true;
-    const deadline = this.recoveryDeadline(this.recoveryStartedAt ?? Date.now());
-    const delay = retryDelayMs(settings, this.retryAttempt + 1, message.errorDetails?.retryAfterMs);
-    return (
-      !this.abortRequested &&
-      !(
-        !settings.enabled ||
-        this.retryAttempt >= retryAttemptLimit(message, settings.maxRetries) ||
-        !Number.isFinite(delay) ||
-        (deadline !== undefined && Date.now() + delay >= deadline) ||
-        isContextOverflowMessage(message, this.model.contextWindow) ||
-        !isRetryableAssistantError(message)
-      )
-    );
-  }
-  private recoveryDeadline(startedAt = this.recoveryStartedAt): number | undefined {
-    const limit = this.settingsManager.getRetrySettings().maxElapsedMs;
-    return limit && limit > 0 && startedAt !== undefined ? startedAt + limit : undefined;
+  private retryPlan(
+    message: Extract<AgentState["messages"][number], { role: "assistant" }>,
+    settings = this.settingsManager.getRetrySettings(this.model),
+    startedAt = this.recovery?.startedAt ?? Date.now(),
+    now = Date.now(),
+  ) {
+    if (
+      this.abortRequested ||
+      (message.errorDetails?.code !== "MODEL_REQUEST_RETRY" &&
+        isContextOverflowMessage(message, this.model.contextWindow))
+    )
+      return { kind: "stop" } as const;
+    return assistantRetryPlan(message, settings, this.retryAttempt, startedAt, now);
   }
   /** Only the active model request or retry backoff can be retried; tools keep their lifecycle. */
   retryModelRequest(): boolean {
@@ -671,16 +670,24 @@ export class AgentSession {
       signal,
       this.thinkingLevel,
       (model, context, options) => this.measuredStream(model, context, this.requestOptions(options)),
-      this.settingsManager.getRetrySettings(),
+      this.settingsManager.getRetrySettings(this.model),
       {
-        onRetryScheduled: (attempt, maxRetries, retryDelayMs, _errorMessage, origin) => {
+        onRetryScheduled: (attempt, maxRetries, retryDelayMs, _errorMessage, origin, serverRetryAt) => {
           this.notify({
             type: "model_retry",
-            status: { origin, attempt, maxRetries, retryDelayMs, errorStatus: null },
+            status: {
+              origin,
+              attempt,
+              maxRetries,
+              retryDelayMs,
+              errorStatus: null,
+              ...(serverRetryAt !== undefined ? { serverRetryAt } : {}),
+            },
           });
         },
         onRetryFinished: () => this.notify({ type: "model_retry", status: null }),
-        waitBeforeRetry: (delay, signal) => this.waitForRetryDelay(delay, signal),
+        waitBeforeRetry: (delay, signal, serverRetryAt) =>
+          this.waitForRetryDelay(delay, signal, serverRetryAt),
       },
       randomUUID(),
       this.runtime.mediaProjectionObserver(this.model, this.sessionId),
@@ -715,8 +722,7 @@ export class AgentSession {
           ...options,
           sessionId: this.sessionId,
           ...(this.responsesSession ? { responsesSession: this.responsesSession } : {}),
-          streamDeadlineMs:
-            options.streamDeadlineMs ?? (this.retryAttempt > 0 ? this.recoveryDeadline() : undefined),
+          streamDeadlineMs: options.streamDeadlineMs ?? this.recovery?.deadlineMs,
         }),
       );
       let started = false;
@@ -813,7 +819,7 @@ export class AgentSession {
     this.performance.begin();
     this.abortRequested = false;
     this.retryAttempt = 0;
-    this.recoveryStartedAt = undefined;
+    this.recovery = undefined;
     const controller = new AbortController();
     this.compactController = controller;
     this.running = (async () => {
@@ -878,7 +884,7 @@ export class AgentSession {
     this.abortRequested = false;
     this.overflowRecoveryAttempted = false;
     this.retryAttempt = 0;
-    this.recoveryStartedAt = undefined;
+    this.recovery = undefined;
     this.compactController = new AbortController();
     this.running = Promise.resolve()
       .then(async () => {

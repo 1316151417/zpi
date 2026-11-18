@@ -147,12 +147,18 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
       normalizeProviderError(error),
       `${model.provider === "openai" ? "OpenAI" : model.provider} API error`,
     );
-    output.errorMessage = redactProviderError(message, [
+    output.errorDetails = modelFailure(error, options.signal, model);
+    const displayMessage =
+      model.auth === "chatgpt" &&
+      output.errorDetails.code === "server_is_overloaded" &&
+      !/overloaded/i.test(message)
+        ? `Model service overloaded. ${message}`
+        : message;
+    output.errorMessage = redactProviderError(displayMessage, [
       options.apiKey,
       ...Object.values(model.headers ?? {}),
       ...Object.values(options.headers ?? {}),
     ]);
-    output.errorDetails = modelFailure(error, options.signal);
     events.push({ type: "error", reason: output.stopReason, error: output });
   });
   return events;
@@ -270,7 +276,12 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
             .create(payload as unknown as ResponseCreateParamsStreaming, { signal: options.signal })
             .withResponse();
         },
-        { ...options, maxRetries: options.maxRetries ?? 2 },
+        {
+          ...options,
+          maxRetries: options.maxRetries ?? 2,
+          // Subscription overload is handled by the session across both transports.
+          shouldRetry: (failure) => model.auth !== "chatgpt" || failure.code !== "server_is_overloaded",
+        },
       );
       await options.onResponse?.(
         { status: response.status, headers: Object.fromEntries(response.headers) },
@@ -479,13 +490,20 @@ export function streamSimple(model: Model, context: TranscriptContext, options: 
           throw Object.assign(new Error(`OpenAI Responses: ${event.code ?? "error"}: ${event.message}`), {
             code: event.code,
           });
-        case "response.failed":
+        case "response.failed": {
+          const failure = event.response.error;
           throw Object.assign(
             new Error(
-              `OpenAI Responses: ${event.response.error?.code ?? "failed"}: ${event.response.error?.message ?? "Request failed"}`,
+              `OpenAI Responses: ${failure?.code ?? "failed"}: ${failure?.message ?? "Request failed"}`,
             ),
-            { code: event.response.error?.code },
+            {
+              code: failure?.code,
+              ...(model.auth === "chatgpt" && String(failure?.code) === "server_is_overloaded"
+                ? { error: failure }
+                : {}),
+            },
           );
+        }
         case "response.incomplete":
         case "response.completed": {
           if (

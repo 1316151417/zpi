@@ -116,6 +116,8 @@ export interface RetryPolicy {
   maxAgentDelayMs?: number;
   /** Recovery time allowed after the first failure; <= 0 disables the cap. */
   maxElapsedMs?: number;
+  /** Set by the session when it is using ChatGPT subscription authentication. */
+  chatgptOverloadMaxElapsedMs?: number;
 }
 
 export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
@@ -141,6 +143,48 @@ export function retryDelayMs(
   return wait > 2147483647 ? Infinity : wait;
 }
 
+export const CHATGPT_OVERLOAD_RECOVERY_LIMIT_MESSAGE =
+  "Model overload retry would exceed the automatic recovery time limit.";
+
+export function assistantRetryPlan(
+  message: AssistantMessage,
+  policy: RetryPolicy | undefined,
+  attempts: number,
+  startedAt: number,
+  now = Date.now(),
+):
+  | { kind: "retry"; delayMs: number; deadlineMs?: number; serverRetryAt?: number }
+  | { kind: "stop" | "overload_deadline" } {
+  const manual = message.errorDetails?.code === "MODEL_REQUEST_RETRY";
+  const overload =
+    policy?.chatgptOverloadMaxElapsedMs !== undefined &&
+    message.errorDetails?.code === "server_is_overloaded";
+  const limit = overload ? policy.chatgptOverloadMaxElapsedMs : policy?.maxElapsedMs;
+  const deadlineMs = limit && limit > 0 ? startedAt + limit : undefined;
+  if (manual) return { kind: "retry", delayMs: 0, deadlineMs };
+  if (!policy?.enabled || attempts >= retryAttemptLimit(message, policy.maxRetries)) return { kind: "stop" };
+
+  const retryAfterMs = message.errorDetails?.retryAfterMs;
+  if (overload) {
+    if (
+      message.stopReason !== "error" ||
+      message.errorDetails?.retryable === false ||
+      retryAfterMs === undefined ||
+      !Number.isFinite(retryAfterMs) ||
+      retryAfterMs < 0
+    )
+      return { kind: "stop" };
+    if (retryAfterMs > 2147483647 || (deadlineMs !== undefined && now + retryAfterMs >= deadlineMs))
+      return { kind: "overload_deadline" };
+    return { kind: "retry", delayMs: retryAfterMs, deadlineMs, serverRetryAt: now + retryAfterMs };
+  }
+  if (!isRetryableAssistantError(message)) return { kind: "stop" };
+  const delayMs = retryDelayMs(policy, attempts + 1, retryAfterMs);
+  return !Number.isFinite(delayMs) || (deadlineMs !== undefined && now + delayMs >= deadlineMs)
+    ? { kind: "stop" }
+    : { kind: "retry", delayMs, deadlineMs };
+}
+
 /** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */
 export interface RetryCallbacks {
   /** Emitted before the backoff sleep of each retry attempt (1-indexed). */
@@ -150,11 +194,12 @@ export interface RetryCallbacks {
     delayMs: number,
     errorMessage: string,
     origin?: ModelRetryStatus["origin"],
+    serverRetryAt?: number,
   ) => void | Promise<void>;
   /** Emitted after the backoff sleep, immediately before the retried call starts. */
   onRetryAttemptStart?: () => void | Promise<void>;
   /** Optional interruptible backoff. Return true when an explicit user retry resets the recovery budget. */
-  waitBeforeRetry?: (delayMs: number, signal?: AbortSignal) => Promise<boolean>;
+  waitBeforeRetry?: (delayMs: number, signal?: AbortSignal, serverRetryAt?: number) => Promise<boolean>;
   /** Emitted once when the loop ends: success if a later call completed normally. */
   onRetryFinished?: (success: boolean, attempt: number, finalError?: string) => void | Promise<void>;
 }
@@ -207,7 +252,7 @@ export async function retryAssistantCall(
   callbacks?: RetryCallbacks,
 ): Promise<AssistantMessage> {
   const maxAttempts = policy?.enabled ? policy.maxRetries : 0;
-  const recoveryLimit = policy?.maxElapsedMs;
+  let recoveryStartedAt: number | undefined;
   let deadlineMs: number | undefined;
 
   let attempt = 0;
@@ -228,46 +273,43 @@ export async function retryAssistantCall(
     }
 
     const manualRetry = response.errorDetails?.code === "MODEL_REQUEST_RETRY";
+    const now = Date.now();
     if (manualRetry) {
       attempt = 0;
-      deadlineMs = recoveryLimit && recoveryLimit > 0 ? Date.now() + recoveryLimit : undefined;
+      recoveryStartedAt = now;
     }
-    if (deadlineMs === undefined && recoveryLimit && recoveryLimit > 0)
-      deadlineMs = Date.now() + recoveryLimit;
-    const delayMs =
-      manualRetry || !policy ? 0 : retryDelayMs(policy, attempt + 1, response.errorDetails?.retryAfterMs);
-    // An explicit retry remains available when automatic retry is disabled or exhausted.
-    if (
-      !manualRetry &&
-      (!policy ||
-        attempt >= retryAttemptLimit(response, maxAttempts) ||
-        !isRetryableAssistantError(response) ||
-        !Number.isFinite(delayMs) ||
-        (deadlineMs !== undefined && Date.now() + delayMs >= deadlineMs))
-    ) {
-      if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
-      return response;
+    recoveryStartedAt ??= now;
+    const plan = assistantRetryPlan(response, policy, attempt, recoveryStartedAt, now);
+    if (plan.kind !== "retry") {
+      const errorMessage =
+        plan.kind === "overload_deadline" ? CHATGPT_OVERLOAD_RECOVERY_LIMIT_MESSAGE : response.errorMessage;
+      if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, errorMessage);
+      return plan.kind === "overload_deadline" ? { ...response, errorMessage } : response;
     }
 
+    deadlineMs = plan.deadlineMs;
     attempt++;
     lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
     await callbacks?.onRetryScheduled?.(
       attempt,
       maxAttempts,
-      delayMs,
+      plan.delayMs,
       lastRetry.errorMessage,
       manualRetry ? "manual" : "auto",
+      plan.serverRetryAt,
     );
 
     // Normalize aborts during retry backoff to the same AssistantMessage shape as
     // provider stream aborts, so callers do not need to care when cancellation happened.
     try {
       if (callbacks?.waitBeforeRetry) {
-        if (await callbacks.waitBeforeRetry(delayMs, signal)) {
+        if (await callbacks.waitBeforeRetry(plan.delayMs, signal, plan.serverRetryAt)) {
           attempt = 1;
-          deadlineMs = recoveryLimit && recoveryLimit > 0 ? Date.now() + recoveryLimit : undefined;
+          recoveryStartedAt = Date.now();
+          const limit = policy?.maxElapsedMs;
+          deadlineMs = limit && limit > 0 ? recoveryStartedAt + limit : undefined;
         }
-      } else await sleep(delayMs, signal);
+      } else await sleep(plan.delayMs, signal);
     } catch (error) {
       await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
       if (signal?.aborted || error instanceof RetrySleepAbortError) {

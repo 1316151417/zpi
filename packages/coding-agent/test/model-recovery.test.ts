@@ -71,6 +71,134 @@ it.each(["recover", "budget", "cancel"])(
   },
 );
 
+it.each(["subscription", "api-key", "custom-deadline", "default-deadline", "no-advice", "cancel"] as const)(
+  "applies the subscription overload recovery policy for %s",
+  async (mode) => {
+    const retryStatuses: ModelRetryStatus[] = [];
+    const requests: number[] = [];
+    const fetcher: typeof fetch = async () => {
+      requests.push(Date.now());
+      if (requests.length <= 2)
+        return Response.json(
+          { error: { code: "server_is_overloaded", message: "Our servers are currently overloaded." } },
+          {
+            status: 503,
+            headers:
+              mode === "no-advice"
+                ? {}
+                : {
+                    "retry-after":
+                      requests.length === 1 ? "320" : mode === "default-deadline" ? "581" : "313",
+                  },
+          },
+        );
+      const completed = {
+        type: "response.completed",
+        response: {
+          id: "recovered",
+          model: "gpt-6.2-sol",
+          status: "completed",
+          output: [
+            {
+              id: "answer",
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: "recovered" }],
+            },
+          ],
+        },
+      };
+      return new Response(`data: ${JSON.stringify(completed)}\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+    const runtime = await ModelRuntime.create({ fetch: fetcher });
+    runtime.registerProvider("fake", {
+      baseUrl: "http://local/v1",
+      apiKey: "key",
+      models: [
+        {
+          ...fakeConfig(""),
+          id: "gpt-6.2-sol",
+          api: "openai-responses",
+          ...(mode === "api-key" ? {} : { auth: "chatgpt" }),
+        },
+      ],
+    });
+    const { session } = await createAgentSession({
+      modelRuntime: runtime,
+      sessionManager: SessionManager.inMemory(),
+      resourceLoader: new StaticResourceLoader(),
+      settingsManager: SettingsManager.inMemory({
+        ...(mode === "custom-deadline" ? { retry: { maxElapsedMs: 600_000 } } : {}),
+        compaction: { enabled: false },
+      }),
+      noTools: "all",
+    });
+    session.subscribe((event) => {
+      if (event.type === "model_retry" && event.status) retryStatuses.push(event.status);
+    });
+    vi.useFakeTimers();
+    try {
+      const running = session.prompt("answer");
+      await vi.advanceTimersByTimeAsync(0);
+      if (mode === "no-advice") {
+        expect(retryStatuses).toEqual([]);
+        await running;
+        expect(requests).toHaveLength(1);
+        return;
+      }
+      expect(retryStatuses[0]).toMatchObject({ attempt: 1, maxRetries: 10, retryDelayMs: 320_000 });
+      if (mode === "api-key") expect(retryStatuses[0].serverRetryAt).toBeUndefined();
+      else {
+        expect(retryStatuses[0].serverRetryAt).toBe(requests[0] + 320_000);
+        expect(session.retryModelRequest()).toBe(false);
+      }
+      await vi.advanceTimersByTimeAsync(319_999);
+      expect(requests).toHaveLength(1);
+      if (mode === "cancel") {
+        await session.abort();
+        await running;
+        await vi.advanceTimersByTimeAsync(1);
+        expect(requests).toHaveLength(1);
+        return;
+      }
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requests).toHaveLength(2);
+      if (mode === "subscription") {
+        expect(retryStatuses[1]).toMatchObject({
+          attempt: 2,
+          retryDelayMs: 313_000,
+          serverRetryAt: requests[1] + 313_000,
+        });
+        await vi.advanceTimersByTimeAsync(312_999);
+        expect(requests).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(requests).toHaveLength(3);
+        await running;
+        expect(session.messages.at(-1)).toMatchObject({
+          stopReason: "stop",
+          content: [{ type: "text", text: "recovered" }],
+        });
+      } else {
+        expect(retryStatuses).toHaveLength(1);
+        await running;
+        expect(session.messages.at(-1)).toMatchObject({
+          stopReason: "error",
+          errorDetails: { code: "server_is_overloaded" },
+          errorMessage:
+            mode === "custom-deadline" || mode === "default-deadline"
+              ? "Model overload retry would exceed the automatic recovery time limit."
+              : expect.stringContaining("Our servers are currently overloaded."),
+        });
+      }
+    } finally {
+      session.dispose();
+      vi.useRealTimers();
+    }
+  },
+);
+
 it("pairs an unexecuted write with a synthetic failure during streaming recovery, as in ZCode", async () => {
   const cwd = await directory();
   const runtime = await ModelRuntime.create();

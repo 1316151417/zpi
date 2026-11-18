@@ -1,5 +1,5 @@
 // Adapted from Pi (commit c20cb09772bf4e2590a316cb54514cef76df4293) Copyright (c) 2025 Mario Zechner. MIT license
-import type { ModelRetryStatus } from "../types.ts";
+import type { ModelFailure, ModelRetryStatus } from "../types.ts";
 import { modelFailure } from "./model-retry.ts";
 
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
@@ -9,6 +9,7 @@ interface ProviderRetryOptions {
   maxRetryDelayMs?: number;
   signal?: AbortSignal;
   onRetry?: (status: ModelRetryStatus | null) => void;
+  shouldRetry?: (failure: ModelFailure) => boolean;
 }
 
 interface ProviderError extends Error {
@@ -104,7 +105,8 @@ export async function retryProviderRequest<T>(
         if (options.signal?.aborted) throw createAbortError();
         if (retriesRemaining <= 0 || !isProviderError(error)) throw error;
         const failure = modelFailure(error);
-        if (!(failure.retryable ?? error.status === undefined)) throw error;
+        if (!(failure.retryable ?? error.status === undefined) || options.shouldRetry?.(failure) === false)
+          throw error;
 
         const retryIndex = maxRetries - retriesRemaining;
         retriesRemaining--;

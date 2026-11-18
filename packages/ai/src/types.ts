@@ -292,6 +292,8 @@ export interface ModelRetryStatus {
   maxRetries: number;
   retryDelayMs: number;
   errorStatus: number | null;
+  /** Earliest retry time supplied by the server for a subscription overload. */
+  serverRetryAt?: number;
 }
 export interface ModelWaitStatus {
   phase: "first_response" | "stream";

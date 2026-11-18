@@ -110,6 +110,38 @@ async function fixture(
   return { run, requests, session, model, httpCalls: () => httpCalls };
 }
 
+it.each([
+  ["320", 320_000],
+  [undefined, undefined],
+  ["-1", undefined],
+] as const)(
+  "preserves only valid ChatGPT overload advice over WebSocket (%s)",
+  async (header, retryAfterMs) => {
+    const f = await fixture(({ socket }) => {
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          status: 503,
+          headers: { "x-request-id": "local-test" },
+          error: {
+            code: "server_is_overloaded",
+            message: "Our servers are currently overloaded.",
+            ...(header === undefined ? {} : { headers: { "Retry-After": header } }),
+          },
+        }),
+      );
+    });
+    const result = await f.run([user("hello")], {}, { ...f.model, auth: "chatgpt" });
+    expect(result).toMatchObject({
+      stopReason: "error",
+      errorDetails: { code: "server_is_overloaded", status: 503 },
+    });
+    expect(result.errorDetails?.retryAfterMs).toBe(retryAfterMs);
+    expect(f.requests).toHaveLength(1);
+    expect(f.httpCalls()).toBe(0);
+  },
+);
+
 it.each([false, true])(
   "carries fast mode on WebSocket and resets continuation when switching to standard (subscription=%s)",
   async (subscription) => {

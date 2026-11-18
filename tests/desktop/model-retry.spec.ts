@@ -129,7 +129,11 @@ test("recovers a heartbeat-only stream and stops a live request without waiting 
   await mkdir(join(project, ".zpi"));
   await writeFile(
     join(project, ".zpi/settings.json"),
-    JSON.stringify({ streamIdleTimeoutMs: 1000, retry: { baseDelayMs: 3000 } }),
+    JSON.stringify({
+      streamFirstResponseTimeoutMs: 1000,
+      streamIdleTimeoutMs: 1000,
+      retry: { baseDelayMs: 3000 },
+    }),
   );
   const counts = new Map<string, number>();
   const closed: string[] = [];

@@ -1,6 +1,6 @@
 // Structured error details adapted from ZCode failure-classifier.ts (Apache-2.0).
 // Retry decisions use Pi utils/retry.ts. See licenses/third-party-notices.txt.
-import type { ModelFailure } from "../types.ts";
+import type { Model, ModelFailure } from "../types.ts";
 
 const TERMINAL_CODES = new Set([
   "MODEL_RECOVERY_DEADLINE",
@@ -76,8 +76,35 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+function errorHeaders(value: unknown): Headers {
+  return value instanceof Headers
+    ? value
+    : new Headers(
+        Object.entries(record(value)).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      );
+}
+
+function retryAfter(headers: Headers, strict: boolean): number | undefined {
+  const ms = headers.get("retry-after-ms");
+  const validDelta = /^\d+(?:\.\d+)?$/u;
+  if (ms?.trim() && (!strict || validDelta.test(ms)) && Number.isFinite(Number(ms)))
+    return Math.max(0, Math.round(Number(ms)));
+  const after = headers.get("retry-after");
+  if (!after?.trim()) return;
+  const numeric = Number.isFinite(Number(after));
+  if (strict && !(numeric ? validDelta.test(after) : /^[a-z]{3}/iu.test(after))) return;
+  const delay = numeric ? Number(after) * 1000 : Date.parse(after) - Date.now();
+  if (Number.isFinite(delay)) return Math.max(0, Math.round(delay));
+}
+
 /** Preserve retry facts before provider errors are converted into transcript text. */
-export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure {
+export function modelFailure(
+  error: unknown,
+  signal?: AbortSignal,
+  model?: Pick<Model, "auth">,
+): ModelFailure {
   const seen = new Set<unknown>();
   const records: Record<string, unknown>[] = [];
   const pending = [error];
@@ -91,32 +118,24 @@ export function modelFailure(error: unknown, signal?: AbortSignal): ModelFailure
   const status = records.map((r) => r.status ?? r.statusCode).find((v) => typeof v === "number") as
     | number
     | undefined;
-  const headersValue = records.map((r) => r.headers ?? r.responseHeaders).find((v) => v != null);
-  const headers =
-    headersValue instanceof Headers
-      ? headersValue
-      : new Headers(
-          Object.entries(record(headersValue)).filter(
-            (entry): entry is [string, string] => typeof entry[1] === "string",
-          ),
-        );
-  const shouldRetry = headers.get("x-should-retry")?.trim().toLowerCase();
-  let retryAfterMs: number | undefined;
-  if (shouldRetry !== "false" && shouldRetry !== "0") {
-    const ms = headers.get("retry-after-ms");
-    const after = headers.get("retry-after");
-    if (ms?.trim() && Number.isFinite(Number(ms))) retryAfterMs = Math.max(0, Math.round(Number(ms)));
-    else if (after?.trim()) {
-      const delay = Number.isFinite(Number(after)) ? Number(after) * 1000 : Date.parse(after) - Date.now();
-      if (Number.isFinite(delay)) retryAfterMs = Math.max(0, Math.round(delay));
-    }
-  }
   const codes = records.flatMap((r) => {
     const body = record(r.error);
     return [r.code, body.code, body.type].flatMap((v) =>
       typeof v === "string" || typeof v === "number" ? [String(v)] : [],
     );
   });
+  const overload = model?.auth === "chatgpt" && codes[0] === "server_is_overloaded";
+  const headerValues = records.map((r) => r.headers ?? r.responseHeaders).filter((value) => value != null);
+  // Responses can carry overload retry advice inside the error body, even on a live stream.
+  const headers = overload
+    ? headerValues.slice().reverse().map(errorHeaders)
+    : [errorHeaders(headerValues[0])];
+  const instructions = headers.map((value) => value.get("x-should-retry")?.trim().toLowerCase());
+  const shouldRetry = instructions.find((value) => value === "false" || value === "0") ?? instructions[0];
+  const retryAfterMs =
+    shouldRetry === "false" || shouldRetry === "0"
+      ? undefined
+      : headers.map((value) => retryAfter(value, overload)).find((value) => value !== undefined);
   const aborted = signal?.aborted || records.some((r) => r.name === "AbortError" || r.code === "ABORT_ERR");
   const terminal =
     codes.some((code) => TERMINAL_CODES.has(code) || /CERT|TLS|SSL/iu.test(code)) ||

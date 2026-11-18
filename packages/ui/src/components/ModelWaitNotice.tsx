@@ -21,21 +21,26 @@ export function ModelWaitNotice({
   const startedAt = retryStatus ? undefined : wait?.startedAt;
   const origin = retryStatus?.origin;
   const attempt = retryStatus?.attempt;
+  const serverRetryAt = retryStatus?.serverRetryAt;
+  const canRetry = Boolean(onRetry && serverRetryAt === undefined);
   useEffect(() => {
     revision.current++;
     retryPending.current = false;
     setPending(false);
     setError("");
     setNow(Date.now());
-    const timer = startedAt === undefined ? undefined : setInterval(() => setNow(Date.now()), 1000);
+    const timer =
+      startedAt === undefined && serverRetryAt === undefined
+        ? undefined
+        : setInterval(() => setNow(Date.now()), 1000);
     return () => {
       revision.current++;
       retryPending.current = false;
       clearInterval(timer);
     };
-  }, [phase, startedAt, origin, attempt]);
+  }, [phase, startedAt, origin, attempt, serverRetryAt]);
   const retry = () => {
-    if (!onRetry || retryPending.current) return;
+    if (!onRetry || !canRetry || retryPending.current) return;
     retryPending.current = true;
     const current = revision.current;
     setPending(true);
@@ -52,22 +57,28 @@ export function ModelWaitNotice({
       });
   };
   const seconds = Math.max(0, Math.floor((now - (startedAt ?? now)) / 1000));
+  const remaining = Math.max(0, Math.ceil(((serverRetryAt ?? now) - now) / 1000));
+  const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
   const waitingLabel = phase === "first_response" ? "等待模型响应" : "等待新输出";
   const status =
-    pending || retryStatus?.origin === "manual"
-      ? "正在重新请求"
-      : retryStatus
-        ? "重新连接中"
-        : wait
-          ? waitingLabel
-          : "正在等待重新连接";
+    serverRetryAt !== undefined
+      ? "模型过载"
+      : pending || retryStatus?.origin === "manual"
+        ? "正在重新请求"
+        : retryStatus
+          ? "重新连接中"
+          : wait
+            ? waitingLabel
+            : "正在等待重新连接";
   const message =
-    pending || retryStatus?.origin === "manual"
-      ? `${status}…`
-      : retryStatus
-        ? `${status}… ${retryStatus.attempt}/${retryStatus.maxRetries}`
-        : `${status} · ${seconds} 秒`;
-  const guidance = onRetry ? "可以继续等待，或立即重试。" : "可以继续等待。";
+    retryStatus && serverRetryAt !== undefined
+      ? `模型过载，${countdown} 后自动重试（${retryStatus.attempt}/${retryStatus.maxRetries}）`
+      : pending || retryStatus?.origin === "manual"
+        ? `${status}…`
+        : retryStatus
+          ? `${status}… ${retryStatus.attempt}/${retryStatus.maxRetries}`
+          : `${status} · ${seconds} 秒`;
+  const guidance = canRetry ? "可以继续等待，或立即重试。" : "可以继续等待。";
   return (
     <div className="model-wait">
       {(wait || retryStatus || pending || error) && (
@@ -79,7 +90,7 @@ export function ModelWaitNotice({
           {error || message}
         </span>
       )}
-      {onRetry && (
+      {canRetry && (
         <button
           type="button"
           className="model-wait-retry"

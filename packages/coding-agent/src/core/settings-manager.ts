@@ -21,7 +21,7 @@ export interface ProviderRetrySettings {
   maxRetries?: number;
   maxRetryDelayMs?: number;
 }
-export interface RetrySettings extends Partial<RetryPolicy> {
+export interface RetrySettings extends Partial<Omit<RetryPolicy, "chatgptOverloadMaxElapsedMs">> {
   provider?: ProviderRetrySettings;
 }
 export interface Settings {
@@ -107,14 +107,18 @@ export class SettingsManager {
         this.settings.compaction?.microcompact?.enabled === true,
     };
   }
-  getRetrySettings(): RetryPolicy {
+  getRetrySettings(model?: Pick<Model, "auth" | "api">): RetryPolicy {
     const config = this.settings.retry;
+    const maxElapsedMs = Number.isFinite(config?.maxElapsedMs) ? config?.maxElapsedMs : undefined;
     return {
       enabled: config?.enabled ?? true,
       maxRetries: config?.maxRetries ?? 10,
       baseDelayMs: config?.baseDelayMs ?? 2000,
       maxAgentDelayMs: config?.maxAgentDelayMs ?? 60000,
-      maxElapsedMs: Number.isFinite(config?.maxElapsedMs) ? config?.maxElapsedMs : 600000,
+      maxElapsedMs: maxElapsedMs ?? 600_000,
+      ...(model?.auth === "chatgpt" && model.api === "openai-responses"
+        ? { chatgptOverloadMaxElapsedMs: maxElapsedMs ?? 900_000 }
+        : {}),
     };
   }
   getProviderRetrySettings(): ProviderRetrySettings {

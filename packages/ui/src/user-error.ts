@@ -57,6 +57,8 @@ export function userErrorMessage(error: unknown): string {
   const summary = message.split(/[\r\n]/, 1)[0]?.slice(0, 1000) ?? "";
   const signal = `${code} ${summary}`;
   const status = typeof details?.status === "number" ? details.status : undefined;
+  if (/Model overload retry would exceed the automatic recovery time limit/i.test(signal))
+    return "模型过载，服务端要求的等待时间超过本轮自动恢复上限。请稍后重试或切换模型。";
   if (/MODEL_RECOVERY_DEADLINE|Model recovery time limit exceeded/i.test(signal))
     return "模型连接恢复已超时，请检查网络或切换模型后继续。";
   if (/MODEL_STREAM_IDLE_TIMEOUT|Model stream stalled/i.test(signal))

@@ -99,6 +99,7 @@ describe("userErrorMessage", () => {
     ["TypeError: Failed to fetch", "无法连接到服务"],
     ["net::ERR_NAME_NOT_RESOLVED", "无法连接到服务"],
     ["503 <html>secret server details</html>", "模型服务暂时不可用"],
+    ["Model overload retry would exceed the automatic recovery time limit.", "超过本轮自动恢复上限"],
     [{ status: 502, message: "secret server details" }, "模型服务暂时不可用"],
     ["AbortError: operation was aborted", "操作已取消"],
     ["offline", "无法连接到服务"],
