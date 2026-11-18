@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,8 +95,6 @@ try {
       join(root, `packages/agent-sdk/dist/${entry}.d.ts`),
       `export * from "./types/agent-sdk/src/${entry}.js";\n`,
     );
-  await mkdir(join(root, "packages/agent-sdk"), { recursive: true });
-  await cp(join(root, "licenses/third-party-notices.txt"), join(root, "packages/agent-sdk/NOTICE"));
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

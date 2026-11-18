@@ -1,6 +1,6 @@
 {
   "name": "@zpi-dev/workspace",
-  "version": "0.3.32",
+  "version": "0.3.33",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -59,7 +59,7 @@
     "files": [
       "packages/desktop/dist/**/*",
       "package.json",
-      "licenses/third-party-notices.txt"
+      "packages/desktop/NOTICE"
     ],
     "extraMetadata": {
       "productName": "ZPI",
