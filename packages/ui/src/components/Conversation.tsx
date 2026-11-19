@@ -130,6 +130,7 @@ function UserMessageEditor({
   context,
   onEdit,
   onCancel,
+  onRevealEditor,
   suggestions,
   onFile,
 }: {
@@ -138,9 +139,14 @@ function UserMessageEditor({
   context?: ComposerContext;
   onEdit: EditMessage;
   onCancel: () => void;
+  onRevealEditor?: (editor: HTMLElement) => void;
   suggestions?: InputSuggestion[];
   onFile?: FileOpenHandler;
 }) {
+  const editor = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (editor.current) onRevealEditor?.(editor.current);
+  }, [onRevealEditor]);
   const storage = useRef(new ComposerDraftStore());
   const [conflict, setConflict] = useState<{ files: FileRewindConflict[]; input: MessageEditInput }>();
   const [resolving, setResolving] = useState(false);
@@ -158,7 +164,7 @@ function UserMessageEditor({
       pending: 0,
     });
   return (
-    <section className="user-message-editor" aria-label="编辑消息">
+    <section ref={editor} className="user-message-editor" aria-label="编辑消息">
       <ChatComposer
         sessionId={sessionId}
         busy={false}
@@ -510,12 +516,14 @@ export const RunGroup = memo(function RunGroup({
   onFile,
   sessionId,
   onEdit,
+  onRevealEditor,
   onFork,
   onRetryModel,
   suggestions,
 }: {
   suggestions?: InputSuggestion[];
   onEdit?: EditMessage;
+  onRevealEditor?: (editor: HTMLElement) => void;
   onFork?: (runId: string) => Promise<void>;
   onRetryModel?: (runId: string) => Promise<unknown>;
   run: RunView;
@@ -638,6 +646,7 @@ export const RunGroup = memo(function RunGroup({
                 suggestions={suggestions}
                 onEdit={onEdit}
                 onCancel={cancelEdit}
+                onRevealEditor={onRevealEditor}
                 onFile={onFile}
               />
             ) : (
@@ -1143,6 +1152,24 @@ export function Conversation({
     lastScrollTop.current = el.scrollTop;
   };
   const [showLatest, setShowLatest] = useState(false);
+  const revealEditor = useCallback((editor: HTMLElement) => {
+    const root = ref.current;
+    if (!root) return;
+    const viewportTop = root.getBoundingClientRect().top;
+    const viewportBottom = viewportTop + root.clientHeight;
+    const { top, bottom } = editor.getBoundingClientRect();
+    // Leave space for the floating back-to-bottom button. If the editor is too
+    // tall to fit, keep its start visible so the user can begin editing.
+    const offset = Math.min(top - viewportTop, Math.max(0, bottom - (viewportBottom - 40)));
+    scrollNavigation.current++;
+    readingReady.current = true;
+    root.scrollTop += offset;
+    const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
+    if (distance > 8) following.current = false;
+    lastScrollTop.current = root.scrollTop;
+    setShowLatest(distance >= 60);
+    saveReadingRef.current();
+  }, []);
   const [navigatorWide, setNavigatorWide] = useState(false);
   const [navigatorTarget, setNavigatorTarget] = useState<string>();
   const pinnedRuns = useMemo(
@@ -1586,6 +1613,7 @@ export function Conversation({
           context={context}
           readWebSourceIcon={readWebSourceIcon}
           onEdit={run.runId === latestRunId ? onEdit : undefined}
+          onRevealEditor={revealEditor}
           onFork={onFork}
           onRetryModel={onRetryModel}
           onChanges={onChanges}
@@ -1627,6 +1655,7 @@ export function Conversation({
       readWebSourceIcon,
       latestRunId,
       onEdit,
+      revealEditor,
       onFork,
       onRetryModel,
       onChanges,
@@ -1834,7 +1863,7 @@ export function ChatComposer({
   const filePanelId = useId();
   useEffect(() => {
     if (onCancel) {
-      const frame = requestAnimationFrame(() => textarea.current?.focus());
+      const frame = requestAnimationFrame(() => textarea.current?.focus({ preventScroll: true }));
       return () => cancelAnimationFrame(frame);
     }
   }, [onCancel]);

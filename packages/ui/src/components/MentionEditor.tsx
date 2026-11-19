@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, us
 import { EditorHistory } from "./editor-history.ts";
 import { displayReferences, referenceStyle } from "./Reference.tsx";
 export interface MentionEditorHandle {
-  focus(): void;
+  focus(options?: FocusOptions): void;
   setSelectionRange(start: number, end: number): void;
   readonly selectionStart: number;
   readonly selectionEnd: number;
@@ -180,7 +180,7 @@ export const MentionEditor = forwardRef<
     useImperativeHandle(
       ref,
       () => ({
-        focus: () => root.current?.focus(),
+        focus: (options) => root.current?.focus(options),
         setSelectionRange: (start, end) => {
           pendingCaret.current = [start, end];
           if (root.current && end <= text(root.current).length) {

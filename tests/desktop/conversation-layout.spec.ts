@@ -6,6 +6,64 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+test("opening inline message editing reveals the entire composer above the dock", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-inline-edit-layout-"));
+  const server = await fakeServer((_, response) => {
+    send(response, chunk({ content: "这是一段较长的回复。\n\n".repeat(60) }));
+    done(response);
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>>;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    const composer = page.locator(".composer-container");
+    const input = composer.getByLabel("消息", { exact: true });
+    const runs = page.getByTestId("run");
+    await input.fill("前一条消息");
+    await input.press("Enter");
+    await expect(runs).toHaveCount(1);
+    await expect(runs.last()).toHaveAttribute("data-status", "completed");
+    await input.fill("第一行\n第二行");
+    await input.press("Enter");
+    await expect(runs).toHaveCount(2);
+    await expect(runs.last()).toHaveAttribute("data-status", "completed");
+    const edit = page.getByRole("button", { name: "编辑", exact: true });
+    await edit.evaluate((button) => {
+      const conversation = button.closest(".conversation");
+      if (!conversation) throw new Error("Missing conversation viewport");
+      conversation.scrollTop +=
+        button.getBoundingClientRect().bottom - conversation.getBoundingClientRect().bottom + 4;
+    });
+    await edit.click();
+
+    const editor = page.getByRole("region", { name: "编辑消息" });
+    const field = editor.getByLabel("消息", { exact: true });
+    await expect(field).toBeFocused();
+    await expect(editor).toBeInViewport({ ratio: 1 });
+    const latest = page.getByRole("button", { name: "回到最新", exact: true });
+    await expect(latest).toBeVisible();
+    const editing = await editor.boundingBox();
+    const jump = await latest.boundingBox();
+    if (!editing || !jump) throw new Error("Missing inline editor or back-to-bottom button");
+    expect(editing.y + editing.height).toBeLessThan(jump.y);
+
+    await field.press("Escape");
+    await expect(editor).toHaveCount(0);
+    const conversation = page.locator(".conversation");
+    const scrollTop = await conversation.evaluate((element) => element.scrollTop);
+    await edit.click();
+    await expect(field).toBeFocused();
+    await expect(editor).toBeInViewport({ ratio: 1 });
+    expect(await conversation.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+  } finally {
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
+
 test("ZCode turn actions stay near the composer and share the turn hover area at every column width", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-conversation-layout-"));
   const text = Array.from(
