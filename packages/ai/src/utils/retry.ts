@@ -336,7 +336,8 @@ export function isRetryableAssistantError(message: AssistantMessage): boolean {
   if (message.errorDetails?.code === "MODEL_REQUEST_RETRY") return true;
   if (message.errorDetails?.code === "MODEL_RECOVERY_DEADLINE") return false;
   if (message.errorDetails?.retryable === false) return false;
-  const errorMessage = message.errorMessage;
+  // Provider guidance can link to a billing page even for temporary rate limits.
+  const errorMessage = message.errorMessage.replace(/https?:\/\/[^\s"<>]+/giu, "");
   if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
   return message.errorDetails?.retryable ?? RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

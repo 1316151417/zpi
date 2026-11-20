@@ -202,9 +202,70 @@ it.each(["openai-completions", "openai-responses", "anthropic-messages"] as cons
   },
 );
 
+it.each([
+  ["6.307s", undefined, 6307],
+  ["6.307s", "3500", 3500],
+  ["4500ms", undefined, 4500],
+] as const)(
+  "recovers OpenAI Responses stream throttling with retry guidance %s and header %s",
+  async (retryIn, retryAfterHeader, expectedDelay) => {
+    const headers = new Headers({ "content-type": "text/event-stream" });
+    if (retryAfterHeader !== undefined) headers.set("retry-after-ms", retryAfterHeader);
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        const delta = {
+          type: "response.output_text.delta",
+          item_id: "m",
+          content_index: 0,
+          delta: "partial",
+        };
+        const error = {
+          type: "error",
+          code: "rate_limit_exceeded",
+          message: `Rate limit reached on tokens per min (TPM). Please try again in ${retryIn}. You can increase your rate limit by adding a payment method at https://platform.openai.com/account/billing.`,
+        };
+        return new Response(
+          `data: ${JSON.stringify(delta)}\n\nevent: error\ndata: ${JSON.stringify(error)}\n\n`,
+          {
+            headers,
+          },
+        );
+      })
+      .mockImplementationOnce(async () => {
+        const done = {
+          type: "response.completed",
+          response: { id: "r", status: "completed", output: [], usage: null },
+        };
+        const delta = {
+          type: "response.output_text.delta",
+          item_id: "m",
+          content_index: 0,
+          delta: "recovered",
+        };
+        return new Response(`data: ${JSON.stringify(delta)}\n\ndata: ${JSON.stringify(done)}\n\n`, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      });
+    const model = { ...fakeModel("http://local/v1"), provider: "openai", api: "openai-responses" } as const;
+    const waitBeforeRetry = vi.fn(async () => false);
+    const result = await retryAssistantCall(
+      () =>
+        streamSimple(model, normalizeContext({ messages: [] }), { apiKey: "local", fetch: fetcher }).result(),
+      policy,
+      undefined,
+      { waitBeforeRetry },
+    );
+    expect(result.content).toEqual([{ type: "text", text: "recovered" }]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(waitBeforeRetry).toHaveBeenCalledExactlyOnceWith(expectedDelay, undefined, undefined);
+  },
+);
+
 it("uses structured retry facts before display text and retains unknown-error fallback", () => {
   for (const [error, retryable] of [
     [Object.assign(new Error("ENETUNREACH"), { code: "ENETUNREACH" }), true],
+    [Object.assign(new Error("busy"), { code: "rate_limit_exceeded" }), true],
     [Object.assign(new Error("fetch failed"), { cause: { code: "CERT_HAS_EXPIRED" } }), false],
     [
       Object.assign(new Error("503 busy"), {

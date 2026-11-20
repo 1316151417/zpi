@@ -49,6 +49,7 @@ const TRANSIENT_CODES = new Set([
   "1312",
   "2007",
   "3002",
+  "rate_limit_exceeded",
   "rate_limit_reached_error",
   "rate_limit_error",
   "engine_overloaded_error",
@@ -99,6 +100,16 @@ function retryAfter(headers: Headers, strict: boolean): number | undefined {
   if (Number.isFinite(delay)) return Math.max(0, Math.round(delay));
 }
 
+function rateLimitRetryAfter(records: Record<string, unknown>[]): number | undefined {
+  for (const { message } of records) {
+    if (typeof message !== "string") continue;
+    const match = /\bplease try again in (\d+(?:\.\d+)?)\s*(ms|s)\b/iu.exec(message);
+    if (!match) continue;
+    const delay = Number(match[1]) * (match[2].toLowerCase() === "ms" ? 1 : 1000);
+    if (Number.isFinite(delay)) return Math.ceil(delay);
+  }
+}
+
 /** Preserve retry facts before provider errors are converted into transcript text. */
 export function modelFailure(
   error: unknown,
@@ -135,7 +146,8 @@ export function modelFailure(
   const retryAfterMs =
     shouldRetry === "false" || shouldRetry === "0"
       ? undefined
-      : headers.map((value) => retryAfter(value, overload)).find((value) => value !== undefined);
+      : (headers.map((value) => retryAfter(value, overload)).find((value) => value !== undefined) ??
+        (codes.includes("rate_limit_exceeded") ? rateLimitRetryAfter(records) : undefined));
   const aborted = signal?.aborted || records.some((r) => r.name === "AbortError" || r.code === "ABORT_ERR");
   const terminal =
     codes.some((code) => TERMINAL_CODES.has(code) || /CERT|TLS|SSL/iu.test(code)) ||
