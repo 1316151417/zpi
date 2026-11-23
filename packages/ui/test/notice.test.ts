@@ -288,7 +288,7 @@ test("uses one message for manual retries, automatic recovery and subsequent qui
   expect(vi.getTimerCount()).toBe(1);
 });
 
-test("counts down a subscription overload and restores manual retry for a normal reconnect", async () => {
+test("counts down a subscription overload and allows manual retry during the wait", async () => {
   vi.setSystemTime(100_000);
   const retry = vi.fn(async () => true);
   const status: ModelRetryStatus = { attempt: 1, maxRetries: 10, retryDelayMs: 320_000, errorStatus: 503 };
@@ -297,12 +297,13 @@ test("counts down a subscription overload and restores manual retry for a normal
   await render({ ...status, serverRetryAt: 420_000 });
   const message = container.querySelector(".model-wait-message");
   expect(message?.textContent).toBe("模型过载，5:20 后自动重试（1/10）");
-  expect(container.querySelector("button")).toBeNull();
+  const button = container.querySelector<HTMLButtonElement>("button");
+  expect(button?.getAttribute("aria-label")).toBe("立即重试");
   await advance(1000);
   expect(message?.textContent).toBe("模型过载，5:19 后自动重试（1/10）");
+  await act(async () => button?.click());
+  expect(retry).toHaveBeenCalledOnce();
   await render(status);
   expect(message?.textContent).toBe("重新连接中… 1/10");
   expect(vi.getTimerCount()).toBe(0);
-  await act(async () => container.querySelector<HTMLButtonElement>("button")?.click());
-  expect(retry).toHaveBeenCalledOnce();
 });

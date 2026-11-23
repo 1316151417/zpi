@@ -71,7 +71,16 @@ it.each(["recover", "budget", "cancel"])(
   },
 );
 
-it.each(["subscription", "api-key", "custom-deadline", "default-deadline", "no-advice", "cancel"] as const)(
+const subscriptionOverloadRecoveryModes = [
+  "subscription",
+  "manual",
+  "api-key",
+  "custom-deadline",
+  "default-deadline",
+  "no-advice",
+  "cancel",
+] as const;
+it.each(subscriptionOverloadRecoveryModes)(
   "applies the subscription overload recovery policy for %s",
   async (mode) => {
     const retryStatuses: ModelRetryStatus[] = [];
@@ -150,11 +159,8 @@ it.each(["subscription", "api-key", "custom-deadline", "default-deadline", "no-a
       }
       expect(retryStatuses[0]).toMatchObject({ attempt: 1, maxRetries: 10, retryDelayMs: 320_000 });
       if (mode === "api-key") expect(retryStatuses[0].serverRetryAt).toBeUndefined();
-      else {
-        expect(retryStatuses[0].serverRetryAt).toBe(requests[0] + 320_000);
-        expect(session.retryModelRequest()).toBe(false);
-      }
-      await vi.advanceTimersByTimeAsync(319_999);
+      else expect(retryStatuses[0].serverRetryAt).toBe(requests[0] + 320_000);
+      await vi.advanceTimersByTimeAsync(mode === "manual" ? 10_000 : 319_999);
       expect(requests).toHaveLength(1);
       if (mode === "cancel") {
         await session.abort();
@@ -163,10 +169,19 @@ it.each(["subscription", "api-key", "custom-deadline", "default-deadline", "no-a
         expect(requests).toHaveLength(1);
         return;
       }
-      await vi.advanceTimersByTimeAsync(1);
+      if (mode === "manual") {
+        expect(session.retryModelRequest()).toBe(true);
+        expect(session.retryModelRequest()).toBe(false);
+        expect(retryStatuses[1]).toMatchObject({ origin: "manual", retryDelayMs: 0 });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(requests[1]).toBe(requests[0] + 10_000);
+      } else {
+        await vi.advanceTimersByTimeAsync(1);
+      }
       expect(requests).toHaveLength(2);
-      if (mode === "subscription") {
-        expect(retryStatuses[1]).toMatchObject({
+      if (mode === "subscription" || mode === "manual") {
+        expect(retryStatuses.at(-1)).toMatchObject({
+          origin: "auto",
           attempt: 2,
           retryDelayMs: 313_000,
           serverRetryAt: requests[1] + 313_000,

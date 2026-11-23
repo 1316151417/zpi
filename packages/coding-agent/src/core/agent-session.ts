@@ -582,7 +582,7 @@ export class AgentSession {
         },
         serverRetryAt === undefined ? delay : Math.max(0, serverRetryAt - Date.now()),
       );
-      this.retryCurrentRequest = serverRetryAt === undefined ? retryNow : undefined;
+      this.retryCurrentRequest = retryNow;
       if (signal?.aborted) abort();
       else signal?.addEventListener("abort", abort, { once: true });
     });

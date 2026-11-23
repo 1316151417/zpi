@@ -292,7 +292,7 @@ export interface ModelRetryStatus {
   maxRetries: number;
   retryDelayMs: number;
   errorStatus: number | null;
-  /** Earliest retry time supplied by the server for a subscription overload. */
+  /** Scheduled automatic retry time based on the server's subscription overload advice. */
   serverRetryAt?: number;
 }
 export interface ModelWaitStatus {

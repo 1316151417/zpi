@@ -22,7 +22,6 @@ export function ModelWaitNotice({
   const origin = retryStatus?.origin;
   const attempt = retryStatus?.attempt;
   const serverRetryAt = retryStatus?.serverRetryAt;
-  const canRetry = Boolean(onRetry && serverRetryAt === undefined);
   useEffect(() => {
     revision.current++;
     retryPending.current = false;
@@ -40,7 +39,7 @@ export function ModelWaitNotice({
     };
   }, [phase, startedAt, origin, attempt, serverRetryAt]);
   const retry = () => {
-    if (!onRetry || !canRetry || retryPending.current) return;
+    if (!onRetry || retryPending.current) return;
     retryPending.current = true;
     const current = revision.current;
     setPending(true);
@@ -78,7 +77,7 @@ export function ModelWaitNotice({
         : retryStatus
           ? `${status}… ${retryStatus.attempt}/${retryStatus.maxRetries}`
           : `${status} · ${seconds} 秒`;
-  const guidance = canRetry ? "可以继续等待，或立即重试。" : "可以继续等待。";
+  const guidance = onRetry ? "可以继续等待，或立即重试。" : "可以继续等待。";
   return (
     <div className="model-wait">
       {(wait || retryStatus || pending || error) && (
@@ -90,7 +89,7 @@ export function ModelWaitNotice({
           {error || message}
         </span>
       )}
-      {canRetry && (
+      {onRetry && (
         <button
           type="button"
           className="model-wait-retry"
