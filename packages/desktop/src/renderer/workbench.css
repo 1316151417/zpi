@@ -348,6 +348,9 @@
   flex-shrink: 0;
   white-space: nowrap;
 }
+.pane-tab-content > .task-unread-dot {
+  flex-shrink: 0;
+}
 .tab-close {
   position: absolute;
   right: 4px;

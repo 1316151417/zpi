@@ -85,12 +85,17 @@ test("side chats reuse the smallest free number and retain other conversations",
     await expect(page.getByTestId("run")).toHaveAttribute("data-status", "completed");
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await page.locator(".pane-empty-launcher").getByRole("button", { name: "辅助对话", exact: true }).click();
+    const sideEditor = page
+      .getByRole("region", { name: "辅助对话", exact: true })
+      .getByLabel("消息", { exact: true });
+    await expect(sideEditor).toBeVisible();
     const add = async () => {
       await page.getByLabel("新增侧栏标签", { exact: true }).click();
       await page
         .locator(".pane-empty-launcher:visible")
         .getByRole("button", { name: "辅助对话", exact: true })
         .click();
+      await expect(sideEditor).toBeVisible();
     };
     await expect(page.getByRole("tab", { name: "辅助对话 1", exact: true })).toBeVisible();
     await add();
@@ -105,10 +110,7 @@ test("side chats reuse the smallest free number and retain other conversations",
     await add();
     await expect(page.getByRole("tab", { name: "辅助对话 2", exact: true })).toBeVisible();
     await expect(page.getByRole("tab", { name: "辅助对话 4", exact: true })).toHaveCount(0);
-    await page
-      .getByRole("tab", { name: "辅助对话 3", exact: true })
-      .getByRole("button", { name: "辅助对话 3", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "辅助对话 3", exact: true }).locator(".pane-tab-trigger").click();
     await expect(third.getByLabel("消息", { exact: true })).toHaveText("保留第三份草稿");
   } finally {
     await runCleanup([

@@ -8,6 +8,7 @@ import {
   webOpenTarget,
 } from "@zpi-dev/ui/links";
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import type {
   BrowserState,
   FilePreview,
@@ -120,6 +121,21 @@ export function useSideChatBlocked(parentId: string | undefined) {
   });
   return useStore((state) => Boolean(state.views.get(childId ?? "")?.question));
 }
+export function useUnreadSideChatParents() {
+  const tabs = usePane((state) => state.tabs);
+  return useStore(
+    useShallow(
+      (state) =>
+        new Set(
+          tabs.flatMap((tab) =>
+            tab.type === "side-chat" && state.sessions.get(tab.childSessionId)?.unreadAt !== undefined
+              ? [tab.sessionId]
+              : [],
+          ),
+        ),
+    ),
+  );
+}
 export function canOpenSideChat(record: SessionRecord | undefined) {
   return Boolean(
     record && !record.draft && !record.parentSessionId && !(record.newWorktree && !record.worktree),
@@ -177,6 +193,22 @@ export function activatePaneTab(id: string) {
   const fullView = state.fullView ? { ...state.fullView, surface: "side-pane" as const } : null;
   preferences.set(sessionId, { open: state.open, active: id, fullView });
   usePane.setState({ active: id, preferences, fullView });
+}
+export function revealSideChat(childId: string): string | undefined {
+  const state = usePane.getState();
+  const tab = state.tabs.find((tab) => tab.type === "side-chat" && tab.childSessionId === childId);
+  if (tab?.type !== "side-chat") return;
+  const parentId = tab.sessionId;
+  const preferences = new Map(state.preferences);
+  const fullView = preferences.get(parentId)?.fullView;
+  preferences.set(parentId, {
+    open: true,
+    active: tab.id,
+    fullView: fullView ? { ...fullView, surface: "side-pane" } : null,
+  });
+  usePane.setState({ preferences });
+  if (parentId === useStore.getState().selected) restorePane();
+  return parentId;
 }
 export function reorderPaneTab(id: string, targetId: string) {
   const state = usePane.getState();

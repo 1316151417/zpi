@@ -244,6 +244,8 @@ function reduceSessionRecord(
       };
     case "session_changed":
       return { ...record, title: event.title };
+    case "session_read":
+      return record.unreadAt === event.unreadAt ? { ...record, unreadAt: undefined } : record;
     case "started":
       return { ...record, draft: false, status: "running", running: true, updatedAt: event.startedAt };
     case "settled":

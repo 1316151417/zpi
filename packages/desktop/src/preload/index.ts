@@ -120,6 +120,7 @@ const bridge: DesktopBridge = {
   restoreSession: (id) => call("restoreSession", id),
   openDirectory: (path) => call("openDirectory", path),
   activateSession: (id) => call("activateSession", id),
+  setVisibleSideChat: (id) => call("setVisibleSideChat", id),
   createTerminal: (id) => call("createTerminal", id),
   terminalInput: (id, data) => call("terminalInput", id, data),
   resizeTerminal: (id, cols, rows) => call("resizeTerminal", id, cols, rows),

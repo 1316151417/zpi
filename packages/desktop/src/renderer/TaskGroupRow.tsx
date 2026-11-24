@@ -24,6 +24,7 @@ import { unwrap } from "./unwrap.ts";
 
 export function TaskGroupRow({
   record,
+  sideChatUnread = false,
   state,
   selected,
   dragging = false,
@@ -32,6 +33,7 @@ export function TaskGroupRow({
   interactionDisabled = false,
 }: {
   record: SessionRecord;
+  sideChatUnread?: boolean;
   state: TaskGroupState;
   selected?: string;
   dragging?: boolean;
@@ -75,8 +77,9 @@ export function TaskGroupRow({
         await refresh();
       });
   };
-  const indicator =
-    record.status === "error"
+  const indicator = sideChatUnread
+    ? "unread"
+    : record.status === "error"
       ? "error"
       : record.unreadAt !== undefined
         ? "unread"
@@ -94,6 +97,7 @@ export function TaskGroupRow({
       {...(!overlay ? draggable.listeners : {})}
       role={overlay ? undefined : "button"}
       tabIndex={overlay ? undefined : 0}
+      aria-description={sideChatUnread ? "有未读辅助对话" : undefined}
       className={`grouped-task-row${selected === record.id ? " active" : ""}${overlay ? " task-group-drag-overlay" : ""}`}
       data-session-id={record.id}
       data-testid={overlay ? undefined : "session-row"}
@@ -146,14 +150,20 @@ export function TaskGroupRow({
       )}
       <span className="grouped-task-metadata">
         {record.pendingQuestion ? (
-          <QuestionBadge record={record} />
+          <>
+            {sideChatUnread && <span className="task-unread-dot" data-unread-indicator="true" />}
+            <QuestionBadge record={record} />
+          </>
         ) : (
           <>
             <span className="grouped-task-time">
               {indicator === "running" ? (
                 <LoaderIcon size={14} className="task-running-icon" />
               ) : indicator !== "none" ? (
-                <span className={`task-${indicator}-dot`} />
+                <span
+                  className={`task-${indicator}-dot`}
+                  data-unread-indicator={indicator === "unread" || undefined}
+                />
               ) : null}
               <span>{formatTaskRelativeTime(record.updatedAt)}</span>
             </span>

@@ -6,6 +6,7 @@ export const streamingActivityIntervalMs = 5_000;
 export function sessionActivityAt(event: DesktopEvent, previous: number, now: number): number | undefined {
   switch (event.type) {
     case "session_changed":
+    case "session_read":
     case "controls_changed":
     case "model_performance":
     case "queue_changed":

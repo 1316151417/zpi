@@ -14,6 +14,7 @@ import {
   paneTask,
   reorderPaneTab,
 } from "./pane-store.ts";
+import { useStore } from "./store.ts";
 
 export function PaneTabs({
   tabs,
@@ -92,6 +93,9 @@ function SortablePaneTab({
     id: tab.id,
   });
   const wasDragging = useRef(false);
+  const unread = useStore(
+    (state) => tab.type === "side-chat" && state.sessions.get(tab.childSessionId)?.unreadAt !== undefined,
+  );
   if (isDragging) wasDragging.current = true;
 
   return (
@@ -103,6 +107,7 @@ function SortablePaneTab({
           {...listeners}
           role="tab"
           aria-label={tab.title}
+          aria-description={unread ? "有未读回复" : undefined}
           aria-selected={active}
           tabIndex={active ? 0 : -1}
           title={isDragging ? undefined : tab.title}
@@ -149,7 +154,7 @@ function SortablePaneTab({
           }}
         >
           <span className="pane-tab-trigger">
-            <PaneTabContent tab={tab} />
+            <PaneTabContent tab={tab} unread={unread} />
           </span>
           <button
             className="tab-close"
@@ -185,12 +190,13 @@ function SortablePaneTab({
   );
 }
 
-function PaneTabContent({ tab }: { tab: PaneTab }) {
+function PaneTabContent({ tab, unread }: { tab: PaneTab; unread?: boolean }) {
   return (
     <span className="pane-tab-content">
       <span className="pane-tab-icon">
         <PaneTabIcon tab={tab} />
       </span>
+      {unread && <span className="task-unread-dot" data-unread-indicator="true" aria-hidden="true" />}
       <span className="pane-tab-title">{tab.title}</span>
       {tab.type === "changes" && !tab.reviewSource && <span className="pane-tab-diff-badge">Diff</span>}
     </span>

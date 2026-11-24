@@ -8,6 +8,7 @@ import { unwrap } from "./unwrap.ts";
 
 export function SidebarTaskRow({
   record: r,
+  sideChatUnread = false,
   active,
   workspace,
   variant = "default",
@@ -18,6 +19,7 @@ export function SidebarTaskRow({
   onArchive,
 }: {
   record: SessionRecord;
+  sideChatUnread?: boolean;
   active: boolean;
   workspace: string;
   variant?: "default" | "timeline";
@@ -27,8 +29,15 @@ export function SidebarTaskRow({
   onPin(): void;
   onArchive(): void;
 }) {
-  const indicator =
-    r.status === "error" ? "error" : r.unreadAt !== undefined ? "unread" : r.running ? "running" : "none";
+  const indicator = sideChatUnread
+    ? "unread"
+    : r.status === "error"
+      ? "error"
+      : r.unreadAt !== undefined
+        ? "unread"
+        : r.running
+          ? "running"
+          : "none";
   const actions = (
     <span className="task-row-actions">
       <ActionHint label={r.running ? "请先停止运行" : "归档任务"} appearance="control" hideWhenDetached>
@@ -68,6 +77,7 @@ export function SidebarTaskRow({
       className={`session-row ${active ? "active" : ""} ${variant === "timeline" ? "timeline-row" : ""}`}
       role="button"
       tabIndex={0}
+      aria-description={sideChatUnread ? "有未读辅助对话" : undefined}
       onClick={onSelect}
       // Pointer clicks select the task without retaining the keyboard controls after hover ends.
       onMouseDown={(event) => event.preventDefault()}

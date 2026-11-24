@@ -466,8 +466,12 @@ async function launch(): Promise<void> {
     offEvents();
     eventBatcher.close();
   });
-  window.webContents.on("render-process-gone", () => eventBatcher.clear());
-  window.webContents.on("did-navigate", () => eventBatcher.clear());
+  const clearRendererState = () => {
+    eventBatcher.clear();
+    host.setVisibleSideChat(null);
+  };
+  window.webContents.on("render-process-gone", clearRendererState);
+  window.webContents.on("did-navigate", clearRendererState);
   ipcMain.handle("zpi:call", async (event, method: unknown, args: unknown): Promise<Result<unknown>> => {
     try {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)
@@ -529,6 +533,7 @@ async function launch(): Promise<void> {
         getGitEnvironment: 1,
         setNewWorktree: 3,
         activateSession: 1,
+        setVisibleSideChat: 1,
         archiveSession: 1,
         updateAutoArchive: 1,
         runAutoArchive: 0,
@@ -1148,6 +1153,9 @@ async function launch(): Promise<void> {
         }
         case "activateSession":
           value = host.activateSession(string(0));
+          break;
+        case "setVisibleSideChat":
+          host.setVisibleSideChat(sessionContext());
           break;
         case "getProviderCredentials":
           value = settings.getProviderCredentials(string(0));

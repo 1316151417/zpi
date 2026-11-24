@@ -161,6 +161,7 @@ function DropZone({
 function GroupItem({
   group,
   tasks,
+  unreadSideChatParents,
   state,
   selected,
   collapsed,
@@ -172,6 +173,7 @@ function GroupItem({
 }: {
   group: TaskGroup;
   tasks: SessionRecord[];
+  unreadSideChatParents: ReadonlySet<string>;
   state: TaskGroupState;
   selected?: string;
   collapsed: boolean;
@@ -495,6 +497,7 @@ function GroupItem({
                       <TaskGroupRow
                         key={record.id}
                         record={record}
+                        sideChatUnread={unreadSideChatParents.has(record.id)}
                         state={state}
                         selected={selected}
                         {...taskGroupRowDragProps(dragging, record.id, collapsed)}
@@ -516,6 +519,7 @@ function GroupItem({
 export function TaskGroups({
   state,
   records,
+  unreadSideChatParents,
   selected,
   collapsed,
   setCollapsed,
@@ -524,6 +528,7 @@ export function TaskGroups({
 }: {
   state: TaskGroupState;
   records: SessionRecord[];
+  unreadSideChatParents: ReadonlySet<string>;
   selected?: string;
   collapsed: string[];
   setCollapsed(value: string[] | ((current: string[]) => string[])): void;
@@ -695,6 +700,7 @@ export function TaskGroups({
                 <TaskGroupRow
                   key={`task:${node.id}`}
                   record={record}
+                  sideChatUnread={unreadSideChatParents.has(record.id)}
                   state={display}
                   selected={selected}
                   {...taskGroupRowDragProps(dragging, record.id)}
@@ -709,6 +715,7 @@ export function TaskGroups({
                 group={group}
                 state={display}
                 tasks={(display.members[group.id] ?? []).flatMap((id) => rows.get(id) ?? [])}
+                unreadSideChatParents={unreadSideChatParents}
                 selected={selected}
                 collapsed={
                   collapsed.includes(group.id) || (dragging?.type === "group" && dragging.id === group.id)
@@ -735,7 +742,12 @@ export function TaskGroups({
           {overlayRecord || overlayGroup ? (
             <div style={{ width: overlayWidth }}>
               {overlayRecord ? (
-                <TaskGroupRow record={overlayRecord} state={state} overlay />
+                <TaskGroupRow
+                  record={overlayRecord}
+                  sideChatUnread={unreadSideChatParents.has(overlayRecord.id)}
+                  state={state}
+                  overlay
+                />
               ) : overlayGroup ? (
                 <div className="task-group-header task-group-drag-overlay">
                   <TaskGroupColorMark color={overlayGroup.color} />

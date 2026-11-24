@@ -63,7 +63,11 @@ function setup() {
   const preferences = { ...defaultPreferences };
   const native = new TaskNotifications(window as unknown as BrowserWindow, () => preferences);
   const policy = new NotificationsPlugin({
-    sessions: { get: (id) => ({ id, projectId: null, title: "任务", createdAt: 0, updatedAt: 0 }) },
+    sessions: {
+      get: (id) => ({ id, projectId: null, title: "任务", createdAt: 0, updatedAt: 0 }),
+      configuration: () => ({ plugins: [] }),
+      closed: () => false,
+    },
     closing: () => false,
     notify: (request) => native.show(request),
   });

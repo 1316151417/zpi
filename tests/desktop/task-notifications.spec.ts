@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
 import type { Notification } from "electron";
-import { chunk, done, fakeServer, send } from "../fake-server.ts";
+import { chunk, deferred, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
@@ -12,6 +12,139 @@ import { expect, test } from "../helpers/test.ts";
 declare global {
   var notificationTest: { focused: boolean; shown: Notification[]; presentation: string[] };
 }
+
+test("auxiliary replies mark the parent task and tab unread, and system notifications reopen the right tab", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-side-chat-notifications-"));
+  const firstReply = deferred();
+  const secondReply = deferred();
+  const server = await fakeServer(async (_, response, index) => {
+    send(response, chunk({ content: `回复 ${index}` }));
+    if (index === 1) await firstReply.promise;
+    if (index === 2) await secondReply.promise;
+    done(response);
+  });
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+    await app.evaluate(({ BrowserWindow, Notification }) => {
+      globalThis.notificationTest = { focused: true, shown: [], presentation: [] };
+      Notification.isSupported = () => true;
+      Notification.prototype.show = function () {
+        globalThis.notificationTest.shown.push(this);
+      };
+      for (const window of BrowserWindow.getAllWindows())
+        window.isFocused = () => globalThis.notificationTest.focused;
+    });
+    await page.evaluate(() => {
+      // The test runner deliberately keeps the native window hidden and non-focusable.
+      Object.defineProperty(document, "visibilityState", { value: "visible" });
+      document.hasFocus = () => true;
+    });
+    const main = page.locator("main");
+    await main.getByLabel("消息", { exact: true }).fill("父任务");
+    await main.getByLabel("发送", { exact: true }).click();
+    await expect(main.getByTestId("run")).toHaveAttribute("data-status", "completed");
+    await expect(page.locator(".topbar-title")).toHaveText("父任务");
+    const parentId = await page.evaluate(() => localStorage.getItem("zpi.selectedSession"));
+    const parent = page.locator(`[data-session-id="${parentId}"]`);
+    const dot = '[data-unread-indicator="true"]';
+    const addSideChat = () =>
+      page
+        .locator(".pane-empty-launcher:visible")
+        .getByRole("button", { name: "辅助对话", exact: true })
+        .click();
+    const side = page.getByRole("region", { name: "辅助对话", exact: true });
+    const sendSide = async (text: string) => {
+      const editor = side.getByLabel("消息", { exact: true });
+      await editor.fill(text);
+      await editor.press("Enter");
+    };
+    await page.getByLabel("展开右侧栏", { exact: true }).click();
+    await addSideChat();
+    await sendSide("第一条辅助问题");
+    await expect(side.locator(".answer")).toHaveText("回复 1");
+    const first = page.getByRole("tab", { name: "辅助对话 1", exact: true });
+    const second = page.getByRole("tab", { name: "辅助对话 2", exact: true });
+    await page.getByLabel("新增侧栏标签", { exact: true }).click();
+    await addSideChat();
+    await expect(second).toHaveAttribute("aria-selected", "true");
+    firstReply.resolve();
+    await expect(first.locator(dot)).toBeVisible();
+    await expect(parent.locator(dot)).toBeVisible();
+    expect(await app.evaluate(() => globalThis.notificationTest.shown.length)).toBe(0);
+
+    await page.getByRole("button", { name: "筛选视图", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "按分组", exact: true }).click();
+    await expect(parent.locator(dot)).toBeVisible();
+    await sendSide("第二条辅助问题");
+    await expect(side.locator(".answer")).toHaveText("回复 2");
+    await page.getByLabel("进入完整视图", { exact: true }).click();
+    await page.locator(".pane-conversation-tab").click();
+    await expect(first.locator(dot)).toBeVisible();
+    await second.click();
+    await expect(second).toHaveAttribute("aria-selected", "true");
+    await page.evaluate(() => {
+      document.hasFocus = () => false;
+      window.dispatchEvent(new Event("blur"));
+    });
+    await app.evaluate(() => {
+      globalThis.notificationTest.focused = false;
+    });
+    secondReply.resolve();
+    await expect(second.locator(dot)).toBeVisible();
+    await expect.poll(() => app?.evaluate(() => globalThis.notificationTest.shown.length)).toBe(1);
+    expect(await app.evaluate(() => globalThis.notificationTest.shown[0].title)).toBe("辅助对话已完成");
+
+    await first.click();
+    await expect(first).toHaveAttribute("aria-selected", "true");
+    await page.locator(".sidebar-global").getByRole("button", { name: "新建任务", exact: true }).click();
+    await expect(page.locator(".topbar-title")).toHaveText("新任务");
+    await page.evaluate(() => {
+      document.hasFocus = () => true;
+    });
+    await app.evaluate(({ app, BrowserWindow }) => {
+      globalThis.notificationTest.focused = true;
+      const window = BrowserWindow.getAllWindows()[0];
+      window.isVisible = () => true;
+      window.focus = () => {};
+      if (process.platform === "darwin") {
+        if (app.dock) app.dock.show = async () => {};
+        app.show = () => {};
+        app.focus = () => {};
+      }
+      globalThis.notificationTest.shown[0].emit("click");
+    });
+    await expect(second).toHaveAttribute("aria-selected", "true");
+    await expect(side.locator(".answer")).toHaveText("回复 2");
+    await expect(second.locator(dot)).toHaveCount(0);
+    await expect(first.locator(dot)).toBeVisible();
+    await expect(parent.locator(dot)).toBeVisible();
+    await first.click();
+    await expect(first.locator(dot)).toHaveCount(0);
+    await expect(parent.locator(dot)).toHaveCount(0);
+    await sendSide("在当前标签继续提问");
+    await expect(side.getByTestId("run").last()).toHaveAttribute("data-status", "completed");
+    await expect(first.locator(dot)).toHaveCount(0);
+    const childId = await side.getAttribute("data-side-chat-session");
+    expect(
+      await page.evaluate(async (id) => {
+        if (!id) throw new Error("Missing side chat ID");
+        const snapshot = await window.zpi.getSessionSnapshot(id);
+        if (!snapshot.ok) throw new Error(snapshot.error.message);
+        return snapshot.value.session.unreadAt;
+      }, childId),
+    ).toBeUndefined();
+  } finally {
+    firstReply.resolve();
+    secondReply.resolve();
+    await runCleanup([
+      () => rm(dir, { recursive: true, force: true }),
+      () => server.close(),
+      () => app?.close(),
+    ]);
+  }
+});
 
 test("ZCode notification settings, disabled sound state and independent preferences survive restarts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-notification-preferences-"));

@@ -136,6 +136,7 @@ interface ActiveRun extends PluginRun {
   finish: () => void;
   ordinal: number;
   preparationAbort: AbortController;
+  sideChat: boolean;
   session?: AgentSession;
   hasAssistant?: boolean;
 }
@@ -175,6 +176,7 @@ export class SessionHost {
   readonly drafts: DraftStore;
   private records = new Map<string, SessionRecord>();
   private visibleSessionId?: string;
+  private visibleSideChatId?: string;
   private readonly taskListeners = new Set<() => void>();
   private autoArchiveTimer?: ReturnType<typeof setInterval>;
   private autoArchiveScan?: Promise<AutoArchiveResult>;
@@ -1238,6 +1240,22 @@ export class SessionHost {
     this.visibleSessionId = id;
     return structuredClone(record);
   }
+  setVisibleSideChat(id: string | null): void {
+    this.visibleSideChatId = undefined;
+    if (id === null || this.closing || this.closingChildren.has(id) || this.deleting.has(id)) return;
+    const record = this.records.get(id);
+    if (
+      !record?.parentSessionId ||
+      record.archivedAt != null ||
+      !this.settings.state.getTask(id)?.sideChatInheritance
+    )
+      return;
+    this.visibleSideChatId = id;
+    const { unreadAt } = record;
+    if (unreadAt === undefined) return;
+    this.saveUnread(id, undefined);
+    this.emit(id, "read", { type: "session_read", unreadAt });
+  }
   setSessionUnread(id: string): void {
     const record = this.record(id);
     if (
@@ -2206,7 +2224,8 @@ export class SessionHost {
   private emit(id: string, runId: string, event: DesktopEvent): void {
     const view = this.views.get(id);
     if (event.type === "model_performance" && view?.runs.at(-1)?.runId !== runId) return;
-    if (!view && event.type !== "session_changed") throw new Error("Missing session view");
+    if (!view && event.type !== "session_changed" && event.type !== "session_read")
+      throw new Error("Missing session view");
     const seq = (this.sequences.get(id) ?? view?.seq ?? 0) + 1;
     this.sequences.set(id, seq);
     const record = this.record(id);
@@ -2608,8 +2627,8 @@ export class SessionHost {
     const { sessionId: id, text } = input;
     const record = this.record(id);
     this.checkAncestors(id);
-    if (this.configuration(id).subagentProfile && !internalSubagent)
-      throw new Error("invalid_input: 子智能体会话只读");
+    const subagent = this.configuration(id).subagentProfile;
+    if (subagent && !internalSubagent) throw new Error("invalid_input: 子智能体会话只读");
     if (record.archivedAt != null) throw new Error("busy: 任务已归档，请先恢复");
     if (this.closing || this.deleting.has(id) || this.closingChildren.has(id))
       throw new Error("busy: 应用正在关闭或会话正在删除");
@@ -2633,6 +2652,7 @@ export class SessionHost {
       finish: () => finish(),
       ordinal: 0,
       preparationAbort: new AbortController(),
+      sideChat: Boolean(record.parentSessionId && !subagent),
     };
     this.activeRuns.set(id, run);
     const needsWorktree = Boolean(record.newWorktree && !record.worktree);
@@ -3140,6 +3160,7 @@ export class SessionHost {
       this.errors.write("agent.run", error ?? message ?? "Task failed", { sessionId: id, runId: run.runId });
     await this.runPluginHook(id, { event: "RunEnd", runId: run.runId, status });
     const endedAt = Date.now();
+    const record = this.record(id);
     const storageFailure = (error: unknown, source: string) => {
       this.errors.write(source, error, { sessionId: id, runId: run.runId });
       status = "error";
@@ -3156,8 +3177,8 @@ export class SessionHost {
         ...(message ? { error: message } : {}),
       });
       // Mark completed or failed runs unread only when their session is not being viewed.
-      if ((status === "completed" || status === "error") && this.visibleSessionId !== id)
-        this.saveUnread(id, endedAt);
+      const visible = run.sideChat ? this.visibleSideChatId === id : this.visibleSessionId === id;
+      if ((status === "completed" || status === "error") && !visible) this.saveUnread(id, endedAt);
     } catch (e) {
       storageFailure(e, "agent.persist");
     }
@@ -3176,7 +3197,6 @@ export class SessionHost {
     );
     if (message?.includes("storage:")) this.blocked.set(id, message);
     this.activeRuns.delete(id);
-    const record = this.record(id);
     record.status = status;
     try {
       this.saveTask(id, { status, updatedAt: endedAt });
@@ -3192,12 +3212,13 @@ export class SessionHost {
         error: message,
         unreadAt: record.unreadAt,
       });
-      await this.runPluginHook(id, {
-        event: "Notification",
-        runId: run.runId,
-        notificationType: status === "error" ? "task_failed" : "task_completed",
-        message: record.title,
-      });
+      if (!run.sideChat || status !== "aborted")
+        await this.runPluginHook(id, {
+          event: "Notification",
+          runId: run.runId,
+          notificationType: status === "error" ? "task_failed" : "task_completed",
+          message: record.title,
+        });
       this.emit(id, run.runId, { type: "controls_changed", controls: this.getControls(id) });
       this.trimCaches(id);
       this.plugins.continueRun(id, continuation);

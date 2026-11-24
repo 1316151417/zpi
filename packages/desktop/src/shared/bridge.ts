@@ -451,6 +451,7 @@ export interface DesktopBridge {
   listSessionMentions(sessionId: string): Promise<Result<SessionMentionSuggestion[]>>;
   createSession(projectId: string | null, groupId?: string | null): Promise<Result<SessionRecord>>;
   activateSession(sessionId: string): Promise<Result<SessionRecord>>;
+  setVisibleSideChat(sessionId: string | null): Promise<Result<void>>;
   setSessionPinned(sessionId: string, pinned: boolean): Promise<Result<SessionRecord>>;
   getSessionSnapshot(sessionId: string): Promise<Result<SessionSnapshot>>;
   renameSession(id: string, name: string): Promise<Result<SessionRecord>>;
@@ -615,6 +616,7 @@ export const methods = [
   "setSessionPinned",
   "createSession",
   "activateSession",
+  "setVisibleSideChat",
   "getSessionSnapshot",
   "renameSession",
   "deleteSession",

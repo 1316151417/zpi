@@ -12,6 +12,7 @@ import { PaneTabs } from "./PaneTabs.tsx";
 import {
   canOpenSideChat,
   openNewPaneTab,
+  paneTask,
   selectReviewSource,
   togglePaneFullView,
   updatePaneFullView,
@@ -25,18 +26,21 @@ import { SubagentPane } from "./SubagentPane.tsx";
 import { useStore } from "./store.ts";
 import { TaskDirectory } from "./TaskActivity.tsx";
 import { TerminalPane } from "./TerminalPane.tsx";
+import { unwrap } from "./unwrap.ts";
 export function RightPane({
   available,
   sessionId,
   findRequest,
   onFindStateChange,
   onSettings,
+  workspaceVisible = true,
 }: {
   findRequest?: FindRequest;
   onFindStateChange?: (state: FindState) => void;
   available: number;
   sessionId?: string;
   onSettings: () => void;
+  workspaceVisible?: boolean;
 }) {
   const sideChatAvailable = useStore((state) => {
     const record = state.sessions.get(sessionId ?? "");
@@ -70,8 +74,27 @@ export function RightPane({
     };
   }, [fullView, sessionId, state.open]);
   const tabs = visiblePaneTabs(sessionId, state.tabs);
-  const active =
-    state.fullView?.surface === "conversation" ? undefined : tabs.find((tab) => tab.id === state.active)?.id;
+  const activeTab =
+    state.fullView?.surface === "conversation" ? undefined : tabs.find((tab) => tab.id === state.active);
+  const active = activeTab?.id;
+  const sideChatId =
+    workspaceVisible && state.open && activeTab?.type === "side-chat" ? activeTab.childSessionId : null;
+  useLayoutEffect(() => {
+    const sync = () => {
+      const viewing = document.visibilityState === "visible" && document.hasFocus();
+      paneTask(window.zpi.setVisibleSideChat(viewing ? sideChatId : null).then(unwrap));
+    };
+    sync();
+    if (sideChatId === null) return;
+    window.addEventListener("focus", sync);
+    window.addEventListener("blur", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("blur", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [sideChatId]);
   return (
     <aside ref={panel} className="right-pane" hidden={!state.open} inert={!state.open} aria-label="右侧栏">
       <hr

@@ -57,12 +57,14 @@ import {
   openTerminal,
   openWebLink,
   paneTask,
+  revealSideChat,
   setPaneOpen,
   openChanges as showChanges,
   openFile as showFile,
   togglePaneFullView,
   usePane,
   useSideChatBlocked,
+  useUnreadSideChatParents,
 } from "./pane-store.ts";
 import { previewServices } from "./preview-services.ts";
 import { RightPane } from "./RightPane.tsx";
@@ -219,6 +221,7 @@ function showSubagent(task: SubagentTask) {
 export function App() {
   const state = useStore(useShallow(selectAppState));
   const records = useStore(useShallow(selectTaskRecords));
+  const unreadSideChatParents = useUnreadSideChatParents();
 
   const fullView = usePane((state) => state.fullView);
   const floatingComposer = fullView?.surface === "side-pane";
@@ -343,11 +346,16 @@ export function App() {
     const offNotificationClick = window.zpi.onTaskNotificationClick((id) => {
       void refresh()
         .then(async () => {
-          if (!useStore.getState().sessions.has(id)) return;
+          const { sessions, selected } = useStore.getState();
+          const record = sessions.get(id);
+          if (!record) return;
+          // Prepare the exact tab before navigation so the previously active tab is not marked read.
+          const sessionId = record.parentSessionId ? revealSideChat(id) : id;
+          if (!sessionId) return;
           setSettingsOpen(false);
           setModelOpen(false);
           setAction(undefined);
-          await selectSession(id);
+          if (!record.parentSessionId || selected !== sessionId) await selectSession(sessionId);
         })
         .catch(report);
     });
@@ -553,6 +561,7 @@ export function App() {
     <SidebarTaskRow
       key={r.id}
       record={r}
+      sideChatUnread={unreadSideChatParents.has(r.id)}
       active={selected === r.id}
       variant={variant}
       workspace={r.cwd?.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "ZPI"}
@@ -746,6 +755,7 @@ export function App() {
                     <TaskGroups
                       state={state.taskGroups}
                       records={records}
+                      unreadSideChatParents={unreadSideChatParents}
                       selected={selected}
                       collapsed={collapsedGroups}
                       setCollapsed={setCollapsedGroups}
@@ -981,6 +991,7 @@ export function App() {
             collapsed,
             width,
             records,
+            unreadSideChatParents,
             state.projects,
             selected,
             prefs,
@@ -1256,6 +1267,7 @@ export function App() {
         </main>
         <RightPane
           onSettings={() => setSettingsOpen(true)}
+          workspaceVisible={!settingsOpen}
           available={viewport - width}
           sessionId={selected}
           findRequest={find.open && find.scope === "changes" ? find.request : undefined}
