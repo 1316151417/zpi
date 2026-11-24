@@ -5,7 +5,7 @@ import type { ElectronApplication } from "@playwright/test";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
-import { seedHistory } from "../history-fixture.ts";
+import { hoverConversationNavigator, seedHistory } from "../history-fixture.ts";
 
 test("profiles full history navigation and verifies the mounted window", async () => {
   test.setTimeout(120_000);
@@ -22,6 +22,7 @@ test("profiles full history navigation and verifies the mounted window", async (
     const rail = page.getByRole("navigation", { name: "对话问题导航" });
     await expect(rail).toBeVisible();
     await expect(rail).toHaveAttribute("aria-busy", "false", { timeout: 90_000 });
+    await hoverConversationNavigator(page);
     const metrics = await page.evaluate(() => ({
       placeholders: document.querySelectorAll("[data-history-run]").length,
       mounted: document.querySelectorAll('[data-history-mounted="true"]').length,

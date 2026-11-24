@@ -5,7 +5,7 @@ import type { ElectronApplication } from "@playwright/test";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
-import { seedHistory } from "../history-fixture.ts";
+import { hoverConversationNavigator, seedHistory } from "../history-fixture.ts";
 
 test("scrolling near older messages loads one page, preserves the anchor and can reach the beginning", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-history-auto-"));
@@ -117,6 +117,7 @@ test("wide navigator loads the full directory and jumps to an unmounted older me
     const rail = page.getByRole("navigation", { name: "对话问题导航" });
     await expect(rail).toBeVisible();
     await expect(rail).toHaveAttribute("aria-busy", "false", { timeout: 15000 });
+    await hoverConversationNavigator(page);
     await rail.locator(".conversation-navigator-rail").evaluate((element) => {
       element.scrollTop = 0;
     });

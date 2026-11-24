@@ -7,7 +7,7 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { select } from "../helpers/composer.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
-import { seedHistory } from "../history-fixture.ts";
+import { hoverConversationNavigator, seedHistory } from "../history-fixture.ts";
 
 const packaged = Boolean(process.env.ZPI_TEST_PACKAGED_APP);
 
@@ -238,6 +238,7 @@ test("immediate sending while reading old history preserves navigator entries, p
       "location",
     );
     const jump = async (index: number, key: string) => {
+      await hoverConversationNavigator(page);
       await rail.locator(".conversation-navigator-rail").evaluate((node, index) => {
         node.scrollTop = Math.max(0, (index - 5) * 10);
       }, index);
@@ -260,6 +261,9 @@ test("immediate sending while reading old history preserves navigator entries, p
     const preview = page.locator(".conversation-navigator-tooltip:visible");
     await expect(preview).toContainText("immediate from history");
     await expect(preview).toContainText("Replacement response.");
+    await expect(preview).toHaveAttribute("data-side", "left");
+    await preview.hover();
+    await expect(rail).toHaveCSS("opacity", "1");
     await page.getByLabel("展开右侧栏", { exact: true }).click();
     await expect(page.locator(".conversation-navigator")).toBeHidden();
     await expect(preview).toHaveCount(0);

@@ -4348,35 +4348,39 @@ button.inline-mention,
 /* ZCode-style conversation query navigator. */
 .conversation-navigator {
   position: absolute;
-  inset: 0 auto 0 0;
+  inset: 0 16px 0 auto;
   z-index: 10;
-  width: 48px;
+  width: 36px;
   pointer-events: none;
-  /* 保留挂载，让跨过宽度阈值时的退出动画与 ZCode 一致。 */
   visibility: hidden;
   opacity: 0;
-  transform: translateX(-8px);
+  transform: translateX(8px);
   transition:
     opacity 150ms ease-out,
     transform 150ms ease-out,
     visibility 150ms ease-out;
 }
-.conversation-navigator[data-visible="true"] {
+.conversation-navigator[data-enabled="true"] {
   visibility: visible;
+}
+.conversation-navigator[data-enabled="true"]:is(
+  [data-edge-hovered],
+  :has(.conversation-navigator-item:is(:focus-visible, [data-state="open"]))
+) {
   opacity: 1;
   transform: translateX(0);
+  --navigator-rail-pointer-events: auto;
 }
 .conversation-navigator-rail {
   position: absolute;
   top: 50%;
-  left: 12px;
-  width: 36px;
+  width: 100%;
   max-height: calc(100% - 6rem);
   padding: 4px 0;
   overflow: hidden auto;
   scrollbar-width: none;
   transform: translateY(-50%);
-  pointer-events: auto;
+  pointer-events: var(--navigator-rail-pointer-events, none);
 }
 .conversation-navigator-rail::-webkit-scrollbar {
   display: none;
@@ -4384,6 +4388,7 @@ button.inline-mention,
 .conversation-navigator-item {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   width: 36px;
   height: 10px;
   padding: 0;
@@ -4396,7 +4401,7 @@ button.inline-mention,
   height: 2px;
   border-radius: 999px;
   background: var(--color-text-subtlest);
-  transform-origin: left;
+  transform-origin: right;
   transition:
     transform 150ms ease-out,
     opacity 150ms ease-out,

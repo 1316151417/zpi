@@ -60,15 +60,34 @@ export function ConversationNavigator({
 }) {
   const [focus, setFocus] = useState<number>();
   const [activeId, setActiveId] = useState<string>();
+  const nav = useRef<HTMLElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ top: 0, height: 600 });
   const count = history.length + tail.length;
+  const hasItems = count >= 2;
   const tailIds = tail.map((item) => item.key).join("\n");
   const itemIds = useMemo(
     () => [...history.map((item) => item.key), ...tail.map((item) => item.key)],
     [history, tailIds],
   );
   const itemIndexes = useMemo(() => new Map(itemIds.map((id, index) => [id, index])), [itemIds]);
+  useEffect(() => {
+    const element = nav.current;
+    const container = element?.parentElement;
+    if (!element || !container) return;
+    // Let the conversation and its scrollbar receive pointer input even in the reveal area.
+    const move = (event: PointerEvent) => {
+      const edge = container.getBoundingClientRect().left + element.offsetLeft;
+      element.toggleAttribute("data-edge-hovered", event.pointerType !== "touch" && event.clientX >= edge);
+    };
+    const leave = () => element.removeAttribute("data-edge-hovered");
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave);
+    return () => {
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+    };
+  }, [hasItems]);
   useLayoutEffect(() => {
     const root = scrollRoot.current;
     if (!enabled || !root || itemIds.length < 2) return;
@@ -115,17 +134,18 @@ export function ConversationNavigator({
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [count >= 2]);
-  if (count < 2) return null;
+  }, [hasItems]);
+  if (!hasItems) return null;
   const start = Math.max(0, Math.floor(windowRange.top / rowHeight) - overscan);
   const end = Math.min(count, Math.ceil((windowRange.top + windowRange.height) / rowHeight) + overscan);
   return (
     <nav
+      ref={nav}
       className="conversation-navigator"
       aria-label="对话问题导航"
       aria-busy={busy}
       aria-hidden={!enabled}
-      data-visible={enabled}
+      data-enabled={enabled}
       inert={!enabled}
     >
       <div
@@ -236,7 +256,7 @@ const NavigatorItem = memo(function NavigatorItem({
         <HoverCard.Content
           hidden={!enabled}
           className="conversation-navigator-tooltip"
-          side="right"
+          side="left"
           align="start"
           sideOffset={8}
           collisionPadding={16}
