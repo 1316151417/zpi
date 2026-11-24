@@ -90,6 +90,7 @@ export function MarkdownImage({ src, alt = "图片预览", node }: ComponentProp
             loading="lazy"
             draggable={false}
             data-streamdown="image"
+            data-zpi-copy-image=""
             onLoad={() => setStatus({ src: display })}
             onError={() => setStatus({ src: display, failed: true })}
           />
@@ -205,6 +206,7 @@ export function MarkdownImage({ src, alt = "图片预览", node }: ComponentProp
               src={preview.items[preview.index].src}
               alt={preview.items[preview.index].alt}
               draggable={false}
+              data-zpi-copy-image=""
               style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
             />
           </div>

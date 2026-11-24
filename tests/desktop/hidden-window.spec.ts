@@ -177,6 +177,7 @@ test("startup guards cover child windows, delayed presentation, native APIs and 
         shortcut: () => globalShortcut.register("CommandOrControl+Alt+F12", () => {}),
         external: () => shell.openExternal("https://example.invalid"),
         nativeClipboard: () => clipboard.writeHTML("test"),
+        imageClipboard: () => main.webContents.copyImageAt(0, 0),
       };
       await new Promise((resolve) => setTimeout(resolve, 100));
       for (const [name, action] of Object.entries(actions)) {
@@ -199,8 +200,8 @@ test("startup guards cover child windows, delayed presentation, native APIs and 
       };
     },
   );
-  expect(result.blocked).toHaveLength(17);
-  expect(result.recorded).toHaveLength(17);
+  expect(result.blocked).toHaveLength(18);
+  expect(result.recorded).toHaveLength(18);
   expect(result.snapshot).toEqual(Array(2).fill({ visible: false, focused: false, focusable: false }));
   expect(result.windows).toBe(1);
   expect(result.text).toBe("isolated text");

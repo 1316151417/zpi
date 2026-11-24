@@ -178,7 +178,11 @@ export function ImagePreview({
       title={`${image.name} · ${image.width}×${image.height}${image.warning ? ` · ${image.warning}` : ""}`}
     >
       <button type="button" aria-label={`预览 ${image.name}`} onClick={() => setExpanded(true)}>
-        {src ? <img src={src} alt={image.name} /> : <span>{error || "加载图片…"}</span>}
+        {src ? (
+          <img src={src} alt={image.name} data-zpi-copy-image="" />
+        ) : (
+          <span>{error || "加载图片…"}</span>
+        )}
       </button>
       {remove && (
         <button type="button" aria-label={`移除 ${image.name}`} className="chip-remove" onClick={remove}>
@@ -214,7 +218,7 @@ export function ImagePreview({
           >
             <X size={20} />
           </button>
-          {src && <img src={src} alt={image.name} />}
+          {src && <img src={src} alt={image.name} data-zpi-copy-image="" />}
           <span>
             {image.name}
             {error}

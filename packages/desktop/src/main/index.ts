@@ -271,6 +271,20 @@ async function launch(): Promise<void> {
     if (details.level === "error")
       errors.write("renderer.console", details.message, { file: details.sourceId, line: details.lineNumber });
   });
+  ipcMain.on("zpi:image-context-menu", (event, x: number, y: number) => {
+    const contents = window.webContents;
+    if (event.sender !== contents || event.senderFrame !== contents.mainFrame) return;
+    const [width, height] = window.getContentSize();
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= width || y >= height) return;
+    Menu.buildFromTemplate([
+      {
+        label: "复制图片",
+        click: () => {
+          if (!contents.isDestroyed()) contents.copyImageAt(x, y);
+        },
+      },
+    ]).popup({ window });
+  });
   ipcMain.on("zpi:error", (event, error: unknown) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return;
     if (!error || typeof error !== "object") return;

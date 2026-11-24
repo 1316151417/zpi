@@ -88,7 +88,7 @@ if (testMode) {
   });
   app.on("web-contents-created", (_, contents) => {
     contents.openDevTools = () => forbidden("webContents.openDevTools");
-    for (const key of ["copy", "cut", "paste", "pasteAndMatchStyle"] as const)
+    for (const key of ["copy", "copyImageAt", "cut", "paste", "pasteAndMatchStyle"] as const)
       contents[key] = () => forbidden(`webContents.${key}`);
     contents.setWindowOpenHandler(() => ({ action: "deny" }));
     contents.on("before-input-event", (event, input) => {

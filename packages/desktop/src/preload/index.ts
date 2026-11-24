@@ -1,5 +1,5 @@
 import type { DesktopEventEnvelope } from "@zpi-dev/ui";
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { DesktopBridge, PaneEvent } from "../shared/bridge.ts";
 import type { ShortcutCommand } from "../shared/shortcuts.ts";
 
@@ -15,6 +15,31 @@ if (process.argv.includes("--zpi-test-isolation")) {
       true,
     );
 }
+
+document.addEventListener(
+  "contextmenu",
+  (event) => {
+    const image = event.target;
+    if (
+      !event.isTrusted ||
+      !(image instanceof HTMLImageElement) ||
+      !image.hasAttribute("data-zpi-copy-image") ||
+      !image.complete ||
+      !image.naturalWidth
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    // DOM coordinates are in CSS pixels. Electron hit-tests in device-independent pixels.
+    const zoom = webFrame.getZoomFactor();
+    ipcRenderer.send(
+      "zpi:image-context-menu",
+      Math.round(event.clientX * zoom),
+      Math.round(event.clientY * zoom),
+    );
+  },
+  true,
+);
 
 const call = (method: string, ...args: unknown[]) => ipcRenderer.invoke("zpi:call", method, args);
 type DirectoryListener = Parameters<DesktopBridge["onWorkspaceDirectoryChange"]>[1];
