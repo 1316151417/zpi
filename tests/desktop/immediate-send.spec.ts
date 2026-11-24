@@ -261,7 +261,7 @@ test("immediate sending while reading old history preserves navigator entries, p
     const preview = page.locator(".conversation-navigator-tooltip:visible");
     await expect(preview).toContainText("immediate from history");
     await expect(preview).toContainText("Replacement response.");
-    await expect(preview).toHaveAttribute("data-side", "left");
+    await expect(preview).toHaveAttribute("data-side", "right");
     await preview.hover();
     await expect(rail).toHaveCSS("opacity", "1");
     await page.getByLabel("展开右侧栏", { exact: true }).click();

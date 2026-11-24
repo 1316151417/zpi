@@ -7,7 +7,7 @@ import { seedHistory as seedStoredHistory } from "../packages/desktop/test/helpe
 export async function hoverConversationNavigator(page: Page) {
   const bounds = await page.locator("main .conversation-wrap").boundingBox();
   if (!bounds) throw new Error("Missing conversation");
-  await page.mouse.move(bounds.x + bounds.width - 22, bounds.y + bounds.height - 24);
+  await page.mouse.move(bounds.x + 22, bounds.y + bounds.height - 24);
 }
 
 /** Seed the same SQLite generation/transcript format consumed by the real desktop. */

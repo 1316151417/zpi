@@ -7,7 +7,7 @@ import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 import { hoverConversationNavigator, seedHistory } from "../history-fixture.ts";
 
-test("navigator slides in at the right edge and hides on exit, with keyboard and reduced motion support", async () => {
+test("navigator slides in at the left edge and hides on exit, with keyboard and reduced motion support", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-navigator-motion-"));
   const cwd = join(dir, "workspace");
   await mkdir(cwd);
@@ -22,6 +22,10 @@ test("navigator slides in at the right edge and hides on exit, with keyboard and
     const rail = navigator.locator(".conversation-navigator-rail");
     await expect(navigator).toHaveAttribute("aria-busy", "false");
     await expect(navigator).toHaveCSS("opacity", "0");
+    await expect(rail).toHaveCSS("pointer-events", "none");
+    const bounds = await conversation.boundingBox();
+    if (!bounds) throw new Error("Missing conversation");
+    await page.mouse.move(bounds.x + bounds.width - 22, bounds.y + bounds.height - 24);
     await expect(rail).toHaveCSS("pointer-events", "none");
     const retained = await navigator.elementHandle();
     if (!retained) throw new Error("Missing history navigator");
@@ -66,8 +70,8 @@ test("navigator slides in at the right edge and hides on exit, with keyboard and
         ]);
         expect(middle.opacity).toBeGreaterThan(0);
         expect(middle.opacity).toBeLessThan(1);
-        expect(middle.x).toBeGreaterThan(0);
-        expect(middle.x).toBeLessThan(8);
+        expect(middle.x).toBeGreaterThan(-8);
+        expect(middle.x).toBeLessThan(0);
         expect(middle.sameButton).toBe(true);
         for (const property of ["opacity", "transform"])
           expect(middle.transitions).toContainEqual({ property, duration: 150 });

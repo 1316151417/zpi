@@ -77,8 +77,8 @@ export function ConversationNavigator({
     if (!element || !container) return;
     // Let the conversation and its scrollbar receive pointer input even in the reveal area.
     const move = (event: PointerEvent) => {
-      const edge = container.getBoundingClientRect().left + element.offsetLeft;
-      element.toggleAttribute("data-edge-hovered", event.pointerType !== "touch" && event.clientX >= edge);
+      const edge = container.getBoundingClientRect().left + element.offsetLeft + element.offsetWidth;
+      element.toggleAttribute("data-edge-hovered", event.pointerType !== "touch" && event.clientX <= edge);
     };
     const leave = () => element.removeAttribute("data-edge-hovered");
     container.addEventListener("pointermove", move, { passive: true });
@@ -256,7 +256,7 @@ const NavigatorItem = memo(function NavigatorItem({
         <HoverCard.Content
           hidden={!enabled}
           className="conversation-navigator-tooltip"
-          side="left"
+          side="right"
           align="start"
           sideOffset={8}
           collisionPadding={16}
