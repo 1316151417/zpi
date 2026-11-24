@@ -6,6 +6,68 @@ import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
 import { expect, test } from "../helpers/test.ts";
 
+test("Markdown lists in main and auxiliary chats add 6px only between items", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zpi-markdown-list-spacing-"));
+  const server = await fakeServer((_, response) => {
+    send(
+      response,
+      chunk({
+        content:
+          "1. 第一项。\n2. 第二项。  \n   2.1. 补充一。  \n   2.2. 补充二。\n3. 第三项。\n\n- 要点一\n- 要点二",
+      }),
+    );
+    done(response);
+  });
+  let app: Awaited<ReturnType<typeof launchDesktop>> | undefined;
+  try {
+    app = await launchDesktop({ dir, url: server.url });
+    const page = await app.firstWindow();
+
+    for (const auxiliary of [false, true]) {
+      if (auxiliary) {
+        await page.getByLabel("展开右侧栏", { exact: true }).click();
+        await page
+          .locator(".pane-empty-launcher")
+          .getByRole("button", { name: "辅助对话", exact: true })
+          .click();
+      }
+      const pane = auxiliary
+        ? page.getByRole("region", { name: "辅助对话", exact: true })
+        : page.locator("main");
+      await pane.getByLabel("消息", { exact: true }).fill("显示列表");
+      await pane.getByLabel("发送", { exact: true }).click();
+      await expect(pane.getByTestId("run")).toHaveAttribute("data-status", "completed");
+      const lists = pane.locator(".answer .markdown-body > :is(ol, ul)");
+      await expect(lists).toHaveCount(2);
+      await expect(lists.first().locator(":scope > li:nth-child(2) br")).toHaveCount(2);
+      const spacing = await lists.evaluateAll((elements) =>
+        elements.map((list) => {
+          const items = Array.from(list.querySelectorAll(":scope > li"));
+          return {
+            gaps: items
+              .slice(1)
+              .map(
+                (item, index) =>
+                  item.getBoundingClientRect().top - items[index].getBoundingClientRect().bottom,
+              ),
+            padding: items.map((item) => getComputedStyle(item).paddingBlock),
+          };
+        }),
+      );
+      expect(spacing).toEqual([
+        { gaps: [6, 6], padding: ["0px", "0px", "0px"] },
+        { gaps: [6], padding: ["0px", "0px"] },
+      ]);
+    }
+  } finally {
+    await runCleanup([
+      () => app?.close(),
+      () => server.close(),
+      () => rm(dir, { recursive: true, force: true }),
+    ]);
+  }
+});
+
 test("streaming code, formulas and Mermaid follow both themes; IPC copy reports success and failure without browser clipboard", async () => {
   test.setTimeout(60000);
   const dir = await mkdtemp(join(tmpdir(), "zpi-markdown-")),

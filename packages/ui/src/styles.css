@@ -2820,8 +2820,13 @@ button.inline-mention,
   margin: 12px 0;
 }
 .markdown-body li {
-  margin: 6px 0;
+  margin: 0;
+  /* Reset Streamdown's vertical padding so spacing comes from the sibling margin. */
+  padding-block: 0;
   padding-left: 4px;
+}
+.markdown-body li + li {
+  margin-block-start: 6px;
 }
 .markdown-body li::marker {
   color: var(--color-text-muted);
