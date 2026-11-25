@@ -1,11 +1,13 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import sharp from "sharp";
+import { StateStore } from "../../packages/desktop/src/main/state-store.ts";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
+import { testStorageDirectory } from "../helpers/storage.ts";
 import { expect, test } from "../helpers/test.ts";
 
 // Inspect rendered pixels: native scrollbar fade/hover states have no DOM attributes.
@@ -36,8 +38,22 @@ async function scrollbarPixels(page: Page, area: Locator, reference: number[]) {
   return { width: columns / scale, targetPixels };
 }
 
-test("native conversation scrollbar matches ZCode alpha compositing, expands, fades and remains draggable", async () => {
+test("native scrollbars overlay both panes, fade and keep the conversation thumb draggable", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zpi-scrollbar-"));
+  const projects = await Promise.all(
+    Array.from({ length: 30 }, async (_, index) => {
+      const id = `project-${index}`;
+      const path = join(dir, id);
+      await mkdir(path);
+      return { id, name: id, path, updatedAt: Date.now() };
+    }),
+  );
+  const state = new StateStore(join(testStorageDirectory(dir), "state.sqlite"));
+  try {
+    state.setProjects(projects);
+  } finally {
+    state.close();
+  }
   const server = await fakeServer((_, response) => {
     send(
       response,
@@ -55,6 +71,9 @@ test("native conversation scrollbar matches ZCode alpha compositing, expands, fa
     app = await launchDesktop({ dir, url: server.url });
     const page = await app.firstWindow();
     await page.emulateMedia({ colorScheme: "light" });
+    const sidebar = page.locator(".sidebar-sections");
+    await expect.poll(() => sidebar.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    expect(await sidebar.evaluate((el: HTMLElement) => el.offsetWidth - el.clientWidth)).toBe(0);
     const input = page.getByLabel("消息", { exact: true });
     await input.fill("生成长会话");
     await input.press("Enter");
@@ -130,6 +149,27 @@ test("native conversation scrollbar matches ZCode alpha compositing, expands, fa
       .poll(async () => (await scrollbarPixels(page, area, reference)).targetPixels)
       .toBeGreaterThan(100);
     expect((await scrollbarPixels(page, area, reference)).width).toBe(thin.width);
+
+    const sidebarBox = await sidebar.boundingBox();
+    if (!sidebarBox) throw Error("Missing sidebar viewport");
+    // Inspect the right padding so changes to the visible project rows do not affect the comparison.
+    const sidebarScrollbar = () =>
+      page.screenshot({
+        clip: {
+          x: sidebarBox.x + sidebarBox.width - 7,
+          y: sidebarBox.y + 2,
+          width: 6,
+          height: sidebarBox.height - 4,
+        },
+      });
+    const idleSidebar = await sidebarScrollbar();
+    await page.mouse.move(sidebarBox.x + sidebarBox.width / 2, sidebarBox.y + sidebarBox.height / 2);
+    await page.mouse.wheel(0, 200);
+    await expect.poll(() => sidebar.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    const sidebarIsIdle = async () => (await sidebarScrollbar()).equals(idleSidebar);
+    await expect.poll(sidebarIsIdle).toBe(false);
+    await expect.poll(sidebarIsIdle, { timeout: 2500 }).toBe(true);
+
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(area).toHaveCSS("scrollbar-color", "rgba(255, 255, 255, 0.1) rgba(0, 0, 0, 0)");
     await expect(area).toHaveCSS("scrollbar-width", "auto");

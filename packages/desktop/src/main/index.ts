@@ -25,6 +25,7 @@ import {
   screen,
   session,
   shell,
+  systemPreferences,
 } from "electron";
 import { version } from "../../../../package.json";
 import type {
@@ -86,7 +87,12 @@ const openFile = defaultFileOpener(
 // Match ZCode's Chromium locale: on macOS zh-CN changes system-ui's Chinese
 // fallback from PingFang UI Display to PingFang SC, enlarging every UI label.
 // UI copy is supplied by React and remains Chinese.
-if (process.platform === "darwin") app.commandLine.appendSwitch("lang", "en-US");
+if (process.platform === "darwin") {
+  app.commandLine.appendSwitch("lang", "en-US");
+  // Prefer overlay scrollbars when macOS has no explicit scrollbar preference.
+  // Registering a fallback preserves explicit system settings, including Always.
+  systemPreferences.registerDefaults({ AppleShowScrollBars: "WhenScrolling" });
+}
 const requestFetch: typeof fetch = (input, init) =>
   net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" });
 const responsesProxy = async (url: string) =>
