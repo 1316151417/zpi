@@ -90,6 +90,7 @@ export interface ModelSettings {
   metadataSource?: "remote" | "catalog" | "defaults";
   id: string;
   name?: string;
+  displayName?: string;
   input?: ("text" | "image" | "video" | "pdf")[];
   reasoning?: boolean;
   contextWindow?: number;

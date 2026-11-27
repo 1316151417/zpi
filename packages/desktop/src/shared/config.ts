@@ -2,7 +2,7 @@ import type { ThinkingLevel } from "@zpi-dev/agent";
 import { anthropicMessagesCompatKeys, thinkingChoices } from "@zpi-dev/ai";
 import { toThinking } from "@zpi-dev/builtin-plugins/models";
 import { defaultCodePreview } from "@zpi-dev/ui/code-preview";
-import type { InterfacePreferences, ModelSettings, ReasoningPreset } from "./bridge.ts";
+import type { InterfacePreferences, ModelSettings, ProviderInput, ReasoningPreset } from "./bridge.ts";
 
 export { toThinking } from "@zpi-dev/builtin-plugins/models";
 export const modelDefaults = {
@@ -21,6 +21,9 @@ export const sidebarLimits = {
 } as const;
 export const uiFontSizeLimits = { min: 12, max: 20 } as const;
 export const taskPinLimit = 5;
+export function modelDisplayName(model: ModelSettings, preset?: ProviderInput["preset"]): string {
+  return model.displayName?.trim() || (preset ? model.id : model.name?.trim() || model.id);
+}
 export function mergeDiscoveredModels<T extends ModelSettings>(
   current: readonly T[],
   discovered: readonly T[],
@@ -36,6 +39,7 @@ export function mergeDiscoveredModels<T extends ModelSettings>(
         ...model,
         useRecommendedConfig: true,
         ...(old?.enabled !== undefined ? { enabled: old.enabled } : {}),
+        ...(old?.displayName !== undefined ? { displayName: old.displayName } : {}),
       };
     }),
     ...current.filter(

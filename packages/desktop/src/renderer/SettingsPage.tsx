@@ -92,6 +92,7 @@ import {
   defaultPreferences,
   mergeDiscoveredModels,
   modelDefaults,
+  modelDisplayName,
   uiFontSizeLimits,
 } from "../shared/config.ts";
 
@@ -937,6 +938,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                       { setNodeRef, style, attributes, listeners, isDragging },
                                     ) => {
                                       const index = models.indexOf(model);
+                                      const displayName = modelDisplayName(model, preset);
                                       return (
                                         // biome-ignore lint/a11y/useSemanticElements: The sortable row contains independent edit, delete and switch controls.
                                         <div
@@ -951,8 +953,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                                           className={`provider-model-row sortable-model${isDragging ? " dragging" : ""}`}
                                         >
                                           <div className="model-row-summary">
-                                            <span className="model-row-name" title={model.name || model.id}>
-                                              {model.name || model.id}
+                                            <span className="model-row-name" title={displayName}>
+                                              {displayName}
                                             </span>
                                             <span
                                               className="model-context-badge"
@@ -1120,9 +1122,12 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                         initial={editing.draft}
                         chatgpt={chatgpt}
                         api={api}
+                        preset={preset}
                         recommended={recommended.current.get(editing.draft.id)}
                         onClose={() => setEditing(undefined)}
                         onSave={async (model) => {
+                          if (models.some((item, index) => index !== editing.index && item.id === model.id))
+                            throw new Error("此提供商已配置相同标识的模型。");
                           const next = models.slice();
                           next[editing.index] = model;
                           if (selected && !(await save(next))) throw new Error("模型保存失败，请检查配置。");

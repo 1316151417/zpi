@@ -3,8 +3,8 @@ import type { ProviderApi, ReasoningConfig } from "@zpi-dev/ai";
 import { editableReasoningConfig, validateReasoningConfig } from "@zpi-dev/ai";
 import { Check, CircleHelp, LoaderCircle, LockKeyhole, X } from "lucide-react";
 import { useRef, useState } from "react";
-import type { ModelSettings } from "../shared/bridge.ts";
-import { modelDefaults, reasoningModel, toPreset } from "../shared/config.ts";
+import type { ModelSettings, ProviderInput } from "../shared/bridge.ts";
+import { modelDefaults, modelDisplayName, reasoningModel, toPreset } from "../shared/config.ts";
 import { ModelConfigAdvanced } from "./ModelConfigAdvanced.tsx";
 import { ReasoningLevelEditor } from "./ReasoningLevelEditor.tsx";
 import { SettingsSelect } from "./SettingsSelect.tsx";
@@ -47,6 +47,7 @@ function Help({ text }: { text: string }) {
 export function ModelConfigDialog({
   initial,
   recommended,
+  preset,
   chatgpt = false,
   api = "openai-completions",
   onClose: onClosed,
@@ -55,6 +56,7 @@ export function ModelConfigDialog({
   api?: ProviderApi;
   initial: ModelDraft;
   recommended?: ModelSettings;
+  preset?: ProviderInput["preset"];
   chatgpt?: boolean;
   onClose: () => void;
   onSave: (value: ModelDraft) => Promise<void>;
@@ -66,12 +68,13 @@ export function ModelConfigDialog({
     [saving, setSaving] = useState(false),
     [invalidMapping, setInvalidMapping] = useState(false),
     [validationAttempt, setValidationAttempt] = useState(0);
+  const currentRecommendation = model.id === initial.id ? recommended : undefined;
   const edit = (field: keyof ModelDraft, value: unknown) =>
     setModel((current) => {
       const next = {
         ...current,
         [field]: value,
-        ...(field !== "id" && field !== "name" ? { useRecommendedConfig: false } : {}),
+        ...(field !== "displayName" ? { useRecommendedConfig: false } : {}),
       };
       if (
         api === "anthropic-messages" &&
@@ -88,8 +91,17 @@ export function ModelConfigDialog({
     setError("");
     setInvalidMapping(false);
     try {
-      serializeModel(model);
-      await onSave(model);
+      const id = model.id === initial.id ? model.id : model.id.trim();
+      if (!id.trim()) throw new Error("请填写模型标识。");
+      if (id.length > 200) throw new Error("模型标识最多支持 200 个字符。");
+      const next = { ...model, id, displayName: model.displayName?.trim() || undefined };
+      if (id !== initial.id) {
+        delete next.availability;
+        delete next.metadataSource;
+        delete next.serviceTiers;
+      }
+      serializeModel(next);
+      await onSave(next);
       onClose();
     } catch (error) {
       setError(userErrorMessage(error));
@@ -117,11 +129,7 @@ export function ModelConfigDialog({
           ref={content}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
-            content.current
-              ?.querySelector<HTMLInputElement>(
-                initial.id ? 'input[aria-label="上下文容量"]' : 'input[aria-label="Model ID"]',
-              )
-              ?.focus();
+            content.current?.querySelector<HTMLInputElement>('input[aria-label="Model ID"]')?.focus();
           }}
           onEscapeKeyDown={(event) => {
             if (
@@ -138,7 +146,7 @@ export function ModelConfigDialog({
           <header className="model-config-heading">
             <Dialog.Title>{initial.id ? "编辑模型配置" : "新增模型"}</Dialog.Title>
             <Dialog.Description className="sr-only">
-              设置模型 ID、上下文、输入类型及推理参数。
+              设置模型 ID、显示名称、上下文、输入类型及推理参数。
             </Dialog.Description>
             <Dialog.Close className="model-config-close" aria-label="关闭模型配置" disabled={saving}>
               <X size={12} />
@@ -151,11 +159,16 @@ export function ModelConfigDialog({
                   type="checkbox"
                   aria-label="智能配置"
                   checked={model.useRecommendedConfig ?? false}
-                  disabled={!recommended || saving}
+                  disabled={!currentRecommendation || saving}
                   onChange={(event) =>
                     setModel(
-                      event.target.checked && recommended
-                        ? draftModel({ ...recommended, enabled: model.enabled, useRecommendedConfig: true })
+                      event.target.checked && currentRecommendation
+                        ? draftModel({
+                            ...currentRecommendation,
+                            displayName: model.displayName,
+                            enabled: model.enabled,
+                            useRecommendedConfig: true,
+                          })
                         : { ...model, useRecommendedConfig: false },
                     )
                   }
@@ -166,26 +179,24 @@ export function ModelConfigDialog({
           </header>
           <div className="model-config-body">
             <fieldset disabled={saving}>
-              {!initial.id && (
-                <div className="model-config-identity">
-                  <label>
-                    模型 ID
-                    <input
-                      aria-label="Model ID"
-                      value={model.id}
-                      onChange={(event) => edit("id", event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    显示名称
-                    <input
-                      aria-label="模型显示名称"
-                      value={model.name ?? ""}
-                      onChange={(event) => edit("name", event.target.value)}
-                    />
-                  </label>
-                </div>
-              )}
+              <div className="model-config-identity">
+                <label>
+                  模型 ID
+                  <input
+                    aria-label="Model ID"
+                    value={model.id}
+                    onChange={(event) => edit("id", event.target.value)}
+                  />
+                </label>
+                <label>
+                  显示名称
+                  <input
+                    aria-label="模型显示名称"
+                    value={model.displayName ?? modelDisplayName(model, preset)}
+                    onChange={(event) => edit("displayName", event.target.value)}
+                  />
+                </label>
+              </div>
               <label>
                 <span>
                   上下文窗口 <Help text="输入和输出 token 的总容量。" />
@@ -449,7 +460,12 @@ export function ModelConfigDialog({
               onClick={() =>
                 setModel(
                   recommended
-                    ? draftModel({ ...recommended, enabled: model.enabled, useRecommendedConfig: true })
+                    ? draftModel({
+                        ...recommended,
+                        displayName: undefined,
+                        enabled: model.enabled,
+                        useRecommendedConfig: true,
+                      })
                     : initial,
                 )
               }

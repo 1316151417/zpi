@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CombinedSelection, Result } from "../shared/bridge.ts";
-import { availablePresets, modelReasoningLabel } from "../shared/config.ts";
+import { availablePresets, modelDisplayName, modelReasoningLabel } from "../shared/config.ts";
 import { ProviderLogo } from "./ProviderLogo.tsx";
 import { SettingsBreadcrumb } from "./SettingsBreadcrumb.tsx";
 import { SettingsHelp } from "./SettingsHelp.tsx";
@@ -62,15 +62,18 @@ function AgentModelSelect({
   const providers = useStore((state) => state.settings?.providers ?? []);
   const [query, setQuery] = useState("");
   const enabled = providers.filter((provider) => provider.enabled !== false);
-  const model = enabled
-    .find((provider) => provider.id === value?.provider)
-    ?.models.find((model) => model.id === value?.modelId && model.enabled !== false);
+  const selectedProvider = enabled.find((provider) => provider.id === value?.provider);
+  const model = selectedProvider?.models.find(
+    (model) => model.id === value?.modelId && model.enabled !== false,
+  );
   const presets = model ? availablePresets(model) : [];
   return (
     <div className="subagent-model-control">
       <Dropdown.Root onOpenChange={() => setQuery("")}>
         <Dropdown.Trigger className="settings-select-trigger" aria-label="子智能体模型" disabled={disabled}>
-          <span>{value ? model?.name || (model ? model.id : "选择模型") : "继承默认"}</span>
+          <span>
+            {value ? (model ? modelDisplayName(model, selectedProvider?.preset) : "选择模型") : "继承默认"}
+          </span>
           <ChevronDown size={14} />
         </Dropdown.Trigger>
         <Dropdown.Portal>
@@ -94,7 +97,9 @@ function AgentModelSelect({
               const models = provider.models.filter(
                 (model) =>
                   model.enabled !== false &&
-                  `${provider.name} ${model.name} ${model.id}`.toLowerCase().includes(query.toLowerCase()),
+                  `${provider.name} ${modelDisplayName(model, provider.preset)} ${model.id}`
+                    .toLowerCase()
+                    .includes(query.toLowerCase()),
               );
               return models.length ? (
                 <Dropdown.Group key={provider.id}>
@@ -113,7 +118,7 @@ function AgentModelSelect({
                         })
                       }
                     >
-                      <span>{model.name || model.id}</span>
+                      <span>{modelDisplayName(model, provider.preset)}</span>
                       {value?.provider === provider.id && value.modelId === model.id && <Check size={14} />}
                     </Dropdown.Item>
                   ))}

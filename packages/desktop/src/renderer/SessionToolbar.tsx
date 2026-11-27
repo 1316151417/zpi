@@ -4,7 +4,7 @@ import { ActionHint, type SessionView, useComposerCommand } from "@zpi-dev/ui";
 import { Check, ChevronDown, ChevronRight, ChevronUp, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ProviderRecord } from "../shared/bridge.ts";
-import { availablePresets, defaultPreset, modelReasoningLabel } from "../shared/config.ts";
+import { availablePresets, defaultPreset, modelDisplayName, modelReasoningLabel } from "../shared/config.ts";
 import { supportsFastMode } from "../shared/fast-mode.ts";
 import { formatShortcut, type ShortcutCommand } from "../shared/shortcuts.ts";
 import { accept, focusComposer, refresh, report, useStore } from "./store.ts";
@@ -203,7 +203,7 @@ export function SessionToolbar({
           <Menu.Trigger className="model-trigger" aria-label="模型选择" disabled={updating}>
             <span className="model-label">
               {chosen && configured && controls?.selectionValid
-                ? configured.name || configured.id
+                ? modelDisplayName(configured, provider?.preset)
                 : chosen
                   ? "重新选择模型"
                   : "模型选择"}
@@ -311,7 +311,7 @@ export function SessionToolbar({
                             }}
                             onClick={() => select(p.id, m.id, defaultPreset(m))}
                           >
-                            <span>{m.name || m.id}</span>
+                            <span>{modelDisplayName(m, p.preset)}</span>
                             <ChevronRight size={12} />
                           </Menu.SubTrigger>
                           <Menu.Portal>

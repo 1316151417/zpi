@@ -246,7 +246,7 @@ export async function fetchProviderModels(
         source: "remote",
         ...(supplemental.length
           ? {
-              warning: `已获取${input.preset === "openai-api" ? "API" : "账号"}模型目录；${supplemental.map((model) => model.name).join("、")} 为预置补充，账号可用性待验证。`,
+              warning: `已获取${input.preset === "openai-api" ? "API" : "账号"}模型目录；${supplemental.map((model) => model.id).join("、")} 为预置补充，账号可用性待验证。`,
             }
           : {}),
       };

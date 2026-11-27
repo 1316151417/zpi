@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElectronApplication } from "@playwright/test";
+import { providerPresets } from "@zpi-dev/ai";
 import { chunk, done, fakeServer, send } from "../fake-server.ts";
 import { runCleanup } from "../helpers/cleanup.ts";
 import { launchDesktop } from "../helpers/desktop.ts";
@@ -50,7 +51,7 @@ test("preset discovery, model configuration and custom provider persist without 
       );
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "模型", exact: true }).click();
-    await expect(page.locator(".provider-template-grid button")).toHaveCount(9);
+    await expect(page.locator(".provider-template-grid button")).toHaveCount(providerPresets.length + 1);
     await expect(page.getByRole("button", { name: "保存提供商", exact: true })).toHaveCount(0);
     await page
       .locator(".provider-template-grid")
@@ -74,6 +75,7 @@ test("preset discovery, model configuration and custom provider persist without 
     await expect(page.locator(".provider-model-row")).toHaveCount(2);
     expect(await catalogCalls()).toBe(1);
     await expect(page.locator(".provider-nav-group h3")).toHaveText("供应商");
+    await expect(page.locator(".model-row-name").first()).toHaveText("deepseek-flash");
     await expect(page.locator(".provider-model-row").first()).toContainText("1M");
     await expect(page.locator(".provider-model-row").first()).toContainText("视觉");
     await page.screenshot({ path: "test-results/desktop-model-settings-light.png" });
@@ -112,6 +114,29 @@ test("preset discovery, model configuration and custom provider persist without 
     await page.screenshot({ path: "test-results/desktop-model-order.png" });
     await page.getByLabel("编辑模型 deepseek-flash", { exact: true }).click();
     const dialog = page.getByRole("dialog");
+    const modelId = dialog.getByLabel("Model ID", { exact: true });
+    const displayName = dialog.getByLabel("模型显示名称", { exact: true });
+    const smartConfig = dialog.getByRole("checkbox", { name: "智能配置", exact: true });
+    const saveModel = dialog.getByRole("button", { name: "保存", exact: true });
+    await expect(modelId).toHaveValue("deepseek-flash");
+    await expect(displayName).toHaveValue("deepseek-flash");
+    await modelId.fill("deepseek-v4-pro");
+    await saveModel.click();
+    await expect(dialog.getByRole("alert")).toContainText("已配置相同标识的模型");
+    await modelId.fill("   ");
+    await saveModel.click();
+    await expect(dialog.getByRole("alert")).toContainText("请填写模型标识");
+    await modelId.fill("deepseek-flash");
+    await smartConfig.check();
+    await displayName.fill("快版");
+    await expect(smartConfig).toBeChecked();
+    await saveModel.click();
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole("button", { name: "获取模型", exact: true }).click();
+    await expect(page.locator(".provider-editor .run-notice[role=status]")).toContainText("已获取");
+    await expect(firstModel.locator(".model-row-name")).toHaveText("快版");
+    await page.getByLabel("编辑模型 deepseek-flash", { exact: true }).click();
+    await expect(displayName).toHaveValue("快版");
     await expect(dialog.getByLabel("上下文容量")).toHaveValue("1000000");
     await expect(dialog.getByLabel("输出上限", { exact: true })).toHaveValue("384000");
     await dialog.getByText("高级配置", { exact: true }).click();
@@ -121,12 +146,12 @@ test("preset discovery, model configuration and custom provider persist without 
       "true",
     );
     await dialog.getByLabel("上下文容量").fill("900000");
-    await expect(dialog.getByRole("checkbox", { name: "智能配置", exact: true })).not.toBeChecked();
+    await expect(smartConfig).not.toBeChecked();
     await page.screenshot({ path: "test-results/desktop-model-config-light.png" });
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({ path: "test-results/desktop-model-config-dark.png" });
     await page.emulateMedia({ colorScheme: "light" });
-    await dialog.getByRole("button", { name: "保存", exact: true }).click();
+    await saveModel.click();
     await expect(dialog).toHaveCount(0);
     await page.getByRole("button", { name: "获取模型", exact: true }).click();
     await expect(page.locator(".provider-editor .run-notice[role=status]")).toContainText("已获取");
@@ -138,7 +163,7 @@ test("preset discovery, model configuration and custom provider persist without 
       saved.value.providers
         .find((provider) => provider.preset === "deepseek")
         ?.models.find((model) => model.id === "deepseek-flash"),
-    ).toMatchObject({ contextWindow: 900000, useRecommendedConfig: false });
+    ).toMatchObject({ contextWindow: 900000, displayName: "快版", useRecommendedConfig: false });
     await page.getByRole("switch", { name: "启用模型 deepseek-flash", exact: true }).uncheck();
     await expect(
       page.getByRole("switch", { name: "启用模型 deepseek-flash", exact: true }),
@@ -151,7 +176,7 @@ test("preset discovery, model configuration and custom provider persist without 
     ).not.toBeChecked();
     await page.getByLabel("关闭设置", { exact: true }).click();
     await page.getByLabel("模型选择", { exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "DeepSeek Flash", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "快版", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "模型", exact: true }).click();
@@ -184,6 +209,13 @@ test("preset discovery, model configuration and custom provider persist without 
     await page.getByLabel("删除模型 deepseek-v4-pro", { exact: true }).click();
     await page.getByRole("button", { name: "保存提供商", exact: true }).click();
     await expect(page.locator(".provider-editor .run-notice[role=status]")).toContainText("已保存");
+    await page.getByLabel("编辑模型 deepseek-flash", { exact: true }).click();
+    await modelId.fill(" deepseek-flash-next ");
+    await displayName.fill("");
+    await expect(smartConfig).toBeDisabled();
+    await saveModel.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator(".model-row-name")).toHaveText("deepseek-flash-next");
     await page.getByRole("button", { name: "新增提供商", exact: true }).click();
     await page.getByRole("button", { name: "自定义提供商", exact: true }).click();
     await page.getByLabel("提供商名称").fill("Local custom");
@@ -226,7 +258,7 @@ test("preset discovery, model configuration and custom provider persist without 
     if (!persisted.ok) throw Error(persisted.error.message);
     expect(persisted.value.providers.map((p) => p.id)).toEqual(expectedIds);
     expect(persisted.value.providers.find((p) => p.preset === "deepseek")?.models.map((m) => m.id)).toEqual([
-      "deepseek-flash",
+      "deepseek-flash-next",
     ]);
     await restartedPage.getByRole("button", { name: "设置", exact: true }).click();
     await restartedPage.getByRole("button", { name: "模型", exact: true }).click();
@@ -236,7 +268,9 @@ test("preset discovery, model configuration and custom provider persist without 
       await restartedPage.getByRole("button", { name: "确认删除", exact: true }).click();
       await expect(restartedPage.locator(".sortable-provider")).toHaveCount(expectedIds.length - i - 1);
     }
-    await expect(restartedPage.locator(".provider-template-grid button")).toHaveCount(9);
+    await expect(restartedPage.locator(".provider-template-grid button")).toHaveCount(
+      providerPresets.length + 1,
+    );
   } finally {
     await runCleanup([
       () => rm(dir, { recursive: true, force: true }),

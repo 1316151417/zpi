@@ -33,8 +33,12 @@ test("model menu acceleration stays open, persists, and shares its action with t
         ...(provider.api ? { api: provider.api } : {}),
         apiKey: "isolated-key",
         models: [
-          ...provider.models.map((model) => ({ ...model, name: "GPT-6.1 Sol", serviceTiers: ["priority"] })),
-          { id: "standard-only", name: "GPT-6 Luna", reasoning: false, serviceTiers: [] },
+          ...provider.models.map((model) => ({
+            ...model,
+            displayName: "GPT-6.1 Sol",
+            serviceTiers: ["priority"],
+          })),
+          { id: "standard-only", displayName: "GPT-6 Luna", reasoning: false, serviceTiers: [] },
         ],
       });
       if (!result.ok) throw new Error(result.error.message);

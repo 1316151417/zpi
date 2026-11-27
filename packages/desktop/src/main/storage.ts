@@ -58,6 +58,7 @@ import {
   defaultPreferences,
   defaultPreset,
   modelDefaults,
+  modelDisplayName,
   sidebarLimits,
   toThinking,
   uiFontSizeLimits,
@@ -110,7 +111,7 @@ export function resolveModel(provider: ProviderData, input: ModelSettings): Mode
   const serviceTiers = modelServiceTiers(provider.preset, input);
   const model: Model = {
     id: input.id,
-    name: input.name?.trim() || input.id,
+    name: modelDisplayName(input, provider.preset),
     api: providerApi(provider.preset, provider.api ?? "openai-completions"),
     ...(usesChatGPTAuth(provider.preset) ? { auth: "chatgpt" as const } : {}),
     provider: provider.id,
@@ -843,6 +844,7 @@ export class SettingsStore {
         [
           "id",
           "name",
+          "displayName",
           "enabled",
           "useRecommendedConfig",
           "metadataSource",
@@ -865,6 +867,7 @@ export class SettingsStore {
         !m.id.trim() ||
         m.id.length > 200 ||
         (m.name !== undefined && typeof m.name !== "string") ||
+        (m.displayName !== undefined && typeof m.displayName !== "string") ||
         (m.enabled !== undefined && typeof m.enabled !== "boolean") ||
         (m.reasoning !== undefined && typeof m.reasoning !== "boolean") ||
         (m.useRecommendedConfig !== undefined && typeof m.useRecommendedConfig !== "boolean") ||

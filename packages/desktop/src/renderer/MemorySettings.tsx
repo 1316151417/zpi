@@ -7,7 +7,7 @@ import {
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CombinedSelection, ProviderRecord } from "../shared/bridge.ts";
-import { defaultPreset, modelReasoningLabel } from "../shared/config.ts";
+import { defaultPreset, modelDisplayName, modelReasoningLabel } from "../shared/config.ts";
 import { memoryMode } from "../shared/plugins.ts";
 import { selectableModels } from "../shared/selectable-models.ts";
 import { SettingsHelp } from "./SettingsHelp.tsx";
@@ -58,7 +58,7 @@ function MemoryModelSelection({
               : []),
             ...models.map(({ provider, model }) => ({
               value: modelKey({ provider: provider.id, modelId: model.id }),
-              label: `${provider.name} · ${model.name || model.id}`,
+              label: `${provider.name} · ${modelDisplayName(model, provider.preset)}`,
             })),
           ]}
           onChange={(key) => {
