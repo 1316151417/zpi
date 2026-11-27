@@ -9,27 +9,17 @@ import {
   revokeChatGPTCredential,
   verifyRefreshedChatGPTCredential,
 } from "@zpi-dev/ai/auth/openai-chatgpt";
-import { ModelRuntime } from "@zpi-dev/coding-agent";
-import {
-  chooseEnabledModels,
-  customAlias,
-  runtimeModel,
-  serviceFor,
-  validModelId,
-  validName,
-} from "./services.ts";
 import {
   type Account,
   AccountStore,
+  billing,
   type CredentialSource,
   type SecretStore,
   type Service,
   systemSecrets,
+  validModelId,
 } from "./store.ts";
 
-export { runAccountCommand } from "./commands.ts";
-export { serviceFor } from "./services.ts";
-export type { Account, SecretStore, Service } from "./store.ts";
 export interface ModelBinding {
   provider: string;
   modelId: string;
@@ -62,10 +52,6 @@ function parseSelection(selector: string) {
   if (slash < 1 || !validModelId(selector.slice(slash + 1)))
     throw new Error("模型格式应为 服务名/模型ID，可用模型见 zpi models。");
   return { provider: selector.slice(0, slash), modelId: selector.slice(slash + 1) };
-}
-function billing(account: Account) {
-  if (account.credential.kind === "oauth") return "ChatGPT 订阅";
-  return account.credential.kind === "none" ? "无密钥" : "API";
 }
 function noAccount() {
   return new Error(
@@ -116,7 +102,6 @@ export class Accounts {
           return {
             id,
             account: account.name,
-            accountId: account.id,
             isDefault: id === state.defaultModel,
             billing: billing(account),
           };
@@ -203,8 +188,11 @@ export class Accounts {
     const selected = account.models.find((m) => m.id === modelId);
     if (!selected) throw new Error("该账户未启用所选模型，请用 zpi models 查看，或用 -m 明确选择其他模型。");
     // Reconstruct built-ins so a settings file cannot redirect a subscription token.
-    const source = account.credential;
-    const oauth = source.kind === "oauth";
+    const oauth = account.credential.kind === "oauth";
+    const [{ runtimeModel, serviceFor }, { ModelRuntime }] = await Promise.all([
+      import("./services.ts"),
+      import("@zpi-dev/coding-agent"),
+    ]);
     const service = serviceFor(provider, oauth ? "oauth" : "key", account);
     const runtime = await ModelRuntime.create({ fetch: this.requestFetch });
     const getApiKey = (rejected?: string) => this.requestKey(account, modelId, rejected);
@@ -220,56 +208,43 @@ export class Accounts {
     return { binding: { provider, modelId, accountId: account.id }, runtime, model };
   }
 
-  private async credentialsForLogin(
-    input: LoginSource,
-    old: Account | undefined,
-    service: Service,
-    ui: LoginInteraction,
-  ) {
+  private async credentialsForLogin(input: LoginSource, old: Account | undefined, ui: LoginInteraction) {
+    if (input.kind === "oauth" && input.reuse && old?.credential.kind === "oauth")
+      return { source: old.credential, key: await this.accessToken(old.credential.ref) };
+    if (input.kind === "env" || input.kind === "none") {
+      const source: CredentialSource =
+        input.kind === "none" ? { kind: "none" } : { kind: "env", name: input.name };
+      return { source, key: this.readKey(source) };
+    }
     const ref = randomUUID();
-    let source: CredentialSource;
-    let secret: string | undefined;
-    let key: string;
-    if (input.kind === "oauth") {
-      const previous =
-        old?.credential.kind === "oauth" ? savedCredential(this.secrets, old.credential.ref) : undefined;
-      if (input.reuse && old?.credential.kind === "oauth") {
-        source = old.credential;
-        key = await this.accessToken(source.ref);
-      } else {
-        this.secrets.get(ref); // Check availability before opening the browser.
-        const hostId = this.store.update((current) => current.hostId);
-        const login = await beginChatGPTLogin({ hostId, credential: previous, fetch: this.fetcher });
-        try {
-          const url = new URL(login.url);
-          if (!previous) url.searchParams.set("agent_name_hint", "ZPI CLI");
-          const credential = await ui.authorize({ ...login, url: url.href });
-          key = credential.access;
-          secret = JSON.stringify(credential);
-          source = { kind: "oauth", ref };
-        } finally {
-          login.cancel();
-        }
-      }
-    } else if (input.kind === "key") {
-      key = input.value.trim();
+    if (input.kind === "key") {
+      const key = input.value.trim();
       if (!key || /[\r\n]/.test(key)) throw new Error("API key 为空或格式无效。");
       this.secrets.get(ref);
-      source = { kind: "key", ref };
-      secret = key;
-    } else {
-      if (input.kind === "env" && !/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(input.name))
-        throw new Error("环境变量名无效。");
-      if (input.kind === "none" && (!customAlias(service.provider) || service.api === "anthropic-messages"))
-        throw new Error("此服务需要凭据。");
-      source = input.kind === "none" ? { kind: "none" } : { kind: "env", name: input.name };
-      key = this.readKey(source);
+      return { source: { kind: input.kind, ref }, key, secret: key };
     }
-
-    return { key, secret, source };
+    const previous =
+      old?.credential.kind === "oauth" ? savedCredential(this.secrets, old.credential.ref) : undefined;
+    if (!previous) this.secrets.get(ref); // Check availability before opening the browser.
+    const hostId = this.store.update((current) => current.hostId);
+    const login = await beginChatGPTLogin({ hostId, credential: previous, fetch: this.fetcher });
+    try {
+      const url = new URL(login.url);
+      if (!previous) url.searchParams.set("agent_name_hint", "ZPI CLI");
+      const credential = await ui.authorize({ ...login, url: url.href });
+      return {
+        source: { kind: input.kind, ref },
+        key: credential.access,
+        secret: JSON.stringify(credential),
+      };
+    } finally {
+      login.cancel();
+    }
   }
 
   async connect(service: Service, name: string, input: LoginSource, ui: LoginInteraction) {
+    const { allowsNoKey, chooseEnabledModels, customAlias, serviceFor, validEnvName, validName } =
+      await import("./services.ts");
     if (!validName(name)) throw new Error("请输入有效的账户名称。");
     const oauth = input.kind === "oauth";
     service = serviceFor(service.provider, oauth ? "oauth" : "key", service);
@@ -282,8 +257,10 @@ export class Accounts {
         const old = state.accounts.find((a) => a.provider === provider && a.name === name);
         if (old && (old.credential.kind === "oauth") !== oauth)
           throw new Error("该账户名已用于另一种计费方式，请输入不同的账户名。");
+        if (input.kind === "env" && !validEnvName(input.name)) throw new Error("环境变量名无效。");
+        if (input.kind === "none" && !allowsNoKey(service)) throw new Error("此服务需要凭据。");
         const id = old?.id ?? randomUUID();
-        const { key, secret, source } = await this.credentialsForLogin(input, old, service, ui);
+        const { key, secret, source } = await this.credentialsForLogin(input, old, ui);
         const models = await chooseEnabledModels(
           service,
           key,

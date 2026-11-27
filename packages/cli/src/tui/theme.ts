@@ -10,7 +10,7 @@ const style = (on: number, off: number) => (text: string) =>
 export const dim = style(2, 22);
 export const accent = style(36, 39);
 export const bold = style(1, 22);
-export const plain = (text: string) => text;
+const plain = (text: string) => text;
 export function safeText(raw: string) {
   return stripTerminalSequences(raw)
     .replace(/\r\n?/g, "\n")

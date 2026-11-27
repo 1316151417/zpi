@@ -24,8 +24,9 @@ export class UsageError extends Error {
   readonly exitCode = 2;
 }
 
-export type Invocation =
-  | { kind: "help" | "version" }
+type Invocation =
+  | { kind: "help" }
+  | { kind: "version" }
   | { kind: "accounts"; command: "auth" | "models"; args: string[] }
   | {
       kind: "session";
@@ -52,10 +53,9 @@ export function parseInvocation(args: string[]): Invocation {
       normalized.push(...args.slice(i));
       break;
     }
-    if ((argument === "-r" || argument === "--resume") && !args[i + 1]?.startsWith("-") && args[i + 1]) {
-      normalized.push(`--resume=${args[++i]}`);
-    } else if (argument === "-r" || argument === "--resume") {
-      normalized.push("--resume=");
+    if (argument === "-r" || argument === "--resume") {
+      const next = args[i + 1];
+      normalized.push(next && !next.startsWith("-") ? `--resume=${args[++i]}` : "--resume=");
     } else {
       normalized.push(argument);
     }

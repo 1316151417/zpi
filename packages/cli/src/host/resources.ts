@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 import {
   FileResourceLoader,
   type InputContext,
@@ -12,9 +12,10 @@ import {
 import { CommandImportService } from "../../../desktop/src/main/command-import.ts";
 import { prepareCustomCommandPrompt } from "../../../desktop/src/main/custom-command-expansion.ts";
 import { CustomCommandsStore } from "../../../desktop/src/main/custom-commands.ts";
+import { isPathInside } from "../../../desktop/src/main/path-bounds.ts";
 import type { CustomCommand } from "../../../desktop/src/shared/custom-commands.ts";
 
-import { builtinNames } from "./commands.ts";
+import { builtinNames, isSessionCommand } from "./commands.ts";
 
 interface CatalogEntry {
   command?: CustomCommand;
@@ -53,8 +54,8 @@ export class CliResources {
 
   private async catalog() {
     const catalog = new Map<string, CatalogEntry>();
-    for (const store of this.stores) {
-      const list = await store.list();
+    const lists = await Promise.all(this.stores.map(async (store) => ({ store, list: await store.list() })));
+    for (const { store, list } of lists) {
       for (const command of list.commands) catalog.set(key(command.name), { command });
       for (const issue of list.diagnostics) {
         const message = [issue.path, issue.message].filter(Boolean).join(" — ");
@@ -87,20 +88,20 @@ export class CliResources {
   async prepare(text: string, options: { skill?: string; print?: boolean; literal?: boolean }) {
     const match = !options.literal && /^\s*\/([\w:-]+(?:\/[\w:-]+)*)(?:\s+([\s\S]*))?$/.exec(text);
     let body = text;
-    let initial: CustomCommand | undefined;
-    let commandName: string | undefined;
+    let verify: (() => Promise<void>) | undefined;
+    let compact = false;
     let required: string[] = [];
     if (match) {
-      commandName = key(match[1]).replaceAll(":", "/");
+      const commandName = key(match[1]).replaceAll(":", "/");
       if (builtinNames.has(commandName)) {
-        if (commandName !== "init" && commandName !== "compact")
-          throw new Error(`/${commandName} 需要在交互终端中使用`);
-        if (commandName === "compact" && options.skill) throw new Error("/compact 不接收 Skill");
+        if (!isSessionCommand(commandName)) throw new Error(`/${commandName} 需要在交互终端中使用`);
+        compact = commandName === "compact";
+        if (compact && options.skill) throw new Error("/compact 不接收 Skill");
         body = `/${commandName}${match[2] ? ` ${match[2]}` : ""}`;
       } else {
         const entry = (await this.catalog()).get(commandName);
         if (entry?.problem) throw new Error(entry.problem);
-        initial = entry?.command;
+        const initial = entry?.command;
         if (!initial && match[1].includes("/")) return { text, compact: false };
         if (!initial) throw new Error(`未知命令 /${commandName}。用 /help 查看可用命令。`);
         if (!initial.enabled) throw new Error(`命令已禁用：${initial.filePath}`);
@@ -108,7 +109,7 @@ export class CliResources {
           throw new Error(`此命令仅支持交互模式：${initial.filePath}`);
         const plan = prepareCustomCommandPrompt(initial, match[2] ?? "", initial.filePath);
         const fragments = plan.parts.map((part) => {
-          if (part.kind === "shell") throw new Error(`此命令需要桌面端：${initial?.filePath}`);
+          if (part.kind === "shell") throw new Error(`此命令需要桌面端：${initial.filePath}`);
           return part.text;
         });
         body = [
@@ -118,6 +119,16 @@ export class CliResources {
           fragments.join("").trim(),
         ].join("\n");
         required = initial.skills ?? [];
+        verify = async () => {
+          const current = (await this.catalog()).get(commandName)?.command;
+          if (
+            !current?.enabled ||
+            current.revision !== initial.revision ||
+            current.filePath !== initial.filePath ||
+            current.importedSourcePath !== initial.importedSourcePath
+          )
+            throw new Error(`命令文件在准备期间已更改，请重试：${initial.filePath}`);
+        };
       }
     }
     const skills = new Set([...required, ...(options.skill ? [options.skill] : [])]);
@@ -126,20 +137,7 @@ export class CliResources {
       const skill = await this.skills.loadSkill(name);
       body += `\n\nRequired skill: ${skill.name}\nSkill source: ${skill.path}\n${skill.body}`;
     }
-    const verify =
-      initial && commandName
-        ? async () => {
-            const current = (await this.catalog()).get(key(initial.name))?.command;
-            if (
-              !current?.enabled ||
-              current.revision !== initial.revision ||
-              current.filePath !== initial.filePath ||
-              current.importedSourcePath !== initial.importedSourcePath
-            )
-              throw new Error(`命令文件在准备期间已更改，请重试：${initial.filePath}`);
-          }
-        : undefined;
-    return { text: body, verify, compact: commandName === "compact" };
+    return { text: body, verify, compact };
   }
 }
 
@@ -151,9 +149,8 @@ export async function fileContext(cwd: string, paths: string[] = []): Promise<In
   let pixels = 0;
   for (const supplied of new Set(paths)) {
     const path = await realpath(resolve(cwd, supplied));
+    if (!isPathInside(cwd, path)) throw new Error("引用必须位于当前目录中");
     const name = relative(cwd, path);
-    if (name === ".." || name.startsWith(`..${sep}`) || isAbsolute(name))
-      throw new Error("引用必须位于当前目录中");
     const info = await stat(path);
     if (info.isDirectory()) context.fileReferences.push(`${name || "."}/`);
     else if (!info.isFile()) throw new Error(`无法引用特殊文件：${name}`);

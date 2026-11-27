@@ -1,6 +1,6 @@
 import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 import type { AgentToolResult } from "@zpi-dev/agent";
-import type { AssistantMessage, Message, ToolResultMessage } from "@zpi-dev/ai";
+import { type AssistantMessage, contentText, type Message, type ToolResultMessage } from "@zpi-dev/ai";
 import type { AgentSessionEvent } from "@zpi-dev/coding-agent";
 import { accent, dim, markdownTheme, safeText } from "./theme.ts";
 
@@ -19,16 +19,15 @@ function textParts(content: (Message & { role: "user" | "assistant" | "toolResul
 }
 
 class ToolRow extends Text {
-  name: string;
-  args: unknown;
+  private readonly headline: string;
   private state = "执行中";
   private summary = "";
   private body = "";
   expanded = false;
   constructor(name: string, args: unknown) {
     super("", 2, 0);
-    this.name = name;
-    this.args = args;
+    const target = stringField(args, "path") || stringField(args, "command");
+    this.headline = accent(safeText(`${name} ${target.split("\n", 1)[0]}`.trim()));
     this.refresh();
   }
   update(output: Output, state: string) {
@@ -46,9 +45,7 @@ class ToolRow extends Text {
     this.refresh();
   }
   refresh() {
-    const target = stringField(this.args, "path") || stringField(this.args, "command");
-    const headline = `${this.name} ${target.split("\n", 1)[0]}`.trim();
-    const line = `${accent(safeText(headline))}  ${dim(this.state)}`;
+    const line = `${this.headline}  ${dim(this.state)}`;
     this.setText(
       line + (this.expanded && this.body ? `\n${this.body}` : this.summary ? `  ${this.summary}` : ""),
     );
@@ -59,7 +56,7 @@ export class Transcript extends Container {
   private tools = new Map<string, ToolRow>();
   private current?: Markdown;
   expanded = false;
-  lastAnswer = "";
+  private displayedText = "";
 
   user(text: string) {
     this.addChild(new Text(accent("› ") + safeText(text), 1, 0));
@@ -87,7 +84,11 @@ export class Transcript extends Container {
   }
   beginTurn() {
     this.current = undefined;
-    this.lastAnswer = "";
+    this.displayedText = "";
+  }
+  finishTurn(answer: string) {
+    // Session events already displayed the answer, including any interim commentary.
+    if (answer && !this.displayedText) this.note(answer);
   }
   toggleDetails() {
     this.expanded = !this.expanded;
@@ -107,19 +108,22 @@ export class Transcript extends Container {
     return row;
   }
   private assistant(message: AssistantMessage) {
-    const text = message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-    if (!text) return;
+    const text = contentText(message.content, "");
     if (!this.current) {
+      if (!text) return;
       this.current = new Markdown("", 1, 0, markdownTheme);
       this.addChild(this.current);
-    }
+    } else if (text === this.displayedText) return;
     this.current.setText(safeText(text));
-    this.lastAnswer = text;
+    this.displayedText = text;
   }
   event(event: AgentSessionEvent) {
     if (event.type === "message_start" && event.message.role === "assistant") this.current = undefined;
     if (
-      (event.type === "message_update" || event.type === "message_end") &&
+      (event.type === "message_end" ||
+        (event.type === "message_update" &&
+          (event.assistantMessageEvent.type.startsWith("text_") ||
+            event.assistantMessageEvent.type === "reset"))) &&
       event.message.role === "assistant"
     )
       this.assistant(event.message);
@@ -135,7 +139,7 @@ export class Transcript extends Container {
     if (event.type === "compaction" && event.status === "running") this.note("正在压缩上下文…");
     if (event.type === "command_result") {
       this.note(event.message);
-      this.lastAnswer = event.message;
+      this.displayedText = event.message;
     }
   }
 }

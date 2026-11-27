@@ -2,30 +2,31 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { contentText } from "@zpi-dev/ai";
 import { parseSessionTranscript, type SessionEntry } from "@zpi-dev/coding-agent";
 
-export interface HistoryItem {
+interface HistoryItem {
   id: string;
   title: string;
   mtime: number;
   error?: string;
 }
 
-export function firstInput(entries: SessionEntry[]): string | undefined {
+function byActivity(a: Pick<HistoryItem, "mtime" | "id">, b: Pick<HistoryItem, "mtime" | "id">) {
+  return b.mtime - a.mtime || a.id.localeCompare(b.id);
+}
+
+function firstInput(entries: SessionEntry[]): string | undefined {
   for (const entry of entries) {
     if (entry.type !== "message" || entry.message.role !== "user" || entry.message.synthetic) continue;
-    const content = entry.message.content;
-    const text =
-      typeof content === "string"
-        ? content
-        : content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join(" ");
+    const text = contentText(entry.message.content, " ");
     return text.replace(/\s+/g, " ").trim().slice(0, 100) || "图片";
   }
 }
 
 export class DirectoryHistory {
   readonly directory: string;
-  readonly cwd: string;
+  private readonly cwd: string;
 
   constructor(root: string, cwd: string) {
     this.cwd = cwd;
@@ -61,29 +62,54 @@ export class DirectoryHistory {
     const snapshot = parseSessionTranscript(await readFile(path, "utf8"), { repairIncompleteTail: true });
     if (snapshot.header.id !== id || snapshot.header.cwd !== this.cwd)
       throw new Error("会话与当前目录或 ID 不匹配");
-    return { ...snapshot, mtime: info.mtimeMs, title: firstInput(snapshot.entries) };
+    return { entries: snapshot.entries, mtime: info.mtimeMs, title: firstInput(snapshot.entries) };
   }
 
-  async list(): Promise<HistoryItem[]> {
+  async readForResume(id: string) {
+    const { entries, title } = await this.preview(id);
+    if (title === undefined) throw new Error("此 CLI 会话没有用户输入");
+    return entries;
+  }
+
+  async list({ latestOnly = false } = {}): Promise<HistoryItem[]> {
+    const directory = join(this.directory, "sessions");
     let files: Dirent[];
     try {
-      files = await readdir(join(this.directory, "sessions"), { withFileTypes: true });
+      files = await readdir(directory, { withFileTypes: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
+    let ids = files
+      .filter((file) => file.isFile() && file.name.endsWith(".jsonl"))
+      .map((file) => file.name.slice(0, -6));
+    if (latestOnly) {
+      const candidates = await Promise.all(
+        ids.map(async (id) => {
+          // A failed stat is handled by preview with the same diagnostics as the full list.
+          const mtime = await lstat(join(directory, `${id}.jsonl`)).then(
+            (info) => info.mtimeMs,
+            () => 0,
+          );
+          return { id, mtime };
+        }),
+      );
+      ids = candidates.sort(byActivity).map((candidate) => candidate.id);
+    }
     const items: HistoryItem[] = [];
-    for (const file of files) {
-      if (!file.isFile() || !file.name.endsWith(".jsonl")) continue;
-      const id = file.name.slice(0, -6);
+    for (const id of ids) {
       try {
         const { title, mtime } = await this.preview(id);
-        if (title !== undefined) items.push({ id, title, mtime });
+        if (title !== undefined) {
+          const item = { id, title, mtime };
+          if (latestOnly) return [item];
+          items.push(item);
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT")
           items.push({ id, title: id, mtime: 0, error: String(error) });
       }
     }
-    return items.sort((a, b) => b.mtime - a.mtime || a.id.localeCompare(b.id));
+    return items.sort(byActivity);
   }
 }

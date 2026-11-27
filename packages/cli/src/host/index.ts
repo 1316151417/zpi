@@ -14,7 +14,6 @@ import {
   runSessionInput,
   type SessionEntry,
   SessionManager,
-  SettingsManager,
   supportedThinkingLevels,
 } from "@zpi-dev/coding-agent";
 import type { ModelBinding as Binding } from "../accounts/index.ts";
@@ -37,7 +36,7 @@ interface HostOptions {
   ephemeral?: boolean;
   print?: boolean;
 }
-export interface RunOptions {
+interface RunOptions {
   signal?: AbortSignal;
   onEvent?: (event: AgentSessionEvent) => void;
   skill?: string;
@@ -48,14 +47,19 @@ export interface RunOptions {
 const bindingType = "zpi.cli.model";
 const initPlugin = builtinPlugins.filter((plugin) => plugin.id === "zpi.project-init");
 
-function recordedBinding(entries: SessionEntry[]): Binding {
-  const entry = entries.findLast((e) => e.type === "custom" && e.customType === bindingType);
-  const native = entries.findLast((e) => e.type === "model_change");
+function modelName(binding: Binding) {
+  return `${binding.provider}/${binding.modelId}`;
+}
+
+function recordedBinding(entries: SessionEntry[]): Binding | undefined {
+  const bindingIndex = entries.findLastIndex((e) => e.type === "custom" && e.customType === bindingType);
+  const nativeIndex = entries.findLastIndex((e) => e.type === "model_change");
+  const entry = entries[bindingIndex];
+  const native = entries[nativeIndex];
   const data = entry?.type === "custom" ? entry.data : undefined;
   if (
-    !entry ||
-    !native ||
-    entries.indexOf(entry) < entries.indexOf(native) ||
+    native?.type !== "model_change" ||
+    bindingIndex < nativeIndex ||
     !isJsonObject(data) ||
     typeof data.provider !== "string" ||
     typeof data.accountId !== "string" ||
@@ -64,7 +68,7 @@ function recordedBinding(entries: SessionEntry[]): Binding {
     data.nativeProvider !== native.provider ||
     data.modelId !== native.modelId
   )
-    throw new Error("会话缺少完整的模型和账户绑定，请用 -m <provider/model> 明确选择");
+    return;
   return { provider: data.provider, accountId: data.accountId, modelId: data.modelId };
 }
 
@@ -93,9 +97,7 @@ export class CliHost {
   private readonly history: DirectoryHistory;
   private readonly resources: CliResources;
   private active?: ActiveSession;
-  private draftModel?: string;
-  private draftEffort?: string;
-  private draftSelection?: Selection;
+  private draft: { model?: string; effort?: string; displayModel?: string };
   private pending?: Promise<string>;
   private controller?: AbortController;
 
@@ -104,8 +106,7 @@ export class CliHost {
     this.cwd = realpathSync(options.cwd);
     this.history = new DirectoryHistory(options.root, this.cwd);
     this.resources = new CliResources(this.cwd, options.homeDir ?? homedir());
-    this.draftModel = options.model;
-    this.draftEffort = options.effort;
+    this.draft = { model: options.model, effort: options.effort };
   }
 
   listHistory() {
@@ -125,11 +126,11 @@ export class CliHost {
   }
 
   getSelection() {
-    const binding = (this.active?.selection ?? this.draftSelection)?.binding;
     return {
-      model: binding ? `${binding.provider}/${binding.modelId}` : this.draftModel,
-      account: binding?.accountId,
-      effort: this.active?.session.thinkingLevel ?? this.draftEffort,
+      model: this.active
+        ? modelName(this.active.selection.binding)
+        : (this.draft.displayModel ?? this.draft.model),
+      effort: this.active?.session.thinkingLevel ?? this.draft.effort,
     };
   }
 
@@ -138,7 +139,7 @@ export class CliHost {
   }
 
   private selectDraft() {
-    return this.options.accounts.selectModel(this.draftModel);
+    return this.options.accounts.selectModel(this.draft.model);
   }
 
   async getEfforts() {
@@ -153,8 +154,8 @@ export class CliHost {
       this.active.session.setThinkingLevel(effort);
       await this.active.manager.flushAsync();
     } else {
-      this.draftSelection = selection;
-      this.draftEffort = effort;
+      this.draft.displayModel = modelName(selection.binding);
+      this.draft.effort = effort;
     }
   }
 
@@ -162,10 +163,10 @@ export class CliHost {
     this.checkIdle();
     const selection = await this.options.accounts.selectModel(name);
     if (!this.active) {
-      this.draftModel = name;
-      this.draftSelection = selection;
-      if (this.draftEffort && !supportedThinkingLevels(selection.model).some((v) => v === this.draftEffort))
-        this.draftEffort = undefined;
+      this.draft.model = name;
+      this.draft.displayModel = modelName(selection.binding);
+      if (this.draft.effort && !supportedThinkingLevels(selection.model).some((v) => v === this.draft.effort))
+        this.draft.effort = undefined;
       return;
     }
     const old = this.active;
@@ -200,7 +201,6 @@ export class CliHost {
         sessionManager: manager,
         model,
         modelRuntime: runtime,
-        settingsManager: SettingsManager.create(this.cwd, agentDir),
         resourceLoader: this.resources.loader,
         thinkingLevel: effort,
         plugins: initPlugin,
@@ -211,12 +211,7 @@ export class CliHost {
   private async persistBinding(manager: SessionManager, selection: Selection) {
     // Persist both sides of the association before the native session can warm up a model request.
     const { binding, model } = selection;
-    let previous: Binding | undefined;
-    try {
-      previous = recordedBinding(manager.getEntries());
-    } catch {
-      /* First choice or explicit rebind. */
-    }
+    const previous = recordedBinding(manager.getEntries());
     const state = manager.getCurrentState();
     if (state.model?.provider !== model.provider || state.model?.modelId !== model.id)
       manager.appendModelChange(model.provider, model.id);
@@ -232,27 +227,30 @@ export class CliHost {
   }
 
   async resumeLatest() {
-    const rows = await this.listHistory();
-    const item = rows.find((r) => !r.error);
-    if (!item) throw new Error(rows[0]?.error ?? "当前目录没有可继续的 CLI 会话");
-    await this.resume(item.id);
+    const [item] = await this.history.list({ latestOnly: true });
+    if (!item || item.error) throw new Error(item?.error ?? "当前目录没有可继续的 CLI 会话");
+    await this.resumeSession(item.id, true);
   }
 
-  async resume(id: string) {
+  resume(id: string) {
+    return this.resumeSession(id, false);
+  }
+
+  private async resumeSession(id: string, alreadyPreviewed: boolean) {
     this.checkIdle();
     if (this.active?.manager.getSessionId() === id) return;
     const path = this.history.path(id);
-    // The second check, under the lock, is authoritative even if a writer changed the file.
-    const preview = await this.history.preview(id);
-    if (preview.title === undefined) throw new Error("此 CLI 会话没有用户输入");
+    if (!alreadyPreviewed) await this.history.readForResume(id);
     const release = await this.history.acquire(id);
     try {
-      const current = await this.history.preview(id);
-      if (current.title === undefined) throw new Error("此 CLI 会话没有用户输入");
-      const explicit = this.draftModel;
-      const recorded = explicit ? undefined : recordedBinding(current.entries);
+      // Re-read under the writer lock even when the chooser just previewed the same file.
+      const entries = await this.history.readForResume(id);
+      const explicit = this.draft.model;
+      const recorded = explicit ? undefined : recordedBinding(entries);
+      if (!explicit && !recorded)
+        throw new Error("会话缺少完整的模型和账户绑定，请用 -m <provider/model> 明确选择");
       const selection = await this.options.accounts.selectModel(explicit, recorded);
-      const effort = validateEffort(selection.model, this.draftEffort);
+      const effort = validateEffort(selection.model, this.draft.effort);
       const manager = SessionManager.open(path);
       const session = await this.create(manager, this.history.directory, selection, effort);
       await this.disposeActive();
@@ -264,9 +262,7 @@ export class CliHost {
         release,
         temporary: false,
       };
-      this.draftModel = undefined;
-      this.draftEffort = undefined;
-      this.draftSelection = undefined;
+      this.draft = {};
     } catch (error) {
       release();
       throw error;
@@ -285,9 +281,7 @@ export class CliHost {
         : SessionManager.create(this.cwd, join(agentDir, "sessions"), { id });
       const session = await this.create(manager, agentDir, selection, effort);
       this.active = { manager, session, selection, agentDir, release, temporary };
-      this.draftModel = undefined;
-      this.draftEffort = undefined;
-      this.draftSelection = undefined;
+      this.draft = {};
     } catch (error) {
       try {
         if (temporary) await rm(agentDir, { recursive: true, force: true });
@@ -340,7 +334,7 @@ export class CliHost {
     const selection = this.active?.selection ?? (await this.selectDraft());
     if (context.images?.length && !selection.model.input.includes("image"))
       throw new Error("当前模型不支持图片");
-    const effort = this.active ? undefined : validateEffort(selection.model, this.draftEffort);
+    const effort = this.active ? undefined : validateEffort(selection.model, this.draft.effort);
     await prepared.verify?.();
     signal.throwIfAborted();
     const active = this.active ?? (await this.start(selection, effort));
@@ -395,8 +389,6 @@ export class CliHost {
   async clear() {
     this.checkIdle();
     await this.disposeActive();
-    this.draftModel = undefined;
-    this.draftEffort = undefined;
-    this.draftSelection = undefined;
+    this.draft = {};
   }
 }

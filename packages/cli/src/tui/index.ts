@@ -10,7 +10,8 @@ import {
   Text,
   TuiMainScreen,
 } from "@earendil-works/pi-tui";
-import { commands } from "../host/commands.ts";
+import type { Accounts } from "../accounts/index.ts";
+import { builtinNames, commands, isSessionCommand } from "../host/commands.ts";
 import type { CliHost } from "../host/index.ts";
 import { Completions, references } from "./completion.ts";
 import { accent, bold, dim, listTheme, safeText } from "./theme.ts";
@@ -20,7 +21,7 @@ interface InteractiveOptions {
   host: CliHost;
   initialPrompt?: string;
   selectSession?: boolean;
-  listModels(): Promise<{ name: string; description?: string }[]>;
+  listModels: Accounts["availableModels"];
   signal?: AbortSignal;
 }
 
@@ -47,10 +48,7 @@ export async function runInteractive({
   );
   async function availableCommands(reportErrors = false): Promise<SlashCommand[]> {
     try {
-      return [
-        ...commands,
-        ...(await host.listCommands()).filter((file) => !commands.some((cmd) => cmd.name === file.name)),
-      ];
+      return [...commands, ...(await host.listCommands())];
     } catch (error) {
       if (reportErrors) transcript.note(messageOf(error));
       return [...commands];
@@ -165,10 +163,13 @@ export async function runInteractive({
         await resume();
         break;
       case "model": {
-        const models = await listModels();
         const value = await picker(
           "选择模型",
-          models.map((model) => ({ value: model.name, label: model.name, description: model.description })),
+          listModels().map(({ id, account, billing }) => ({
+            value: id,
+            label: id,
+            description: `${account} · ${billing}`,
+          })),
           "尚无可用模型。使用 zpi auth login 连接服务。",
           host.getSelection().model,
         );
@@ -220,11 +221,7 @@ export async function runInteractive({
     if (!text.trim() || closing) return;
     editor.addToHistory(text);
     const command = !literal && /^\/([\w:-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-    if (
-      command &&
-      commands.some((item) => item.name === command[1]) &&
-      !["compact", "init"].includes(command[1])
-    ) {
+    if (command && builtinNames.has(command[1]) && !isSessionCommand(command[1])) {
       if (command[2]) throw new Error(`/${command[1]} 不接收参数`);
       await local(command[1]);
       return;
@@ -244,7 +241,7 @@ export async function runInteractive({
           tui.requestRender();
         },
       });
-      if (answer && answer !== transcript.lastAnswer) transcript.note(answer);
+      transcript.finishTurn(answer);
       skill = undefined;
     } catch (error) {
       if (!turn.signal.aborted) throw error;

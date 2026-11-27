@@ -11,3 +11,7 @@ export const commands = [
   { name: "skills", description: "为下一条消息选择 Skill" },
 ];
 export const builtinNames = new Set(commands.map((command) => command.name));
+
+export function isSessionCommand(name: string) {
+  return name === "init" || name === "compact";
+}

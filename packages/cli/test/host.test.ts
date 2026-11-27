@@ -10,6 +10,7 @@ import {
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -133,6 +134,47 @@ it("previews incomplete live history without repairs and isolates a corrupt tran
   await host.close();
   await second.resume(id);
   expect(await readFile(path, "utf8")).not.toMatch(/\{$/);
+});
+
+it("resumes the newest valid session without parsing older transcripts", async () => {
+  const f = await fixture();
+  const host = f.create();
+  await host.run("older");
+  const [older] = await host.listHistory();
+  await host.clear();
+  await host.run("newer");
+  await host.close();
+  const [newer] = (await host.listHistory()).filter((item) => item.id !== older.id);
+  const history = new DirectoryHistory(f.root, f.cwd);
+  const empty = SessionManager.create(f.cwd, join(history.directory, "sessions"), { id: "empty" });
+  await empty.flushAsync();
+  await writeFile(history.path("broken"), "invalid\n");
+  for (const [index, id] of [older.id, newer.id, "empty", "broken"].entries()) {
+    await utimes(history.path(id), index + 1, index + 1);
+  }
+
+  const preview = vi.spyOn(DirectoryHistory.prototype, "preview");
+  try {
+    const next = f.create();
+    await next.resumeLatest();
+    expect(preview.mock.calls.map(([id]) => id)).toEqual(["broken", "empty", newer.id, newer.id]);
+    expect(next.getMessages().some((m) => m.role === "user" && m.content === "newer")).toBe(true);
+  } finally {
+    preview.mockRestore();
+  }
+});
+
+it("shows the draft model for an effort choice and reselects the current default on submit", async () => {
+  const f = await fixture();
+  const host = f.create();
+  const [effort] = await host.getEfforts();
+  await host.setEffort(effort);
+  expect(host.getSelection()).toEqual({ model: "gateway/fake", effort });
+  f.switchToWork();
+  const select = vi.spyOn(f.accounts, "selectModel");
+  await host.run("first turn");
+  expect(select).toHaveBeenCalledWith(undefined);
+  expect(f.accountsUsed).toEqual(["work"]);
 });
 
 it("requires an explicit choice when old transcripts lack an account binding", async () => {

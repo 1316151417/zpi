@@ -7,7 +7,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ChatGPTCredential } from "@zpi-dev/ai/auth/openai-chatgpt";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, expect, it, vi } from "vitest";
-import { Accounts, type LoginInteraction, type SecretStore, serviceFor } from "../src/accounts/index.ts";
+import { Accounts, type LoginInteraction } from "../src/accounts/index.ts";
+import { serviceFor } from "../src/accounts/services.ts";
+import type { SecretStore } from "../src/accounts/store.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -258,7 +260,9 @@ it("recovers listed subscription models after discovery failure without requirin
   const saved = await f.connect();
   expect(saved.models).toEqual([]);
   f.provider.modelStatus = 200;
+  const read = vi.spyOn(f.secrets, "get");
   const refreshed = await f.connect(true);
+  expect(read).toHaveBeenCalledTimes(1);
   expect(refreshed.id).toBe(saved.id);
   expect(f.urls.length).toBe(1);
   expect((await f.accounts.selectModel()).model.id).toBe("example-gpt");

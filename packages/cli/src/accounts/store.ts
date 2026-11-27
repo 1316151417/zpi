@@ -24,7 +24,14 @@ export interface Account extends Service {
   credential: CredentialSource;
   models: DiscoveredModel[];
 }
-export interface AccountState {
+export function validModelId(value: string) {
+  return value.length > 0 && value.length <= 200 && !/[\p{C}\s]/u.test(value);
+}
+export function billing(account: Account) {
+  if (account.credential.kind === "oauth") return "ChatGPT 订阅";
+  return account.credential.kind === "none" ? "无密钥" : "API";
+}
+interface AccountState {
   version: 1;
   hostId: string;
   accounts: Account[];

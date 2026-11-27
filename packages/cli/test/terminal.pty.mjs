@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  open as openFile,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -224,4 +234,12 @@ test("real terminal, isolated providers, persistent sessions and clean pipes", {
   const early = spawn(bin, ["-p", "closed pipe"], { ...options, stdio: ["ignore", "pipe", "pipe"] });
   early.stdout.destroy();
   assert.equal(await new Promise((resolve) => early.once("close", resolve)), 0);
+  const readOnly = await openFile(join(cwd, "notes.md"), "r");
+  try {
+    const failed = spawnSync(bin, ["-p", "/help"], { ...options, stdio: ["ignore", readOnly.fd, "pipe"] });
+    assert.equal(failed.status, 1, String(failed.stderr));
+    assert.match(String(failed.stderr), /EBADF/);
+  } finally {
+    await readOnly.close();
+  }
 });

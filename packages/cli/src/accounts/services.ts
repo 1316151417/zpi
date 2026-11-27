@@ -6,22 +6,28 @@ import {
   providerApi,
   providerApis,
   providerBaseUrl,
+  usesChatGPTAuth,
 } from "@zpi-dev/ai";
 import type { ProviderChatModelConfig } from "@zpi-dev/coding-agent";
 import type { LoginInteraction } from "./index.ts";
-import type { Service } from "./store.ts";
+import { type Service, validModelId } from "./store.ts";
 
-export function validAlias(value: string) {
-  return /^[a-z][a-z0-9-]{0,47}$/.test(value) && !Object.hasOwn(Object.prototype, value);
-}
 export function validName(value: string) {
   return /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(value);
 }
-export function validModelId(value: string) {
-  return value.length > 0 && value.length <= 200 && !/[\p{C}\s]/u.test(value);
+export function validEnvName(name: string) {
+  return /^[a-zA-Z_][a-zA-Z_0-9]*$/.test(name);
 }
 export function customAlias(name: string) {
-  return validAlias(name) && !["openai", "anthropic", "custom"].includes(name) && !getProviderPreset(name);
+  return (
+    /^[a-z][a-z0-9-]{0,47}$/.test(name) &&
+    !Object.hasOwn(Object.prototype, name) &&
+    !["openai", "anthropic", "custom"].includes(name) &&
+    !getProviderPreset(name)
+  );
+}
+export function allowsNoKey(service: Service) {
+  return customAlias(service.provider) && service.api !== "anthropic-messages";
 }
 export function cleanBaseUrl(address: string) {
   let url: URL;
@@ -81,7 +87,7 @@ export async function chooseEnabledModels(
   ui: LoginInteraction,
   fetcher: typeof fetch,
 ) {
-  const oauth = service.preset === "openai-chatgpt";
+  const oauth = usesChatGPTAuth(service.preset);
   let status: number | undefined;
   const observe: typeof fetch = async (url, options) => {
     const signals = [options?.signal, ui.signal].filter((s): s is AbortSignal => Boolean(s));
@@ -103,9 +109,8 @@ export async function chooseEnabledModels(
     ui.signal?.throwIfAborted();
     if (reuse && previous.length)
       throw new Error("订阅模型发现失败，已保留原连接。请稍后重试，或选择在浏览器中重新授权。");
-    if (status === 401 || status === 403) {
-      if (!oauth || reuse) throw new Error("服务拒绝了该凭据，请检查账户或重新登录。");
-    }
+    if ((status === 401 || status === 403) && (!oauth || reuse))
+      throw new Error("服务拒绝了该凭据，请检查账户或重新登录。");
     if (oauth)
       ui.warn(
         "ChatGPT 已登录，暂时无法获取订阅模型。请用 zpi auth login openai --method oauth 选择此账户重试模型发现。",
@@ -138,8 +143,9 @@ export async function chooseEnabledModels(
       };
     });
   } else {
+    const byId = new Map(candidates.map((m) => [m.id, m]));
     models = picked.map((m) => {
-      const found = candidates.find((c) => c.id === m.id);
+      const found = byId.get(m.id);
       if (!found) throw new Error("无法启用服务目录之外的模型。");
       return found;
     });
