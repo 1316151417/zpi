@@ -117,6 +117,43 @@ it("creates history only after valid input, locks a single writer and restores t
   expect(await f.create({ cwd: f.homeDir }).listHistory()).toEqual([]);
 });
 
+it("keeps writing to the original session after resuming a busy session fails", async () => {
+  const f = await fixture();
+  const original = f.create();
+  const other = f.create();
+  await original.run("original topic");
+  const [{ id: originalId }] = await original.listHistory();
+  await other.run("separate topic");
+  const [{ id: otherId }] = (await other.listHistory()).filter(({ id }) => id !== originalId);
+
+  await expect(original.resume(otherId)).rejects.toThrow("另一个进程");
+  await expect(f.create().resume(originalId)).rejects.toThrow("另一个进程");
+  await original.run("continue original");
+  const history = new DirectoryHistory(f.root, f.cwd);
+  const inputs = async (id: string) =>
+    (await history.preview(id)).entries.flatMap((entry) =>
+      entry.type === "message" && entry.message.role === "user" ? [entry.message.content] : [],
+    );
+  expect(await inputs(originalId)).toEqual(["original topic", "continue original"]);
+  expect(await inputs(otherId)).toEqual(["separate topic"]);
+});
+
+it.each([
+  { prefixLength: 98, expectedSuffix: "🚀" },
+  { prefixLength: 99, expectedSuffix: "" },
+])(
+  "preserves whole Unicode characters at the history title limit after $prefixLength letters",
+  async ({ prefixLength, expectedSuffix }) => {
+    const { root, cwd } = await fixture();
+    const history = new DirectoryHistory(root, cwd);
+    const manager = SessionManager.create(cwd, join(history.directory, "sessions"));
+    const prefix = "界".repeat(prefixLength);
+    manager.appendMessage({ role: "user", content: `${prefix}🚀继续`, timestamp: 1 });
+    await manager.flushAsync();
+    expect((await history.preview(manager.getSessionId())).title).toBe(prefix + expectedSuffix);
+  },
+);
+
 it("previews incomplete live history without repairs and isolates a corrupt transcript", async () => {
   const f = await fixture();
   const host = f.create();

@@ -2,6 +2,7 @@ import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 import type { AgentToolResult } from "@zpi-dev/agent";
 import { type AssistantMessage, contentText, type Message, type ToolResultMessage } from "@zpi-dev/ai";
 import type { AgentSessionEvent } from "@zpi-dev/coding-agent";
+import { previewText } from "../preview.ts";
 import { accent, dim, markdownTheme, safeText } from "./theme.ts";
 
 type Output = Pick<AgentToolResult, "content" | "details"> | ToolResultMessage;
@@ -40,7 +41,7 @@ class ToolRow extends Text {
       stringField(change, "reason") ||
       stringField(change, "patchFile");
     const content = safeText(textParts(output.content)).trim();
-    this.summary = content.split("\n", 1)[0].slice(0, 100);
+    this.summary = previewText(content.split("\n", 1)[0]);
     this.body = [content, safeText(diff)].filter(Boolean).join("\n");
     this.refresh();
   }

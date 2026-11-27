@@ -4,6 +4,7 @@ import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { contentText } from "@zpi-dev/ai";
 import { parseSessionTranscript, type SessionEntry } from "@zpi-dev/coding-agent";
+import { previewText } from "../preview.ts";
 
 interface HistoryItem {
   id: string;
@@ -20,7 +21,7 @@ function firstInput(entries: SessionEntry[]): string | undefined {
   for (const entry of entries) {
     if (entry.type !== "message" || entry.message.role !== "user" || entry.message.synthetic) continue;
     const text = contentText(entry.message.content, " ");
-    return text.replace(/\s+/g, " ").trim().slice(0, 100) || "图片";
+    return previewText(text.replace(/\s+/g, " ").trim()) || "图片";
   }
 }
 

@@ -17,6 +17,18 @@ describe("terminal invocations", () => {
       parseInvocation(["-r", "id", "-m", "team/org/model", "--effort", "high", "--", "--resume"]),
     ).toMatchObject({ resume: "id", model: "team/org/model", effort: "high", prompt: "--resume" });
   });
+  it.each([
+    ["解释", "--print", "--model=team/coder", "--continue", "--", "--help", "-r"],
+    ["-c", "-m", "team/coder", "解释", "-p", "--", "--help", "-r"],
+  ])("accepts reordered flags and preserves option-like prompt text: %s", (...args) => {
+    expect(parseInvocation(args)).toMatchObject({
+      kind: "session",
+      latest: true,
+      print: true,
+      model: "team/coder",
+      prompt: "解释 --help -r",
+    });
+  });
   it.each([["-c", "-r"], ["-r", "-p"], ["--model"], ["-m", "name"], ["--mcp"], ["--effort="]])(
     "rejects invalid options %s",
     (...args) => expect(() => parseInvocation(args)).toThrow(),
@@ -25,5 +37,9 @@ describe("terminal invocations", () => {
     expect(printPrompt("read", "  a\nb\n")).toBe("read\n\n  a\nb\n");
     expect(printPrompt("", "/compact")).toBe("/compact");
     expect(() => printPrompt("", " \n ")).toThrow();
+  });
+  it("keeps the original prompt when piped input contains only whitespace", () => {
+    const prompt = "  第一行\n第二行  ";
+    expect(printPrompt(prompt, " \t\r\n")).toBe(prompt);
   });
 });

@@ -45,6 +45,25 @@ it("completes only a command name at the prompt and accepts explicit workspace f
   }
 });
 
+it.each([
+  ["/compact 保留测试结论", "/compact 保留测试结论"],
+  ["/comproject notes", "/compact project notes"],
+])(
+  "completes a slash command at the cursor without losing or duplicating text: %s",
+  async (line, expected) => {
+    const provider = new Completions(".", () => commands);
+    const options = { signal: new AbortController().signal };
+    const cursor = "/com".length;
+    const suggestions = await provider.getSuggestions([line], 0, cursor, options);
+    expect(suggestions?.items.map((item) => item.value)).toEqual(["compact"]);
+    if (!suggestions) throw new Error("Missing compact suggestion");
+    const completed = provider.applyCompletion([line], 0, cursor, suggestions.items[0], suggestions.prefix);
+    expect(completed.lines).toEqual([expected]);
+    expect(completed.cursorCol).toBe("/compact ".length);
+    expect(await provider.getSuggestions([line], 0, line.length, options)).toBeNull();
+  },
+);
+
 it("shares a command scan while typing and refreshes after accepting a choice or pausing", async () => {
   let name = "model";
   const list = vi.fn(() => [{ name }]);
@@ -103,6 +122,23 @@ it("renders tool summaries and native write patches, preserves a single row thro
   expect(render()).toBe("");
 });
 
+it("keeps tool previews valid Unicode when the cutoff falls inside an emoji", () => {
+  const transcript = new Transcript();
+  const prefix = "x".repeat(99);
+  const full = `${prefix}🌱 done`;
+  transcript.event({
+    type: "tool_execution_end",
+    toolCallId: "one",
+    toolName: "read",
+    isError: false,
+    result: { content: [{ type: "text", text: full }], details: undefined },
+  });
+  const screen = () => stripVTControlCharacters(transcript.render(140).join("\n")).trimEnd();
+  expect(screen().endsWith(prefix)).toBe(true);
+  transcript.toggleDetails();
+  expect(screen()).toContain(full);
+});
+
 it("renders mixed-phase answers once and keeps the Markdown cache on non-text updates", () => {
   const transcript = new Transcript();
   const message = emptyAssistant(fakeModel(""));
@@ -152,4 +188,75 @@ it("handles server retry, context compaction and command-only results without re
   transcript.beginTurn();
   transcript.finishTurn("当前会话尚无上下文");
   expect(transcript.render(40).join("\n")).toContain("当前会话尚无上下文");
+});
+
+it("replaces a running tool's output and renders its completed row exactly as in history", () => {
+  const live = new Transcript();
+  const call = { toolCallId: "build-1", toolName: "bash", args: { command: "make" } };
+  const result = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
+  const screen = () => stripVTControlCharacters(live.render(60).join("\n"));
+  live.event({ type: "tool_execution_start", ...call });
+  live.event({ type: "tool_execution_update", ...call, partialResult: result("正在编译") });
+  expect(screen()).toContain("正在编译");
+
+  const output = result("编译结束\r\n\u001b[31m缺少依赖\u001b[0m");
+  live.event({ type: "tool_execution_end", ...call, result: output, isError: true });
+  expect(screen()).toContain("失败");
+  expect(screen()).toContain("编译结束");
+  expect(screen()).not.toMatch(/正在编译|缺少依赖/);
+
+  const message = emptyAssistant(fakeModel(""));
+  message.content = [{ type: "toolCall", id: call.toolCallId, name: call.toolName, arguments: call.args }];
+  const history = new Transcript();
+  history.reset([
+    message,
+    {
+      role: "toolResult",
+      ...output,
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      isError: true,
+      timestamp: 1,
+    },
+  ]);
+  expect(live.render(60)).toEqual(history.render(60));
+  live.toggleDetails();
+  history.toggleDetails();
+  expect(screen()).toContain("缺少依赖");
+  expect(live.render(60).join("\n")).not.toContain("\u001b[31m");
+  expect(live.render(60)).toEqual(history.render(60));
+});
+
+it("renders chunked Markdown like a single replayed message at narrow and wide widths", () => {
+  const live = new Transcript();
+  const history = new Transcript();
+  const message = emptyAssistant(fakeModel(""));
+  live.event({ type: "message_start", message });
+  let text = "";
+  for (const delta of [
+    "## 构建结果\n\n正在**检",
+    "查**终端换行和分段渲染。\n\n```sh\n",
+    "make test\n",
+    "```\n\n完成",
+  ]) {
+    text += delta;
+    message.content = [{ type: "text", text }];
+    live.event({
+      type: "message_update",
+      message,
+      assistantMessageEvent: { type: "text_delta", contentIndex: 0, partial: message, delta },
+    });
+    history.reset([message]);
+    expect(live.render(20)).toEqual(history.render(20));
+  }
+  live.event({ type: "message_end", message });
+  live.finishTurn(text);
+  const narrow = live.render(20);
+  const wide = live.render(80);
+  expect(narrow.length).toBeGreaterThan(wide.length);
+  expect(wide).toEqual(history.render(80));
+  const visible = stripVTControlCharacters(wide.join("\n"));
+  expect(visible).toContain("检查终端换行和分段渲染");
+  expect(visible).toContain("make test");
+  expect(visible.match(/完成/g)).toHaveLength(1);
 });

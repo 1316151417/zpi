@@ -79,13 +79,20 @@ export class Completions implements AutocompleteProvider {
   }
   applyCompletion(lines: string[], row: number, col: number, item: AutocompleteItem, prefix: string) {
     this.commandList = undefined;
-    const inserted = prefix.startsWith("/")
+    const isCommand = prefix.startsWith("/");
+    const inserted = isCommand
       ? `/${item.value} `
       : `${buildMentionMarkdown(`@${item.value}`, `./${item.value}`)} `;
     const line = lines[row];
     const start = col - prefix.length;
+    let tail = line.slice(col);
+    if (isCommand) {
+      const suffix = /^\S+/u.exec(tail)?.[0];
+      if (suffix && item.value.startsWith(prefix.slice(1) + suffix)) tail = tail.slice(suffix.length);
+      if (tail.startsWith(" ")) tail = tail.slice(1);
+    }
     const result = [...lines];
-    result[row] = line.slice(0, start) + inserted + line.slice(col);
+    result[row] = line.slice(0, start) + inserted + tail;
     return { lines: result, cursorLine: row, cursorCol: start + inserted.length };
   }
 }
