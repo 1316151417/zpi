@@ -30,7 +30,7 @@ const groups = [
     title: "会话与模型",
     rows: [
       ["Ctrl+T", "显示或收起思考"],
-      ["Ctrl+O", "展开工具与启动详情"],
+      ["Ctrl+O", "展开或收起工具详情"],
       ["Esc / Ctrl+C", "取消或中断"],
       ["Ctrl+D", "退出空输入框"],
       ["Ctrl+L / Alt+P", "选择模型"],

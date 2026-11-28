@@ -455,13 +455,20 @@ test("screen layout, help, inline Skills and command arguments in a real termina
   const has = (text) => (rows) => rows.some((row) => row.includes(text));
   const draft = (text) => (rows) => rows.some((row) => row.trimStart().startsWith(text));
   const initial = await frame(
-    (rows) => showsFooterModel("coder")(rows) && has("[Skills]")(rows),
-    "loaded startup resources and bottom model",
+    (rows) => showsFooterModel("coder")(rows) && has("ZPI")(rows),
+    "wordmark and bottom model",
+  );
+  assert.deepEqual(
+    initial.rows
+      .slice(0, -5)
+      .map((line) => line.trim())
+      .filter(Boolean),
+    ["ZPI"],
   );
   assert.ok(initial.rows.at(-2).includes("~/sample"), initial.rows.slice(-2).join("\n"));
-  assert.ok(initial.rows.some((line) => line.includes("[Skills]")));
-  assert.ok(initial.rows.some((line) => line.includes("proofread")));
-  assert.doesNotMatch(initial.rows.join("\n"), /Enter 发送|Ctrl\+J/);
+  const header = initial.cells[initial.rows.findIndex((line) => line.trim() === "ZPI")];
+  const firstLetter = header.translateToString(true).indexOf("ZPI");
+  for (let i = firstLetter; i < firstLetter + 3; i++) assert.equal(header.getCell(i).getFgColor(), 0xf2be57);
 
   ui.write("/help\r");
   await frame(has("Tab 切页"), "help panel");

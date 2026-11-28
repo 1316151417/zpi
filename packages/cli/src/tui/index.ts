@@ -29,7 +29,6 @@ import { Footer } from "./footer.ts";
 import { HelpPanel, shortcutCard } from "./help.ts";
 import { PromptEditor } from "./prompt-editor.ts";
 import { SearchPicker } from "./search-picker.ts";
-import { Startup } from "./startup.ts";
 import {
   accent,
   bold,
@@ -39,12 +38,12 @@ import {
   panelBorder,
   safeText,
   thinkingBorderColor,
+  wordmark,
 } from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
 interface InteractiveOptions {
   host: CliHost;
-  version: string;
   initialPrompt?: string;
   selectSession?: boolean;
   accounts: Accounts;
@@ -55,7 +54,6 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 export async function runInteractive({
   host,
-  version,
   accounts,
   initialPrompt,
   selectSession,
@@ -66,7 +64,7 @@ export async function runInteractive({
   const tui = new TuiAltScreen(terminal, true);
   const transcript = new Transcript();
   const document = new Container();
-  const startup = new Startup(version);
+  const header = new Text(wordmark, 1, 1);
   const settings = host.readSettings();
   const progress = new Container();
   const panel = new Container();
@@ -88,7 +86,7 @@ export async function runInteractive({
   );
   function showChat() {
     document.clear();
-    document.addChild(startup);
+    document.addChild(header);
     document.addChild(transcript);
   }
   function readBranch() {
@@ -661,7 +659,6 @@ export async function runInteractive({
         .match(/^\/\S+/)?.[0];
     else if (!editor.getText()) pastedCommand = undefined;
     if (matchesKey(data, "ctrl+o")) {
-      startup.toggleDetails();
       transcript.toggleDetails();
       tui.requestRender();
       return { consume: true };
@@ -715,20 +712,6 @@ export async function runInteractive({
     showChat();
     panel.addChild(editor);
     readBranch();
-    void host
-      .listCommands()
-      .then((commands) => {
-        if (!closing) {
-          startup.setSkills(commands.filter((cmd) => cmd.kind === "skill"));
-          tui.requestRender();
-        }
-      })
-      .catch((error) => {
-        if (!closing) {
-          transcript.note(messageOf(error), "error");
-          tui.requestRender();
-        }
-      });
     tui.setFocus(editor);
     tui.start();
     update();

@@ -78,7 +78,6 @@ async function main(): Promise<number> {
     const { runInteractive } = await import("./tui/index.ts");
     return await runInteractive({
       host,
-      version: ZPI_CLI_VERSION,
       initialPrompt: prompt,
       selectSession: resume === true,
       accounts,

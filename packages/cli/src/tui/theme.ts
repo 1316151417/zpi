@@ -11,6 +11,7 @@ const style = (on: number | string, off: number) => (text: string) =>
 export const dim = style("38;2;128;128;128", 39);
 export const accent = style("38;2;202;126;204", 39);
 export const bold = style(1, 22);
+export const wordmark = bold(style("38;2;242;190;87", 39)("ZPI"));
 export const italic = style(3, 23);
 export const suggestion = style("38;2;177;185;249", 39);
 export const success = style("38;2;111;178;105", 39);
