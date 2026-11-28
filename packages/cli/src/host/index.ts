@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "@zpi-dev/agent";
-import { isJsonObject, type Model } from "@zpi-dev/ai";
+import { type AssistantMessage, fastServiceTier, isJsonObject, type Model } from "@zpi-dev/ai";
 import { builtinPlugins } from "@zpi-dev/builtin-plugins";
 import {
   type AgentSession,
@@ -16,11 +16,13 @@ import {
   SessionManager,
   supportedThinkingLevels,
 } from "@zpi-dev/coding-agent";
-import type { ModelBinding as Binding } from "../accounts/index.ts";
+import { withFastMode } from "../../../desktop/src/shared/fast-mode.ts";
+import type { ModelBinding } from "../accounts/index.ts";
 import { commands } from "./commands.ts";
-import { DirectoryHistory } from "./history.ts";
+import { DirectoryHistory, displayMessages, originalInputEntry } from "./history.ts";
 import { CliResources, fileContext } from "./resources.ts";
 
+type Binding = ModelBinding & { fast?: boolean };
 interface Selection {
   binding: Binding;
   model: Model;
@@ -41,6 +43,7 @@ interface RunOptions {
   onEvent?: (event: AgentSessionEvent) => void;
   skill?: string;
   filePaths?: string[];
+  clipboardImages?: Uint8Array[];
   literal?: boolean;
 }
 
@@ -49,6 +52,22 @@ const initPlugin = builtinPlugins.filter((plugin) => plugin.id === "zpi.project-
 
 function modelName(binding: Binding) {
   return `${binding.provider}/${binding.modelId}`;
+}
+function answerText(message: AssistantMessage) {
+  const text = message.content.filter((part) => part.type === "text");
+  const final = text.filter((part) => part.phase === "final_answer");
+  return (final.length ? final : text.filter((part) => part.phase !== "commentary"))
+    .map((part) => part.text)
+    .join("");
+}
+
+function withSpeed(selection: Selection, fast?: boolean): Selection {
+  if (fast === undefined || !fastServiceTier(selection.model)) return selection;
+  return {
+    ...selection,
+    model: withFastMode(selection.model, fast),
+    binding: { ...selection.binding, fast },
+  };
 }
 
 function recordedBinding(entries: SessionEntry[]): Binding | undefined {
@@ -69,7 +88,12 @@ function recordedBinding(entries: SessionEntry[]): Binding | undefined {
     data.modelId !== native.modelId
   )
     return;
-  return { provider: data.provider, accountId: data.accountId, modelId: data.modelId };
+  return {
+    provider: data.provider,
+    accountId: data.accountId,
+    modelId: data.modelId,
+    ...(typeof data.fast === "boolean" ? { fast: data.fast } : {}),
+  };
 }
 
 function validateEffort(model: Model, value: string): ThinkingLevel;
@@ -93,19 +117,21 @@ interface ActiveSession {
 
 export class CliHost {
   readonly cwd: string;
+  readonly homeDir: string;
   private readonly options: HostOptions;
   private readonly history: DirectoryHistory;
   private readonly resources: CliResources;
   private active?: ActiveSession;
-  private draft: { model?: string; effort?: string; displayModel?: string };
+  private draft: { model?: string; effort?: string; displayModel?: string; speed?: Binding };
   private pending?: Promise<string>;
   private controller?: AbortController;
 
   constructor(options: HostOptions) {
     this.options = options;
     this.cwd = realpathSync(options.cwd);
+    this.homeDir = options.homeDir ?? homedir();
     this.history = new DirectoryHistory(options.root, this.cwd);
-    this.resources = new CliResources(this.cwd, options.homeDir ?? homedir());
+    this.resources = new CliResources(this.cwd, this.homeDir);
     this.draft = { model: options.model, effort: options.effort };
   }
 
@@ -122,15 +148,36 @@ export class CliHost {
     return this.active?.session.getContextUsage();
   }
   getMessages() {
-    return this.active?.session.messages ?? [];
+    return this.active ? Array.from(displayMessages(this.active.manager.iterateEntries())) : [];
+  }
+  async rename(name: string) {
+    this.checkIdle();
+    if (!this.active) throw new Error("先发送一条消息，再给会话命名。");
+    if (!name.trim() || /[\p{C}]/u.test(name) || name.length > 100)
+      throw new Error("请用 /rename 名称，输入 1 至 100 个字符的单行名称。");
+    this.active.session.setSessionName(name);
+    await this.active.manager.flushAsync();
+  }
+  lastAnswer(nth = 1) {
+    const messages = this.getMessages();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role === "assistant") {
+        const answer = answerText(message);
+        if (answer && --nth === 0) return answer;
+      }
+    }
+    return "";
   }
 
   getSelection() {
+    const tier = this.active?.selection.model.samplingParams?.service_tier;
     return {
       model: this.active
         ? modelName(this.active.selection.binding)
         : (this.draft.displayModel ?? this.draft.model),
       effort: this.active?.session.thinkingLevel ?? this.draft.effort,
+      fast: this.active ? tier === "priority" || tier === "fast" : this.draft.speed?.fast === true,
     };
   }
 
@@ -138,8 +185,30 @@ export class CliHost {
     if (this.pending) throw new Error("请等待当前一轮结束");
   }
 
-  private selectDraft() {
-    return this.options.accounts.selectModel(this.draft.model);
+  private async selectDraft() {
+    const selection = await this.options.accounts.selectModel(this.draft.model);
+    const speed = this.draft.speed;
+    return speed &&
+      speed.accountId === selection.binding.accountId &&
+      modelName(speed) === modelName(selection.binding)
+      ? withSpeed(selection, speed.fast)
+      : selection;
+  }
+
+  async toggleFast() {
+    this.checkIdle();
+    const selection = this.active?.selection ?? (await this.selectDraft());
+    const tier = fastServiceTier(selection.model);
+    if (!tier) throw new Error("当前模型未提供加速档位。");
+    const next = withSpeed(selection, selection.model.samplingParams?.service_tier !== tier);
+    if (this.active) {
+      await this.persistBinding(this.active.manager, next);
+      await this.active.session.setModel(next.model);
+      this.active.selection = next;
+    } else {
+      this.draft.speed = next.binding;
+      this.draft.displayModel = modelName(next.binding);
+    }
   }
 
   async getEfforts() {
@@ -164,6 +233,7 @@ export class CliHost {
     const selection = await this.options.accounts.selectModel(name);
     if (!this.active) {
       this.draft.model = name;
+      this.draft.speed = undefined;
       this.draft.displayModel = modelName(selection.binding);
       if (this.draft.effort && !supportedThinkingLevels(selection.model).some((v) => v === this.draft.effort))
         this.draft.effort = undefined;
@@ -219,6 +289,7 @@ export class CliHost {
       previous?.accountId !== binding.accountId ||
       previous.provider !== binding.provider ||
       previous.modelId !== binding.modelId ||
+      previous.fast !== binding.fast ||
       state.model?.provider !== model.provider
     ) {
       await manager.appendCustomEntryAsync(bindingType, { ...binding, nativeProvider: model.provider });
@@ -249,7 +320,10 @@ export class CliHost {
       const recorded = explicit ? undefined : recordedBinding(entries);
       if (!explicit && !recorded)
         throw new Error("会话缺少完整的模型和账户绑定，请用 -m <provider/model> 明确选择");
-      const selection = await this.options.accounts.selectModel(explicit, recorded);
+      const selection = withSpeed(
+        await this.options.accounts.selectModel(explicit, recorded),
+        recorded?.fast,
+      );
       const effort = validateEffort(selection.model, this.draft.effort);
       const manager = SessionManager.open(path);
       const session = await this.create(manager, this.history.directory, selection, effort);
@@ -328,7 +402,7 @@ export class CliHost {
       print: this.options.print ?? this.options.ephemeral,
     });
     if (prepared.compact && !this.active) throw new Error("没有可压缩的完整对话内容");
-    const context = await fileContext(this.cwd, options.filePaths);
+    const context = await fileContext(this.cwd, options.filePaths, options.clipboardImages);
     if (!prepared.text.trim() && !context.images?.length && !context.fileReferences?.length)
       throw new Error("请输入问题");
     const selection = this.active?.selection ?? (await this.selectDraft());
@@ -342,16 +416,19 @@ export class CliHost {
     const parsed = options.literal
       ? { kind: "prompt" as const, text: prepared.text }
       : await session.prepareInput(prepared.text, context);
+    if (
+      !active.temporary &&
+      parsed.kind === "prompt" &&
+      (parsed.text !== text || context.fileReferences?.length || context.images?.length)
+    ) {
+      context.inputId = randomUUID();
+      await sessionManager.appendCustomEntryAsync(originalInputEntry, { inputId: context.inputId, text });
+    }
     let output = "";
     const unsubscribe = session.subscribe((event) => {
       if (parsed.kind === "compact" && event.type === "command_result") output = event.message;
-      if (parsed.kind === "prompt" && event.type === "message_end" && event.message.role === "assistant") {
-        const text = event.message.content.filter((part) => part.type === "text");
-        const final = text.filter((part) => part.phase === "final_answer");
-        output = (final.length ? final : text.filter((part) => part.phase !== "commentary"))
-          .map((part) => part.text)
-          .join("");
-      }
+      if (parsed.kind === "prompt" && event.type === "message_end" && event.message.role === "assistant")
+        output = answerText(event.message);
       options.onEvent?.(event);
     });
     try {

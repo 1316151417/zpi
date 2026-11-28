@@ -1,4 +1,4 @@
-import { Container, Markdown, Text } from "@earendil-works/pi-tui";
+import { Container, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentToolResult } from "@zpi-dev/agent";
 import { type AssistantMessage, contentText, type Message, type ToolResultMessage } from "@zpi-dev/ai";
 import type { AgentSessionEvent } from "@zpi-dev/coding-agent";
@@ -17,6 +17,73 @@ function textParts(content: (Message & { role: "user" | "assistant" | "toolResul
         .map((part) => (part.type === "text" ? part.text : part.type === "image" ? "[图片]" : ""))
         .filter(Boolean)
         .join("\n");
+}
+
+function speakerLines(lines: readonly string[], marker: string, width: number) {
+  return lines.map((line, index) => truncateToWidth(`${index === 0 ? marker : " "} ${line}`, width));
+}
+
+class UserRow extends Text {
+  override render(width: number) {
+    const lines = speakerLines(super.render(Math.max(1, width - 2)), "❯", width);
+    return process.env.NO_COLOR === undefined
+      ? lines.map((line) => `\x1b[48;5;236;38;5;255m${line}\x1b[39;49m`)
+      : lines;
+  }
+}
+
+class AnswerRow extends Markdown {
+  constructor() {
+    super("", 0, 0, markdownTheme);
+  }
+  override render(width: number) {
+    return speakerLines(super.render(Math.max(1, width - 2)), "●", width);
+  }
+}
+
+class ThoughtRow extends Text {
+  private parts: string[] = [];
+  private seen = false;
+  private elapsed = 0;
+  private started?: number;
+  private timed = false;
+  expanded = false;
+  constructor() {
+    super("", 2, 0);
+  }
+  update(message: AssistantMessage, event: string) {
+    const blocks = message.content.filter((block) => block.type === "thinking");
+    this.seen = blocks.length > 0 || (message.usage.reasoning ?? 0) > 0;
+    this.parts = blocks.filter((block) => !block.redacted && block.thinking).map((block) => block.thinking);
+    if (event === "reset") {
+      this.started = undefined;
+      this.timed = false;
+      this.elapsed = 0;
+    }
+    if (event === "thinking_start" && this.started === undefined) {
+      this.started = performance.now();
+      this.timed = true;
+    }
+    if (event === "thinking_end" || event === "message_end") this.stop();
+    else this.refresh();
+  }
+  stop() {
+    if (this.started !== undefined) this.elapsed += performance.now() - this.started;
+    this.started = undefined;
+    this.refresh();
+  }
+  refresh() {
+    if (!this.seen) return this.setText("");
+    const label =
+      this.started !== undefined
+        ? "思考中…"
+        : this.timed
+          ? `已思考 ${Math.round(this.elapsed / 1000)} 秒`
+          : "已思考";
+    const body = this.expanded ? this.parts.map(safeText).join("\n\n") : "";
+    const text = body ? `${label}\n${body}` : label;
+    this.setText(`\n${dim(text)}`);
+  }
 }
 
 class ToolRow extends Text {
@@ -55,12 +122,15 @@ class ToolRow extends Text {
 
 export class Transcript extends Container {
   private tools = new Map<string, ToolRow>();
-  private current?: Markdown;
+  private thoughts: ThoughtRow[] = [];
+  private thought?: ThoughtRow;
+  private current?: AnswerRow;
   expanded = false;
   private displayedText = "";
 
   user(text: string) {
-    this.addChild(new Text(accent("› ") + safeText(text), 1, 0));
+    if (this.children.length) this.addChild(new Spacer(1));
+    this.addChild(new UserRow(safeText(text), 0, 0));
   }
   note(text: string) {
     this.addChild(new Text(safeText(text), 1, 0));
@@ -68,13 +138,14 @@ export class Transcript extends Container {
   reset(messages: readonly Message[]) {
     this.clear();
     this.tools.clear();
+    this.thoughts = [];
     this.beginTurn();
     for (const message of messages) {
       if (message.role === "user" && !message.synthetic)
         this.user(message.userGuide?.text ?? textParts(message.content));
       if (message.role === "assistant") {
-        this.current = undefined;
-        this.assistant(message);
+        this.beginTurn();
+        this.assistant(message, "history");
         for (const part of message.content)
           if (part.type === "toolCall") this.tool(part.id, part.name, part.arguments);
       }
@@ -84,15 +155,30 @@ export class Transcript extends Container {
     this.beginTurn();
   }
   beginTurn() {
+    this.thought?.stop();
+    this.thought = undefined;
     this.current = undefined;
     this.displayedText = "";
   }
-  finishTurn(answer: string) {
+  finishTurn(answer: string, elapsedMs?: number) {
+    this.thought?.stop();
     // Session events already displayed the answer, including any interim commentary.
-    if (answer && !this.displayedText) this.note(answer);
+    if (answer && !this.displayedText) {
+      this.current = new AnswerRow();
+      this.current.setText(safeText(answer));
+      this.addChild(this.current);
+    }
+    if (elapsedMs !== undefined && this.current) {
+      this.addChild(new Spacer(1));
+      this.addChild(new Text(dim(`✻ 用时 ${Math.round(elapsedMs / 1000)} 秒`), 0, 0));
+    }
   }
   toggleDetails() {
     this.expanded = !this.expanded;
+    for (const row of this.thoughts) {
+      row.expanded = this.expanded;
+      row.refresh();
+    }
     for (const row of this.tools.values()) {
       row.expanded = this.expanded;
       row.refresh();
@@ -108,26 +194,40 @@ export class Transcript extends Container {
     }
     return row;
   }
-  private assistant(message: AssistantMessage) {
-    const text = contentText(message.content, "");
+  private assistant(message: AssistantMessage, event: string) {
+    if (!this.thought) {
+      this.thought = new ThoughtRow();
+      this.thought.expanded = this.expanded;
+      this.thoughts.push(this.thought);
+      this.addChild(this.thought);
+    }
+    if (event.startsWith("thinking_") || event === "reset" || event === "message_end" || event === "history")
+      this.thought.update(message, event);
+    if (event.startsWith("thinking_")) return;
+    const text = contentText(message.content, "\n\n");
     if (!this.current) {
       if (!text) return;
-      this.current = new Markdown("", 1, 0, markdownTheme);
+      this.addChild(new Spacer(1));
+      this.current = new AnswerRow();
       this.addChild(this.current);
     } else if (text === this.displayedText) return;
     this.current.setText(safeText(text));
     this.displayedText = text;
   }
   event(event: AgentSessionEvent) {
-    if (event.type === "message_start" && event.message.role === "assistant") this.current = undefined;
+    if (event.type === "message_start" && event.message.role === "assistant") this.beginTurn();
     if (
       (event.type === "message_end" ||
         (event.type === "message_update" &&
           (event.assistantMessageEvent.type.startsWith("text_") ||
+            event.assistantMessageEvent.type.startsWith("thinking_") ||
             event.assistantMessageEvent.type === "reset"))) &&
       event.message.role === "assistant"
     )
-      this.assistant(event.message);
+      this.assistant(
+        event.message,
+        event.type === "message_update" ? event.assistantMessageEvent.type : event.type,
+      );
     if (event.type === "tool_execution_start") this.tool(event.toolCallId, event.toolName, event.args);
     if (event.type === "tool_execution_update")
       this.tool(event.toolCallId, event.toolName, event.args).update(event.partialResult, "执行中");

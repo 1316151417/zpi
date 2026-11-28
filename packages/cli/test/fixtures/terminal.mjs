@@ -65,6 +65,7 @@ export function terminal(bin, args, options) {
     resize: (cols, rows) => pty.resize(cols, rows),
     exit,
     output: () => stripVTControlCharacters(output),
+    rawOutput: () => output,
     kill: () => {
       if (!ended) pty.kill("SIGKILL");
     },
@@ -74,9 +75,13 @@ export function terminal(bin, args, options) {
 export async function login(
   bin,
   options,
-  { name, protocol = 0, base, account, variable, multiple, existing = false, manual = false },
+  { name, protocol = 0, base, account, variable, existing = false, manual = false },
 ) {
-  const ui = terminal(bin, ["auth", "login", name, "--method", "key"], options);
+  const ui = terminal(
+    bin,
+    ["auth", "login", name, "--method", "key", ...(account ? ["--account", account] : [])],
+    options,
+  );
   const answer = async (label, input = "") => {
     await ui.waitFor(label);
     ui.write(`${input}\r`);
@@ -87,7 +92,6 @@ export async function login(
       await answer("协议", down.repeat(protocol));
       await answer("Base URL", base);
     }
-    await answer("账户名", account ?? "");
     await answer("密钥来源", down);
     await answer("环境变量名", variable);
     if (manual) {
@@ -95,9 +99,6 @@ export async function login(
       await answer("上下文上限");
       await answer("输出上限");
       await answer("再添加一个模型", "n");
-    } else {
-      await answer("启用模型", multiple ? `${down} ` : "");
-      if (multiple) await answer("默认模型");
     }
     assert.equal((await ui.exit).exitCode, 0, ui.output());
   } finally {

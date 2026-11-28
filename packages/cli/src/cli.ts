@@ -78,7 +78,7 @@ async function main(): Promise<number> {
       host,
       initialPrompt: prompt,
       selectSession: resume === true,
-      listModels: () => accounts.availableModels(),
+      accounts,
       signal: controller.signal,
     });
   } finally {

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { Markdown } from "@earendil-works/pi-tui";
+import { Markdown, visibleWidth } from "@earendil-works/pi-tui";
 import { emptyAssistant } from "@zpi-dev/ai";
 import { expect, it, vi } from "vitest";
 import { fakeModel } from "../../../tests/fake-server.ts";
@@ -137,6 +137,60 @@ it("keeps tool previews valid Unicode when the cutoff falls inside an emoji", ()
   expect(screen().endsWith(prefix)).toBe(true);
   transcript.toggleDetails();
   expect(screen()).toContain(full);
+});
+
+it("separates speakers and expands only visible reasoning, including after replay", () => {
+  const transcript = new Transcript();
+  const user = { role: "user" as const, content: "你好", timestamp: 1 };
+  const message = emptyAssistant(fakeModel(""));
+  message.content = [
+    { type: "thinking", thinking: "可见摘要", thinkingSignature: "signature-only" },
+    { type: "thinking", thinking: "opaque-payload", redacted: true },
+  ];
+  const render = () => stripVTControlCharacters(transcript.render(32).join("\n"));
+  transcript.user(user.content);
+  transcript.event({ type: "message_start", message });
+  transcript.event({
+    type: "message_update",
+    message,
+    assistantMessageEvent: { type: "thinking_start", contentIndex: 0, partial: message },
+  });
+  expect(render()).toContain("思考中");
+  expect(render()).not.toContain("可见摘要");
+  message.content.push({ type: "text", text: "你好！" });
+  transcript.event({ type: "message_end", message });
+  expect(render()).toMatch(/❯ 你好[\s\S]+已思考 \d+ 秒[\s\S]+● 你好！/u);
+  transcript.toggleDetails();
+  expect(render()).toContain("可见摘要");
+  expect(render()).not.toMatch(/opaque-payload|signature-only/);
+  transcript.reset([user, message]);
+  expect(render()).toContain("可见摘要");
+  expect(render()).not.toMatch(/已思考 \d+ 秒|opaque-payload|signature-only/);
+  transcript.toggleDetails();
+  expect(render()).not.toContain("可见摘要");
+});
+
+it("wraps both speakers at the text column and keeps the full-width prompt readable without color", () => {
+  const transcript = new Transcript();
+  const assistant = emptyAssistant(fakeModel(""));
+  assistant.content = [{ type: "text", text: "一二三四五六七八" }];
+  transcript.reset([{ role: "user", timestamp: 1, content: "一二三四五六七八" }, assistant]);
+  vi.stubEnv("NO_COLOR", undefined);
+  try {
+    const raw = transcript.render(10);
+    const band = raw.filter((line) => line.includes("\x1b[48;5;"));
+    expect(band.length).toBeGreaterThan(1);
+    expect(band.every((line) => visibleWidth(line) === 10)).toBe(true);
+    const plain = raw.map(stripVTControlCharacters);
+    expect(plain.some((line) => line.startsWith("❯ 一二三四"))).toBe(true);
+    expect(plain.some((line) => line.startsWith("● 一二三四"))).toBe(true);
+    expect(plain.filter((line) => line.startsWith("  五六七八"))).toHaveLength(2);
+    vi.stubEnv("NO_COLOR", "1");
+    expect(transcript.render(10).join("")).not.toContain("\x1b[48;");
+    expect(transcript.render(10).map(stripVTControlCharacters)).toEqual(plain);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 it("renders mixed-phase answers once and keeps the Markdown cache on non-text updates", () => {

@@ -5,11 +5,12 @@ import {
   stripTerminalSequences,
 } from "@earendil-works/pi-tui";
 
-const style = (on: number, off: number) => (text: string) =>
+const style = (on: number | string, off: number) => (text: string) =>
   process.env.NO_COLOR === undefined ? `\x1b[${on}m${text}\x1b[${off}m` : text;
 export const dim = style(2, 22);
-export const accent = style(36, 39);
+export const accent = style("38;5;110", 39);
 export const bold = style(1, 22);
+export const wordmark = bold(style("38;5;179", 39)("ZPI"));
 const plain = (text: string) => text;
 export function safeText(raw: string) {
   return stripTerminalSequences(raw)
@@ -35,7 +36,7 @@ export const markdownTheme: MarkdownTheme = {
   quote: plain,
   quoteBorder: dim,
   hr: dim,
-  listBullet: accent,
+  listBullet: dim,
   bold,
   italic: style(3, 23),
   strikethrough: style(9, 29),

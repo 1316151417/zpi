@@ -122,12 +122,9 @@ export async function verifyIndependentSubscriptions({
             signal.removeEventListener("abort", abort);
           }
         },
-        chooseModels: async (models) => {
-          const model = models.find((m) => m.availability === "listed" && desktopListed.has(m.id));
-          if (!model) throw new Error("缺少共同可用的订阅模型");
-          return [model];
+        manualModels: async () => {
+          throw new Error("订阅账户需要服务端模型目录");
         },
-        chooseDefault: async ([id]) => id,
         warn: () => {},
       },
     );
@@ -142,7 +139,9 @@ export async function verifyIndependentSubscriptions({
       cliCredential.clientId === desktopCredential.clientId
     )
       throw new Error("账户或应用标识不符合验收条件");
-    const selected = await accounts.selectModel();
+    const shared = account.models.find((m) => m.availability === "listed" && desktopListed.has(m.id));
+    if (!shared) throw new Error("缺少共同可用的订阅模型");
+    const selected = await accounts.selectModel(`openai/${shared.id}`);
     const desktopRuntime = await ModelRuntime.create({ fetch: fetcher });
     const provider = desktopId;
     desktopRuntime.registerProvider(

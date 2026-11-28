@@ -30,7 +30,7 @@ export class Completions implements AutocompleteProvider {
   }
   async getSuggestions(lines: string[], row: number, col: number, { signal }: { signal: AbortSignal }) {
     const before = lines[row].slice(0, col);
-    if (lines.length === 1 && /^\/[\w:/.-]*$/u.test(before)) {
+    if (lines.length === 1 && /^\/\S*$/u.test(before)) {
       // Reuse one catalog while the user types a command name. Execution reads the files again.
       const now = Date.now();
       if (before === "/" || !this.commandList || now >= this.commandList.expires)

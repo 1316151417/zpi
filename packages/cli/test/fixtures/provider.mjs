@@ -14,6 +14,7 @@ export async function testProvider() {
               id,
               context_window: 32768,
               max_output_tokens: 4096,
+              service_tiers: id === "coder" ? ["priority"] : [],
             })),
           }),
         );
@@ -71,6 +72,7 @@ export async function testProvider() {
           });
           chunk({}, "tool_calls");
         } else {
+          if (question.includes("show-thinking")) chunk({ reasoning_content: "检查终端回放" });
           chunk({ role: "assistant", content: reply });
           chunk({}, "stop");
         }

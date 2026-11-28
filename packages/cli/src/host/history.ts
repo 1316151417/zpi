@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { lstat, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { contentText } from "@zpi-dev/ai";
+import { contentText, isJsonObject, type Message } from "@zpi-dev/ai";
 import { parseSessionTranscript, type SessionEntry } from "@zpi-dev/coding-agent";
 import { previewText } from "../preview.ts";
 
@@ -17,10 +17,29 @@ function byActivity(a: Pick<HistoryItem, "mtime" | "id">, b: Pick<HistoryItem, "
   return b.mtime - a.mtime || a.id.localeCompare(b.id);
 }
 
-function firstInput(entries: SessionEntry[]): string | undefined {
+export const originalInputEntry = "zpi.cli.input";
+
+// Preserve what the user typed when the provider receives expanded Skill or file context.
+export function* displayMessages(entries: Iterable<SessionEntry>): Generator<Message> {
+  let original: { inputId: string; text: string } | undefined;
   for (const entry of entries) {
-    if (entry.type !== "message" || entry.message.role !== "user" || entry.message.synthetic) continue;
-    const text = contentText(entry.message.content, " ");
+    if (entry.type === "custom" && entry.customType === originalInputEntry && isJsonObject(entry.data)) {
+      const { inputId, text } = entry.data;
+      if (typeof inputId === "string" && typeof text === "string") original = { inputId, text };
+    } else if (entry.type === "message") {
+      const message = entry.message;
+      if (message.role === "user" && original && message.inputId === original.inputId) {
+        yield { ...message, content: original.text };
+        original = undefined;
+      } else yield message;
+    }
+  }
+}
+
+function firstInput(entries: SessionEntry[]): string | undefined {
+  for (const message of displayMessages(entries)) {
+    if (message.role !== "user" || message.synthetic) continue;
+    const text = message.userGuide?.text ?? contentText(message.content, " ");
     return previewText(text.replace(/\s+/g, " ").trim()) || "图片";
   }
 }
@@ -63,7 +82,10 @@ export class DirectoryHistory {
     const snapshot = parseSessionTranscript(await readFile(path, "utf8"), { repairIncompleteTail: true });
     if (snapshot.header.id !== id || snapshot.header.cwd !== this.cwd)
       throw new Error("会话与当前目录或 ID 不匹配");
-    return { entries: snapshot.entries, mtime: info.mtimeMs, title: firstInput(snapshot.entries) };
+    const input = firstInput(snapshot.entries);
+    const title =
+      input && (snapshot.entries.findLast((entry) => entry.type === "session_info")?.name || input);
+    return { entries: snapshot.entries, mtime: info.mtimeMs, title };
   }
 
   async readForResume(id: string) {

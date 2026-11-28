@@ -87,18 +87,20 @@ test("real terminal, isolated providers, persistent sessions and clean pipes", {
   // Compare the POSIX tty mode, including echo and canonical input, after the binary exits.
   const shell =
     'before=$(stty -g) || exit 95; "$1" || exit $?; after=$(stty -g) || exit 96; test "$before" = "$after" || exit 97';
-  const empty = terminal("/bin/sh", ["-c", shell, "check-terminal", bin], options);
+  const empty = terminal("/bin/sh", ["-c", shell, "check-terminal", bin], { ...options, cwd: home });
   t.after(empty.kill);
-  await empty.waitFor("Enter 发送");
+  await empty.waitFor("ZPI   ~");
+  assert.doesNotMatch(empty.output(), /Enter 发送|Ctrl\+J|Ctrl\+O/);
   empty.write("\x04");
   assert.equal((await empty.exit).exitCode, 0);
   assert.deepEqual(await historyFiles(), []);
   assert.equal((await call(["auth", "login", "anthropic", "--method", "key"], "never-a-key")).code, 2);
 
-  await login(bin, options, { name: "team", variable: "TEST_PERSONAL", base: provider.url, multiple: true });
+  await login(bin, options, { name: "team", variable: "TEST_PERSONAL", base: provider.url });
   const initial = await ok(["models"]);
-  assert.match(initial, /team\/coder/);
-  assert.match(initial, /team\/org\/writer/);
+  assert.deepEqual(initial.trimEnd().split("\n"), ["team/coder", "team/org/writer"]);
+  assert.doesNotMatch(await ok(["auth", "list"]), /default/);
+  assert.equal(await ok(["--list-models", "writer"]), "team/org/writer\n");
   const unknown = await call(["-p", "/review"]);
   assert.equal(unknown.code, 1);
   assert.match(unknown.stderr, /未知命令/);
@@ -111,16 +113,81 @@ test("real terminal, isolated providers, persistent sessions and clean pipes", {
   assert.equal(provider.requests.at(-1).authorization, "Bearer fixture-personal");
   assert.deepEqual(await historyFiles(), []);
 
+  const modelProject = join(root, "model-picker");
+  await mkdir(modelProject);
+  const visual = join(root, "test-editor");
+  await writeFile(visual, '#!/bin/sh\nprintf "edited-in-terminal" >> "$1"\n', { mode: 0o700 });
+  const modelUi = terminal(bin, [], { env: { ...env, VISUAL: visual }, cwd: modelProject });
+  t.after(modelUi.kill);
+  await modelUi.waitFor("team/coder");
+  modelUi.write("draft: ");
+  modelUi.write("\x13");
+  await modelUi.waitFor("草稿已暂存");
+  modelUi.write("\x13");
+  await modelUi.waitFor("draft:");
+  modelUi.write("\x07");
+  await modelUi.waitFor("edited-in-terminal");
+  modelUi.write("\x03");
+  modelUi.write("/login\r");
+  await modelUi.waitFor("选择服务");
+  modelUi.write("\x03");
+  await modelUi.waitFor("team/coder");
+  modelUi.write("/login anthropic\r");
+  await modelUi.waitFor("密钥来源");
+  modelUi.write("\x03");
+  await modelUi.waitFor("team/coder");
+  modelUi.write("/model writer\r");
+  await modelUi.waitFor("选择模型");
+  await modelUi.waitFor("team/org/writer");
+  modelUi.write("\x13"); // save default with Ctrl+S
+  await modelUi.waitFor("team/org/writer");
+  assert.equal(await ok(["-p", "saved model"]), "answer-org/writer\n");
+  modelUi.write("/model team/coder\r");
+  await modelUi.waitFor("team/coder");
+  modelUi.write("/fast\r");
+  await modelUi.waitFor("加速");
+  modelUi.write("show-thinking\r");
+  await modelUi.waitFor("已思考");
+  await modelUi.waitFor("answer-coder");
+  await modelUi.waitFor("用时");
+  assert.doesNotMatch(modelUi.output(), /检查终端回放/);
+  assert.equal(provider.requests.at(-1).body.service_tier, "priority");
+  modelUi.write("\x0f");
+  await modelUi.waitFor("检查终端回放");
+  modelUi.write("/rename 终端验证\r");
+  await modelUi.waitFor("会话已命名为 终端验证");
+  modelUi.write("/copy 1\r");
+  await modelUi.waitFor("已向终端发送复制请求");
+  assert.ok(modelUi.rawOutput().includes(`\x1b]52;c;${Buffer.from("answer-coder").toString("base64")}\x07`));
+  modelUi.write("\x12");
+  await modelUi.waitFor("搜索输入历史");
+  modelUi.write("thinking\r");
+  await modelUi.waitFor("show-thinking");
+  modelUi.write("\x03");
+  modelUi.write("\x04");
+  assert.equal((await modelUi.exit).exitCode, 0);
+  const renamed = terminal(bin, ["-r"], { ...options, cwd: modelProject });
+  t.after(renamed.kill);
+  await renamed.waitFor("终端验证");
+  renamed.write("\x1b");
+  await renamed.waitFor("❯");
+  renamed.write("\x04");
+  assert.equal((await renamed.exit).exitCode, 0);
+  assert.equal((await call(["-c", "-p", "continue fast"], "", modelProject)).stdout, "answer-coder\n");
+  assert.equal(provider.requests.at(-1).body.service_tier, "priority");
+  await ok(["models", "--default", "team/coder"]);
+
+  const pickerHistory = await historyFiles();
   await writeFile(join(cwd, "notes.md"), "这是测试文件\n");
   const first = open(["exercise-tools"]);
   await first.waitFor("answer-coder");
-  await first.waitFor("Enter 发送");
+  await first.waitFor("team/coder");
   assert.equal(await readFile(join(cwd, "proof.txt"), "utf8"), "after\n");
   first.write("\x0f");
   first.resize(75, 23);
   first.write("\x04");
   assert.equal((await first.exit).exitCode, 0);
-  const [history] = await historyFiles();
+  const [history] = (await historyFiles()).filter((file) => !pickerHistory.includes(file));
   assert.ok(history);
   const id = history
     .split("/")
@@ -134,7 +201,7 @@ test("real terminal, isolated providers, persistent sessions and clean pipes", {
   assert.equal((await call(["-r", id, "-p", "test"], "", elsewhere)).code, 1);
 
   const active = open(["-r", id]);
-  await active.waitFor("Enter 发送");
+  await active.waitFor("team/coder");
   const conflict = await call(["-c", "-p", "busy"]);
   assert.equal(conflict.code, 1);
   assert.match(conflict.stderr, /占用|另一个进程/);
@@ -174,24 +241,54 @@ test("real terminal, isolated providers, persistent sessions and clean pipes", {
   assert.equal(await ok(["-p", "new default"]), "answer-manual-test\n");
   await ok(["models", "--default", "team/coder"]);
 
+  const ambiguous = open();
+  await ambiguous.waitFor("team/coder");
+  ambiguous.write("/model coder\r");
+  await ambiguous.waitFor("选择模型");
+  await ambiguous.waitFor("anth/coder");
+  ambiguous.write("\x1b");
+  await ambiguous.waitFor("❯");
+  ambiguous.write("\x04");
+  assert.equal((await ambiguous.exit).exitCode, 0);
+
   const ui = open(["-r"]);
   await ui.waitFor("继续会话");
   ui.write("\r");
-  await ui.waitFor("Enter 发送");
+  await ui.waitFor("team/coder");
   ui.write("@not");
   await ui.waitFor("notes.md");
   ui.write("\t");
   ui.write("\x1b[200~ 阅读下面的中文\n第二行\x1b[201~");
   ui.write("\r");
   await ui.waitFor("answer-coder");
-  await ui.waitFor("Enter 发送");
+  await ui.waitFor("team/coder");
   assert.match(JSON.stringify(provider.requests.at(-1).body), /第二行/);
+  const skillDir = join(cwd, ".agents", "skills", "proofread");
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(join(skillDir, "SKILL.md"), "---\ndescription: 校对正文\n---\nPROOFREAD BODY");
+  ui.write("/");
+  await ui.waitFor("/proofread");
+  ui.write("proof");
+  ui.write("\t");
+  await ui.waitFor("/proofread ");
+  ui.write("检查这一段\r");
+  await ui.waitFor("answer-coder");
+  await ui.waitFor("team/coder");
+  const skillMessage = provider.requests.at(-1).body.messages.findLast((message) => message.role === "user");
+  assert.match(JSON.stringify(skillMessage.content), /检查这一段/);
+  assert.match(JSON.stringify(skillMessage.content), /PROOFREAD BODY/);
   ui.write("hold-this-request\r");
-  await ui.waitFor("Esc 中断");
+  await ui.waitFor("运行中");
   ui.write("\x1b");
   await ui.waitFor("已中断");
   ui.write("\x04");
   assert.equal((await ui.exit).exitCode, 0);
+  const replay = open(["-r", id]);
+  await replay.waitFor("/proofread 检查这一段");
+  await replay.waitFor("team/coder");
+  assert.doesNotMatch(replay.output(), /PROOFREAD BODY|Required skill:/);
+  replay.write("\x04");
+  assert.equal((await replay.exit).exitCode, 0);
   const interrupted = spawn(bin, ["-p", "hold-this-request"], {
     ...options,
     stdio: ["ignore", "pipe", "pipe"],

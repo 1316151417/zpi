@@ -5,7 +5,8 @@ export const help = `zpi [选项] [问题]
   zpi -c                        继续当前目录最近的会话
   zpi -r [id]                   选择或恢复当前目录的会话
   zpi -p [问题]                 从参数或 stdin 读取，只打印本轮回答
-  zpi -m <provider/model>       为本次调用指定模型
+  zpi -m, --model <provider/model>  为本次调用指定模型
+  zpi --list-models [关键词]     列出已连接的模型
   zpi --effort <档位>           为本次调用指定推理强度
   zpi --help | --version
 
@@ -13,7 +14,7 @@ export const help = `zpi [选项] [问题]
   zpi auth list
   zpi auth switch <provider> <account>
   zpi auth logout
-  zpi models [--default <provider/model>]
+  zpi models [关键词 | --default <provider/model>]
 
 示例
   zpi auth login anthropic --method key
@@ -40,6 +41,10 @@ type Invocation =
 
 export function parseInvocation(args: string[]): Invocation {
   const [command, ...rest] = args;
+  if (command === "--list-models") {
+    if (rest.length > 1 || rest[0]?.startsWith("-")) throw new UsageError("用法：zpi --list-models [关键词]");
+    return { kind: "accounts", command: "models", args: rest };
+  }
   if (command === "auth" || command === "models") {
     return rest.includes("--help") || rest.includes("-h")
       ? { kind: "help" }

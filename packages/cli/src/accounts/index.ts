@@ -12,7 +12,6 @@ import {
 import {
   type Account,
   AccountStore,
-  billing,
   type CredentialSource,
   type SecretStore,
   type Service,
@@ -32,12 +31,7 @@ export type LoginSource =
   | { kind: "none" };
 export interface LoginInteraction {
   authorize(login: ChatGPTLogin): Promise<ChatGPTCredential>;
-  chooseModels(
-    candidates: DiscoveredModel[],
-    previous: DiscoveredModel[],
-    manual: boolean,
-  ): Promise<DiscoveredModel[]>;
-  chooseDefault(ids: string[]): Promise<string>;
+  manualModels(previous: DiscoveredModel[]): Promise<DiscoveredModel[]>;
   warn(message: string): void;
   signal?: AbortSignal;
 }
@@ -101,9 +95,7 @@ export class Accounts {
           const id = `${account.provider}/${m.id}`;
           return {
             id,
-            account: account.name,
             isDefault: id === state.defaultModel,
-            billing: billing(account),
           };
         }),
       );
@@ -269,14 +261,6 @@ export class Accounts {
           ui,
           this.fetcher,
         );
-        const ids = models.map((m) => `${provider}/${m.id}`);
-        const defaultId =
-          !state.defaultModel && ids.length
-            ? ids.length === 1
-              ? ids[0]
-              : await ui.chooseDefault(ids)
-            : undefined;
-        if (defaultId && !ids.includes(defaultId)) throw new Error("请选择已启用的默认模型。");
         ui.signal?.throwIfAborted();
         const account: Account = { ...service, name, id, credential: source, models };
         if (secret !== undefined && "ref" in source) this.secrets.set(source.ref, secret);
@@ -292,8 +276,8 @@ export class Accounts {
             if (index >= 0) current.accounts[index] = account;
             else current.accounts.push(account);
             if (!other.length && index < 0) current.active[provider] = id;
-            if (!current.defaultModel && defaultId && current.active[provider] === id)
-              current.defaultModel = defaultId;
+            if (!current.defaultModel && models.length && current.active[provider] === id)
+              current.defaultModel = `${provider}/${models[0].id}`;
           });
         } catch (error) {
           if (secret !== undefined && "ref" in source) this.secrets.delete(source.ref);

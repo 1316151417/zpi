@@ -1,6 +1,8 @@
+import { sep } from "node:path";
 import {
   Container,
   Editor,
+  getNativeClipboard,
   isKeyRelease,
   matchesKey,
   ProcessTerminal,
@@ -8,29 +10,40 @@ import {
   SelectList,
   type SlashCommand,
   Text,
+  TruncatedText,
   TuiMainScreen,
 } from "@earendil-works/pi-tui";
+import { imageLimits } from "@zpi-dev/coding-agent";
 import type { Accounts } from "../accounts/index.ts";
 import { builtinNames, commands, isSessionCommand } from "../host/commands.ts";
 import type { CliHost } from "../host/index.ts";
 import { Completions, references } from "./completion.ts";
-import { accent, bold, dim, listTheme, safeText } from "./theme.ts";
+import { SearchPicker } from "./search-picker.ts";
+import { bold, dim, listTheme, safeText, wordmark } from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
 interface InteractiveOptions {
   host: CliHost;
   initialPrompt?: string;
   selectSession?: boolean;
-  listModels: Accounts["availableModels"];
+  accounts: Accounts;
   signal?: AbortSignal;
 }
 
-const hint = "Enter 发送 · Ctrl+J 换行 · /help 帮助 · Ctrl+O 工具详情";
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+class PromptEditor extends Editor {
+  override render(width: number) {
+    const lines = super.render(width);
+    // Use the editor's reserved left margin so IME and mouse positions stay aligned.
+    if (lines[1]?.startsWith("  ")) lines[1] = dim("❯") + lines[1].slice(1);
+    return lines;
+  }
+}
 
 export async function runInteractive({
   host,
-  listModels,
+  accounts,
   initialPrompt,
   selectSession,
   signal,
@@ -41,14 +54,14 @@ export async function runInteractive({
   const transcript = new Transcript();
   const panel = new Container();
   const status = new Text("", 1, 0);
-  const editor = new Editor(
+  const editor = new PromptEditor(
     tui,
     { borderColor: dim, selectList: listTheme },
-    { paddingX: 1, autocompleteMaxVisible: 5 },
+    { paddingX: 2, autocompleteMaxVisible: 5 },
   );
   async function availableCommands(reportErrors = false): Promise<SlashCommand[]> {
     try {
-      return [...commands, ...(await host.listCommands())];
+      return [...(await host.listCommands()), ...commands];
     } catch (error) {
       if (reportErrors) transcript.note(messageOf(error));
       return [...commands];
@@ -60,18 +73,31 @@ export async function runInteractive({
   let task: Promise<void> | undefined;
   let cancelPicker: (() => void) | undefined;
   let pastedCommand: string | undefined;
+  let images = new Map<string, Uint8Array>();
+  let imageIndex = 0;
+  let stash: { text: string; command?: string; skill?: string; images: typeof images } | undefined;
+  const inputHistory = new Set<string>();
   const exit = Promise.withResolvers<number>();
   let closing = false;
+  let defaultModel: string | undefined;
+
+  function models() {
+    const available = accounts.availableModels();
+    defaultModel = available.find((item) => item.isDefault)?.id;
+    return available;
+  }
 
   function update() {
     const current = host.getSelection();
     const info = [
-      current.model,
-      current.effort,
+      current.model ?? defaultModel,
+      current.effort && current.effort !== "off" && current.effort,
+      current.fast && "加速",
       skill && `Skill ${skill}`,
-      turn ? "运行中 · Esc 中断" : task && !cancelPicker ? "正在准备…" : hint,
+      stash && "草稿已暂存",
+      turn && "运行中",
     ].filter(Boolean);
-    status.setText(dim(safeText(info.join("  ·  "))));
+    status.setText(info.length ? dim(safeText(info.join("  ·  "))) : "");
     tui.requestRender();
   }
   function finish(code: number) {
@@ -81,7 +107,24 @@ export async function runInteractive({
     turn?.abort();
     exit.resolve(code);
   }
-  function picker(title: string, items: SelectItem[], empty: string, selected?: string) {
+  async function inTerminal<T>(run: () => Promise<T>) {
+    tui.stop();
+    try {
+      return await run();
+    } finally {
+      if (!closing) {
+        tui.start();
+        tui.requestRender(true);
+      }
+    }
+  }
+  function picker(
+    title: string,
+    items: SelectItem[],
+    empty: string,
+    selected?: string,
+    search?: { query: string; save?: () => void },
+  ) {
     if (closing) return Promise.resolve(undefined);
     if (!items.length) {
       transcript.note(empty);
@@ -89,17 +132,11 @@ export async function runInteractive({
       return Promise.resolve(undefined);
     }
     const result = Promise.withResolvers<string | undefined>();
-    const list = new SelectList(
-      items.map((item) => ({
-        ...item,
-        label: safeText(item.label).replaceAll("\n", " "),
-        description: item.description && safeText(item.description).replaceAll("\n", " "),
-      })),
-      7,
-      listTheme,
-    );
-    const index = items.findIndex((item) => item.value === selected);
-    if (index >= 0) list.setSelectedIndex(index);
+    const clean = items.map((item) => ({
+      ...item,
+      label: safeText(item.label).replaceAll("\n", " "),
+      description: item.description && safeText(item.description).replaceAll("\n", " "),
+    }));
     const done = (value?: string) => {
       cancelPicker = undefined;
       panel.clear();
@@ -109,10 +146,32 @@ export async function runInteractive({
       result.resolve(value);
     };
     cancelPicker = () => done();
-    list.onCancel = cancelPicker;
-    list.onSelect = (item) => done(item.value);
+    let list: SelectList | SearchPicker;
+    if (search) {
+      list = new SearchPicker(
+        clean,
+        search.query,
+        selected,
+        (value, save) => {
+          if (save) search.save?.();
+          done(value);
+        },
+        cancelPicker,
+        !!search.save,
+      );
+    } else {
+      list = new SelectList(clean, 7, listTheme);
+      list.setSelectedIndex(
+        Math.max(
+          0,
+          items.findIndex((item) => item.value === selected),
+        ),
+      );
+      list.onCancel = cancelPicker;
+      list.onSelect = (item) => done(item.value);
+    }
     panel.clear();
-    panel.addChild(new Text(bold(title) + dim("   ↑↓ 选择 · Enter 确定 · Esc 返回"), 1, 0));
+    panel.addChild(new Text(bold(title), 1, 0));
     panel.addChild(list);
     tui.setFocus(list);
     tui.requestRender();
@@ -131,26 +190,40 @@ export async function runInteractive({
           description: new Date(row.mtime).toLocaleString(),
         })),
       "当前目录没有可继续的 CLI 会话",
+      undefined,
+      { query: "" },
     );
     if (chosen && !closing) {
       await host.resume(chosen);
       transcript.reset(host.getMessages());
       skill = undefined;
+      images.clear();
+      stash = undefined;
     }
     return Boolean(chosen);
   }
-  async function local(name: string) {
+  async function local(name: string, argument = "") {
     switch (name) {
       case "help":
         transcript.note(
           [
             ...(await availableCommands(true)).map((cmd) => `/${cmd.name}   ${cmd.description ?? ""}`),
             "",
-            hint,
+            "Ctrl+J 换行 · Ctrl+R 搜索输入 · Ctrl+O 思考与工具详情 · Ctrl+L / Alt+P 选模型",
+            "Ctrl+P / Ctrl+Shift+P 切换模型 · Shift+Tab 切换推理档位 · Alt+O 切换加速",
             "Tab 采纳补全 · @ 引用文件或目录 · Esc 关闭候选或中断 · Ctrl+D 退出空输入框",
+            "Ctrl+V 粘贴图片 · Ctrl+S 暂存或取回草稿 · Ctrl+G 用外部编辑器编辑",
           ].join("\n"),
         );
         break;
+      case "copy": {
+        if (argument && !/^[1-9]\d*$/.test(argument)) throw new Error("用法：/copy [倒数第几条回答]");
+        const answer = host.lastAnswer(Number(argument || 1));
+        if (!answer) throw new Error("当前会话找不到这条回答。");
+        process.stdout.write(`\x1b]52;c;${Buffer.from(answer).toString("base64")}\x07`);
+        transcript.note("已向终端发送复制请求。");
+        break;
+      }
       case "exit":
         finish(0);
         break;
@@ -158,24 +231,73 @@ export async function runInteractive({
         await host.clear();
         transcript.reset([]);
         skill = undefined;
+        images.clear();
+        stash = undefined;
+        models();
         break;
       case "resume":
         await resume();
         break;
+      case "rename":
+        await host.rename(argument);
+        transcript.note(`会话已命名为 ${argument}`);
+        break;
       case "model": {
-        const value = await picker(
-          "选择模型",
-          listModels().map(({ id, account, billing }) => ({
-            value: id,
-            label: id,
-            description: `${account} · ${billing}`,
-          })),
-          "尚无可用模型。使用 zpi auth login 连接服务。",
-          host.getSelection().model,
-        );
-        if (value && !closing) await host.setModel(value);
+        const items = models();
+        const current = host.getSelection().model ?? defaultModel;
+        const rank = (id: string) => (id === current ? 0 : id === defaultModel ? 1 : 2);
+        const exact = items.find((m) => m.id === argument);
+        const sameId = items.filter((m) => m.id.slice(m.id.indexOf("/") + 1) === argument);
+        let save = false;
+        const value =
+          exact?.id ??
+          (sameId.length === 1 ? sameId[0].id : undefined) ??
+          (await picker(
+            "选择模型   ·   Ctrl+S 设为默认",
+            items
+              .sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id))
+              .map(({ id }) => ({
+                value: id,
+                label: id,
+                description: [id === current && "当前", id === defaultModel && "默认"]
+                  .filter(Boolean)
+                  .join(" · "),
+              })),
+            "尚无可用模型。使用 /login 连接服务。",
+            current,
+            {
+              query: argument,
+              save: () => {
+                save = true;
+              },
+            },
+          ));
+        if (value && !closing) {
+          await host.setModel(value);
+          if (save) {
+            accounts.setDefault(value);
+            defaultModel = value;
+          }
+        }
         break;
       }
+      case "login":
+      case "logout": {
+        const { runAccountCommand } = await import("../accounts/commands.ts");
+        try {
+          await inTerminal(() =>
+            runAccountCommand(accounts, "auth", argument ? [name, argument] : [name], signal),
+          );
+        } catch (error) {
+          if (!(error instanceof Error && "exitCode" in error && error.exitCode === 130)) throw error;
+        } finally {
+          if (!closing) models();
+        }
+        break;
+      }
+      case "fast":
+        await host.toggleFast();
+        break;
       case "effort": {
         const levels = await host.getEfforts();
         const value = await picker(
@@ -220,13 +342,21 @@ export async function runInteractive({
   async function submit(text: string, literal: boolean) {
     if (!text.trim() || closing) return;
     editor.addToHistory(text);
+    inputHistory.delete(text);
+    inputHistory.add(text);
+    if (inputHistory.size > 100) {
+      const oldest = inputHistory.values().next().value;
+      if (oldest !== undefined) inputHistory.delete(oldest);
+    }
     const command = !literal && /^\/([\w:-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
     if (command && builtinNames.has(command[1]) && !isSessionCommand(command[1])) {
-      if (command[2]) throw new Error(`/${command[1]} 不接收参数`);
-      await local(command[1]);
+      if (command[2] && !["model", "login", "copy", "rename"].includes(command[1]))
+        throw new Error(`/${command[1]} 不接收参数`);
+      await local(command[1], command[2]?.trim());
       return;
     }
     turn = new AbortController();
+    const started = performance.now();
     transcript.beginTurn();
     transcript.user(text);
     update();
@@ -234,6 +364,7 @@ export async function runInteractive({
       const answer = await host.run(text, {
         literal,
         filePaths: literal ? [] : references(text),
+        clipboardImages: [...images].filter(([marker]) => text.includes(marker)).map(([, bytes]) => bytes),
         skill,
         signal: turn.signal,
         onEvent: (event) => {
@@ -241,9 +372,11 @@ export async function runInteractive({
           tui.requestRender();
         },
       });
-      transcript.finishTurn(answer);
+      transcript.finishTurn(answer, performance.now() - started);
       skill = undefined;
+      images.clear();
     } catch (error) {
+      transcript.finishTurn("");
       if (!turn.signal.aborted) throw error;
       transcript.note("已中断");
     } finally {
@@ -281,6 +414,96 @@ export async function runInteractive({
       }
       return;
     }
+    if (!task && (matchesKey(data, "ctrl+l") || matchesKey(data, "alt+p"))) {
+      perform(() => local("model"));
+      return { consume: true };
+    }
+    if (!task && !editor.isShowingAutocomplete()) {
+      if (matchesKey(data, "ctrl+v")) {
+        perform(async () => {
+          const draft = editor.getExpandedText();
+          for (const marker of images.keys()) if (!draft.includes(marker)) images.delete(marker);
+          if (images.size >= imageLimits.count) throw new Error("本条消息图片数量超限");
+          const bytes = await getNativeClipboard()?.getImage();
+          if (closing) return;
+          if (!bytes?.length) throw new Error("剪贴板中没有可用图片，可用 @ 引用图片文件。");
+          if (bytes.length > imageLimits.sourceBytes) throw new Error("剪贴板图片太大。");
+          const marker = `[图片 ${++imageIndex}]`;
+          images.set(marker, bytes);
+          editor.insertTextAtCursor(marker);
+        });
+        return { consume: true };
+      }
+      if (matchesKey(data, "ctrl+s")) {
+        const text = editor.getExpandedText();
+        if (text.trim()) {
+          stash = { text, command: pastedCommand, skill, images };
+          editor.setText("");
+          pastedCommand = undefined;
+          skill = undefined;
+          images = new Map();
+        } else if (stash) {
+          editor.setText(stash.text);
+          pastedCommand = stash.command;
+          skill = stash.skill;
+          images = stash.images;
+          stash = undefined;
+        }
+        update();
+        return { consume: true };
+      }
+      if (matchesKey(data, "ctrl+g")) {
+        perform(async () => {
+          const { editDraft } = await import("./external-editor.ts");
+          const value = await inTerminal(() => editDraft(editor.getExpandedText(), signal));
+          if (!closing) editor.setText(value);
+        });
+        return { consume: true };
+      }
+      if (matchesKey(data, "ctrl+r")) {
+        perform(async () => {
+          const value = await picker(
+            "搜索输入历史",
+            Array.from(inputHistory)
+              .reverse()
+              .map((value) => ({ value, label: value })),
+            "本次终端还没有输入历史",
+            undefined,
+            { query: editor.getText() },
+          );
+          if (value !== undefined) editor.setText(value);
+        });
+        return { consume: true };
+      }
+      const previous = matchesKey(data, "ctrl+shift+p");
+      if (previous || matchesKey(data, "ctrl+p")) {
+        perform(async () => {
+          const all = models();
+          if (!all.length) return local("model");
+          const index = all.findIndex((m) => m.id === (host.getSelection().model ?? defaultModel));
+          const next = (index + (previous ? -1 : 1) + all.length) % all.length;
+          await host.setModel(all[next].id);
+        });
+        return { consume: true };
+      }
+      if (matchesKey(data, "shift+tab")) {
+        perform(async () => {
+          const levels: readonly string[] = await host.getEfforts();
+          const current = host.getSelection().effort;
+          const index = current ? levels.indexOf(current) : -1;
+          if (levels.length) await host.setEffort(levels[(index + 1) % levels.length]);
+        });
+        return { consume: true };
+      }
+      if (matchesKey(data, "alt+o")) {
+        perform(() => local("fast"));
+        return { consume: true };
+      }
+    }
+    if (!task && data === "?" && !editor.getText()) {
+      perform(() => local("help"));
+      return { consume: true };
+    }
     // Bracketed paste is delivered as one input record by pi-tui's StdinBuffer.
     if (data.startsWith("\x1b[200~") && !editor.getExpandedText().trim())
       pastedCommand = data
@@ -315,8 +538,7 @@ export async function runInteractive({
     }
     if (matchesKey(data, "enter")) {
       if (task) return { consume: true };
-      // Enter submits what was typed. Only Tab accepts a candidate.
-      if (editor.isShowingAutocomplete()) editor.handleInput("\x1b");
+      if (pastedCommand && editor.isShowingAutocomplete()) editor.handleInput("\x1b");
     }
   });
   const onAbort = () => finish(130);
@@ -325,7 +547,15 @@ export async function runInteractive({
   process.stdin.once("end", onEnd);
   try {
     transcript.reset(host.getMessages());
-    tui.addChild(new Text(`${bold("zpi")}  ${accent(safeText(host.cwd))}`, 1, 0));
+    try {
+      models();
+    } catch (error) {
+      transcript.note(messageOf(error));
+    }
+    const home = host.homeDir;
+    const directory =
+      host.cwd === home || host.cwd.startsWith(home + sep) ? `~${host.cwd.slice(home.length)}` : host.cwd;
+    tui.addChild(new TruncatedText(`${wordmark}   ${dim(safeText(directory))}`, 1, 1));
     tui.addChild(transcript);
     tui.addChild(panel);
     panel.addChild(editor);

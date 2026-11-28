@@ -120,10 +120,9 @@ export async function chooseEnabledModels(
     else throw new Error("模型发现失败。请检查服务地址、凭据和网络。");
   }
   if (!oauth && !manual && !candidates.length) throw new Error("此连接没有可启用的模型。");
-  const picked = candidates.length || manual ? await ui.chooseModels(candidates, previous, manual) : [];
-  let models: DiscoveredModel[];
   if (manual) {
-    models = picked.map((m) => {
+    const picked = await ui.manualModels(previous);
+    candidates = picked.map((m) => {
       if (
         !validModelId(m.id) ||
         !Number.isSafeInteger(m.contextWindow) ||
@@ -142,18 +141,8 @@ export async function chooseEnabledModels(
         reasoning: false,
       };
     });
-  } else {
-    const byId = new Map(candidates.map((m) => [m.id, m]));
-    models = picked.map((m) => {
-      const found = byId.get(m.id);
-      if (!found) throw new Error("无法启用服务目录之外的模型。");
-      return found;
-    });
   }
-  if (
-    new Set(models.map((m) => m.id)).size !== models.length ||
-    ((manual || candidates.length) && !models.length)
-  )
+  if ((manual && !candidates.length) || new Set(candidates.map((m) => m.id)).size !== candidates.length)
     throw new Error("至少启用一个模型，ID 不可重复。");
-  return models;
+  return candidates;
 }

@@ -37,8 +37,9 @@ const allModels: LoginInteraction = {
   authorize: async () => {
     throw new Error("Unexpected OAuth");
   },
-  chooseModels: async (models) => models,
-  chooseDefault: async (ids) => ids.at(-1) as string,
+  manualModels: async () => {
+    throw new Error("Unexpected manual model entry");
+  },
   warn: () => undefined,
 };
 
@@ -58,15 +59,15 @@ it("resolves active, pinned and explicit model/account selections across reopene
   );
   const b = await open().connect(gateway, "work", { kind: "key", value: "work-secret-marker" }, allModels);
   const first = await open().selectModel();
-  expect(first.binding).toEqual({ provider: "team", modelId: "write", accountId: a.id });
+  expect(first.binding).toEqual({ provider: "team", modelId: "vendor/read", accountId: a.id });
   expect(first.model).toMatchObject({ baseUrl: "https://model.example/v1", api: "openai-responses" });
   expect(accounts.availableModels().map((m) => m.id)).toEqual(["team/vendor/read", "team/write"]);
   accounts.switchAccount("team", "work");
   const pinned = await open().selectModel(undefined, first.binding);
   expect(pinned.binding).toEqual(first.binding);
   expect((await open().selectModel("team/vendor/read", first.binding)).binding.accountId).toBe(b.id);
-  accounts.setDefault("team/vendor/read");
-  expect((await open().selectModel()).model.id).toBe("vendor/read");
+  accounts.setDefault("team/write");
+  expect((await open().selectModel()).model.id).toBe("write");
   await open().logout(b.id);
   expect(accounts.availableModels()).toEqual([]);
   await expect(accounts.selectModel()).rejects.toThrow("尚未激活");
@@ -103,8 +104,8 @@ it("requires explicit env bindings, preserves a valid account after rejection, a
   });
   const manual: LoginInteraction = {
     ...allModels,
-    chooseModels: async (_models, _old, allowed) => {
-      expect(allowed).toBe(true);
+    manualModels: async (previous) => {
+      expect(previous).toEqual([]);
       return ["first", "org/second"].map((id) => ({ id, contextWindow: 32000, maxTokens: 2000 }));
     },
   };
@@ -344,7 +345,7 @@ it("recovers from denied keyring access using explicit environment credentials a
   expect(() => serviceFor("local", "oauth", local)).toThrow();
 });
 
-it("keeps existing credentials and default selection after failed verification or cancellation during model selection", async () => {
+it("keeps existing credentials and default selection after failed verification or cancellation during discovery", async () => {
   let status = 200;
   const f = fixture(async () => Response.json({ data: ["a", "b"] }, { status }));
   const provider = serviceFor("deepseek", "key");
@@ -366,14 +367,12 @@ it("keeps existing credentials and default selection after failed verification o
       { kind: "key", value: "replacement" },
       {
         ...allModels,
-        chooseModels: async () => {
-          throw new Error("cancelled");
-        },
+        signal: AbortSignal.abort(new Error("cancelled")),
       },
     ),
   ).rejects.toThrow("cancelled");
   expect(f.accounts.snapshot.accounts).toEqual([saved]);
-  expect(f.accounts.snapshot.defaultModel).toBe("deepseek/b");
+  expect(f.accounts.snapshot.defaultModel).toBe("deepseek/a");
   expect([...f.values.values()]).toEqual(["original-secret"]);
 });
 

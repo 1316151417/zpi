@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { checkbox, confirm, input, password, select } from "@inquirer/prompts";
+import { confirm, input, password, select } from "@inquirer/prompts";
 import { type DiscoveredModel, type ProviderApi, providerPresets } from "@zpi-dev/ai";
 import type { ChatGPTLogin } from "@zpi-dev/ai/auth/openai-chatgpt";
 import { UsageError } from "../args.ts";
@@ -65,24 +65,7 @@ function modelPrompts(signal: AbortSignal): LoginInteraction {
     signal,
     authorize: (login) => browserLogin(login, signal),
     warn: (message) => process.stderr.write(`${message}\n`),
-    chooseDefault: (ids) => select({ message: "默认模型", choices: ids }, terminal),
-    chooseModels: async (models, previous, manual) => {
-      if (!manual) {
-        const previousIds = new Set(previous.map((m) => m.id));
-        const retained = models.some((m) => previousIds.has(m.id));
-        return checkbox(
-          {
-            message: "启用模型",
-            required: true,
-            choices: models.map((m, index) => ({
-              value: m,
-              name: m.availability === "unverified" ? `${m.id}（预置，待验证）` : m.id,
-              checked: retained ? previousIds.has(m.id) : index === 0,
-            })),
-          },
-          terminal,
-        );
-      }
+    manualModels: async (previous) => {
       process.stderr.write("服务未提供模型目录，请填写模型信息。\n");
       const added: DiscoveredModel[] = [];
       do {
@@ -114,7 +97,9 @@ export async function login(
   provider: string | undefined,
   method: "oauth" | "key" | undefined,
   signal: AbortSignal,
+  accountName?: string,
 ) {
+  if (accountName && !validName(accountName)) throw new UsageError("账户名称无效。");
   const terminal = { output: process.stderr, signal };
   const state = accounts.snapshot;
   const custom = [...new Set(state.accounts.filter((a) => customAlias(a.provider)).map((a) => a.provider))];
@@ -189,14 +174,20 @@ export async function login(
     }
   }
   const service = serviceFor(provider, method, address);
-  const name = await input(
-    {
-      message: "账户名",
-      default: "default",
-      validate: (v) => validName(v) || "可用文字、数字、点、短横线和下划线。",
-    },
-    terminal,
-  );
+  const connections = state.accounts.filter((a) => a.provider === provider);
+  const compatible = connections.filter((a) => (a.credential.kind === "oauth") === (method === "oauth"));
+  const active = compatible.find((a) => a.id === state.active[service.provider]);
+  let name = accountName ?? active?.name;
+  if (!name && compatible.length > 1)
+    name = await select({ message: "重新连接", choices: compatible.map((a) => a.name) }, terminal);
+  if (!name) {
+    name = compatible[0]?.name ?? "default";
+    if (!compatible.length && connections.some((a) => a.name === name)) {
+      const base = method === "oauth" ? "subscription" : "api";
+      name = base;
+      for (let i = 2; connections.some((a) => a.name === name); i++) name = `${base}-${i}`;
+    }
+  }
   const old = state.accounts.find((a) => a.name === name && a.provider === provider);
   let source: LoginSource;
   if (method === "oauth") {
@@ -248,7 +239,5 @@ export async function login(
     else source = { kind };
   }
   const account = await accounts.connect(service, name, source, modelPrompts(signal));
-  process.stdout.write(
-    `已连接 ${account.provider} ${account.name}，已启用 ${account.models.length} 个模型。\n`,
-  );
+  process.stdout.write(`已连接 ${account.provider}，已启用 ${account.models.length} 个模型。\n`);
 }

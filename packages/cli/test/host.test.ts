@@ -206,7 +206,7 @@ it("shows the draft model for an effort choice and reselects the current default
   const host = f.create();
   const [effort] = await host.getEfforts();
   await host.setEffort(effort);
-  expect(host.getSelection()).toEqual({ model: "gateway/fake", effort });
+  expect(host.getSelection()).toEqual({ model: "gateway/fake", effort, fast: false });
   f.switchToWork();
   const select = vi.spyOn(f.accounts, "selectModel");
   await host.run("first turn");
@@ -268,7 +268,7 @@ it("keeps skills explicit and enforces command provenance, priority, argument bo
   await symlink(join(global, "DOC.md"), join(project, "unregistered.md"));
   const host = f.create({ ephemeral: true });
   const resources = new CliResources(f.cwd, f.homeDir);
-  expect((await host.listCommands()).map((c) => c.name)).toEqual(["doc"]);
+  expect((await host.listCommands()).map((c) => c.name)).toEqual(["doc", "testing"]);
   expect((await host.listSkills()).map((s) => s.name)).toEqual(["testing"]);
   await host.run("hello");
   expect(JSON.stringify(f.contexts[0])).toContain("PROJECT INSTRUCTIONS");
@@ -295,6 +295,35 @@ it("keeps skills explicit and enforces command provenance, priority, argument bo
   expect(f.contexts).toHaveLength(2);
 });
 
+it("invokes a discovered Skill by slash name, preserving command precedence and literal pastes", async () => {
+  const f = await fixture();
+  for (const [root, name, body] of [
+    [f.homeDir, "校对", "USER BODY"],
+    [f.cwd, "校对", "PROJECT BODY"],
+    [f.cwd, "help", "SKILL NAMED HELP"],
+    [f.cwd, "doc", "SKILL NAMED DOC"],
+  ]) {
+    const directory = join(root, ".agents", "skills", name);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "SKILL.md"), `---\ndescription: Editing\n---\n${body}`);
+  }
+  const directory = join(f.cwd, ".zpi", "commands");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "doc.md"), "FILE COMMAND");
+  const resources = new CliResources(f.cwd, f.homeDir);
+  const names = (await resources.listCommands()).map((item) => item.name);
+  expect(names.sort()).toEqual(["$doc", "$help", "doc", "校对"].sort());
+  const question = "/校对 检查第一段\n保留换行";
+  const direct = await resources.prepare(question, {});
+  expect(direct.text).toContain("检查第一段\n保留换行");
+  expect(direct.text).toContain("PROJECT BODY");
+  expect(direct.text).not.toContain("USER BODY");
+  expect((await resources.prepare(question, { literal: true })).text).toBe(question);
+  expect((await resources.prepare("/$help", { print: true })).text).toContain("SKILL NAMED HELP");
+  expect((await resources.prepare("/doc", {})).text).toContain("FILE COMMAND");
+  expect((await resources.prepare("/$doc", {})).text).toContain("SKILL NAMED DOC");
+});
+
 it("validates referenced images and rejects paths outside the real workspace", async () => {
   const f = await fixture();
   await symlink(f.homeDir, join(f.cwd, "outside"));
@@ -307,6 +336,10 @@ it("validates referenced images and rejects paths outside the real workspace", a
     .toFile(join(f.cwd, "pixel.png"));
   const context = await fileContext(f.cwd, ["pixel.png"]);
   expect(context.images?.[0].type).toBe("image");
+  const bytes = await readFile(join(f.cwd, "pixel.png"));
+  expect((await fileContext(f.cwd, [], [bytes])).images).toEqual(context.images);
+  await expect(fileContext(f.cwd, [], [Buffer.from("invalid image")])).rejects.toThrow();
+  await expect(fileContext(f.cwd, ["pixel.png"], Array(8).fill(bytes))).rejects.toThrow("图片数量");
 });
 
 it("prints the native manual compaction notification for this round only", async () => {
