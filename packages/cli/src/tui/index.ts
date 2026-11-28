@@ -9,6 +9,7 @@ import {
   type SelectItem,
   SelectList,
   type SlashCommand,
+  Spacer,
   Text,
   TruncatedText,
   TuiMainScreen,
@@ -97,7 +98,7 @@ export async function runInteractive({
       stash && "草稿已暂存",
       turn && "运行中",
     ].filter(Boolean);
-    status.setText(info.length ? dim(safeText(info.join("  ·  "))) : "");
+    status.setText(!cancelPicker && info.length ? dim(safeText(info.join("  ·  "))) : "");
     tui.requestRender();
   }
   function finish(code: number) {
@@ -142,7 +143,7 @@ export async function runInteractive({
       panel.clear();
       panel.addChild(editor);
       tui.setFocus(editor);
-      tui.requestRender();
+      update();
       result.resolve(value);
     };
     cancelPicker = () => done();
@@ -171,10 +172,11 @@ export async function runInteractive({
       list.onSelect = (item) => done(item.value);
     }
     panel.clear();
-    panel.addChild(new Text(bold(title), 1, 0));
+    panel.addChild(new Spacer(1));
+    panel.addChild(new Text(bold(title) + (search?.save ? dim("   ·   Ctrl+S 设为默认") : ""), 1, 0));
     panel.addChild(list);
     tui.setFocus(list);
-    tui.requestRender();
+    update();
     return result.promise;
   }
   async function resume() {
@@ -253,7 +255,7 @@ export async function runInteractive({
           exact?.id ??
           (sameId.length === 1 ? sameId[0].id : undefined) ??
           (await picker(
-            "选择模型   ·   Ctrl+S 设为默认",
+            "选择模型",
             items
               .sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id))
               .map(({ id }) => ({
